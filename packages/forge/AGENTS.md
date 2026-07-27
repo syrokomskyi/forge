@@ -5,7 +5,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 ## Architecture
 
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
-- `os/` — kernel-optional. Contains ForgeModule registrations. In Warpgogol mode, `os/` modules can dynamically import `@warpgogol/site-kernel-checks`, `@warpgogol/site-kernel-codegen`, `@warpgogol/site-kernel-handoff`. In autonomous mode, those imports gracefully fail and only forge-native commands are registered.
+- `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed.
 - `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/site-kernel`.
 - `skills/` — forge-managed skill definitions (22 fo skills + 4 shared + 3 meta = 29 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
@@ -57,7 +57,8 @@ skillPacks:
 ## Import rules
 
 - `src/` must NOT import from `@warpgogol/site-kernel` or any kernel package.
-- `os/` MAY dynamically import `@warpgogol/site-kernel-checks`, `@warpgogol/site-kernel-codegen`, `@warpgogol/site-kernel-handoff` (wrapped in try/catch for autonomous mode).
+- `os/compass/` and `os/werkstatt/` are fully autonomous (RFC-0556) — all handlers are inlined in `os/*/handlers/` and must NOT import from `@warpgogol/*` packages.
+- Other `os/` modules MAY dynamically import `@warpgogol/*` packages where kernel integration is needed.
 - Apps import forge modules from `@webgogol/forge` (the package entrypoint re-exports all OS modules).
 
 ## forge.yaml (RFC-0391)
