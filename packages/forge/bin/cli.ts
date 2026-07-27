@@ -149,14 +149,8 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/rfc/rfc.module.ts").then((m) => m.forgeRfcModule),
     await import("../os/workflow/workflow.module.ts").then((m) => m.forgeWorkflowModule),
     await import("../os/naming/naming.module.ts").then((m) => m.forgeNamingModule),
-    // compass and werkstatt modules try to import @warpgogol/* packages — they'll
-    // gracefully skip registration in autonomous mode.
-    await import("../os/compass/compass.module.ts")
-      .then((m) => m.forgeCompassModule)
-      .catch(() => null),
-    await import("../os/werkstatt/werkstatt.module.ts")
-      .then((m) => m.forgeWerkstattModule)
-      .catch(() => null),
+    await import("../os/compass/compass.module.ts").then((m) => m.forgeCompassModule),
+    await import("../os/werkstatt/werkstatt.module.ts").then((m) => m.forgeWerkstattModule),
     await import("../os/session/session.module.ts").then((m) => m.forgeSessionModule),
   ].filter((m): m is ForgeModule => m !== null);
 
