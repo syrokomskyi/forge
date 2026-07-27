@@ -1,0 +1,19 @@
+schema: forge/stack-profile@1
+id: forge-shell
+displayName: Forge Shell (minimal)
+detect:
+  anyOf:
+    - forge-shell.marker
+workspace:
+  dirs:
+    - docs
+  files:
+    - path: .gitignore
+      content: |
+        node_modules
+        dist
+        .turbo
+        .cache
+        operator-profile.md
+install:
+  - pnpm add -D @webgogol/forge

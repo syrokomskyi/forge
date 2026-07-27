@@ -1,0 +1,84 @@
+schema: forge/stack-profile@1
+id: astro-typescript-turborepo
+displayName: Astro + TypeScript + Turborepo
+detect:
+  anyOf:
+    - astro.config.*
+    - tsconfig.json
+workspace:
+  dirs:
+    - sites
+    - packages
+    - services
+  files:
+    - path: pnpm-workspace.yaml
+      content: |
+        packages:
+          - "sites/*"
+          - "packages/*"
+          - "services/*"
+    - path: turbo.json
+      content: |
+        {
+          "$schema": "https://turbo.build/schema.json",
+          "tasks": {
+            "build": {
+              "dependsOn": ["^build"],
+              "outputs": ["dist/**"]
+            },
+            "build:check": {
+              "dependsOn": ["^build:check"]
+            },
+            "test": {
+              "dependsOn": ["^build:check"]
+            }
+          }
+        }
+    - path: tsconfig.base.json
+      content: |
+        {
+          "compilerOptions": {
+            "target": "ESNext",
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "forceConsistentCasingInFileNames": true
+          }
+        }
+    - path: .gitignore
+      content: |
+        node_modules
+        dist
+        .turbo
+        .cache
+        operator-profile.md
+install:
+  - pnpm add -D typescript turbo @webgogol/forge
+firstWorkspace:
+  path: sites/my-site
+  files:
+    - path: package.json
+      content: |
+        {
+          "name": "my-site",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "scripts": {
+            "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
+            "test": "vitest run --passWithNoTests"
+          }
+        }
+    - path: tsconfig.json
+      content: |
+        {
+          "extends": "../tsconfig.base.json",
+          "compilerOptions": {
+            "outDir": "./dist"
+          }
+        }
+  install:
+    - pnpm add astro
+    - pnpm add -D vitest
