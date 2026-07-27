@@ -11,3 +11,8 @@
 */
 
 export { forgeCompassModule } from "./compass.module.ts";
+export {
+  createCompassInventoryEntries,
+  type CompassInventoryEntry,
+} from "./handlers/compass-inventory.ts";
+export { resolveCompassScanRoot } from "./handlers/resolve-scan-root.ts";
