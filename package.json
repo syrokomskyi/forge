@@ -1,0 +1,246 @@
+{
+  "name": "@webgogol/forge",
+  "version": "0.1.4",
+  "private": false,
+  "type": "module",
+  "license": "MIT",
+  "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
+  "keywords": [
+    "rfc",
+    "adr",
+    "governance",
+    "skills",
+    "ai-agent",
+    "documentation",
+    "framework"
+  ],
+  "homepage": "https://github.com/syrokomskyi/webgogol-4#readme",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/syrokomskyi/webgogol-4.git",
+    "directory": "packages/forge"
+  },
+  "bugs": {
+    "url": "https://github.com/syrokomskyi/webgogol-4/issues"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "bin": {
+    "forge": "./bin/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./types": {
+      "types": "./src/types.ts",
+      "default": "./src/types.ts"
+    },
+    "./utils": {
+      "types": "./src/utils/index.ts",
+      "default": "./src/utils/index.ts"
+    },
+    "./config": {
+      "types": "./src/config/forge-config.ts",
+      "default": "./src/config/forge-config.ts"
+    },
+    "./os/core": {
+      "types": "./os/core/core.module.ts",
+      "default": "./os/core/core.module.ts"
+    },
+    "./os/compass": {
+      "types": "./os/compass/index.ts",
+      "default": "./os/compass/index.ts"
+    },
+    "./os/naming": {
+      "types": "./os/naming/index.ts",
+      "default": "./os/naming/index.ts"
+    },
+    "./os/naming-module": {
+      "types": "./os/naming/naming.module.ts",
+      "default": "./os/naming/naming.module.ts"
+    },
+    "./os/rfc": {
+      "types": "./os/rfc/index.ts",
+      "default": "./os/rfc/index.ts"
+    },
+    "./os/rfc-module": {
+      "types": "./os/rfc/rfc.module.ts",
+      "default": "./os/rfc/rfc.module.ts"
+    },
+    "./os/werkstatt": {
+      "types": "./os/werkstatt/index.ts",
+      "default": "./os/werkstatt/index.ts"
+    },
+    "./os/workflow": {
+      "types": "./os/workflow/index.ts",
+      "default": "./os/workflow/index.ts"
+    },
+    "./os/workflow-module": {
+      "types": "./os/workflow/workflow.module.ts",
+      "default": "./os/workflow/workflow.module.ts"
+    },
+    "./os/spec-module": {
+      "types": "./os/spec/spec.module.ts",
+      "default": "./os/spec/spec.module.ts"
+    },
+    "./os/adr": {
+      "types": "./os/adr/index.ts",
+      "default": "./os/adr/index.ts"
+    },
+    "./os/adr-module": {
+      "types": "./os/adr/adr.module.ts",
+      "default": "./os/adr/adr.module.ts"
+    },
+    "./os/plan": {
+      "types": "./os/plan/index.ts",
+      "default": "./os/plan/index.ts"
+    },
+    "./os/plan-module": {
+      "types": "./os/plan/plan.module.ts",
+      "default": "./os/plan/plan.module.ts"
+    },
+    "./os/audit": {
+      "types": "./os/audit/index.ts",
+      "default": "./os/audit/index.ts"
+    },
+    "./os/audit-module": {
+      "types": "./os/audit/audit.module.ts",
+      "default": "./os/audit/audit.module.ts"
+    },
+    "./os/session": {
+      "types": "./os/session/index.ts",
+      "default": "./os/session/index.ts"
+    },
+    "./os/session-module": {
+      "types": "./os/session/session.module.ts",
+      "default": "./os/session/session.module.ts"
+    }
+  },
+  "files": [
+    "dist/",
+    "bin/cli.js",
+    "skills/",
+    "profiles/",
+    "os/rfc/rfc-0000-template.md",
+    "AGENTS.md",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "pnpm exec tsc -p tsconfig.json",
+    "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "pnpm run clean && pnpm run build && node scripts/publish-check.mjs",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "yaml": "^2.9.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "fast-check": "^4.9.0",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.10"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/src/index.js",
+    "types": "./dist/src/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      },
+      "./types": {
+        "types": "./dist/src/types.d.ts",
+        "default": "./dist/src/types.js"
+      },
+      "./utils": {
+        "types": "./dist/src/utils/index.d.ts",
+        "default": "./dist/src/utils/index.js"
+      },
+      "./config": {
+        "types": "./dist/src/config/forge-config.d.ts",
+        "default": "./dist/src/config/forge-config.js"
+      },
+      "./os/core": {
+        "types": "./dist/os/core/core.module.d.ts",
+        "default": "./dist/os/core/core.module.js"
+      },
+      "./os/compass": {
+        "types": "./dist/os/compass/index.d.ts",
+        "default": "./dist/os/compass/index.js"
+      },
+      "./os/naming": {
+        "types": "./dist/os/naming/index.d.ts",
+        "default": "./dist/os/naming/index.js"
+      },
+      "./os/naming-module": {
+        "types": "./dist/os/naming/naming.module.d.ts",
+        "default": "./dist/os/naming/naming.module.js"
+      },
+      "./os/rfc": {
+        "types": "./dist/os/rfc/index.d.ts",
+        "default": "./dist/os/rfc/index.js"
+      },
+      "./os/rfc-module": {
+        "types": "./dist/os/rfc/rfc.module.d.ts",
+        "default": "./dist/os/rfc/rfc.module.js"
+      },
+      "./os/werkstatt": {
+        "types": "./dist/os/werkstatt/index.d.ts",
+        "default": "./dist/os/werkstatt/index.js"
+      },
+      "./os/workflow": {
+        "types": "./dist/os/workflow/index.d.ts",
+        "default": "./dist/os/workflow/index.js"
+      },
+      "./os/workflow-module": {
+        "types": "./dist/os/workflow/workflow.module.d.ts",
+        "default": "./dist/os/workflow/workflow.module.js"
+      },
+      "./os/spec-module": {
+        "types": "./dist/os/spec/spec.module.d.ts",
+        "default": "./dist/os/spec/spec.module.js"
+      },
+      "./os/adr": {
+        "types": "./dist/os/adr/index.d.ts",
+        "default": "./dist/os/adr/index.js"
+      },
+      "./os/adr-module": {
+        "types": "./dist/os/adr/adr.module.d.ts",
+        "default": "./dist/os/adr/adr.module.js"
+      },
+      "./os/plan": {
+        "types": "./dist/os/plan/index.d.ts",
+        "default": "./dist/os/plan/index.js"
+      },
+      "./os/plan-module": {
+        "types": "./dist/os/plan/plan.module.d.ts",
+        "default": "./dist/os/plan/plan.module.js"
+      },
+      "./os/audit": {
+        "types": "./dist/os/audit/index.d.ts",
+        "default": "./dist/os/audit/index.js"
+      },
+      "./os/audit-module": {
+        "types": "./dist/os/audit/audit.module.d.ts",
+        "default": "./dist/os/audit/audit.module.js"
+      },
+      "./os/session": {
+        "types": "./dist/os/session/index.d.ts",
+        "default": "./dist/os/session/index.js"
+      },
+      "./os/session-module": {
+        "types": "./dist/os/session/session.module.d.ts",
+        "default": "./dist/os/session/session.module.js"
+      }
+    }
+  }
+}
