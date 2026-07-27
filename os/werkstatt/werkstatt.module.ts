@@ -2,48 +2,24 @@
 <MODULE_CONTRACT>
 <purpose>Register forge Werkstatt lock and operation validation commands with the kernel registry.</purpose>
 <non-goals>
-  <item>Do not implement werkstatt handler logic — delegate to site-kernel-handoff and site-kernel-checks.</item>
+  <item>Do not implement werkstatt handler logic — delegate to handlers/ inlined by RFC-0556.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial forgeWerkstattModule registering 3 werkstatt commands.</item>
+  <item>RFC-0556: removed dynamic imports of @warpgogol/site-kernel-handoff and @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/werkstatt/handlers/.</item>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
-import type {
-  ForgeCommandInput,
-  ForgeCommandResult,
-  ForgeRuntimeContext,
-} from "../../src/types.ts";
-
-type ForgeExecute = (
-  input: ForgeCommandInput,
-  context: ForgeRuntimeContext,
-) => Promise<ForgeCommandResult | void>;
+import { runWerkstattLockStatus } from "./handlers/werkstatt-lock-status.ts";
+import { runWerkstattLockRecover } from "./handlers/werkstatt-lock-recover.ts";
+import { runWerkstattOperationValidate } from "./handlers/werkstatt-operation-validate.ts";
 
 export const forgeWerkstattModule: ForgeModule = {
   name: "forge-werkstatt",
   version: "0.1.0",
   async register(registry) {
-    let handoff: Record<string, unknown> = {};
-    let checks: Record<string, unknown> = {};
-    try {
-      handoff = await import(/* @vite-ignore */ "@warpgogol/site-kernel-handoff" as string);
-    } catch {
-      // Autonomous mode: @warpgogol/site-kernel-handoff not available.
-      return;
-    }
-    try {
-      checks = await import(/* @vite-ignore */ "@warpgogol/site-kernel-checks" as string);
-    } catch {
-      // Autonomous mode: @warpgogol/site-kernel-checks not available.
-    }
-    const { runWerkstattLockStatus, runWerkstattLockRecover } = handoff as Record<
-      string,
-      ForgeExecute
-    >;
-    const { runWerkstattOperationValidate } = checks as Record<string, ForgeExecute>;
     registry.registerCommand({
       name: "werkstatt.lock.status",
       description: "Report all Werkstatt locks, their age, owner, and staleness (RFC-0362).",

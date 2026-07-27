@@ -2,27 +2,29 @@
 <MODULE_CONTRACT>
 <purpose>Register the forge Compass command family against the Site OS kernel registry.</purpose>
 <non-goals>
-  <item>Do not implement compass handler logic — delegate to site-kernel-checks and site-kernel-codegen.</item>
+  <item>Do not implement compass handler logic — delegate to handlers/ inlined by RFC-0556.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial forgeCompassModule registering 12 compass commands.</item>
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add.</item>
+  <item>RFC-0556: removed dynamic import of @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/compass/handlers/.</item>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
-import type {
-  ForgeFlagSpec,
-  ForgeCommandInput,
-  ForgeCommandResult,
-  ForgeRuntimeContext,
-} from "../../src/types.ts";
-
-type ForgeExecute = (
-  input: ForgeCommandInput,
-  context: ForgeRuntimeContext,
-) => Promise<ForgeCommandResult | void>;
+import type { ForgeFlagSpec } from "../../src/types.ts";
+import { runCompassInventory, runCompassValidation } from "./handlers/compass-inventory-handler.ts";
+import {
+  runCompassAuditPlan,
+  runCompassAuditRecord,
+  runCompassAuditBaseline,
+  runCompassAuditValidate,
+} from "./handlers/compass-audit-handler.ts";
+import {
+  runCompassChangeSummaryValidate,
+  runCompassSummaryTrim,
+} from "./handlers/compass-change-summary-handler.ts";
 
 const compassScanFlags = {
   packages: {
@@ -39,25 +41,6 @@ export const forgeCompassModule: ForgeModule = {
   name: "forge-compass",
   version: "0.1.0",
   async register(registry) {
-    let checks: Record<string, unknown> = {};
-    try {
-      checks = await import(/* @vite-ignore */ "@warpgogol/site-kernel-checks" as string);
-    } catch {
-      // Autonomous mode: @warpgogol/site-kernel-checks not available.
-      // Compass commands will not be registered.
-      return;
-    }
-    const {
-      runCompassInventory,
-      runCompassValidation,
-      runCompassChangeSummaryValidate,
-      runCompassSummaryTrim,
-      runCompassAuditPlan,
-      runCompassAuditRecord,
-      runCompassAuditBaseline,
-      runCompassAuditValidate,
-    } = checks as Record<string, ForgeExecute>;
-    // ── From site-kernel-checks ────────────────────────────────────────────
     registry.registerCommand({
       name: "compass.inventory",
       description: "Generate the repository-wide Compass source inventory XML report.",
