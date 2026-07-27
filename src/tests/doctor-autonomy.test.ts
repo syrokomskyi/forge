@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for forge.doctor autonomy guard — verifies @gogol/* import detection.</purpose>
+<purpose>Unit tests for forge.doctor autonomy guard — verifies @warpgogol/* import detection.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0391: initial doctor autonomy guard tests.</item>
@@ -39,7 +39,7 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("doctor passes on clean tree with no @gogol/* imports", async () => {
+test("doctor passes on clean tree with no @warpgogol/* imports", async () => {
   await mkdir(join(tempDir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
@@ -58,7 +58,7 @@ test("doctor passes on clean tree with no @gogol/* imports", async () => {
   expect(result.data?.forbiddenImports).toEqual([]);
 });
 
-test("doctor detects @gogol/* import specifiers", async () => {
+test("doctor detects @warpgogol/* import specifiers", async () => {
   await mkdir(join(tempDir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
@@ -67,7 +67,7 @@ test("doctor detects @gogol/* import specifiers", async () => {
   );
   await writeFile(
     join(tempDir, "packages", "forge", "src", "bad.ts"),
-    'import { foo } from "@gogol/site-kernel";\nexport const x = foo;',
+    'import { foo } from "@warpgogol/site-kernel";\nexport const x = foo;',
     "utf8",
   );
 
@@ -75,10 +75,10 @@ test("doctor detects @gogol/* import specifiers", async () => {
   const autonomyCheck = result.data?.checks.find((c) => c.name === "autonomy-guard");
   expect(autonomyCheck?.status).toBe("fail");
   expect(result.data?.forbiddenImports.length).toBe(1);
-  expect(result.data?.forbiddenImports[0]?.specifier).toBe("@gogol/site-kernel");
+  expect(result.data?.forbiddenImports[0]?.specifier).toBe("@warpgogol/site-kernel");
 });
 
-test("doctor ignores @gogol/* in comments", async () => {
+test("doctor ignores @warpgogol/* in comments", async () => {
   await mkdir(join(tempDir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
@@ -87,7 +87,7 @@ test("doctor ignores @gogol/* in comments", async () => {
   );
   await writeFile(
     join(tempDir, "packages", "forge", "src", "clean.ts"),
-    "/* Do not import from @gogol/site-kernel */\nexport const x = 1;",
+    "/* Do not import from @warpgogol/site-kernel */\nexport const x = 1;",
     "utf8",
   );
 

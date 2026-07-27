@@ -16,7 +16,7 @@
   <item>RFC-0523: expanded concerns enum from binary (document-only | implementation) to four-level taxonomy (read-only | document-only | content-mutation | code-mutation). All 30 skills reclassified.</item>
   <item>RFC-0524: added optional knowledge?: string[] field for cumulative knowledge system. Added knowledge arrays to fo-site-scan and grilling.</item>
   <item>RFC-0538: added fo-compass-annotate skill (22nd fo skill) — full-lifecycle Compass header management replacing removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add kernel commands.</item>
-  <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to wgogol-skills as wg- pack skills).</item>
+  <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to warpgogol-skills as wg- pack skills).</item>
 </CHANGE_SUMMARY>
 */
 

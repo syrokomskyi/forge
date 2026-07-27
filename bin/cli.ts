@@ -3,7 +3,7 @@
 <MODULE_CONTRACT>
 <purpose>CLI bin entrypoint for @webgogol/forge — minimal command runner that
 registers forge modules and dispatches commands. Works autonomously without
-@gogol/site-kernel.</purpose>
+@warpgogol/site-kernel.</purpose>
 <non-goals>
   <item>Do not implement command logic — delegate to forge os/ modules and src/ handlers.</item>
   <item>Do not replicate the full kernel runtime — minimal dispatch only.</item>
@@ -149,7 +149,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/rfc/rfc.module.ts").then((m) => m.forgeRfcModule),
     await import("../os/workflow/workflow.module.ts").then((m) => m.forgeWorkflowModule),
     await import("../os/naming/naming.module.ts").then((m) => m.forgeNamingModule),
-    // compass and werkstatt modules try to import @gogol/* packages — they'll
+    // compass and werkstatt modules try to import @warpgogol/* packages — they'll
     // gracefully skip registration in autonomous mode.
     await import("../os/compass/compass.module.ts")
       .then((m) => m.forgeCompassModule)

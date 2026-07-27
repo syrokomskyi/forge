@@ -5,8 +5,8 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 ## Architecture
 
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
-- `os/` — kernel-optional. Contains ForgeModule registrations. In WGogol mode, `os/` modules can dynamically import `@gogol/site-kernel-checks`, `@gogol/site-kernel-codegen`, `@gogol/site-kernel-handoff`. In autonomous mode, those imports gracefully fail and only forge-native commands are registered.
-- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@gogol/site-kernel`.
+- `os/` — kernel-optional. Contains ForgeModule registrations. In Warpgogol mode, `os/` modules can dynamically import `@warpgogol/site-kernel-checks`, `@warpgogol/site-kernel-codegen`, `@warpgogol/site-kernel-handoff`. In autonomous mode, those imports gracefully fail and only forge-native commands are registered.
+- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/site-kernel`.
 - `skills/` — forge-managed skill definitions (22 fo skills + 4 shared + 3 meta = 29 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
 ## OS modules
@@ -44,7 +44,7 @@ Project-declared skill packs allow projects to manage their own skills under a p
 ```yaml
 skillPacks:
   - prefix: wg
-    dir: packages/wgogol-skills/skills
+    dir: packages/warpgogol-skills/skills
 ```
 
 - `forge.create` syncs pack skills alongside forge skills into `.agents/skills/`.
@@ -56,8 +56,8 @@ skillPacks:
 
 ## Import rules
 
-- `src/` must NOT import from `@gogol/site-kernel` or any kernel package.
-- `os/` MAY dynamically import `@gogol/site-kernel-checks`, `@gogol/site-kernel-codegen`, `@gogol/site-kernel-handoff` (wrapped in try/catch for autonomous mode).
+- `src/` must NOT import from `@warpgogol/site-kernel` or any kernel package.
+- `os/` MAY dynamically import `@warpgogol/site-kernel-checks`, `@warpgogol/site-kernel-codegen`, `@warpgogol/site-kernel-handoff` (wrapped in try/catch for autonomous mode).
 - Apps import forge modules from `@webgogol/forge` (the package entrypoint re-exports all OS modules).
 
 ## forge.yaml (RFC-0391)
@@ -65,7 +65,7 @@ skillPacks:
 `forge.yaml` is the machine-readable project configuration file at the project root. It records project name, stack, package manager, and docs paths. `forge.create` creates it; `forge.doctor` checks for it; `forge.agents.generate` reads it to produce `AGENTS.md`.
 
 - **MUST NOT** run `forge.agents.generate` against this monorepo's root `AGENTS.md` — it is hand-written and carries no generated marker; the edit guard enforces this, do not bypass it.
-- **MUST NOT** re-add any `@gogol/*` import to `packages/forge` source — `forge.doctor` autonomy guard will fail.
+- **MUST NOT** re-add any `@warpgogol/*` import to `packages/forge` source — `forge.doctor` autonomy guard will fail.
 - **MUST NOT** hand-edit a generated `AGENTS.md` in bootstrapped projects — edit `forge.yaml` and regenerate.
 
 ## Stack profiles (RFC-0392)
@@ -84,7 +84,7 @@ The `bindings` section in `forge.yaml` de-hardcodes project-specific values from
 - `forge.doctor` validates bindings: checks path existence, reports resolved/absent/invalid, and emits `defaultable-binding-null` notices for forge-CLI-backed bindings that are null (RFC-0540).
 - `forge.create` writes forge-CLI-backed defaults for commands forge provides (`validateRfc`, `validateAdr`, `implementStamp`, `specValidate`) and null for stack-dependent commands (`typecheck`, `test`, `scopedBuild`). The package manager from `forge.yaml` determines the runner prefix (`pnpm exec`, `npx`, `yarn exec`, `bunx`).
 - `forge.skill.validate` enforces SKILL-11: canonical skill bodies must not contain hardcoded `pnpm exec site-kernel run` or `docs/architecture-dna.md` in instruction lines (code blocks and `run:` directives). Supports `<!-- skill-lint-disable SKILL-11 -->` escape hatch.
-- `forge.skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("WGogol", "WebGogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@webgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
+- `forge.skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@webgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
 - Skills declare binding requirements in frontmatter: `bindings: { requires: [...], optional: [...] }`.
 - Degradation contract: required binding unresolvable → skill refuses to start; optional binding absent → step skipped with `Degraded:` line in report.
 

@@ -41,9 +41,9 @@ export const forgeCompassModule: ForgeModule = {
   async register(registry) {
     let checks: Record<string, unknown> = {};
     try {
-      checks = await import(/* @vite-ignore */ "@gogol/site-kernel-checks" as string);
+      checks = await import(/* @vite-ignore */ "@warpgogol/site-kernel-checks" as string);
     } catch {
-      // Autonomous mode: @gogol/site-kernel-checks not available.
+      // Autonomous mode: @warpgogol/site-kernel-checks not available.
       // Compass commands will not be registered.
       return;
     }

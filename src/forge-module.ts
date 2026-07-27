@@ -1,8 +1,8 @@
 /*
 <MODULE_CONTRACT>
-<purpose>ForgeModule interfaces — structurally compatible with KernelModule from @gogol/site-kernel. Forge does NOT import from site-kernel.</purpose>
+<purpose>ForgeModule interfaces — structurally compatible with KernelModule from @warpgogol/site-kernel. Forge does NOT import from site-kernel.</purpose>
 <non-goals>
-  <item>Do not import from @gogol/site-kernel — forge must be installable without it.</item>
+  <item>Do not import from @warpgogol/site-kernel — forge must be installable without it.</item>
   <item>Do not add project-specific fields to ForgeModule — keep it minimal and portable.</item>
 </non-goals>
 </MODULE_CONTRACT>
@@ -14,7 +14,7 @@
 
 import type { ForgeCommandDefinition } from "./types.ts";
 
-// ForgeModule is structurally compatible with KernelModule from @gogol/site-kernel.
+// ForgeModule is structurally compatible with KernelModule from @warpgogol/site-kernel.
 // Forge does NOT import from site-kernel — TypeScript structural typing ensures
 // compatibility. If the kernel's KernelModule interface changes, the build fails
 // at the point where forge modules are imported into kernel.config.ts.

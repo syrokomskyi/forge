@@ -3,7 +3,7 @@
 <purpose>Stack profile schema, loader, and detector. Defines what a supported stack looks like and how to detect it in an existing project.</purpose>
 <non-goals>
   <item>Do not scaffold projects — that is scaffold-project.ts.</item>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

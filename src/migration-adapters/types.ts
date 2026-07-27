@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Migration-adapter type contracts — interfaces for stack-specific code migration into forge projects (RFC-0546).</purpose>
 <non-goals>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement adapter logic here — only type definitions.</item>
 </non-goals>
 </MODULE_CONTRACT>

@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Shared git utilities for migration adapters — git init and git history transfer via format-patch + git am (RFC-0547).</purpose>
 <non-goals>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement adapter-specific logic — only shared git operations.</item>
 </non-goals>
 </MODULE_CONTRACT>

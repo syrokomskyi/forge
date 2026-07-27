@@ -21,11 +21,11 @@ interface PortValidateResult {
 }
 
 const FORBIDDEN_IMPORTS = [
-  "@gogol/site-kernel",
-  "@gogol/site-kernel-checks",
-  "@gogol/site-kernel-handoff",
-  "@gogol/ui",
-  "@gogol/share/page",
+  "@warpgogol/site-kernel",
+  "@warpgogol/site-kernel-checks",
+  "@warpgogol/site-kernel-handoff",
+  "@warpgogol/ui",
+  "@warpgogol/share/page",
 ];
 
 export function runPortValidate(

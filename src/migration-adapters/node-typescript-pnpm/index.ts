@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Node/TypeScript/pnpm migration adapter — detects Node+TS+pnpm projects, derives bindings, copies code into forge turborepo (RFC-0546).</purpose>
 <non-goals>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not transform business logic — copy only.</item>
   <item>Do not overwrite forge-protected files.</item>
 </non-goals>

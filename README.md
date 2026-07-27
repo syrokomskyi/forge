@@ -116,8 +116,8 @@ await forgeRfcModule.register(registry);
 
 | Directory | Purpose |
 | --- | --- |
-| `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@gogol/*` imports. |
-| `os/` | ForgeModule registrations. `compass` and `werkstatt` dynamically import `@gogol/site-kernel-*` (graceful degradation in autonomous mode). |
+| `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
+| `os/` | ForgeModule registrations. `compass` and `werkstatt` dynamically import `@warpgogol/site-kernel-*` (graceful degradation in autonomous mode). |
 | `bin/` | CLI entrypoint (`forge` command). |
 | `skills/` | 27 skill definitions (SKILL.md with frontmatter). |
 | `scripts/` | Publication hygiene check (`publish-check.mjs`) run by `prepublishOnly`. |
