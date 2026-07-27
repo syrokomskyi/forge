@@ -11,3 +11,29 @@
 */
 
 export { forgeWerkstattModule } from "./werkstatt.module.ts";
+export {
+  werkstattLockSchema,
+  werkstattOperationRecordSchema,
+  type WerkstattLock,
+  type WerkstattOperationRecord,
+} from "./handlers/schema.ts";
+export {
+  acquireLock,
+  releaseLock,
+  heartbeatLock,
+  readAllLocks,
+  isLockStale,
+  removeStaleLock,
+} from "./handlers/lock.ts";
+export {
+  runWerkstattLockStatus,
+  type WerkstattLockStatusData,
+} from "./handlers/werkstatt-lock-status.ts";
+export {
+  runWerkstattLockRecover,
+  type WerkstattLockRecoverData,
+} from "./handlers/werkstatt-lock-recover.ts";
+export {
+  runWerkstattOperationValidate,
+  type WerkstattOperationValidateData,
+} from "./handlers/werkstatt-operation-validate.ts";
