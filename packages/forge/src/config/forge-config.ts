@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Forge project configuration — forge.yaml schema, loader, forge root resolver, and bindings contract. Single source of truth for how forge is deployed in a project.</purpose>
 <non-goals>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -313,7 +313,7 @@ export function resolveForgeRoot(workspaceRoot: string): string {
     return monorepoPath;
   }
 
-  const npmPath = path.join(workspaceRoot, "node_modules", "@wgogol", "forge");
+  const npmPath = path.join(workspaceRoot, "node_modules", "@webgogol", "forge");
   if (fs.existsSync(path.join(npmPath, "package.json"))) {
     return npmPath;
   }

@@ -718,21 +718,21 @@ export async function validateSingleRfc(
   }
 
   // V-30: breaksC field consistency (RFC-0480)
-  // If breaksC: true — @gogol/ontology must be in packagesImpacted.
-  // If breaksC absent/false but @gogol/ontology in packagesImpacted — warning.
+  // If breaksC: true — @warpgogol/ontology must be in packagesImpacted.
+  // If breaksC absent/false but @warpgogol/ontology in packagesImpacted — warning.
   {
     const breaksC = fm["breaksC"];
     const packagesImpacted = Array.isArray(fm["packagesImpacted"])
       ? (fm["packagesImpacted"] as unknown[]).map(String)
       : [];
-    const hasOntology = packagesImpacted.some((p) => p.includes("@gogol/ontology"));
+    const hasOntology = packagesImpacted.some((p) => p.includes("@warpgogol/ontology"));
 
     if (breaksC === true && !hasOntology) {
       addViolation(
         rfcId,
         relFile,
         "V-30",
-        `breaksC is true but @gogol/ontology is not in packagesImpacted. RFCs that break Layer C must update the declarative C-contract in packages/ontology/src/external-surfaces/ (RFC-0480).`,
+        `breaksC is true but @warpgogol/ontology is not in packagesImpacted. RFCs that break Layer C must update the declarative C-contract in packages/ontology/src/external-surfaces/ (RFC-0480).`,
       );
     }
 
@@ -741,7 +741,7 @@ export async function validateSingleRfc(
         rfcId,
         relFile,
         "V-30",
-        `@gogol/ontology is in packagesImpacted but breaksC is not true. If this RFC modifies packages/ontology/src/external-surfaces/, declare breaksC: true (RFC-0480).`,
+        `@warpgogol/ontology is in packagesImpacted but breaksC is not true. If this RFC modifies packages/ontology/src/external-surfaces/, declare breaksC: true (RFC-0480).`,
         "warning",
       );
     }

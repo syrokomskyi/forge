@@ -273,7 +273,7 @@ function generateBehavioralLayer(
   lines.push("");
   lines.push("- **Auto-commit does not skip verification** — the agent still runs typecheck/build before committing. Auto-commit means the agent does not ask for permission, not that it skips quality checks.");
   lines.push("- **Auto-commit does not fire in companion mode** (RFC-0549) — companion mode is pure creative exploration without code changes, so there is nothing to commit.");
-  lines.push("- **Auto-commit applies to forge projects** (bootstrapped projects using `forge create`). It does not affect WGogol mission workpiece commits, which use `mission.git.commit` per the mission lifecycle.");
+  lines.push("- **Auto-commit applies to forge projects** (bootstrapped projects using `forge create`). It does not affect Warpgogol mission workpiece commits, which use `mission.git.commit` per the mission lifecycle.");
   lines.push("- **RFC implementation preserves separate commits** — the separate implementation commit and RFC stamp commit pattern is preserved. Auto-commit fires after the implementation step, and the stamp is a separate commit.");
   lines.push("");
 

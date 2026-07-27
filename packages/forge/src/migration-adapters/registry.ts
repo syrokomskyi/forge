@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>Migration-adapter registry — built-in adapters + config-discovered external adapters (RFC-0546).</purpose>
 <non-goals>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not apply migration here — selection only.</item>
 </non-goals>
 </MODULE_CONTRACT>

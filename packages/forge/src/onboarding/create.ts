@@ -4,7 +4,7 @@
 <non-goals>
   <item>Do not change forge.init or forge.scaffold contracts — forge.create delegates to them.</item>
   <item>Do not add interactive prompts — all configuration is via flags and positional args.</item>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

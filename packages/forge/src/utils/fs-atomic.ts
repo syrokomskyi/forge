@@ -8,7 +8,7 @@ file then renames, with bounded retry for Windows EPERM/EBUSY.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Moved from @gogol/site-kernel/fs-atomic to forge as canonical source (dependency inversion).</item>
+  <item>Moved from @warpgogol/site-kernel/fs-atomic to forge as canonical source (dependency inversion).</item>
 </CHANGE_SUMMARY>
 */
 

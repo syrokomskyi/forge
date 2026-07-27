@@ -188,14 +188,14 @@ test("resolveForgeRoot finds packages/forge in monorepo layout", async () => {
 });
 
 test("resolveForgeRoot finds node_modules/@webgogol/forge in npm layout", async () => {
-  await mkdir(join(tempDir, "node_modules", "@wgogol", "forge"), { recursive: true });
+  await mkdir(join(tempDir, "node_modules", "@webgogol", "forge"), { recursive: true });
   await writeFile(
-    join(tempDir, "node_modules", "@wgogol", "forge", "package.json"),
+    join(tempDir, "node_modules", "@webgogol", "forge", "package.json"),
     '{"name":"@webgogol/forge"}',
     "utf8",
   );
   const root = resolveForgeRoot(tempDir);
-  expect(root).toBe(join(tempDir, "node_modules", "@wgogol", "forge"));
+  expect(root).toBe(join(tempDir, "node_modules", "@webgogol", "forge"));
 });
 
 test("resolveForgeRoot throws when forge not found", () => {

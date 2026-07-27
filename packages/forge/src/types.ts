@@ -1,16 +1,16 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Canonical forge runtime types — autonomous, no @gogol/* dependencies.
-Structurally compatible with @gogol/site-kernel types so that forge modules
-can be registered in a WGogol kernel without direct dependency.</purpose>
+<purpose>Canonical forge runtime types — autonomous, no @warpgogol/* dependencies.
+Structurally compatible with @warpgogol/site-kernel types so that forge modules
+can be registered in a Warpgogol kernel without direct dependency.</purpose>
 <non-goals>
-  <item>Do not import from @gogol/site-kernel or any @gogol/* package.</item>
-  <item>Do not add WGogol-specific fields to ForgeRuntimeContext — keep it minimal and portable.</item>
+  <item>Do not import from @warpgogol/site-kernel or any @warpgogol/* package.</item>
+  <item>Do not add Warpgogol-specific fields to ForgeRuntimeContext — keep it minimal and portable.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Initial canonical forge types: ForgeCommandInput, ForgeCommandResult, ForgeRuntimeContext, ForgeFlagSpec, Diagnostic, CommandRegistry, ForgeLogger.</item>
-  <item>RFC-0518: add GateMetadata, GateSeverity, GatePhase, GateConditional types and optional gate field to ForgeCommandMetadata (structurally compatible with @gogol/site-kernel).</item>
+  <item>RFC-0518: add GateMetadata, GateSeverity, GatePhase, GateConditional types and optional gate field to ForgeCommandMetadata (structurally compatible with @warpgogol/site-kernel).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -74,13 +74,13 @@ export interface ForgeCommandMetadata {
   cacheable?: boolean;
   /**
    * RFC-0518: declarative gate metadata. Optional. Structurally compatible
-   * with GateMetadata from @gogol/site-kernel. Does NOT affect execution.
+   * with GateMetadata from @warpgogol/site-kernel. Does NOT affect execution.
    */
   gate?: GateMetadata;
 }
 
 // ---------------------------------------------------------------------------
-// RFC-0518: declarative gate metadata (structurally compatible with @gogol/site-kernel)
+// RFC-0518: declarative gate metadata (structurally compatible with @warpgogol/site-kernel)
 // ---------------------------------------------------------------------------
 
 export type GateSeverity = "error" | "warning" | "mixed";

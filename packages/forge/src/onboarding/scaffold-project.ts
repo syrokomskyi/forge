@@ -4,7 +4,7 @@
 <non-goals>
   <item>Do not scaffold into non-empty directories — refuse with exit 1.</item>
   <item>Do not add a --force flag — ever.</item>
-  <item>Do not import from @gogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — this module is portable.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

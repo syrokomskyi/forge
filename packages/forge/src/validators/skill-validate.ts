@@ -12,7 +12,7 @@
   <item>RFC-0524: added SKILL-13 — declared knowledge files must exist relative to SKILL.md directory.</item>
   <item>RFC-0539: added SKILL-14 (pack skill name must start with pack prefix) and SKILL-15 (non-forge skill may not use fo- prefix). Extended SKILL-07 with asymmetric dependency direction (forge→pack forbidden). Added pack skill validation loop.</item>
   <item>RFC-0548: added SKILL-16 — triggers field must be an array of 1-5 strings, each 5-100 characters, only allowed on fo-category skills.</item>
-  <item>RFC-0553: added SKILL-17 — skill files must not contain specific platform RFC/ADR ids (RFC-\\d{4}, ADR-\\d{4}) or platform names (WGogol, WebGogol, WarpGogol).</item>
+  <item>RFC-0553: added SKILL-17 — skill files must not contain specific platform RFC/ADR ids (RFC-\\d{4}, ADR-\\d{4}) or platform names (Warpgogol, WarpGogol).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -492,11 +492,7 @@ function extractInstructionLines(body: string): string[] {
 
 const SKILL17_ID_PATTERNS: RegExp[] = [/\bRFC-\d{4}\b/g, /\bADR-\d{4}\b/g];
 
-const SKILL17_PLATFORM_PATTERNS: RegExp[] = [
-  /\bWGogol\b/gi,
-  /(?<!@)WebGogol\b/gi,
-  /\bWarpGogol\b/gi,
-];
+const SKILL17_PLATFORM_PATTERNS: RegExp[] = [/(?<!@)Warpgogol\b/gi, /\bWarpGogol\b/gi];
 
 const SKILL17_DISABLE_MARKER = "<!-- skill-lint-disable SKILL-17 -->";
 

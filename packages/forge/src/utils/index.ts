@@ -1,9 +1,9 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Barrel export for forge utilities — canonical, autonomous, no @gogol/* dependencies.</purpose>
+<purpose>Barrel export for forge utilities — canonical, autonomous, no @warpgogol/* dependencies.</purpose>
 <non-goals>
   <item>Do not add non-utility exports here — use the appropriate forge module.</item>
-  <item>Do not re-export from @gogol/* packages — this package must remain dependency-free.</item>
+  <item>Do not re-export from @warpgogol/* packages — this package must remain dependency-free.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

@@ -2,14 +2,14 @@
 <MODULE_CONTRACT>
 <purpose>forge.doctor — diagnoses forge state in an existing project.
 Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
-@gogol/* import autonomy guard, and bindings contract (RFC-0393).</purpose>
+@warpgogol/* import autonomy guard, and bindings contract (RFC-0393).</purpose>
 <non-goals>
   <item>Do not modify files — doctor is read-only diagnostics.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Initial forge.doctor handler for autonomy refactor.</item>
-  <item>RFC-0391: added @gogol/* forbidden-imports autonomy guard.</item>
+  <item>RFC-0391: added @warpgogol/* forbidden-imports autonomy guard.</item>
   <item>RFC-0393: added bindings validation — resolved/absent/invalid reporting.</item>
   <item>RFC-0524: added stale knowledge file detection — compares source and .agents/ copies.</item>
   <item>RFC-0539: extended knowledge file check to iterate pack skills via discoverPackSkills. Added pack-skills check for stale/missing copies and skillPacks config validation.</item>
@@ -61,7 +61,7 @@ async function pathExists(target: string): Promise<boolean> {
 }
 
 const FORBIDDEN_IMPORT_PATTERN =
-  /(?:^|\n)\s*(?:import\s+[^;]+?\s+from\s+|require\s*\(\s*)["'`](@gogol\/[^"'`]+)["'`]/g;
+  /(?:^|\n)\s*(?:import\s+[^;]+?\s+from\s+|require\s*\(\s*)["'`](@warpgogol\/[^"'`]+)["'`]/g;
 
 async function scanForForbiddenImports(
   dir: string,
@@ -400,7 +400,7 @@ export async function runDoctor(
       : "docs/adrs/ directory not found — run 'forge create' to create ADR directory",
   });
 
-  // Check @gogol/* forbidden imports (autonomy guard)
+  // Check @warpgogol/* forbidden imports (autonomy guard)
   let forgeRoot: string;
   try {
     forgeRoot = resolveForgeRoot(workspaceRoot);
@@ -413,8 +413,8 @@ export async function runDoctor(
     status: forbiddenImports.length === 0 ? "pass" : "fail",
     message:
       forbiddenImports.length === 0
-        ? "No @gogol/* imports in forge source"
-        : `${forbiddenImports.length} @gogol/* import(s) found in forge source — remove them`,
+        ? "No @warpgogol/* imports in forge source"
+        : `${forbiddenImports.length} @warpgogol/* import(s) found in forge source — remove them`,
   });
 
   // Check bindings contract (RFC-0393)

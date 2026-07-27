@@ -98,7 +98,7 @@ TODO: Write the skill's behavioral instructions here.
 <MODULE_CONTRACT>
 <purpose>TODO — purpose of the ${name} command module.</purpose>
 <non-goals>
-  <item>Do not import from @gogol/site-kernel.</item>
+  <item>Do not import from @warpgogol/site-kernel.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>

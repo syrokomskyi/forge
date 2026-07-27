@@ -1,14 +1,14 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Canonical GENERATED_MARKER constant and advisory header builder for
-generated-file governance. Moved from @gogol/site-kernel to forge as canonical
+generated-file governance. Moved from @warpgogol/site-kernel to forge as canonical
 source (dependency inversion).</purpose>
 <non-goals>
   <item>Do not perform file I/O — operates on in-memory content strings only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Moved from @gogol/site-kernel/generated-marker to forge as canonical source.</item>
+  <item>Moved from @warpgogol/site-kernel/generated-marker to forge as canonical source.</item>
   <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec site-kernel run".</item>
 </CHANGE_SUMMARY>
 */
@@ -91,7 +91,7 @@ export interface GeneratedHeaderInput {
   site?: string;
   /**
    * Command prefix for the regenerate hint. Defaults to "forge" (autonomous mode).
-   * Site-kernel callers pass "pnpm exec site-kernel run" for WGogol context.
+   * Site-kernel callers pass "pnpm exec site-kernel run" for Warpgogol context.
    */
   commandPrefix?: string;
 }

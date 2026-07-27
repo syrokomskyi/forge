@@ -28,7 +28,7 @@ Ask the operator what pattern (skill, command, or workflow) they want to port in
 Use the `grilling` skill to stress-test:
 
 - Is the pattern truly project-agnostic? Does it reference Forge-specific concepts (cosmic names, sections, biomes)?
-- Does it depend on project-specific packages (`@gogol/site-kernel`, `@gogol/ui`)?
+- Does it depend on project-specific packages (`@warpgogol/site-kernel`, `@warpgogol/ui`)?
 - What are the minimal dependencies needed (ontology, fingerprint, share)?
 - Should it be a skill, a command, or both?
 
@@ -44,8 +44,8 @@ Run `forge.port.scaffold --name <name> --type <skill|command> --category <catego
 
 Port the implementation, ensuring:
 
-- No imports from `@gogol/site-kernel` or other project-specific packages.
-- Use `@gogol/ontology` for schemas, `@gogol/fingerprint` for hashing, `@gogol/share` for fs helpers.
+- No imports from `@warpgogol/site-kernel` or other project-specific packages.
+- Use `@warpgogol/ontology` for schemas, `@warpgogol/fingerprint` for hashing, `@warpgogol/share` for fs helpers.
 - Add Compass scaffolding (MODULE_CONTRACT, CHANGE_SUMMARY) to new TypeScript files.
 
 ### 6. Validate

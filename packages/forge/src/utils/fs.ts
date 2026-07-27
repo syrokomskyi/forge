@@ -1,13 +1,13 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Trivial filesystem utilities — inlined from @gogol/share to avoid dependency.</purpose>
+<purpose>Trivial filesystem utilities — inlined from @warpgogol/share to avoid dependency.</purpose>
 <non-goals>
   <item>Do not add non-filesystem utilities here — use dedicated utility modules.</item>
-  <item>Do not introduce @gogol/* imports — this package must remain dependency-free.</item>
+  <item>Do not introduce @warpgogol/* imports — this package must remain dependency-free.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial inline of collectFiles, fileExists from @gogol/share/fs.</item>
+  <item>Initial inline of collectFiles, fileExists from @warpgogol/share/fs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +32,7 @@ export async function collectFiles(
   const results: string[] = [];
 
   // fs.walk.lint: allow — this is the canonical collectFiles implementation,
-  // inlined from @gogol/share/fs to keep @webgogol/forge dependency-free (RFC-0303).
+  // inlined from @warpgogol/share/fs to keep @webgogol/forge dependency-free (RFC-0303).
   async function walk(dir: string): Promise<void> {
     let entries;
     try {

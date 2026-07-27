@@ -119,9 +119,9 @@ describe("buildGeneratedHeader", () => {
     const header = buildGeneratedHeader({
       filePath: "src/generated.ts",
       ownerCommand: "foo.generate",
-      site: "webgogol-com",
+      site: "warpgogol-com",
     });
-    expect(header).toContain("--site webgogol-com");
+    expect(header).toContain("--site warpgogol-com");
   });
 
   test("uses custom commandPrefix", () => {
