@@ -20,6 +20,8 @@ import {
   detectAdapters,
   FORGE_PROTECTED_PATHS,
   DEFAULT_EXCLUDE_PATTERNS,
+  discoverIgnoredFiles,
+  formatSize,
 } from "../migration-adapters/index.ts";
 
 let tempDir: string;
@@ -40,13 +42,13 @@ test("FORGE_PROTECTED_PATHS includes forge.yaml, .agents, docs/rfcs, docs/adrs, 
   expect(FORGE_PROTECTED_PATHS).toContain("PREFERENCES.md");
 });
 
-test("DEFAULT_EXCLUDE_PATTERNS includes node_modules, dist, .next, .cache, .turbo but NOT .git", () => {
+test("DEFAULT_EXCLUDE_PATTERNS includes node_modules, dist, .next, .cache, .turbo, .git", () => {
   expect(DEFAULT_EXCLUDE_PATTERNS).toContain("node_modules");
   expect(DEFAULT_EXCLUDE_PATTERNS).toContain("dist");
   expect(DEFAULT_EXCLUDE_PATTERNS).toContain(".next");
   expect(DEFAULT_EXCLUDE_PATTERNS).toContain(".cache");
   expect(DEFAULT_EXCLUDE_PATTERNS).toContain(".turbo");
-  expect(DEFAULT_EXCLUDE_PATTERNS).not.toContain(".git");
+  expect(DEFAULT_EXCLUDE_PATTERNS).toContain(".git");
 });
 
 test("node-typescript-pnpm adapter detects Node+TS+pnpm project", async () => {
@@ -232,6 +234,64 @@ test("migrate skips forge-protected files", async () => {
   expect(existsSync(join(appDir, "docs", "rfcs", "rfc-0001.md"))).toBe(false);
 });
 
+test("migrate copies untracked/git-ignored files like .env to apps/<appName>/", async () => {
+  const sourceDir = join(tempDir, "source");
+  const targetDir = join(tempDir, "target");
+
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(targetDir, { recursive: true });
+  await mkdir(join(sourceDir, "src"), { recursive: true });
+
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test-app" }));
+  await writeFile(join(sourceDir, "tsconfig.json"), "{}");
+  await writeFile(join(sourceDir, "pnpm-lock.yaml"), "");
+  await writeFile(join(sourceDir, "src", "index.ts"), "console.log('hello');");
+  await writeFile(join(sourceDir, ".env"), "SECRET=hello");
+  await writeFile(join(sourceDir, ".env.local"), "API_KEY=secret");
+  await writeFile(join(sourceDir, ".gitignore"), ".env\n.env.local\nnode_modules\n");
+
+  const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
+  const result = nodeTypescriptPnpmAdapter.migrate(sourceDir, targetDir, analysis);
+
+  expect(result.filesCopied).toContain(".env");
+  expect(result.filesCopied).toContain(".env.local");
+  expect(result.filesCopied).toContain(".gitignore");
+
+  const appDir = join(targetDir, "apps", "test-app");
+  expect(existsSync(join(appDir, ".env"))).toBe(true);
+  expect(existsSync(join(appDir, ".env.local"))).toBe(true);
+  expect(existsSync(join(appDir, ".gitignore"))).toBe(true);
+});
+
+test("migrate excludes .git directory from copy", async () => {
+  const sourceDir = join(tempDir, "source");
+  const targetDir = join(tempDir, "target");
+
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(targetDir, { recursive: true });
+  await mkdir(join(sourceDir, "src"), { recursive: true });
+
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test-app" }));
+  await writeFile(join(sourceDir, "tsconfig.json"), "{}");
+  await writeFile(join(sourceDir, "pnpm-lock.yaml"), "");
+  await writeFile(join(sourceDir, "src", "index.ts"), "console.log('hello');");
+
+  const { execSync } = await import("node:child_process");
+  execSync("git init", { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add . && git commit -m 'initial'", { cwd: sourceDir, stdio: "pipe" });
+
+  const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
+  const result = nodeTypescriptPnpmAdapter.migrate(sourceDir, targetDir, analysis);
+
+  expect(result.filesCopied).not.toContain(".git");
+  expect(result.filesCopied).not.toContain(".git/HEAD");
+
+  const appDir = join(targetDir, "apps", "test-app");
+  expect(existsSync(join(appDir, ".git"))).toBe(false);
+});
+
 test("postSetup runs git init when analysis.gitHistory is false", async () => {
   const sourceDir = join(tempDir, "source");
   const targetDir = join(tempDir, "target");
@@ -309,4 +369,110 @@ test("postSetup falls back to git init when source .git is empty (no commits)", 
   nodeTypescriptPnpmAdapter.postSetup(sourceDir, targetDir, analysis);
 
   expect(existsSync(join(targetDir, ".git"))).toBe(true);
+});
+
+test("discoverIgnoredFiles returns empty for non-git project", async () => {
+  const sourceDir = join(tempDir, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, ".env"), "SECRET=hello");
+
+  const categories = discoverIgnoredFiles(sourceDir);
+  expect(categories).toHaveLength(0);
+});
+
+test("discoverIgnoredFiles categorizes .env as config", async () => {
+  const sourceDir = join(tempDir, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test" }));
+  await writeFile(join(sourceDir, ".env"), "SECRET=hello");
+  await writeFile(join(sourceDir, ".env.local"), "API_KEY=secret");
+  await writeFile(join(sourceDir, ".gitignore"), ".env\n.env.local\n");
+
+  const { execSync } = await import("node:child_process");
+  execSync("git init", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .gitignore package.json", { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.email "t@t.com"', { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.name "T"', { cwd: sourceDir, stdio: "pipe" });
+  execSync("git commit -m init", { cwd: sourceDir, stdio: "pipe" });
+
+  const categories = discoverIgnoredFiles(sourceDir);
+  const configCat = categories.find((c) => c.id === "config");
+  expect(configCat).toBeDefined();
+  expect(configCat!.paths).toContain(".env");
+  expect(configCat!.paths).toContain(".env.local");
+  expect(configCat!.fileCount).toBe(2);
+});
+
+test("discoverIgnoredFiles categorizes .input/ directories as data", async () => {
+  const sourceDir = join(tempDir, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(join(sourceDir, ".input", "videos"), { recursive: true });
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test" }));
+  await writeFile(join(sourceDir, ".input", "videos", "clip.mp4"), "fake-video");
+  await writeFile(join(sourceDir, ".gitignore"), ".input/\n");
+
+  const { execSync } = await import("node:child_process");
+  execSync("git init", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .gitignore package.json", { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.email "t@t.com"', { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.name "T"', { cwd: sourceDir, stdio: "pipe" });
+  execSync("git commit -m init", { cwd: sourceDir, stdio: "pipe" });
+
+  const categories = discoverIgnoredFiles(sourceDir);
+  const dataCat = categories.find((c) => c.id === "data");
+  expect(dataCat).toBeDefined();
+  expect(dataCat!.paths.some((p) => p.includes(".input"))).toBe(true);
+  expect(dataCat!.fileCount).toBeGreaterThanOrEqual(1);
+});
+
+test("discoverIgnoredFiles categorizes storage/ as runtime-state", async () => {
+  const sourceDir = join(tempDir, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(join(sourceDir, "storage"), { recursive: true });
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test" }));
+  await writeFile(join(sourceDir, "storage", "state.json"), "{}");
+  await writeFile(join(sourceDir, ".gitignore"), "storage/\n");
+
+  const { execSync } = await import("node:child_process");
+  execSync("git init", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .gitignore package.json", { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.email "t@t.com"', { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.name "T"', { cwd: sourceDir, stdio: "pipe" });
+  execSync("git commit -m init", { cwd: sourceDir, stdio: "pipe" });
+
+  const categories = discoverIgnoredFiles(sourceDir);
+  const stateCat = categories.find((c) => c.id === "runtime-state");
+  expect(stateCat).toBeDefined();
+  expect(stateCat!.paths.some((p) => p.includes("storage"))).toBe(true);
+});
+
+test("discoverIgnoredFiles returns categories sorted by priority (config first)", async () => {
+  const sourceDir = join(tempDir, "source");
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(join(sourceDir, "storage"), { recursive: true });
+  await mkdir(join(sourceDir, ".input"), { recursive: true });
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test" }));
+  await writeFile(join(sourceDir, ".env"), "SECRET=hello");
+  await writeFile(join(sourceDir, ".input", "data.bin"), "data");
+  await writeFile(join(sourceDir, "storage", "state.json"), "{}");
+  await writeFile(join(sourceDir, ".gitignore"), ".env\n.input/\nstorage/\n");
+
+  const { execSync } = await import("node:child_process");
+  execSync("git init", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .gitignore package.json", { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.email "t@t.com"', { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.name "T"', { cwd: sourceDir, stdio: "pipe" });
+  execSync("git commit -m init", { cwd: sourceDir, stdio: "pipe" });
+
+  const categories = discoverIgnoredFiles(sourceDir);
+  expect(categories.length).toBeGreaterThanOrEqual(3);
+  expect(categories[0].id).toBe("config");
+});
+
+test("formatSize formats bytes correctly", () => {
+  expect(formatSize(0)).toBe("0 B");
+  expect(formatSize(512)).toBe("512 B");
+  expect(formatSize(1024)).toBe("1.0 KB");
+  expect(formatSize(1024 * 1024)).toBe("1.0 MB");
+  expect(formatSize(1024 * 1024 * 1024)).toBe("1.0 GB");
 });
