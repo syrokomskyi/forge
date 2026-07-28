@@ -35,9 +35,7 @@ import {
   type MissionArchiveResult,
 } from "../types.ts";
 
-async function readMissionState(
-  missionDir: string,
-): Promise<string | null> {
+async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
   try {
     const raw = await fs.readFile(manifestPath, "utf8");
@@ -48,6 +46,49 @@ async function readMissionState(
   } catch {
     return null;
   }
+}
+
+interface MoveAttempt {
+  moved: MissionArchiveMove | null;
+  skip: MissionArchiveSkip | null;
+}
+
+async function moveMissionDir(
+  sourcePath: string,
+  targetPath: string,
+  targetParentDir: string,
+  missionId: string,
+  state: string,
+  sourceRel: string,
+  targetRel: string,
+  direction: "into-archive" | "out-of-archive",
+  dryRun: boolean,
+): Promise<MoveAttempt> {
+  if (existsSync(targetPath)) {
+    return { moved: null, skip: { missionId, dir: sourceRel, reason: "destination exists" } };
+  }
+
+  if (!dryRun) {
+    if (targetParentDir) {
+      await fs.mkdir(targetParentDir, { recursive: true });
+    }
+    try {
+      await fs.rename(sourcePath, targetPath);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+        return {
+          moved: null,
+          skip: { missionId, dir: sourceRel, reason: "already moved by another process" },
+        };
+      }
+      throw err;
+    }
+  }
+
+  return {
+    moved: { missionId, state, from: sourceRel, to: targetRel, direction },
+    skip: null,
+  };
 }
 
 export async function runMissionArchive(
@@ -96,19 +137,31 @@ export async function runMissionArchive(
     const state = await readMissionState(missionDir);
 
     if (state === null) {
-      skipped.push({ missionId, dir: `${MISSIONS_DIR}/${missionId}`, reason: "unreadable manifest" });
+      skipped.push({
+        missionId,
+        dir: `${MISSIONS_DIR}/${missionId}`,
+        reason: "unreadable manifest",
+      });
       continue;
     }
 
     const isTerminal = MISSION_TERMINAL_STATUSES.includes(state as never);
 
     if (!isTerminal) {
-      skipped.push({ missionId, dir: `${MISSIONS_DIR}/${missionId}`, reason: `state ${state} is non-terminal` });
+      skipped.push({
+        missionId,
+        dir: `${MISSIONS_DIR}/${missionId}`,
+        reason: `state ${state} is non-terminal`,
+      });
       continue;
     }
 
     if (statusFilter && state !== statusFilter) {
-      skipped.push({ missionId, dir: `${MISSIONS_DIR}/${missionId}`, reason: `state ${state} does not match --status ${statusFilter}` });
+      skipped.push({
+        missionId,
+        dir: `${MISSIONS_DIR}/${missionId}`,
+        reason: `state ${state} does not match --status ${statusFilter}`,
+      });
       continue;
     }
 
@@ -117,61 +170,56 @@ export async function runMissionArchive(
     const targetRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${state}/${missionId}`;
     const sourceRel = `${MISSIONS_DIR}/${missionId}`;
 
-    if (existsSync(targetPath)) {
-      skipped.push({ missionId, dir: sourceRel, reason: "destination exists" });
-      continue;
-    }
-
-    if (!dryRun) {
-      await fs.mkdir(targetDir, { recursive: true });
-      try {
-        await fs.rename(missionDir, targetPath);
-      } catch (err) {
-        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-          skipped.push({ missionId, dir: sourceRel, reason: "already moved by another process" });
-          continue;
-        }
-        throw err;
-      }
-    }
-
-    moved.push({
+    const result = await moveMissionDir(
+      missionDir,
+      targetPath,
+      targetDir,
       missionId,
       state,
-      from: sourceRel,
-      to: targetRel,
-      direction: "into-archive",
-    });
+      sourceRel,
+      targetRel,
+      "into-archive",
+      dryRun,
+    );
+    if (result.skip) {
+      skipped.push(result.skip);
+      continue;
+    }
+    if (result.moved) moved.push(result.moved);
   }
 
   // Phase 2: Scan missions/archive/<state>/ for non-terminal missions to move back
   const archivePath = path.join(missionsPath, ARCHIVE_DIR_NAME);
   if (existsSync(archivePath)) {
     const stateDirs = await fs.readdir(archivePath, { withFileTypes: true });
-    const stateDirNames = stateDirs
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name);
+    const stateDirNames = stateDirs.filter((e) => e.isDirectory()).map((e) => e.name);
 
     for (const stateDirName of stateDirNames) {
       const stateDirPath = path.join(archivePath, stateDirName);
       const archivedMissions = await fs.readdir(stateDirPath, { withFileTypes: true });
-      const archivedDirNames = archivedMissions
-        .filter((e) => e.isDirectory())
-        .map((e) => e.name);
+      const archivedDirNames = archivedMissions.filter((e) => e.isDirectory()).map((e) => e.name);
 
       for (const missionId of archivedDirNames) {
         const archivedMissionDir = path.join(stateDirPath, missionId);
         const state = await readMissionState(archivedMissionDir);
 
         if (state === null) {
-          skipped.push({ missionId, dir: `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`, reason: "unreadable manifest" });
+          skipped.push({
+            missionId,
+            dir: `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`,
+            reason: "unreadable manifest",
+          });
           continue;
         }
 
         const isTerminal = MISSION_TERMINAL_STATUSES.includes(state as never);
 
         if (isTerminal) {
-          skipped.push({ missionId, dir: `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`, reason: `already archived (${state})` });
+          skipped.push({
+            missionId,
+            dir: `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`,
+            reason: `already archived (${state})`,
+          });
           continue;
         }
 
@@ -180,30 +228,22 @@ export async function runMissionArchive(
         const targetRel = `${MISSIONS_DIR}/${missionId}`;
         const sourceRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`;
 
-        if (existsSync(targetPath)) {
-          skipped.push({ missionId, dir: sourceRel, reason: "destination exists" });
-          continue;
-        }
-
-        if (!dryRun) {
-          try {
-            await fs.rename(archivedMissionDir, targetPath);
-          } catch (err) {
-            if ((err as NodeJS.ErrnoException).code === "ENOENT") {
-              skipped.push({ missionId, dir: sourceRel, reason: "already moved by another process" });
-              continue;
-            }
-            throw err;
-          }
-        }
-
-        moved.push({
+        const result = await moveMissionDir(
+          archivedMissionDir,
+          targetPath,
+          "",
           missionId,
           state,
-          from: sourceRel,
-          to: targetRel,
-          direction: "out-of-archive",
-        });
+          sourceRel,
+          targetRel,
+          "out-of-archive",
+          dryRun,
+        );
+        if (result.skip) {
+          skipped.push(result.skip);
+          continue;
+        }
+        if (result.moved) moved.push(result.moved);
       }
     }
   }
@@ -214,7 +254,9 @@ export async function runMissionArchive(
         `[dry-run] mission.archive: would move ${moved.length} mission(s), skip ${skipped.length}`,
       );
     } else {
-      logger.success(`mission.archive: moved ${moved.length} mission(s), skipped ${skipped.length}`);
+      logger.success(
+        `mission.archive: moved ${moved.length} mission(s), skipped ${skipped.length}`,
+      );
     }
     for (const m of moved) {
       logger.info(`  ${m.direction}: ${m.missionId} (${m.state}) ${m.from} → ${m.to}`);
