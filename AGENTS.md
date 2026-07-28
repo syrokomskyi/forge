@@ -24,10 +24,11 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 | `forgePlanModule` | `plan.archive` | `os/plan/` |
 | `forgeAuditModule` | `audit.archive` | `os/audit/` |
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list` | `os/session/` |
+| `forgeMissionModule` | `mission.archive` | `os/mission/` |
 
 ## Archive convention
 
-When archiving terminal artifacts, prefer the `docs.archive` umbrella command over individual `rfc.archive`, `adr.archive`, `plan.archive`, `audit.archive`, `session.archive` commands. The umbrella command runs all five in sequence and prevents leaving audits/plans/sessions unarchived when the operator's intent is to clean up all terminal artifacts. Use individual commands only when the operator explicitly asks for a single domain (e.g. "archive only RFCs").
+When archiving terminal artifacts, prefer the `docs.archive` umbrella command over individual `rfc.archive`, `adr.archive`, `plan.archive`, `audit.archive`, `session.archive`, `mission.archive` commands. The umbrella command runs all six in sequence and prevents leaving audits/plans/sessions/missions unarchived when the operator's intent is to clean up all terminal artifacts. Use individual commands only when the operator explicitly asks for a single domain (e.g. "archive only RFCs").
 
 ## Skills
 
