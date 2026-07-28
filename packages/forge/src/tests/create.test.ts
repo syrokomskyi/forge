@@ -60,7 +60,9 @@ test("forge create my-project creates dir with forge.yaml and docs dirs", async 
   expect(existsSync(join(projectDir, "docs", "rfcs"))).toBe(true);
   expect(existsSync(join(projectDir, "docs", "adrs"))).toBe(true);
   expect(existsSync(join(projectDir, "PREFERENCES.md"))).toBe(true);
-});
+  expect(existsSync(join(projectDir, "package.json"))).toBe(true);
+  expect(existsSync(join(projectDir, "scripts", "clean.mjs"))).toBe(true);
+}, 30000);
 
 test("forge create refuses non-empty target directory", async () => {
   const targetDir = join(tempDir, "existing-project");
@@ -192,3 +194,22 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
   expect(nextSteps).toContain("AI agent");
   expect(result.data?.filesCreated).toContain("NEXT_STEPS.md");
 });
+
+test("forge create root package.json has scripts and replaced project name", async () => {
+  const result = await runCreate(
+    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const pkgJson = JSON.parse(
+    await readFileAsync(join(tempDir, "my-project", "package.json"), "utf8"),
+  );
+  expect(pkgJson.name).toBe("my-project");
+  expect(pkgJson.scripts.clean).toBe("node scripts/clean.mjs");
+  expect(pkgJson.scripts.format).toBe("prettier --write .");
+  expect(pkgJson.scripts["format:check"]).toBe("prettier --check .");
+  expect(pkgJson.scripts.test).toBe("vitest run --passWithNoTests");
+  expect(pkgJson.scripts["upgrade-packages"]).toBe("pnpm up");
+}, 30000);
