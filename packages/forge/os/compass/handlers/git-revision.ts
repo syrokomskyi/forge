@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Git revision lookup by file path. Moved from @warpgogol/site-kernel-integrity
-to @webgogol/forge for full autonomous mode (RFC-0556). Provides getRevisionByPath
+to @warpgogol/forge for full autonomous mode (RFC-0556). Provides getRevisionByPath
 with integrity-registry lookup and git-history fallback, plus getFileRevisionFromHistory.</purpose>
 <non-goals>
   <item>Do not compute a new per-file counter — reuse the existing integrity revision.</item>
@@ -10,7 +10,7 @@ with integrity-registry lookup and git-history fallback, plus getFileRevisionFro
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0352: initial implementation of getRevisionByPath helper.</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 

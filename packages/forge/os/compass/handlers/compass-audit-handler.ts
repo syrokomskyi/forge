@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Compass audit command handlers (plan, record, baseline, validate).
-Moved from @warpgogol/site-kernel-checks to @webgogol/forge for full autonomous
+Moved from @warpgogol/site-kernel-checks to @warpgogol/forge for full autonomous
 mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (RFC-0352).</purpose>
 <non-goals>
   <item>Do not perform semantic comparison inside a command — commands are deterministic; the code-vs-prose judgment is the agent's.</item>
@@ -11,7 +11,7 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0352: initial implementation of compass.audit.plan, compass.audit.record, compass.audit.baseline, compass.audit.validate.</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /*
 <MODULE_CONTRACT>
-<purpose>CLI bin entrypoint for @webgogol/forge — minimal command runner that
+<purpose>CLI bin entrypoint for @warpgogol/forge — minimal command runner that
 registers forge modules and dispatches commands. Works autonomously without
 @warpgogol/site-kernel.</purpose>
 <non-goals>
@@ -193,7 +193,7 @@ function resolveForgeRootFromCli(): string | undefined {
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
-      if (pkg.name === "@webgogol/forge") return join(__dirname, up);
+      if (pkg.name === "@warpgogol/forge") return join(__dirname, up);
     } catch {
       // try next candidate
     }

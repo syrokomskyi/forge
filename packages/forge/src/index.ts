@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Public entrypoint for @webgogol/forge — exports ForgeModule types, canonical types, utilities, skill schema, registry, validators, onboarding, and OS modules.</purpose>
+<purpose>Public entrypoint for @warpgogol/forge — exports ForgeModule types, canonical types, utilities, skill schema, registry, validators, onboarding, and OS modules.</purpose>
 <non-goals>
   <item>Do not export internal implementation details — only public API.</item>
 </non-goals>

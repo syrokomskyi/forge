@@ -52,7 +52,7 @@ Before proposing any candidate, read `ref(forge.yaml bindings.paths.invariantsFi
 - Which invariants are marked "Foundational invariant (pre-RFC)" vs "Established by RFC-XXXX".
 - Which invariants have been "Reclassified to feature".
 
-Also read the RFC template (`os/rfc/rfc-0000-template.md` inside `@webgogol/forge`) to understand the `satisfies` field and the "DNA-N established by this RFC" marker pattern.
+Also read the RFC template (`os/rfc/rfc-0000-template.md` inside `@warpgogol/forge`) to understand the `satisfies` field and the "DNA-N established by this RFC" marker pattern.
 
 ### 3. Discover DNA candidates
 

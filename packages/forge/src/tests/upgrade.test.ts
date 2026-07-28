@@ -40,7 +40,7 @@ async function setupForgeSource(dir: string, version = "0.2.0"): Promise<void> {
   );
   await writeFile(
     join(dir, "packages", "forge", "package.json"),
-    JSON.stringify({ name: "@webgogol/forge", version }),
+    JSON.stringify({ name: "@warpgogol/forge", version }),
     "utf8",
   );
   await mkdir(join(dir, "packages", "forge", "os", "rfc"), { recursive: true });

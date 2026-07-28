@@ -61,5 +61,5 @@ If porting a skill, add it to `packages/forge/src/registry.ts`.
 ```txt
 forge: port <name> from project to forge
 
-Port <name> from <source> to @webgogol/forge — <one-line description>.
+Port <name> from <source> to @warpgogol/forge — <one-line description>.
 ```

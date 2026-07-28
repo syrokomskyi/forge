@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>werkstatt.operation.validate command handler. Moved from
-@warpgogol/site-kernel-checks to @webgogol/forge for full autonomous mode (RFC-0556).
+@warpgogol/site-kernel-checks to @warpgogol/forge for full autonomous mode (RFC-0556).
 Scans command source files for direct shared-state writes outside the allowlisted
 helper module (RFC-0362 §6).</purpose>
 <non-goals>
@@ -11,7 +11,7 @@ helper module (RFC-0362 §6).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0362: initial operation.validate command handler.</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @webgogol/forge for autonomous mode. Uses node:fs/promises directly instead of context.io.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode. Uses node:fs/promises directly instead of context.io.</item>
 </CHANGE_SUMMARY>
 */
 

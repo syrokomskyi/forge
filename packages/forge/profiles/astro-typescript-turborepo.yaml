@@ -115,7 +115,7 @@ workspace:
 
         console.log(`Cleaned ${toDelete.length} directories.`);
 install:
-  - pnpm add -D typescript turbo @webgogol/forge prettier
+  - pnpm add -D typescript turbo @warpgogol/forge prettier
 firstWorkspace:
   path: sites/my-site
   files:

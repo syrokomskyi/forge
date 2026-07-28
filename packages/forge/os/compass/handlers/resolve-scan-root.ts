@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Canonical Compass scan-root resolution for all Compass commands.
-Moved from @warpgogol/site-kernel to @webgogol/forge for full autonomous mode (RFC-0556).</purpose>
+Moved from @warpgogol/site-kernel to @warpgogol/forge for full autonomous mode (RFC-0556).</purpose>
 <non-goals>
   <item>Do not implement Compass scanning or file processing logic here.</item>
   <item>Do not register commands or modify runtime context.</item>
@@ -9,7 +9,7 @@ Moved from @warpgogol/site-kernel to @webgogol/forge for full autonomous mode (R
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Introduced as part of RFC-0015 to extend Compass commands to packages/.</item>
-  <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 

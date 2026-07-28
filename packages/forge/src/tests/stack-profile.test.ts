@@ -158,10 +158,10 @@ test("listStackProfiles finds both shipped profiles", () => {
   expect(ids).toContain("phaser-turborepo");
 });
 
-test("all shipped profiles include @webgogol/forge in install steps", () => {
+test("all shipped profiles include @warpgogol/forge in install steps", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
   for (const profile of profiles) {
-    const hasForge = profile.install.some((cmd) => cmd.includes("@webgogol/forge"));
+    const hasForge = profile.install.some((cmd) => cmd.includes("@warpgogol/forge"));
     expect(hasForge).toBe(true);
   }
 });

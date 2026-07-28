@@ -60,7 +60,7 @@ If all checks pass, proceed to step 0.3.
 If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruction to plan IS the architecture acceptance. Transition the RFC to `accepted`:
 
 1. Set `status: accepted`.
-2. Set `reviewers` — if the operator specified a reviewer at invocation, use that. Otherwise, read the default reviewer(s) from the `reviewers` field comment in `os/rfc/rfc-0000-template.md` inside `@webgogol/forge` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
+2. Set `reviewers` — if the operator specified a reviewer at invocation, use that. Otherwise, read the default reviewer(s) from the `reviewers` field comment in `os/rfc/rfc-0000-template.md` inside `@warpgogol/forge` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
 3. Set `updatedAt` to today's date.
 4. Commit:
 
@@ -226,5 +226,5 @@ Do not output per-RFC summaries or "Moving to RFC-XXXX next" messages during the
 - The plan MUST NOT propose changing DNA invariants without a new superseding RFC.
 - The plan MUST respect RFC-XXXX: only `accepted → implemented` is agent-permitted; all other status transitions are human-only. The `draft → accepted` transition in step 0.3 is an exception authorized by the user's explicit instruction to plan the RFC.
 - The plan MUST reference the RFC's acceptance criteria as the source of truth for completion.
-- **Default reviewer source.** When transitioning `draft → accepted` and the operator has not specified a reviewer, read the default reviewer(s) from the `reviewers` field comment in `os/rfc/rfc-0000-template.md` inside `@webgogol/forge` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
+- **Default reviewer source.** When transitioning `draft → accepted` and the operator has not specified a reviewer, read the default reviewer(s) from the `reviewers` field comment in `os/rfc/rfc-0000-template.md` inside `@warpgogol/forge` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
 - **No pauses for recoverable tool errors.** If a tool call fails with a recoverable error — e.g. `write_to_file` content too long, JSON truncation, line count/character limit exceeded, or similar — do not stop and ask the user. Recover autonomously: split the content into smaller writes, use `edit`/`multi_edit`, decompose oversized files, and retry immediately. The operator's default answer to "Shall I proceed?" is always "yes".

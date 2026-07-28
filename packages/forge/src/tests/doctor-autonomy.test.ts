@@ -43,7 +43,7 @@ test("doctor passes on clean tree with no @warpgogol/* imports", async () => {
   await mkdir(join(tempDir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   await writeFile(
@@ -62,7 +62,7 @@ test("doctor detects @warpgogol/* import specifiers", async () => {
   await mkdir(join(tempDir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   await writeFile(
@@ -82,7 +82,7 @@ test("doctor ignores @warpgogol/* in comments", async () => {
   await mkdir(join(tempDir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   await writeFile(

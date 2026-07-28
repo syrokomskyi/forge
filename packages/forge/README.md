@@ -1,13 +1,13 @@
-# @webgogol/forge
+# @warpgogol/forge
 
 Portable governance engine for AI-assisted project development. Provides skills, RFC/ADR workflows, naming conventions, spec vendoring, and a CLI — all framework-agnostic and dependency-free (only `yaml` + `zod`).
 
 ## Install
 
 ```sh
-npm install @webgogol/forge
+npm install @warpgogol/forge
 # or
-pnpm add @webgogol/forge
+pnpm add @warpgogol/forge
 ```
 
 ## Quick start
@@ -28,11 +28,11 @@ npx forge skill.list
 
 ## Upgrade flow
 
-When a new version of `@webgogol/forge` is published, consumers upgrade additively:
+When a new version of `@warpgogol/forge` is published, consumers upgrade additively:
 
 ```sh
 # 1. Install the latest version
-npm install @webgogol/forge@latest
+npm install @warpgogol/forge@latest
 
 # 2. Sync skills and binding defaults from the installed version
 npx forge upgrade
@@ -61,7 +61,7 @@ The typical forge project lifecycle:
 1. **Create** — `forge create` bootstraps a new project with forge.yaml, skills, and docs directories
 2. **IDE** — open the project in Windsurf (tested with forge) or your preferred IDE
 3. **Bootstrap** — run `/forge-bootstrap` to configure the project (greenfield interview or transplant from an existing codebase)
-4. **Upgrade** — when a new `@webgogol/forge` version is published, run `forge upgrade` to sync skills and binding defaults additively
+4. **Upgrade** — when a new `@warpgogol/forge` version is published, run `forge upgrade` to sync skills and binding defaults additively
 
 ## forge.yaml
 
@@ -98,7 +98,7 @@ import {
   loadForgeConfig,
   resolveBinding,
   FORGE_SKILLS,
-} from "@webgogol/forge";
+} from "@warpgogol/forge";
 
 // Load config
 const config = loadForgeConfig(process.cwd());
@@ -125,11 +125,11 @@ await forgeRfcModule.register(registry);
 
 ## Publishing to npm
 
-This package is published to the npm registry as `@webgogol/forge`. The steps below describe how to publish a new version.
+This package is published to the npm registry as `@warpgogol/forge`. The steps below describe how to publish a new version.
 
 ### Prerequisites
 
-- An npm account with publish access to the `@webgogol` organization.
+- An npm account with publish access to the `@warpgogol` organization.
 - Node.js and npm installed locally.
 
 ### Creating an access token
@@ -157,7 +157,7 @@ npm version patch
 npm publish --access public
 ```
 
-After publishing, verify the new version on [npmjs.com/package/@webgogol/forge](https://www.npmjs.com/package/@webgogol/forge).
+After publishing, verify the new version on [npmjs.com/package/@warpgogol/forge](https://www.npmjs.com/package/@warpgogol/forge).
 
 ## License
 

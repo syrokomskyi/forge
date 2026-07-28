@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>werkstatt.lock.recover command handler. Moved from
-@warpgogol/site-kernel-handoff to @webgogol/forge for full autonomous mode (RFC-0556).
+@warpgogol/site-kernel-handoff to @warpgogol/forge for full autonomous mode (RFC-0556).
 Classifies and cleans stale locks and staging artifacts (RFC-0362 §8).</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior.</item>
@@ -9,7 +9,7 @@ Classifies and cleans stale locks and staging artifacts (RFC-0362 §8).</purpose
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0362: initial lock.recover command handler.</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-handoff to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-handoff to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 
