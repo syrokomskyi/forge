@@ -17,3 +17,5 @@ export { FORGE_PROTECTED_PATHS, DEFAULT_EXCLUDE_PATTERNS } from "./types.ts";
 export { nodeTypescriptPnpmAdapter } from "./node-typescript-pnpm/index.ts";
 export { phaserPnpmAdapter } from "./phaser-pnpm/index.ts";
 export { getAdapters, detectAdapter, detectAdapters } from "./registry.ts";
+export { discoverIgnoredFiles, formatSize } from "./ignored-files.ts";
+export type { IgnoredFileCategory, IgnoredFileCategoryId } from "./ignored-files.ts";

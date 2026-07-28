@@ -34,6 +34,8 @@ Interactive skill for configuring a freshly created forge project. Runs after `f
 - The skill never skips the auto-doctor step — it runs internally, not as a suggested operator action.
 - The skill never skips the silent auto-ADR step — the ADR is created, not suggested, for both greenfield and transplant.
 - The skill never copies the `.git` directory directly — git history transfer uses `git format-patch` + `git am` only.
+- The skill always transfers untracked and git-ignored files (e.g. `.env`, `.env.local`, secret config files, local certificates, input data, runtime state) from the source project — these are necessary for the project to work immediately after onboarding. The `migrate()` adapter copies all files on disk, not just git-tracked files. Only build artifacts (`node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`), `.git/`, and forge-protected files are excluded.
+- The skill always offers the operator an interactive selection of git-ignored files before copying them — the operator chooses which categories to transfer (config, data, runtime-state, cache, other). Config files (`.env`, secrets, certificates) are selected by default and the operator must explicitly opt out. The operator never loses files from their previous project without being asked.
 - The skill never collects personal data as a separate interview before the first creation moment — personal data emerges naturally from the creative dialogue.
 - `operator-profile.md` is local and private — it is in `.gitignore` and is not committed to the repository. The operator can delete it at any time.
 - Gender is optional — the operator may decline to provide it. If declined, the skill uses gender-neutral addressing and notes the absence in `operator-profile.md`.
@@ -126,7 +128,23 @@ The transplant mode performs real code migration via a migration-adapter registr
 1. **Source directory** — ask for an absolute or relative path to the external codebase. Resolve and validate. The source must be outside the current forge project.
 2. **Detect adapter** — iterate the migration-adapter registry, call `detect()` on each adapter against the source directory. If multiple adapters match, ask the operator to choose. If none match, report "no migration adapter detected for this project type" and fall back to the greenfield interview for bindings (no code migration).
 3. **Analyze** — call `analyze()` on the matched adapter. Present: detected stack, proposed bindings (`typecheck`, `test`, `scopedBuild`), placement (`apps/<appName>/`), exclude patterns. The operator confirms or edits.
-4. **Migrate** — call `migrate()` on the matched adapter. Show any file conflicts before copying. The operator confirms. The adapter copies code into `apps/<appName>/`, excluding `node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`, and other build artifacts. Forge-protected files (`forge.yaml`, `.agents/`, `docs/rfcs/`, `docs/adrs/`, `PREFERENCES.md`) are never overwritten.
+4. **Migrate** — call `migrate()` on the matched adapter. Show any file conflicts before copying. The operator confirms. The adapter copies ALL files from the source directory into `apps/<appName>/`, including untracked and git-ignored files (e.g. `.env`, `.env.local`, secret configuration, local certificates, input data, runtime state). Only `node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`, `.git/`, and other build artifacts are excluded. Forge-protected files (`forge.yaml`, `.agents/`, `docs/rfcs/`, `docs/adrs/`, `PREFERENCES.md`) are never overwritten. Untracked files are essential — the project must work immediately after onboarding with minimal manual fixes.
+
+   4.1. **Discover git-ignored files** — before copying, scan the source project for git-ignored and untracked files using `discoverIgnoredFiles()`. This function runs `git status --ignored --porcelain` in the source directory, categorizes each ignored path, and returns sized categories:
+   - **Configuration & secrets** (`.env`, `.env.local`, `*.key`, `*.pem`, certificates, `.envrc`) — selected by default, operator must explicitly opt out.
+   - **Data & inputs** (`.input/`, `input/`, `data/`, `batches/`, `*.db`, `*.ndjson`) — selected by default if total size < 1 GB, otherwise ask the operator.
+   - **Runtime state** (`storage/`, `.state/`, `*.log`) — not selected by default, operator must opt in.
+   - **Caches** (`.cache/`, `cache/`, `.playwright`, `browser-profile`, `*.tmp`) — not selected by default, operator must opt in.
+   - **Other** — any git-ignored file not matching the above categories — not selected by default, operator must opt in.
+
+   For each category, present: label, description, file count, total size (formatted), and a few example paths. The operator selects which categories to transfer.
+
+   If `discoverIgnoredFiles()` returns no categories (no `.git` in source, or no ignored files), skip this step entirely — `migrate()` already copies all files on disk.
+
+   4.2. **Copy selected ignored files** — after `migrate()` completes, copy the operator-selected git-ignored file categories from the source to `apps/<appName>/`. For each selected category, copy every path in that category from the source to the corresponding location under `apps/<appName>/`. Use `fs.cpSync(src, dest, { recursive: true })` for directories and `fs.copyFileSync` for individual files. Report what was copied (category, file count, total size) in human language.
+
+   4.3. **Verify untracked files** — after all copies complete, verify that essential untracked files (`.env`, `.env.local`, and other dotfiles present in the source) were copied to `apps/<appName>/`. If any are missing, copy them manually from the source. Do not skip this step — missing `.env` files are the most common cause of a non-functional project after onboarding.
+
 5. **Git history transfer** — if the source project has a `.git` directory, ask the operator:
 
    > Your source project has Git history. Would you like to transfer the commit history into the new Forge project?
