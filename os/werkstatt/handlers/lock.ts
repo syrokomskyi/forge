@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Werkstatt lock helpers. Moved from @warpgogol/site-kernel-handoff to
-@webgogol/forge for full autonomous mode (RFC-0556). Provides acquire, release,
+@warpgogol/forge for full autonomous mode (RFC-0556). Provides acquire, release,
 heartbeat, status, and stale-lock removal.</purpose>
 <non-goals>
   <item>Do not implement distributed locks — local process-level only.</item>
@@ -9,7 +9,7 @@ heartbeat, status, and stale-lock removal.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0362: initial lock helpers (acquire, release, heartbeat, status).</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-handoff to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-handoff to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 

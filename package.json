@@ -1,19 +1,19 @@
 {
-  "name": "@webgogol/forge",
+  "name": "@warpgogol/forge",
   "version": "0.3.0",
   "private": false,
   "type": "module",
   "license": "MIT",
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
   "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
-  "homepage": "https://github.com/syrokomskyi/webgogol-4#readme",
+  "homepage": "https://github.com/syrokomskyi/warpgogol-4#readme",
   "repository": {
     "type": "git",
-    "url": "https://github.com/syrokomskyi/webgogol-4.git",
+    "url": "https://github.com/syrokomskyi/warpgogol-4.git",
     "directory": "packages/forge"
   },
   "bugs": {
-    "url": "https://github.com/syrokomskyi/webgogol-4/issues"
+    "url": "https://github.com/syrokomskyi/warpgogol-4/issues"
   },
   "main": "./src/index.ts",
   "types": "./src/index.ts",

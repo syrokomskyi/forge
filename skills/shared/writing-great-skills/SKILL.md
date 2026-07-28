@@ -123,10 +123,10 @@ L2 entries carry a `confirmations: N` counter. When confirmations reach threshol
 ### Mutation contract
 
 - **Source-of-truth**: `packages/forge/skills/<category>/<name>/`. Skills mutate knowledge files here during runs and commit to main repo. Skills always read from source.
-- **Runtime copy**: `.agents/skills/<name>/`. Synced by `forge.create`. Read-only — skills never write here. The `.agents/` copy exists for consumers who install `@webgogol/forge` as an npm package.
+- **Runtime copy**: `.agents/skills/<name>/`. Synced by `forge.create`. Read-only — skills never write here. The `.agents/` copy exists for consumers who install `@warpgogol/forge` as an npm package.
 - **Sync**: one-way (source → `.agents/`), never the reverse.
 - **Stale detection**: `forge.doctor` compares source and `.agents/` copies, reports drift as warnings.
 
 ### npm portability
 
-`@webgogol/forge` is published to npm with `skills/` in the `files` array. Knowledge files ship as empty templates (header comments only). Forge's accumulated Q&A and learned principles are project-specific and should not leak to npm consumers. Each project accumulates its own knowledge locally after running `forge.create`.
+`@warpgogol/forge` is published to npm with `skills/` in the `files` array. Knowledge files ship as empty templates (header comments only). Forge's accumulated Q&A and learned principles are project-specific and should not leak to npm consumers. Each project accumulates its own knowledge locally after running `forge.create`.

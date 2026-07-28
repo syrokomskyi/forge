@@ -180,22 +180,22 @@ test("resolveForgeRoot finds packages/forge in monorepo layout", async () => {
   await mkdir(join(tempDir, "packages", "forge"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   const root = resolveForgeRoot(tempDir);
   expect(root).toBe(join(tempDir, "packages", "forge"));
 });
 
-test("resolveForgeRoot finds node_modules/@webgogol/forge in npm layout", async () => {
-  await mkdir(join(tempDir, "node_modules", "@webgogol", "forge"), { recursive: true });
+test("resolveForgeRoot finds node_modules/@warpgogol/forge in npm layout", async () => {
+  await mkdir(join(tempDir, "node_modules", "@warpgogol", "forge"), { recursive: true });
   await writeFile(
-    join(tempDir, "node_modules", "@webgogol", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    join(tempDir, "node_modules", "@warpgogol", "forge", "package.json"),
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   const root = resolveForgeRoot(tempDir);
-  expect(root).toBe(join(tempDir, "node_modules", "@webgogol", "forge"));
+  expect(root).toBe(join(tempDir, "node_modules", "@warpgogol", "forge"));
 });
 
 test("resolveForgeRoot throws when forge not found", () => {
@@ -287,9 +287,9 @@ test("resolveBinding substitutes placeholders", () => {
 
 test("resolveBinding substitutes multiple placeholders", () => {
   const result = resolveBinding(configWithBindings, "commands.typecheck", {
-    workspace: "@webgogol/forge",
+    workspace: "@warpgogol/forge",
   });
-  expect(result).toBe("pnpm --filter @webgogol/forge run build:check");
+  expect(result).toBe("pnpm --filter @warpgogol/forge run build:check");
 });
 
 test("loadForgeConfig parses forge.yaml with bindings", async () => {

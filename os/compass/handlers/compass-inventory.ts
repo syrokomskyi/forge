@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Canonical Compass inventory scanning logic. Moved from @warpgogol/site-kernel
-to @webgogol/forge for full autonomous mode (RFC-0556). Provides file collection,
+to @warpgogol/forge for full autonomous mode (RFC-0556). Provides file collection,
 workspace detection, layer classification, risk assessment, and compliance checking
 for Compass source-file inventory.</purpose>
 <non-goals>
@@ -13,7 +13,7 @@ for Compass source-file inventory.</purpose>
   <item>RFC-0348: collapsed to two-block contract (MODULE_CONTRACT + CHANGE_SUMMARY); removed MODULE_MAP, keywords, responsibilities, COMPASS_BLOCK anchors; coverage modes collapsed to standard/none.</item>
   <item>Post-refactor hardening: exclude src/templates generation inputs from authored Compass requirements.</item>
   <item>Post-refactor hardening: detect nested packages/os workspaces before deriving Compass layer and workspace name.</item>
-  <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 

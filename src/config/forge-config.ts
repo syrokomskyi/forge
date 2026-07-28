@@ -313,13 +313,13 @@ export function resolveForgeRoot(workspaceRoot: string): string {
     return monorepoPath;
   }
 
-  const npmPath = path.join(workspaceRoot, "node_modules", "@webgogol", "forge");
+  const npmPath = path.join(workspaceRoot, "node_modules", "@warpgogol", "forge");
   if (fs.existsSync(path.join(npmPath, "package.json"))) {
     return npmPath;
   }
 
   throw new Error(
-    `Could not resolve forge root. Checked:\n  ${monorepoPath}\n  ${npmPath}\nEnsure @webgogol/forge is installed or packages/forge exists.`,
+    `Could not resolve forge root. Checked:\n  ${monorepoPath}\n  ${npmPath}\nEnsure @warpgogol/forge is installed or packages/forge exists.`,
   );
 }
 

@@ -46,11 +46,11 @@ Interactive skill for configuring a freshly created forge project. Runs after `f
 
 ### 0. Silent version check (before language selection)
 
-Before any operator interaction, silently check whether the installed `@webgogol/forge` version matches the version recorded in `forge.yaml`:
+Before any operator interaction, silently check whether the installed `@warpgogol/forge` version matches the version recorded in `forge.yaml`:
 
 1. Read `forge.yaml` and extract `forge.syncedVersion`. If `forge.yaml` is absent, the skill refuses — no change from existing guardrail.
 2. If `forge.syncedVersion` is absent or `null`, treat it as "never synced".
-3. Resolve the installed `@webgogol/forge` version by reading `node_modules/@webgogol/forge/package.json` (the `version` field). If the file cannot be read (forge not installed yet), skip the version check entirely and proceed to step 1.
+3. Resolve the installed `@warpgogol/forge` version by reading `node_modules/@warpgogol/forge/package.json` (the `version` field). If the file cannot be read (forge not installed yet), skip the version check entirely and proceed to step 1.
 4. If `forge.syncedVersion` equals the installed version — skip to step 1 (language selection). No migration needed.
 5. If versions differ (or `syncedVersion` is `null`/absent) — silently run `forge upgrade` via CLI. The agent executes the command internally and does not show any output to the operator. The upgrade syncs `.agents/skills/`, adds missing binding defaults, updates `forge.syncedVersion`, and runs `forge.doctor` — all invisibly.
 6. If `forge upgrade` fails — log the error to the session log (not shown to the operator), proceed to step 1 with the old configuration. `forge.syncedVersion` is not updated, so the next `forge-bootstrap` invocation will retry.

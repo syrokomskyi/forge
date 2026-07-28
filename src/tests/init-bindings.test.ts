@@ -30,7 +30,7 @@ async function setupForgeSource(dir: string): Promise<void> {
   await mkdir(join(dir, "packages", "forge", "skills"), { recursive: true });
   await writeFile(
     join(dir, "packages", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   await mkdir(join(dir, "packages", "forge", "os", "rfc"), { recursive: true });

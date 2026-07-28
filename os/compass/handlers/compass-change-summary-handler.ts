@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>CHANGE_SUMMARY classification, validation, and deterministic tidy logic
-per RFC-0349. Moved from @warpgogol/site-kernel-checks to @webgogol/forge for full
+per RFC-0349. Moved from @warpgogol/site-kernel-checks to @warpgogol/forge for full
 autonomous mode (RFC-0556). Provides compass.changesummary.validate and compass.summary.trim.</purpose>
 <non-goals>
   <item>Do not audit truthfulness of CHANGE_SUMMARY items against code — that is RFC-0352.</item>
@@ -12,7 +12,7 @@ autonomous mode (RFC-0556). Provides compass.changesummary.validate and compass.
 <CHANGE_SUMMARY>
   <item>RFC-0349: initial implementation of classifyChangeSummaryItem, compass.changesummary.validate, and compass.changesummary.tidy.</item>
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, raised cap from 3 unprotected to 30 total items, aligned validate cap to 30 total.</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 

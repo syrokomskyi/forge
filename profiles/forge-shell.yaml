@@ -74,4 +74,4 @@ workspace:
 
         console.log(`Cleaned ${toDelete.length} directories.`);
 install:
-  - pnpm add -D @webgogol/forge prettier vitest
+  - pnpm add -D @warpgogol/forge prettier vitest

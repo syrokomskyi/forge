@@ -49,7 +49,7 @@ Ask the user for, or infer from context:
 - **packagesImpacted / appsImpacted** — concrete workspace names.
 - **satisfies** — for `architecture` or `contract` RFCs, at least one `DNA-NN` invariant from `ref(forge.yaml bindings.paths.invariantsFile)`.
 - **related** — relevant RFCs, DNA ids, anti-patterns, specs.
-- **reviewer** — if the caller specifies a reviewer identity, use it. If not, default to `human:andrii-syrokomskyi` (matching the default in `os/rfc/rfc-0000-template.md` inside `@webgogol/forge`) **only when the skill is also responsible for moving the RFC out of draft**. For a pure draft scaffold, leave `reviewers: []`.
+- **reviewer** — if the caller specifies a reviewer identity, use it. If not, default to `human:andrii-syrokomskyi` (matching the default in `os/rfc/rfc-0000-template.md` inside `@warpgogol/forge`) **only when the skill is also responsible for moving the RFC out of draft**. For a pure draft scaffold, leave `reviewers: []`.
 
 ### 3. Grill the concept
 
@@ -75,7 +75,7 @@ ref(forge.yaml bindings.commands.validateRfc) --create --title="<title>" --kind=
 
 ### 5. Fill every section
 
-Read the generated file and the full template (`os/rfc/rfc-0000-template.md` inside `@webgogol/forge`) as a guide. Replace placeholder text in every required section:
+Read the generated file and the full template (`os/rfc/rfc-0000-template.md` inside `@warpgogol/forge`) as a guide. Replace placeholder text in every required section:
 
 - **Context** — the concrete situation, not a generic preamble.
 - **Problem** — the exact risk or gap this RFC closes.

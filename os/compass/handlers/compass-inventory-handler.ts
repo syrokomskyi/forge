@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Compass inventory and validation command handlers. Moved from
-@warpgogol/site-kernel-checks to @webgogol/forge for full autonomous mode (RFC-0556).
+@warpgogol/site-kernel-checks to @warpgogol/forge for full autonomous mode (RFC-0556).
 Provides runCompassInventory (XML report generation) and runCompassValidation
 (compliance diagnostics with COMPASS-* rules).</purpose>
 <non-goals>
@@ -12,7 +12,7 @@ Provides runCompassInventory (XML report generation) and runCompassValidation
 <CHANGE_SUMMARY>
   <item>RFC-0348: v2 two-block contract — XML output updated, compass.validate emits COMPASS-* diagnostics, summary uses standard-required-files.</item>
   <item>RFC-0350: added COMPASS-TODO-01 diagnostic for unfilled Compass TODO sentinels.</item>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @webgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -92,7 +92,7 @@ function renderInventoryXml(
   lines.push("    <status>generated</status>");
   lines.push("    <scope>repository-root</scope>");
   lines.push(`    <generated-at>null</generated-at>`);
-  lines.push("    <generator>@webgogol/forge:compass.inventory</generator>");
+  lines.push("    <generator>@warpgogol/forge:compass.inventory</generator>");
   lines.push("  </meta>");
   lines.push("  <summary>");
   lines.push(`    <scanned-files>${summary.scannedFiles}</scanned-files>`);

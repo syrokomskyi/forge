@@ -1,4 +1,4 @@
-# @webgogol/forge Agent Guide
+# @warpgogol/forge Agent Guide
 
 Portable governance skills and command modules extracted from site-kernel (RFC-0374).
 
@@ -59,7 +59,7 @@ skillPacks:
 - `src/` must NOT import from `@warpgogol/site-kernel` or any kernel package.
 - `os/compass/` and `os/werkstatt/` are fully autonomous (RFC-0556) — all handlers are inlined in `os/*/handlers/` and must NOT import from `@warpgogol/*` packages.
 - Other `os/` modules MAY dynamically import `@warpgogol/*` packages where kernel integration is needed.
-- Apps import forge modules from `@webgogol/forge` (the package entrypoint re-exports all OS modules).
+- Apps import forge modules from `@warpgogol/forge` (the package entrypoint re-exports all OS modules).
 
 ## forge.yaml (RFC-0391)
 
@@ -81,11 +81,11 @@ Stack profiles are YAML documents under `profiles/` describing a supported stack
 
 The `bindings` section in `forge.yaml` de-hardcodes project-specific values from fo-skills. Skills reference bindings by key (e.g. `ref(forge.yaml bindings.commands.validateRfc)`) instead of hardcoding commands, paths, or terminology.
 
-- `forgeBindingsSchema` + `resolveBinding(config, key, placeholders?)` are exported from `@webgogol/forge`.
+- `forgeBindingsSchema` + `resolveBinding(config, key, placeholders?)` are exported from `@warpgogol/forge`.
 - `forge.doctor` validates bindings: checks path existence, reports resolved/absent/invalid, and emits `defaultable-binding-null` notices for forge-CLI-backed bindings that are null (RFC-0540).
 - `forge.create` writes forge-CLI-backed defaults for commands forge provides (`validateRfc`, `validateAdr`, `implementStamp`, `specValidate`) and null for stack-dependent commands (`typecheck`, `test`, `scopedBuild`). The package manager from `forge.yaml` determines the runner prefix (`pnpm exec`, `npx`, `yarn exec`, `bunx`).
 - `forge.skill.validate` enforces SKILL-11: canonical skill bodies must not contain hardcoded `pnpm exec site-kernel run` or `docs/architecture-dna.md` in instruction lines (code blocks and `run:` directives). Supports `<!-- skill-lint-disable SKILL-11 -->` escape hatch.
-- `forge.skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@webgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
+- `forge.skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@warpgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
 - Skills declare binding requirements in frontmatter: `bindings: { requires: [...], optional: [...] }`.
 - Degradation contract: required binding unresolvable → skill refuses to start; optional binding absent → step skipped with `Degraded:` line in report.
 
@@ -104,7 +104,7 @@ Every forge CLI command's output ends with a **Next steps** block in pretty mode
 
 ## Silent upgrade trigger (RFC-0554)
 
-The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against the installed `@webgogol/forge` version. If they differ, it runs `forge upgrade` invisibly — the operator is never informed about migration, version numbers, or upgrade mechanics. The `forge.upgrade` CLI command remains available for manual sync. This is not a dual-path: it is a single upgrade mechanism (`runUpgrade`) with two entry points (CLI and `forge-bootstrap`).
+The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against the installed `@warpgogol/forge` version. If they differ, it runs `forge upgrade` invisibly — the operator is never informed about migration, version numbers, or upgrade mechanics. The `forge.upgrade` CLI command remains available for manual sync. This is not a dual-path: it is a single upgrade mechanism (`runUpgrade`) with two entry points (CLI and `forge-bootstrap`).
 
 ## Core behavioral layer (RFC-0548)
 

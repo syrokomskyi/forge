@@ -47,7 +47,7 @@ async function setupMinimalProject(dir: string): Promise<void> {
   await mkdir(join(dir, "packages", "forge", "src"), { recursive: true });
   await writeFile(
     join(dir, "packages", "forge", "package.json"),
-    '{"name":"@webgogol/forge"}',
+    '{"name":"@warpgogol/forge"}',
     "utf8",
   );
   await writeFile(join(dir, "packages", "forge", "src", "index.ts"), "export const x = 1;", "utf8");

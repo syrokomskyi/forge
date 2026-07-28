@@ -244,7 +244,7 @@ export async function runUpgrade(
         doctorReport: null,
       },
       nextSteps: [
-        { action: "Install @webgogol/forge first: npm install @webgogol/forge", kind: "required" },
+        { action: "Install @warpgogol/forge first: npm install @warpgogol/forge", kind: "required" },
       ],
       exitCode: 1,
       summary: `[forge.upgrade] FAIL — ${(err as Error).message}`,
