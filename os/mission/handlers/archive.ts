@@ -14,6 +14,7 @@ archive subdirectories back to missions/.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0573: implement mission.archive command.</item>
+  <item>RFC-0573: extract moveMissionDir helper to eliminate Phase 1/2 duplication.</item>
 </CHANGE_SUMMARY>
 */
 
