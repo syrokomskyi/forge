@@ -7,6 +7,7 @@ detect:
 workspace:
   dirs:
     - docs
+    - scripts
   files:
     - path: .gitignore
       content: |
@@ -15,5 +16,62 @@ workspace:
         .turbo
         .cache
         operator-profile.md
+    - path: package.json
+      content: |
+        {
+          "name": "__PROJECT_NAME__",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "engines": {
+            "node": ">=22"
+          },
+          "scripts": {
+            "clean": "node scripts/clean.mjs",
+            "format": "prettier --write .",
+            "format:check": "prettier --check .",
+            "test": "vitest run --passWithNoTests",
+            "upgrade-packages": "pnpm up"
+          }
+        }
+    - path: scripts/clean.mjs
+      content: |
+        import { readdir, rm } from "node:fs/promises";
+        import { join } from "node:path";
+        import { fileURLToPath } from "node:url";
+
+        const TARGETS = new Set(["node_modules", ".turbo", "dist", ".astro", ".cache", ".wrangler"]);
+
+        const repoRoot = join(fileURLToPath(import.meta.url), "..", "..");
+
+        async function walk(dir, toDelete) {
+          const entries = await readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const name = entry.name;
+            const fullPath = join(dir, name);
+            if (TARGETS.has(name)) {
+              toDelete.push(fullPath);
+              continue;
+            }
+            await walk(fullPath, toDelete);
+          }
+        }
+
+        const toDelete = [];
+        await walk(repoRoot, toDelete);
+
+        if (toDelete.length === 0) {
+          console.log("Nothing to clean.");
+          process.exit(0);
+        }
+
+        await Promise.all(toDelete.map((p) => rm(p, { recursive: true, force: true })));
+
+        for (const p of toDelete) {
+          console.log("deleted", p.replace(repoRoot + "/", ""));
+        }
+
+        console.log(`Cleaned ${toDelete.length} directories.`);
 install:
-  - pnpm add -D @webgogol/forge
+  - pnpm add -D @webgogol/forge prettier vitest

@@ -10,6 +10,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0392: initial forge.scaffold handler.</item>
   <item>RFC-0542: populate nextSteps in forge.scaffold result.</item>
+  <item>Add __PROJECT_NAME__ placeholder replacement for workspace files; profiles now include root package.json with scripts (clean, format, test, upgrade-packages) and scripts/clean.mjs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -105,11 +106,12 @@ export async function runScaffoldProject(
     created.push(`${dir}/`);
   }
 
-  // Create workspace files
+  // Create workspace files (with __PROJECT_NAME__ placeholder replacement)
   for (const file of profile.workspace.files) {
     const filePath = path.join(workspaceRoot, file.path);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, file.content, "utf8");
+    const content = file.content.replace(/__PROJECT_NAME__/g, projectName);
+    fs.writeFileSync(filePath, content, "utf8");
     created.push(file.path);
   }
 
