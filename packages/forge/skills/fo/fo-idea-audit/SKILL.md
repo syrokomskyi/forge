@@ -184,8 +184,8 @@ Present the findings in this structure. Keep it concise — each finding is one 
 
 **Verdict criteria:**
 
-- **Approved** — no failures on axes B, D, or E; minor findings on other axes are acceptable.
-- **Needs revision** — one or more failures on axes B, D, or E; or multiple failures on other axes that collectively undermine the RFC's coherence.
+- **Approved** — zero findings across all axes. Any finding, no matter how minor or cosmetic, disqualifies Approved and forces Needs revision. The rationale: downstream agents treat Approved as a stop signal and stop reading the findings — so even a trivial finding left under Approved gets silently ignored. If there is anything to fix, the verdict must say so.
+- **Needs revision** — one or more findings on any axis, regardless of severity. A one-line cosmetic note is enough. The agent must not downgrade to Approved based on severity — a finding is a finding.
 - **Rejected** — fundamental flaw: the RFC contradicts a DNA invariant without superseding it, proposes a backward compatibility layer, or contains self-authorizing language that bypasses the status gate.
 
 ### 6. Persist the audit
