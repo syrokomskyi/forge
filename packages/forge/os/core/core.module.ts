@@ -270,9 +270,10 @@ export const forgeCoreModule: ForgeModule = {
       name: "docs.archive",
       description:
         "Umbrella command that runs rfc.archive, adr.archive, plan.archive, " +
-        "audit.archive, and session.archive in sequence. Passes --dry-run and " +
-        "--status through to all sub-commands. Not atomic — if one sub-command " +
-        "fails, prior moves are not rolled back. Re-running is safe (idempotent).",
+        "audit.archive, session.archive, and mission.archive in sequence. " +
+        "Passes --dry-run and --status through to all sub-commands. Not atomic " +
+        "— if one sub-command fails, prior moves are not rolled back. " +
+        "Re-running is safe (idempotent).",
       scope: "workspace",
       mutatesState: true,
       writes: [
@@ -286,6 +287,8 @@ export const forgeCoreModule: ForgeModule = {
         "docs/audits/archive/**",
         "docs/sessions/*.md",
         "docs/sessions/archive/**",
+        "missions/*",
+        "missions/archive/**",
       ],
       reads: [
         "docs/rfcs/**/*.md",
@@ -293,6 +296,7 @@ export const forgeCoreModule: ForgeModule = {
         "docs/plans/**/*.md",
         "docs/audits/**/*.md",
         "docs/sessions/**/*.md",
+        "missions/**",
       ],
       cacheable: false,
       flags: {
@@ -317,6 +321,7 @@ export const forgeCoreModule: ForgeModule = {
         const { runPlanArchive } = await import("../plan/handlers/archive.ts");
         const { runAuditArchive } = await import("../audit/handlers/archive.ts");
         const { runSessionArchive } = await import("../session/handlers/archive.ts");
+        const { runMissionArchive } = await import("../mission/handlers/archive.ts");
 
         type ArchiveHandler = (
           input: ForgeCommandInput,
@@ -329,6 +334,7 @@ export const forgeCoreModule: ForgeModule = {
           { name: "plan.archive", fn: runPlanArchive as ArchiveHandler },
           { name: "audit.archive", fn: runAuditArchive as ArchiveHandler },
           { name: "session.archive", fn: runSessionArchive as ArchiveHandler },
+          { name: "mission.archive", fn: runMissionArchive as ArchiveHandler },
         ];
 
         for (const { name: cmdName, fn } of subCommands) {

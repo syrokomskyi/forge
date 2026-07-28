@@ -108,6 +108,14 @@
     "./os/session-module": {
       "types": "./os/session/session.module.ts",
       "default": "./os/session/session.module.ts"
+    },
+    "./os/mission": {
+      "types": "./os/mission/index.ts",
+      "default": "./os/mission/index.ts"
+    },
+    "./os/mission-module": {
+      "types": "./os/mission/mission.module.ts",
+      "default": "./os/mission/mission.module.ts"
     }
   },
   "files": [
@@ -232,6 +240,14 @@
       "./os/session-module": {
         "types": "./dist/os/session/session.module.d.ts",
         "default": "./dist/os/session/session.module.js"
+      },
+      "./os/mission": {
+        "types": "./dist/os/mission/index.d.ts",
+        "default": "./dist/os/mission/index.js"
+      },
+      "./os/mission-module": {
+        "types": "./dist/os/mission/mission.module.d.ts",
+        "default": "./dist/os/mission/mission.module.js"
       }
     }
   }
