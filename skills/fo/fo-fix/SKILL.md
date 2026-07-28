@@ -44,7 +44,9 @@ If no review is found, run `/fo-review` (or execute its process inline) on the a
 
 ### 2. Apply fixes
 
-Use the review findings as the fix list. Process them by verdict and axis severity:
+Use the review findings as the fix list. The verdict is **not** a stop signal — even an `Approved` review (legacy or lax criteria) may contain findings that must be fixed. Read every axis section and process every finding, regardless of what the verdict line says.
+
+Process findings by axis severity:
 
 1. **Verdict Rejected** — the change has a fundamental flaw (DNA violation, backward compatibility layer, storage policy bypass). Fix all failures before anything else.
 2. **Axis B / D / E failures** — DNA alignment, forward-only compliance, and agent-facing clarity are hard failures. Fix these next. Do not skip without explicit user approval.
