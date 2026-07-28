@@ -108,267 +108,68 @@ export function discoverPackSkills(workspaceRoot: string, config: ForgeConfig): 
   return result;
 }
 
-export const FORGE_SKILLS: ForgeSkillEntry[] = [
-  // fo skills (21)
-  {
-    name: "fo-idea",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-idea/SKILL.md",
-  },
-  {
-    name: "fo-idea-create-rfc",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-idea-create-rfc/SKILL.md",
-  },
-  {
-    name: "fo-idea-create-adr",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-idea-create-adr/SKILL.md",
-  },
-  {
-    name: "fo-idea-audit",
-    category: "fo",
-    invocation: "user",
-    concerns: "read-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-idea-audit/SKILL.md",
-  },
-  {
-    name: "fo-idea-enhance",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-idea-enhance/SKILL.md",
-  },
-  {
-    name: "fo-idea-implement",
-    category: "fo",
-    invocation: "user",
-    concerns: "code-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-idea-implement/SKILL.md",
-  },
-  {
-    name: "fo-idea-plan",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-idea-plan/SKILL.md",
-  },
-  {
-    name: "fo-extract-dna",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-extract-dna/SKILL.md",
-  },
-  {
-    name: "fo-review",
-    category: "fo",
-    invocation: "user",
-    concerns: "read-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-review/SKILL.md",
-  },
-  {
-    name: "fo-fix",
-    category: "fo",
-    invocation: "user",
-    concerns: "code-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-fix/SKILL.md",
-  },
-  {
-    name: "fo-doc-audit",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-doc-audit/SKILL.md",
-  },
-  {
-    name: "fo-add-tests",
-    category: "fo",
-    invocation: "user",
-    concerns: "code-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-add-tests/SKILL.md",
-  },
-  {
-    name: "fo-architecture",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-architecture/SKILL.md",
-  },
-  {
-    name: "fo-handoff",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-handoff/SKILL.md",
-  },
-  {
-    name: "fo-triage",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-triage/SKILL.md",
-  },
-  {
-    name: "fo-qa",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-qa/SKILL.md",
-  },
-  {
-    name: "fo-session-save",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-session-save/SKILL.md",
-    knowledge: ["qa-log.md", "learned-principles.md", "fix-patterns.md"],
-  },
-  {
-    name: "fo-idea-status",
-    category: "fo",
-    invocation: "user",
-    concerns: "read-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-idea-status/SKILL.md",
-  },
-  {
-    name: "fo-idea-i-just-want-to-see-the-plan",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "fo-idea-i-just-want-to-see-the-result"],
-    path: "skills/fo/fo-idea-i-just-want-to-see-the-plan/SKILL.md",
-  },
-  {
-    name: "fo-idea-i-just-want-to-see-the-result",
-    category: "fo",
-    invocation: "user",
-    concerns: "code-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-idea-i-just-want-to-see-the-result/SKILL.md",
-  },
-  // shared skills (4)
-  {
-    name: "grilling",
-    category: "shared",
-    invocation: "user",
-    concerns: "read-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/shared/grilling/SKILL.md",
-    knowledge: ["qa-log.md", "learned-principles.md"],
-  },
-  {
-    name: "writing-great-skills",
-    category: "shared",
-    invocation: "user",
-    concerns: "read-only",
-    dependsOn: [],
-    path: "skills/shared/writing-great-skills/SKILL.md",
-  },
-  {
-    name: "windows-ai-tooling",
-    category: "shared",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: [],
-    path: "skills/shared/windows-ai-tooling/SKILL.md",
-  },
-  {
-    name: "my-preferences",
-    category: "shared",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: [],
-    path: "skills/shared/my-preferences/SKILL.md",
-  },
-  // meta skills (3)
-  {
-    name: "skill-create",
-    category: "meta",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["grilling", "writing-great-skills"],
-    path: "skills/meta/skill-create/SKILL.md",
-  },
-  {
-    name: "port-to-forge",
-    category: "meta",
-    invocation: "user",
-    concerns: "code-mutation",
-    dependsOn: ["grilling"],
-    path: "skills/meta/port-to-forge/SKILL.md",
-  },
-  {
-    name: "forge-bootstrap",
-    category: "meta",
-    invocation: "user",
-    concerns: "content-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/meta/forge-bootstrap/SKILL.md",
-  },
-  {
-    name: "fo-harvest",
-    category: "fo",
-    invocation: "user",
-    concerns: "code-mutation",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-harvest/SKILL.md",
-  },
-  {
-    name: "fo-spec-ingest",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences", "grilling"],
-    path: "skills/fo/fo-spec-ingest/SKILL.md",
-  },
-  {
-    name: "fo-session-retro",
-    category: "fo",
-    invocation: "user",
-    concerns: "document-only",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-session-retro/SKILL.md",
-  },
-  {
-    name: "fo-compass-annotate",
-    category: "fo",
-    invocation: "user",
-    concerns: "content-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-compass-annotate/SKILL.md",
-  },
-  {
-    name: "fo-memory-sync",
-    category: "fo",
-    invocation: "user",
-    concerns: "content-mutation",
-    dependsOn: ["my-preferences"],
-    path: "skills/fo/fo-memory-sync/SKILL.md",
-    knowledge: ["qa-log.md", "fix-patterns.md", "learned-principles.md"],
-  },
-];
+/**
+ * Auto-discover forge skills by scanning the skills/ directory for SKILL.md
+ * files and parsing their frontmatter. This replaces the hand-maintained
+ * FORGE_SKILLS array — the frontmatter is the single source of truth.
+ *
+ * Skills are organized as skills/{category}/{name}/SKILL.md.
+ */
+function discoverForgeSkills(skillsRoot: string): ForgeSkillEntry[] {
+  const result: ForgeSkillEntry[] = [];
+  if (!fs.existsSync(skillsRoot)) return result;
+
+  for (const categoryDir of fs.readdirSync(skillsRoot, { withFileTypes: true })) {
+    if (!categoryDir.isDirectory()) continue;
+    const category = categoryDir.name;
+    const catDirPath = path.join(skillsRoot, category);
+
+    for (const skillDir of fs.readdirSync(catDirPath, { withFileTypes: true })) {
+      if (!skillDir.isDirectory()) continue;
+      const skillMdPath = path.join(catDirPath, skillDir.name, "SKILL.md");
+      if (!fs.existsSync(skillMdPath)) continue;
+
+      const content = fs.readFileSync(skillMdPath, "utf8");
+      const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      if (!fmMatch) continue;
+
+      let fm: Record<string, unknown>;
+      try {
+        fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
+      } catch {
+        continue;
+      }
+
+      const relPath = path.relative(skillsRoot, skillMdPath).replace(/\\/g, "/");
+      result.push({
+        name: fm["name"] as string,
+        category: fm["category"] as ForgeSkillEntry["category"],
+        invocation: fm["invocation"] as ForgeSkillEntry["invocation"],
+        concerns: fm["concerns"] as ForgeSkillEntry["concerns"],
+        dependsOn: Array.isArray(fm["dependsOn"])
+          ? (fm["dependsOn"] as unknown[]).filter((v): v is string => typeof v === "string")
+          : [],
+        path: `skills/${relPath}`,
+        ...(Array.isArray(fm["knowledge"])
+          ? {
+              knowledge: (fm["knowledge"] as unknown[]).filter(
+                (v): v is string => typeof v === "string",
+              ),
+            }
+          : {}),
+        ...(Array.isArray(fm["triggers"])
+          ? {
+              triggers: (fm["triggers"] as unknown[]).filter(
+                (v): v is string => typeof v === "string",
+              ),
+            }
+          : {}),
+      });
+    }
+  }
+
+  return result.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+const SKILLS_ROOT = path.resolve(import.meta.dirname, "..", "skills");
+export const FORGE_SKILLS: ForgeSkillEntry[] = discoverForgeSkills(SKILLS_ROOT);
