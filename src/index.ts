@@ -136,3 +136,4 @@ export { forgeSpecModule } from "../os/spec/spec.module.ts";
 export { forgeAdrModule } from "../os/adr/adr.module.ts";
 export { forgePlanModule } from "../os/plan/plan.module.ts";
 export { forgeAuditModule } from "../os/audit/audit.module.ts";
+export { forgeMissionModule } from "../os/mission/mission.module.ts";
