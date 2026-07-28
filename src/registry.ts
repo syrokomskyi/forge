@@ -362,4 +362,13 @@ export const FORGE_SKILLS: ForgeSkillEntry[] = [
     dependsOn: ["my-preferences"],
     path: "skills/fo/fo-compass-annotate/SKILL.md",
   },
+  {
+    name: "fo-memory-sync",
+    category: "fo",
+    invocation: "user",
+    concerns: "content-mutation",
+    dependsOn: ["my-preferences"],
+    path: "skills/fo/fo-memory-sync/SKILL.md",
+    knowledge: ["qa-log.md", "fix-patterns.md", "learned-principles.md"],
+  },
 ];
