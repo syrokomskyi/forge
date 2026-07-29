@@ -20,7 +20,7 @@ Manage Compass source headers across files with a full lifecycle: discover, gene
 
 ## Preconditions
 
-- The workspace has source files with Compass scaffolding requirements (DNA-42).
+- The workspace has source files with Compass scaffolding requirements. Check the project's invariants file for the canonical Compass markup rule.
 - `compass.validate` is available to verify headers after updates.
 
 ## Flags

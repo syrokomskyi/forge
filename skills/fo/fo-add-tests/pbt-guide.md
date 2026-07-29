@@ -1,6 +1,6 @@
 # Property-Based Testing Guide
 
-Reference for writing property-based tests (PBT) using `fast-check` + `vitest` per RFC-XXXX (DNA-41).
+Reference for writing property-based tests (PBT) using `fast-check` + `vitest`. Check the project's invariants file for the canonical PBT rule.
 
 ## Decision tree
 

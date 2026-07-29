@@ -64,7 +64,7 @@ Scan the codebase for patterns that **look like stable invariants but are not ye
 - **Code patterns** — repeated type signatures, consistent error handling shapes, uniform export patterns across packages.
 - **Enforcement gaps** — conventions that have a lint/check command but no DNA entry documenting the invariant.
 - **Cross-workspace contracts** — interfaces or schemas shared between packages that are treated as stable but never formalized.
-- **Negative space** — things that are **never done** (e.g. "no app imports from another app" was DNA-1 before it was recorded).
+- **Negative space** — things that are **never done** (e.g. "no app imports from another app" before it was recorded as an invariant).
 
 For each candidate, check:
 
@@ -242,7 +242,7 @@ When the operator invokes this skill with `--register` (or says "register DNA", 
 - **One RFC per DNA candidate.** If multiple candidates are confirmed, each gets its own RFC. Do not bundle multiple DNA invariants into a single RFC — each invariant must be independently reviewable, acceptable, and supersedeable.
 - **Do not append to `ref(forge.yaml bindings.paths.invariantsFile)` directly during RFC creation.** The registration step (step 8) is a separate invocation, performed after the RFC is accepted. This separation preserves the human review gate.
 - **Do not renumber or delete existing DNA entries.** The registry header says "Agents MUST NOT delete or renumber items; add new entries only at the bottom." This is a non-negotiable rule from `ref(forge.yaml bindings.paths.invariantsFile)`.
-- **Do not create DNA entries for features or product decisions.** DNA invariants are architectural rules. Features are governed by RFCs but recorded as features (see DNA-27..34 reclassification by RFC-XXXX). If a candidate is a feature, suggest an RFC without a DNA entry.
+- **Do not create invariant entries for features or product decisions.** Invariants are architectural rules. Features are governed by RFCs but recorded as features. If a candidate is a feature, suggest an RFC without an invariant entry.
 - **Do not create DNA entries for local conventions.** If a convention is local to one package or one app, it is an ADR, not DNA. Route to `fo-idea-create-adr` instead.
 - **Commit only your own files.** Stage only the files this skill produces or modifies — RFC files, `ref(forge.yaml bindings.paths.invariantsFile)`, and nothing else. Do not stage unrelated changes. Another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
 - **The canonical marker phrase is load-bearing.** The RFC body must contain exactly `DNA-<N> established by this RFC` (with the correct number) so that `dna.registry.validate` DNA-REG-03 rule can detect it. Do not paraphrase this phrase.

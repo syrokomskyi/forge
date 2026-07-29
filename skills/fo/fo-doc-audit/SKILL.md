@@ -103,7 +103,7 @@ If yes, update the affected XML file(s). These are the primary machine-readable 
 
 #### 2d. architecture-dna.md
 
-- Was a **new DNA invariant** introduced (e.g., DNA-54)?
+- Was a **new invariant** introduced (e.g., a new entry in the project's invariants file)?
 - Was an **existing invariant amended** (e.g., broadened scope, tightened rule)?
 - Was an **invariant retired** (forward-only removal)?
 
@@ -175,7 +175,7 @@ For each surface that needs updating:
 
 **Forward-only rule**: if a feature, command, or pattern was removed in this session, remove all documentation references to it. Do not keep "legacy" or "deprecated" sections — the ecosystem is forward-only.
 
-**Compass scaffolding**: if new non-trivial source files were added in the session, ensure they carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding (DNA-42). This is part of documentation audit — Compass markup is a documentation surface.
+**Compass scaffolding**: if new non-trivial source files were added in the session, ensure they carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule. This is part of documentation audit — Compass markup is a documentation surface.
 
 ### 5. Verify generated artifacts
 
@@ -256,7 +256,7 @@ Skills that delegate to `fo-doc-audit`:
 - **Forward-only.** Delete documentation for removed features; do not keep stale references.
 - **Minimal edits.** Update only what is out of sync. Do not rewrite sections that are still accurate.
 - **No code comments.** Do not add or delete comments in code files unless the task explicitly requires it.
-- **Compass scaffolding is part of docs.** New non-trivial source files must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` (DNA-42).
+- **Compass scaffolding is part of docs.** New non-trivial source files must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY`. Check the project's invariants file for the canonical Compass markup rule.
 - **Commit discipline.** Stage only documentation files. Do not stage unrelated changes — another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
 - **Read before edit.** Always read the target file before editing to preserve structure and tone.
 - **Generated artifact regeneration is best-effort.** If the generator command is unavailable or too expensive, note it and move on — do not block the session.

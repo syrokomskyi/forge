@@ -91,7 +91,7 @@ Execute the plan's step sequence in order. For each step:
   - For oversized new files, decompose into focused modules and import them.
   - Retry the operation with the adjusted approach immediately. The operator's default answer to "Shall I proceed?" is always "yes" — so proceed without asking.
 - **Commit only your own work.** If the working tree has changes from another session or agent, stage only the files relevant to the current step.
-- **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding (DNA-42).
+- **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology.** Use Compass (not GRACE) in all new code, documentation, and log messages.
 
 #### 3.4. Run heavy checks
@@ -457,7 +457,7 @@ Do not output per-document summaries or "Moving to XXXX next" messages during th
 - **No heavy checks during implementation.** `build:check`, `astro:check` run only after all implementation phases are complete. Lightweight checks (`adr.validate`, `rfc.validate`, type checks, unit tests on touched files) are fine during implementation.
 - **Scoped checks must pass.** Only check the workspaces this document touches. **MUST NOT run a full root `root build` or `turbo run build`** — see root AGENTS.md §Build verification discipline. Pre-existing errors in unimpacted workspaces are not this document's responsibility.
 - **Do not weaken DNA invariants.** If implementation reveals an invariant conflict, escalate via `rfc.supersede.propose` instead of working around it.
-- **Compass scaffolding on new files.** Non-trivial new source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` (DNA-42).
+- **Compass scaffolding on new files.** Non-trivial new source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY`. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology, not GRACE.** Use Compass in all new code, docs, and log messages.
 - **Review and fix are MANDATORY.** After implementation and doc-audit, always run `fo-review` (step 3.10 / 4.7) and `fo-fix` (step 3.11 / 4.8) if **any** findings exist in the review report — including cosmetic or minor findings. Do not stamp `implemented` without a review report in `docs/reviews/code/`. An `approved` verdict does NOT mean "skip fix" — read every axis section and count every finding. This is the quality gate that catches DNA misalignment, forward-only violations, and Compass drift.
 - **No `draft → accepted` transition for RFCs.** This skill requires RFC `status: accepted` and does not transition RFCs. Use `/fo-idea-plan` for that transition.

@@ -1,6 +1,6 @@
 # Canonical Compass Header Format
 
-This is the canonical format for Compass source headers (DNA-42, RFC-XXXX, RFC-XXXX).
+This is the canonical format for Compass source headers. Check the project's invariants file for the canonical Compass markup rule.
 
 ## Two-block contract
 
