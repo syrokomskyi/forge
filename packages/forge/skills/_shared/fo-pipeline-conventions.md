@@ -36,7 +36,7 @@ Use Compass (not GRACE) in all new code, documentation, and log messages.
 
 ## Compass scaffolding
 
-Non-trivial new source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding (DNA-42).
+Non-trivial new source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 
 ## Build verification discipline
 

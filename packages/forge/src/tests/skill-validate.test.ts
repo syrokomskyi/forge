@@ -103,10 +103,10 @@ describe("RFC-0548: SKILL-16 triggers field validation", () => {
 });
 
 describe("RFC-0553: SKILL-17 platform reference prohibition", () => {
-  test("SKILL-17: real workspace has no platform RFC/ADR id violations after cleanup", () => {
+  test("SKILL-17: real workspace has no platform RFC/ADR/DNA id violations after cleanup", () => {
     const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
     const skill17IdViolations = result.violations.filter(
-      (v) => v.rule === "SKILL-17" && v.message.includes("RFC/ADR id"),
+      (v) => v.rule === "SKILL-17" && v.message.includes("RFC/ADR/DNA id"),
     );
     expect(skill17IdViolations).toEqual([]);
   });
@@ -122,11 +122,18 @@ describe("RFC-0553: SKILL-17 platform reference prohibition", () => {
   test("SKILL-17: RFC-\\\\d{4} pattern does not match bare RFC or ADR without digits", () => {
     const rfcPattern = /\bRFC-\d{4}\b/g;
     const adrPattern = /\bADR-\d{4}\b/g;
+    const dnaRe = () => new RegExp("\\bDNA-\\d+\\b", "g");
     expect(rfcPattern.test("This skill audits RFCs")).toBe(false);
     expect(rfcPattern.test("Create a new ADR")).toBe(false);
     expect(rfcPattern.test("RFC-XXXX")).toBe(false);
     expect(rfcPattern.test("RFC-0353")).toBe(true);
     expect(adrPattern.test("ADR-0003")).toBe(true);
+    expect(dnaRe().test("DNA-42")).toBe(true);
+    expect(dnaRe().test("DNA-1")).toBe(true);
+    expect(dnaRe().test("DNA-N")).toBe(false);
+    expect(dnaRe().test("DNA-<N>")).toBe(false);
+    expect(dnaRe().test("DNA-NN")).toBe(false);
+    expect(dnaRe().test("DNA candidate")).toBe(false);
   });
 
   test("SKILL-17: pattern does not match lowercase file paths", () => {

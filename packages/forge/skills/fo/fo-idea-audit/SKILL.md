@@ -101,7 +101,7 @@ Beyond V-13 (required sections exist) and V-14 (≥3 acceptance items), check th
 
 #### Axis C — Ecosystem fit
 
-- **Package boundaries**: imports flow `apps/* → packages/*` and `services/* → packages/*`, never `apps/* → apps/*` or `apps/* → services/*` (DNA-1). If the RFC proposes a new package, it belongs in `packages/*`.
+- **Package boundaries**: imports flow `apps/* → packages/*` and `services/* → packages/*`, never `apps/* → apps/*` or `apps/* → services/*`. If the RFC proposes a new package, it belongs in `packages/*`. Check the project's invariants file for the canonical boundary rule.
 - **Pipeline placement**: the RFC names the correct pipeline for each new check — `build.prepare`, `build.check`, `sites-check`, `sites-check-postbuild` — and the choice is justified (blocking vs. advisory).
 - **Compass sync**: if the RFC changes repository-wide requirements, shared package contracts, or app-package relationships, it identifies which `docs/*.xml` files need synchronization (root AGENTS.md Compass document duties).
 - **AGENTS.md updates**: the RFC identifies which `AGENTS.md` files need rule updates (root, `apps/`, `packages/`, `services/`, or site-specific).
@@ -137,7 +137,7 @@ This ecosystem is forward-only — no backward compatibility layers, no expand-t
 - **False positives**: validators estimate their false-positive rate and describe how to suppress noise during migration.
 - **Edge cases**: the RFC considers empty states (new app with no content, package with no manifests), concurrent execution (two builds, two agents), and interrupted operations (crash mid-write).
 - **Migration path**: existing apps' path to compliance is documented — do they pass without changes, or is there a documented migration window?
-- **Security/privacy**: if the RFC touches user data, PII, or external services, it addresses GDPR/privacy implications and secret management (no hardcoded keys, env vars documented in `.env.example` per DNA-40).
+- **Security/privacy**: if the RFC touches user data, PII, or external services, it addresses GDPR/privacy implications and secret management (no hardcoded keys, env vars documented in `.env.example`).
 
 ### 5. Produce the report
 

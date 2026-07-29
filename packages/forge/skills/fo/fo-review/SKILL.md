@@ -112,21 +112,9 @@ Beyond what the mechanical floor catches:
 
 #### Axis B — DNA alignment
 
-Check the diff against every DNA invariant it touches. The list below is the minimum scan set — if the diff touches a DNA invariant not listed here, check it too.
+Check the diff against every invariant it touches. The invariants are loaded in step 3 from `ref(forge.yaml bindings.paths.invariantsFile)`. Identify which invariants are relevant to the changed files by matching invariant scope to the diff's touched paths, file types, and architectural areas. Check each relevant invariant against the diff.
 
-- **DNA-1** (monorepo boundary) — no `apps/* → apps/*` or `apps/* → services/*` imports.
-- **DNA-4** (canonical content) — no hardcoded copy strings or configuration in routes/components that belongs in `src/content/`.
-- **DNA-5 / DNA-17** (mirror quintet) — every new `.astro` component/section has colocated `manifest.yaml`, content schema, `.css`, and content `.md`.
-- **DNA-6** (kebab-case) — all new filenames use kebab-case.
-- **DNA-7** (thin routes) — route files are orchestrators only; no inline `<style>`, hardcoded body copy, or layout logic.
-- **DNA-8** (page → section → component → content) — visitor-facing page bodies are composed as ordered section components.
-- **DNA-10** (no hardcoded tokens) — CSS uses `--ds-*` custom properties only; no raw `rgba()` or `#hex`.
-- **DNA-23** (cosmic naming) — new manifests carry `cosmicName` from the correct closed catalog; three-way alignment (manifest ↔ `PLANET_IMPORT_PATHS` / `MOON_IMPORT_PATHS` ↔ `system.md`).
-- **DNA-24** (block-declarative pages) — page entries are frontmatter-only; no markdown bodies.
-- **DNA-25** (single buildPage) — routes call `buildPage`; no hand-assembled block composition.
-- **DNA-40** (env-example) — new env vars are documented in `.env.example`.
-- **DNA-42** (Compass markup) — new authored source files carry `MODULE_CONTRACT` and `CHANGE_SUMMARY`.
-- **DNA-51** (Werkstatt primitives) — mutating Werkstatt commands use shared lock/idempotency/atomic-write helpers.
+If the invariants file is absent or the optional binding is unresolvable, state "No invariants file — invariant alignment skipped" and skip this axis.
 
 #### Axis C — Ecosystem fit
 

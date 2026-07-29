@@ -487,10 +487,10 @@ function extractInstructionLines(body: string): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// SKILL-17: No internal platform RFC/ADR id references or platform names (RFC-0553)
+// SKILL-17: No internal platform RFC/ADR/DNA id references or platform names (RFC-0553)
 // ---------------------------------------------------------------------------
 
-const SKILL17_ID_PATTERNS: RegExp[] = [/\bRFC-\d{4}\b/g, /\bADR-\d{4}\b/g];
+const SKILL17_ID_PATTERNS: RegExp[] = [/\bRFC-\d{4}\b/g, /\bADR-\d{4}\b/g, /\bDNA-\d+\b/g];
 
 const SKILL17_PLATFORM_PATTERNS: RegExp[] = [/(?<!@)Warpgogol\b/gi, /\bWarpGogol\b/gi];
 
@@ -517,7 +517,7 @@ function checkSkill17(skillName: string, content: string): Violation[] {
         result.push({
           skill: skillName,
           rule: "SKILL-17",
-          message: `Contains internal platform RFC/ADR id '${match[0]}': ${line.trim().slice(0, 100)}`,
+          message: `Contains internal platform RFC/ADR/DNA id '${match[0]}': ${line.trim().slice(0, 100)}`,
         });
         break;
       }
