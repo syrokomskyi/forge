@@ -31,6 +31,17 @@ This skill also handles two related fix scenarios:
 
 ## Process
 
+### 0. Pre-flight: git status check
+
+Before starting the fix workflow, check the working tree for foreign uncommitted changes:
+
+1. Run `git status --short` in the werkstatt root.
+2. If `systems/registry.yaml` has a `currentMission`, also run `git status --short` in each active mission workpiece directory (`missions/<missionId>/workpiece/`).
+3. If either repository has changes, report them to the operator before proceeding.
+4. Treat all pre-existing changes as foreign — never modify, stage, or discard them.
+5. When committing, stage only files you created or modified in this session by explicit path. Never use `git add -A` or `git add .`.
+6. Before every commit, verify `git diff --cached --name-only` excludes foreign files.
+
 ### 1. Check for an existing review
 
 Scan the current session for evidence of a review:
