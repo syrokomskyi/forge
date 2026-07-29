@@ -64,13 +64,14 @@ test("resolvePmRunner falls back to npx for unknown", () => {
   expect(resolvePmRunner("")).toBe("npx");
 });
 
-test("FORGE_CLI_BINDING_DEFAULTS has 4 entries with correct keys", () => {
-  expect(FORGE_CLI_BINDING_DEFAULTS).toHaveLength(4);
+test("FORGE_CLI_BINDING_DEFAULTS has 5 entries with correct keys", () => {
+  expect(FORGE_CLI_BINDING_DEFAULTS).toHaveLength(5);
   const keys = FORGE_CLI_BINDING_DEFAULTS.map((e) => e.key);
   expect(keys).toContain("commands.validateRfc");
   expect(keys).toContain("commands.validateAdr");
   expect(keys).toContain("commands.implementStamp");
   expect(keys).toContain("commands.specValidate");
+  expect(keys).toContain("commands.sessionSave");
 });
 
 test("defaultForgeConfig with pnpm produces forge-CLI bindings with pnpm exec prefix", () => {
@@ -129,6 +130,7 @@ test("applyCliBindingDefaults returns forge-CLI bindings non-null and stack bind
   expect(commands.validateAdr).not.toBeNull();
   expect(commands.implementStamp).not.toBeNull();
   expect(commands.specValidate).not.toBeNull();
+  expect(commands.sessionSave).not.toBeNull();
   expect(commands.typecheck).toBeNull();
   expect(commands.test).toBeNull();
   expect(commands.scopedBuild).toBeNull();
@@ -228,6 +230,7 @@ const configWithBindings: ForgeConfig = {
       test: "pnpm --filter {workspace} run test",
       scopedBuild: null,
       specValidate: null,
+      sessionSave: null,
     },
     paths: {
       invariantsFile: "docs/architecture-dna.md",

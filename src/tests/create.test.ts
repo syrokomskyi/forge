@@ -137,6 +137,7 @@ test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async
   expect(config.bindings?.commands.validateAdr).not.toBeNull();
   expect(config.bindings?.commands.implementStamp).not.toBeNull();
   expect(config.bindings?.commands.specValidate).not.toBeNull();
+  expect(config.bindings?.commands.sessionSave).not.toBeNull();
   expect(config.bindings?.commands.typecheck).toBeNull();
   expect(config.bindings?.commands.test).toBeNull();
   expect(config.bindings?.commands.scopedBuild).toBeNull();

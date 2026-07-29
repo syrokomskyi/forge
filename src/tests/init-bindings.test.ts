@@ -57,6 +57,7 @@ test("forge.init creates forge.yaml with non-null forge-CLI bindings and null st
   expect(config.bindings?.commands.specValidate).toBe(
     "pnpm exec forge spec.validate --spec={id} --json",
   );
+  expect(config.bindings?.commands.sessionSave).toBe("pnpm exec forge session.save --json");
   expect(config.bindings?.commands.typecheck).toBeNull();
   expect(config.bindings?.commands.test).toBeNull();
   expect(config.bindings?.commands.scopedBuild).toBeNull();
@@ -72,6 +73,7 @@ test("forge.yaml written by forge.init contains forge-CLI binding strings", asyn
   expect(yamlContent).toContain("forge adr.validate");
   expect(yamlContent).toContain("forge rfc.implement.stamp");
   expect(yamlContent).toContain("forge spec.validate");
+  expect(yamlContent).toContain("forge session.save");
 });
 
 test("forge.init does not overwrite existing forge.yaml", async () => {
@@ -98,6 +100,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: null
+    sessionSave: null
   paths:
     invariantsFile: null
     compassDocs: []
@@ -151,6 +154,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: null
+    sessionSave: null
   paths:
     invariantsFile: null
     compassDocs: []

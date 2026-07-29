@@ -58,7 +58,7 @@ async function setupMinimalProject(dir: string): Promise<void> {
   await writeFile(join(dir, "PREFERENCES.md"), "# Test", "utf8");
 }
 
-test("doctor emits defaultable-binding-null notices for all 4 forge-CLI bindings when null", async () => {
+test("doctor emits defaultable-binding-null notices for all 5 forge-CLI bindings when null", async () => {
   await setupMinimalProject(tempDir);
   await writeForgeYaml(
     tempDir,
@@ -84,6 +84,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: null
+    sessionSave: null
   paths:
     invariantsFile: null
     compassDocs: []
@@ -95,12 +96,13 @@ bindings:
 
   const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
   const notices = result.data?.bindings?.notices ?? [];
-  expect(notices).toHaveLength(4);
+  expect(notices).toHaveLength(5);
   const keys = notices.map((n) => n.key);
   expect(keys).toContain("commands.validateRfc");
   expect(keys).toContain("commands.validateAdr");
   expect(keys).toContain("commands.implementStamp");
   expect(keys).toContain("commands.specValidate");
+  expect(keys).toContain("commands.sessionSave");
   for (const notice of notices) {
     expect(notice.rule).toBe("defaultable-binding-null");
     expect(notice.suggestion).toContain("pnpm exec forge");
@@ -133,6 +135,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: "custom spec validate command"
+    sessionSave: "custom session save command"
   paths:
     invariantsFile: null
     compassDocs: []
@@ -173,6 +176,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: "npx forge spec.validate --spec={id} --json"
+    sessionSave: "npx forge session.save --json"
   paths:
     invariantsFile: null
     compassDocs: []
@@ -213,6 +217,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: null
+    sessionSave: null
   paths:
     invariantsFile: null
     compassDocs: []
@@ -258,6 +263,7 @@ bindings:
     test: null
     scopedBuild: null
     specValidate: "pnpm exec forge spec.validate --spec={id} --json"
+    sessionSave: "pnpm exec forge session.save --json"
   paths:
     invariantsFile: null
     compassDocs: []

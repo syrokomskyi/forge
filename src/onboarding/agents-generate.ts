@@ -407,6 +407,7 @@ export async function runAgentsGenerate(
       "commands.test",
       "commands.scopedBuild",
       "commands.specValidate",
+      "commands.sessionSave",
       "paths.invariantsFile",
       "paths.reviewsDir",
       "paths.handoffsDir",

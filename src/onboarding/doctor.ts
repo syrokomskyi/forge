@@ -112,6 +112,7 @@ const BINDING_COMMAND_KEYS = [
   "commands.test",
   "commands.scopedBuild",
   "commands.specValidate",
+  "commands.sessionSave",
 ];
 
 async function validateBindings(workspaceRoot: string): Promise<BindingValidation> {
