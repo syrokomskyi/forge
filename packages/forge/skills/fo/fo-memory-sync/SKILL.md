@@ -35,10 +35,10 @@ The skill reads from two external tool families. All paths are resolved relative
 
 ### Codex CLI
 
-| Platform | Memory | Sessions |
-| --- | --- | --- |
-| Linux / WSL | `~/.codex/memories/` | `~/.codex/sessions/` |
-| Windows | `%USERPROFILE%\.codex\memories\` | `%USERPROFILE%\.codex\sessions\` |
+| Platform    | Memory                           | Sessions                         |
+| ----------- | -------------------------------- | -------------------------------- |
+| Linux / WSL | `~/.codex/memories/`             | `~/.codex/sessions/`             |
+| Windows     | `%USERPROFILE%\.codex\memories\` | `%USERPROFILE%\.codex\sessions\` |
 
 Memory files are typically Markdown or plain text. Session files may be JSON, JSONL, or Markdown — read whatever format exists.
 
@@ -107,10 +107,10 @@ Items that are irrelevant, duplicated, or stale are listed in the report but not
 
 ### 5. Present findings to operator
 
-Present a structured summary:
+Present a structured summary in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only.
 
 ```
-# fo-memory-sync report
+# <fo-memory-sync report in aiLanguage>
 
 ## Sources scanned
 - Codex memories: N files found (M relevant)

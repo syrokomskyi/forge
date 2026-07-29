@@ -96,7 +96,7 @@ Run:
 ref(forge.yaml bindings.commands.validateRfc) <rfc-id> --json
 ```
 
-Fix every violation. Then report:
+Fix every violation. Then report in `aiLanguage`. **Translate all labels to `aiLanguage`** — the template below is structural only.
 
 ```
 RFC draft created: <file>

@@ -222,10 +222,10 @@ If no documentation changes were needed, skip this step.
 
 ### 7. Report
 
-Present a concise summary:
+Present a concise summary in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only.
 
 ```
-## Documentation Audit Summary
+## <Documentation Audit Summary in aiLanguage>
 
 ### Surfaces checked: <count>
 ### Surfaces updated: <count>

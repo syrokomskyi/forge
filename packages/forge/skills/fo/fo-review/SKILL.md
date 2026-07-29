@@ -172,10 +172,10 @@ If no spec is available, state: "No spec available — spec compliance skipped."
 
 ### 6. Produce the report
 
-Present the findings in this structure. Keep it concise — each finding is one to three sentences with evidence (quote the code line, cite the file path, or reference the DNA invariant).
+Present the findings in this structure in `aiLanguage`. **Translate all labels, headings, and axis names to `aiLanguage`** — the template below is structural only. Only identifiers (file paths, DNA invariant ids, RFC/ADR ids) stay untranslated. Keep it concise — each finding is one to three sentences with evidence (quote the code line, cite the file path, or reference the DNA invariant).
 
 ```
-## Code Review: <diff range or file list>
+## <Code Review in aiLanguage>: <diff range or file list>
 
 ### Verdict: <Approved | Needs revision | Rejected>
 

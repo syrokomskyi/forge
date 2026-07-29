@@ -47,7 +47,7 @@ If the operator passed arguments, treat them as a description of what the next s
 
 ### 4. Report
 
-Tell the operator the absolute path of the handoff document and suggest opening a fresh session that references it.
+Tell the operator the absolute path of the handoff document and suggest opening a fresh session that references it. Report in `aiLanguage`.
 
 ## Constraints
 

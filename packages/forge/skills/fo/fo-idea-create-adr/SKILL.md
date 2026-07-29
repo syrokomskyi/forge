@@ -98,7 +98,7 @@ Run:
 ref(forge.yaml bindings.commands.validateAdr) <adr-id> --json
 ```
 
-Fix every violation. Then report:
+Fix every violation. Then report in `aiLanguage`. **Translate all labels to `aiLanguage`** — the template below is structural only.
 
 ```
 ADR draft created: <file>

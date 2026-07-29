@@ -200,10 +200,10 @@ If only one RFC was requested, confirm briefly:
 Plan created: docs/plans/plan-rfc-XXXX-*.md
 ```
 
-If multiple RFCs were processed, present a single batch summary:
+If multiple RFCs were processed, present a single batch summary in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only.
 
 ```
-## Batch Plan Summary
+## <Batch Plan Summary in aiLanguage>
 
 ### RFCs planned: <N>
 ### RFCs skipped/errored: <list with reason>

@@ -124,10 +124,10 @@ Do not duplicate the creation skill's work — just route to it and let it run.
 
 #### 3c. Report
 
-After the creation skill completes, present its final report to the user. Add a one-line prefix indicating which path was taken:
+After the creation skill completes, present its final report to the user in `aiLanguage`. Add a one-line prefix indicating which path was taken — translate the label to `aiLanguage`:
 
 ```
-Classified as: RFC (cross-workspace command addition) / ADR (local package convention)
+<Classified as in aiLanguage>: RFC (cross-workspace command addition) / ADR (local package convention)
 ```
 
 Followed by the creation skill's own report.
@@ -169,10 +169,10 @@ If the operator accepts escalation, invoke `/fo-spec-ingest` in authoring mode, 
 
 #### 4b. Present the decomposition plan
 
-Present the full plan to the operator before creating any files:
+Present the full plan to the operator before creating any files, in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only.
 
 ```
-## Decomposition Plan
+## <Decomposition Plan in aiLanguage>
 
 This task requires <N> documents:
 
@@ -207,10 +207,10 @@ If a creation skill's grilling reveals that a document in the series is unnecess
 
 #### 4d. Series report
 
-After all documents are created, present a single batch report:
+After all documents are created, present a single batch report in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only.
 
 ```
-## Series Creation Summary
+## <Series Creation Summary in aiLanguage>
 
 ### Task: <original operator request — one line>
 ### Documents created: <N>

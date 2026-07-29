@@ -12,6 +12,7 @@ Read `PREFERENCES.md` at the repository root before starting. If the file is mis
 - Generated documentation, commit messages, and persisted artifacts must use `documentationLanguage`.
 - Internal reasoning, tool-call planning, and intermediate agent monologue may stay in the agent's working language (usually English).
 - Do not translate existing files automatically; preferences affect only new output and the current session.
+- **Report and summary templates in skill definitions are structural examples only.** All labels, headings, table headers, column names, and descriptions in operator-facing output must be translated to `aiLanguage`. Only identifiers (RFC-XXXX, ADR-XXXX, file paths, slash commands, CLI flags) stay in their original form. Do not copy English template labels verbatim into the operator-facing output.
 
 ## Recoverable errors
 
