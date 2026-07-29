@@ -18,15 +18,9 @@ files (not matching audit-rfc-XXXX-*) are silently excluded.
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import {
-  listAuditFiles,
-  extractRfcIdFromAuditFile,
-} from "../frontmatter-io.ts";
+import { listAuditFiles, extractRfcIdFromAuditFile } from "../frontmatter-io.ts";
 import { loadRfcStatusMap } from "../../rfc/frontmatter-io.ts";
-import type {
-  ArchiveMove,
-  ArchiveSkip,
-} from "../../rfc/handlers/archive.ts";
+import type { ArchiveMove, ArchiveSkip } from "../../rfc/handlers/archive.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -76,9 +70,7 @@ export async function runAuditArchive(
     }
 
     const isTerminal =
-      rfcStatus === "implemented" ||
-      rfcStatus === "rejected" ||
-      rfcStatus === "superseded";
+      rfcStatus === "implemented" || rfcStatus === "rejected" || rfcStatus === "superseded";
     const isInArchive = fileName.includes("/");
 
     if (statusFilter && rfcStatus !== statusFilter) {
@@ -159,7 +151,11 @@ export async function runAuditArchive(
     } else if (isTerminal && isInArchive) {
       skipped.push({ id: rfcId, file: relFile, reason: `already archived (${rfcStatus})` });
     } else {
-      skipped.push({ id: rfcId, file: relFile, reason: `parent RFC status ${rfcStatus} is non-terminal` });
+      skipped.push({
+        id: rfcId,
+        file: relFile,
+        reason: `parent RFC status ${rfcStatus} is non-terminal`,
+      });
     }
   }
 
@@ -187,5 +183,11 @@ export async function runAuditArchive(
     summary: dryRun
       ? `[dry-run] Would move ${moved.length} file(s), skip ${skipped.length}`
       : `Moved ${moved.length} file(s), skipped ${skipped.length}`,
+    nextSteps: [
+      {
+        action: "Run: pnpm exec site-kernel run audit.list --json to verify archive status",
+        kind: "optional",
+      },
+    ],
   };
 }

@@ -196,5 +196,11 @@ export async function runAdrArchive(
     summary: dryRun
       ? `[dry-run] Would move ${moved.length} file(s), skip ${skipped.length}`
       : `Moved ${moved.length} file(s), skipped ${skipped.length}`,
+    nextSteps: [
+      {
+        action: "Run: pnpm exec site-kernel run adr.list --json to verify archive status",
+        kind: "optional",
+      },
+    ],
   };
 }
