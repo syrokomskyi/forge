@@ -161,10 +161,10 @@ If any violations target the enhanced RFC or new RFCs, fix them and re-run. Do n
 
 ### 9. Summary
 
-Present a concise summary of changes made:
+Present a concise summary of changes made in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only.
 
 ```
-## RFC-XXXX Enhancement Summary
+## <RFC-XXXX Enhancement Summary in aiLanguage>
 
 ### Verdict from audit: <Approved | Needs revision | Rejected>
 

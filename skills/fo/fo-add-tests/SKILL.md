@@ -44,7 +44,7 @@ Is the function pure (no I/O, no side effects, no mutation of inputs)?
         └── Yes → Write PBT in a *.pbt.test.ts file using fast-check.
 ```
 
-Record the classification for each function. Present a brief summary to the operator before writing.
+Record the classification for each function. Present a brief summary to the operator before writing tests. Report in `aiLanguage`.
 
 ### 3. Determine the test seam
 

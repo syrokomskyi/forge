@@ -232,15 +232,15 @@ If any operator insights were routed to `.agents/operator-profile.md`, offer the
 
 ### 7. Report
 
-Present a concise summary:
+Present a concise summary in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated.
 
 ```
-## Session Retro Summary
+## <Session Retro Summary in aiLanguage>
 
-### Insights discovered: <N>
-### Insights confirmed: <M>
+### <Insights discovered>: <N>
+### <Insights confirmed>: <M>
 
-| # | Insight | Category | Routed to | Status |
+| # | <Insight> | <Category> | <Routed to> | <Status> |
 | --- | --- | --- | --- | --- |
 | 1 | ... | Rule | packages/AGENTS.md | committed |
 | 2 | ... | Decision | fo-idea-create-adr | ADR-XXXX created |
@@ -249,9 +249,9 @@ Present a concise summary:
 | 5 | ... | Operator | .agents/operator-profile.md | committed |
 | 6 | ... | Context | memory DB | saved |
 
-### Delegated skills invoked: <count>
-### Direct edits: <count>
-### Commit: <hash | none — no direct edits>
+### <Delegated skills invoked>: <count>
+### <Direct edits>: <count>
+### <Commit>: <hash | none — no direct edits>
 ```
 
 ## Relationship to other session-end skills

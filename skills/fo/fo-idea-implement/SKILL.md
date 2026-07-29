@@ -231,10 +231,10 @@ If `fo-review` reported truly zero findings (the report explicitly states "No is
 
 #### 3.12. RFC report
 
-After implementation is complete, report:
+After implementation is complete, report in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, file paths, skill names) stay untranslated.
 
 ```
-## RFC-XXXX Implementation Summary
+## <RFC-XXXX Implementation Summary in aiLanguage>
 
 ### Plan: <found>
 ### Steps implemented: <count>
@@ -414,10 +414,10 @@ After all checks pass and documentation is updated, transition the ADR to `imple
 
 #### 4.11. Report
 
-After implementation is complete, report:
+After implementation is complete, report in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only.
 
 ```
-## ADR-XXXX Implementation Summary
+## <ADR-XXXX Implementation Summary in aiLanguage>
 
 ### Decision: <one-line summary>
 ### Phases implemented: <count>
@@ -429,10 +429,10 @@ After implementation is complete, report:
 
 ### 5. Batch summary
 
-If multiple documents were processed, present a single batch summary at the very end:
+If multiple documents were processed, present a single batch summary at the very end in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only.
 
 ```
-## Batch Implementation Summary
+## <Batch Implementation Summary in aiLanguage>
 
 ### Documents requested: <N>
 ### Documents implemented: <N>

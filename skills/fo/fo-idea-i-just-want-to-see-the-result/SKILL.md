@@ -112,10 +112,10 @@ This fallback ensures review and fix are never skipped, even if `fo-idea-impleme
 
 ### 2. Report and stop
 
-After the pipeline is complete (or if it was interrupted and resumed), present a single summary:
+After the pipeline is complete (or if it was interrupted and resumed), present a single summary in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, ADR-XXXX, file paths) stay untranslated.
 
 ```
-## Pipeline Summary
+## <Pipeline Summary in aiLanguage>
 
 ### Document: <RFC-XXXX or ADR-XXXX>
 ### Type: <RFC | ADR>

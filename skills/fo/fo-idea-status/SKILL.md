@@ -49,7 +49,7 @@ Read the JSON output and extract `id`, `title`, `status`, `createdAt`, and `upda
 
 Sort entries by `updatedAt` descending (newest first). If `updatedAt` is missing or equal, fall back to `createdAt` descending.
 
-Group documents by type (RFC, ADR) and then by status. For each group:
+Group documents by type (RFC, ADR) and then by status. **Translate all headings and column names to `aiLanguage`** — the templates below are structural only. For each group:
 
 - If the group has **≤12 documents**, list each one: `| ID | Title | Status |`
 - If the group has **>12 documents**, show only the count

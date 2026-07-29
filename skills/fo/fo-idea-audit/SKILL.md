@@ -141,10 +141,10 @@ This ecosystem is forward-only — no backward compatibility layers, no expand-t
 
 ### 5. Produce the report
 
-Present the findings in this structure. Keep it concise — each finding is one to three sentences with evidence (quote the RFC line or cite the file path).
+Present the findings in this structure in `aiLanguage`. **Translate all labels, headings, and axis names to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, file paths, DNA invariant ids) stay untranslated. Keep it concise — each finding is one to three sentences with evidence (quote the RFC line or cite the file path).
 
 ```
-## RFC-XXXX Audit
+## <RFC-XXXX Audit in aiLanguage>
 
 ### Verdict: <Approved | Needs revision | Rejected>
 

@@ -80,10 +80,10 @@ Findings that require spec changes are recorded as **pre-acceptance amendments**
 
 ### 7. Acceptance decision
 
-Present a compact summary:
+Present a compact summary in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only.
 
 ```
-## Spec Ingest Summary
+## <Spec Ingest Summary in aiLanguage>
 
 ### Spec: <id> (<title>)
 ### Snapshot: <N> files vendored, integrity manifest written

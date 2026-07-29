@@ -80,7 +80,7 @@ Apply the appropriate label to each issue after triaging it. Remove `needs-triag
 
 ### 4. Report
 
-After triaging all issues in the queue, present a summary:
+After triaging all issues in the queue, present a summary in `aiLanguage`. **Translate all labels and column names to `aiLanguage`** — the template below is structural only.
 
 | Issue | Category    | Result          | Label applied   |
 | ----- | ----------- | --------------- | --------------- |
