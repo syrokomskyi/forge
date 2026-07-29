@@ -1,11 +1,19 @@
 {
   "name": "@warpgogol/forge",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "private": false,
   "type": "module",
   "license": "MIT",
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
-  "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
+  "keywords": [
+    "rfc",
+    "adr",
+    "governance",
+    "skills",
+    "ai-agent",
+    "documentation",
+    "framework"
+  ],
   "homepage": "https://github.com/syrokomskyi/warpgogol-4#readme",
   "repository": {
     "type": "git",
