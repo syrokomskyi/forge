@@ -8,7 +8,7 @@ dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 knowledge: [qa-log.md, learned-principles.md, fix-patterns.md]
 bindings:
-  requires: [paths.sessionsDir]
+  requires: [paths.sessionsDir, commands.sessionSave]
   optional: []
 triggers: ["save this session", "enhance session transcript with annotations", "save session with quality checks"]
 ---
@@ -28,10 +28,9 @@ Enhance saved session transcripts with semantic annotations, summaries, and qual
 1. **Read `PREFERENCES.md`** at the repository root. If `saveSessions: false`, exit immediately with "Session saving disabled by operator preference."
 
 2. **Check for raw files** in `docs/sessions/.raw/`. If raw files exist, run `session.save` first to convert them to structured markdown:
-   <!-- skill-lint-disable SKILL-11 -->
 
    ```
-   pnpm exec site-kernel run session.save --json
+   ref(forge.yaml bindings.commands.sessionSave)
    ```
 
 3. **Read the most recently saved session file** from `docs/sessions/`. If no session files exist, exit with "No session files to annotate."

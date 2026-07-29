@@ -72,6 +72,7 @@ async function makeForgeYaml(dir: string): Promise<void> {
     "    scopedBuild: null",
     "    implementStamp: pnpm exec forge rfc.implement.stamp",
     "    specValidate: pnpm exec forge spec.validate",
+    "    sessionSave: pnpm exec forge session.save",
     "  paths:",
     "    invariantsFile: docs/architecture-dna.md",
     "    reviewsDir: docs/reviews",

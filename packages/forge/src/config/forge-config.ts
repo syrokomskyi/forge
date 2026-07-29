@@ -37,6 +37,7 @@ export const forgeBindingsSchema = z.object({
     test: z.string().nullable().default(null),
     scopedBuild: z.string().nullable().default(null),
     specValidate: z.string().nullable().default(null),
+    sessionSave: z.string().nullable().default(null),
   }),
   paths: z.object({
     invariantsFile: z.string().nullable().default(null),
@@ -64,6 +65,7 @@ export interface ForgeBindings {
     test: string | null;
     scopedBuild: string | null;
     specValidate: string | null;
+    sessionSave: string | null;
   };
   paths: {
     invariantsFile: string | null;
@@ -190,6 +192,7 @@ export const FORGE_CLI_BINDING_DEFAULTS: ForgeCliBindingDefault[] = [
     template: "forge rfc.implement.stamp --id {id} --implementation-commit {commit}",
   },
   { key: "commands.specValidate", template: "forge spec.validate --spec={id} --json" },
+  { key: "commands.sessionSave", template: "forge session.save --json" },
 ];
 
 export const PM_RUNNER_MAP: Record<string, string> = {
@@ -214,6 +217,7 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     test: null,
     scopedBuild: null,
     specValidate: null,
+    sessionSave: null,
   };
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
     const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];

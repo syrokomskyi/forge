@@ -65,6 +65,7 @@ async function setupConsumerForgeYaml(
     test: null,
     scopedBuild: null,
     specValidate: null,
+    sessionSave: null,
     ...customBindings,
   };
   const forgeSection =
@@ -93,6 +94,7 @@ bindings:
     test: ${commands.test ? `"${commands.test}"` : "null"}
     scopedBuild: ${commands.scopedBuild ? `"${commands.scopedBuild}"` : "null"}
     specValidate: ${commands.specValidate ? `"${commands.specValidate}"` : "null"}
+    sessionSave: ${commands.sessionSave ? `"${commands.sessionSave}"` : "null"}
   paths:
     invariantsFile: null
     compassDocs: []
@@ -195,6 +197,7 @@ test("forge.upgrade never overwrites a non-null operator-set binding", async () 
   expect(addedKeys).toContain("commands.validateAdr");
   expect(addedKeys).toContain("commands.implementStamp");
   expect(addedKeys).toContain("commands.specValidate");
+  expect(addedKeys).toContain("commands.sessionSave");
 });
 
 test("forge.upgrade refuses when forge.yaml is missing", async () => {
