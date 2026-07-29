@@ -275,5 +275,11 @@ export async function runMissionArchive(
     summary: dryRun
       ? `[dry-run] Would move ${moved.length} mission(s), skip ${skipped.length}`
       : `Moved ${moved.length} mission(s), skipped ${skipped.length}`,
+    nextSteps: [
+      {
+        action: "Run: pnpm exec site-kernel run mission.list --json to verify active missions",
+        kind: "optional",
+      },
+    ],
   };
 }

@@ -81,7 +81,11 @@ export async function runSessionArchive(
   for (const fileName of activeFiles) {
     const result = await readAndParseSession(sessionDirPath, fileName);
     if (!result) {
-      skipped.push({ id: "UNKNOWN", file: path.join(SESSION_DIR, fileName), reason: "unreadable frontmatter" });
+      skipped.push({
+        id: "UNKNOWN",
+        file: path.join(SESSION_DIR, fileName),
+        reason: "unreadable frontmatter",
+      });
       continue;
     }
 
@@ -144,9 +148,16 @@ export async function runSessionArchive(
   const archivedFiles = await listArchivedSessionFiles(sessionDirPath);
   for (const archFileName of archivedFiles) {
     const archFullPath = path.join(archiveDirPath, archFileName);
-    const result = await readAndParseSession(path.join(sessionDirPath, SESSION_ARCHIVE_SUBDIR), archFileName);
+    const result = await readAndParseSession(
+      path.join(sessionDirPath, SESSION_ARCHIVE_SUBDIR),
+      archFileName,
+    );
     if (!result) {
-      skipped.push({ id: "UNKNOWN", file: path.join(SESSION_DIR, SESSION_ARCHIVE_SUBDIR, archFileName), reason: "unreadable frontmatter" });
+      skipped.push({
+        id: "UNKNOWN",
+        file: path.join(SESSION_DIR, SESSION_ARCHIVE_SUBDIR, archFileName),
+        reason: "unreadable frontmatter",
+      });
       continue;
     }
 
@@ -229,5 +240,11 @@ export async function runSessionArchive(
     summary: dryRun
       ? `[dry-run] Would move ${moved.length} file(s), skip ${skipped.length}`
       : `Moved ${moved.length} file(s), skipped ${skipped.length}`,
+    nextSteps: [
+      {
+        action: "Run: pnpm exec site-kernel run session.list --json to verify archive status",
+        kind: "optional",
+      },
+    ],
   };
 }
