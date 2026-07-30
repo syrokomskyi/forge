@@ -76,8 +76,12 @@ test("FORGE_CLI_BINDING_DEFAULTS has 5 entries with correct keys", () => {
 
 test("defaultForgeConfig with pnpm produces forge-CLI bindings with pnpm exec prefix", () => {
   const config = defaultForgeConfig("test", "pnpm");
-  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate --id {id} --json");
-  expect(config.bindings?.commands.validateAdr).toBe("pnpm exec forge adr.validate --id {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe(
+    "pnpm exec forge rfc.validate --id {id} --json",
+  );
+  expect(config.bindings?.commands.validateAdr).toBe(
+    "pnpm exec forge adr.validate --id {id} --json",
+  );
   expect(config.bindings?.commands.implementStamp).toBe(
     "pnpm exec forge rfc.implement.stamp --id {id} --implementation-commit {commit}",
   );
@@ -102,7 +106,9 @@ test("defaultForgeConfig with bun produces bunx-prefixed bindings", () => {
 test("defaultForgeConfig without packageManager defaults to pnpm", () => {
   const config = defaultForgeConfig("test");
   expect(config.project.packageManager).toBe("pnpm");
-  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate --id {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe(
+    "pnpm exec forge rfc.validate --id {id} --json",
+  );
 });
 
 test("defaultForgeConfig keeps stack-dependent bindings null", () => {
@@ -285,7 +291,7 @@ test("resolveBinding returns null for an unknown key", () => {
 
 test("resolveBinding substitutes placeholders", () => {
   const result = resolveBinding(configWithBindings, "commands.validateRfc", { id: "RFC-0393" });
-  expect(result).toBe("pnpm exec site-kernel run rfc.validate RFC-0393 --json");
+  expect(result).toBe("pnpm exec site-kernel run rfc.validate --id RFC-0393 --json");
 });
 
 test("resolveBinding substitutes multiple placeholders", () => {
