@@ -12,6 +12,7 @@
   <item>RFC-0548: added Core behavioral layer section with intent-to-skill routing table from triggers, fixed policy text, and conditional extended layer (RFC-0549) based on register.</item>
   <item>RFC-0549: replaced extended layer stub with full nine-section content from extended-behavioral-layer.ts.</item>
   <item>RFC-0551: added register-conditional commit policy to core behavioral layer.</item>
+  <item>RFC-0611: added nested AGENTS.md generation for workspace directories + dryRun support.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,7 @@ import { loadForgeConfig, resolveBinding } from "../config/forge-config.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker } from "../utils/index.ts";
 import { buildExtendedBehavioralLayer } from "./extended-behavioral-layer.ts";
+import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -292,14 +294,16 @@ interface AgentsGenerateResult {
   status: "pass" | "fail";
   configPath: string;
   generated: string[];
+  skipped: string[];
   errors: string[];
+  renderedFiles?: { [relPath: string]: string };
 }
 
 export async function runAgentsGenerate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<AgentsGenerateResult>> {
-  const { workspaceRoot, logger, outputFormat } = context;
+  const { workspaceRoot, logger, outputFormat, dryRun } = context;
 
   let config;
   try {
@@ -315,6 +319,7 @@ export async function runAgentsGenerate(
         status: "fail",
         configPath: "forge.yaml",
         generated: [],
+        skipped: [],
         errors: [msg],
       },
       exitCode: 1,
@@ -324,8 +329,8 @@ export async function runAgentsGenerate(
 
   const agentsMdPath = path.join(workspaceRoot, "AGENTS.md");
 
-  // Edit guard: refuse to overwrite a hand-written AGENTS.md
-  if (fs.existsSync(agentsMdPath)) {
+  // Edit guard: refuse to overwrite a hand-written AGENTS.md (skipped in dryRun)
+  if (!dryRun && fs.existsSync(agentsMdPath)) {
     const existing = fs.readFileSync(agentsMdPath, "utf8");
     if (!hasGeneratedMarker(existing)) {
       const msg = `AGENTS.md exists without a generated marker — refusing to overwrite a hand-written file. Delete or rename it first, then re-run forge.agents.generate.`;
@@ -338,6 +343,7 @@ export async function runAgentsGenerate(
           status: "fail",
           configPath: "forge.yaml",
           generated: [],
+          skipped: [],
           errors: [msg],
         },
         exitCode: 1,
@@ -457,10 +463,33 @@ export async function runAgentsGenerate(
   lines.push("");
 
   const content = lines.join("\n");
-  fs.writeFileSync(agentsMdPath, content, "utf8");
 
-  if (outputFormat === "pretty") {
-    logger.success(`Generated ${path.relative(workspaceRoot, agentsMdPath)}`);
+  const generated: string[] = ["AGENTS.md"];
+  const skipped: string[] = [];
+  const renderedFiles: { [relPath: string]: string } = {};
+
+  if (dryRun) {
+    renderedFiles["AGENTS.md"] = content;
+  } else {
+    fs.writeFileSync(agentsMdPath, content, "utf8");
+    if (outputFormat === "pretty") {
+      logger.success(`Generated ${path.relative(workspaceRoot, agentsMdPath)}`);
+    }
+  }
+
+  // Nested AGENTS.md generation (RFC-0611)
+  const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun);
+  generated.push(...nestedResult.generated);
+  skipped.push(...nestedResult.skipped);
+  Object.assign(renderedFiles, nestedResult.renderedFiles);
+
+  if (!dryRun && outputFormat === "pretty") {
+    for (const rel of nestedResult.generated) {
+      logger.success(`Generated ${rel}`);
+    }
+    for (const rel of nestedResult.skipped) {
+      logger.warn(`Skipped ${rel}`);
+    }
   }
 
   return {
@@ -468,10 +497,14 @@ export async function runAgentsGenerate(
       command: "forge.agents.generate",
       status: "pass",
       configPath: "forge.yaml",
-      generated: ["AGENTS.md"],
+      generated,
+      skipped,
       errors: [],
+      ...(dryRun ? { renderedFiles } : {}),
     },
     exitCode: 0,
-    summary: "forge.agents.generate: OK — AGENTS.md generated",
+    summary: dryRun
+      ? `forge.agents.generate: [dry-run] would generate ${generated.length} file(s), skip ${skipped.length}`
+      : `forge.agents.generate: OK — ${generated.length} file(s) generated, ${skipped.length} skipped`,
   };
 }
