@@ -49,8 +49,12 @@ test("forge.init creates forge.yaml with non-null forge-CLI bindings and null st
 
   const config = loadForgeConfig(tempDir);
   expect(config.bindings).toBeDefined();
-  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate {id} --json");
-  expect(config.bindings?.commands.validateAdr).toBe("pnpm exec forge adr.validate {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe(
+    "pnpm exec forge rfc.validate --id {id} --json",
+  );
+  expect(config.bindings?.commands.validateAdr).toBe(
+    "pnpm exec forge adr.validate --id {id} --json",
+  );
   expect(config.bindings?.commands.implementStamp).toBe(
     "pnpm exec forge rfc.implement.stamp --id {id} --implementation-commit {commit}",
   );

@@ -52,7 +52,7 @@ test("doctor passes on clean tree with no @warpgogol/* imports", async () => {
     "utf8",
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const autonomyCheck = result.data?.checks.find((c) => c.name === "autonomy-guard");
   expect(autonomyCheck?.status).toBe("pass");
   expect(result.data?.forbiddenImports).toEqual([]);
@@ -71,7 +71,7 @@ test("doctor detects @warpgogol/* import specifiers", async () => {
     "utf8",
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const autonomyCheck = result.data?.checks.find((c) => c.name === "autonomy-guard");
   expect(autonomyCheck?.status).toBe("fail");
   expect(result.data?.forbiddenImports.length).toBe(1);
@@ -91,7 +91,7 @@ test("doctor ignores @warpgogol/* in comments", async () => {
     "utf8",
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const autonomyCheck = result.data?.checks.find((c) => c.name === "autonomy-guard");
   expect(autonomyCheck?.status).toBe("pass");
   expect(result.data?.forbiddenImports).toEqual([]);

@@ -50,7 +50,7 @@ afterEach(async () => {
 test("forge.scaffold refuses non-empty directory", async () => {
   await writeFile(join(tempDir, "some-file.txt"), "hello", "utf8");
   const result = await runScaffoldProject(
-    { argv: [], args: [], flags: { profile: "astro-typescript-turborepo", name: "my-site" } },
+    { argv: [], flags: { profile: "astro-typescript-turborepo", name: "my-site" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -60,7 +60,7 @@ test("forge.scaffold refuses non-empty directory", async () => {
 
 test("forge.scaffold fails on missing --profile", async () => {
   const result = await runScaffoldProject(
-    { argv: [], args: [], flags: { name: "my-site" } },
+    { argv: [], flags: { name: "my-site" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -69,7 +69,7 @@ test("forge.scaffold fails on missing --profile", async () => {
 
 test("forge.scaffold fails on missing --name", async () => {
   const result = await runScaffoldProject(
-    { argv: [], args: [], flags: { profile: "astro-typescript-turborepo" } },
+    { argv: [], flags: { profile: "astro-typescript-turborepo" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -78,7 +78,7 @@ test("forge.scaffold fails on missing --name", async () => {
 
 test("forge.scaffold fails on non-kebab-case name", async () => {
   const result = await runScaffoldProject(
-    { argv: [], args: [], flags: { profile: "astro-typescript-turborepo", name: "MySite" } },
+    { argv: [], flags: { profile: "astro-typescript-turborepo", name: "MySite" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -87,7 +87,7 @@ test("forge.scaffold fails on non-kebab-case name", async () => {
 
 test("forge.scaffold fails on unknown profile", async () => {
   const result = await runScaffoldProject(
-    { argv: [], args: [], flags: { profile: "nonexistent", name: "my-site" } },
+    { argv: [], flags: { profile: "nonexistent", name: "my-site" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);

@@ -22,7 +22,6 @@ export type ForgeFlagValue = boolean | string | string[];
 
 export interface ForgeCommandInput {
   argv: string[];
-  args: string[];
   flags: Record<string, ForgeFlagValue>;
 }
 

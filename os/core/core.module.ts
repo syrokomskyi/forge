@@ -248,10 +248,15 @@ export const forgeCoreModule: ForgeModule = {
     registry.registerCommand({
       name: "forge.create",
       description:
-        "Create a new forge project in one command: scaffold + init + binding defaults. Usage: forge create <name> [--profile forge-shell] [--package-manager pnpm]",
+        "Create a new forge project in one command: scaffold + init + binding defaults. Usage: forge create --name <name> [--profile forge-shell] [--package-manager pnpm]",
       scope: "workspace",
       supportsAllSites: false,
       flags: {
+        name: {
+          kind: "string",
+          required: true,
+          description: "Project name.",
+        },
         profile: {
           kind: "string",
           description: "Stack profile id (default: forge-shell).",

@@ -87,9 +87,11 @@ export const forgeAdrModule: ForgeModule = {
       description:
         "Validate ADR frontmatter schema, required markdown sections, " +
         "referential integrity (supersedes/supersededBy), and id/filename consistency. " +
-        "Pass an ADR id to validate a single file, or run without arguments for all.",
+        "Pass --id to validate a single file, or run without arguments for all.",
       scope: "workspace",
-      flags: {},
+      flags: {
+        id: { kind: "string", description: "Target a single ADR by id (e.g. ADR-0003)." },
+      },
       reads: ["docs/adrs/**/*.md"],
       execute: runAdrValidate,
     });

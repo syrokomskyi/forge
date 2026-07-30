@@ -30,7 +30,7 @@ function makeContext(workspaceRoot: string): ForgeRuntimeContext {
 }
 
 function makeInput(flags: Record<string, ForgeFlagValue> = {}): ForgeCommandInput {
-  return { argv: [], args: [], flags };
+  return { argv: [], flags };
 }
 
 describe("runNamingConventionLint", () => {

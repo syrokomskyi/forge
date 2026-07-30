@@ -112,10 +112,11 @@ export const forgeRfcModule: ForgeModule = {
         "Validate RFC frontmatter schema, required markdown sections, " +
         "referential integrity (supersedes/supersededBy), date consistency, " +
         "and RFC command lifecycle metadata (RFC-CMD-*). " +
-        "Pass an RFC id to validate a single file, or run without arguments for all.",
+        "Pass --id to validate a single file, or run without arguments for all.",
       scope: "workspace",
-      // RFC-0260: no command-specific flags — only the positional RFC id and universal flags.
-      flags: {},
+      flags: {
+        id: { kind: "string", description: "Target a single RFC by id (e.g. RFC-0609)." },
+      },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcValidate,
     });
@@ -127,8 +128,9 @@ export const forgeRfcModule: ForgeModule = {
         "Validate RFC commands.proposed/added/changed/removed lifecycle metadata " +
         "against live registered commands. Emits RFC-CMD-* diagnostics.",
       scope: "workspace",
-      // RFC-0260: no command-specific flags — only the positional RFC id and universal flags.
-      flags: {},
+      flags: {
+        id: { kind: "string", description: "Target a single RFC by id (e.g. RFC-0609)." },
+      },
       reads: ["docs/rfcs/**/*.md"],
       cacheable: false,
       execute: runRfcCommandLifecycleValidate,
@@ -191,10 +193,11 @@ export const forgeRfcModule: ForgeModule = {
       name: "rfc.graph",
       description:
         "Print one RFC's relationship neighbours (supersedes/supersededBy/amends/" +
-        "amendedBy/related). Pass the id: rfc.graph RFC-0152.",
+        "amendedBy/related). Pass --id RFC-0152.",
       scope: "workspace",
-      // RFC-0260: no command-specific flags — only the positional RFC id and universal flags.
-      flags: {},
+      flags: {
+        id: { kind: "string", description: "Target a single RFC by id (e.g. RFC-0152)." },
+      },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcGraph,
     });
@@ -360,11 +363,13 @@ export const forgeRfcModule: ForgeModule = {
       name: "rfc.pipeline.status",
       description:
         "Report the pipeline status of RFCs — which steps (audit, enhance, plan, implement) " +
-        "are complete or missing. Pass an RFC id to check a single file, or run without " +
+        "are complete or missing. Pass --id to check a single file, or run without " +
         "arguments for all. Read-only — does not mutate files. Skills keep their own " +
         "prerequisite checks; this command is for agents and humans to inspect pipeline state.",
       scope: "workspace",
-      flags: {},
+      flags: {
+        id: { kind: "string", description: "Target a single RFC by id (e.g. RFC-0609)." },
+      },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcPipelineStatus,
     });

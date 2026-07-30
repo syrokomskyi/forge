@@ -59,7 +59,7 @@ export async function runSessionValidate(
   const { workspaceRoot, logger, outputFormat } = context;
   const sessionDirPath = path.join(workspaceRoot, SESSION_DIR);
 
-  const targetId = input.args[0] as string | undefined;
+  const targetId = input.flags["id"] as string | undefined;
 
   const allFiles = await listSessionFiles(sessionDirPath);
   const filesToValidate = targetId

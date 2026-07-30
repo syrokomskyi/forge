@@ -50,7 +50,7 @@ export async function runAdrValidate(
   const { workspaceRoot, logger, outputFormat } = context;
   const adrDirPath = path.join(workspaceRoot, ADR_DIR);
 
-  const targetId = input.args[0] as string | undefined;
+  const targetId = input.flags["id"] as string | undefined;
 
   const allFiles = await listAdrFiles(adrDirPath);
   const filesToValidate = targetId

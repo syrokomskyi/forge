@@ -76,8 +76,8 @@ test("FORGE_CLI_BINDING_DEFAULTS has 5 entries with correct keys", () => {
 
 test("defaultForgeConfig with pnpm produces forge-CLI bindings with pnpm exec prefix", () => {
   const config = defaultForgeConfig("test", "pnpm");
-  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate {id} --json");
-  expect(config.bindings?.commands.validateAdr).toBe("pnpm exec forge adr.validate {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate --id {id} --json");
+  expect(config.bindings?.commands.validateAdr).toBe("pnpm exec forge adr.validate --id {id} --json");
   expect(config.bindings?.commands.implementStamp).toBe(
     "pnpm exec forge rfc.implement.stamp --id {id} --implementation-commit {commit}",
   );
@@ -88,7 +88,7 @@ test("defaultForgeConfig with pnpm produces forge-CLI bindings with pnpm exec pr
 
 test("defaultForgeConfig with npm produces npx-prefixed bindings", () => {
   const config = defaultForgeConfig("test", "npm");
-  expect(config.bindings?.commands.validateRfc).toBe("npx forge rfc.validate {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe("npx forge rfc.validate --id {id} --json");
   expect(config.bindings?.commands.implementStamp).toBe(
     "npx forge rfc.implement.stamp --id {id} --implementation-commit {commit}",
   );
@@ -96,13 +96,13 @@ test("defaultForgeConfig with npm produces npx-prefixed bindings", () => {
 
 test("defaultForgeConfig with bun produces bunx-prefixed bindings", () => {
   const config = defaultForgeConfig("test", "bun");
-  expect(config.bindings?.commands.validateRfc).toBe("bunx forge rfc.validate {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe("bunx forge rfc.validate --id {id} --json");
 });
 
 test("defaultForgeConfig without packageManager defaults to pnpm", () => {
   const config = defaultForgeConfig("test");
   expect(config.project.packageManager).toBe("pnpm");
-  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate {id} --json");
+  expect(config.bindings?.commands.validateRfc).toBe("pnpm exec forge rfc.validate --id {id} --json");
 });
 
 test("defaultForgeConfig keeps stack-dependent bindings null", () => {
@@ -223,7 +223,7 @@ const configWithBindings: ForgeConfig = {
   bindings: {
     schema: "forge/bindings@1",
     commands: {
-      validateRfc: "pnpm exec site-kernel run rfc.validate {id} --json",
+      validateRfc: "pnpm exec site-kernel run rfc.validate --id {id} --json",
       validateAdr: null,
       implementStamp: null,
       typecheck: "pnpm --filter {workspace} run build:check",
@@ -256,7 +256,7 @@ test("forgeBindingsSchema rejects missing schema field", () => {
 
 test("resolveBinding returns a string for a valid key", () => {
   const result = resolveBinding(configWithBindings, "commands.validateRfc");
-  expect(result).toBe("pnpm exec site-kernel run rfc.validate {id} --json");
+  expect(result).toBe("pnpm exec site-kernel run rfc.validate --id {id} --json");
 });
 
 test("resolveBinding returns null for an explicitly null binding", () => {
@@ -312,7 +312,7 @@ paths:
 bindings:
   schema: forge/bindings@1
   commands:
-    validateRfc: "pnpm exec site-kernel run rfc.validate {id} --json"
+    validateRfc: "pnpm exec site-kernel run rfc.validate --id {id} --json"
     validateAdr: null
     typecheck: "pnpm --filter {workspace} run build:check"
     test: "pnpm --filter {workspace} run test"
@@ -330,7 +330,7 @@ bindings:
   const config = loadForgeConfig(tempDir);
   expect(config.bindings).toBeDefined();
   expect(config.bindings?.commands.validateRfc).toBe(
-    "pnpm exec site-kernel run rfc.validate {id} --json",
+    "pnpm exec site-kernel run rfc.validate --id {id} --json",
   );
   expect(config.bindings?.paths.invariantsFile).toBe("docs/architecture-dna.md");
 });

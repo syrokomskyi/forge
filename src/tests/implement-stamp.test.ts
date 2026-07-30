@@ -29,7 +29,6 @@ function makeContext(workspaceRoot: string): ForgeRuntimeContext {
 function makeInput(id: string, commit: string, dryRun?: boolean): ForgeCommandInput {
   return {
     argv: [],
-    args: [],
     flags: {
       id,
       "implementation-commit": commit,

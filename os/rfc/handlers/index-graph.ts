@@ -98,9 +98,9 @@ export async function runRfcGraph(
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = path.join(workspaceRoot, RFC_DIR);
 
-  const targetId = input.args[0] as string | undefined;
+  const targetId = input.flags["id"] as string | undefined;
   if (!targetId) {
-    throw new Error("rfc.graph requires an RFC id, e.g. site-kernel run rfc.graph -- RFC-0152");
+    throw new Error("rfc.graph requires an RFC id, e.g. site-kernel run rfc.graph --id RFC-0152");
   }
 
   const files = await listRfcFiles(rfcDirPath);

@@ -49,7 +49,7 @@ afterEach(async () => {
 
 test("forge create my-project creates dir with forge.yaml and docs dirs", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    { argv: ["my-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -70,7 +70,7 @@ test("forge create refuses non-empty target directory", async () => {
   await writeFile(join(targetDir, "some-file.txt"), "hello", "utf8");
 
   const result = await runCreate(
-    { argv: ["existing-project"], args: ["existing-project"], flags: {} },
+    { argv: ["existing-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -80,7 +80,7 @@ test("forge create refuses non-empty target directory", async () => {
 
 test("forge create fails on non-kebab-case name", async () => {
   const result = await runCreate(
-    { argv: ["MyProject"], args: ["MyProject"], flags: {} },
+    { argv: ["MyProject"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -89,7 +89,7 @@ test("forge create fails on non-kebab-case name", async () => {
 });
 
 test("forge create fails on missing name", async () => {
-  const result = await runCreate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runCreate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
   expect(result.data?.errors[0]).toContain("Missing required");
@@ -97,7 +97,7 @@ test("forge create fails on missing name", async () => {
 
 test("forge create uses forge-shell profile by default", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    { argv: ["my-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -106,7 +106,7 @@ test("forge create uses forge-shell profile by default", async () => {
 
 test("forge create --package-manager npm writes npm into forge.yaml with npx bindings", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: { "package-manager": "npm" } },
+    { argv: ["my-project"], flags: { "package-manager": "npm" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -119,7 +119,7 @@ test("forge create --package-manager npm writes npm into forge.yaml with npx bin
 
 test("forge create --package-manager pnpm writes pnpm into forge.yaml", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: { "package-manager": "pnpm" } },
+    { argv: ["my-project"], flags: { "package-manager": "pnpm" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -130,7 +130,7 @@ test("forge create --package-manager pnpm writes pnpm into forge.yaml", async ()
 });
 
 test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async () => {
-  await runCreate({ argv: ["my-project"], args: ["my-project"], flags: {} }, makeContext(tempDir));
+  await runCreate({ argv: ["my-project"], flags: {} }, makeContext(tempDir));
 
   const config = loadForgeConfig(join(tempDir, "my-project"));
   expect(config.bindings?.commands.validateRfc).not.toBeNull();
@@ -144,7 +144,7 @@ test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async
 });
 
 test("forge.yaml has forge.syncedVersion set", async () => {
-  await runCreate({ argv: ["my-project"], args: ["my-project"], flags: {} }, makeContext(tempDir));
+  await runCreate({ argv: ["my-project"], flags: {} }, makeContext(tempDir));
 
   const config = loadForgeConfig(join(tempDir, "my-project"));
   expect(config.forge?.syncedVersion).toBeTruthy();
@@ -152,7 +152,7 @@ test("forge.yaml has forge.syncedVersion set", async () => {
 
 test("result includes nextSteps with Windsurf and forge-bootstrap", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    { argv: ["my-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -163,7 +163,7 @@ test("result includes nextSteps with Windsurf and forge-bootstrap", async () => 
 
 test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    { argv: ["my-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -180,7 +180,7 @@ test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async 
 
 test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance (RFC-0550)", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    { argv: ["my-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -198,7 +198,7 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
 
 test("forge create root package.json has scripts and replaced project name", async () => {
   const result = await runCreate(
-    { argv: ["my-project"], args: ["my-project"], flags: {} },
+    { argv: ["my-project"], flags: {} },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);

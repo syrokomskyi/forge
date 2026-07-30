@@ -187,7 +187,7 @@ export async function runRfcCommandLifecycleValidate(
 ): Promise<ForgeCommandResult<RfcCommandLifecycleValidationResult>> {
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = path.join(workspaceRoot, RFC_DIR);
-  const targetId = input.args[0] as string | undefined;
+  const targetId = input.flags["id"] as string | undefined;
   const allFiles = await listRfcFiles(rfcDirPath);
   const filesToValidate = targetId
     ? allFiles.filter((f) => rfcFileMatchesId(f, targetId))
