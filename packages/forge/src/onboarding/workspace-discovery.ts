@@ -16,6 +16,7 @@ workspace type (app, service, package) by content markers.</purpose>
 
 import fs from "node:fs";
 import path from "node:path";
+import { hasGeneratedMarker } from "../utils/index.ts";
 
 export type WorkspaceType = "app" | "service" | "package";
 
@@ -84,7 +85,7 @@ export function discoverWorkspaces(workspaceRoot: string): WorkspaceDir[] {
         if (hasAgentsMd) {
           try {
             const content = fs.readFileSync(agentsMdPath, "utf8");
-            isGenerated = content.includes("GENERATED");
+            isGenerated = hasGeneratedMarker(content);
           } catch {
             // unreadable — treat as not generated
           }

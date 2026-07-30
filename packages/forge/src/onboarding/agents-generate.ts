@@ -21,7 +21,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { loadForgeConfig, resolveBinding } from "../config/forge-config.ts";
 import { FORGE_SKILLS } from "../registry.ts";
-import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker } from "../utils/index.ts";
+import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
 import { buildExtendedBehavioralLayer } from "./extended-behavioral-layer.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import type {
@@ -471,7 +471,7 @@ export async function runAgentsGenerate(
   if (dryRun) {
     renderedFiles["AGENTS.md"] = content;
   } else {
-    fs.writeFileSync(agentsMdPath, content, "utf8");
+    await writeFileIfChanged(agentsMdPath, content);
     if (outputFormat === "pretty") {
       logger.success(`Generated ${path.relative(workspaceRoot, agentsMdPath)}`);
     }
