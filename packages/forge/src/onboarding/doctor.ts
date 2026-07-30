@@ -14,6 +14,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0524: added stale knowledge file detection — compares source and .agents/ copies.</item>
   <item>RFC-0539: extended knowledge file check to iterate pack skills via discoverPackSkills. Added pack-skills check for stale/missing copies and skillPacks config validation.</item>
   <item>RFC-0540: added defaultable-binding-null notices for forge-CLI-backed bindings.</item>
+  <item>RFC-0611: added nested AGENTS.md checks — missing, stale (dryRun comparison), hand-written improvement.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +27,8 @@ import type {
 } from "../types.ts";
 import { resolveForgeRoot, loadForgeConfig, resolveBinding, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
+import { discoverWorkspaces } from "./workspace-discovery.ts";
+import { buildNestedAgentsMd } from "./nested-agents-templates.ts";
 
 interface DoctorCheck {
   name: string;
@@ -334,6 +337,94 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Nested AGENTS.md diagnostics (RFC-0611)
+// ---------------------------------------------------------------------------
+
+async function checkNestedAgentsMd(workspaceRoot: string): Promise<DoctorCheck> {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return {
+      name: "nested-AGENTS.md",
+      status: "pass",
+      message: "forge.yaml not loadable — nested AGENTS.md check skipped",
+    };
+  }
+
+  const workspaces = discoverWorkspaces(workspaceRoot);
+
+  if (workspaces.length === 0) {
+    return {
+      name: "nested-AGENTS.md",
+      status: "pass",
+      message: "no workspace directories found",
+    };
+  }
+
+  const issues: string[] = [];
+  let missing = 0;
+  let stale = 0;
+  let handwritten = 0;
+
+  for (const ws of workspaces) {
+    if (!ws.hasAgentsMd) {
+      missing++;
+      issues.push(`${ws.path}/AGENTS.md missing`);
+      continue;
+    }
+
+    if (!ws.isGenerated) {
+      handwritten++;
+      const suggestions: string[] = [];
+      try {
+        const content = await readFile(join(workspaceRoot, ws.path, "AGENTS.md"), "utf8");
+        if (!content.includes("AGENTS.md")) {
+          suggestions.push("reference root AGENTS.md");
+        }
+      } catch {
+        // unreadable — skip
+      }
+      if (suggestions.length > 0) {
+        issues.push(`${ws.path}/AGENTS.md hand-written — consider: ${suggestions.join(", ")}`);
+      }
+      continue;
+    }
+
+    // Stale check: compare in-memory render to committed file
+    try {
+      const expected = buildNestedAgentsMd(ws, config);
+      const actual = await readFile(join(workspaceRoot, ws.path, "AGENTS.md"), "utf8");
+      if (expected !== actual) {
+        stale++;
+        issues.push(`${ws.path}/AGENTS.md stale — run 'forge agents generate'`);
+      }
+    } catch {
+      // unreadable — skip
+    }
+  }
+
+  if (issues.length === 0) {
+    return {
+      name: "nested-AGENTS.md",
+      status: "pass",
+      message: `${workspaces.length} workspace(s) — all AGENTS.md in sync`,
+    };
+  }
+
+  const parts: string[] = [];
+  if (missing > 0) parts.push(`${missing} missing`);
+  if (stale > 0) parts.push(`${stale} stale`);
+  if (handwritten > 0) parts.push(`${handwritten} hand-written`);
+
+  return {
+    name: "nested-AGENTS.md",
+    status: stale > 0 ? "warn" : "pass",
+    message: `${parts.join(", ")} — ${issues.slice(0, 3).join("; ")}${issues.length > 3 ? ` (+${issues.length - 3} more)` : ""}`,
+  };
+}
+
 export async function runDoctor(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -436,6 +527,10 @@ export async function runDoctor(
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
   checks.push(packCheck);
+
+  // RFC-0611: Check nested AGENTS.md — missing, stale, hand-written
+  const nestedCheck = await checkNestedAgentsMd(workspaceRoot);
+  checks.push(nestedCheck);
 
   const allPass = checks.every((c) => c.status === "pass");
   const hasFails = checks.some((c) => c.status === "fail");

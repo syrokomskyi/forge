@@ -11,6 +11,7 @@ overwriting operator-set values, updates forge.syncedVersion, and runs forge.doc
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0543: initial forge.upgrade handler — 7-step additive sync flow.</item>
+  <item>RFC-0611: added nested AGENTS.md generation after skill sync.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +27,7 @@ import {
   type ForgeBindings,
 } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
+import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import type { SkippedSkill } from "./init.ts";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeNextStep, ForgeRuntimeContext } from "../types.ts";
 
@@ -37,6 +39,7 @@ export interface UpgradeResult {
   skillsUpdated: string[];
   bindingsAdded: { key: string; value: string }[];
   skippedSkills: SkippedSkill[];
+  nestedAgentsGenerated: string[];
   doctorReport: unknown;
 }
 
@@ -217,6 +220,7 @@ export async function runUpgrade(
         skillsUpdated: [],
         bindingsAdded: [],
         skippedSkills: [],
+        nestedAgentsGenerated: [],
         doctorReport: null,
       },
       nextSteps: [{ action: "Run 'forge create' to create forge.yaml first", kind: "required" }],
@@ -241,6 +245,7 @@ export async function runUpgrade(
         skillsUpdated: [],
         bindingsAdded: [],
         skippedSkills: [],
+        nestedAgentsGenerated: [],
         doctorReport: null,
       },
       nextSteps: [
@@ -265,6 +270,7 @@ export async function runUpgrade(
         skillsUpdated: [],
         bindingsAdded: [],
         skippedSkills: [],
+        nestedAgentsGenerated: [],
         doctorReport: null,
       },
       nextSteps: [
@@ -289,6 +295,7 @@ export async function runUpgrade(
         skillsUpdated: [],
         bindingsAdded: [],
         skippedSkills: [],
+        nestedAgentsGenerated: [],
         doctorReport: null,
       },
       nextSteps,
@@ -321,6 +328,17 @@ export async function runUpgrade(
   // Step 5: Update forge.syncedVersion
   if (!isDryRun) {
     updateSyncedVersion(workspaceRoot, config, toVersion, false);
+  }
+
+  // Step 5b: Generate nested AGENTS.md (RFC-0611)
+  let nestedAgentsGenerated: string[] = [];
+  if (!isDryRun) {
+    try {
+      const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, false);
+      nestedAgentsGenerated = nestedResult.generated;
+    } catch {
+      // Nested generation failure is non-fatal
+    }
   }
 
   // Step 6: Run doctor
@@ -360,6 +378,7 @@ export async function runUpgrade(
       skillsUpdated,
       bindingsAdded,
       skippedSkills: packResult.skipped,
+      nestedAgentsGenerated,
       doctorReport,
     },
     nextSteps,
