@@ -107,8 +107,7 @@ class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
 // Flag parsing
 // ---------------------------------------------------------------------------
 
-function parseArgs(argv: string[]): { args: string[]; flags: Record<string, ForgeFlagValue> } {
-  const args: string[] = [];
+function parseArgs(argv: string[]): { flags: Record<string, ForgeFlagValue> } {
   const flags: Record<string, ForgeFlagValue> = {};
 
   for (let i = 0; i < argv.length; i++) {
@@ -130,11 +129,11 @@ function parseArgs(argv: string[]): { args: string[]; flags: Record<string, Forg
         }
       }
     } else {
-      args.push(arg);
+      // RFC-0609: positional arguments are no longer collected; ignore them
     }
   }
 
-  return { args, flags };
+  return { flags };
 }
 
 // ---------------------------------------------------------------------------
@@ -246,7 +245,7 @@ async function main(): Promise<void> {
 
   const commandName = argv[0];
   const rest = argv.slice(1);
-  const { args, flags } = parseArgs(rest);
+  const { flags } = parseArgs(rest);
 
   const registry = await buildRegistry();
   const command = registry.getCommand(commandName);
@@ -261,7 +260,7 @@ async function main(): Promise<void> {
   const outputFormat = flags["json"] === true ? "json" : "pretty";
   const dryRun = flags["dry-run"] === true;
 
-  const input: ForgeCommandInput = { argv: rest, args, flags };
+  const input: ForgeCommandInput = { argv: rest, flags };
   const context: ForgeRuntimeContext = {
     workspaceRoot,
     forgeRoot: resolveForgeRootFromCli(),

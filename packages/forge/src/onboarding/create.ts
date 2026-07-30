@@ -48,7 +48,7 @@ export async function runCreate(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<CreateCommandResult>> {
   const { logger, outputFormat } = context;
-  const name = input.args[0];
+  const name = input.flags["name"] as string | undefined;
   const profile = (input.flags["profile"] as string | undefined) ?? "forge-shell";
   const packageManager = (input.flags["package-manager"] as string | undefined) ?? "pnpm";
 
@@ -64,15 +64,15 @@ export async function runCreate(
 
   // 1. Validate name
   if (!name) {
-    errors.push("Missing required positional argument: <name>");
+    errors.push("Missing required flag: --name <name>");
     if (outputFormat === "pretty") {
-      logger.error("Missing required positional argument: <name>");
+      logger.error("Missing required flag: --name <name>");
     }
     return {
       data: { command: "forge.create", status: "fail", projectDir: "", profile, filesCreated: [], errors },
       nextSteps: failNextSteps,
       exitCode: 1,
-      summary: "forge.create: failed — missing <name> argument",
+      summary: "forge.create: failed — missing --name flag",
     };
   }
 
@@ -136,7 +136,6 @@ export async function runCreate(
   // 6. Run forge.scaffold inside target dir
   const scaffoldInput: ForgeCommandInput = {
     argv: [],
-    args: [],
     flags: { profile, name },
   };
   const scaffoldResult = await runScaffoldProject(scaffoldInput, childContext);
@@ -160,7 +159,6 @@ export async function runCreate(
   // 7. Run forge.init inside target dir
   const initInput: ForgeCommandInput = {
     argv: [],
-    args: [],
     flags: {},
   };
   const initResult: InitResult = runInit(initInput, childContext);
@@ -202,7 +200,6 @@ export async function runCreate(
   try {
     const agentsInput: ForgeCommandInput = {
       argv: [],
-      args: [],
       flags: {},
     };
     const agentsResult = await runAgentsGenerate(agentsInput, childContext);

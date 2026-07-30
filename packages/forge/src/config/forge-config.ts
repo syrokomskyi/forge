@@ -185,8 +185,8 @@ export interface ForgeCliBindingDefault {
 }
 
 export const FORGE_CLI_BINDING_DEFAULTS: ForgeCliBindingDefault[] = [
-  { key: "commands.validateRfc", template: "forge rfc.validate {id} --json" },
-  { key: "commands.validateAdr", template: "forge adr.validate {id} --json" },
+  { key: "commands.validateRfc", template: "forge rfc.validate --id {id} --json" },
+  { key: "commands.validateAdr", template: "forge adr.validate --id {id} --json" },
   {
     key: "commands.implementStamp",
     template: "forge rfc.implement.stamp --id {id} --implementation-commit {commit}",

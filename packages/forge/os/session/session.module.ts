@@ -82,11 +82,13 @@ export const forgeSessionModule: ForgeModule = {
       description:
         "Validate session frontmatter schema (SES-01), id-filename match (SES-02), " +
         "RFC-id existence (SES-03), raw file hygiene (SES-04), and non-markdown " +
-        "file detection (SES-05). Pass a session id to validate a single file, " +
+        "file detection (SES-05). Pass --id to validate a single file, " +
         "or run without arguments for all. On-demand only — not integrated into " +
         "build.check.",
       scope: "workspace",
-      flags: {},
+      flags: {
+        id: { kind: "string", description: "Target a single session by id." },
+      },
       reads: ["docs/sessions/**/*.md", "docs/rfcs/**/*.md"],
       execute: runSessionValidate,
     });
@@ -113,7 +115,8 @@ export const forgeSessionModule: ForgeModule = {
         },
         type: {
           kind: "string",
-          description: "Filter by session type (mission, grilling, implementation, review, fix, freeform).",
+          description:
+            "Filter by session type (mission, grilling, implementation, review, fix, freeform).",
         },
       },
       reads: ["docs/sessions/**/*.md"],

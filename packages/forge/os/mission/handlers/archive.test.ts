@@ -24,7 +24,6 @@ function makeContext(workspaceRoot: string): ForgeRuntimeContext {
 function makeInput(flags: Record<string, unknown> = {}): ForgeCommandInput {
   return {
     commandName: "mission.archive",
-    args: [],
     flags,
   } as unknown as ForgeCommandInput;
 }

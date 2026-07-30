@@ -87,7 +87,7 @@ async function makeForgeYaml(dir: string): Promise<void> {
 
 test("agents-generate produces AGENTS.md with behavioral layer markers", async () => {
   await makeForgeYaml(tempDir);
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -97,7 +97,7 @@ test("agents-generate produces AGENTS.md with behavioral layer markers", async (
 
 test("agents-generate includes intent-to-skill routing table", async () => {
   await makeForgeYaml(tempDir);
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -109,7 +109,7 @@ test("agents-generate includes intent-to-skill routing table", async () => {
 
 test("agents-generate includes fixed policy text sections", async () => {
   await makeForgeYaml(tempDir);
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -123,7 +123,7 @@ test("agents-generate includes fixed policy text sections", async () => {
 test("agents-generate defaults to business register (no extended layer)", async () => {
   await makeForgeYaml(tempDir);
   // No PREFERENCES.md → defaults to business
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -139,7 +139,7 @@ test("agents-generate includes extended layer when register is creative", async 
     "utf8",
   );
 
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -155,7 +155,7 @@ test("agents-generate extended layer includes all nine sections when creative", 
     "utf8",
   );
 
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -178,7 +178,7 @@ test("agents-generate extended layer includes key policy phrases when creative",
     "utf8",
   );
 
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -202,7 +202,7 @@ test("agents-generate extended layer is absent when register is business", async
     "utf8",
   );
 
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
@@ -215,10 +215,10 @@ test("agents-generate is idempotent — running twice produces the same content"
   await makeForgeYaml(tempDir);
 
   const ctx = makeContext(tempDir);
-  await runAgentsGenerate({ argv: [], args: [], flags: {} }, ctx);
+  await runAgentsGenerate({ argv: [], flags: {} }, ctx);
   const first = await readFile(join(tempDir, "AGENTS.md"), "utf8");
 
-  await runAgentsGenerate({ argv: [], args: [], flags: {} }, ctx);
+  await runAgentsGenerate({ argv: [], flags: {} }, ctx);
   const second = await readFile(join(tempDir, "AGENTS.md"), "utf8");
 
   expect(second).toBe(first);
@@ -228,7 +228,7 @@ test("agents-generate refuses to overwrite hand-written AGENTS.md", async () => 
   await makeForgeYaml(tempDir);
   await writeFile(join(tempDir, "AGENTS.md"), "# Hand-written\nNo marker.\n", "utf8");
 
-  const result = await runAgentsGenerate({ argv: [], args: [], flags: {} }, makeContext(tempDir));
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
 });

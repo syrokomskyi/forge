@@ -94,7 +94,7 @@ bindings:
 `,
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const notices = result.data?.bindings?.notices ?? [];
   expect(notices).toHaveLength(5);
   const keys = notices.map((n) => n.key);
@@ -145,7 +145,7 @@ bindings:
 `,
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const notices = result.data?.bindings?.notices ?? [];
   expect(notices).toHaveLength(0);
 });
@@ -169,8 +169,8 @@ paths:
 bindings:
   schema: forge/bindings@1
   commands:
-    validateRfc: "npx forge rfc.validate {id} --json"
-    validateAdr: "npx forge adr.validate {id} --json"
+    validateRfc: "npx forge rfc.validate --id {id} --json"
+    validateAdr: "npx forge adr.validate --id {id} --json"
     implementStamp: "npx forge rfc.implement.stamp --id {id} --implementation-commit {commit}"
     typecheck: null
     test: null
@@ -186,7 +186,7 @@ bindings:
 `,
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const notices = result.data?.bindings?.notices ?? [];
   expect(notices).toHaveLength(0);
 });
@@ -227,7 +227,7 @@ bindings:
 `,
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const notices = result.data?.bindings?.notices ?? [];
   expect(notices.length).toBeGreaterThan(0);
   for (const notice of notices) {
@@ -256,8 +256,8 @@ paths:
 bindings:
   schema: forge/bindings@1
   commands:
-    validateRfc: "pnpm exec forge rfc.validate {id} --json"
-    validateAdr: "pnpm exec forge adr.validate {id} --json"
+    validateRfc: "pnpm exec forge rfc.validate --id {id} --json"
+    validateAdr: "pnpm exec forge adr.validate --id {id} --json"
     implementStamp: "pnpm exec forge rfc.implement.stamp --id {id} --implementation-commit {commit}"
     typecheck: null
     test: null
@@ -273,7 +273,7 @@ bindings:
 `,
   );
 
-  const result = await runDoctor({ argv: [], args: [], flags: {} }, mockContext(tempDir));
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const checks = result.data?.checks ?? [];
   const skillsCheck = checks.find((c) => c.name === ".agents/skills/");
   expect(skillsCheck?.status).toBe("pass");

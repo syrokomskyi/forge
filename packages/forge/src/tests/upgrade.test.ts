@@ -125,7 +125,7 @@ test("forge.upgrade --dry-run writes no files", async () => {
   await setupConsumerForgeYaml(tempDir, null);
 
   const result = await runUpgrade(
-    { argv: [], args: [], flags: { "dry-run": true } },
+    { argv: [], flags: { "dry-run": true } },
     makeContext(tempDir, true),
   );
 
@@ -142,7 +142,7 @@ test("forge.upgrade with syncedVersion: null performs full sync", async () => {
   await setupForgeSource(tempDir, "0.2.0");
   await setupConsumerForgeYaml(tempDir, null);
 
-  const result = await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.status).toBe("pass");
   expect(result.data?.fromVersion).toBe("never-synced");
@@ -158,7 +158,7 @@ test("forge.upgrade with syncedVersion matching installed version returns noop",
   await setupForgeSource(tempDir, "0.2.0");
   await setupConsumerForgeYaml(tempDir, "0.2.0");
 
-  const result = await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.status).toBe("noop");
   expect(result.data?.fromVersion).toBe("0.2.0");
@@ -173,7 +173,7 @@ test("forge.upgrade never overwrites a non-null operator-set binding", async () 
     validateRfc: "my-custom-validate-command",
   });
 
-  const result = await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.status).toBe("pass");
 
@@ -183,7 +183,7 @@ test("forge.upgrade never overwrites a non-null operator-set binding", async () 
 
   // Other null bindings should have been filled with defaults
   const runner = resolvePmRunner("pnpm");
-  expect(config.bindings?.commands.validateAdr).toBe(`${runner} forge adr.validate {id} --json`);
+  expect(config.bindings?.commands.validateAdr).toBe(`${runner} forge adr.validate --id {id} --json`);
   expect(config.bindings?.commands.implementStamp).toBe(
     `${runner} forge rfc.implement.stamp --id {id} --implementation-commit {commit}`,
   );
@@ -203,7 +203,7 @@ test("forge.upgrade never overwrites a non-null operator-set binding", async () 
 test("forge.upgrade refuses when forge.yaml is missing", async () => {
   await setupForgeSource(tempDir, "0.2.0");
 
-  const result = await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.status).toBe("fail");
   expect(result.exitCode).toBe(1);
@@ -214,7 +214,7 @@ test("forge.upgrade adds all FORGE_CLI_BINDING_DEFAULTS keys when all are null",
   await setupForgeSource(tempDir, "0.2.0");
   await setupConsumerForgeYaml(tempDir, null);
 
-  const result = await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.bindingsAdded.length).toBe(FORGE_CLI_BINDING_DEFAULTS.length);
 });
@@ -232,7 +232,7 @@ test("forge.upgrade syncs skills to .agents/skills/", async () => {
   await setupForgeSource(tempDir, "0.2.0");
   await setupConsumerForgeYaml(tempDir, null);
 
-  await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   // Check that fo-idea skill was copied
   const skillPath = join(tempDir, ".agents", "skills", "fo-idea", "SKILL.md");
@@ -288,7 +288,7 @@ bindings:
 `;
   await writeFile(join(tempDir, "forge.yaml"), yaml, "utf8");
 
-  const result = await runUpgrade({ argv: [], args: [], flags: {} }, makeContext(tempDir, false));
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.status).toBe("pass");
 

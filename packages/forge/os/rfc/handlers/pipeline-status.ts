@@ -84,7 +84,7 @@ export async function runRfcPipelineStatus(
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = path.join(workspaceRoot, RFC_DIR);
 
-  const targetId = input.args[0] as string | undefined;
+  const targetId = input.flags["id"] as string | undefined;
 
   let files = await listRfcFiles(rfcDirPath);
   if (targetId) {
