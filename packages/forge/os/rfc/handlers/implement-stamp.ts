@@ -55,8 +55,8 @@ function execGit(workspaceRoot: string, args: string[]): Promise<string> {
   });
 }
 
-async function isCleanWorkingTree(workspaceRoot: string): Promise<boolean> {
-  const status = await execGit(workspaceRoot, ["status", "--porcelain"]);
+async function isRfcFileClean(workspaceRoot: string, rfcRelPath: string): Promise<boolean> {
+  const status = await execGit(workspaceRoot, ["status", "--porcelain", "--", rfcRelPath]);
   return status.length === 0;
 }
 
@@ -257,12 +257,16 @@ export async function runRfcImplementStamp(
     });
   }
 
-  // ── RFC-IMP-04: clean working tree ────────────────────────────────────────
-  const cleanTree = await isCleanWorkingTree(workspaceRoot);
-  if (!cleanTree) {
+  // ── RFC-IMP-04: RFC file must be clean (no uncommitted edits to the target RFC) ──
+  // Only the RFC file being stamped is checked, not the entire working tree.
+  // This allows multi-agent workflows where other agents may have uncommitted
+  // changes in unrelated files.
+  const rfcRelPath = join(RFC_DIR, targetFile);
+  const rfcFileClean = await isRfcFileClean(workspaceRoot, rfcRelPath);
+  if (!rfcFileClean) {
     violations.push({
       rule: "RFC-IMP-04",
-      message: "Working tree is dirty. Commit all implementation changes before stamping.",
+      message: `RFC file ${rfcRelPath} has uncommitted changes. Commit the RFC file before stamping.`,
     });
   }
 
