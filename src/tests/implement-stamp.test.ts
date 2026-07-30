@@ -156,13 +156,13 @@ describe("rfc.implement.stamp", () => {
     expect(rules).toContain("RFC-IMP-02");
   });
 
-  it("rejects a dirty working tree (RFC-IMP-04)", async () => {
+  it("rejects an RFC file with uncommitted changes (RFC-IMP-04)", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
     const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
 
-    // Create an uncommitted file to make the tree dirty
-    await writeFile(join(workspaceRoot, "dirty.txt"), "dirty");
+    // Make an uncommitted edit to the RFC file itself
+    await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true) + "\nextra\n");
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0001", commit),
@@ -173,6 +173,26 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.status).toBe("fail");
     const rules = result.data?.violations.map((v) => v.rule);
     expect(rules).toContain("RFC-IMP-04");
+  });
+
+  it("ignores uncommitted changes in unrelated files (multi-agent)", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
+    await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+
+    // Create uncommitted files from other agents — must NOT block stamping
+    await writeFile(join(workspaceRoot, "dirty.txt"), "dirty");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(join(workspaceRoot, "src", "other-agent.ts"), "// other agent\n");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0001", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    expect(result.data?.violations).toEqual([]);
   });
 
   it("rejects a commit that does not reference the RFC (RFC-IMP-03)", async () => {
