@@ -232,3 +232,114 @@ test("agents-generate refuses to overwrite hand-written AGENTS.md", async () => 
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
 });
+
+// RFC-0611: nested AGENTS.md generation tests
+
+test("agents-generate generates nested AGENTS.md for workspace directories", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.generated).toContain("packages/my-pkg/AGENTS.md");
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("GENERATED");
+  expect(nested).toContain("Agent Guide: packages/my-pkg");
+  expect(nested).toContain("Package");
+});
+
+test("agents-generate skips hand-written nested AGENTS.md", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "AGENTS.md"),
+    "# Custom\nNo marker.\n",
+    "utf8",
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.skipped).toContain("packages/my-pkg/AGENTS.md (hand-written)");
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toBe("# Custom\nNo marker.\n");
+});
+
+test("agents-generate regenerates stale generated nested AGENTS.md", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "AGENTS.md"),
+    "<!--\n  GENERATED. Do not change this line unless the file contains project specific changes.\n-->\n# Old content\n",
+    "utf8",
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.generated).toContain("packages/my-pkg/AGENTS.md");
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("Agent Guide: packages/my-pkg");
+  expect(nested).not.toContain("Old content");
+});
+
+test("agents-generate nested idempotency — running twice produces same content", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+
+  const ctx = makeContext(tempDir);
+  await runAgentsGenerate({ argv: [], flags: {} }, ctx);
+  const first = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+
+  await runAgentsGenerate({ argv: [], flags: {} }, ctx);
+  const second = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+
+  expect(second).toBe(first);
+});
+
+test("agents-generate with no workspaces generates only root AGENTS.md", async () => {
+  await makeForgeYaml(tempDir);
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.generated).toEqual(["AGENTS.md"]);
+  expect(result.data?.skipped).toEqual([]);
+});
+
+test("agents-generate dryRun mode produces renderedFiles without writing", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+
+  const ctx = makeContext(tempDir);
+  ctx.dryRun = true;
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, ctx);
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.renderedFiles).toBeDefined();
+  expect(result.data?.renderedFiles?.["AGENTS.md"]).toContain("Agent Guide: test-project");
+  expect(result.data?.renderedFiles?.["packages/my-pkg/AGENTS.md"]).toContain(
+    "Agent Guide: packages/my-pkg",
+  );
+
+  // Files should NOT exist on disk
+  expect(existsSync(join(tempDir, "AGENTS.md"))).toBe(false);
+  expect(existsSync(join(tempDir, "packages", "my-pkg", "AGENTS.md"))).toBe(false);
+});
+
+test("agents-generate dryRun mode skips edit guard for hand-written root", async () => {
+  await makeForgeYaml(tempDir);
+  await writeFile(join(tempDir, "AGENTS.md"), "# Hand-written\nNo marker.\n", "utf8");
+
+  const ctx = makeContext(tempDir);
+  ctx.dryRun = true;
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, ctx);
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.renderedFiles?.["AGENTS.md"]).toContain("Agent Guide: test-project");
+});

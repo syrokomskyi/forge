@@ -225,6 +225,18 @@ The operator can choose to start one immediately or defer.
 
 If project analysis finds nothing recommendable (transplant of an empty or minimal project), the skill skips recommendations and proceeds to the first creation moment with a direct invitation to start creating.
 
+### 9.1. Hand-written AGENTS.md improvement proposals (transplant only)
+
+After project analysis, the skill checks existing hand-written `AGENTS.md` files in workspace directories (directories with a `package.json`). For each hand-written `AGENTS.md` (one without a generated marker), the skill checks for common forge conventions:
+
+- Does the file reference the root `AGENTS.md` for project-wide rules?
+- Does the file include workspace-type-appropriate guidance (app, package, service)?
+- Does the file contain a generated marker (it should not for hand-written files)?
+
+If improvement opportunities are found, the skill proposes them to the operator in creator-facing language (in `aiLanguage`). The operator confirms before any file is modified. Proposals are opt-in — the operator can decline all or select specific improvements.
+
+If no hand-written `AGENTS.md` files exist, or no improvement opportunities are found, this step is skipped silently.
+
 ### 10. First creation moment (new)
 
 After the welcoming report, the skill helps the operator create something real immediately — not a placeholder, not a test, but a first piece of their actual project.
