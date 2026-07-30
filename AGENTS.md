@@ -89,6 +89,7 @@ The `bindings` section in `forge.yaml` de-hardcodes project-specific values from
 - `forge.skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@warpgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
 - Skills declare binding requirements in frontmatter: `bindings: { requires: [...], optional: [...] }`.
 - Degradation contract: required binding unresolvable → skill refuses to start; optional binding absent → step skipped with `Degraded:` line in report.
+- **RFC-0609: Binding templates must use flag format.** CLI binding templates in `FORGE_CLI_BINDING_DEFAULTS` and `forge.yaml` must use `--id {id}` (flag format), not `{id}` (positional). For example: `forge rfc.validate --id {id} --json`, not `forge rfc.validate {id} --json`. This applies to `validateRfc`, `validateAdr`, and any future binding that passes an identifier to a command.
 
 ## Output contract (RFC-0542)
 
