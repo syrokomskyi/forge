@@ -120,6 +120,21 @@ The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against
 
 The `triggers` field in skill frontmatter is validated by SKILL-16: optional array of 1-5 natural-language strings (each 5-100 characters), only allowed on fo-category skills. Pack skills may not declare triggers.
 
+## Nested AGENTS.md generation (RFC-0611)
+
+`forge.agents.generate` also generates nested `AGENTS.md` files for workspace directories (directories containing `package.json`). Workspace type is auto-detected by content markers:
+
+- **app** — directory with `astro.config.*`
+- **service** — directory with `Dockerfile` or `service.config.yaml`
+- **package** — directory with `package.json` only
+- Precedence: app > service > package
+
+Workspace-type detection rules are defined in RFC-0611. Agents MUST NOT add new detection rules without an amending RFC.
+
+The edit guard skips hand-written nested `AGENTS.md` files (no generated marker) and reports them in the `skipped` array. Generated files (with marker) are regenerated if content differs. `forge.upgrade` also runs nested generation after skill sync. `forge.doctor` checks for missing, stale (in-memory comparison), and hand-written improvement opportunities.
+
+`forge.agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `forge.doctor` for staleness detection.
+
 ## Extended behavioral layer (RFC-0549)
 
 The extended behavioral layer is conditionally included in generated `AGENTS.md` files when the operator's register is `creative`. It adds ten behavioral policies additive to the core layer:
