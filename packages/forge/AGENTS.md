@@ -34,6 +34,8 @@ When archiving terminal artifacts, prefer the `docs.archive` umbrella command ov
 
 Skills live in `skills/` and are synced to `.agents/skills/` by `forge.create`. Each skill has a `SKILL.md` with standardized frontmatter (name, description, category, concerns, dependsOn).
 
+- **When editing a skill in `packages/forge/skills/`**, the synced copy in `.agents/skills/` MUST also be committed in the same session — `forge.create` is not run automatically after manual edits. Stale `.agents/skills/` copies cause `forge.doctor` to report drift.
+
 The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file modifications), `document-only` (modifies `.md` files only), `content-mutation` (modifies content `.md`/`.yaml` but not executable code), `code-mutation` (modifies `.ts`/`.astro` code). `forge.skill.validate` enforces this via SKILL-12.
 
 The optional `knowledge` field (RFC-0524) declares cumulative knowledge files as an array of file names relative to the SKILL.md directory (e.g. `knowledge: [qa-log.md, learned-principles.md]`). `forge.skill.validate` enforces SKILL-13: declared knowledge files must exist. `forge.create` syncs them to `.agents/skills/`. `forge.doctor` detects stale copies. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern and mutation contract.
@@ -61,6 +63,7 @@ skillPacks:
 - `os/compass/` and `os/werkstatt/` are fully autonomous (RFC-0556) — all handlers are inlined in `os/*/handlers/` and must NOT import from `@warpgogol/*` packages.
 - Other `os/` modules MAY dynamically import `@warpgogol/*` packages where kernel integration is needed.
 - Apps import forge modules from `@warpgogol/forge` (the package entrypoint re-exports all OS modules).
+- **MUST** use `hasGeneratedMarker()` from `utils/index.ts` for detecting generated file markers — never use raw `content.includes("GENERATED")` which is fragile and breaks if the marker format changes.
 
 ## forge.yaml (RFC-0391)
 
