@@ -139,6 +139,13 @@ Three surrogate-relationship mitigations: questions instead of declarations, out
 
 `fo-session-retro` routes extended-layer insights to `operator-profile.md` with Zugangsstufen tags: emotional rhythm → `[Vertraulich]` with 90-day expiry, aesthetic preferences → `[Öffentlich]`.
 
+## RFC commands frontmatter (RFC-CMD-01..03)
+
+When an RFC transitions to `implemented`, `rfc.validate` enforces command lifecycle rules against the `commands:` frontmatter:
+
+- **RFC-CMD-01:** A live command listed under `commands.proposed` but not `commands.added` is a violation. For implemented RFCs, newly created commands MUST be in `commands.added`, not `commands.proposed`. `commands.proposed` is only valid for RFCs in `draft` or `accepted` status.
+- **RFC-CMD-03:** Every entry under `commands.changed` MUST be a registered live command (present in `docs/command-manifest.generated.yaml`). Pipeline names (e.g. `build.prepare`, `SITES_BUILD_PREPARE_PIPELINE`) are NOT registered commands — they MUST NOT be listed under `commands.changed`. If an RFC modifies a pipeline array, that is not a command registration change.
+
 ## Spec vendoring (RFC-0394..0397)
 
 External specification packages are vendored as immutable snapshots under `docs/specs/<spec-id>/` with an integrity manifest and `forge-spec.yaml` projection.
