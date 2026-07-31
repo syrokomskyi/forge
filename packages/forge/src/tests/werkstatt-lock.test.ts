@@ -132,6 +132,9 @@ describe("acquireLock", () => {
       expect(lock1.depth).toBeUndefined();
       const lock2 = await acquireLock(dir, "reen-scope", "op-002", "inner.cmd", "owner");
       expect(lock2.depth).toBe(2);
+      // Re-entrant acquire preserves original operationId and command
+      expect(lock2.operationId).toBe("op-001");
+      expect(lock2.command).toBe("outer.cmd");
       // Lock file still exists
       const files = await readdir(join(dir, ".werkstatt", "locks"));
       expect(files).toContain("reen-scope.lock.json");
