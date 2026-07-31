@@ -66,6 +66,10 @@ skillPacks:
 - **MUST** use `hasGeneratedMarker()` from `utils/index.ts` for detecting generated file markers — never use raw `content.includes("GENERATED")` which is fragile and breaks if the marker format changes.
 - **Compass shared flags:** New flags for compass commands MUST be added to the shared `compassScanFlags` object in `os/compass/compass.module.ts`, not to individual command definitions. The `compassScanFlags` object is spread into all compass commands that use `flags: { ...compassScanFlags }`, ensuring the flag is available consistently across the command family. Per-command flags that are unique to one command may be defined inline.
 
+## RFC frontmatter: commands.changed (RFC-CMD-03)
+
+The `commands.changed` field in RFC frontmatter must only list **registered CLI commands** (e.g. `compass.audit.baseline`, `mission.materialize`), not internal functions or handlers (e.g. `acquireLock`, `releaseLock`). `rfc.validate` enforces this via RFC-CMD-03: every entry in `commands.changed` must match a live command in the registry. Internal functions that are not registered as CLI commands must not appear in `commands.changed` — use `packagesImpacted` to indicate which packages were modified.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
