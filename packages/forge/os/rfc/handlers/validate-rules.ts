@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Per-RFC validation rules (V-01..V-24) extracted from the validate handler for modularity.</purpose>
+<purpose>Per-RFC validation rules (V-01..V-32) extracted from the validate handler for modularity.</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior into this reusable package source file.</item>
 </non-goals>
@@ -12,6 +12,7 @@
 
 import path from "node:path";
 import { readFile } from "node:fs/promises";
+import { execFile } from "node:child_process";
 
 import { parse as yamlParse } from "yaml";
 import { validateAcceptanceShape } from "../acceptance.ts";
@@ -106,6 +107,47 @@ export function evaluateAcceptanceCriteria(body: string): AcceptanceCriteriaEval
     uncheckedLines,
     checkedWithoutEvidence,
   };
+}
+
+// ─── RFC-0625: V-32 implementation commit drift detection ──────────────────
+
+function execGitLog(workspaceRoot: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd: workspaceRoot, timeout: 10000 }, (err, stdout) => {
+      if (err) {
+        resolve("");
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
+}
+
+async function checkImplementationCommitDrift(
+  workspaceRoot: string,
+  rfcId: string,
+  createdAt: string,
+  currentStatus: string,
+): Promise<{ found: boolean; commitCount: number }> {
+  if (currentStatus === "implemented") {
+    return { found: false, commitCount: 0 };
+  }
+
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  if (!datePattern.test(createdAt)) {
+    return { found: false, commitCount: 0 };
+  }
+
+  const log = await execGitLog(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
+
+  if (!log) {
+    return { found: false, commitCount: 0 };
+  }
+
+  const pattern = new RegExp(`^implement:\\s+${rfcId}\\b`, "i");
+  const matchingLines = log.split("\n").filter((line) => pattern.test(line.trim()));
+
+  return { found: matchingLines.length > 0, commitCount: matchingLines.length };
 }
 
 /**
@@ -777,6 +819,27 @@ export async function validateSingleRfc(
       } else {
         seenFilenameNumbers.set(fileNum, relFile);
       }
+    }
+  }
+
+  // V-32: implementation commit drift detection (RFC-0625)
+  // Warns when implement: RFC-XXXX commits exist in git history since createdAt
+  // but the RFC status is not yet "implemented".
+  {
+    const driftResult = await checkImplementationCommitDrift(
+      workspaceRoot,
+      rfcId,
+      createdAt,
+      status,
+    );
+    if (driftResult.found) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-32",
+        `${rfcId} has ${driftResult.commitCount} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Run rfc.implement.stamp to transition to implemented.`,
+        "warning",
+      );
     }
   }
 }
