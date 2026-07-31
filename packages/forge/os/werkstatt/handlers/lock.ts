@@ -64,6 +64,16 @@ export async function acquireLock(
     const raw = await fs.readFile(lockPath, "utf8");
     try {
       const existing = werkstattLockSchema.parse(JSON.parse(raw));
+      if (existing.pid === process.pid && !isLockStale(existing)) {
+        const updated = {
+          ...existing,
+          depth: (existing.depth ?? 1) + 1,
+          heartbeatAt: new Date().toISOString(),
+        };
+        werkstattLockSchema.parse(updated);
+        await fs.writeFile(lockPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
+        return updated;
+      }
       if (!isLockStale(existing)) {
         throw new Error(
           `[werkstatt.lock] lock '${scope}' held by operation '${existing.operationId}' (pid: ${existing.pid})`,
@@ -94,10 +104,24 @@ export async function acquireLock(
 
 export async function releaseLock(workspaceRoot: string, scope: string): Promise<void> {
   const lockPath = resolveLockPath(workspaceRoot, scope);
+  if (!existsSync(lockPath)) return;
   try {
+    const raw = await fs.readFile(lockPath, "utf8");
+    const lock = werkstattLockSchema.parse(JSON.parse(raw));
+    if (lock.pid === process.pid && (lock.depth ?? 1) > 1) {
+      const decremented = { ...lock, depth: (lock.depth ?? 1) - 1 };
+      werkstattLockSchema.parse(decremented);
+      await fs.writeFile(lockPath, JSON.stringify(decremented, null, 2) + "\n", "utf8");
+      return;
+    }
     await fs.unlink(lockPath);
   } catch {
-    // already gone
+    // corrupt or missing — try direct delete
+    try {
+      await fs.unlink(lockPath);
+    } catch {
+      /* already gone */
+    }
   }
 }
 
