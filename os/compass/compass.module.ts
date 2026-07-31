@@ -35,6 +35,11 @@ const compassScanFlags = {
     kind: "string",
     description: "With --packages, scan one package by directory/name.",
   },
+  workpiece: {
+    kind: "string",
+    description:
+      "Scan a mission workpiece directory (RFC-0617). Mutually exclusive with --packages and --site.",
+  },
 } satisfies Record<string, ForgeFlagSpec>;
 
 export const forgeCompassModule: ForgeModule = {
