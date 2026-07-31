@@ -64,6 +64,7 @@ skillPacks:
 - Other `os/` modules MAY dynamically import `@warpgogol/*` packages where kernel integration is needed.
 - Apps import forge modules from `@warpgogol/forge` (the package entrypoint re-exports all OS modules).
 - **MUST** use `hasGeneratedMarker()` from `utils/index.ts` for detecting generated file markers — never use raw `content.includes("GENERATED")` which is fragile and breaks if the marker format changes.
+- **Compass shared flags:** New flags for compass commands MUST be added to the shared `compassScanFlags` object in `os/compass/compass.module.ts`, not to individual command definitions. The `compassScanFlags` object is spread into all compass commands that use `flags: { ...compassScanFlags }`, ensuring the flag is available consistently across the command family. Per-command flags that are unique to one command may be defined inline.
 
 ## Re-entrant werkstatt locks (RFC-0616)
 
