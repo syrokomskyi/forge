@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>ADR validation handler — frontmatter, section, and referential integrity checks.</purpose>
+<purpose>ADR validation handler — frontmatter, section, referential integrity checks, and implementation commit drift detection (AV-16).</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior.</item>
 </non-goals>
@@ -13,6 +13,7 @@
 */
 
 import path from "node:path";
+import { execFile } from "node:child_process";
 import { listAdrFiles, readAndParseAdr, type ParsedAdr } from "../frontmatter-io.ts";
 import { listRfcFiles, readAndParseRfc } from "../../rfc/frontmatter-io.ts";
 import type {
@@ -100,13 +101,14 @@ export async function runAdrValidate(
     const result = allParsedByFile.get(fileName);
     if (!result) continue;
 
-    validateSingleAdr(
+    await validateSingleAdr(
       fileName,
       result.parsed,
       allParsed,
       knownRfcIds,
       seenIds,
       knownKeys,
+      workspaceRoot,
       addViolation,
     );
   }
@@ -149,13 +151,14 @@ export async function runAdrValidate(
   };
 }
 
-function validateSingleAdr(
+async function validateSingleAdr(
   fileName: string,
   parsed: ParsedAdr,
   allParsed: Map<string, { fileName: string; parsed: ParsedAdr }>,
   knownRfcIds: Set<string>,
   seenIds: Map<string, string>,
   knownKeys: Set<string>,
+  workspaceRoot: string,
   addViolation: (
     adrId: string,
     file: string,
@@ -163,7 +166,7 @@ function validateSingleAdr(
     message: string,
     severity?: "error" | "warning",
   ) => void,
-): void {
+): Promise<void> {
   const fm = parsed.frontmatter;
   const body = parsed.body;
   const relFile = path.join(ADR_DIR, fileName);
@@ -358,4 +361,39 @@ function validateSingleAdr(
       );
     }
   }
+
+  // AV-16: implementation commit drift detection (RFC-0625)
+  // Warns when implement: ADR-XXXX commits exist in git history since createdAt
+  // but the ADR status is not yet "implemented".
+  if (status !== "implemented") {
+    const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+    if (datePattern.test(createdAt)) {
+      const log = await execGitLog(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
+      if (log) {
+        const pattern = new RegExp(`^implement:\\s+${adrId}\\b`, "i");
+        const matchingLines = log.split("\n").filter((line) => pattern.test(line.trim()));
+        if (matchingLines.length > 0) {
+          addViolation(
+            adrId,
+            relFile,
+            "AV-16",
+            `${adrId} has ${matchingLines.length} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Set status: implemented and implementedAt to complete.`,
+            "warning",
+          );
+        }
+      }
+    }
+  }
+}
+
+function execGitLog(workspaceRoot: string, args: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd: workspaceRoot, timeout: 10000 }, (err, stdout) => {
+      if (err) {
+        resolve("");
+        return;
+      }
+      resolve(stdout.trim());
+    });
+  });
 }
