@@ -1,6 +1,10 @@
 import { test, expect, describe } from "vitest";
 import { validateSingleRfc, type AddViolationFn } from "./validate-rules.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
+import { mkdtempSync, rmSync } from "node:fs";
+import { execSync } from "node:child_process";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 
 function makeParsed(
   status: string,
@@ -298,5 +302,98 @@ describe("V-31: filename-number uniqueness and filename/id consistency", () => {
     );
     const v31 = filterRule(violations, "V-31");
     expect(v31).toHaveLength(0);
+  });
+});
+
+describe("V-32: implementation commit drift detection", () => {
+  function createGitRepoWithCommits(commits: { message: string; date: string }[]): string {
+    const dir = mkdtempSync(join(tmpdir(), "v32-test-"));
+    execSync("git init", { cwd: dir, timeout: 5000 });
+    execSync("git config user.email test@test.com", { cwd: dir, timeout: 5000 });
+    execSync("git config user.name Test", { cwd: dir, timeout: 5000 });
+    for (const c of commits) {
+      execSync(
+        `GIT_AUTHOR_DATE="${c.date}" GIT_COMMITTER_DATE="${c.date}" git commit --allow-empty -m "${c.message}"`,
+        { cwd: dir, timeout: 5000 },
+      );
+    }
+    return dir;
+  }
+
+  async function runValidateInDir(
+    parsed: ParsedRfc,
+    workspaceRoot: string,
+  ): Promise<{ rfcId: string; rule: string; message: string; severity: string }[]> {
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      workspaceRoot,
+      add,
+    );
+    return violations;
+  }
+
+  test("V-32 warning when accepted RFC has implement: commits", async () => {
+    const dir = createGitRepoWithCommits([
+      { message: "implement: RFC-9999 — step 1", date: "2026-01-02T10:00:00" },
+    ]);
+    try {
+      const parsed = makeParsed("accepted", BASE_BODY);
+      const violations = await runValidateInDir(parsed, dir);
+      const v32 = filterRule(violations, "V-32");
+      expect(v32).toHaveLength(1);
+      expect(v32[0]!.severity).toBe("warning");
+      expect(v32[0]!.message).toContain("RFC-9999");
+      expect(v32[0]!.message).toContain("accepted");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no V-32 when status is implemented", async () => {
+    const dir = createGitRepoWithCommits([
+      { message: "implement: RFC-9999 — step 1", date: "2026-01-02T10:00:00" },
+    ]);
+    try {
+      const body = BASE_BODY.replace(
+        "ACCEPTANCE_HERE",
+        "- [x] done (evidence: test.ts:1)\n- [x] another (evidence: test.ts:2)\n- [x] third (evidence: test.ts:3)",
+      );
+      const parsed = makeParsed("implemented", body, {
+        implementedAt: "2026-01-03",
+      });
+      const violations = await runValidateInDir(parsed, dir);
+      const v32 = filterRule(violations, "V-32");
+      expect(v32).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no V-32 when no implement: commits exist", async () => {
+    const dir = createGitRepoWithCommits([
+      { message: "feat: add some feature", date: "2026-01-02T10:00:00" },
+    ]);
+    try {
+      const parsed = makeParsed("accepted", BASE_BODY);
+      const violations = await runValidateInDir(parsed, dir);
+      const v32 = filterRule(violations, "V-32");
+      expect(v32).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no V-32 in non-git directory", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY);
+    const violations = await runValidateInDir(parsed, "/tmp/nonexistent-xyz");
+    const v32 = filterRule(violations, "V-32");
+    expect(v32).toHaveLength(0);
   });
 });

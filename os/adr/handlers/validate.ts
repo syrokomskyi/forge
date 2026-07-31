@@ -370,7 +370,7 @@ async function validateSingleAdr(
     if (datePattern.test(createdAt)) {
       const log = await execGitLog(workspaceRoot, ["log", `--since=${createdAt}`, "--oneline"]);
       if (log) {
-        const pattern = new RegExp(`^implement:\\s+${adrId}\\b`, "i");
+        const pattern = new RegExp(`implement:\\s+${adrId}\\b`, "i");
         const matchingLines = log.split("\n").filter((line) => pattern.test(line.trim()));
         if (matchingLines.length > 0) {
           addViolation(
