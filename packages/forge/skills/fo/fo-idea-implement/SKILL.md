@@ -229,6 +229,17 @@ If `fo-review` (step 3.10) reported **any** findings (even cosmetic ones on axes
 
 If `fo-review` reported truly zero findings (the report explicitly states "No issues." on every axis), skip this step. An `approved` verdict with any finding text on any axis does NOT qualify as zero findings.
 
+#### 3.11b. Implementation status gate (RFC)
+
+Before reporting completion, verify the RFC has been stamped as `implemented`:
+
+1. Read the RFC frontmatter — confirm `status: implemented` and `implementedAt` is set.
+2. Run `ref(forge.yaml bindings.commands.validateRfc) --id RFC-XXXX --json` — confirm zero errors.
+3. If status is not `implemented`, go back to step 3.8 (Stamp implemented) and run the stamp command.
+4. If `rfc.validate` reports errors, fix them before proceeding.
+
+This gate is MANDATORY. Do not proceed to step 3.12 (report) until the RFC is `implemented`.
+
 #### 3.12. RFC report
 
 After implementation is complete, report in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, file paths, skill names) stay untranslated.
@@ -411,6 +422,17 @@ After all checks pass and documentation is updated, transition the ADR to `imple
    ```
 
    Stage only the ADR file.
+
+#### 4.10b. Implementation status gate (ADR)
+
+Before reporting completion, verify the ADR has been transitioned to `implemented`:
+
+1. Read the ADR frontmatter — confirm `status: implemented` and `implementedAt` is set.
+2. Run `ref(forge.yaml bindings.commands.validateAdr) --id ADR-XXXX --json` — confirm zero errors.
+3. If status is not `implemented`, go back to step 4.10 (Stamp implemented) and set `status: implemented`, `implementedAt`, `updatedAt`.
+4. If `adr.validate` reports errors, fix them before proceeding.
+
+This gate is MANDATORY. Do not proceed to step 4.11 (report) until the ADR is `implemented`.
 
 #### 4.11. Report
 
