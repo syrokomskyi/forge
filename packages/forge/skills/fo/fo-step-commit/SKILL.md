@@ -31,10 +31,11 @@ Commit file changes after every standalone operator request that produces file c
 After every standalone operator request that produces file changes, perform the following:
 
 1. **Detect changed files.** Run `git status --short` in the monorepo root. If the working tree is clean (no modifications), skip — no commit.
-2. **Stage only agent-changed files.** Stage only the files the agent modified in this request. Never use `git add -A` or `git add .` — another agent or session may have unrelated changes in the working tree. Stage files by explicit path: `git add <path1> <path2> ...`.
-3. **Form commit message.** Write a conventional commit message (`fix:`, `feat:`, `refactor:`, `docs:`, `chore:`) based on the work performed in this request. The agent determines the type and description from the context of the request.
-4. **Commit in monorepo.** `git commit -m "<message>"` with the staged files.
-5. **Commit in mission workpiece (if applicable).** If the agent changed files in the active mission workpiece, commit there via `mission.git.commit` with the same message.
+2. **Verify diff before staging.** Run `git diff` (not just `git diff --cached`) on every file the agent touched in this request. Confirm the changes are the agent's own work and not foreign changes from another session. If foreign changes are found, exclude them from staging.
+3. **Stage only agent-changed files.** Stage only the files the agent modified in this request. Never use `git add -A` or `git add .` — another agent or session may have unrelated changes in the working tree. Stage files by explicit path: `git add <path1> <path2> ...`.
+4. **Form commit message.** Write a conventional commit message (`fix:`, `feat:`, `refactor:`, `docs:`, `chore:`) based on the work performed in this request. The agent determines the type and description from the context of the request.
+5. **Commit in monorepo.** `git commit -m "<message>"` with the staged files.
+6. **Commit in mission workpiece (if applicable).** If the agent changed files in the active mission workpiece, commit there via the kernel's mission git commit command with the same message.
 
 ## What this skill does NOT do
 
