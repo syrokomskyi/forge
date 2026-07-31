@@ -195,3 +195,8 @@ To publish a new version of `@warpgogol/forge` to NPM:
 6. Commit version bumps: `git add packages/forge/package.json forge.yaml && git commit -m "release: @warpgogol/forge@<version>"`.
 
 The `prepublishOnly` script runs `clean → build → publish-check` automatically, so steps 3-4 are redundant if publishing via `npm publish` directly.
+
+## Git command patterns in forge handlers
+
+- **`git log --oneline` output includes a hash prefix** — the format is `<hash> <message>`, not `<message>`. When matching commit message patterns in `--oneline` output, do NOT anchor the regex to `^implement:` or `^feat:` — the line starts with the hash. Use a non-anchored pattern like `implement:\s+RFC-\d{4}\b` instead. Discovered during RFC-0625 V-32 implementation where `^implement:` failed to match `--oneline` output.
+- **`execGit` helper pattern** — multiple forge handlers (`implement-stamp.ts`, `verification-evidence.ts`, `validate-rules.ts`, `validate.ts`) each define their own `execGit`/`execGitLog` helper wrapping `execFile("git", ...)`. These are candidates for extraction into a shared `os/utils/git.ts` utility.
