@@ -182,3 +182,16 @@ External specification packages are vendored as immutable snapshots under `docs/
 - `spec.materialize` scaffolds RFC files for front nodes with `specRef` traceability and writes `materializedAs` back to `forge-spec.yaml`.
 - `spec.status` projects per-node states, blockers, and progress.
 - Spec amendments (`docs/specs/<id>/amendments/amd-NNN-*.md`) are the only correction channel — snapshot files are never modified.
+
+## NPM publish workflow
+
+To publish a new version of `@warpgogol/forge` to NPM:
+
+1. Bump `version` in `packages/forge/package.json` (semver: minor for new skills/features, patch for fixes).
+2. Bump `forge.syncedVersion` in `forge.yaml` to match.
+3. Run `pnpm --filter @warpgogol/forge run build` — compiles TypeScript to `dist/`.
+4. Run `node packages/forge/scripts/publish-check.mjs` — verifies metadata, dist/ freshness, README, VERSION sourcing, and files array.
+5. Run `npm publish --access public` from `packages/forge/` — publishes to `@warpgogol/forge` on npmjs.org.
+6. Commit version bumps: `git add packages/forge/package.json forge.yaml && git commit -m "release: @warpgogol/forge@<version>"`.
+
+The `prepublishOnly` script runs `clean → build → publish-check` automatically, so steps 3-4 are redundant if publishing via `npm publish` directly.
