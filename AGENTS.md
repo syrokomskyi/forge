@@ -65,6 +65,10 @@ skillPacks:
 - Apps import forge modules from `@warpgogol/forge` (the package entrypoint re-exports all OS modules).
 - **MUST** use `hasGeneratedMarker()` from `utils/index.ts` for detecting generated file markers — never use raw `content.includes("GENERATED")` which is fragile and breaks if the marker format changes.
 
+## Re-entrant werkstatt locks (RFC-0616)
+
+`acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
+
 ## forge.yaml (RFC-0391)
 
 `forge.yaml` is the machine-readable project configuration file at the project root. It records project name, stack, package manager, and docs paths. `forge.create` creates it; `forge.doctor` checks for it; `forge.agents.generate` reads it to produce `AGENTS.md`.
