@@ -10,6 +10,7 @@ Moved from @warpgogol/site-kernel to @warpgogol/forge for full autonomous mode (
 <CHANGE_SUMMARY>
   <item>Introduced as part of RFC-0015 to extend Compass commands to packages/.</item>
   <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
+  <item>RFC-0617: added --workpiece flag for mission workpiece directory scanning.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,28 @@ export function resolveCompassScanRoot(
   context: ForgeRuntimeContext,
 ): string | undefined {
   const hasPackages = input.flags["packages"] === true;
+  const workpiecePath = input.flags["workpiece"];
+  const hasWorkpiece = typeof workpiecePath === "string" && workpiecePath.length > 0;
+
+  if (hasWorkpiece && hasPackages) {
+    throw new Error(
+      "[compass] --workpiece and --packages are mutually exclusive. Use one or the other.",
+    );
+  }
+
+  if (hasWorkpiece && context.siteExplicit) {
+    throw new Error(
+      "[compass] --workpiece and --site are mutually exclusive. Use one or the other.",
+    );
+  }
+
+  if (hasWorkpiece) {
+    const resolved = resolve(context.workspaceRoot, workpiecePath as string);
+    if (!existsSync(resolved)) {
+      throw new Error(`[compass] workpiece path not found: ${workpiecePath}`);
+    }
+    return resolved;
+  }
 
   if (context.siteExplicit && hasPackages) {
     throw new Error(
