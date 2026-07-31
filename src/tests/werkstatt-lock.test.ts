@@ -103,13 +103,46 @@ describe("acquireLock", () => {
     }
   });
 
-  test("throws when lock is held by a live process", async () => {
+  test("throws when lock is held by a different live process", async () => {
     const dir = await makeTempDir();
     try {
-      await acquireLock(dir, "blocked-scope", "op-001", "test.cmd", "owner");
+      const otherPidLock = makeValidLock({
+        scope: "blocked-scope",
+        operationId: "op-001",
+        pid: process.ppid,
+      });
+      const locksDir = join(dir, ".werkstatt", "locks");
+      await mkdir(locksDir, { recursive: true });
+      await writeFile(
+        join(locksDir, "blocked-scope.lock.json"),
+        JSON.stringify(otherPidLock, null, 2),
+      );
       await expect(
         acquireLock(dir, "blocked-scope", "op-002", "test.cmd", "owner"),
       ).rejects.toThrow(/held by/);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("is re-entrant for same PID (increments depth)", async () => {
+    const dir = await makeTempDir();
+    try {
+      const lock1 = await acquireLock(dir, "reen-scope", "op-001", "outer.cmd", "owner");
+      expect(lock1.depth).toBeUndefined();
+      const lock2 = await acquireLock(dir, "reen-scope", "op-002", "inner.cmd", "owner");
+      expect(lock2.depth).toBe(2);
+      // Lock file still exists
+      const files = await readdir(join(dir, ".werkstatt", "locks"));
+      expect(files).toContain("reen-scope.lock.json");
+      // Inner release decrements but does not delete
+      await releaseLock(dir, "reen-scope");
+      const filesAfterInner = await readdir(join(dir, ".werkstatt", "locks"));
+      expect(filesAfterInner).toContain("reen-scope.lock.json");
+      // Outer release deletes
+      await releaseLock(dir, "reen-scope");
+      const filesAfterOuter = await readdir(join(dir, ".werkstatt", "locks"));
+      expect(filesAfterOuter).not.toContain("reen-scope.lock.json");
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -126,10 +159,7 @@ describe("acquireLock", () => {
       });
       const locksDir = join(dir, ".werkstatt", "locks");
       await mkdir(locksDir, { recursive: true });
-      await writeFile(
-        join(locksDir, "stale-scope.lock.json"),
-        JSON.stringify(staleLock, null, 2),
-      );
+      await writeFile(join(locksDir, "stale-scope.lock.json"), JSON.stringify(staleLock, null, 2));
 
       const lock = await acquireLock(dir, "stale-scope", "new-op", "test.cmd", "owner");
       expect(lock.operationId).toBe("new-op");
@@ -167,6 +197,21 @@ describe("releaseLock", () => {
     const dir = await makeTempDir();
     try {
       await expect(releaseLock(dir, "nonexistent")).resolves.toBeUndefined();
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("decrements depth for re-entrant lock instead of deleting", async () => {
+    const dir = await makeTempDir();
+    try {
+      await acquireLock(dir, "depth-scope", "op-001", "outer.cmd", "owner");
+      await acquireLock(dir, "depth-scope", "op-002", "inner.cmd", "owner");
+      await releaseLock(dir, "depth-scope");
+      const locks = await readAllLocks(dir);
+      const lock = locks.find((l) => l.scope === "depth-scope");
+      expect(lock).toBeDefined();
+      expect(lock!.depth).toBe(1);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }
@@ -221,10 +266,7 @@ describe("readAllLocks", () => {
         heartbeatAt: new Date(Date.now() - 2000 * 1000).toISOString(),
       });
       const locksDir = join(dir, ".werkstatt", "locks");
-      await writeFile(
-        join(locksDir, "stale-scope.lock.json"),
-        JSON.stringify(staleLock, null, 2),
-      );
+      await writeFile(join(locksDir, "stale-scope.lock.json"), JSON.stringify(staleLock, null, 2));
 
       const locks = await readAllLocks(dir);
       expect(locks).toHaveLength(2);
@@ -264,10 +306,7 @@ describe("removeStaleLock", () => {
       });
       const locksDir = join(dir, ".werkstatt", "locks");
       await mkdir(locksDir, { recursive: true });
-      await writeFile(
-        join(locksDir, "stale-remove.lock.json"),
-        JSON.stringify(staleLock, null, 2),
-      );
+      await writeFile(join(locksDir, "stale-remove.lock.json"), JSON.stringify(staleLock, null, 2));
 
       const removed = await removeStaleLock(dir, "stale-remove");
       expect(removed).toBe(true);
