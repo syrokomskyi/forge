@@ -61,10 +61,9 @@ export async function collectRfcCommandLifecycleViolations(
   async function getLiveCommands(): Promise<Set<string>> {
     if (!liveCommandsPromise) {
       const cmds = commandRegistry?.listCommands() ?? [];
-      let names = new Set(cmds.map((c) => c.name));
-      if (names.size === 0) {
-        names = await loadManifestCommandNames(workspaceRoot);
-      }
+      const registryNames = new Set(cmds.map((c) => c.name));
+      const manifestNames = await loadManifestCommandNames(workspaceRoot);
+      const names = new Set([...registryNames, ...manifestNames]);
       liveCommandsPromise = Promise.resolve(names);
     }
     return liveCommandsPromise;
