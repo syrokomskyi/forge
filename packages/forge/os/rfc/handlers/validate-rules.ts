@@ -144,7 +144,7 @@ async function checkImplementationCommitDrift(
     return { found: false, commitCount: 0 };
   }
 
-  const pattern = new RegExp(`^implement:\\s+${rfcId}\\b`, "i");
+  const pattern = new RegExp(`implement:\\s+${rfcId}\\b`, "i");
   const matchingLines = log.split("\n").filter((line) => pattern.test(line.trim()));
 
   return { found: matchingLines.length > 0, commitCount: matchingLines.length };
