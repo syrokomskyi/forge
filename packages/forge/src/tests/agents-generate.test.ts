@@ -238,7 +238,16 @@ test("agents-generate refuses to overwrite hand-written AGENTS.md", async () => 
 test("agents-generate generates nested AGENTS.md for workspace directories", async () => {
   await makeForgeYaml(tempDir);
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
-  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({
+      name: "@test/my-pkg",
+      description: "A test package",
+      exports: { ".": { types: "./src/index.ts", default: "./src/index.ts" } },
+      scripts: { "build:check": "tsc --noEmit" },
+      dependencies: { zod: "^4.4.3" },
+    }),
+  );
 
   const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
   expect(result.exitCode).toBe(0);
@@ -246,14 +255,21 @@ test("agents-generate generates nested AGENTS.md for workspace directories", asy
 
   const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
   expect(nested).toContain("GENERATED");
-  expect(nested).toContain("Agent Guide: packages/my-pkg");
+  expect(nested).toContain("`@test/my-pkg` — Agent Guide");
+  expect(nested).toContain("A test package");
   expect(nested).toContain("Package");
+  expect(nested).toContain("## Entry points");
+  expect(nested).toContain("## Scripts");
+  expect(nested).toContain("## Dependencies");
 });
 
 test("agents-generate skips hand-written nested AGENTS.md", async () => {
   await makeForgeYaml(tempDir);
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
-  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
   await writeFile(
     join(tempDir, "packages", "my-pkg", "AGENTS.md"),
     "# Custom\nNo marker.\n",
@@ -271,7 +287,10 @@ test("agents-generate skips hand-written nested AGENTS.md", async () => {
 test("agents-generate regenerates stale generated nested AGENTS.md", async () => {
   await makeForgeYaml(tempDir);
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
-  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
   await writeFile(
     join(tempDir, "packages", "my-pkg", "AGENTS.md"),
     "<!--\n  GENERATED. Do not change this line unless the file contains project specific changes.\n-->\n# Old content\n",
@@ -283,14 +302,17 @@ test("agents-generate regenerates stale generated nested AGENTS.md", async () =>
   expect(result.data?.generated).toContain("packages/my-pkg/AGENTS.md");
 
   const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
-  expect(nested).toContain("Agent Guide: packages/my-pkg");
+  expect(nested).toContain("`@test/my-pkg` — Agent Guide");
   expect(nested).not.toContain("Old content");
 });
 
 test("agents-generate nested idempotency — running twice produces same content", async () => {
   await makeForgeYaml(tempDir);
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
-  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg", description: "Test" }),
+  );
 
   const ctx = makeContext(tempDir);
   await runAgentsGenerate({ argv: [], flags: {} }, ctx);
@@ -314,7 +336,10 @@ test("agents-generate with no workspaces generates only root AGENTS.md", async (
 test("agents-generate dryRun mode produces renderedFiles without writing", async () => {
   await makeForgeYaml(tempDir);
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
-  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
 
   const ctx = makeContext(tempDir);
   ctx.dryRun = true;
@@ -324,7 +349,7 @@ test("agents-generate dryRun mode produces renderedFiles without writing", async
   expect(result.data?.renderedFiles).toBeDefined();
   expect(result.data?.renderedFiles?.["AGENTS.md"]).toContain("Agent Guide: test-project");
   expect(result.data?.renderedFiles?.["packages/my-pkg/AGENTS.md"]).toContain(
-    "Agent Guide: packages/my-pkg",
+    "`@test/my-pkg` — Agent Guide",
   );
 
   // Files should NOT exist on disk
@@ -342,4 +367,92 @@ test("agents-generate dryRun mode skips edit guard for hand-written root", async
   const result = await runAgentsGenerate({ argv: [], flags: {} }, ctx);
   expect(result.exitCode).toBe(0);
   expect(result.data?.renderedFiles?.["AGENTS.md"]).toContain("Agent Guide: test-project");
+});
+
+test("agents-generate nested with empty package.json falls back to path-based title", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("`packages/my-pkg` — Agent Guide");
+  expect(nested).not.toContain("## Entry points");
+  expect(nested).not.toContain("## Scripts");
+  expect(nested).not.toContain("## Dependencies");
+});
+
+test("agents-generate nested renders entry points from exports map", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({
+      name: "@test/my-pkg",
+      exports: {
+        ".": { types: "./src/index.ts", default: "./src/index.ts" },
+        "./port": { types: "./src/port.ts", default: "./src/port.ts" },
+        "./client": "./src/client.ts",
+      },
+    }),
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("## Entry points");
+  expect(nested).toContain("| `@test/my-pkg` | `./src/index.ts` |");
+  expect(nested).toContain("| `@test/my-pkg/port` | `./src/port.ts` |");
+  expect(nested).toContain("| `@test/my-pkg/client` | `./src/client.ts` |");
+});
+
+test("agents-generate nested separates workspace and external dependencies", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({
+      name: "@test/my-pkg",
+      dependencies: {
+        "@warpgogol/share": "workspace:*",
+        zod: "^4.4.3",
+      },
+    }),
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("**Workspace:**");
+  expect(nested).toContain("- `@warpgogol/share`");
+  expect(nested).toContain("**External:**");
+  expect(nested).toContain("- `zod` `^4.4.3`");
+});
+
+test("agents-generate nested for service workspace omits entry points", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "services", "my-svc"), { recursive: true });
+  await writeFile(
+    join(tempDir, "services", "my-svc", "package.json"),
+    JSON.stringify({
+      name: "@test/my-svc",
+      scripts: { "build:check": "tsc --noEmit", "run:once": "tsx src/run.ts" },
+      dependencies: { "@warpgogol/observability": "workspace:*" },
+    }),
+  );
+  await writeFile(join(tempDir, "services", "my-svc", "Dockerfile"), "FROM node:20\n");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const nested = await readFile(join(tempDir, "services", "my-svc", "AGENTS.md"), "utf8");
+  expect(nested).toContain("`@test/my-svc` — Agent Guide");
+  expect(nested).toContain("Service");
+  expect(nested).not.toContain("## Entry points");
+  expect(nested).toContain("## Scripts");
+  expect(nested).toContain("## Dependencies");
 });
