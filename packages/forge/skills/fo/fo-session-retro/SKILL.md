@@ -106,12 +106,14 @@ For each candidate, ask: "Would another agent working in this area benefit from 
 
 ### 3. Categorize and present
 
+**Language requirement (NON-NEGOTIABLE):** The triage table, the `ask_user_question` confirmation prompt, and all inline commentary MUST be written in `PREFERENCES.md` `aiLanguage`. The English template below is structural only — translate ALL headings, column names, labels, and prose to `aiLanguage` before presenting. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated. Example: if `aiLanguage` is `ru`, the heading is «Сортировка инсайтов сессии», column headers are «№ | Инсайт | Категория | Назначение | Действие».
+
 Present each insight with a proposed category and routing:
 
 ```
-## Session Insight Triage
+## <Triage heading in aiLanguage>
 
-| # | Insight | Category | Destination | Action |
+| # | <Insight> | <Category> | <Destination> | <Action> |
 | --- | --- | --- | --- | --- |
 | 1 | hydrateFromArtifacts is mandatory when steps write state | Rule | packages/AGENTS.md | Direct edit |
 | 2 | Model registry chosen over hardcoded clients | Decision | docs/adrs/ | Delegate to fo-idea-create-adr |
@@ -121,7 +123,7 @@ Present each insight with a proposed category and routing:
 | 6 | Current pipeline state for mission X | Context | memory DB | create_memory |
 ```
 
-Ask the operator to confirm, adjust categories, or drop items using `ask_user_question`. Do not proceed without explicit confirmation.
+Ask the operator to confirm, adjust categories, or drop items using `ask_user_question` — the question text MUST be in `aiLanguage`. Do not proceed without explicit confirmation.
 
 ### 4. Route each confirmed insight
 
@@ -232,7 +234,7 @@ If any operator insights were routed to `.agents/operator-profile.md`, offer the
 
 ### 7. Report
 
-Present a concise summary in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated.
+Present a concise summary in `aiLanguage`. **ALL labels, headings, column names, and prose MUST be translated to `aiLanguage`** — the template below is structural only. Only identifiers (file paths, skill names, RFC/ADR ids, commit hashes) stay untranslated. This is non-negotiable: an English summary when `aiLanguage` is `ru` is a violation of this skill's language contract.
 
 ```
 ## <Session Retro Summary in aiLanguage>
