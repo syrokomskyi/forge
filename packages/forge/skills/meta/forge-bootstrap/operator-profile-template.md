@@ -15,6 +15,7 @@ This file is private and local to your project. It is not committed to the repos
 ## Register
 
 - **Communication register:** (business | creative — how you prefer the system to work with you)
+- **Form of address:** (formal | informal — how the system should address you in languages with a formal/informal distinction)
 
 ## Communication style
 
