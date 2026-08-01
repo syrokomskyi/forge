@@ -39,6 +39,7 @@ Interactive skill for configuring a freshly created forge project. Runs after `f
 - The skill never collects personal data as a separate interview before the first creation moment — personal data emerges naturally from the creative dialogue.
 - `operator-profile.md` is local and private — it is in `.gitignore` and is not committed to the repository. The operator can delete it at any time.
 - Gender is optional — the operator may decline to provide it. If declined, the skill uses gender-neutral addressing and notes the absence in `operator-profile.md`.
+- Form of address defaults to formal if the operator skips the question.
 - The skill never informs the operator about migration, version numbers, or upgrade mechanics — the silent version check in step 0 is invisible to the operator.
 - The skill never asks the operator for permission to migrate — if versions differ, migration runs automatically.
 
@@ -83,7 +84,7 @@ Accept the operator's choice and store it:
 
 The register controls whether the extended behavioral layer is included in `AGENTS.md`. Both registers receive the full core behavioral layer. The operator can change the register at any time via live operator feedback.
 
-### 3. Operator name and gender (new)
+### 3. Operator name, gender, and form of address (new)
 
 Ask the operator:
 
@@ -95,7 +96,18 @@ Then ask:
 
 If the operator declines to provide gender, use gender-neutral addressing and note the absence in `operator-profile.md` under `## Personal`.
 
-Store the operator's name and gender (or absence) in `operator-profile.md` under `## Personal`. These are the only personal data collected before the first creation moment.
+Then ask about the form of address:
+
+> Do you prefer informal or formal address? In some languages this means saying "you" in a familiar way (e.g. "ty" in Russian/Ukrainian, "du" in German) versus a more formal way (e.g. "vy" in Russian/Ukrainian, "Sie" in German). If you're not sure, formal is the safe default.
+
+Accept the operator's choice and store it:
+
+- In `PREFERENCES.md` as `formOfAddress: formal` or `formOfAddress: informal`.
+- In `operator-profile.md` under `## Register`.
+
+If the operator skips the question, default to `formOfAddress: formal`. The preference applies to all agent-generated text: chat messages, reports, suggestions, and skill output. The operator can change it at any time by editing `PREFERENCES.md`.
+
+Store the operator's name, gender (or absence), and form of address in `operator-profile.md` under `## Personal` and `## Register`. These are the only personal data collected before the first creation moment.
 
 ### 4. Verify forge project
 
@@ -339,7 +351,7 @@ The skill declares the following knowledge files in its `knowledge` frontmatter 
 
 ### 14. Privacy
 
-`operator-profile.md` contains personal data: operator name, gender, project story, deep purpose, creative influences, target audience, writing voice. Gender is special category data under GDPR Article 9. To prevent accidental exposure:
+`operator-profile.md` contains personal data: operator name, gender, form of address, project story, deep purpose, creative influences, target audience, writing voice. Gender is special category data under GDPR Article 9. To prevent accidental exposure:
 
 - `operator-profile.md` is in `.gitignore` (added by scaffold profiles).
 - The skill informs the operator that `operator-profile.md` is local and private — it is not committed to the repository.
