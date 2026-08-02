@@ -107,7 +107,7 @@ After **all** plan steps are complete, run the heavy validation suite in order:
 2. **Package-level build checks** for each impacted package:
 
    ```sh
-   ref(forge.yaml bindings.commands.typecheck) --workspace=<package>
+   ref(forge.yaml bindings.commands.validate) --workspace=<package>
    ```
 
 3. **App-level checks** for each impacted app:
@@ -345,7 +345,7 @@ After implementation is complete, run heavy checks for the impacted workspaces o
 2. Determine impacted packages/apps from the ADR's `scope` and the files touched during implementation. Build only those workspaces:
 
    ```sh
-   ref(forge.yaml bindings.commands.typecheck) --workspace=<package>
+   ref(forge.yaml bindings.commands.validate) --workspace=<package>
    ```
 
    Or for apps:
