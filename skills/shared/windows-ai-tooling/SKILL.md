@@ -260,6 +260,46 @@ Without this, `git clone` fails on repositories with file paths longer than 260 
 
 Windows CI catches important platform-specific issues (path lengths, native builds, line endings), but it requires separate configuration of native dependencies, compiler toolchain, and shell differences (PowerShell vs bash). Only add Windows to the CI matrix where the product genuinely supports or ships Windows artifacts — not "just in case".
 
+#### CI reliability patterns (all platforms)
+
+Apply these to every workflow, not just Windows:
+
+**Concurrency cancellation** — cancel superseded runs on PRs to save CI minutes and avoid cache thrashing:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+```
+
+**Minimal permissions** — default GitHub Actions grants `contents: write`. Restrict to read-only at the workflow level; escalate per-job only where needed (e.g. changelog commit):
+
+```yaml
+permissions:
+  contents: read
+```
+
+**Job timeouts** — the default 6-hour timeout can exhaust CI limits on a hung install or test. Set `timeout-minutes` per job: 10–15 for lint/validate, 20–30 for build/test.
+
+**Deterministic timezone** — tests using `new Date()` produce different results depending on the runner's timezone. Set `TZ: UTC` at the job level to make timestamps deterministic across runs:
+
+```yaml
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      TZ: UTC
+```
+
+**Explicit shell** — on Windows the default shell is PowerShell, which breaks bash syntax. Steps using bash must declare `shell: bash`; Windows-specific steps should declare `shell: cmd` or `shell: pwsh`:
+
+```yaml
+- name: Run bash script
+  shell: bash
+  run: ./scripts/build.sh
+```
+
 #### Package-scoped commands
 
 Do not run package-level tools (test runners, linters, build commands) from the monorepo root. Run them via the package's own script or workspace context:
