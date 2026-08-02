@@ -90,11 +90,12 @@ test("doctor --strict does not affect invariant reporting (reserved for future u
 
   const invariantsCheck = result.data!.checks.find((c) => c.name === "domain-invariants");
   expect(invariantsCheck).toBeDefined();
-  // --strict does not elevate invariants (RFC-0640 failure modes section)
+  // --strict elevates warn to fail for domain-invariants and profile-validate,
+  // but invariants check is "pass" here (invariants declared), so no elevation
   expect(invariantsCheck!.status).toBe("pass");
 });
 
-test("doctor skips nested AGENTS.md check for non-software domain", async () => {
+test("doctor runs nested AGENTS.md check for non-software domain (RFC-0640 fix)", async () => {
   await writeFile(
     join(tempDir, "forge.yaml"),
     `schema: "forge/config@1"\nproject:\n  name: test-project\n  stack: []\n  packageManager: pnpm\n  domain: video\npaths:\n  rfcsDir: docs/rfcs\n  adrsDir: docs/adrs\n  plansDir: docs/plans\n  auditsDir: docs/audits\n  specsDir: docs/specs\n  skillsDir: .agents/skills\n  sessionsDir: docs/sessions\n`,
@@ -104,6 +105,9 @@ test("doctor skips nested AGENTS.md check for non-software domain", async () => 
   const input: ForgeCommandInput = { argv: [], flags: {} };
   const result = await runDoctor(input, makeContext());
 
+  // RFC-0640 fix: nested AGENTS.md check now runs for all domains
+  // (previously gated by isSoftwareDomain, which skipped non-software domains)
   const nestedCheck = result.data!.checks.find((c) => c.name === "nested-AGENTS.md");
-  expect(nestedCheck).toBeUndefined();
+  expect(nestedCheck).toBeDefined();
+  expect(nestedCheck!.status).toBe("pass");
 });

@@ -633,7 +633,6 @@ export async function runDoctor(
 
   // RFC-0640: Resolve domain report for domain-aware checks
   const domainReport = resolveDomainReport(workspaceRoot, forgeRoot);
-  const isSoftwareDomain = domainReport.domain === "software";
 
   // RFC-0640: Domain info check
   checks.push(checkDomainInfo(domainReport));
@@ -693,18 +692,25 @@ export async function runDoctor(
   checks.push(packCheck);
 
   // RFC-0611: Check nested AGENTS.md — missing, stale, hand-written
-  // RFC-0640: Skip for non-software domains (workspace detection is software-specific)
-  if (isSoftwareDomain) {
-    // Pass workspace types from profile for domain-aware detection
+  // RFC-0640: Use profile-driven workspace types when available (all domains)
+  // RFC-0640 fix: previously gated by isSoftwareDomain, which skipped the check
+  // entirely for non-software domains. Now runs for all domains — profile-driven
+  // wsTypes replace hardcoded detection when present.
+  {
     let wsTypes: ProfileWorkspaceType[] | undefined;
     try {
       const config = loadForgeConfig(workspaceRoot);
-      const profiles = listStackProfiles(forgeRoot);
-      for (const stackId of config.project.stack) {
-        const profile = profiles.find((p) => p.id === stackId);
-        if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
-          wsTypes = profile.workspaceTypes;
-          break;
+      // RFC-0643: prefer config.profile (loaded by loadForgeConfig)
+      if (config.profile?.workspaceTypes && config.profile.workspaceTypes.length > 0) {
+        wsTypes = config.profile.workspaceTypes;
+      } else {
+        const profiles = listStackProfiles(forgeRoot);
+        for (const stackId of config.project.stack) {
+          const profile = profiles.find((p) => p.id === stackId);
+          if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
+            wsTypes = profile.workspaceTypes;
+            break;
+          }
         }
       }
     } catch {
@@ -714,12 +720,22 @@ export async function runDoctor(
     checks.push(nestedCheck);
   }
 
-  const allPass = checks.every((c) => c.status === "pass");
-  const hasFails = checks.some((c) => c.status === "fail");
+  // RFC-0640: --strict flag elevates warn to fail for domain-related checks
+  const finalChecks = strict
+    ? checks.map((c) =>
+        c.status === "warn" &&
+        (c.name === "domain-invariants" || c.name === "profile-validate")
+          ? { ...c, status: "fail" as const }
+          : c,
+      )
+    : checks;
+
+  const allPass = finalChecks.every((c) => c.status === "pass");
+  const hasFails = finalChecks.some((c) => c.status === "fail");
 
   if (outputFormat === "pretty") {
     logger.section(`Forge Doctor — ${workspaceRoot}`);
-    for (const check of checks) {
+    for (const check of finalChecks) {
       const icon = check.status === "pass" ? "✓" : check.status === "warn" ? "⚠" : "✖";
       const fn = check.status === "pass" ? logger.success : check.status === "warn" ? logger.warn : logger.error;
       fn(`${icon} ${check.name}: ${check.message}`);
@@ -734,10 +750,10 @@ export async function runDoctor(
   }
 
   return {
-    data: { command: "forge.doctor", checks, allPass, forbiddenImports, bindings: bindingsResult, domain: domainReport },
+    data: { command: "forge.doctor", checks: finalChecks, allPass, forbiddenImports, bindings: bindingsResult, domain: domainReport },
     exitCode: hasFails ? 1 : 0,
     summary: allPass
       ? "forge.doctor: all checks passed"
-      : `forge.doctor: ${checks.filter((c) => c.status === "fail").length} fail(s), ${checks.filter((c) => c.status === "warn").length} warn(s)`,
+      : `forge.doctor: ${finalChecks.filter((c) => c.status === "fail").length} fail(s), ${finalChecks.filter((c) => c.status === "warn").length} warn(s)`,
   };
 }
