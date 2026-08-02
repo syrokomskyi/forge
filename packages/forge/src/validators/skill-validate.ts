@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forge.skill.validate — validates all forge skills and declared pack skills against frontmatter contract and invariants SKILL-01..SKILL-17.</purpose>
+<purpose>forge.skill.validate — validates all forge skills and declared pack skills against frontmatter contract and invariants SKILL-01..SKILL-18.</purpose>
 <non-goals>
   <item>Do not validate third-party skills — only forge-managed skills in packages/forge/skills/ and declared pack skills.</item>
 </non-goals>
@@ -13,6 +13,7 @@
   <item>RFC-0539: added SKILL-14 (pack skill name must start with pack prefix) and SKILL-15 (non-forge skill may not use fo- prefix). Extended SKILL-07 with asymmetric dependency direction (forge→pack forbidden). Added pack skill validation loop.</item>
   <item>RFC-0548: added SKILL-16 — triggers field must be an array of 1-5 strings, each 5-100 characters, only allowed on fo-category skills.</item>
   <item>RFC-0553: added SKILL-17 — skill files must not contain specific platform RFC/ADR ids (RFC-\\d{4}, ADR-\\d{4}) or platform names (Warpgogol, WarpGogol).</item>
+  <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -182,6 +183,16 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
     {
       const skill11Violations = checkSkill11(entry.name, body);
       violations.push(...skill11Violations);
+    }
+
+    // SKILL-18: Forge skill instruction lines must not reference software-specific
+    // binding keys (typecheck, scopedBuild, test). Use semantic keys instead
+    // (validate, produce, verify). Same scope as SKILL-11 (code blocks + run: directives).
+    // Supports <!-- skill-lint-disable SKILL-18 --> escape hatch.
+    // Forge-skill path only — pack skills are domain-specific by design.
+    {
+      const skill18Violations = checkSkill18(entry.name, body);
+      violations.push(...skill18Violations);
     }
 
     // SKILL-13: Declared knowledge files must exist relative to SKILL.md directory (RFC-0524)
@@ -458,6 +469,49 @@ function checkSkill11(skillName: string, body: string): Violation[] {
           message: `Instruction line contains hardcoded project-specific literal: ${line.trim().slice(0, 100)}`,
         });
         break; // one violation per line
+      }
+    }
+  }
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// SKILL-18: No software-specific binding keys in forge skill instruction lines (RFC-0642)
+// ---------------------------------------------------------------------------
+
+const SKILL18_PATTERNS: RegExp[] = [
+  /bindings\.commands\.typecheck/gi,
+  /bindings\.commands\.scopedBuild/gi,
+  /bindings\.commands\.test/gi,
+];
+
+const SKILL18_DISABLE_MARKER = "<!-- skill-lint-disable SKILL-18 -->";
+
+function checkSkill18(skillName: string, body: string): Violation[] {
+  const result: Violation[] = [];
+
+  if (body.includes(SKILL18_DISABLE_MARKER)) {
+    return result;
+  }
+
+  const instructionLines = extractInstructionLines(body);
+
+  for (const line of instructionLines) {
+    if (line.includes(SKILL18_DISABLE_MARKER)) {
+      continue;
+    }
+
+    for (const pattern of SKILL18_PATTERNS) {
+      const re = new RegExp(pattern.source, pattern.flags);
+      const match = re.exec(line);
+      if (match) {
+        result.push({
+          skill: skillName,
+          rule: "SKILL-18",
+          message: `Instruction line references software-specific binding key '${match[0]}' — use semantic key instead`,
+        });
+        break;
       }
     }
   }
