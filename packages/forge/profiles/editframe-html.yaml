@@ -1,0 +1,196 @@
+schema: forge/stack-profile@1
+id: editframe-html
+displayName: Editframe HTML Video
+detect:
+  anyOf:
+    - editframe.config.*
+domain: video
+register: creative
+terminology:
+  artifact: composition
+  artifactPlural: compositions
+  module: scene
+  source: composition file
+  output: render
+  verify: render-verify
+  operator: director
+artifacts:
+  - id: composition
+    extensions:
+      - .html
+      - .tsx
+    produce:
+      command: editframe render
+      output: dist/{composition}.mp4
+    validate:
+      command: editframe check
+    determinism:
+      hashable: true
+      inputs:
+        - composition files
+        - assets
+        - editframe version
+workspaceTypes:
+  - id: composition
+    detect:
+      glob: "*.html"
+      contains: ef-timegroup
+      packageJsonDep: "@editframe/cli"
+    skills:
+      - ef-composition-review
+      - ef-render-verify
+    agentsMdTemplate: editframe-html-templates/composition-agents.md
+invariants:
+  - id: VIDEO-01
+    rule: Composition filenames must use kebab-case (lowercase letters, digits, hyphens only)
+    severity: error
+  - id: VIDEO-02
+    rule: Scene durations must use contain mode by default to avoid unexpected cropping
+    severity: warning
+  - id: VIDEO-03
+    rule: All speech audio elements must have corresponding ef-captions elements for accessibility
+    severity: error
+workspace:
+  dirs:
+    - compositions
+    - packages
+    - services
+  files:
+    - path: pnpm-workspace.yaml
+      content: |
+        packages:
+          - "compositions/*"
+          - "packages/*"
+          - "services/*"
+    - path: turbo.json
+      content: |
+        {
+          "$schema": "https://turbo.build/schema.json",
+          "tasks": {
+            "build": {
+              "dependsOn": ["^build"],
+              "outputs": ["dist/**"]
+            },
+            "build:check": {
+              "dependsOn": ["^build:check"]
+            },
+            "test": {
+              "dependsOn": ["^build:check"]
+            }
+          }
+        }
+    - path: .gitignore
+      content: |
+        node_modules
+        dist
+        .turbo
+        .cache
+        operator-profile.md
+    - path: package.json
+      content: |
+        {
+          "name": "__PROJECT_NAME__",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "engines": {
+            "node": ">=22"
+          },
+          "scripts": {
+            "clean": "node scripts/clean.mjs",
+            "format": "prettier --write .",
+            "format:check": "prettier --check .",
+            "build": "turbo run build",
+            "build:check": "turbo run build:check",
+            "test": "turbo run test",
+            "upgrade-packages": "pnpm -r up"
+          }
+        }
+    - path: scripts/clean.mjs
+      content: |
+        import { readdir, rm } from "node:fs/promises";
+        import { join } from "node:path";
+        import { fileURLToPath } from "node:url";
+
+        const TARGETS = new Set(["node_modules", ".turbo", "dist", ".cache"]);
+
+        const repoRoot = join(fileURLToPath(import.meta.url), "..", "..");
+
+        async function walk(dir, toDelete) {
+          const entries = await readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const name = entry.name;
+            const fullPath = join(dir, name);
+            if (TARGETS.has(name)) {
+              toDelete.push(fullPath);
+              continue;
+            }
+            await walk(fullPath, toDelete);
+          }
+        }
+
+        const toDelete = [];
+        await walk(repoRoot, toDelete);
+
+        if (toDelete.length === 0) {
+          console.log("Nothing to clean.");
+          process.exit(0);
+        }
+
+        await Promise.all(toDelete.map((p) => rm(p, { recursive: true, force: true })));
+
+        for (const p of toDelete) {
+          console.log("deleted", p.replace(repoRoot + "/", ""));
+        }
+
+        console.log(`Cleaned ${toDelete.length} directories.`);
+install:
+  - pnpm add -D @editframe/cli @warpgogol/forge turbo prettier
+firstWorkspace:
+  path: compositions/my-first-video
+  files:
+    - path: package.json
+      content: |
+        {
+          "name": "my-first-video",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "scripts": {
+            "preview": "editframe preview",
+            "render": "editframe render -o dist/my-first-video.mp4",
+            "check": "editframe check"
+          }
+        }
+    - path: composition.html
+      content: |
+        <!--
+          Editframe HTML composition — my-first-video
+          This file declares a video composition using Editframe custom elements.
+          Run `editframe preview` to preview, `editframe render` to produce output.
+        -->
+        <ef-timegroup duration="10s">
+          <ef-video
+            src="assets/background.mp4"
+            fit="contain"
+            duration="10s"
+          ></ef-video>
+          <ef-text
+            text="Hello, Editframe!"
+            x="50%"
+            y="50%"
+            font-size="48px"
+            color="white"
+            text-align="center"
+            duration="5s"
+          ></ef-text>
+          <ef-audio
+            src="assets/narration.mp3"
+          ></ef-audio>
+          <ef-captions
+            src="assets/captions.vtt"
+          ></ef-captions>
+        </ef-timegroup>
+  install:
+    - pnpm add -D vitest

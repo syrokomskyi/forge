@@ -1,0 +1,32 @@
+<!--
+  Editframe HTML composition template
+  Copy this file to start a new composition. Editframe custom elements:
+  - ef-timegroup: groups elements into a timed sequence
+  - ef-video: video source with fit mode (contain, cover, fill)
+  - ef-audio: audio source
+  - ef-text: text overlay with positioning
+  - ef-captions: accessibility captions for speech audio
+  Run `editframe preview` to preview, `editframe render` to produce output.
+-->
+<ef-timegroup duration="10s">
+  <ef-video
+    src="assets/background.mp4"
+    fit="contain"
+    duration="10s"
+  ></ef-video>
+  <ef-text
+    text="Your text here"
+    x="50%"
+    y="50%"
+    font-size="48px"
+    color="white"
+    text-align="center"
+    duration="5s"
+  ></ef-text>
+  <ef-audio
+    src="assets/narration.mp3"
+  ></ef-audio>
+  <ef-captions
+    src="assets/captions.vtt"
+  ></ef-captions>
+</ef-timegroup>
