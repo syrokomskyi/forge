@@ -15,6 +15,7 @@
   <item>RFC-0540 fix: eliminated type casts — applyCliBindingDefaults returns ForgeBindings["commands"] directly, resolvePackageManager validates pm against enum.</item>
   <item>RFC-0543: added optional forge.syncedVersion field to forgeConfigSchema and defaultForgeConfig for consumer upgrade tracking.</item>
   <item>RFC-0546: added optional migrationAdapters field to forgeConfigSchema for migration-adapter registry discovery.</item>
+  <item>RFC-0639: added 5 semantic command keys (validate, produce, verify, preview, lint), terminology promoted from .optional() to .default({}), resolveTerminology function.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
+import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
 
 // ---------------------------------------------------------------------------
 // Bindings schema (forge/bindings@1) — RFC-0393
@@ -38,6 +40,12 @@ export const forgeBindingsSchema = z.object({
     scopedBuild: z.string().nullable().default(null),
     specValidate: z.string().nullable().default(null),
     sessionSave: z.string().nullable().default(null),
+    // Semantic keys (RFC-0639) — domain-neutral, optional
+    validate: z.string().nullable().default(null),
+    produce: z.string().nullable().default(null),
+    verify: z.string().nullable().default(null),
+    preview: z.string().nullable().default(null),
+    lint: z.string().nullable().default(null),
   }),
   paths: z.object({
     invariantsFile: z.string().nullable().default(null),
@@ -46,7 +54,7 @@ export const forgeBindingsSchema = z.object({
     handoffsDir: z.string().nullable().default(null),
     sessionsDir: z.string().nullable().default(null),
   }),
-  terminology: z.record(z.string(), z.string()).optional(),
+  terminology: z.record(z.string(), z.string()).default({}),
   compass: z
     .object({
       fileExtensions: z.array(z.string()).optional(),
@@ -66,6 +74,12 @@ export interface ForgeBindings {
     scopedBuild: string | null;
     specValidate: string | null;
     sessionSave: string | null;
+    // Semantic keys (RFC-0639) — domain-neutral, optional
+    validate: string | null;
+    produce: string | null;
+    verify: string | null;
+    preview: string | null;
+    lint: string | null;
   };
   paths: {
     invariantsFile: string | null;
@@ -74,7 +88,7 @@ export interface ForgeBindings {
     handoffsDir: string | null;
     sessionsDir: string | null;
   };
-  terminology?: Record<string, string>;
+  terminology: Record<string, string>;
   compass?: {
     fileExtensions?: string[];
     testPatterns?: string[];
@@ -218,6 +232,12 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     scopedBuild: null,
     specValidate: null,
     sessionSave: null,
+    // Semantic keys (RFC-0639) — stack-dependent, not CLI-backed
+    validate: null,
+    produce: null,
+    verify: null,
+    preview: null,
+    lint: null,
   };
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
     const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];
@@ -382,4 +402,30 @@ function substitutePlaceholders(template: string, placeholders: Record<string, s
     result = result.replaceAll(`{${key}}`, value);
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Terminology resolver — RFC-0639
+// ---------------------------------------------------------------------------
+
+/**
+ * Resolve a terminology key using a three-tier chain:
+ * 1. Per-project override in bindings.terminology
+ * 2. Caller-provided terminology map (typically from profile.terminology, RFC-0638)
+ * 3. Universal default from TERMINOLOGY_DEFAULTS (RFC-0638)
+ *
+ * If the key is not found in any tier, the key itself is returned.
+ */
+export function resolveTerminology(
+  config: ForgeConfig,
+  terminology: Record<string, string> | undefined,
+  key: string,
+): string {
+  if (config.bindings?.terminology?.[key]) {
+    return config.bindings.terminology[key];
+  }
+  if (terminology?.[key]) {
+    return terminology[key];
+  }
+  return TERMINOLOGY_DEFAULTS[key] ?? key;
 }

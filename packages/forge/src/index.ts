@@ -73,6 +73,7 @@ export {
   loadForgeConfig,
   resolveForgeRoot,
   resolveBinding,
+  resolveTerminology,
   FORGE_CLI_BINDING_DEFAULTS,
   PM_RUNNER_MAP,
   resolvePmRunner,
