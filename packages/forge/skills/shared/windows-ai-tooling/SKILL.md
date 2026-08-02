@@ -236,6 +236,34 @@ Verify in CI that `pnpm install` succeeds without manual intervention on every O
 - Add `node-gyp` build prerequisites to the CI step (Build Tools + Developer Command Prompt), or
 - Pin to a Node version that has prebuilt binaries for all target platforms.
 
+#### Diagnostic step on Windows failure
+
+When a Windows CI job fails — especially during `pnpm install` or native compilation — add a diagnostic step that prints the toolchain versions. This is critical while the Windows image transitions to Visual Studio 2026 and `node-gyp` versions may not yet recognize it:
+
+```yaml
+- name: Diagnostics (on failure)
+  if: failure()
+  shell: pwsh
+  run: |
+    Write-Host "=== Node ==="
+    node --version
+    Write-Host "=== npm ==="
+    npm --version
+    Write-Host "=== pnpm ==="
+    pnpm --version
+    Write-Host "=== node-gyp ==="
+    npx node-gyp --version
+    Write-Host "=== MSVC ==="
+    & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+      -latest -products * -property displayName -version "[17.0,18.0)"
+    Write-Host "=== cl.exe ==="
+    where.exe cl 2>$null || Write-Host "cl.exe not found on PATH"
+    Write-Host "=== Python ==="
+    python --version 2>$null || Write-Host "Python not found"
+```
+
+The `if: failure()` condition ensures the step only runs when a previous step failed — it does not slow down successful runs. The output helps identify whether the failure is due to a missing compiler, wrong Visual Studio version, or a `node-gyp` incompatibility.
+
 #### Windows long paths
 
 If Windows is in the CI matrix, set `core.longpaths` **before** the checkout step via job-level env:
