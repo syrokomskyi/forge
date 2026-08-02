@@ -21,7 +21,8 @@
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { loadForgeConfig, resolveBinding, resolveForgeRoot, resolveTerminology } from "../config/forge-config.ts";
+import { loadForgeConfig, resolveBinding, resolveForgeRoot } from "../config/forge-config.ts";
+import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
 import { buildExtendedBehavioralLayer } from "./extended-behavioral-layer.ts";
@@ -68,24 +69,6 @@ export function selectRootTemplate(register: BehavioralRegister): string {
     // Template file not found — fall back to empty string (dynamic sections will still be appended)
     return "";
   }
-}
-
-function resolveAllTerminology(
-  config: ReturnType<typeof loadForgeConfig>,
-  profile: StackProfile | undefined,
-): Record<string, string> {
-  const terminology: Record<string, string> = {};
-  // Universal keys from TERMINOLOGY_DEFAULTS
-  for (const key of ["artifact", "artifactPlural", "module", "source", "output", "verify", "operator"]) {
-    terminology[key] = resolveTerminology(config, profile?.terminology, key);
-  }
-  // Profile-specific keys
-  if (profile?.terminology) {
-    for (const [key, value] of Object.entries(profile.terminology)) {
-      terminology[key] = resolveTerminology(config, profile.terminology, key);
-    }
-  }
-  return terminology;
 }
 
 function replaceProjectPlaceholders(

@@ -26,7 +26,7 @@ import { buildNestedAgentsMd, selectNestedTemplate, type PackageInfo } from "./n
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
-import { resolveTerminology } from "../config/forge-config.ts";
+import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 
 export interface NestedGenerateResult {
   generated: string[];
@@ -59,15 +59,7 @@ export async function generateNestedAgentsMd(
 
   // RFC-0643: resolve terminology from config + profile for nested template substitution
   const profile = config.profile as StackProfile | undefined;
-  const terminology: Record<string, string> = {};
-  for (const key of ["artifact", "artifactPlural", "module", "source", "output", "verify", "operator"]) {
-    terminology[key] = resolveTerminology(config, profile?.terminology, key);
-  }
-  if (profile?.terminology) {
-    for (const key of Object.keys(profile.terminology)) {
-      terminology[key] = resolveTerminology(config, profile.terminology, key);
-    }
-  }
+  const terminology = resolveAllTerminology(config, profile);
 
   for (const ws of workspaces) {
     const agentsMdPath = path.join(workspaceRoot, ws.path, "AGENTS.md");
