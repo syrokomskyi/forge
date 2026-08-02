@@ -237,6 +237,11 @@ const configWithBindings: ForgeConfig = {
       scopedBuild: null,
       specValidate: null,
       sessionSave: null,
+      validate: null,
+      produce: null,
+      verify: null,
+      preview: null,
+      lint: null,
     },
     paths: {
       invariantsFile: "docs/architecture-dna.md",
