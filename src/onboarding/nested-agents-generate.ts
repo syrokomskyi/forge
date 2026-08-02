@@ -12,6 +12,7 @@ runAgentsGenerate, runUpgrade, and runDoctor (staleness check via dryRun).</purp
 <CHANGE_SUMMARY>
   <item>RFC-0611: initial shared nested generation function with dryRun support.</item>
   <item>Enriched template: read package.json metadata and pass to buildNestedAgentsMd for content-rich output.</item>
+  <item>RFC-0640: accept optional workspaceTypes from profile and pass to discoverWorkspaces for profile-driven detection.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,7 @@ import { writeFileIfChanged } from "../utils/index.ts";
 import { discoverWorkspaces, type WorkspaceDir } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd, type PackageInfo } from "./nested-agents-templates.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
+import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 
 export interface NestedGenerateResult {
   generated: string[];
@@ -42,8 +44,9 @@ export async function generateNestedAgentsMd(
   workspaceRoot: string,
   config: ForgeConfig,
   dryRun: boolean,
+  workspaceTypes?: ProfileWorkspaceType[],
 ): Promise<NestedGenerateResult> {
-  const workspaces = discoverWorkspaces(workspaceRoot);
+  const workspaces = discoverWorkspaces(workspaceRoot, workspaceTypes);
   const generated: string[] = [];
   const skipped: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};

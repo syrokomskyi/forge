@@ -13,17 +13,20 @@
   <item>RFC-0549: replaced extended layer stub with full nine-section content from extended-behavioral-layer.ts.</item>
   <item>RFC-0551: added register-conditional commit policy to core behavioral layer.</item>
   <item>RFC-0611: added nested AGENTS.md generation for workspace directories + dryRun support.</item>
+  <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { loadForgeConfig, resolveBinding } from "../config/forge-config.ts";
+import { loadForgeConfig, resolveBinding, resolveForgeRoot } from "../config/forge-config.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
 import { buildExtendedBehavioralLayer } from "./extended-behavioral-layer.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
+import { listStackProfiles } from "../profiles/stack-profile.ts";
+import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -478,7 +481,22 @@ export async function runAgentsGenerate(
   }
 
   // Nested AGENTS.md generation (RFC-0611)
-  const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun);
+  // RFC-0640: load workspaceTypes from stack profile for profile-driven detection
+  let workspaceTypes: ProfileWorkspaceType[] | undefined;
+  try {
+    const forgeRoot = resolveForgeRoot(workspaceRoot);
+    const profiles = listStackProfiles(forgeRoot);
+    for (const stackId of config.project.stack) {
+      const profile = profiles.find((p) => p.id === stackId);
+      if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
+        workspaceTypes = profile.workspaceTypes;
+        break;
+      }
+    }
+  } catch {
+    // forge root not resolvable — fallback to hardcoded detection
+  }
+  const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes);
   generated.push(...nestedResult.generated);
   skipped.push(...nestedResult.skipped);
   Object.assign(renderedFiles, nestedResult.renderedFiles);

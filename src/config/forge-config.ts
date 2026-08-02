@@ -16,6 +16,7 @@
   <item>RFC-0543: added optional forge.syncedVersion field to forgeConfigSchema and defaultForgeConfig for consumer upgrade tracking.</item>
   <item>RFC-0546: added optional migrationAdapters field to forgeConfigSchema for migration-adapter registry discovery.</item>
   <item>RFC-0639: added 5 semantic command keys (validate, produce, verify, preview, lint), terminology promoted from .optional() to .default({}), resolveTerminology function.</item>
+  <item>RFC-0640: added optional domain field to project section for domain-aware bootstrapping and health checks.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -139,6 +140,8 @@ export const forgeConfigSchema = z.object({
     name: z.string().min(1),
     stack: z.array(z.string()).default([]),
     packageManager: z.enum(["pnpm", "npm", "yarn", "bun", "none"]).default("pnpm"),
+    // RFC-0640: optional domain field — absent means software-domain fallback
+    domain: z.string().optional(),
   }),
   paths: z.object({
     rfcsDir: z.string().default("docs/rfcs"),
@@ -169,6 +172,8 @@ export interface ForgeConfig {
     name: string;
     stack: string[];
     packageManager: "pnpm" | "npm" | "yarn" | "bun" | "none";
+    /** RFC-0640: optional domain field — absent means software-domain fallback */
+    domain?: string;
   };
   paths: {
     rfcsDir: string;

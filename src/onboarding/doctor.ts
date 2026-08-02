@@ -15,20 +15,27 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0539: extended knowledge file check to iterate pack skills via discoverPackSkills. Added pack-skills check for stale/missing copies and skillPacks config validation.</item>
   <item>RFC-0540: added defaultable-binding-null notices for forge-CLI-backed bindings.</item>
   <item>RFC-0611: added nested AGENTS.md checks — missing, stale (dryRun comparison), hand-written improvement.</item>
+  <item>RFC-0640: added domain reporting, invariant listing (reported-only), terminology resolution, --strict flag, and software-specific check skipping for non-software domains.</item>
 </CHANGE_SUMMARY>
 */
 
 import { readFile, readdir, stat } from "node:fs/promises";
+import { readFileSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
+import { parse as parseYaml } from "yaml";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../types.ts";
-import { resolveForgeRoot, loadForgeConfig, resolveBinding, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
+import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd } from "./nested-agents-templates.ts";
+import { listStackProfiles } from "../profiles/stack-profile.ts";
+import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
+import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
+import { runProfileValidate } from "./profile-validate.ts";
 
 interface DoctorCheck {
   name: string;
@@ -341,7 +348,10 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
 // Nested AGENTS.md diagnostics (RFC-0611)
 // ---------------------------------------------------------------------------
 
-async function checkNestedAgentsMd(workspaceRoot: string): Promise<DoctorCheck> {
+async function checkNestedAgentsMd(
+  workspaceRoot: string,
+  workspaceTypes?: ProfileWorkspaceType[],
+): Promise<DoctorCheck> {
   let config;
   try {
     config = loadForgeConfig(workspaceRoot);
@@ -353,7 +363,7 @@ async function checkNestedAgentsMd(workspaceRoot: string): Promise<DoctorCheck> 
     };
   }
 
-  const workspaces = discoverWorkspaces(workspaceRoot);
+  const workspaces = discoverWorkspaces(workspaceRoot, workspaceTypes);
 
   if (workspaces.length === 0) {
     return {
@@ -425,11 +435,132 @@ async function checkNestedAgentsMd(workspaceRoot: string): Promise<DoctorCheck> 
   };
 }
 
+// ---------------------------------------------------------------------------
+// Domain reporting (RFC-0640)
+// ---------------------------------------------------------------------------
+
+interface DomainReport {
+  domain: string;
+  register: "business" | "creative" | null;
+  terminology: Record<string, string>;
+  invariants: Array<{ id: string; rule: string; severity: string }>;
+  source: "forge.yaml" | "profile" | "default";
+}
+
+function buildTerminologyMap(
+  config: ReturnType<typeof loadForgeConfig>,
+  profileTerminology?: Record<string, string>,
+): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of Object.keys(TERMINOLOGY_DEFAULTS)) {
+    result[key] = resolveTerminology(config, profileTerminology, key);
+  }
+  // Also include any custom keys from bindings.terminology
+  if (config.bindings?.terminology) {
+    for (const key of Object.keys(config.bindings.terminology)) {
+      if (!(key in result)) {
+        result[key] = resolveTerminology(config, profileTerminology, key);
+      }
+    }
+  }
+  return result;
+}
+
+function resolveDomainReport(workspaceRoot: string, forgeRoot: string): DomainReport {
+  // 1. Try forge.yaml domain field
+  try {
+    const config = loadForgeConfig(workspaceRoot);
+    if (config.project.domain) {
+      const terminology = buildTerminologyMap(config);
+      const register = readRegisterFromPrefs(workspaceRoot);
+      return {
+        domain: config.project.domain,
+        register,
+        terminology,
+        invariants: [],
+        source: "forge.yaml",
+      };
+    }
+  } catch {
+    // forge.yaml not loadable
+  }
+
+  // 2. Try to find domain from stack profile matching config.project.stack
+  try {
+    const config = loadForgeConfig(workspaceRoot);
+    const profiles = listStackProfiles(forgeRoot);
+    for (const stackId of config.project.stack) {
+      const profile = profiles.find((p) => p.id === stackId);
+      if (profile?.domain) {
+        const terminology = buildTerminologyMap(config, profile.terminology);
+        const register = profile.register ?? readRegisterFromPrefs(workspaceRoot);
+        return {
+          domain: profile.domain,
+          register,
+          terminology,
+          invariants: profile.invariants ?? [],
+          source: "profile",
+        };
+      }
+    }
+  } catch {
+    // config or profiles not loadable
+  }
+
+  // 3. Default: software domain
+  return {
+    domain: "software",
+    register: null,
+    terminology: {},
+    invariants: [],
+    source: "default",
+  };
+}
+
+function readRegisterFromPrefs(workspaceRoot: string): "business" | "creative" | null {
+  try {
+    const prefsPath = join(workspaceRoot, "PREFERENCES.md");
+    const content = readFileSync(prefsPath, "utf8");
+    const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+    if (fmMatch) {
+      const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
+      if (fm["register"] === "creative") return "creative";
+      if (fm["register"] === "business") return "business";
+    }
+  } catch {
+    // PREFERENCES.md missing or unreadable
+  }
+  return null;
+}
+
+function checkDomainInfo(domainReport: DomainReport): DoctorCheck {
+  const parts: string[] = [`domain: ${domainReport.domain}`, `source: ${domainReport.source}`];
+  if (domainReport.register) {
+    parts.push(`register: ${domainReport.register}`);
+  }
+  if (Object.keys(domainReport.terminology).length > 0) {
+    const terms = Object.entries(domainReport.terminology)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    parts.push(`terminology: ${terms}`);
+  }
+  if (domainReport.invariants.length > 0) {
+    parts.push(`invariants: ${domainReport.invariants.length} declared`);
+  }
+
+  return {
+    name: "domain-info",
+    status: "pass",
+    message: parts.join(", "),
+  };
+}
+
 export async function runDoctor(
-  _input: ForgeCommandInput,
+  input: ForgeCommandInput,
   context: ForgeRuntimeContext,
-): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; forbiddenImports: ForbiddenImport[]; bindings: BindingValidation }>> {
+): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; forbiddenImports: ForbiddenImport[]; bindings: BindingValidation; domain?: DomainReport }>> {
   const { workspaceRoot, logger, outputFormat } = context;
+  const strict = input.flags["strict"] === true;
   const checks: DoctorCheck[] = [];
 
   // Check forge.yaml
@@ -499,6 +630,39 @@ export async function runDoctor(
   } catch {
     forgeRoot = join(workspaceRoot, "packages", "forge");
   }
+
+  // RFC-0640: Resolve domain report for domain-aware checks
+  const domainReport = resolveDomainReport(workspaceRoot, forgeRoot);
+  const isSoftwareDomain = domainReport.domain === "software";
+
+  // RFC-0640: Domain info check
+  checks.push(checkDomainInfo(domainReport));
+
+  // RFC-0640: List invariants (reported-only, not automatically checked)
+  if (domainReport.invariants.length > 0) {
+    const invariantMessages = domainReport.invariants.map((inv) => `${inv.id}: ${inv.rule}`);
+    checks.push({
+      name: "domain-invariants",
+      status: "pass",
+      message: `${domainReport.invariants.length} invariant(s) declared (advisory): ${invariantMessages.slice(0, 3).join("; ")}${invariantMessages.length > 3 ? ` (+${invariantMessages.length - 3} more)` : ""}`,
+    });
+  }
+
+  // RFC-0640: Run forge.profile.validate as advisory check (warn on failure, not fail)
+  const profileValidateResult = await runProfileValidate(
+    { argv: [], flags: {} },
+    { ...context, forgeRoot },
+  );
+  const invalidProfiles = profileValidateResult.data?.profiles.filter((p) => !p.valid) ?? [];
+  checks.push({
+    name: "profile-validate",
+    status: invalidProfiles.length === 0 ? "pass" : "warn",
+    message:
+      invalidProfiles.length === 0
+        ? `${profileValidateResult.data?.profiles.length ?? 0} profile(s) valid`
+        : `${invalidProfiles.length} profile(s) invalid (advisory): ${invalidProfiles.map((p) => p.id).join(", ")}`,
+  });
+
   const forbiddenImports = await scanForForbiddenImports(forgeRoot, workspaceRoot);
   checks.push({
     name: "autonomy-guard",
@@ -529,8 +693,26 @@ export async function runDoctor(
   checks.push(packCheck);
 
   // RFC-0611: Check nested AGENTS.md — missing, stale, hand-written
-  const nestedCheck = await checkNestedAgentsMd(workspaceRoot);
-  checks.push(nestedCheck);
+  // RFC-0640: Skip for non-software domains (workspace detection is software-specific)
+  if (isSoftwareDomain) {
+    // Pass workspace types from profile for domain-aware detection
+    let wsTypes: ProfileWorkspaceType[] | undefined;
+    try {
+      const config = loadForgeConfig(workspaceRoot);
+      const profiles = listStackProfiles(forgeRoot);
+      for (const stackId of config.project.stack) {
+        const profile = profiles.find((p) => p.id === stackId);
+        if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
+          wsTypes = profile.workspaceTypes;
+          break;
+        }
+      }
+    } catch {
+      // profiles not loadable
+    }
+    const nestedCheck = await checkNestedAgentsMd(workspaceRoot, wsTypes);
+    checks.push(nestedCheck);
+  }
 
   const allPass = checks.every((c) => c.status === "pass");
   const hasFails = checks.some((c) => c.status === "fail");
@@ -552,7 +734,7 @@ export async function runDoctor(
   }
 
   return {
-    data: { command: "forge.doctor", checks, allPass, forbiddenImports, bindings: bindingsResult },
+    data: { command: "forge.doctor", checks, allPass, forbiddenImports, bindings: bindingsResult, domain: domainReport },
     exitCode: hasFails ? 1 : 0,
     summary: allPass
       ? "forge.doctor: all checks passed"

@@ -14,6 +14,7 @@
   <item>RFC-0544: register forge.create command composing scaffold + init.</item>
   <item>RFC-0544 fix: simplify createWrapper — runCreate already populates nextSteps.</item>
   <item>RFC-0546: remove forge.init CLI registration; runInit() remains as internal primitive called by forge.create.</item>
+  <item>RFC-0640: register forge.profile.validate command, add --strict flag to forge.doctor.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,6 +45,7 @@ export const forgeCoreModule: ForgeModule = {
     const { runScaffoldProject } = await import("../../src/onboarding/scaffold-project.ts");
     const { runUpgrade } = await import("../../src/onboarding/upgrade.ts");
     const { runCreate } = await import("../../src/onboarding/create.ts");
+    const { runProfileValidate } = await import("../../src/onboarding/profile-validate.ts");
 
     const scaffoldWrapper = async (
       input: ForgeCommandInput,
@@ -147,7 +149,12 @@ export const forgeCoreModule: ForgeModule = {
       description: "Diagnose forge state in an existing project.",
       scope: "workspace",
       supportsAllSites: false,
-      flags: {},
+      flags: {
+        strict: {
+          kind: "boolean",
+          description: "Elevate domain invariant warnings to errors (RFC-0640).",
+        },
+      },
       cacheable: false,
       execute: doctorWrapper,
     });
@@ -268,6 +275,35 @@ export const forgeCoreModule: ForgeModule = {
       },
       cacheable: false,
       execute: createWrapper,
+    });
+
+    // ── forge.profile.validate (RFC-0640) ────────────────────────────────────
+    const profileValidateWrapper = async (
+      input: ForgeCommandInput,
+      context: ForgeRuntimeContext,
+    ): Promise<ForgeCommandResult> => {
+      const result = await runProfileValidate(input, context);
+      const nextSteps: ForgeNextStep[] =
+        result.data?.valid === true
+          ? []
+          : [{ action: "Fix the profile validation errors above", kind: "required" }];
+      return { ...result, nextSteps };
+    };
+    registry.registerCommand({
+      name: "forge.profile.validate",
+      description:
+        "Validate profile YAML files under packages/forge/profiles/ against the stack-profile schema (RFC-0640).",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        id: {
+          kind: "string",
+          description: "Validate only the profile with this id.",
+        },
+      },
+      reads: ["packages/forge/profiles/*.yaml"],
+      cacheable: false,
+      execute: profileValidateWrapper,
     });
 
     // ── docs.archive ─────────────────────────────────────────────────────────
