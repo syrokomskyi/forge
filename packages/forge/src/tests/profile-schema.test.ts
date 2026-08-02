@@ -55,7 +55,10 @@ test("profile with all six domain fields parses successfully", () => {
         extensions: [".html", ".tsx"],
         produce: { command: "ref(bindings.commands.produce)", output: "dist/renders/{name}.mp4" },
         validate: { command: "ref(bindings.commands.validate)" },
-        determinism: { hashable: true, inputs: ["composition files", "assets", "editframe version"] },
+        determinism: {
+          hashable: true,
+          inputs: ["composition files", "assets", "editframe version"],
+        },
       },
     ],
     workspaceTypes: [
@@ -152,22 +155,22 @@ test("artifacts with missing required extensions field fails", () => {
   expect(result.success).toBe(false);
 });
 
-test("all three shipped profiles parse without changes", () => {
+test("all shipped profiles parse without changes", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
-  expect(profiles.length).toBe(3);
+  expect(profiles.length).toBe(4);
   for (const profile of profiles) {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);
-    // Domain fields should be undefined for existing profiles
-    expect(profile.domain).toBeUndefined();
-    expect(profile.register).toBeUndefined();
+    // Domain fields should be undefined for existing software-domain profiles
+    if (profile.id !== "editframe-html") {
+      expect(profile.domain).toBeUndefined();
+      expect(profile.register).toBeUndefined();
+    }
   }
 });
 
 test("shipped astro-typescript-turborepo profile loads via loadStackProfile", () => {
-  const profile = loadStackProfile(
-    join(FORGE_ROOT, "profiles", "astro-typescript-turborepo.yaml"),
-  );
+  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "astro-typescript-turborepo.yaml"));
   expect(profile.id).toBe("astro-typescript-turborepo");
 });
 
