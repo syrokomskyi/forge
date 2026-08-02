@@ -34,7 +34,8 @@ When archiving terminal artifacts, prefer the `docs.archive` umbrella command ov
 
 Skills live in `skills/` and are synced to `.agents/skills/` by `forge.create`. Each skill has a `SKILL.md` with standardized frontmatter (name, description, category, concerns, dependsOn).
 
-- **When editing a skill in `packages/forge/skills/`**, the synced copy in `.agents/skills/` MUST also be committed in the same session — `forge.create` is not run automatically after manual edits. Stale `.agents/skills/` copies cause `forge.doctor` to report drift.
+- **When editing a skill in `packages/forge/skills/`**, the synced copy in `.agents/skills/<name>/SKILL.md` MUST also be committed in the same session — `forge.create` is not run automatically after manual edits. Stale `.agents/skills/` copies cause `forge.doctor` to report drift.
+- **Canonical sync path is flat**: `.agents/skills/<name>/SKILL.md` (e.g. `.agents/skills/fo-idea-implement/SKILL.md`). Both `forge.create` (`init.ts`) and `forge.upgrade` (`upgrade.ts`) sync to this flat path. A nested `.agents/skills/fo/<name>/SKILL.md` path is NOT created or maintained by forge — it is a stale artifact if present and should be removed.
 
 The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file modifications), `document-only` (modifies `.md` files only), `content-mutation` (modifies content `.md`/`.yaml` but not executable code), `code-mutation` (modifies `.ts`/`.astro` code). `forge.skill.validate` enforces this via SKILL-12.
 
