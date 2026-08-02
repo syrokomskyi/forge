@@ -55,6 +55,83 @@ workspace:
         .turbo
         .cache
         operator-profile.md
+    - path: .github/workflows/ci.yml
+      content: |
+        name: CI
+
+        on:
+          pull_request:
+          push:
+            branches: [main]
+          workflow_dispatch:
+
+        jobs:
+          ci:
+            runs-on: ubuntu-latest
+            name: Lint, type-check, build, test
+
+            steps:
+              - name: Checkout
+                uses: actions/checkout@v5
+
+              - name: Enable Corepack
+                run: corepack enable
+
+              - name: Setup Node.js
+                uses: actions/setup-node@v5
+                with:
+                  node-version: "24"
+                  cache: "pnpm"
+
+              - name: Install dependencies
+                run: pnpm install --frozen-lockfile
+
+              - name: Format check
+                run: pnpm format:check
+
+              - name: Type check
+                run: pnpm build:check
+
+              - name: Build
+                run: pnpm build
+
+              - name: Test
+                run: pnpm test
+
+        # Windows CI (optional — uncomment if Windows checks are needed):
+        #
+        #   windows-ci:
+        #     runs-on: windows-latest
+        #     name: Lint, type-check, build, test (Windows)
+        #     env:
+        #       GIT_CONFIG_COUNT: 1
+        #       GIT_CONFIG_KEY_0: core.longpaths
+        #       GIT_CONFIG_VALUE_0: "true"
+        #     steps:
+        #       - name: Checkout
+        #         uses: actions/checkout@v5
+        #       - name: Enable Corepack
+        #         run: corepack enable
+        #       - name: Setup Node.js
+        #         uses: actions/setup-node@v5
+        #         with:
+        #           node-version: "24"
+        #           cache: "pnpm"
+        #       - name: Install dependencies
+        #         run: pnpm install --frozen-lockfile
+        #       - name: Format check
+        #         run: pnpm format:check
+        #       - name: Type check
+        #         run: pnpm build:check
+        #       - name: Build
+        #         run: pnpm build
+        #       - name: Test
+        #         run: pnpm test
+        #
+        # The GIT_CONFIG_COUNT env block MUST be set before the checkout step
+        # so git can handle long file paths during clone on Windows.
+        # Do not add Windows to the matrix "just in case" — it requires
+        # separate path-length and platform-specific dependency verification.
     - path: package.json
       content: |
         {
