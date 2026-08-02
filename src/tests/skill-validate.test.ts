@@ -142,3 +142,59 @@ describe("RFC-0553: SKILL-17 platform reference prohibition", () => {
     expect(idPattern.test("rfc-0000-template.md")).toBe(false);
   });
 });
+
+describe("RFC-0642: SKILL-18 domain-specific binding key prohibition", () => {
+  test("SKILL-18: real workspace has no SKILL-18 violations after migration", () => {
+    const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
+    const skill18Violations = result.violations.filter((v) => v.rule === "SKILL-18");
+    expect(skill18Violations).toEqual([]);
+  });
+
+  test("SKILL-18: pattern matches software-specific binding keys", () => {
+    const patterns = [
+      /bindings\.commands\.typecheck/gi,
+      /bindings\.commands\.scopedBuild/gi,
+      /bindings\.commands\.test/gi,
+    ];
+    const softwareSpecific = [
+      "ref(forge.yaml bindings.commands.typecheck)",
+      "ref(forge.yaml bindings.commands.scopedBuild)",
+      "ref(forge.yaml bindings.commands.test)",
+    ];
+    const semanticKeys = [
+      "ref(forge.yaml bindings.commands.validate)",
+      "ref(forge.yaml bindings.commands.produce)",
+      "ref(forge.yaml bindings.commands.verify)",
+    ];
+    for (const text of softwareSpecific) {
+      expect(patterns.some((p) => new RegExp(p.source, p.flags).test(text))).toBe(true);
+    }
+    for (const text of semanticKeys) {
+      expect(patterns.some((p) => new RegExp(p.source, p.flags).test(text))).toBe(false);
+    }
+  });
+
+  test("SKILL-18: escape hatch suppresses violation", () => {
+    const skill18Patterns = [
+      /bindings\.commands\.typecheck/gi,
+      /bindings\.commands\.scopedBuild/gi,
+      /bindings\.commands\.test/gi,
+    ];
+    const disableMarker = "<!-- skill-lint-disable SKILL-18 -->";
+    const bodyWithEscapeHatch = `${disableMarker}\n\n\`\`\`sh\nref(forge.yaml bindings.commands.typecheck)\n\`\`\``;
+    const bodyWithoutEscapeHatch = `\`\`\`sh\nref(forge.yaml bindings.commands.typecheck)\n\`\`\``;
+
+    // With escape hatch: no violation
+    expect(bodyWithEscapeHatch.includes(disableMarker)).toBe(true);
+
+    // Without escape hatch: pattern matches
+    const instructionLines = bodyWithoutEscapeHatch
+      .split(/\r?\n/)
+      .filter((line) => line.trim().startsWith("ref("));
+    expect(
+      instructionLines.some((line) =>
+        skill18Patterns.some((p) => new RegExp(p.source, p.flags).test(line)),
+      ),
+    ).toBe(true);
+  });
+});
