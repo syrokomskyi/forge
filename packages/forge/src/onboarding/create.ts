@@ -13,6 +13,7 @@
   <item>RFC-0548: auto-run forge.agents.generate after init, update nextSteps to remove manual AGENTS.md step.</item>
   <item>RFC-0550: write NEXT_STEPS.md into project root with creator-facing guidance (greenfield vs transplant via LLM).</item>
   <item>RFC-0640: load profile domain fields and pass them to runInit for domain-aware bootstrapping.</item>
+  <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +58,7 @@ function loadProfileDomainFields(profileId: string, forgeRoot: string): InitDoma
     if (!profile) return {};
 
     const fields: InitDomainFields = {};
+    fields.profileId = profileId;
     if (profile.register) {
       fields.register = profile.register;
     }
@@ -235,7 +237,13 @@ export async function runCreate(
         if (config.bindings) {
           config.bindings.commands = applyCliBindingDefaults(pm);
         }
-        fs.writeFileSync(forgeYamlPath, stringifyYaml(config), "utf8");
+        // RFC-0643: strip loaded profile object before serializing — forge.yaml stores profile id (string), not the full profile
+        const configToSerialize = { ...config } as unknown as Record<string, unknown>;
+        if (typeof configToSerialize["profile"] === "object") {
+          const profileObj = configToSerialize["profile"] as { id?: string };
+          configToSerialize["profile"] = profileObj.id ?? configToSerialize["profile"];
+        }
+        fs.writeFileSync(forgeYamlPath, stringifyYaml(configToSerialize), "utf8");
       } catch {
         // Post-processing is best-effort — init already wrote a valid config
       }

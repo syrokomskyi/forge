@@ -18,6 +18,7 @@
   <item>RFC-0544 fix: export InitResult interface for type-safe consumption by forge.create.</item>
   <item>RFC-0552: add skippedSkills to InitResult, detect Forge-vs-pack skill name conflicts.</item>
   <item>RFC-0640: accept optional domain fields from profile (register, domain, terminology, semanticBindings) and write them into PREFERENCES.md and forge.yaml.</item>
+  <item>RFC-0643: accept optional profileId and write it to forge.yaml as the `profile` field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +50,7 @@ export interface InitDomainFields {
   domain?: string;
   terminology?: Record<string, string>;
   semanticBindings?: Record<string, string | null>;
+  profileId?: string;
 }
 
 export function runInit(
@@ -128,6 +130,10 @@ export function runInit(
       }
     } catch {
       // forge root not resolvable — leave syncedVersion as null (default)
+    }
+    // RFC-0643: write profile id to forge.yaml
+    if (domainFields?.profileId) {
+      (config as unknown as Record<string, unknown>).profile = domainFields.profileId;
     }
     // RFC-0640: write domain fields from profile into forge.yaml
     if (domainFields?.domain) {
