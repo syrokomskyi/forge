@@ -124,6 +124,30 @@ The `bindings` section in `forge.yaml` de-hardcodes project-specific values from
 - Degradation contract: required binding unresolvable → skill refuses to start; optional binding absent → step skipped with `Degraded:` line in report.
 - **RFC-0609: Binding templates must use flag format.** CLI binding templates in `FORGE_CLI_BINDING_DEFAULTS` and `forge.yaml` must use `--id {id}` (flag format), not `{id}` (positional). For example: `forge rfc.validate --id {id} --json`, not `forge rfc.validate {id} --json`. This applies to `validateRfc`, `validateAdr`, and any future binding that passes an identifier to a command.
 
+### Semantic command keys (RFC-0639)
+
+The `forge/bindings@1` schema includes five optional semantic command keys that work across all domains. These coexist with the software-specific keys (`typecheck`, `test`, `scopedBuild`) — they do not replace them.
+
+- **`commands.validate`** — domain-neutral validation command (replaces `typecheck` for non-software domains).
+- **`commands.produce`** — domain-neutral artifact production command (replaces `scopedBuild`).
+- **`commands.verify`** — domain-neutral verification command (replaces `test`).
+- **`commands.preview`** — domain-neutral preview command (e.g. dev server, live preview).
+- **`commands.lint`** — domain-neutral linting command.
+
+All semantic keys are optional with `null` defaults. `applyCliBindingDefaults` initializes them with `null` (they are stack-dependent, not CLI-backed). `forge.doctor` does **not** validate semantic keys — they are opt-in per-domain, so reporting them as `absent` for projects that intentionally leave them `null` would be noise. Skills reference them via `ref(bindings.commands.produce)` etc.
+
+### Terminology resolution (RFC-0639)
+
+The `terminology` field in `forge/bindings@1` is non-optional with a `{}` default (changed from `.optional()` in RFC-0639). `resolveTerminology(config, terminology, key)` resolves a terminology key using a three-tier chain:
+
+1. **Tier 1 — bindings override**: `config.bindings.terminology[key]` (per-project).
+2. **Tier 2 — caller-provided**: the `terminology` parameter (typically `profile.terminology` from RFC-0638).
+3. **Tier 3 — universal default**: `TERMINOLOGY_DEFAULTS` from `@warpgogol/forge` (re-exported from `profile-schema.ts`).
+
+If the key is not found in any tier, the key itself is returned. The `terminology` parameter is `Record<string, string> | undefined` — a separate parameter, not embedded in `StackProfile` — so the function works whether or not RFC-0638 profile terminology is available.
+
+`resolveTerminology` is exported from `@warpgogol/forge` and `@warpgogol/forge/config`.
+
 ## Output contract (RFC-0542)
 
 Every forge CLI command's output ends with a **Next steps** block in pretty mode and a `nextSteps` array in `--json` mode. Each entry is `{ action: string, kind: "required" | "optional" }`.
