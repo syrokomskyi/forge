@@ -21,6 +21,14 @@ This workspace contains an Editframe video composition.
 3. Run `editframe check` to validate the composition structure.
 4. Run `editframe render -o dist/<name>.mp4` to produce the final video output.
 
+## Reference template
+
+A sample composition template is available at `editframe-html-templates/composition.html` in the forge profiles directory. Copy it to start a new composition:
+
+```sh
+cp node_modules/@warpgogol/forge/profiles/editframe-html-templates/composition.html compositions/my-new-video/composition.html
+```
+
 ## File naming
 
 Composition files use kebab-case: `my-video.html`, `product-demo.html`, `intro-clip.html`.
