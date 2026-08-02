@@ -94,6 +94,19 @@ Stack profiles are YAML documents under `profiles/` describing a supported stack
 - **MUST NOT** add stack profiles for stacks forge cannot scaffold end-to-end.
 - Shipped profiles: `astro-typescript-turborepo`, `phaser-turborepo`, `forge-shell` (minimal — default for `forge.create`).
 
+### Domain fields (RFC-0638)
+
+The `forge/stack-profile@1` schema includes six optional domain-neutral fields that allow a profile to declare its domain model. All fields are optional — existing profiles without them parse and function identically.
+
+- **`domain`** — string identifying the project domain (e.g. `software`, `video`, `book`, `music`, `game`, `illustration`). Used for profile detection and doctor output.
+- **`terminology`** — map of universal concept keys to domain-specific terms (e.g. `artifact: "composition"`). Open vocabulary; universal keys have built-in defaults exported as `TERMINOLOGY_DEFAULTS`. Missing keys fall back to the default term.
+- **`artifacts`** — array of artifact definitions (id, extensions, produce/validate commands, determinism properties). Used by `forge.doctor` for domain-specific health checks in follow-up RFCs.
+- **`workspaceTypes`** — array of workspace type definitions (id, detection markers, associated skills, AGENTS.md template). Used by `forge.agents.generate` for per-domain workspace detection in follow-up RFCs.
+- **`invariants`** — array of domain-specific invariant definitions (id matching `^[A-Z]+-\d+$`, rule text, severity). Schema only — enforcement is deferred to follow-up RFCs.
+- **`register`** — string selecting the default behavioral register (`business` or `creative`). Used by `forge.create` as a one-time default for new projects; existing `PREFERENCES.md` is never overwritten.
+
+Types and schemas are exported from `@warpgogol/forge`: `StackProfileDomainFields`, `ProfileArtifact`, `ProfileWorkspaceType`, `ProfileInvariant`, `stackProfileDomainFieldsSchema`, `UNIVERSAL_TERMINOLOGY_KEYS`, `TERMINOLOGY_DEFAULTS`.
+
 ## Bindings contract (RFC-0393)
 
 The `bindings` section in `forge.yaml` de-hardcodes project-specific values from fo-skills. Skills reference bindings by key (e.g. `ref(forge.yaml bindings.commands.validateRfc)`) instead of hardcoding commands, paths, or terminology.
