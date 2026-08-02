@@ -134,6 +134,8 @@ The following commands are domain-aware — they read domain fields from the sta
 - **`{{terminology.key}}` placeholder syntax**: AGENTS.md templates use `{{terminology.key}}` (double-brace), not `ref(bindings.terminology.key)` (skill syntax). The two are documented separately.
 - **`details` field in `--json` output**: `AgentsGenerateResult` includes an optional `details` array with per-file metadata: `{ path, domain?, register?, workspaceType? }`. The `generated` field remains `string[]` for backward compatibility.
 - **`profile` field in `forge.yaml`**: `forge.create` writes `profile: <id>` to `forge.yaml`. `loadForgeConfig` loads the corresponding `profiles/<id>.yaml` and attaches it as `config.profile` (a `StackProfile` object). The profile object is stripped before serialization — `forge.yaml` stores the profile id (string), not the full profile.
+- **Template comments MUST NOT use literal `{{placeholder}}` syntax**: `replaceProjectPlaceholders()` runs on the entire template content, including HTML comments. A comment like `<!-- inserted at {{dynamicSections}} -->` will have the placeholder replaced with the full dynamic sections content, breaking the comment and inflating the output. Use plain text names (e.g. `dynamicSections marker`) in comments instead of `{{...}}` syntax.
+- **Profile object stripping before YAML serialization**: `loadForgeConfig` attaches a full `StackProfile` object to `config.profile`. Before serializing the config back to YAML (e.g. in `forge.create` post-processing), the profile object MUST be stripped back to its string id. Otherwise `forge.yaml` contains an object instead of a string and fails schema validation on re-read.
 
 ## Bindings contract (RFC-0393)
 
