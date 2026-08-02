@@ -202,6 +202,40 @@ Use the latest official actions with Node 24 runtime:
 
 These versions use the Node 24 runtime that GitHub Actions now recommends. Older versions (`@v4` and below) run on the deprecated Node 20 runtime.
 
+#### Windows runner images
+
+Do not pin to `windows-latest` blindly — the image composition changes over time and a toolchain that worked yesterday may break today. If native compilation is critical, pin to a specific Windows image version (e.g. `windows-2022`) and verify the actual compiler version in CI output.
+
+Do not hardcode the path to Visual Studio and do not let tooling auto-select the newest installed version. Some `node-gyp` versions do not yet recognize Visual Studio 2026. For those, install Visual Studio Build Tools 2022 and constrain the toolset search to the `[17.0,18.0)` range:
+
+```yaml
+- name: Set up Build Tools 2022
+  run: |
+    $vsPath = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+      -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+      -property installationPath -version "[17.0,18.0)"
+    echo "VS_PATH=$vsPath" >> $env:GITHUB_ENV
+```
+
+Before installing dependencies, activate the Developer Command Prompt for the discovered Visual Studio in the same step so that `cl.exe` and the MSVC toolchain are on `PATH`:
+
+```yaml
+- name: Activate Developer Command Prompt
+  shell: cmd
+  run: |
+    call "%VS_PATH%\Common7\Tools\VsDevCmd.bat" -arch=x64 -host_arch=x64
+    pnpm install --frozen-lockfile
+```
+
+#### Native dependencies
+
+Native dependencies (SQLite drivers, `better-sqlite3`, `sharp`, `node-sass`, etc.) need CI testing on each target OS. A prebuilt binary may not exist for every Node version + OS + architecture combination — when it is missing, `node-gyp` falls back to source compilation and requires a working C++ compiler.
+
+Verify in CI that `pnpm install` succeeds without manual intervention on every OS in the matrix. If it fails, either:
+
+- Add `node-gyp` build prerequisites to the CI step (Build Tools + Developer Command Prompt), or
+- Pin to a Node version that has prebuilt binaries for all target platforms.
+
 #### Windows long paths
 
 If Windows is in the CI matrix, set `core.longpaths` **before** the checkout step via job-level env:
@@ -209,7 +243,7 @@ If Windows is in the CI matrix, set `core.longpaths` **before** the checkout ste
 ```yaml
 jobs:
   windows-ci:
-    runs-on: windows-latest
+    runs-on: windows-2022
     env:
       GIT_CONFIG_COUNT: 1
       GIT_CONFIG_KEY_0: core.longpaths
@@ -224,13 +258,7 @@ Without this, `git clone` fails on repositories with file paths longer than 260 
 
 #### When to include Windows
 
-Do not add Windows to the CI matrix "just in case". Windows requires:
-
-- Separate verification of path lengths (enable `core.longpaths` before checkout)
-- Platform-specific dependency checks (some npm packages have native binaries that differ)
-- Separate testing of any shell scripts (PowerShell vs bash)
-
-Only add Windows if the project explicitly targets Windows users or if a contributor works on Windows.
+Windows CI catches important platform-specific issues (path lengths, native builds, line endings), but it requires separate configuration of native dependencies, compiler toolchain, and shell differences (PowerShell vs bash). Only add Windows to the CI matrix where the product genuinely supports or ships Windows artifacts — not "just in case".
 
 #### Package-scoped commands
 
