@@ -125,6 +125,8 @@ Present each insight with a proposed category and routing:
 
 Ask the operator to confirm, adjust categories, or drop items using `ask_user_question` — the question text MUST be in `aiLanguage`. Do not proceed without explicit confirmation.
 
+**Confirmation format (NON-NEGOTIABLE):** Use `allowMultiple: true` and present each insight as a separate option, with the option label matching the insight number from the triage table (e.g. option 1 = "1: <insight summary>"). This ensures the operator's response ("1, 2", "3", etc.) unambiguously refers to insight numbers, not to abstract option ordinals. Never use abstract options like "confirm all", "only rules", "only context" — these create a numbering mismatch between the table and the confirmation prompt.
+
 ### 4. Route each confirmed insight
 
 #### 4a. Rule → AGENTS.md
