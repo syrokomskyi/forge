@@ -189,6 +189,63 @@ Report:
 - A copyable block with the agent prompt snippet.
 - A reminder that re-running this skill is useful when adding a new tool or onboarding a new machine.
 
+### 8. GitHub Actions CI (optional)
+
+If the project uses GitHub Actions, generate or update `.github/workflows/ci.yml` with the following Windows-specific guidance:
+
+#### Action versions
+
+Use the latest official actions with Node 24 runtime:
+
+- `actions/checkout@v5`
+- `actions/setup-node@v5`
+
+These versions use the Node 24 runtime that GitHub Actions now recommends. Older versions (`@v4` and below) run on the deprecated Node 20 runtime.
+
+#### Windows long paths
+
+If Windows is in the CI matrix, set `core.longpaths` **before** the checkout step via job-level env:
+
+```yaml
+jobs:
+  windows-ci:
+    runs-on: windows-latest
+    env:
+      GIT_CONFIG_COUNT: 1
+      GIT_CONFIG_KEY_0: core.longpaths
+      GIT_CONFIG_VALUE_0: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      # ...
+```
+
+Without this, `git clone` fails on repositories with file paths longer than 260 characters (common in monorepos with deeply nested `node_modules` or generated content trees).
+
+#### When to include Windows
+
+Do not add Windows to the CI matrix "just in case". Windows requires:
+
+- Separate verification of path lengths (enable `core.longpaths` before checkout)
+- Platform-specific dependency checks (some npm packages have native binaries that differ)
+- Separate testing of any shell scripts (PowerShell vs bash)
+
+Only add Windows if the project explicitly targets Windows users or if a contributor works on Windows.
+
+#### Package-scoped commands
+
+Do not run package-level tools (test runners, linters, build commands) from the monorepo root. Run them via the package's own script or workspace context:
+
+```yaml
+# Good — scoped to the package
+- run: pnpm --filter <package-name> test
+
+# Bad — runs from root, may pick up wrong config
+- run: pnpm test
+```
+
+Ask: **"Настроить GitHub Actions CI для Windows? (Y/m/s)"**. Default **Y** if the project already has `.github/workflows/`; otherwise **s** (skip — the scaffolded CI template already includes Ubuntu-only CI).
+
 ## Constraints
 
 - Default to automatic execution (`Y`) for every step. Offer `m` (manual) and `s` (skip) only as explicit opt-outs.
