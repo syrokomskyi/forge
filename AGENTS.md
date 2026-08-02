@@ -74,6 +74,8 @@ The `commands.changed` field in RFC frontmatter must only list **registered CLI 
 
 YAML plain scalar values that **start with a backtick** (`` ` ``) must be double-quoted. Backtick is a reserved character in YAML plain scalars — the parser fails with "Plain value cannot start with reserved character `" and `rfc.implement.stamp`reports "Could not parse target RFC" (RFC-IMP-01). This commonly affects`successSignals`, `nonGoals`, and other list items in RFC frontmatter that reference code identifiers in backticks. Always quote such strings: `` - "`forge.doctor`reports domain information" `` instead of `` -`forge.doctor` reports domain information ``.
 
+**Agent action:** After creating an RFC with `rfc.create`, scan the generated `successSignals` and `nonGoals` sections for unquoted backtick entries. Fix them immediately before committing. This prevents a recurring pattern where `ecosystem.manifest.generate` and `rfc.implement.stamp` fail on RFCs created with backtick-heavy frontmatter.
+
 ## RFC command lifecycle validation (RFC-CMD-02)
 
 `getLiveCommands` in `os/rfc/handlers/lifecycle.ts` always merges `commandRegistry.listCommands()` with `docs/command-manifest.generated.yaml`. This is necessary because lazy-loaded modules (e.g. `leitstand`) are not loaded when `rfc.validate` runs, so their commands are absent from the registry but present in the manifest. Never change this to a fallback-only pattern (using manifest only when registry is empty) — that produces false-positive `RFC-CMD-02` violations for commands from lazy-loaded modules.
