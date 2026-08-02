@@ -201,6 +201,30 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
 
    Stage only the RFC file. The implementation commit and the stamp commit MUST be separate.
 
+#### 3.8b. Regenerate command manifest (MANDATORY)
+
+If the RFC added, changed, or removed commands (check `commands.added`, `commands.changed`, `commands.removed` in the RFC frontmatter), regenerate the command manifest so that `rfc.validate` does not report `RFC-CMD-02` (command listed but not registered):
+
+1. Run:
+
+   ```sh
+   pnpm exec site-kernel run command.manifest.generate
+   ```
+
+2. Commit the regenerated manifest:
+
+   ```txt
+   docs: regenerate command manifest for RFC-XXXX
+
+   Update docs/command-manifest.generated.yaml after RFC-XXXX command changes.
+   ```
+
+   Stage only `docs/command-manifest.generated.yaml`.
+
+If the RFC has no `commands.*` changes (e.g. it only changes schemas, docs, or internal logic), skip this step.
+
+This step is MANDATORY for any RFC with `commands.added`, `commands.changed`, or `commands.removed`. A stale manifest causes `RFC-CMD-02` violations that block `rfc.validate` for all implemented RFCs.
+
 #### 3.9. Documentation audit (fo-doc-audit)
 
 After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, architecture-dna.md, templates, generated artifacts, COMMANDS.md/PACKAGE_GRAPH.md), applies needed updates, and commits them separately. Wait for it to complete.
