@@ -14,18 +14,20 @@
   <item>RFC-0551: added register-conditional commit policy to core behavioral layer.</item>
   <item>RFC-0611: added nested AGENTS.md generation for workspace directories + dryRun support.</item>
   <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
+  <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { loadForgeConfig, resolveBinding, resolveForgeRoot } from "../config/forge-config.ts";
+import { loadForgeConfig, resolveBinding, resolveForgeRoot, resolveTerminology } from "../config/forge-config.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
 import { buildExtendedBehavioralLayer } from "./extended-behavioral-layer.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
+import type { StackProfile } from "../profiles/stack-profile.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type {
   ForgeCommandInput,
@@ -34,6 +36,76 @@ import type {
 } from "../types.ts";
 
 type BehavioralRegister = "business" | "creative";
+
+// RFC-0643: Template placeholder substitution for {{terminology.key}} patterns
+export function substituteTemplate(
+  content: string,
+  terminology: Record<string, string>,
+): string {
+  return content.replace(
+    /\{\{terminology\.(\w+)\}\}/g,
+    (_, key: string) => terminology[key] ?? key,
+  );
+}
+
+// RFC-0643: Template context for root AGENTS.md generation
+export interface TemplateContext {
+  terminology: Record<string, string>;
+  register: BehavioralRegister;
+  domain: string | null;
+  workspaceType?: string;
+}
+
+// RFC-0643: Root template paths
+const BUSINESS_ROOT_TEMPLATE = path.join(import.meta.dirname, "templates", "root-agents-business.md");
+const CREATIVE_ROOT_TEMPLATE = path.join(import.meta.dirname, "templates", "root-agents-creative.md");
+
+export function selectRootTemplate(register: BehavioralRegister): string {
+  try {
+    const templatePath = register === "creative" ? CREATIVE_ROOT_TEMPLATE : BUSINESS_ROOT_TEMPLATE;
+    return fs.readFileSync(templatePath, "utf8");
+  } catch {
+    // Template file not found — fall back to empty string (dynamic sections will still be appended)
+    return "";
+  }
+}
+
+function resolveAllTerminology(
+  config: ReturnType<typeof loadForgeConfig>,
+  profile: StackProfile | undefined,
+): Record<string, string> {
+  const terminology: Record<string, string> = {};
+  // Universal keys from TERMINOLOGY_DEFAULTS
+  for (const key of ["artifact", "artifactPlural", "module", "source", "output", "verify", "operator"]) {
+    terminology[key] = resolveTerminology(config, profile?.terminology, key);
+  }
+  // Profile-specific keys
+  if (profile?.terminology) {
+    for (const [key, value] of Object.entries(profile.terminology)) {
+      terminology[key] = resolveTerminology(config, profile.terminology, key);
+    }
+  }
+  return terminology;
+}
+
+function replaceProjectPlaceholders(
+  template: string,
+  config: ReturnType<typeof loadForgeConfig>,
+  dynamicSections: string,
+): string {
+  let result = template;
+  result = result.replace(/\{\{projectName\}\}/g, config.project.name);
+  result = result.replace(/\{\{projectStack\}\}/g, config.project.stack.length > 0 ? config.project.stack.join(", ") : "(none)");
+  result = result.replace(/\{\{projectPm\}\}/g, config.project.packageManager);
+  result = result.replace(/\{\{rfcsDir\}\}/g, config.paths.rfcsDir);
+  result = result.replace(/\{\{adrsDir\}\}/g, config.paths.adrsDir);
+  result = result.replace(/\{\{plansDir\}\}/g, config.paths.plansDir);
+  result = result.replace(/\{\{auditsDir\}\}/g, config.paths.auditsDir);
+  result = result.replace(/\{\{specsDir\}\}/g, config.paths.specsDir);
+  result = result.replace(/\{\{skillsDir\}\}/g, config.paths.skillsDir);
+  result = result.replace(/\{\{dynamicSections\}\}/g, dynamicSections);
+  return result;
+}
 
 function readRegister(workspaceRoot: string): BehavioralRegister {
   const prefsPath = path.join(workspaceRoot, "PREFERENCES.md");
@@ -300,6 +372,7 @@ interface AgentsGenerateResult {
   skipped: string[];
   errors: string[];
   renderedFiles?: { [relPath: string]: string };
+  details?: Array<{ path: string; domain?: string; register?: string; workspaceType?: string }>;
 }
 
 export async function runAgentsGenerate(
@@ -362,52 +435,30 @@ export async function runAgentsGenerate(
     commandPrefix: "forge",
   });
 
-  const lines: string[] = [];
-  lines.push(header);
-  lines.push("");
-  lines.push(`# Agent Guide: ${config.project.name}`);
-  lines.push("");
-  lines.push("> This file is generated by `forge.agents.generate` from `forge.yaml`.");
-  lines.push("> Do not edit by hand — edit `forge.yaml` and regenerate.");
-  lines.push("");
+  // RFC-0643: determine register from PREFERENCES.md or profile
+  const register = readRegister(workspaceRoot);
 
-  // Project section
-  lines.push("## Project");
-  lines.push("");
-  lines.push(`- **Name:** ${config.project.name}`);
-  lines.push(`- **Stack:** ${config.project.stack.length > 0 ? config.project.stack.join(", ") : "(none)"}`);
-  lines.push(`- **Package manager:** ${config.project.packageManager}`);
-  lines.push("");
-
-  // Paths section
-  lines.push("## Paths");
-  lines.push("");
-  lines.push(`- RFCs: \`${config.paths.rfcsDir}\``);
-  lines.push(`- ADRs: \`${config.paths.adrsDir}\``);
-  lines.push(`- Plans: \`${config.paths.plansDir}\``);
-  lines.push(`- Audits: \`${config.paths.auditsDir}\``);
-  lines.push(`- Specs: \`${config.paths.specsDir}\``);
-  lines.push(`- Skills: \`${config.paths.skillsDir}\``);
-  lines.push("");
+  // Build dynamic sections (skills table, capabilities, behavioral layer)
+  const dynamicLines: string[] = [];
 
   // Skills table
-  lines.push("## Skills");
-  lines.push("");
-  lines.push("| Name | Category | Invocation | Concerns |");
-  lines.push("| --- | --- | --- | --- |");
+  dynamicLines.push("## Skills");
+  dynamicLines.push("");
+  dynamicLines.push("| Name | Category | Invocation | Concerns |");
+  dynamicLines.push("| --- | --- | --- | --- |");
   for (const skill of FORGE_SKILLS) {
-    lines.push(`| ${skill.name} | ${skill.category} | ${skill.invocation} | ${skill.concerns} |`);
+    dynamicLines.push(`| ${skill.name} | ${skill.category} | ${skill.invocation} | ${skill.concerns} |`);
   }
-  lines.push("");
+  dynamicLines.push("");
 
   // Capabilities section (RFC-0393)
   if (config.bindings) {
-    lines.push("## Capabilities");
-    lines.push("");
-    lines.push("Bindings resolved from `forge.yaml`:");
-    lines.push("");
-    lines.push("| Key | Status | Value |");
-    lines.push("| --- | --- | --- |");
+    dynamicLines.push("## Capabilities");
+    dynamicLines.push("");
+    dynamicLines.push("Bindings resolved from `forge.yaml`:");
+    dynamicLines.push("");
+    dynamicLines.push("| Key | Status | Value |");
+    dynamicLines.push("| --- | --- | --- |");
 
     const bindingKeys = [
       "commands.validateRfc",
@@ -427,49 +478,57 @@ export async function runAgentsGenerate(
       const value = resolveBinding(config, key);
       const status = value === null ? "absent" : "resolved";
       const display = value === null ? "—" : typeof value === "string" ? `\`${value}\`` : String(value);
-      lines.push(`| ${key} | ${status} | ${display} |`);
+      dynamicLines.push(`| ${key} | ${status} | ${display} |`);
     }
 
     // compassDocs array
     const compassDocs = resolveBinding(config, "paths.compassDocs");
     if (Array.isArray(compassDocs) && compassDocs.length > 0) {
-      lines.push(`| paths.compassDocs | resolved | ${compassDocs.map((d) => `\`${d}\``).join(", ")} |`);
+      dynamicLines.push(`| paths.compassDocs | resolved | ${compassDocs.map((d) => `\`${d}\``).join(", ")} |`);
     } else {
-      lines.push(`| paths.compassDocs | absent | — |`);
+      dynamicLines.push(`| paths.compassDocs | absent | — |`);
     }
 
     // terminology
     if (config.bindings.terminology && Object.keys(config.bindings.terminology).length > 0) {
-      lines.push("");
-      lines.push("**Terminology:**");
-      lines.push("");
+      dynamicLines.push("");
+      dynamicLines.push("**Terminology:**");
+      dynamicLines.push("");
       for (const [term, value] of Object.entries(config.bindings.terminology)) {
-        lines.push(`- ${term}: ${value}`);
+        dynamicLines.push(`- ${term}: ${value}`);
       }
     }
 
-    lines.push("");
+    dynamicLines.push("");
   }
 
   // Behavioral layer section (RFC-0548)
-  const register = readRegister(workspaceRoot);
   const behavioralLayer = generateBehavioralLayer(workspaceRoot, register);
-  lines.push(behavioralLayer);
-  lines.push("");
+  dynamicLines.push(behavioralLayer);
+  dynamicLines.push("");
 
-  // Conventions section
-  lines.push("## Conventions");
-  lines.push("");
-  lines.push("- Use `forge.yaml` as the single source of truth for project configuration.");
-  lines.push("- Regenerate this file with `forge.agents.generate` after changing `forge.yaml`.");
-  lines.push("- Follow the closest `AGENTS.md` for workspace or directory details.");
-  lines.push("");
+  // RFC-0643: Load root template, replace project placeholders, insert dynamic sections
+  const rootTemplate = selectRootTemplate(register);
+  const dynamicSections = dynamicLines.join("\n");
+  let content = replaceProjectPlaceholders(rootTemplate, config, dynamicSections);
 
-  const content = lines.join("\n");
+  // Prepend generated header (above template content)
+  content = header + "\n\n" + content;
+
+  // RFC-0643: Apply terminology substitution on final assembled content
+  const profile = config.profile as StackProfile | undefined;
+  const resolvedTerminology = resolveAllTerminology(config, profile);
+  content = substituteTemplate(content, resolvedTerminology);
 
   const generated: string[] = ["AGENTS.md"];
   const skipped: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};
+  const details: Array<{ path: string; domain?: string; register?: string; workspaceType?: string }> = [];
+  details.push({
+    path: "AGENTS.md",
+    domain: profile?.domain,
+    register,
+  });
 
   if (dryRun) {
     renderedFiles["AGENTS.md"] = content;
@@ -482,24 +541,38 @@ export async function runAgentsGenerate(
 
   // Nested AGENTS.md generation (RFC-0611)
   // RFC-0640: load workspaceTypes from stack profile for profile-driven detection
+  // RFC-0643: prefer config.profile (loaded by loadForgeConfig), fallback to stack-based lookup
   let workspaceTypes: ProfileWorkspaceType[] | undefined;
-  try {
-    const forgeRoot = resolveForgeRoot(workspaceRoot);
-    const profiles = listStackProfiles(forgeRoot);
-    for (const stackId of config.project.stack) {
-      const profile = profiles.find((p) => p.id === stackId);
-      if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
-        workspaceTypes = profile.workspaceTypes;
-        break;
+  if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
+    workspaceTypes = profile.workspaceTypes;
+  } else {
+    try {
+      const forgeRoot = resolveForgeRoot(workspaceRoot);
+      const profiles = listStackProfiles(forgeRoot);
+      for (const stackId of config.project.stack) {
+        const stackProfile = profiles.find((p) => p.id === stackId);
+        if (stackProfile?.workspaceTypes && stackProfile.workspaceTypes.length > 0) {
+          workspaceTypes = stackProfile.workspaceTypes;
+          break;
+        }
       }
+    } catch {
+      // forge root not resolvable — fallback to hardcoded detection
     }
-  } catch {
-    // forge root not resolvable — fallback to hardcoded detection
   }
   const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes);
   generated.push(...nestedResult.generated);
   skipped.push(...nestedResult.skipped);
   Object.assign(renderedFiles, nestedResult.renderedFiles);
+
+  // RFC-0643: add details for nested files
+  for (const rel of nestedResult.generated) {
+    details.push({
+      path: rel,
+      domain: profile?.domain,
+      workspaceType: nestedResult.workspaceTypeMap?.[rel],
+    });
+  }
 
   if (!dryRun && outputFormat === "pretty") {
     for (const rel of nestedResult.generated) {
@@ -518,6 +591,7 @@ export async function runAgentsGenerate(
       generated,
       skipped,
       errors: [],
+      details,
       ...(dryRun ? { renderedFiles } : {}),
     },
     exitCode: 0,

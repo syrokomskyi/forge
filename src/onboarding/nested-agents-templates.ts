@@ -10,12 +10,17 @@ content-rich AGENTS.md for a workspace from its package.json metadata. No I/O.</
 <CHANGE_SUMMARY>
   <item>RFC-0611: initial minimal stub template for app, package, service workspaces.</item>
   <item>Enriched template: render package name, description, entry points, scripts, and dependencies from package.json metadata instead of a minimal stub.</item>
+  <item>RFC-0643: selectNestedTemplate() for profile-driven template selection with path traversal guard.</item>
 </CHANGE_SUMMARY>
 */
 
 import { buildGeneratedHeader } from "../utils/index.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { WorkspaceDir, WorkspaceType } from "./workspace-discovery.ts";
+import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
+import type { StackProfile } from "../profiles/stack-profile.ts";
+import fs from "node:fs";
+import path from "node:path";
 
 export interface PackageInfo {
   name?: string;
@@ -116,6 +121,58 @@ function buildDependenciesSection(deps: Record<string, string> | undefined): str
     lines.push("");
   }
   return lines;
+}
+
+/**
+ * RFC-0643: Select nested AGENTS.md template from profile workspace type.
+ * When agentsMdTemplate is present, resolve relative to profile directory.
+ * Reject absolute paths and parent-directory traversal (..) — fall back to hardcoded.
+ * Apply terminology substitution to the template content.
+ */
+export function selectNestedTemplate(
+  workspaceType: ProfileWorkspaceType | undefined,
+  profile: StackProfile | undefined,
+  terminology: Record<string, string>,
+  fallback: string,
+): string {
+  if (!workspaceType?.agentsMdTemplate || !profile) {
+    return fallback;
+  }
+
+  const templateRel = workspaceType.agentsMdTemplate;
+
+  // Path traversal guard: reject absolute paths and ..
+  if (path.isAbsolute(templateRel) || templateRel.includes("..")) {
+    return fallback;
+  }
+
+  // Resolve relative to profiles/ directory (where profile YAMLs live)
+  const forgeRoot = path.resolve(import.meta.dirname, "..", "..");
+  const profilesDir = path.join(forgeRoot, "profiles");
+  const templatePath = path.resolve(profilesDir, templateRel);
+
+  // Ensure resolved path is within profiles directory (no traversal escape)
+  if (!templatePath.startsWith(profilesDir + path.sep) && templatePath !== profilesDir) {
+    return fallback;
+  }
+
+  try {
+    const content = fs.readFileSync(templatePath, "utf8");
+    return substituteNestedTemplate(content, terminology);
+  } catch {
+    // Template file not found — fall back
+    return fallback;
+  }
+}
+
+function substituteNestedTemplate(
+  content: string,
+  terminology: Record<string, string>,
+): string {
+  return content.replace(
+    /\{\{terminology\.(\w+)\}\}/g,
+    (_, key: string) => terminology[key] ?? key,
+  );
 }
 
 export function buildNestedAgentsMd(

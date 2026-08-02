@@ -17,6 +17,7 @@
   <item>RFC-0546: added optional migrationAdapters field to forgeConfigSchema for migration-adapter registry discovery.</item>
   <item>RFC-0639: added 5 semantic command keys (validate, produce, verify, preview, lint), terminology promoted from .optional() to .default({}), resolveTerminology function.</item>
   <item>RFC-0640: added optional domain field to project section for domain-aware bootstrapping and health checks.</item>
+  <item>RFC-0643: added optional profile field to forgeConfigSchema and ForgeConfig; loadForgeConfig loads profiles/<id>.yaml when present.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,6 +26,7 @@ import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
 import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
+import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
 
 // ---------------------------------------------------------------------------
 // Bindings schema (forge/bindings@1) — RFC-0393
@@ -164,6 +166,8 @@ export const forgeConfigSchema = z.object({
       syncedVersion: z.string().nullable().default(null),
     })
     .optional(),
+  /** RFC-0643: profile id — when present, loadForgeConfig loads the corresponding profiles/<id>.yaml */
+  profile: z.string().optional(),
 });
 
 export interface ForgeConfig {
@@ -192,6 +196,8 @@ export interface ForgeConfig {
   migrationAdapters?: ForgeMigrationAdapter[];
   /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */
   forge?: { syncedVersion: string | null };
+  /** RFC-0643: loaded stack profile — present when forge.yaml has a `profile` field */
+  profile?: StackProfile;
 }
 
 // ---------------------------------------------------------------------------
@@ -329,7 +335,29 @@ export function loadForgeConfig(workspaceRoot: string): ForgeConfig {
     );
   }
 
-  return result.data as ForgeConfig;
+  const rawData = result.data as Record<string, unknown>;
+  const profileId = rawData["profile"] as string | undefined;
+
+  // RFC-0643: load stack profile when `profile` field is present in forge.yaml
+  let loadedProfile: StackProfile | undefined;
+  if (profileId) {
+    try {
+      const forgeRoot = resolveForgeRoot(workspaceRoot);
+      const profiles = listStackProfiles(forgeRoot);
+      loadedProfile = profiles.find((p) => p.id === profileId);
+    } catch {
+      // forge root not resolvable — profile not loaded
+    }
+  }
+
+  const config = { ...rawData } as unknown as ForgeConfig;
+  if (loadedProfile) {
+    config.profile = loadedProfile;
+  } else {
+    delete config.profile;
+  }
+
+  return config;
 }
 
 // ---------------------------------------------------------------------------
