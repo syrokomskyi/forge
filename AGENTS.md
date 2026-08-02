@@ -96,7 +96,7 @@ Stack profiles are YAML documents under `profiles/` describing a supported stack
 
 - **MUST NOT** scaffold into a non-empty directory — no `--force` flag.
 - **MUST NOT** add stack profiles for stacks forge cannot scaffold end-to-end.
-- Shipped profiles: `astro-typescript-turborepo`, `phaser-turborepo`, `forge-shell` (minimal — default for `forge.create`).
+- Shipped profiles: `astro-typescript-turborepo`, `phaser-turborepo`, `forge-shell` (minimal — default for `forge.create`), `editframe-html` (video domain — first non-software profile, RFC-0641).
 
 ### Domain fields (RFC-0638)
 
