@@ -17,6 +17,7 @@
   <item>RFC-0544: accept optional context.forgeRoot to support composition from forge.create.</item>
   <item>RFC-0544 fix: export InitResult interface for type-safe consumption by forge.create.</item>
   <item>RFC-0552: add skippedSkills to InitResult, detect Forge-vs-pack skill name conflicts.</item>
+  <item>RFC-0640: accept optional domain fields from profile (register, domain, terminology, semanticBindings) and write them into PREFERENCES.md and forge.yaml.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,9 +44,17 @@ export interface InitResult {
   detection?: { profile: string | null; unsupported: string[] };
 }
 
+export interface InitDomainFields {
+  register?: "business" | "creative";
+  domain?: string;
+  terminology?: Record<string, string>;
+  semanticBindings?: Record<string, string | null>;
+}
+
 export function runInit(
   input: { flags: { aiLanguage?: string; documentationLanguage?: string; from?: string } },
   context: unknown,
+  domainFields?: InitDomainFields,
 ): InitResult {
   const ctx = context as { workspaceRoot?: string; forgeRoot?: string };
   const workspaceRoot = ctx?.workspaceRoot ?? process.cwd();
@@ -120,6 +129,20 @@ export function runInit(
     } catch {
       // forge root not resolvable — leave syncedVersion as null (default)
     }
+    // RFC-0640: write domain fields from profile into forge.yaml
+    if (domainFields?.domain) {
+      config.project.domain = domainFields.domain;
+    }
+    if (domainFields?.terminology && config.bindings) {
+      config.bindings.terminology = { ...config.bindings.terminology, ...domainFields.terminology };
+    }
+    if (domainFields?.semanticBindings && config.bindings) {
+      for (const [key, value] of Object.entries(domainFields.semanticBindings)) {
+        if (key in config.bindings.commands) {
+          (config.bindings.commands as Record<string, string | null>)[key] = value;
+        }
+      }
+    }
     const yamlContent = stringifyYaml(config);
     fs.writeFileSync(forgeYamlPath, yamlContent, "utf8");
     created.push("forge.yaml");
@@ -147,10 +170,11 @@ export function runInit(
 
   // 2. Create PREFERENCES.md if missing
   const prefsPath = path.join(workspaceRoot, "PREFERENCES.md");
+  const register = domainFields?.register ?? "business";
   if (fs.existsSync(prefsPath)) {
     skipped.push("PREFERENCES.md (already exists)");
   } else {
-    const prefsContent = `---\naiLanguage: ${aiLang}\ndocumentationLanguage: ${docLang}\n---\n\n# Operator Preferences\n\n- \`aiLanguage\`: ${aiLang} — AI uses this language for all communication with the operator.\n- \`documentationLanguage\`: ${docLang} — generated documentation uses this language.\n`;
+    const prefsContent = `---\naiLanguage: ${aiLang}\ndocumentationLanguage: ${docLang}\nregister: ${register}\n---\n\n# Operator Preferences\n\n- \`aiLanguage\`: ${aiLang} — AI uses this language for all communication with the operator.\n- \`documentationLanguage\`: ${docLang} — generated documentation uses this language.\n- \`register\`: ${register} — communication register (business or creative).\n`;
     fs.writeFileSync(prefsPath, prefsContent, "utf8");
     created.push("PREFERENCES.md");
   }

@@ -13,7 +13,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `forge.create`, `forge.doctor`, `forge.upgrade`, `forge.agents.generate`, `forge.scaffold`, `forge.port.scaffold`, `forge.skill.validate`, `forge.skill.list`, `forge.port.validate`, `docs.archive` | `os/core/` |
+| `forgeCoreModule` | `forge.create`, `forge.doctor`, `forge.upgrade`, `forge.agents.generate`, `forge.scaffold`, `forge.port.scaffold`, `forge.skill.validate`, `forge.skill.list`, `forge.port.validate`, `forge.profile.validate`, `docs.archive` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
@@ -110,6 +110,15 @@ The `forge/stack-profile@1` schema includes six optional domain-neutral fields t
 - **`register`** — string selecting the default behavioral register (`business` or `creative`). Used by `forge.create` as a one-time default for new projects; existing `PREFERENCES.md` is never overwritten.
 
 Types and schemas are exported from `@warpgogol/forge`: `StackProfileDomainFields`, `ProfileArtifact`, `ProfileWorkspaceType`, `ProfileInvariant`, `stackProfileDomainFieldsSchema`, `UNIVERSAL_TERMINOLOGY_KEYS`, `TERMINOLOGY_DEFAULTS`.
+
+### Domain-aware commands (RFC-0640)
+
+The following commands are domain-aware — they read domain fields from the stack profile and `forge.yaml` to adapt their behavior:
+
+- **`forge.profile.validate`** — validates profile YAML files under `packages/forge/profiles/` against the `forge/stack-profile@1` schema (including RFC-0638 domain fields). Supports `--id <profile-id>` to validate a single profile. Returns exit 1 if any profile is invalid.
+- **`forge.create`** — reads `domain`, `terminology`, `register`, and artifact-derived semantic bindings from the selected profile and writes them into `forge.yaml` (domain, terminology, bindings.commands) and `PREFERENCES.md` (register). When the profile has no domain fields, behavior is unchanged (software-domain fallback).
+- **`forge.doctor`** — reports domain info (domain, source, register, terminology, invariant count) as a `domain-info` check. Lists declared invariants as a `domain-invariants` check (reported-only, advisory). Runs `forge.profile.validate` as an advisory `profile-validate` check (warn status on failure, not gating — shipped profiles are forge-internal). Skips software-specific checks (nested AGENTS.md) for non-software domains. The `--strict` flag is declared in the command registration but does not affect invariant reporting — it is reserved for future use when automatic checking is added. Domain is resolved via a three-tier chain: `forge.yaml` `project.domain` → stack profile `domain` → default `software`.
+- **`forge.agents.generate`** — loads `workspaceTypes[]` from the matching stack profile and passes them to `discoverWorkspaces` for profile-driven workspace type detection. When the profile has no `workspaceTypes`, falls back to hardcoded detection (astro.config → app, Dockerfile → service, else package).
 
 ## Bindings contract (RFC-0393)
 

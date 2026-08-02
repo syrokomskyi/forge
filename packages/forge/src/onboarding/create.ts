@@ -12,6 +12,7 @@
   <item>RFC-0544 fix: replace double cast on runInit return with proper InitResult typing.</item>
   <item>RFC-0548: auto-run forge.agents.generate after init, update nextSteps to remove manual AGENTS.md step.</item>
   <item>RFC-0550: write NEXT_STEPS.md into project root with creator-facing guidance (greenfield vs transplant via LLM).</item>
+  <item>RFC-0640: load profile domain fields and pass them to runInit for domain-aware bootstrapping.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,7 +20,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";
-import { runInit, type InitResult } from "./init.ts";
+import { runInit, type InitResult, type InitDomainFields } from "./init.ts";
 import { runAgentsGenerate } from "./agents-generate.ts";
 import {
   loadForgeConfig,
@@ -27,6 +28,7 @@ import {
   resolvePackageManager,
   applyCliBindingDefaults,
 } from "../config/forge-config.ts";
+import { listStackProfiles } from "../profiles/stack-profile.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -41,6 +43,48 @@ interface CreateCommandResult {
   profile: string;
   filesCreated: string[];
   errors: string[];
+}
+
+/**
+ * RFC-0640: Load domain fields from the selected profile.
+ * Returns register, domain, terminology, and semanticBindings derived from profile.artifacts[].
+ * When the profile has no domain fields, returns empty object (fallback to current behavior).
+ */
+function loadProfileDomainFields(profileId: string, forgeRoot: string): InitDomainFields {
+  try {
+    const profiles = listStackProfiles(forgeRoot);
+    const profile = profiles.find((p) => p.id === profileId);
+    if (!profile) return {};
+
+    const fields: InitDomainFields = {};
+    if (profile.register) {
+      fields.register = profile.register;
+    }
+    if (profile.domain) {
+      fields.domain = profile.domain;
+    }
+    if (profile.terminology) {
+      fields.terminology = profile.terminology;
+    }
+    // Derive semantic binding defaults from profile.artifacts[]
+    if (profile.artifacts && profile.artifacts.length > 0) {
+      const semanticBindings: Record<string, string | null> = {};
+      for (const artifact of profile.artifacts) {
+        if (artifact.produce?.command) {
+          semanticBindings.produce = artifact.produce.command;
+        }
+        if (artifact.validate?.command) {
+          semanticBindings.validate = artifact.validate.command;
+        }
+      }
+      if (Object.keys(semanticBindings).length > 0) {
+        fields.semanticBindings = semanticBindings;
+      }
+    }
+    return fields;
+  } catch {
+    return {};
+  }
 }
 
 export async function runCreate(
@@ -157,11 +201,13 @@ export async function runCreate(
   }
 
   // 7. Run forge.init inside target dir
+  // RFC-0640: load profile domain fields and pass them to runInit
+  const initDomainFields = loadProfileDomainFields(profile, forgeRoot);
   const initInput: ForgeCommandInput = {
     argv: [],
     flags: {},
   };
-  const initResult: InitResult = runInit(initInput, childContext);
+  const initResult: InitResult = runInit(initInput, childContext, initDomainFields);
   if (initResult.status !== "pass") {
     return {
       data: {
