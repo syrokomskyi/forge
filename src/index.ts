@@ -85,7 +85,7 @@ export {
   type ForgeMigrationAdapter,
 } from "./config/forge-config.ts";
 
-// Stack profiles (RFC-0392)
+// Stack profiles (RFC-0392, RFC-0638)
 export {
   stackProfileSchema,
   loadStackProfile,
@@ -94,6 +94,20 @@ export {
   type StackProfile,
   type ProfileFile,
 } from "./profiles/stack-profile.ts";
+
+// Profile domain fields (RFC-0638)
+export {
+  stackProfileDomainFieldsSchema,
+  profileArtifactSchema,
+  profileWorkspaceTypeSchema,
+  profileInvariantSchema,
+  UNIVERSAL_TERMINOLOGY_KEYS,
+  TERMINOLOGY_DEFAULTS,
+  type StackProfileDomainFields,
+  type ProfileArtifact,
+  type ProfileWorkspaceType,
+  type ProfileInvariant,
+} from "./profiles/profile-schema.ts";
 
 // Validators
 export { runSkillValidate } from "./validators/skill-validate.ts";

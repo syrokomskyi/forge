@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0392: initial stack profile module with zod schema, listStackProfiles, detectStack.</item>
+  <item>RFC-0638: extended stackProfileSchema with optional domain-neutral fields (domain, terminology, artifacts, workspaceTypes, invariants, register).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -15,6 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
+import { stackProfileDomainFieldsSchema, type StackProfileDomainFields } from "./profile-schema.ts";
 
 // ---------------------------------------------------------------------------
 // Schema (forge/stack-profile@1)
@@ -49,6 +51,13 @@ export const stackProfileSchema = z.object({
       install: z.array(z.string()).default([]),
     })
     .optional(),
+  // RFC-0638: Domain-neutral optional fields
+  domain: stackProfileDomainFieldsSchema.shape.domain,
+  terminology: stackProfileDomainFieldsSchema.shape.terminology,
+  artifacts: stackProfileDomainFieldsSchema.shape.artifacts,
+  workspaceTypes: stackProfileDomainFieldsSchema.shape.workspaceTypes,
+  invariants: stackProfileDomainFieldsSchema.shape.invariants,
+  register: stackProfileDomainFieldsSchema.shape.register,
 });
 
 export interface ProfileFile {
@@ -56,7 +65,7 @@ export interface ProfileFile {
   content: string;
 }
 
-export interface StackProfile {
+export interface StackProfile extends StackProfileDomainFields {
   schema: "forge/stack-profile@1";
   id: string;
   displayName: string;
