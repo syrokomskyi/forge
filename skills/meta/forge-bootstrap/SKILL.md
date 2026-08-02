@@ -173,7 +173,7 @@ The transplant mode performs real code migration via a migration-adapter registr
 
 6.7. **Build verification and error repair** — after post-setup, verify the transplanted project builds successfully:
 
-1.  Resolve the build command via `ref(forge.yaml bindings.commands.scopedBuild)`. If the binding is null (the migration adapter could not derive a build command from the source project), skip build verification with a note in the welcoming report and continue to the next step.
+1.  Resolve the build command via `ref(forge.yaml bindings.commands.produce)`. If the binding is null (the migration adapter could not derive a build command from the source project), skip build verification with a note in the welcoming report and continue to the next step.
 2.  Run the resolved build command and capture stdout/stderr. Set a timeout of 300 seconds (configurable); if the build does not complete in time, report the timeout in human language and continue.
 3.  Parse build output for:
     - Missing modules (TS2307: Cannot find module 'X')

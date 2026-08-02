@@ -125,8 +125,8 @@ If yes, update the **template** files in `packages/os/site-kernel-onboarding/src
 If yes, **do not edit the generated file directly**. Update the source registry or generator, then run the regeneration command:
 
 ```sh
-ref(forge.yaml bindings.commands.scopedBuild) --workspace=ecosystem.manifest.generate
-ref(forge.yaml bindings.commands.scopedBuild) --workspace=command.manifest.generate
+ref(forge.yaml bindings.commands.produce) --workspace=ecosystem.manifest.generate
+ref(forge.yaml bindings.commands.produce) --workspace=command.manifest.generate
 ```
 
 Note: if the regeneration command is expensive or unavailable in the current session, document the need to regenerate in the session summary and move on.
@@ -182,8 +182,8 @@ For each surface that needs updating:
 If any generated artifact needed regeneration (step 2f), run the generator now:
 
 ```sh
-ref(forge.yaml bindings.commands.scopedBuild) --workspace=ecosystem.manifest.generate
-ref(forge.yaml bindings.commands.scopedBuild) --workspace=command.manifest.generate
+ref(forge.yaml bindings.commands.produce) --workspace=ecosystem.manifest.generate
+ref(forge.yaml bindings.commands.produce) --workspace=command.manifest.generate
 ```
 
 If the generator command is unavailable or too expensive for this session, note it in the summary — the operator can regenerate later.
@@ -191,8 +191,8 @@ If the generator command is unavailable or too expensive for this session, note 
 If a generated artifact was regenerated, run the drift guards:
 
 ```sh
-ref(forge.yaml bindings.commands.scopedBuild) --workspace=ecosystem.manifest.validate
-ref(forge.yaml bindings.commands.scopedBuild) --workspace=workspace.surface.validate
+ref(forge.yaml bindings.commands.produce) --workspace=ecosystem.manifest.validate
+ref(forge.yaml bindings.commands.produce) --workspace=workspace.surface.validate
 ```
 
 ### 6. Commit
