@@ -210,7 +210,7 @@ Every forge CLI command's output ends with a **Next steps** block in pretty mode
 
 ## Silent upgrade trigger (RFC-0554)
 
-The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against the installed `@warpgogol/forge` version. If they differ, it runs `forge upgrade` invisibly — the operator is never informed about migration, version numbers, or upgrade mechanics. The `forge.upgrade` CLI command remains available for manual sync. This is not a dual-path: it is a single upgrade mechanism (`runUpgrade`) with two entry points (CLI and `forge-bootstrap`).
+The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against the installed `@warpgogol/forge` version. If they differ, it runs `forge upgrade --update-npm` invisibly — the operator is never informed about migration, version numbers, or upgrade mechanics. The npm update is skipped automatically in monorepo environments (where `packages/forge/` exists). The `forge.upgrade` CLI command remains available for manual sync (with or without `--update-npm`). This is not a dual-path: it is a single upgrade mechanism (`runUpgrade`) with two entry points (CLI and `forge-bootstrap`).
 
 ## Core behavioral layer (RFC-0548)
 
