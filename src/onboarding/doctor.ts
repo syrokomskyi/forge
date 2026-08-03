@@ -18,6 +18,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0640: added domain reporting, invariant listing (reported-only), terminology resolution, --strict flag, and software-specific check skipping for non-software domains.</item>
   <item>RFC-0660: added legacy-section count reporting for structured knowledge files.</item>
   <item>RFC-0661: added knowledge-budgets check — validates override shape, computes per-skill budget reports, reports summary with headroom %.</item>
+  <item>RFC-0663: added knowledge-duplicates check (cross-skill L2 duplicate detection) and shared-knowledge-file check (schema/id uniqueness for the shared layer).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,6 +42,8 @@ import { runProfileValidate } from "./profile-validate.ts";
 import { parseKnowledgeFile } from "../knowledge/index.ts";
 import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
 import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS } from "../knowledge/budgets.ts";
+import { detectDuplicatePrinciples } from "../knowledge/index.ts";
+import type { DuplicatePair } from "../knowledge/index.ts";
 
 interface DoctorCheck {
   name: string;
@@ -452,6 +455,148 @@ function checkKnowledgeBudgets(
     name: "knowledge-budgets",
     status,
     message: parts.join(" | "),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge duplicate detection (RFC-0663)
+// ---------------------------------------------------------------------------
+
+function collectL2Files(
+  workspaceRoot: string,
+  forgeRoot: string,
+): Array<{ skill: string; parsed: ParsedKnowledgeFile }> {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return [];
+  }
+
+  const files: Array<{ skill: string; parsed: ParsedKnowledgeFile }> = [];
+
+  for (const skill of FORGE_SKILLS) {
+    if (!skill.knowledge || skill.knowledge.length === 0) continue;
+    const skillDir = join(forgeRoot, dirname(skill.path));
+    for (const kf of skill.knowledge) {
+      if (kf !== "learned-principles.md") continue;
+      const kfPath = join(skillDir, kf);
+      try {
+        const parsed = parseKnowledgeFile(kfPath);
+        if (parsed.isKnowledgeAdjacent) continue;
+        if (parsed.parseIssues.length > 0) continue;
+        files.push({ skill: skill.name, parsed });
+      } catch {
+        // File read errors are handled by stale knowledge check
+      }
+    }
+  }
+
+  const packSkills = discoverPackSkills(workspaceRoot, config);
+  for (const skill of packSkills) {
+    if (!skill.knowledge || skill.knowledge.length === 0) continue;
+    const skillDir = join(workspaceRoot, skill.dir, dirname(skill.path));
+    for (const kf of skill.knowledge) {
+      if (kf !== "learned-principles.md") continue;
+      const kfPath = join(skillDir, kf);
+      try {
+        const parsed = parseKnowledgeFile(kfPath);
+        if (parsed.isKnowledgeAdjacent) continue;
+        if (parsed.parseIssues.length > 0) continue;
+        files.push({ skill: skill.name, parsed });
+      } catch {
+        // File read errors are handled by stale knowledge check
+      }
+    }
+  }
+
+  const sharedPath = join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
+  try {
+    const parsed = parseKnowledgeFile(sharedPath);
+    if (!parsed.isKnowledgeAdjacent && parsed.parseIssues.length === 0 && parsed.entries.length > 0) {
+      files.push({ skill: "shared", parsed });
+    }
+  } catch {
+    // Shared layer not initialized — not an error
+  }
+
+  return files;
+}
+
+function checkKnowledgeDuplicates(
+  workspaceRoot: string,
+  forgeRoot: string,
+): DoctorCheck {
+  const l2Files = collectL2Files(workspaceRoot, forgeRoot);
+
+  if (l2Files.length === 0) {
+    return { name: "knowledge-duplicates", status: "pass", message: "No L2 knowledge files to check" };
+  }
+
+  const pairs: DuplicatePair[] = detectDuplicatePrinciples(l2Files);
+
+  if (pairs.length === 0) {
+    return { name: "knowledge-duplicates", status: "pass", message: "No cross-skill duplicate principles detected" };
+  }
+
+  const pairSummaries = pairs.map(
+    (p) => `${p.a.skill}/${p.a.entryId} ↔ ${p.b.skill}/${p.b.entryId} (${p.kind})`,
+  );
+
+  return {
+    name: "knowledge-duplicates",
+    status: "warn",
+    message: `${pairs.length} duplicate pair${pairs.length === 1 ? "" : "s"} detected — run fo-knowledge-distill to promote: ${pairSummaries.join("; ")}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Shared knowledge file validation (RFC-0663)
+// ---------------------------------------------------------------------------
+
+function checkSharedKnowledgeFile(
+  workspaceRoot: string,
+  forgeRoot: string,
+): DoctorCheck {
+  const sharedPath = join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
+
+  let parsed: ParsedKnowledgeFile;
+  try {
+    parsed = parseKnowledgeFile(sharedPath);
+  } catch {
+    return { name: "shared-knowledge-file", status: "pass", message: "Shared knowledge layer not initialized — created on first promotion" };
+  }
+
+  if (parsed.isKnowledgeAdjacent) {
+    return { name: "shared-knowledge-file", status: "pass", message: "Shared knowledge layer is empty (no structured entries)" };
+  }
+
+  const issues: string[] = [];
+
+  for (const issue of parsed.parseIssues) {
+    issues.push(`line ${issue.line}: ${issue.message}`);
+  }
+
+  const seenIds = new Set<string>();
+  for (const entry of parsed.entries) {
+    if (seenIds.has(entry.meta.id)) {
+      issues.push(`duplicate entry id: ${entry.meta.id}`);
+    }
+    seenIds.add(entry.meta.id);
+  }
+
+  if (issues.length > 0) {
+    return {
+      name: "shared-knowledge-file",
+      status: "fail",
+      message: `${issues.length} issue${issues.length === 1 ? "" : "s"}: ${issues.join("; ")}`,
+    };
+  }
+
+  return {
+    name: "shared-knowledge-file",
+    status: "pass",
+    message: `Shared knowledge layer: ${parsed.entries.length} entr${parsed.entries.length === 1 ? "y" : "ies"}`,
   };
 }
 
@@ -879,6 +1024,14 @@ export async function runDoctor(
   // RFC-0661: Check knowledge layer token budgets
   const budgetCheck = checkKnowledgeBudgets(workspaceRoot, forgeRoot);
   checks.push(budgetCheck);
+
+  // RFC-0663: Check cross-skill duplicate principles
+  const duplicatesCheck = checkKnowledgeDuplicates(workspaceRoot, forgeRoot);
+  checks.push(duplicatesCheck);
+
+  // RFC-0663: Validate shared knowledge layer file
+  const sharedKnowledgeCheck = checkSharedKnowledgeFile(workspaceRoot, forgeRoot);
+  checks.push(sharedKnowledgeCheck);
 
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
