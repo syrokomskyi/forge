@@ -43,7 +43,7 @@ Each discovered insight is categorized into exactly one of six types. The catego
 | **Invariant** | A cross-workspace architectural rule that warrants DNA status | `ref(forge.yaml bindings.paths.invariantsFile)` | Delegate to `fo-extract-dna` |
 | **Pattern** | A reusable code pattern or abstraction worth porting to forge | `packages/forge/` | Delegate to `fo-harvest` |
 | **Operator** | A preference, communication style, or behavioral insight about the operator | `.agents/operator-profile.md` | Direct edit by this skill |
-| **Context** | Session-local knowledge with no durable home | Memory DB | `create_memory` tool |
+| **Context** | Session-local knowledge with no durable home | `.agents/memory/daily/<today>.md` (default) or `MEMORY.md` (when durable); Memory DB optional mirror | Direct edit (daily log append) or curated edit (MEMORY.md); Memory DB via `create_memory` tool (optional mirror) |
 
 ### Category criteria
 
@@ -120,7 +120,7 @@ Present each insight with a proposed category and routing:
 | 3 | Gogol ID must not equal phase ID | Invariant | ref(forge.yaml bindings.paths.invariantsFile) | Delegate to fo-extract-dna |
 | 4 | Batch AI calls for large-context models | Pattern | packages/forge/ | Delegate to fo-harvest |
 | 5 | Operator prefers concise responses without code blocks | Operator | .agents/operator-profile.md | Direct edit |
-| 6 | Current pipeline state for mission X | Context | memory DB | create_memory |
+| 6 | Current pipeline state for mission X | Context | `.agents/memory/daily/` or `MEMORY.md` | Direct edit |
 ```
 
 Ask the operator to confirm, adjust categories, or drop items using `ask_user_question` — the question text MUST be in `aiLanguage`. Do not proceed without explicit confirmation.
@@ -137,7 +137,7 @@ For each rule insight:
 2. **Read** the target file before editing.
 3. **Add the rule** in a minimal, actionable form: "Always implement `hydrateFromArtifacts` when a step writes state fields. The engine skips `validateBeforeStart` and `run()` when artifacts are valid, so downstream steps receive empty state." Include a code reference if applicable.
 4. **Do not duplicate** rules already present in the target file. If the rule extends an existing section, append to it.
-5. **Do not create `.agents/rules/*.md`** — `.agents/**` is reference/historical only per root AGENTS.md. Rules live in `AGENTS.md` files.
+5. **Do not create `.agents/rules/*.md`** — `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store, RFC-0664) and `.agents/skills/` (synced by forge) and `.agents/operator-profile.md` (written by this skill). Rules live in `AGENTS.md` files.
 
 #### 4b. Decision → ADR
 
@@ -207,9 +207,15 @@ Cumulative knowledge about the operator. This file is gitignored by default to p
 - [YYYY-MM-DD] <insight>
 ```
 
-#### 4f. Context → memory
+#### 4f. Context → memory layer
 
-Use the `create_memory` tool to save the insight with appropriate tags. Use a descriptive title and include enough context for the next agent to understand why it matters.
+For each context insight, choose the destination with the operator:
+
+1. **Daily log (default)** — append to `.agents/memory/daily/<today>.md` (create if absent). This is the ephemeral warm store — git-ignored, append-only. Format: `- [HH:MM] <insight>`. Redact API keys, passwords, and PII before appending.
+2. **MEMORY.md (when durable)** — if the insight is useful across sessions (not just today), append to `.agents/memory/MEMORY.md` under the most relevant section (`## Current focus`, `## Decisions in flight`, or `## Environment notes`). This is the curated hot store — versioned, so keep it concise.
+3. **Memory DB (optional mirror)** — use the `create_memory` tool to save the insight with appropriate tags. This is an optional mirror of the file-based layer, not the primary store.
+
+Both daily-log and MEMORY.md edits require operator confirmation. Files are the source of truth; Memory DB is a mirror.
 
 ### 5. Commit
 
@@ -251,7 +257,7 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 | 3 | ... | Invariant | fo-extract-dna | RFC-XXXX drafted |
 | 4 | ... | Pattern | fo-harvest | ported to forge |
 | 5 | ... | Operator | .agents/operator-profile.md | committed |
-| 6 | ... | Context | memory DB | saved |
+| 6 | ... | Context | `.agents/memory/` | saved |
 
 ### <Delegated skills invoked>: <count>
 ### <Direct edits>: <count>
@@ -270,7 +276,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 ## Constraints
 
 - **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights) and `.agents/operator-profile.md` (for operator insights, RFC-XXXX). All other routing is via delegation to skills that own their output.
-- **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md.
+- **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store, RFC-0664), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
 - **Operator confirmation is mandatory.** Do not route any insight without explicit confirmation of category and destination.
 - **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.
