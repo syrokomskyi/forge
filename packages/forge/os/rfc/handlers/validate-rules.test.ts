@@ -397,3 +397,56 @@ describe("V-32: implementation commit drift detection", () => {
     expect(v32).toHaveLength(0);
   });
 });
+
+describe("V-16: status <-> implementedAt coupling (error, not warning)", () => {
+  test("error when status is accepted but implementedAt is set", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, {
+      implementedAt: "2026-01-15",
+    });
+    const violations = await runValidate(parsed);
+    const v16 = filterRule(violations, "V-16");
+    expect(v16).toHaveLength(1);
+    expect(v16[0]!.severity).toBe("error");
+    expect(v16[0]!.message).toContain("accepted");
+    expect(v16[0]!.message).toContain("implementedAt");
+  });
+
+  test("error when status is draft but implementedAt is set", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      implementedAt: "2026-01-15",
+    });
+    const violations = await runValidate(parsed);
+    const v16 = filterRule(violations, "V-16");
+    expect(v16).toHaveLength(1);
+    expect(v16[0]!.severity).toBe("error");
+    expect(v16[0]!.message).toContain("draft");
+  });
+
+  test("error when status is implemented but implementedAt is empty", async () => {
+    const parsed = makeParsed("implemented", BASE_BODY);
+    const violations = await runValidate(parsed);
+    const v16 = filterRule(violations, "V-16");
+    expect(v16).toHaveLength(1);
+    expect(v16[0]!.severity).toBe("error");
+    expect(v16[0]!.message).toContain("implemented");
+    expect(v16[0]!.message).toContain("empty");
+  });
+
+  test("no V-16 when status is implemented and implementedAt is set", async () => {
+    const parsed = makeParsed("implemented", BASE_BODY, {
+      implementedAt: "2026-01-15",
+    });
+    const violations = await runValidate(parsed);
+    const v16 = filterRule(violations, "V-16");
+    expect(v16).toHaveLength(0);
+  });
+
+  test("no V-16 when status is accepted and implementedAt is empty", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY);
+    const violations = await runValidate(parsed);
+    const v16 = filterRule(violations, "V-16");
+    // V-16 for implementedAt should not fire; closedAt warnings may exist but are separate
+    const implV16 = v16.filter((v) => v.message.includes("implementedAt"));
+    expect(implV16).toHaveLength(0);
+  });
+});
