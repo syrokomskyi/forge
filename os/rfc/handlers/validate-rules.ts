@@ -446,7 +446,7 @@ export async function validateSingleRfc(
       relFile,
       "V-16",
       `status is "implemented" but implementedAt is empty`,
-      "warning",
+      "error",
     );
   }
   if ((status === "accepted" || status === "draft") && implementedAtStr) {
@@ -455,7 +455,7 @@ export async function validateSingleRfc(
       relFile,
       "V-16",
       `status is "${status}" but implementedAt is set (${implementedAtStr})`,
-      "warning",
+      "error",
     );
   }
   if (isTerminalStatus && !closedAtStr) {

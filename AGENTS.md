@@ -87,6 +87,10 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 
 `getLiveCommands` in `os/rfc/handlers/lifecycle.ts` always merges `commandRegistry.listCommands()` with `docs/command-manifest.generated.yaml`. This is necessary because lazy-loaded modules (e.g. `leitstand`) are not loaded when `rfc.validate` runs, so their commands are absent from the registry but present in the manifest. Never change this to a fallback-only pattern (using manifest only when registry is empty) — that produces false-positive `RFC-CMD-02` violations for commands from lazy-loaded modules.
 
+## RFC status transitions: rfc.implement.stamp is exclusive (V-16)
+
+`rfc.implement.stamp` is the **exclusive atomic path** for accepted → implemented transitions. It atomically sets `status: implemented`, `implementedAt`, and `updatedAt` together. **NEVER** manually edit RFC frontmatter to set `implementedAt` or change `status` to `implemented` — this bypasses the atomic guarantee and risks leaving `status` and `implementedAt` out of sync. V-16 enforces this as an error: `status: accepted/draft` with `implementedAt` set, or `status: implemented` with empty `implementedAt`, both fail `rfc.validate`. After implementing an RFC, run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha>` to stamp it.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
