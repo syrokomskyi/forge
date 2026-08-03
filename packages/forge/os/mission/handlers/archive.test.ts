@@ -1,4 +1,4 @@
-import { test, expect, describe, beforeEach, afterEach } from "vitest";
+import { test, expect, describe, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -165,6 +165,31 @@ describe("mission.archive", () => {
     expect(outOfArchive[0].missionId).toBe("test-m010");
     expect(existsSync(path.join(missionsDir, "test-m010"))).toBe(true);
     expect(existsSync(archiveMissionDir)).toBe(false);
+  });
+
+  test("resurrected source path (e.g. .astro/ cache) → cleaned up after rename", async () => {
+    await writeMissionManifest(missionsDir, "test-m011", "closed");
+    const missionDir = path.join(missionsDir, "test-m011");
+
+    // Simulate a watcher recreating a stale cache dir after rename by
+    // monkey-patching fs.rename to re-create .astro/ at the source.
+    const originalRename = fs.rename;
+    const astroCacheDir = path.join(missionDir, "workpiece", ".astro");
+    vi.spyOn(fs, "rename").mockImplementation(async (src, dest) => {
+      await originalRename(src, dest);
+      // Simulate IDE/watcher recreating stale cache at old path
+      await fs.mkdir(path.join(missionDir, "workpiece", ".astro"), { recursive: true });
+      await fs.writeFile(path.join(astroCacheDir, "content.d.ts"), "// stale cache\n");
+    });
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    vi.mocked(fs.rename).mockRestore();
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-m011");
+    expect(existsSync(missionDir)).toBe(false);
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-m011"))).toBe(true);
   });
 
   test("invalid --status value → throws error", async () => {
