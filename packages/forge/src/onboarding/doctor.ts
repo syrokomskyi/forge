@@ -16,6 +16,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0540: added defaultable-binding-null notices for forge-CLI-backed bindings.</item>
   <item>RFC-0611: added nested AGENTS.md checks — missing, stale (dryRun comparison), hand-written improvement.</item>
   <item>RFC-0640: added domain reporting, invariant listing (reported-only), terminology resolution, --strict flag, and software-specific check skipping for non-software domains.</item>
+  <item>RFC-0660: added legacy-section count reporting for structured knowledge files.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,6 +31,7 @@ import type {
 } from "../types.ts";
 import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
+import { parseKnowledgeFile } from "../knowledge/index.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd } from "./nested-agents-templates.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
@@ -267,6 +269,73 @@ async function checkStaleKnowledgeFiles(
       stale.length === 0
         ? "All knowledge files in sync"
         : `${stale.length} stale knowledge file(s): ${stale.join(", ")} — run 'forge create' to sync`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Legacy section detection (RFC-0660)
+// ---------------------------------------------------------------------------
+
+function checkLegacyKnowledgeSections(
+  workspaceRoot: string,
+  forgeRoot: string,
+): DoctorCheck {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return { name: "knowledge-legacy", status: "pass", message: "No forge.yaml — legacy section check skipped" };
+  }
+
+  let totalLegacy = 0;
+  let filesWithLegacy = 0;
+
+  // Check forge skills
+  for (const skill of FORGE_SKILLS) {
+    if (!skill.knowledge || skill.knowledge.length === 0) continue;
+    const skillDir = join(forgeRoot, dirname(skill.path));
+    for (const kf of skill.knowledge) {
+      const kfPath = join(skillDir, kf);
+      try {
+        const parsed = parseKnowledgeFile(kfPath);
+        if (parsed.isKnowledgeAdjacent) continue;
+        if (parsed.legacySections.length > 0) {
+          totalLegacy += parsed.legacySections.length;
+          filesWithLegacy++;
+        }
+      } catch {
+        // File read errors are handled by stale knowledge check
+      }
+    }
+  }
+
+  // Check pack skills
+  const packSkills = discoverPackSkills(workspaceRoot, config);
+  for (const skill of packSkills) {
+    if (!skill.knowledge || skill.knowledge.length === 0) continue;
+    const skillDir = join(workspaceRoot, skill.dir, dirname(skill.path));
+    for (const kf of skill.knowledge) {
+      const kfPath = join(skillDir, kf);
+      try {
+        const parsed = parseKnowledgeFile(kfPath);
+        if (parsed.isKnowledgeAdjacent) continue;
+        if (parsed.legacySections.length > 0) {
+          totalLegacy += parsed.legacySections.length;
+          filesWithLegacy++;
+        }
+      } catch {
+        // File read errors are handled by stale knowledge check
+      }
+    }
+  }
+
+  return {
+    name: "knowledge-legacy",
+    status: totalLegacy === 0 ? "pass" : "warn",
+    message:
+      totalLegacy === 0
+        ? "No legacy knowledge sections"
+        : `${totalLegacy} legacy section${totalLegacy === 1 ? "" : "s"} across ${filesWithLegacy} knowledge file${filesWithLegacy === 1 ? "" : "s"} — run the knowledge compaction command to migrate`,
   };
 }
 
@@ -686,6 +755,10 @@ export async function runDoctor(
   // Check stale knowledge files (RFC-0524, RFC-0539)
   const staleCheck = await checkStaleKnowledgeFiles(workspaceRoot, forgeRoot);
   checks.push(staleCheck);
+
+  // RFC-0660: Check legacy sections in knowledge files
+  const legacyCheck = checkLegacyKnowledgeSections(workspaceRoot, forgeRoot);
+  checks.push(legacyCheck);
 
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);

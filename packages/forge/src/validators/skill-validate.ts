@@ -14,6 +14,7 @@
   <item>RFC-0548: added SKILL-16 — triggers field must be an array of 1-5 strings, each 5-100 characters, only allowed on fo-category skills.</item>
   <item>RFC-0553: added SKILL-17 — skill files must not contain specific platform RFC/ADR ids (RFC-\\d{4}, ADR-\\d{4}) or platform names (Warpgogol, WarpGogol).</item>
   <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
+  <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,12 +24,16 @@ import { parse as parseYaml } from "yaml";
 import { skillFrontmatterSchema } from "../skill-schema.ts";
 import { FORGE_SKILLS, discoverPackSkills, type PackSkillEntry } from "../registry.ts";
 import { loadForgeConfig, resolveForgeRoot } from "../config/forge-config.ts";
+import { parseKnowledgeFile } from "../knowledge/index.ts";
 
 interface Violation {
   skill: string;
   rule: string;
   message: string;
   pack?: string;
+  file?: string;
+  line?: number;
+  severity?: "error" | "warning";
 }
 
 interface SkillValidateResult {
@@ -196,6 +201,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
     }
 
     // SKILL-13: Declared knowledge files must exist relative to SKILL.md directory (RFC-0524)
+    // SKILL-19/SKILL-20: Knowledge entry schema and identifier uniqueness (RFC-0660)
     if (parsed.data.knowledge) {
       for (const knowledgeFile of parsed.data.knowledge) {
         const knowledgePath = path.join(skillDir, knowledgeFile);
@@ -205,6 +211,9 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
             rule: "SKILL-13",
             message: `Declared knowledge file '${knowledgeFile}' not found relative to SKILL.md directory`,
           });
+        } else {
+          const skill19_20Violations = checkSkill19And20(entry.name, knowledgeFile, knowledgePath);
+          violations.push(...skill19_20Violations);
         }
       }
     }
@@ -364,6 +373,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
     }
 
     // SKILL-13: Declared knowledge files must exist
+    // SKILL-19/SKILL-20: Knowledge entry schema and identifier uniqueness (RFC-0660)
     if (parsed.data.knowledge) {
       for (const knowledgeFile of parsed.data.knowledge) {
         const knowledgePath = path.join(skillDir, knowledgeFile);
@@ -374,6 +384,14 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
             rule: "SKILL-13",
             message: `Declared knowledge file '${knowledgeFile}' not found relative to SKILL.md directory`,
           });
+        } else {
+          const skill19_20Violations = checkSkill19And20(
+            entry.name,
+            knowledgeFile,
+            knowledgePath,
+            entry.pack,
+          );
+          violations.push(...skill19_20Violations);
         }
       }
     }
@@ -587,6 +605,116 @@ function checkSkill17(skillName: string, content: string): Violation[] {
           message: `Contains internal platform name '${match[0]}': ${line.trim().slice(0, 100)}`,
         });
         break;
+      }
+    }
+  }
+
+  return result;
+}
+
+function checkSkill19And20(
+  skillName: string,
+  fileName: string,
+  filePath: string,
+  pack?: string,
+): Violation[] {
+  const result: Violation[] = [];
+  const parsed = parseKnowledgeFile(filePath);
+
+  // Knowledge-adjacent files are exempt from SKILL-19/SKILL-20
+  if (parsed.isKnowledgeAdjacent) {
+    return result;
+  }
+
+  // SKILL-19: Entry schema validity
+  for (const issue of parsed.parseIssues) {
+    result.push({
+      skill: skillName,
+      rule: "SKILL-19",
+      file: fileName,
+      line: issue.line,
+      severity: "error",
+      message: issue.message,
+      pack,
+    });
+  }
+
+  // SKILL-19: Legacy section warnings (migration window)
+  if (parsed.legacySections.length > 0) {
+    result.push({
+      skill: skillName,
+      rule: "SKILL-19",
+      file: fileName,
+      severity: "warning",
+      message: `${parsed.legacySections.length} legacy section${parsed.legacySections.length === 1 ? "" : "s"} predate RFC-0660 — run the knowledge compaction command to migrate`,
+      pack,
+    });
+  }
+
+  // SKILL-20: Identifier uniqueness and reference validity
+  const seenIds = new Map<string, number>(); // id → first line
+  for (const entry of parsed.entries) {
+    // Check id format
+    if (!/^K-\d{4}$/.test(entry.meta.id)) {
+      result.push({
+        skill: skillName,
+        rule: "SKILL-20",
+        file: fileName,
+        line: entry.lineStart,
+        severity: "error",
+        message: `Entry id '${entry.meta.id}' does not match ^K-\d{4}$`,
+        pack,
+      });
+      continue;
+    }
+
+    // Check uniqueness
+    if (seenIds.has(entry.meta.id)) {
+      result.push({
+        skill: skillName,
+        rule: "SKILL-20",
+        file: fileName,
+        line: entry.lineStart,
+        severity: "error",
+        message: `Duplicate entry id ${entry.meta.id} (first occurrence at line ${seenIds.get(entry.meta.id)})`,
+        pack,
+      });
+    } else {
+      seenIds.set(entry.meta.id, entry.lineStart);
+    }
+  }
+
+  // Check supersedes references resolve within the same file
+  const entryIds = new Set(parsed.entries.map((e) => e.meta.id));
+  for (const entry of parsed.entries) {
+    if (entry.meta.supersedes) {
+      for (const refId of entry.meta.supersedes) {
+        if (!entryIds.has(refId)) {
+          result.push({
+            skill: skillName,
+            rule: "SKILL-20",
+            file: fileName,
+            line: entry.lineStart,
+            severity: "error",
+            message: `Entry ${entry.meta.id}: supersedes reference '${refId}' does not resolve to an entry in the same file`,
+            pack,
+          });
+        }
+      }
+    }
+
+    // Check promotedTo format
+    if (entry.meta.promotedTo !== null && entry.meta.promotedTo !== undefined) {
+      if (!/^shared\/K-\d{4}$/.test(entry.meta.promotedTo)) {
+        result.push({
+          skill: skillName,
+          rule: "SKILL-20",
+          file: fileName,
+          line: entry.lineStart,
+          severity: "error",
+          message: `Entry ${entry.meta.id}: promotedTo '${entry.meta.promotedTo}' does not match ^shared/K-\d{4}$`,
+          pack,
+        });
       }
     }
   }
