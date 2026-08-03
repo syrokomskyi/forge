@@ -41,6 +41,10 @@ The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file
 
 The optional `knowledge` field (RFC-0524) declares cumulative knowledge files as an array of file names relative to the SKILL.md directory (e.g. `knowledge: [qa-log.md, learned-principles.md]`). `forge.skill.validate` enforces SKILL-13: declared knowledge files must exist. `forge.create` syncs them to `.agents/skills/`. `forge.doctor` detects stale copies. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern, entry format, and mutation contract. RFC-0660 adds SKILL-19 (entry schema validity) and SKILL-20 (identifier uniqueness) for structured knowledge entries, and `forge.doctor` reports legacy-section counts. RFC-0661 adds SKILL-21 (hot/warm layer character budget warnings — warnings only, never build gates) and `forge.doctor` reports budget summaries with headroom %.
 
+### Validator return-type refactoring
+
+When refactoring a validator's return type (e.g. from `Violation[]` to `{ errors, warnings }`), update **all** return points and call sites in the same commit. TypeScript catches missing fields in return objects, but does not catch semantic errors like warnings accidentally left in the violations array. After refactoring, search for all `return` statements and all call sites that destructure the result, and verify each one handles both `errors` and `warnings` correctly.
+
 ### Skill packs (RFC-0539)
 
 Project-declared skill packs allow projects to manage their own skills under a project-specific prefix, separate from forge's portable `fo-` skills. Packs are declared in `forge.yaml` under `skillPacks`:
