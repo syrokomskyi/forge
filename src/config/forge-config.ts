@@ -19,6 +19,7 @@
   <item>RFC-0640: added optional domain field to project section for domain-aware bootstrapping and health checks.</item>
   <item>RFC-0643: added optional profile field to forgeConfigSchema and ForgeConfig; loadForgeConfig loads profiles/<id>.yaml when present.</item>
   <item>RFC-0661: added optional knowledge.budgets binding for hot/warm layer character budget overrides.</item>
+  <item>RFC-0662: added optional knowledge.retentionDays and knowledge.staleDays bindings for compaction overrides.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -66,6 +67,7 @@ export const forgeBindingsSchema = z.object({
     })
     .optional(),
   // RFC-0661: optional knowledge layer character budget overrides
+  // RFC-0662: optional retention/stale day overrides
   knowledge: z
     .object({
       budgets: z
@@ -74,6 +76,8 @@ export const forgeBindingsSchema = z.object({
           warm: z.number().positive(),
         })
         .optional(),
+      retentionDays: z.number().positive().optional(),
+      staleDays: z.number().positive().optional(),
     })
     .optional(),
 });
@@ -109,11 +113,14 @@ export interface ForgeBindings {
     testPatterns?: string[];
   };
   // RFC-0661: optional knowledge layer character budget overrides
+  // RFC-0662: optional retention/stale day overrides
   knowledge?: {
     budgets?: {
       hot: number;
       warm: number;
     };
+    retentionDays?: number;
+    staleDays?: number;
   };
 }
 

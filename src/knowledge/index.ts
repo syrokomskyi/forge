@@ -23,6 +23,20 @@ export {
   type ParsedKnowledgeFile,
 } from "./schema.ts";
 export {
+  planCompaction,
+  executeCompaction,
+  resolveRetentionDays,
+  resolveStaleDays,
+  DEFAULT_RETENTION_DAYS,
+  DEFAULT_STALE_DAYS,
+  type CompactOptions,
+  type CompactAction,
+  type CompactActionKind,
+  type CompactFilePlan,
+  type CompactFileResult,
+  type CompactReport,
+} from "./compact.ts";
+export {
   computeLayerBudgets,
   resolveKnowledgeBudgets,
   DEFAULT_KNOWLEDGE_BUDGETS,
