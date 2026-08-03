@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial knowledge entry metadata schema with L0/L1/L2 layer-specific refinements.</item>
+  <item>RFC-0663: added promotedFrom field for shared-layer provenance tracking.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,6 +19,7 @@ export type KnowledgeEntryStatus = "active" | "stale" | "superseded" | "archived
 
 const ENTRY_ID_PATTERN = /^K-\d{4}$/;
 const PROMOTED_TO_PATTERN = /^shared\/K-\d{4}$/;
+const PROMOTED_FROM_PATTERN = /^[a-z0-9-]+\/K-\d{4}$/;
 
 const baseMetaSchema = z.object({
   id: z.string().regex(ENTRY_ID_PATTERN, "id must match ^K-\\d{4}$"),
@@ -28,6 +30,7 @@ const baseMetaSchema = z.object({
   expiresAt: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional(),
   supersedes: z.array(z.string().regex(ENTRY_ID_PATTERN)).optional(),
   promotedTo: z.union([z.string().regex(PROMOTED_TO_PATTERN), z.null()]).optional(),
+  promotedFrom: z.array(z.string().regex(PROMOTED_FROM_PATTERN)).optional(),
   status: z.enum(["active", "stale", "superseded", "archived"]),
 });
 
@@ -76,6 +79,7 @@ export interface KnowledgeEntryMeta {
   expiresAt?: string | null;
   supersedes?: string[];
   promotedTo?: string | null;
+  promotedFrom?: string[];
   status: KnowledgeEntryStatus;
 }
 
