@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forge.skill.validate — validates all forge skills and declared pack skills against frontmatter contract and invariants SKILL-01..SKILL-18.</purpose>
+<purpose>forge.skill.validate — validates all forge skills and declared pack skills against frontmatter contract and invariants SKILL-01..SKILL-21.</purpose>
 <non-goals>
   <item>Do not validate third-party skills — only forge-managed skills in packages/forge/skills/ and declared pack skills.</item>
 </non-goals>
@@ -15,6 +15,7 @@
   <item>RFC-0553: added SKILL-17 — skill files must not contain specific platform RFC/ADR ids (RFC-\\d{4}, ADR-\\d{4}) or platform names (Warpgogol, WarpGogol).</item>
   <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
   <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
+  <item>RFC-0661: added SKILL-21 (knowledge layer token budget warnings), refactored warning handling — warnings go to separate `warnings` array, not `violations`.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,6 +26,8 @@ import { skillFrontmatterSchema } from "../skill-schema.ts";
 import { FORGE_SKILLS, discoverPackSkills, type PackSkillEntry } from "../registry.ts";
 import { loadForgeConfig, resolveForgeRoot } from "../config/forge-config.ts";
 import { parseKnowledgeFile } from "../knowledge/index.ts";
+import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
+import { computeLayerBudgets, resolveKnowledgeBudgets } from "../knowledge/budgets.ts";
 
 interface Violation {
   skill: string;
@@ -34,12 +37,25 @@ interface Violation {
   file?: string;
   line?: number;
   severity?: "error" | "warning";
+  fixHint?: string;
+}
+
+interface Warning {
+  skill: string;
+  rule: string;
+  message: string;
+  severity: "warning";
+  pack?: string;
+  file?: string;
+  layer?: string;
+  fixHint?: string;
 }
 
 interface SkillValidateResult {
   command: string;
   status: "pass" | "fail";
   violations: Violation[];
+  warnings: Warning[];
 }
 
 const PREFERENCES_PATTERN = /Read `PREFERENCES\.md`/i;
@@ -65,6 +81,10 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
   const packSkillNames = new Set(packSkills.map((s) => s.name));
 
   const violations: Violation[] = [];
+  const warnings: Warning[] = [];
+
+  // RFC-0661: resolve effective knowledge budgets from forge.yaml
+  const budgets = resolveKnowledgeBudgets(workspaceRoot);
 
   for (const entry of FORGE_SKILLS) {
     const skillPath = path.join(forgeRoot, entry.path);
@@ -202,7 +222,9 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
 
     // SKILL-13: Declared knowledge files must exist relative to SKILL.md directory (RFC-0524)
     // SKILL-19/SKILL-20: Knowledge entry schema and identifier uniqueness (RFC-0660)
+    // SKILL-21: Knowledge layer token budget warnings (RFC-0661)
     if (parsed.data.knowledge) {
+      const parsedFiles: ParsedKnowledgeFile[] = [];
       for (const knowledgeFile of parsed.data.knowledge) {
         const knowledgePath = path.join(skillDir, knowledgeFile);
         if (!fs.existsSync(knowledgePath)) {
@@ -212,8 +234,37 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
             message: `Declared knowledge file '${knowledgeFile}' not found relative to SKILL.md directory`,
           });
         } else {
-          const skill19_20Violations = checkSkill19And20(entry.name, knowledgeFile, knowledgePath);
-          violations.push(...skill19_20Violations);
+          const { errors, warnings: skillWarnings } = checkSkill19And20(
+            entry.name,
+            knowledgeFile,
+            knowledgePath,
+          );
+          violations.push(...errors);
+          warnings.push(...skillWarnings);
+          // Collect parsed files for SKILL-21 batch budget check
+          parsedFiles.push(parseKnowledgeFile(knowledgePath));
+        }
+      }
+      // SKILL-21: Check hot/warm layer budgets
+      const skillNames = new Map<string, string>();
+      for (const pf of parsedFiles) {
+        skillNames.set(pf.path, entry.name);
+      }
+      const budgetReports = computeLayerBudgets(parsedFiles, budgets, skillNames);
+      for (const report of budgetReports) {
+        if (report.exceededBy > 0) {
+          const layerName = report.layer === "L2" ? "Hot" : "Warm";
+          const pctOver = Math.round((report.exceededBy / report.budget) * 100);
+          warnings.push({
+            skill: entry.name,
+            rule: "SKILL-21",
+            file: report.file,
+            layer: report.layer,
+            severity: "warning",
+            message: `${layerName} layer exceeds budget: ${report.activeChars} of ${report.budget} characters (${pctOver}% over)`,
+            fixHint:
+              "Run the knowledge compaction command (RFC-0662) to archive stale entries, or promote duplicated principles to the shared layer (RFC-0663)",
+          });
         }
       }
     }
@@ -374,7 +425,9 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
 
     // SKILL-13: Declared knowledge files must exist
     // SKILL-19/SKILL-20: Knowledge entry schema and identifier uniqueness (RFC-0660)
+    // SKILL-21: Knowledge layer token budget warnings (RFC-0661)
     if (parsed.data.knowledge) {
+      const parsedFiles: ParsedKnowledgeFile[] = [];
       for (const knowledgeFile of parsed.data.knowledge) {
         const knowledgePath = path.join(skillDir, knowledgeFile);
         if (!fs.existsSync(knowledgePath)) {
@@ -385,13 +438,38 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
             message: `Declared knowledge file '${knowledgeFile}' not found relative to SKILL.md directory`,
           });
         } else {
-          const skill19_20Violations = checkSkill19And20(
+          const { errors, warnings: skillWarnings } = checkSkill19And20(
             entry.name,
             knowledgeFile,
             knowledgePath,
             entry.pack,
           );
-          violations.push(...skill19_20Violations);
+          violations.push(...errors);
+          warnings.push(...skillWarnings);
+          parsedFiles.push(parseKnowledgeFile(knowledgePath));
+        }
+      }
+      // SKILL-21: Check hot/warm layer budgets for pack skills
+      const skillNames = new Map<string, string>();
+      for (const pf of parsedFiles) {
+        skillNames.set(pf.path, entry.name);
+      }
+      const budgetReports = computeLayerBudgets(parsedFiles, budgets, skillNames);
+      for (const report of budgetReports) {
+        if (report.exceededBy > 0) {
+          const layerName = report.layer === "L2" ? "Hot" : "Warm";
+          const pctOver = Math.round((report.exceededBy / report.budget) * 100);
+          warnings.push({
+            skill: entry.name,
+            pack: entry.pack,
+            rule: "SKILL-21",
+            file: report.file,
+            layer: report.layer,
+            severity: "warning",
+            message: `${layerName} layer exceeds budget: ${report.activeChars} of ${report.budget} characters (${pctOver}% over)`,
+            fixHint:
+              "Run the knowledge compaction command (RFC-0662) to archive stale entries, or promote duplicated principles to the shared layer (RFC-0663)",
+          });
         }
       }
     }
@@ -446,6 +524,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
     command: "forge.skill.validate",
     status: violations.length === 0 ? "pass" : "fail",
     violations,
+    warnings,
   };
 }
 
@@ -612,23 +691,29 @@ function checkSkill17(skillName: string, content: string): Violation[] {
   return result;
 }
 
+interface Skill19And20Result {
+  errors: Violation[];
+  warnings: Warning[];
+}
+
 function checkSkill19And20(
   skillName: string,
   fileName: string,
   filePath: string,
   pack?: string,
-): Violation[] {
-  const result: Violation[] = [];
+): Skill19And20Result {
+  const errors: Violation[] = [];
+  const warnings: Warning[] = [];
   const parsed = parseKnowledgeFile(filePath);
 
   // Knowledge-adjacent files are exempt from SKILL-19/SKILL-20
   if (parsed.isKnowledgeAdjacent) {
-    return result;
+    return { errors, warnings };
   }
 
-  // SKILL-19: Entry schema validity
+  // SKILL-19: Entry schema validity (errors)
   for (const issue of parsed.parseIssues) {
-    result.push({
+    errors.push({
       skill: skillName,
       rule: "SKILL-19",
       file: fileName,
@@ -639,9 +724,9 @@ function checkSkill19And20(
     });
   }
 
-  // SKILL-19: Legacy section warnings (migration window)
+  // SKILL-19: Legacy section warnings (migration window) — go to warnings, not errors
   if (parsed.legacySections.length > 0) {
-    result.push({
+    warnings.push({
       skill: skillName,
       rule: "SKILL-19",
       file: fileName,
@@ -651,12 +736,12 @@ function checkSkill19And20(
     });
   }
 
-  // SKILL-20: Identifier uniqueness and reference validity
+  // SKILL-20: Identifier uniqueness and reference validity (errors)
   const seenIds = new Map<string, number>(); // id → first line
   for (const entry of parsed.entries) {
     // Check id format
     if (!/^K-\d{4}$/.test(entry.meta.id)) {
-      result.push({
+      errors.push({
         skill: skillName,
         rule: "SKILL-20",
         file: fileName,
@@ -670,7 +755,7 @@ function checkSkill19And20(
 
     // Check uniqueness
     if (seenIds.has(entry.meta.id)) {
-      result.push({
+      errors.push({
         skill: skillName,
         rule: "SKILL-20",
         file: fileName,
@@ -690,7 +775,7 @@ function checkSkill19And20(
     if (entry.meta.supersedes) {
       for (const refId of entry.meta.supersedes) {
         if (!entryIds.has(refId)) {
-          result.push({
+          errors.push({
             skill: skillName,
             rule: "SKILL-20",
             file: fileName,
@@ -706,7 +791,7 @@ function checkSkill19And20(
     // Check promotedTo format
     if (entry.meta.promotedTo !== null && entry.meta.promotedTo !== undefined) {
       if (!/^shared\/K-\d{4}$/.test(entry.meta.promotedTo)) {
-        result.push({
+        errors.push({
           skill: skillName,
           rule: "SKILL-20",
           file: fileName,
@@ -719,7 +804,7 @@ function checkSkill19And20(
     }
   }
 
-  return result;
+  return { errors, warnings };
 }
 
 function scanForOrphanSkills(
