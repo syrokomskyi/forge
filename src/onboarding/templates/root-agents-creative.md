@@ -25,6 +25,29 @@
 - Skills: `{{skillsDir}}`
 
 {{dynamicSections}}
+## RTK — Token Optimization
+
+Always prefix shell commands with `rtk` to minimize token consumption. RTK filters and compresses command output before it reaches the LLM context, cutting up to 90% of bash output on common operations.
+
+```bash
+rtk git status
+rtk pnpm test
+rtk ls src/
+rtk grep "pattern" src/
+rtk find "*.ts" .
+```
+
+Meta commands:
+
+```bash
+rtk gain              # Show token savings
+rtk gain --history    # Command history with savings
+rtk discover          # Find missed RTK opportunities
+rtk proxy <cmd>       # Run raw (no filtering, for debugging)
+```
+
+Use default RTK settings only — do not enable `--ultra-compact` or aggressive `read` modes unless the operator explicitly requests it.
+
 ## Conventions
 
 - Use `forge.yaml` as the single source of truth for project configuration.
