@@ -15,6 +15,7 @@
   <item>RFC-0611: added nested AGENTS.md generation for workspace directories + dryRun support.</item>
   <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
   <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
+  <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -488,6 +489,14 @@ export async function runAgentsGenerate(
   // Behavioral layer section (RFC-0548)
   const behavioralLayer = generateBehavioralLayer(workspaceRoot, register);
   dynamicLines.push(behavioralLayer);
+  dynamicLines.push("");
+
+  // RFC-0664: Project memory layer read discipline
+  dynamicLines.push("## Project memory layer");
+  dynamicLines.push("");
+  dynamicLines.push("`.agents/memory/MEMORY.md` is the curated hot store (versioned). `.agents/memory/daily/YYYY-MM-DD.md` are append-only warm logs (git-ignored).");
+  dynamicLines.push("");
+  dynamicLines.push("**Session-start read discipline (advisory):** At session start, read `MEMORY.md` (always), then `daily/<today>.md` and `daily/<yesterday>.md` (if present). Older daily files are cold — use grep when a task references past context.");
   dynamicLines.push("");
 
   // RFC-0643: Load root template, replace project placeholders, insert dynamic sections
