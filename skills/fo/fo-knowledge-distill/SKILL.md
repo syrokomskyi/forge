@@ -21,7 +21,7 @@ This skill assists the operator in the knowledge distillation lifecycle: reading
 ## When to invoke
 
 - **After a productive session** — when the session generated raw Q&A pairs or debugging insights that could benefit future agents.
-- **When `forge.skill.knowledge.compact --all --dry-run` reports legacy sections** — this skill performs the actual migration with operator approval.
+- **When `forge.skill.knowledge.compact --all-skills --dry-run` reports legacy sections** — this skill performs the actual migration with operator approval.
 - **When a SKILL-21 budget warning appears** — distill to reduce active knowledge volume.
 - **When the operator asks to "distill", "compact", or "maintain" skill knowledge.**
 
@@ -38,14 +38,14 @@ This skill assists the operator in the knowledge distillation lifecycle: reading
 Ask the operator which skill(s) to distill:
 
 - Use `ask_user_question` to offer: (a) a specific skill by name, or (b) all skills with knowledge files.
-- Parse the selected skill's knowledge files via the RFC-0660 parser (in-process import of `packages/forge/src/knowledge/` or the `forge` package).
+- Parse the selected skill's knowledge files via the structured knowledge parser (in-process import of the forge `src/knowledge/` module or the `forge` package).
 - Report what was found: file names, entry counts, legacy section counts, parse issues.
 
 **Completion criteria:** operator has selected a scope and the skill has parsed all relevant knowledge files without errors.
 
 ### Step 2: Read cold material
 
-Read L0 (`qa-log.md`) and, if present, `qa-log.archive.md`. This is the sanctioned wholesale read of the cold layer (RFC-0661).
+Read L0 (`qa-log.md`) and, if present, `qa-log.archive.md`. This is the sanctioned wholesale read of the cold layer (hot/warm/cold discipline).
 
 - Also read L1 (`fix-patterns.md`) and L2 (`learned-principles.md`) to understand existing distilled knowledge.
 - Report a summary: how many raw entries, how many existing patterns/principles, what themes recur.
@@ -84,7 +84,7 @@ For existing L2 entries whose themes appear in the new material:
 
 ### Step 5: Legacy migration
 
-For each RFC-0660 legacy section (freeform prose that predates structured entries):
+For each legacy section (freeform prose that predates structured entries):
 
 - Propose a structured entry: assign an ID, set metadata (layer, created, status), preserve the body verbatim.
 - Use `ask_user_question` for each legacy section — the operator approves the proposed structured entry.
@@ -93,7 +93,7 @@ For each RFC-0660 legacy section (freeform prose that predates structured entrie
 
 ### Step 6: Write
 
-Apply approved mutations via the RFC-0660 serializer (`serializeKnowledgeFile`). Never string-splice markdown. Never touch entries that were not explicitly approved.
+Apply approved mutations via the knowledge serializer (`serializeKnowledgeFile`). Never string-splice markdown. Never touch entries that were not explicitly approved.
 
 - Write files atomically (staging + rename) to prevent corruption on mid-run failure.
 - Commit only the mutated knowledge files (fo-pipeline commit discipline).
@@ -112,13 +112,13 @@ If retention/expiry candidates remain after distillation:
 
 ### Step 8: Commit
 
-Commit only the mutated knowledge files. Reference this skill and the RFC-0662 lifecycle in the commit message. Do not stage unrelated changes.
+Commit only the mutated knowledge files. Reference this skill and the knowledge lifecycle in the commit message. Do not stage unrelated changes.
 
 **Completion criteria:** changes are committed with a descriptive message.
 
 ## Knowledge file format
 
-All knowledge files use the RFC-0660 structured entry format:
+All knowledge files use the structured knowledge entry format:
 
 ````markdown
 <!-- knowledge-layer: L2 -->
@@ -144,7 +144,7 @@ See `writing-great-skills` § Cumulative knowledge pattern for the three-layer r
 ## Constraints
 
 - **Operator approval on every mutation.** Never write to a knowledge file without explicit approval for each entry.
-- **Serializer only.** Always use `serializeKnowledgeFile` from RFC-0660. Never string-splice markdown.
+- **Serializer only.** Always use `serializeKnowledgeFile` from the forge knowledge module. Never string-splice markdown.
 - **No semantic logic in command handlers.** The `forge.skill.knowledge.compact` command handles mechanical archival only. Semantic grouping and promotion live in this skill.
 - **No LLM logic in `src/knowledge/`.** Deterministic planning only; meaning work lives here.
 - **Read archives too.** When distilling, read both live and archive files — archived material may still contain themes worth re-distilling.

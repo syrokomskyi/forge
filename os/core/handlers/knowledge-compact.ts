@@ -54,14 +54,13 @@ function discoverSkillKnowledgeFiles(
     return result;
   }
 
-  const skillsRoot = path.join(forgeRoot, "skills");
-
-  // Collect forge skills
+  // Collect forge skills. skill.path is relative to forgeRoot and already
+  // includes the "skills/" prefix (see init.ts / skill-validate.ts).
   for (const skill of FORGE_SKILLS) {
     if (skillName && skill.name !== skillName) continue;
     if (!skill.knowledge || skill.knowledge.length === 0) continue;
 
-    const skillDir = path.dirname(path.join(skillsRoot, skill.path));
+    const skillDir = path.dirname(path.join(forgeRoot, skill.path));
     const files = skill.knowledge
       .map((f) => path.join(skillDir, f))
       .filter((f) => {
@@ -111,7 +110,9 @@ export async function runKnowledgeCompact(
 ): Promise<ForgeCommandResult<CompactReport>> {
   const { flags } = input;
   const skillName = typeof flags["skill"] === "string" ? flags["skill"] : undefined;
-  const all = flags["all"] === true;
+  // --all is consumed by the site-kernel CLI (consumeCommonFlags) before the
+  // command runs, so the command-level switch is --all-skills.
+  const all = flags["all-skills"] === true;
   const dryRun = context.dryRun || flags["dry-run"] === true;
   const json = flags["json"] === true;
 
@@ -124,10 +125,10 @@ export async function runKnowledgeCompact(
         dryRun,
         files: [],
         totals: { archived: 0, markedStale: 0, legacyFiles: 0 },
-        errors: ["Exactly one of --skill <name> or --all is required."],
+        errors: ["Exactly one of --skill <name> or --all-skills is required."],
       },
       exitCode: 1,
-      summary: "Error: --skill or --all is required.",
+      summary: "Error: --skill or --all-skills is required.",
     };
   }
 
@@ -139,10 +140,10 @@ export async function runKnowledgeCompact(
         dryRun,
         files: [],
         totals: { archived: 0, markedStale: 0, legacyFiles: 0 },
-        errors: ["--skill and --all are mutually exclusive."],
+        errors: ["--skill and --all-skills are mutually exclusive."],
       },
       exitCode: 1,
-      summary: "Error: --skill and --all are mutually exclusive.",
+      summary: "Error: --skill and --all-skills are mutually exclusive.",
     };
   }
 
