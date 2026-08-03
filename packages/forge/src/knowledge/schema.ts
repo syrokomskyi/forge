@@ -32,35 +32,18 @@ const baseMetaSchema = z.object({
 });
 
 export const knowledgeEntryMetaSchema = baseMetaSchema.superRefine((data, ctx) => {
-  if (data.layer === "L0") {
+  if (data.layer === "L0" || data.layer === "L1") {
     if (data.confirmations !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "confirmations is forbidden on L0 entries",
+        message: `confirmations is forbidden on ${data.layer} entries`,
         path: ["confirmations"],
       });
     }
     if (data.lastConfirmedAt !== undefined) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: "lastConfirmedAt is forbidden on L0 entries",
-        path: ["lastConfirmedAt"],
-      });
-    }
-  }
-
-  if (data.layer === "L1") {
-    if (data.confirmations !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "confirmations is forbidden on L1 entries",
-        path: ["confirmations"],
-      });
-    }
-    if (data.lastConfirmedAt !== undefined) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "lastConfirmedAt is forbidden on L1 entries",
+        message: `lastConfirmedAt is forbidden on ${data.layer} entries`,
         path: ["lastConfirmedAt"],
       });
     }
