@@ -287,3 +287,8 @@ The `prepublishOnly` script runs `clean → build → publish-check` automatical
 
 - **`git log --oneline` output includes a hash prefix** — the format is `<hash> <message>`, not `<message>`. When matching commit message patterns in `--oneline` output, do NOT anchor the regex to `^implement:` or `^feat:` — the line starts with the hash. Use a non-anchored pattern like `implement:\s+RFC-\d{4}\b` instead. Discovered during RFC-0625 V-32 implementation where `^implement:` failed to match `--oneline` output.
 - **`execGit` helper pattern** — multiple forge handlers (`implement-stamp.ts`, `verification-evidence.ts`, `validate-rules.ts`, `validate.ts`) each define their own `execGit`/`execGitLog` helper wrapping `execFile("git", ...)`. These are candidates for extraction into a shared `os/utils/git.ts` utility.
+
+## CLI invocation and test fixtures
+
+- **Running forge CLI commands on the workspace root** — `pnpm --filter @warpgogol/forge exec forge <command>` runs from the package directory (`packages/forge/`), where `forge.yaml` is not found. To run forge commands against the workspace root (e.g. `forge.doctor`, `rfc.validate`, `forge.upgrade`), use `node packages/forge/bin/cli.js <command>` from the workspace root instead.
+- **Golden fixture for `agents-generate`** — when adding or modifying sections in `agents-generate.ts`, the golden fixture `src/tests/fixtures/agents-generate-business-before.txt` MUST be updated to match the new generated output. The test `agents-generate-domain.test.ts` compares generated content against this fixture with `expect(content).toBe(goldenFixture)` — a mismatch fails the test.
