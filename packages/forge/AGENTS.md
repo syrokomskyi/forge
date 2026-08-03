@@ -30,6 +30,8 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 
 When archiving terminal artifacts, prefer the `docs.archive` umbrella command over individual `rfc.archive`, `adr.archive`, `plan.archive`, `audit.archive`, `session.archive`, `mission.archive` commands. The umbrella command runs all six in sequence and prevents leaving audits/plans/sessions/missions unarchived when the operator's intent is to clean up all terminal artifacts. Use individual commands only when the operator explicitly asks for a single domain (e.g. "archive only RFCs").
 
+- **Post-rename cleanup for `fs.rename` on watched directories:** When an archive handler uses `fs.rename` to move a directory that an IDE or file watcher is tracking (e.g. mission workpiece with an open `.astro/` cache), the watcher may recreate stale cache at the source path after the rename completes. Always add a post-rename cleanup check: `if (existsSync(sourcePath)) { await fs.rm(sourcePath, { recursive: true, force: true }); }` after the `fs.rename` call. See `os/mission/handlers/archive.ts` `moveMissionDir` for the reference implementation.
+
 ## Skills
 
 Skills live in `skills/` and are synced to `.agents/skills/` by `forge.create`. Each skill has a `SKILL.md` with standardized frontmatter (name, description, category, concerns, dependsOn).
