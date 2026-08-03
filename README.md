@@ -161,4 +161,4 @@ After publishing, verify the new version on [npmjs.com/package/@warpgogol/forge]
 
 ## License
 
-MIT
+Apache-2.0

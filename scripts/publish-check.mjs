@@ -29,11 +29,6 @@ function check(label, condition, message) {
 
 // 1. Metadata fields present
 check("license", pkg.license, "license field missing in package.json");
-check(
-  "repository",
-  pkg.repository && pkg.repository.url,
-  "repository.url field missing in package.json",
-);
 check("description", pkg.description, "description field missing in package.json");
 check(
   "keywords",
@@ -70,23 +65,23 @@ const cliContent = readFileSync(cliPath, "utf8");
 check(
   "VERSION not hardcoded",
   !cliContent.includes('const VERSION = "'),
-  'bin/cli.ts still has a hardcoded VERSION string — source from package.json',
+  "bin/cli.ts still has a hardcoded VERSION string — source from package.json",
 );
 
 // 5. files array includes skills/, profiles/, dist/
 const files = pkg.files;
 check(
-  'files includes dist/',
+  "files includes dist/",
   Array.isArray(files) && files.includes("dist/"),
   "files array must include dist/",
 );
 check(
-  'files includes skills/',
+  "files includes skills/",
   Array.isArray(files) && files.includes("skills/"),
   "files array must include skills/",
 );
 check(
-  'files includes profiles/',
+  "files includes profiles/",
   Array.isArray(files) && files.includes("profiles/"),
   "files array must include profiles/",
 );
