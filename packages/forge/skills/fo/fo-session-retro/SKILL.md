@@ -137,7 +137,7 @@ For each rule insight:
 2. **Read** the target file before editing.
 3. **Add the rule** in a minimal, actionable form: "Always implement `hydrateFromArtifacts` when a step writes state fields. The engine skips `validateBeforeStart` and `run()` when artifacts are valid, so downstream steps receive empty state." Include a code reference if applicable.
 4. **Do not duplicate** rules already present in the target file. If the rule extends an existing section, append to it.
-5. **Do not create `.agents/rules/*.md`** — `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store, RFC-0664) and `.agents/skills/` (synced by forge) and `.agents/operator-profile.md` (written by this skill). Rules live in `AGENTS.md` files.
+5. **Do not create `.agents/rules/*.md`** — `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill). Rules live in `AGENTS.md` files.
 
 #### 4b. Decision → ADR
 
@@ -276,7 +276,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 ## Constraints
 
 - **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights) and `.agents/operator-profile.md` (for operator insights, RFC-XXXX). All other routing is via delegation to skills that own their output.
-- **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store, RFC-0664), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
+- **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
 - **Operator confirmation is mandatory.** Do not route any insight without explicit confirmation of category and destination.
 - **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.

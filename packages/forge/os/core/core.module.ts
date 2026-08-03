@@ -313,18 +313,19 @@ export const forgeCoreModule: ForgeModule = {
       name: "forge.skill.knowledge.compact",
       description:
         "Compact skill knowledge files: archive expired/superseded/aged L0 entries, mark stale L2 principles. " +
-        "Usage: forge.skill.knowledge.compact --all [--dry-run] [--json] | --skill <name> [--dry-run] [--json]",
+        "Usage: forge.skill.knowledge.compact --all-skills [--dry-run] [--json] | --skill <name> [--dry-run] [--json]",
       scope: "workspace",
       supportsAllSites: false,
       flags: {
         skill: {
           kind: "string",
           description:
-            "Compact a single skill's declared knowledge files. Mutually exclusive with --all.",
+            "Compact a single skill's declared knowledge files. Mutually exclusive with --all-skills.",
         },
-        all: {
+        "all-skills": {
           kind: "boolean",
-          description: "Compact all forge and pack skills declaring knowledge: files.",
+          description:
+            "Compact all forge and pack skills declaring knowledge: files. (Named --all-skills because the CLI reserves --all.)",
         },
         "dry-run": {
           kind: "boolean",
