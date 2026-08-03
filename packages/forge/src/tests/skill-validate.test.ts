@@ -198,3 +198,44 @@ describe("RFC-0642: SKILL-18 domain-specific binding key prohibition", () => {
     ).toBe(true);
   });
 });
+
+describe("SKILL-21: knowledge layer token budget warnings (RFC-0661)", () => {
+  test("SkillValidateResult has warnings array", () => {
+    const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
+    expect(result).toHaveProperty("warnings");
+    expect(Array.isArray(result.warnings)).toBe(true);
+  });
+
+  test("warnings never affect status — pass even with warnings", () => {
+    const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
+    // If there are any warnings, status should still be "pass" (warnings are not errors)
+    if (result.warnings.length > 0) {
+      expect(result.status).toBe("pass");
+    }
+    // Violations should only contain errors, not warnings
+    const warningRulesInViolations = result.violations.filter((v) => v.severity === "warning");
+    expect(warningRulesInViolations).toEqual([]);
+  });
+
+  test("SKILL-19 legacy-section warnings are in warnings, not violations", () => {
+    const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
+    // Any SKILL-19 warnings should be in warnings array, not violations
+    const skill19InViolations = result.violations.filter(
+      (v) => v.rule === "SKILL-19" && v.severity === "warning",
+    );
+    expect(skill19InViolations).toEqual([]);
+    // SKILL-19 errors (schema issues) should still be in violations
+    const skill19Errors = result.violations.filter(
+      (v) => v.rule === "SKILL-19" && v.severity === "error",
+    );
+    // There should be no schema errors in current workspace
+    expect(skill19Errors).toEqual([]);
+  });
+
+  test("no SKILL-21 warnings at introduction — all forge skills within default budgets", () => {
+    const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
+    const skill21Warnings = result.warnings.filter((w) => w.rule === "SKILL-21");
+    // All existing knowledge files are knowledge-adjacent (freeform), so no budget warnings
+    expect(skill21Warnings).toEqual([]);
+  });
+});
