@@ -222,6 +222,11 @@ export const forgeCoreModule: ForgeModule = {
           kind: "boolean",
           description: "Preview what would change without writing files.",
         },
+        "update-npm": {
+          kind: "boolean",
+          description:
+            "Update @warpgogol/forge from npm before syncing. Skipped in monorepo (local package).",
+        },
       },
       writes: [".agents/skills/**", "forge.yaml"],
       reads: ["forge.yaml", "packages/forge/skills/**", "packages/forge/package.json"],

@@ -2,7 +2,8 @@
 <MODULE_CONTRACT>
 <purpose>forge.upgrade — additive sync for npm consumers. Refreshes .agents/skills/
 from the installed forge package, adds missing binding defaults (RFC-0540) without
-overwriting operator-set values, updates forge.syncedVersion, and runs forge.doctor.</purpose>
+overwriting operator-set values, updates forge.syncedVersion, and runs forge.doctor.
+With --update-npm, also updates @warpgogol/forge from npm before syncing (skipped in monorepo).</purpose>
 <non-goals>
   <item>Do not overwrite operator-set non-null bindings — additive only.</item>
   <item>Do not create forge.yaml — that is forge.create's responsibility.</item>
@@ -14,17 +15,20 @@ overwriting operator-set values, updates forge.syncedVersion, and runs forge.doc
   <item>RFC-0611: added nested AGENTS.md generation after skill sync.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0664: added scaffoldMemoryLayer step to scaffold .agents/memory/ and .gitignore block.</item>
+  <item>Added --update-npm flag: updates @warpgogol/forge from npm before syncing (skipped in monorepo).</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import {
   FORGE_CLI_BINDING_DEFAULTS,
   resolveForgeRoot,
   loadForgeConfig,
   resolvePmRunner,
+  resolvePmInstall,
   type ForgeConfig,
   type ForgeBindings,
 } from "../config/forge-config.ts";
@@ -44,7 +48,42 @@ export interface UpgradeResult {
   skippedSkills: SkippedSkill[];
   nestedAgentsGenerated: string[];
   memoryScaffold: { created: string[]; gitignoreUpdated: boolean; skipped: string[] };
+  npmUpdated: boolean;
+  npmUpdateSkipped: string | null;
   doctorReport: unknown;
+}
+
+function isMonorepoForge(workspaceRoot: string): boolean {
+  return fs.existsSync(path.join(workspaceRoot, "packages", "forge", "package.json"));
+}
+
+function updateNpmPackage(
+  workspaceRoot: string,
+  config: ForgeConfig,
+  isDryRun: boolean,
+): { updated: boolean; skipped: string | null } {
+  if (isMonorepoForge(workspaceRoot)) {
+    return { updated: false, skipped: "monorepo (local package, not npm-installed)" };
+  }
+
+  const pm = config.project.packageManager;
+  const installCmd = resolvePmInstall(pm);
+  const fullCmd = `${installCmd} @warpgogol/forge@latest`;
+
+  if (isDryRun) {
+    return { updated: false, skipped: "dry-run" };
+  }
+
+  try {
+    execSync(fullCmd, {
+      cwd: workspaceRoot,
+      stdio: "pipe",
+      timeout: 120_000,
+    });
+    return { updated: true, skipped: null };
+  } catch {
+    return { updated: false, skipped: "install failed (network error or registry unavailable)" };
+  }
 }
 
 function readForgePackageVersion(forgeRoot: string): string {
@@ -232,6 +271,7 @@ export async function runUpgrade(
 ): Promise<ForgeCommandResult<UpgradeResult>> {
   const { workspaceRoot, dryRun } = context;
   const isDryRun = dryRun || input.flags["dry-run"] === true;
+  const isUpdateNpm = input.flags["update-npm"] === true;
 
   // Step 0: Check forge.yaml exists
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
@@ -247,12 +287,29 @@ export async function runUpgrade(
         skippedSkills: [],
         nestedAgentsGenerated: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
+        npmUpdated: false,
+        npmUpdateSkipped: null,
         doctorReport: null,
       },
       nextSteps: [{ action: "Run 'forge create' to create forge.yaml first", kind: "required" }],
       exitCode: 1,
       summary: "[forge.upgrade] FAIL — forge.yaml not found. Run 'forge create' first.",
     };
+  }
+
+  // Step 0.5: Update npm package if --update-npm flag is set
+  let npmUpdated = false;
+  let npmUpdateSkipped: string | null = null;
+  if (isUpdateNpm) {
+    let configForNpm: ForgeConfig;
+    try {
+      configForNpm = loadForgeConfig(workspaceRoot);
+    } catch {
+      configForNpm = { project: { packageManager: "npm" } } as unknown as ForgeConfig;
+    }
+    const npmResult = updateNpmPackage(workspaceRoot, configForNpm, isDryRun);
+    npmUpdated = npmResult.updated;
+    npmUpdateSkipped = npmResult.skipped;
   }
 
   // Step 1: Resolve forge root and read installed version
@@ -273,6 +330,8 @@ export async function runUpgrade(
         skippedSkills: [],
         nestedAgentsGenerated: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
+        npmUpdated: false,
+        npmUpdateSkipped: null,
         doctorReport: null,
       },
       nextSteps: [
@@ -299,6 +358,8 @@ export async function runUpgrade(
         skippedSkills: [],
         nestedAgentsGenerated: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
+        npmUpdated: false,
+        npmUpdateSkipped: null,
         doctorReport: null,
       },
       nextSteps: [
@@ -325,6 +386,8 @@ export async function runUpgrade(
         skippedSkills: [],
         nestedAgentsGenerated: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
+        npmUpdated: npmUpdated,
+        npmUpdateSkipped: npmUpdateSkipped,
         doctorReport: null,
       },
       nextSteps,
@@ -420,6 +483,8 @@ export async function runUpgrade(
       skippedSkills: packResult.skipped,
       nestedAgentsGenerated,
       memoryScaffold,
+      npmUpdated,
+      npmUpdateSkipped,
       doctorReport,
     },
     nextSteps,

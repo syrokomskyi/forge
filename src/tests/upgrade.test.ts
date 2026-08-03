@@ -8,7 +8,7 @@
 </CHANGE_SUMMARY>
 */
 
-import { test, expect, beforeEach, afterEach } from "vitest";
+import { test, expect, beforeEach, afterEach, vi } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -183,7 +183,9 @@ test("forge.upgrade never overwrites a non-null operator-set binding", async () 
 
   // Other null bindings should have been filled with defaults
   const runner = resolvePmRunner("pnpm");
-  expect(config.bindings?.commands.validateAdr).toBe(`${runner} forge adr.validate --id {id} --json`);
+  expect(config.bindings?.commands.validateAdr).toBe(
+    `${runner} forge adr.validate --id {id} --json`,
+  );
   expect(config.bindings?.commands.implementStamp).toBe(
     `${runner} forge rfc.implement.stamp --id {id} --implementation-commit {commit}`,
   );
@@ -299,4 +301,107 @@ bindings:
   // The non-conflicting pack skill should be synced
   const wgSkillPath = join(tempDir, ".agents", "skills", "wg-custom", "SKILL.md");
   expect(existsSync(wgSkillPath)).toBe(true);
+});
+
+test("forge.upgrade --update-npm skips npm install in monorepo (packages/forge exists)", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  const result = await runUpgrade(
+    { argv: [], flags: { "update-npm": true } },
+    makeContext(tempDir, false),
+  );
+
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.npmUpdated).toBe(false);
+  expect(result.data?.npmUpdateSkipped).toBe("monorepo (local package, not npm-installed)");
+});
+
+test("forge.upgrade --update-npm --dry-run skips npm install (dry-run)", async () => {
+  // Setup forge source in node_modules (npm consumer layout, not monorepo)
+  const forgeSrcDir = join(tempDir, "node_modules", "@warpgogol", "forge");
+  await mkdir(join(forgeSrcDir, "skills", "fo", "fo-idea"), { recursive: true });
+  await writeFile(
+    join(forgeSrcDir, "skills", "fo", "fo-idea", "SKILL.md"),
+    "---\nname: fo-idea\n---\n# fo-idea\n",
+    "utf8",
+  );
+  await writeFile(
+    join(forgeSrcDir, "package.json"),
+    JSON.stringify({ name: "@warpgogol/forge", version: "0.2.0" }),
+    "utf8",
+  );
+  await mkdir(join(forgeSrcDir, "os", "rfc"), { recursive: true });
+  await writeFile(join(forgeSrcDir, "os", "rfc", "rfc-0000-template.md"), "# RFC Template", "utf8");
+  await mkdir(join(forgeSrcDir, "profiles"), { recursive: true });
+
+  await setupConsumerForgeYaml(tempDir, null);
+
+  const result = await runUpgrade(
+    { argv: [], flags: { "update-npm": true, "dry-run": true } },
+    makeContext(tempDir, true),
+  );
+
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.npmUpdated).toBe(false);
+  expect(result.data?.npmUpdateSkipped).toBe("dry-run");
+});
+
+test("forge.upgrade --update-npm attempts npm install for npm consumer", async () => {
+  // Setup forge source in node_modules (npm consumer layout, not monorepo)
+  const forgeSrcDir = join(tempDir, "node_modules", "@warpgogol", "forge");
+  await mkdir(join(forgeSrcDir, "skills", "fo", "fo-idea"), { recursive: true });
+  await writeFile(
+    join(forgeSrcDir, "skills", "fo", "fo-idea", "SKILL.md"),
+    "---\nname: fo-idea\n---\n# fo-idea\n",
+    "utf8",
+  );
+  await writeFile(
+    join(forgeSrcDir, "package.json"),
+    JSON.stringify({ name: "@warpgogol/forge", version: "0.2.0" }),
+    "utf8",
+  );
+  await mkdir(join(forgeSrcDir, "os", "rfc"), { recursive: true });
+  await writeFile(join(forgeSrcDir, "os", "rfc", "rfc-0000-template.md"), "# RFC Template", "utf8");
+  await mkdir(join(forgeSrcDir, "profiles"), { recursive: true });
+
+  await setupConsumerForgeYaml(tempDir, null);
+
+  // Mock execSync to avoid real npm install
+  const execSyncMock = vi.fn(() => "");
+  vi.resetModules();
+  vi.doMock("node:child_process", () => ({
+    execSync: execSyncMock,
+    exec: vi.fn(),
+    execFile: vi.fn(),
+    spawn: vi.fn(),
+    fork: vi.fn(),
+  }));
+
+  // Re-import with mock
+  const { runUpgrade: runUpgradeMocked } = await import("../onboarding/upgrade.ts");
+
+  const result = await runUpgradeMocked(
+    { argv: [], flags: { "update-npm": true } },
+    makeContext(tempDir, false),
+  );
+
+  expect(result.data?.status).toBe("pass");
+  expect(execSyncMock).toHaveBeenCalled();
+  expect(result.data?.npmUpdated).toBe(true);
+  expect(result.data?.npmUpdateSkipped).toBe(null);
+
+  vi.doUnmock("node:child_process");
+  vi.resetModules();
+});
+
+test("forge.upgrade without --update-npm does not attempt npm install", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.npmUpdated).toBe(false);
+  expect(result.data?.npmUpdateSkipped).toBe(null);
 });
