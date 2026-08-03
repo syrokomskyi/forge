@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial round-trip serializer for structured knowledge entries.</item>
+  <item>RFC-0663: added promotedFrom to FIELD_ORDER for shared-layer provenance.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,7 @@ const FIELD_ORDER: (keyof KnowledgeEntryMeta)[] = [
   "expiresAt",
   "supersedes",
   "promotedTo",
+  "promotedFrom",
   "status",
 ];
 
