@@ -27,7 +27,11 @@ import { FORGE_SKILLS, discoverPackSkills, type PackSkillEntry } from "../regist
 import { loadForgeConfig, resolveForgeRoot } from "../config/forge-config.ts";
 import { parseKnowledgeFile } from "../knowledge/index.ts";
 import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
-import { computeLayerBudgets, resolveKnowledgeBudgets } from "../knowledge/budgets.ts";
+import {
+  computeLayerBudgets,
+  resolveKnowledgeBudgets,
+  type KnowledgeBudgets,
+} from "../knowledge/budgets.ts";
 
 interface Violation {
   skill: string;
@@ -246,27 +250,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
         }
       }
       // SKILL-21: Check hot/warm layer budgets
-      const skillNames = new Map<string, string>();
-      for (const pf of parsedFiles) {
-        skillNames.set(pf.path, entry.name);
-      }
-      const budgetReports = computeLayerBudgets(parsedFiles, budgets, skillNames);
-      for (const report of budgetReports) {
-        if (report.exceededBy > 0) {
-          const layerName = report.layer === "L2" ? "Hot" : "Warm";
-          const pctOver = Math.round((report.exceededBy / report.budget) * 100);
-          warnings.push({
-            skill: entry.name,
-            rule: "SKILL-21",
-            file: report.file,
-            layer: report.layer,
-            severity: "warning",
-            message: `${layerName} layer exceeds budget: ${report.activeChars} of ${report.budget} characters (${pctOver}% over)`,
-            fixHint:
-              "Run the knowledge compaction command (RFC-0662) to archive stale entries, or promote duplicated principles to the shared layer (RFC-0663)",
-          });
-        }
-      }
+      warnings.push(...checkSkill21Budgets(parsedFiles, budgets, entry.name));
     }
 
     // SKILL-16: triggers field format and category restriction (RFC-0548)
@@ -450,28 +434,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
         }
       }
       // SKILL-21: Check hot/warm layer budgets for pack skills
-      const skillNames = new Map<string, string>();
-      for (const pf of parsedFiles) {
-        skillNames.set(pf.path, entry.name);
-      }
-      const budgetReports = computeLayerBudgets(parsedFiles, budgets, skillNames);
-      for (const report of budgetReports) {
-        if (report.exceededBy > 0) {
-          const layerName = report.layer === "L2" ? "Hot" : "Warm";
-          const pctOver = Math.round((report.exceededBy / report.budget) * 100);
-          warnings.push({
-            skill: entry.name,
-            pack: entry.pack,
-            rule: "SKILL-21",
-            file: report.file,
-            layer: report.layer,
-            severity: "warning",
-            message: `${layerName} layer exceeds budget: ${report.activeChars} of ${report.budget} characters (${pctOver}% over)`,
-            fixHint:
-              "Run the knowledge compaction command (RFC-0662) to archive stale entries, or promote duplicated principles to the shared layer (RFC-0663)",
-          });
-        }
-      }
+      warnings.push(...checkSkill21Budgets(parsedFiles, budgets, entry.name, entry.pack));
     }
 
     // SKILL-16: triggers field format (RFC-0548) — pack skills may not use triggers
@@ -805,6 +768,42 @@ function checkSkill19And20(
   }
 
   return { errors, warnings };
+}
+
+// ---------------------------------------------------------------------------
+// SKILL-21: Knowledge layer token budget warnings (RFC-0661)
+// ---------------------------------------------------------------------------
+
+function checkSkill21Budgets(
+  parsedFiles: ParsedKnowledgeFile[],
+  budgets: KnowledgeBudgets,
+  skillName: string,
+  pack?: string,
+): Warning[] {
+  const warnings: Warning[] = [];
+  const skillNames = new Map<string, string>();
+  for (const pf of parsedFiles) {
+    skillNames.set(pf.path, skillName);
+  }
+  const budgetReports = computeLayerBudgets(parsedFiles, budgets, skillNames);
+  for (const report of budgetReports) {
+    if (report.exceededBy > 0) {
+      const layerName = report.layer === "L2" ? "Hot" : "Warm";
+      const pctOver = Math.round((report.exceededBy / report.budget) * 100);
+      warnings.push({
+        skill: skillName,
+        rule: "SKILL-21",
+        file: report.file,
+        layer: report.layer,
+        severity: "warning",
+        message: `${layerName} layer exceeds budget: ${report.activeChars} of ${report.budget} characters (${pctOver}% over)`,
+        fixHint:
+          "Run the knowledge compaction command (RFC-0662) to archive stale entries, or promote duplicated principles to the shared layer (RFC-0663)",
+        pack,
+      });
+    }
+  }
+  return warnings;
 }
 
 function scanForOrphanSkills(

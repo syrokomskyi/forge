@@ -100,7 +100,7 @@ export function computeLayerBudgets(
       // Heading: "### K-XXXX: <title>\n"
       activeChars += `### ${entry.meta.id}: ${entry.title}\n`.length;
       // Metadata block: ```knowledge-entry\n<yaml>\n```\n
-      const metaYaml = serializeMetaAsYaml(entry.meta);
+      const metaYaml = approximateMetaCharCount(entry.meta);
       activeChars += "```knowledge-entry\n".length;
       activeChars += metaYaml.length;
       activeChars += "```\n".length;
@@ -150,12 +150,14 @@ export function resolveKnowledgeBudgets(workspaceRoot: string): KnowledgeBudgets
       return { ...DEFAULT_KNOWLEDGE_BUDGETS };
     }
 
-    const hot = typeof budgets.hot === "number" && budgets.hot > 0 && Number.isInteger(budgets.hot)
-      ? budgets.hot
-      : DEFAULT_KNOWLEDGE_BUDGETS.hot;
-    const warm = typeof budgets.warm === "number" && budgets.warm > 0 && Number.isInteger(budgets.warm)
-      ? budgets.warm
-      : DEFAULT_KNOWLEDGE_BUDGETS.warm;
+    const hot =
+      typeof budgets.hot === "number" && budgets.hot > 0 && Number.isInteger(budgets.hot)
+        ? budgets.hot
+        : DEFAULT_KNOWLEDGE_BUDGETS.hot;
+    const warm =
+      typeof budgets.warm === "number" && budgets.warm > 0 && Number.isInteger(budgets.warm)
+        ? budgets.warm
+        : DEFAULT_KNOWLEDGE_BUDGETS.warm;
 
     return { hot, warm };
   } catch {
@@ -164,10 +166,18 @@ export function resolveKnowledgeBudgets(workspaceRoot: string): KnowledgeBudgets
 }
 
 // ---------------------------------------------------------------------------
-// Helper: serialize meta as YAML for character counting
+// Helper: approximate metadata character count for budget measurement
 // ---------------------------------------------------------------------------
 
-function serializeMetaAsYaml(meta: ParsedKnowledgeFile["entries"][number]["meta"]): string {
+/**
+ * Approximate metadata character count for budget purposes.
+ *
+ * This is NOT exact YAML serialization — it produces a line-per-field
+ * approximation that is deterministic and sufficient for character budget
+ * measurement. The RFC explicitly rejects tokenizer-accurate measurement;
+ * this approximation is the documented proxy.
+ */
+function approximateMetaCharCount(meta: ParsedKnowledgeFile["entries"][number]["meta"]): string {
   const lines: string[] = [];
   lines.push(`id: ${meta.id}`);
   lines.push(`layer: ${meta.layer}`);
