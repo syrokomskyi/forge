@@ -36,6 +36,7 @@ Skills live in `skills/` and are synced to `.agents/skills/` by `forge.create`. 
 
 - **When editing a skill in `packages/forge/skills/`**, the synced copy in `.agents/skills/<name>/SKILL.md` MUST also be committed in the same session — `forge.create` is not run automatically after manual edits. Stale `.agents/skills/` copies cause `forge.doctor` to report drift.
 - **Canonical sync path is flat**: `.agents/skills/<name>/SKILL.md` (e.g. `.agents/skills/fo-idea-implement/SKILL.md`). Both `forge.create` (`init.ts`) and `forge.upgrade` (`upgrade.ts`) sync to this flat path. A nested `.agents/skills/fo/<name>/SKILL.md` path is NOT created or maintained by forge — it is a stale artifact if present and should be removed.
+- **`FORGE_SKILLS[].path` is relative to the forge package root** and already includes the `skills/` prefix — resolve via `path.join(forgeRoot, skill.path)` (see `init.ts`). Never join a `skillsRoot` with `skill.path`: that produces a doubled `skills/skills/` prefix and silently finds nothing.
 
 The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file modifications), `document-only` (modifies `.md` files only), `content-mutation` (modifies content `.md`/`.yaml` but not executable code), `code-mutation` (modifies `.ts`/`.astro` code). `forge.skill.validate` enforces this via SKILL-12.
 
