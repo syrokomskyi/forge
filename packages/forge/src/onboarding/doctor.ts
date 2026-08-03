@@ -19,6 +19,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0660: added legacy-section count reporting for structured knowledge files.</item>
   <item>RFC-0661: added knowledge-budgets check — validates override shape, computes per-skill budget reports, reports summary with headroom %.</item>
   <item>RFC-0663: added knowledge-duplicates check (cross-skill L2 duplicate detection) and shared-knowledge-file check (schema/id uniqueness for the shared layer).</item>
+  <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,6 +45,7 @@ import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
 import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS } from "../knowledge/budgets.ts";
 import { detectDuplicatePrinciples } from "../knowledge/index.ts";
 import type { DuplicatePair } from "../knowledge/index.ts";
+import { checkMemoryLayerHealth } from "./memory-scaffold.ts";
 
 interface DoctorCheck {
   name: string;
@@ -885,6 +887,52 @@ function checkDomainInfo(domainReport: DomainReport): DoctorCheck {
   };
 }
 
+// RFC-0664: Memory layer health check
+function checkMemoryLayer(workspaceRoot: string): DoctorCheck {
+  const health = checkMemoryLayerHealth(workspaceRoot);
+
+  if (!health.memoryMdExists) {
+    return {
+      name: "memory-layer",
+      status: "pass",
+      message: "Memory layer not initialized — run 'forge create' or 'forge upgrade' to scaffold .agents/memory/",
+    };
+  }
+
+  const overBudget = health.memoryMdChars > health.budget;
+  const leakRisk = !health.gitignoreCoversDaily && health.dailyFileCount > 0;
+
+  if (overBudget && leakRisk) {
+    return {
+      name: "memory-layer",
+      status: "warn",
+      message: `MEMORY.md over budget (${health.memoryMdChars}/${health.budget} chars); ${health.dailyFileCount} daily file(s) untracked by .gitignore — add forge-agent-memory block`,
+    };
+  }
+
+  if (overBudget) {
+    return {
+      name: "memory-layer",
+      status: "warn",
+      message: `MEMORY.md over budget (${health.memoryMdChars}/${health.budget} chars) — compact or promote to skill knowledge`,
+    };
+  }
+
+  if (leakRisk) {
+    return {
+      name: "memory-layer",
+      status: "warn",
+      message: `${health.dailyFileCount} daily file(s) not covered by .gitignore — add forge-agent-memory block to prevent committing ephemeral logs`,
+    };
+  }
+
+  return {
+    name: "memory-layer",
+    status: "pass",
+    message: `MEMORY.md ${health.memoryMdChars}/${health.budget} chars; ${health.dailyFileCount} daily file(s); gitignore ${health.gitignoreCoversDaily ? "covers" : "absent (no daily files)"}`,
+  };
+}
+
 export async function runDoctor(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -1032,6 +1080,9 @@ export async function runDoctor(
   // RFC-0663: Validate shared knowledge layer file
   const sharedKnowledgeCheck = checkSharedKnowledgeFile(workspaceRoot, forgeRoot);
   checks.push(sharedKnowledgeCheck);
+
+  // RFC-0664: Check memory layer health (budget, gitignore coverage, leak risk)
+  checks.push(checkMemoryLayer(workspaceRoot));
 
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
