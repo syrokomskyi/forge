@@ -14,6 +14,7 @@
   <item>RFC-0550: write NEXT_STEPS.md into project root with creator-facing guidance (greenfield vs transplant via LLM).</item>
   <item>RFC-0640: load profile domain fields and pass them to runInit for domain-aware bootstrapping.</item>
   <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
+  <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +24,7 @@ import { stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";
 import { runInit, type InitResult, type InitDomainFields } from "./init.ts";
 import { runAgentsGenerate } from "./agents-generate.ts";
+import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import {
   loadForgeConfig,
   resolveForgeRoot,
@@ -210,6 +212,10 @@ export async function runCreate(
     flags: {},
   };
   const initResult: InitResult = runInit(initInput, childContext, initDomainFields);
+
+  // 7.5. Scaffold memory layer (RFC-0664) — runs regardless of init success
+  const memoryScaffoldResult = scaffoldMemoryLayer(targetDir);
+
   if (initResult.status !== "pass") {
     return {
       data: {
@@ -217,7 +223,7 @@ export async function runCreate(
         status: "fail",
         projectDir: targetDir,
         profile,
-        filesCreated: [...(scaffoldResult.data?.created ?? []), ...(initResult.created ?? [])],
+        filesCreated: [...(scaffoldResult.data?.created ?? []), ...(initResult.created ?? []), ...memoryScaffoldResult.created],
         errors: initResult.errors ?? ["init failed"],
       },
       nextSteps: failNextSteps,
@@ -294,6 +300,7 @@ Whichever path you choose, you don't need to run any commands. Just describe wha
   const filesCreated = [
     ...(scaffoldResult.data?.created ?? []),
     ...(initResult.created ?? []),
+    ...memoryScaffoldResult.created,
     "NEXT_STEPS.md",
   ];
 
