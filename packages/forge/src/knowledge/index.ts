@@ -22,3 +22,10 @@ export {
   type ParseIssue,
   type ParsedKnowledgeFile,
 } from "./schema.ts";
+export {
+  computeLayerBudgets,
+  resolveKnowledgeBudgets,
+  DEFAULT_KNOWLEDGE_BUDGETS,
+  type KnowledgeBudgets,
+  type LayerBudgetReport,
+} from "./budgets.ts";

@@ -18,6 +18,7 @@
   <item>RFC-0639: added 5 semantic command keys (validate, produce, verify, preview, lint), terminology promoted from .optional() to .default({}), resolveTerminology function.</item>
   <item>RFC-0640: added optional domain field to project section for domain-aware bootstrapping and health checks.</item>
   <item>RFC-0643: added optional profile field to forgeConfigSchema and ForgeConfig; loadForgeConfig loads profiles/<id>.yaml when present.</item>
+  <item>RFC-0661: added optional knowledge.budgets binding for hot/warm layer character budget overrides.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -64,6 +65,17 @@ export const forgeBindingsSchema = z.object({
       testPatterns: z.array(z.string()).optional(),
     })
     .optional(),
+  // RFC-0661: optional knowledge layer character budget overrides
+  knowledge: z
+    .object({
+      budgets: z
+        .object({
+          hot: z.number().positive(),
+          warm: z.number().positive(),
+        })
+        .optional(),
+    })
+    .optional(),
 });
 
 export interface ForgeBindings {
@@ -95,6 +107,13 @@ export interface ForgeBindings {
   compass?: {
     fileExtensions?: string[];
     testPatterns?: string[];
+  };
+  // RFC-0661: optional knowledge layer character budget overrides
+  knowledge?: {
+    budgets?: {
+      hot: number;
+      warm: number;
+    };
   };
 }
 
