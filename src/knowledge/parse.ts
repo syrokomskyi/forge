@@ -34,10 +34,7 @@ const FILENAME_LAYER_MAP: Record<string, KnowledgeLayer> = {
   "learned-principles.md": "L2",
 };
 
-function detectLayer(
-  content: string,
-  fileName: string,
-): KnowledgeLayer | null {
+function detectLayer(content: string, fileName: string): KnowledgeLayer | null {
   const commentMatch = content.match(LAYER_COMMENT_PATTERN);
   if (commentMatch) {
     return commentMatch[1] as KnowledgeLayer;
@@ -46,7 +43,21 @@ function detectLayer(
 }
 
 export function parseKnowledgeFile(filePath: string): ParsedKnowledgeFile {
-  const content = fs.readFileSync(filePath, "utf-8");
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, "utf-8");
+  } catch {
+    // File read errors (EISDIR, ENOENT, etc.) — return empty result
+    return {
+      path: filePath,
+      layer: null,
+      preamble: "",
+      entries: [],
+      legacySections: [],
+      parseIssues: [],
+      isKnowledgeAdjacent: true,
+    };
+  }
   const fileName = path.basename(filePath);
   const lines = content.split(/\r?\n/);
   const layer = detectLayer(content, fileName);
