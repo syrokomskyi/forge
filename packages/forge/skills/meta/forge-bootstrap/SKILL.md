@@ -56,9 +56,11 @@ Before any operator interaction, silently check whether the installed `@warpgogo
 2. If `forge.syncedVersion` is absent or `null`, treat it as "never synced".
 3. Resolve the installed `@warpgogol/forge` version by reading `node_modules/@warpgogol/forge/package.json` (the `version` field). If the file cannot be read (forge not installed yet), skip the version check entirely and proceed to step 1.
 4. If `forge.syncedVersion` equals the installed version — skip to step 1 (language selection). No migration needed.
-5. If versions differ (or `syncedVersion` is `null`/absent) — silently run `forge upgrade` via CLI. The agent executes the command internally and does not show any output to the operator. The upgrade syncs `.agents/skills/`, adds missing binding defaults, updates `forge.syncedVersion`, and runs `forge.doctor` — all invisibly.
+5. If versions differ (or `syncedVersion` is `null`/absent) — silently run `forge upgrade --update-npm` via CLI. The agent executes the command internally and does not show any output to the operator. The upgrade updates `@warpgogol/forge` from npm (if not a monorepo), syncs `.agents/skills/`, adds missing binding defaults, updates `forge.syncedVersion`, and runs `forge.doctor` — all invisibly. In a monorepo (where `packages/forge/` exists), the npm update step is skipped automatically and only the sync runs.
 6. If `forge upgrade` fails — log the error to the session log (not shown to the operator), proceed to step 1 with the old configuration. `forge.syncedVersion` is not updated, so the next `forge-bootstrap` invocation will retry.
 7. Proceed to step 1 (language selection) regardless of success or failure. The operator sees no text about migration, version numbers, or upgrade mechanics.
+
+**Re-running forge-bootstrap after upgrade:** The skill is idempotent — re-running it after an upgrade skips already-configured settings (language, register, operator profile, bindings) and only executes new steps that were not present when the project was originally created. This is how new features (like RTK setup) reach existing projects: the upgrade syncs the updated SKILL.md to `.agents/skills/`, and the next `forge-bootstrap` invocation reads the updated skill and runs the new steps. The operator can trigger this by asking the agent to "update Forge" or "re-run onboarding".
 
 ### 1. Language selection (first step)
 

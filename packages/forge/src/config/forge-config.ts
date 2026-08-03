@@ -268,6 +268,18 @@ export function resolvePmRunner(pm: string): string {
   return PM_RUNNER_MAP[pm] ?? "npx";
 }
 
+export const PM_INSTALL_MAP: Record<string, string> = {
+  pnpm: "pnpm add",
+  npm: "npm install",
+  yarn: "yarn add",
+  bun: "bun add",
+  none: "npm install",
+};
+
+export function resolvePmInstall(pm: string): string {
+  return PM_INSTALL_MAP[pm] ?? "npm install";
+}
+
 export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
   const runner = resolvePmRunner(pm);
   const commands: ForgeBindings["commands"] = {
