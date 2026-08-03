@@ -16,6 +16,7 @@
   <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
   <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
   <item>RFC-0661: added SKILL-21 (knowledge layer token budget warnings), refactored warning handling — warnings go to separate `warnings` array, not `violations`.</item>
+  <item>2026-08-03: SKILL-17 WarpGogol brand pattern made case-sensitive — the /gi flag defeated the first pattern's @-lookbehind and false-flagged every `@warpgogol/<pkg>` npm-scope reference.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -606,7 +607,7 @@ function extractInstructionLines(body: string): string[] {
 
 const SKILL17_ID_PATTERNS: RegExp[] = [/\bRFC-\d{4}\b/g, /\bADR-\d{4}\b/g, /\bDNA-\d+\b/g];
 
-const SKILL17_PLATFORM_PATTERNS: RegExp[] = [/(?<!@)Warpgogol\b/gi, /\bWarpGogol\b/gi];
+const SKILL17_PLATFORM_PATTERNS: RegExp[] = [/(?<!@)Warpgogol\b/gi, /\bWarpGogol\b/g];
 
 const SKILL17_DISABLE_MARKER = "<!-- skill-lint-disable SKILL-17 -->";
 

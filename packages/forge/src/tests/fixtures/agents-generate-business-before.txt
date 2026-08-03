@@ -69,7 +69,7 @@
 | my-preferences | shared | user | document-only |
 | port-to-forge | meta | user | code-mutation |
 | skill-create | meta | user | document-only |
-| windows-ai-tooling | shared | user | document-only |
+| windows-ai-tooling | shared | user | code-mutation |
 | writing-great-skills | shared | user | read-only |
 
 ## Capabilities
