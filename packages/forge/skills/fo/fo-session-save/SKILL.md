@@ -35,7 +35,7 @@ Enhance saved session transcripts with semantic annotations, summaries, and qual
 
 3. **Read the most recently saved session file** from `docs/sessions/`. If no session files exist, exit with "No session files to annotate."
 
-4. **Read knowledge files** (`qa-log.md`, `learned-principles.md`, `fix-patterns.md`) for accumulated knowledge from previous sessions.
+4. **Read knowledge files** (`qa-log.md`, `learned-principles.md`, `fix-patterns.md`) for accumulated knowledge from previous sessions. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`.
 
 5. **Analyze the transcript semantically:**
    - Generate a 1-3 sentence `summary` of the session's purpose and outcome.

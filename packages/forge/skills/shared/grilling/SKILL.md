@@ -13,7 +13,7 @@ knowledge:
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 
-Read `learned-principles.md` (L2) at the start of each session to improve recommended answers. Principles with `confirmations >= 3` may be applied autonomously — but re-evaluate if context changes.
+Read `learned-principles.md` (L2) at the start of each session to improve recommended answers. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`. Principles with `confirmations >= 3` may be applied autonomously — but re-evaluate if context changes.
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
