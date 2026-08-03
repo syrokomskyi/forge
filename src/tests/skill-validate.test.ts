@@ -141,6 +141,19 @@ describe("RFC-0553: SKILL-17 platform reference prohibition", () => {
     expect(idPattern.test("adr-0000-template.md")).toBe(false);
     expect(idPattern.test("rfc-0000-template.md")).toBe(false);
   });
+
+  test("SKILL-17: @warpgogol npm scope is not a platform name violation (regression 2026-08-03)", () => {
+    // Mirrors SKILL17_PLATFORM_PATTERNS in skill-validate.ts. The brand pattern
+    // must stay case-sensitive — with /gi it defeated the first pattern's
+    // @-lookbehind and false-flagged every `@warpgogol/<pkg>` reference.
+    const platformPatterns = [/(?<!@)Warpgogol\b/gi, /\bWarpGogol\b/g];
+    const matches = (line: string) =>
+      platformPatterns.some((p) => new RegExp(p.source, p.flags).test(line));
+    expect(matches("Read the template inside `@warpgogol/forge`")).toBe(false);
+    expect(matches("- No imports from `@warpgogol/site-kernel`.")).toBe(false);
+    expect(matches("The Warpgogol platform requires this")).toBe(true);
+    expect(matches("WarpGogol brand mention")).toBe(true);
+  });
 });
 
 describe("RFC-0642: SKILL-18 domain-specific binding key prohibition", () => {

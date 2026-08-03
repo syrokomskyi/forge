@@ -3,7 +3,7 @@ name: windows-ai-tooling
 description: Bootstrap a Windows project for AI agents. Installs verified tools, generates .gitattributes, and emits a command allow-list for agent prompts. Run when starting a new project or when agents fail.
 invocation: user
 category: shared
-concerns: document-only
+concerns: code-mutation
 dependsOn: []
 languagePolicy: ref(PREFERENCES.md)
 ---

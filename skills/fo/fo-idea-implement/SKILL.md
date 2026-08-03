@@ -205,11 +205,7 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
 
 If the RFC added, changed, or removed commands (check `commands.added`, `commands.changed`, `commands.removed` in the RFC frontmatter), regenerate the command manifest so that `rfc.validate` does not report `RFC-CMD-02` (command listed but not registered):
 
-1. Run:
-
-   ```sh
-   pnpm exec site-kernel run command.manifest.generate
-   ```
+1. Run `ref(forge.yaml bindings.commands.manifestGenerate)`.
 
 2. Commit the regenerated manifest:
 
