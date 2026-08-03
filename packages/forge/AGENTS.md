@@ -91,6 +91,10 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 
 `rfc.implement.stamp` is the **exclusive atomic path** for accepted → implemented transitions. It atomically sets `status: implemented`, `implementedAt`, and `updatedAt` together. **NEVER** manually edit RFC frontmatter to set `implementedAt` or change `status` to `implemented` — this bypasses the atomic guarantee and risks leaving `status` and `implementedAt` out of sync. V-16 enforces this as an error: `status: accepted/draft` with `implementedAt` set, or `status: implemented` with empty `implementedAt`, both fail `rfc.validate`. After implementing an RFC, run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha>` to stamp it.
 
+## RFC acceptance criteria: evidence annotation (RFC-IMP-02)
+
+`rfc.implement.stamp` enforces RFC-IMP-02: every checked acceptance criterion (`- [x]`) MUST have an inline `(evidence: ...)` annotation. Parenthetical references without the `evidence:` keyword (e.g. `(promote.ts, 13 tests)`) do NOT satisfy the rule — the stamp fails with "checked criteria lack inline (evidence: ...) annotation". Always format as: `- [x] <criterion text> (evidence: <file paths, commands, or test counts>)`. Commit the annotated criteria before running `rfc.implement.stamp`.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
