@@ -42,6 +42,9 @@ Interactive skill for configuring a freshly created forge project. Runs after `f
 - Form of address defaults to formal if the operator skips the question.
 - The skill never informs the operator about migration, version numbers, or upgrade mechanics — the silent version check in step 0 is invisible to the operator.
 - The skill never asks the operator for permission to migrate — if versions differ, migration runs automatically.
+- The skill always attempts to install RTK (Rust Token Killer) during onboarding — it is a mandatory setup step. If installation fails (network error, no Rust toolchain, permission denied), the skill continues with a note in the welcoming report. The operator can install RTK manually later.
+- The skill never enables aggressive RTK modes (`--ultra-compact`, aggressive `read`) during onboarding — default settings only. The operator can enable aggressive modes later via `~/.config/rtk/config.toml`.
+- The skill always creates `.bak` backups of any config files modified by `rtk init` (e.g. `~/.claude/settings.json.bak`, `~/.windsurf/settings.json.bak`).
 
 ## Process
 
@@ -200,6 +203,81 @@ git commit -m "chore: sync Forge skills"
 
 This ensures skills are tracked in version control from the start. The commit includes only `.agents/skills/` — no other files.
 
+### 6.10. RTK setup (token optimization, mandatory)
+
+RTK (Rust Token Killer) is a CLI proxy that filters and compresses terminal command output before it reaches the LLM context, cutting up to 90% of bash output on common operations. It is installed once per machine and shared across all forge projects.
+
+The skill installs and configures RTK with **default settings only** — no `--ultra-compact`, no aggressive `read` modes. The operator can enable aggressive modes later via `~/.config/rtk/config.toml`.
+
+#### 6.10.1. Check if RTK is installed
+
+Run `rtk --version` silently. If the command succeeds and reports a version, RTK is already installed — skip to step 6.10.3 (agent initialization check).
+
+If `rtk --version` fails with "command not found" or returns a different tool, proceed to installation.
+
+#### 6.10.2. Install RTK (Linux/macOS)
+
+Install RTK from the official repository `github.com/rtk-ai/rtk` using the install script:
+
+```
+curl -fsSL https://raw.githubusercontent.com/rtk-ai/rtk/master/install.sh | sh
+```
+
+If the install script fails (e.g. no `curl`, network restriction), try the Cargo alternative:
+
+```
+cargo install --git https://github.com/rtk-ai/rtk
+```
+
+If both methods fail, log the error silently (in agent logs, not shown to the operator), note RTK as "not installed" in the welcoming report, and continue to the next step. The operator can install RTK manually later.
+
+After installation, verify with `rtk --version` and `rtk gain` — confirm the command exists and `rtk gain` shows statistics (not "command not found").
+
+#### 6.10.3. Initialize RTK for the operator's AI assistant
+
+Ask the operator:
+
+> Which AI assistant are you using? (Windsurf, Claude Code, Codex, Cursor, Devin, or other)
+
+Based on the answer, run the appropriate `rtk init` command:
+
+- **Windsurf**: `rtk init -g --agent windsurf`
+- **Claude Code**: `rtk init -g --agent claude-code` (or `rtk init -g` if the `--agent` flag is unavailable)
+- **Codex**: `rtk init -g --codex`
+- **Cursor**: `rtk init -g --agent cursor`
+- **Devin**: `rtk init -g --agent devin`
+- **Other**: `rtk init -g` (global default)
+
+Before running `rtk init`, create `.bak` backups of any config files that will be modified (e.g. `cp ~/.claude/settings.json ~/.claude/settings.json.bak`). Explicitly inform the operator which files are being backed up and modified — but in creator-facing language ("I'm setting up token optimization for your AI assistant. This will create a backup of your assistant's settings before making changes.").
+
+If `rtk init` fails, log the error silently, note RTK as "installed but not initialized" in the welcoming report, and continue.
+
+#### 6.10.4. Test RTK
+
+Run a simple test to verify RTK is working:
+
+```
+rtk git status
+```
+
+Then check token savings:
+
+```
+rtk gain
+```
+
+If `rtk gain` shows intercepted commands and token savings, RTK is working. If `rtk gain` shows zero commands or errors, note RTK as "installed but hook not active" in the welcoming report — the operator may need to restart their AI assistant for the hook to take effect.
+
+#### 6.10.5. Report
+
+In the welcoming report (step 11, Section 3 "What was done"), mention RTK in creator-facing language:
+
+- If fully installed and working: "Token optimization is active — your AI assistant will use fewer tokens when running terminal commands."
+- If partially installed: "Token optimization was set up but isn't fully active yet. Try restarting your AI assistant, or ask me to check it later."
+- If installation failed: "Token optimization couldn't be installed automatically. I'll show you how to set it up manually when you're ready."
+
+The RTK usage rule is automatically included in the generated `AGENTS.md` by `forge.agents.generate` — the operator does not need to configure it manually.
+
 ### 7. Auto-run doctor (new)
 
 The skill runs `forge.doctor` internally — not as a CLI command the operator types. The operator never sees a command or a terminal.
@@ -339,6 +417,11 @@ A short description after every onboarding, read from `forge-about.md`. The skil
 - Operator cancels mid-interview → partial changes to `forge.yaml` and `apps/<appName>/` are left; the skill does not roll back.
 - Operator declines everything (git history, ADR, first creation moment) → valid; the skill proceeds to the welcoming report with what was done. No step is mandatory beyond language selection, register selection, and project verification.
 - First creation moment fails (operator cannot describe what they want) → skill offers to start from a template or recommendation (transplant) instead. The first creation moment is an invitation, not a requirement.
+- RTK already installed → skill skips installation, checks agent initialization, and proceeds.
+- RTK install script fails (network error, no `curl`) → skill tries `cargo install` as fallback. If both fail, notes RTK as "not installed" in the welcoming report and continues. Non-blocking.
+- `rtk init` fails (unknown agent, permission denied) → skill notes RTK as "installed but not initialized" in the welcoming report and continues. Non-blocking.
+- `rtk gain` shows zero commands after install → skill notes RTK as "installed but hook not active — restart your AI assistant" in the welcoming report. Non-blocking.
+- Operator declines to specify their AI assistant → skill runs `rtk init -g` (global default) without the `--agent` flag.
 
 ### 13. Knowledge files
 
