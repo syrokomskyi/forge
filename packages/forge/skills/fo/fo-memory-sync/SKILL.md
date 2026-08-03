@@ -142,11 +142,14 @@ For each confirmed item, route the knowledge to the appropriate destination:
 | Project convention or rule | Nearest applicable `AGENTS.md` | Direct edit |
 | Architectural decision | `docs/adrs/` | Delegate to `fo-idea-create-adr` |
 | Cross-workspace invariant | `ref(forge.yaml bindings.paths.invariantsFile)` | Delegate to `fo-extract-dna` |
-| Session context | `docs/sessions/` | Create session file |
+| Session context (structured record) | `docs/sessions/` | Create session file |
 | Operator preference | `.agents/operator-profile.md` | Direct edit |
-| Ephemeral context | Memory DB | `create_memory` tool |
+| Ephemeral context (import-only) | `.agents/memory/daily/<today>.md` | Append to daily log (RFC-0664) |
+| Ephemeral context (mirror) | Memory DB | `create_memory` tool (optional mirror) |
 
 Do not duplicate knowledge already present in the target. Read the target file before editing. Add knowledge in the most concise actionable form.
+
+**Boundary between `docs/sessions/` and `.agents/memory/daily/` (RFC-0664):** `docs/sessions/` holds structured imported session records (from external tools). `.agents/memory/daily/` holds agent-written Context bullets (append-only, git-ignored). Use `docs/sessions/` for imported external sessions; use `.agents/memory/daily/` for ephemeral context bullets that the agent writes during this session.
 
 ### 7. Update knowledge files
 

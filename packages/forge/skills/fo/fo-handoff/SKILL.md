@@ -34,8 +34,9 @@ Include:
 - **References to existing artifacts** — specs, plans, ADRs, issues, commits, diffs. Reference them by path or URL instead of duplicating content.
 - **Current state** — what the codebase looks like now, what's uncommitted, what's in progress.
 - **Next steps** — concrete, actionable items the next agent should pick up.
+- **Memory layer pointer** — tell the next agent to read `.agents/memory/MEMORY.md` and recent `.agents/memory/daily/` files for project context (RFC-0664).
 
-Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead.
+Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead. Do not duplicate content from `.agents/memory/` — reference it by path.
 
 Redact any sensitive information, such as API keys, passwords, or personally identifiable information.
 
