@@ -46,7 +46,7 @@ Before creating knowledge files, the agent analyzes the skill's knowledge domain
 
 3. **Which layers are needed?** Not every skill needs all three. `grilling` uses L0+L2 only. A site-scanning skill with all three layers is a good example. A skill with purely reactive error resolution may use L1+L2 only (no Q&A log).
 
-Present the analysis to the operator. If they confirm, create the knowledge files with header comments matching the chosen structure and add `knowledge:` to the frontmatter. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern and mutation contract.
+Present the analysis to the operator. If they confirm, create the knowledge files with header comments matching the chosen structure and add `knowledge:` to the frontmatter. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern, entry format, and mutation contract.
 
 ### 2. Scaffold
 

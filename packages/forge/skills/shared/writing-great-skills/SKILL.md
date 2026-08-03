@@ -116,6 +116,58 @@ Skills adopt 0, 1, 2, or 3 layers as needed — the pattern is adaptive, not man
 
 Not every skill needs all three. `grilling` uses L0 and L2 only (no fix patterns). A site-scanning skill may use all three.
 
+### Entry format
+
+Each knowledge entry is a `### K-NNNN: title` heading followed by a `knowledge-entry` YAML metadata block and a markdown body:
+
+````markdown
+### K-0001: Skip non-project sessions
+
+```knowledge-entry
+id: K-0001
+layer: L1
+created: 2026-08-03
+status: active
+````
+
+**Situation:** ...
+
+**Action:** ...
+
+```
+
+#### Metadata schema
+
+| Field | Type | Required | Layers | Meaning |
+| --- | --- | --- | --- | --- |
+| `id` | `K-NNNN` | all | all | Unique 4-digit identifier within the file |
+| `layer` | `L0` \| `L1` \| `L2` | all | all | Knowledge layer |
+| `created` | `YYYY-MM-DD` | all | all | Date the entry was first written |
+| `lastConfirmedAt` | `YYYY-MM-DD` \| `null` | L2 only | L2 | Date of last operator confirmation |
+| `confirmations` | integer ≥ 0 | L2 only | L2 | Confirmation counter for autonomous application |
+| `expiresAt` | `YYYY-MM-DD` \| `null` | optional | all | Date after which the entry is stale |
+| `supersedes` | `K-NNNN[]` | optional | all | Entries this one replaces (must resolve in same file) |
+| `promotedTo` | `shared/K-NNNN` \| `null` | optional | all | Cross-file promotion target |
+| `status` | `active` \| `stale` \| `superseded` \| `archived` | all | all | Lifecycle state |
+
+#### Layer-specific rules
+
+- **L0** (`qa-log.md`): `confirmations` and `lastConfirmedAt` are forbidden.
+- **L1** (`fix-patterns.md`): `confirmations` and `lastConfirmedAt` are forbidden.
+- **L2** (`learned-principles.md`): `confirmations` and `lastConfirmedAt` are required.
+
+#### Knowledge-adjacent files
+
+Files declared in `knowledge:` frontmatter that do not use `### K-NNNN:` headings and have no `<!-- knowledge-layer: ... -->` preamble are **knowledge-adjacent** — they are exempt from SKILL-19/SKILL-20. Examples: `forge-about.md`, `operator-profile-template.md`, `project-narrative-template.md`.
+
+#### Validation
+
+`forge.skill.validate` enforces:
+- **SKILL-19**: entry metadata schema validity (errors) and legacy section warnings (migration window).
+- **SKILL-20**: identifier uniqueness (`K-NNNN` format, no duplicates, `supersedes` references resolve, `promotedTo` format).
+
+`forge.doctor` reports legacy section counts as informational warnings.
+
 ### Confidence progression
 
 L2 entries carry a `confirmations: N` counter. When confirmations reach threshold 3, the skill may apply the principle autonomously without asking the operator. Rejecting a recommended answer resets confirmations to 0. Autonomous application is context-dependent — the skill should re-evaluate if context changes.
@@ -130,3 +182,4 @@ L2 entries carry a `confirmations: N` counter. When confirmations reach threshol
 ### npm portability
 
 `@warpgogol/forge` is published to npm with `skills/` in the `files` array. Knowledge files ship as empty templates (header comments only). Forge's accumulated Q&A and learned principles are project-specific and should not leak to npm consumers. Each project accumulates its own knowledge locally after running `forge.create`.
+```
