@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial knowledge module barrel export.</item>
+  <item>RFC-0663: added promote.ts exports for cross-skill duplicate detection and promotion planning.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,3 +44,10 @@ export {
   type KnowledgeBudgets,
   type LayerBudgetReport,
 } from "./budgets.ts";
+export {
+  normalizeTitle,
+  detectDuplicatePrinciples,
+  planPromotion,
+  type DuplicatePair,
+  type PromotionPlan,
+} from "./promote.ts";
