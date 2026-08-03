@@ -284,6 +284,10 @@ To publish a new version of `@warpgogol/forge` to NPM:
 
 The `prepublishOnly` script runs `clean → build → publish-check` automatically, so steps 3-4 are redundant if publishing via `npm publish` directly.
 
+### `.npmrc` token precedence
+
+When publishing `@warpgogol/forge`, npm resolves the auth token from `.npmrc` files in precedence order: `packages/forge/.npmrc` (project) > `werkstatt/.npmrc` (workspace root) > `~/.npmrc` (user). A stale token in `packages/forge/.npmrc` silently overrides valid tokens in the other files. npm returns `404 Not Found` (not `403 Forbidden`) on PUT when the token lacks publish permissions — this is a deliberate npm security behavior that masks auth failures as missing resources. When rotating npm tokens, update ALL `.npmrc` files that contain a token, starting with `packages/forge/.npmrc`. All three files are gitignored.
+
 ## Git command patterns in forge handlers
 
 - **`git log --oneline` output includes a hash prefix** — the format is `<hash> <message>`, not `<message>`. When matching commit message patterns in `--oneline` output, do NOT anchor the regex to `^implement:` or `^feat:` — the line starts with the hash. Use a non-anchored pattern like `implement:\s+RFC-\d{4}\b` instead. Discovered during RFC-0625 V-32 implementation where `^implement:` failed to match `--oneline` output.
