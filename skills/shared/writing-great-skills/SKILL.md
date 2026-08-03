@@ -90,7 +90,7 @@ Use these to diagnose issues the user may be having with the skill.
 
 ## Cumulative knowledge pattern
 
-Skills that run repeatedly accumulate knowledge across sessions. The cumulative knowledge convention provides an opt-in three-layer reference pattern for this.
+Skills that run repeatedly accumulate knowledge across sessions. The cumulative knowledge convention provides an opt-in three-layer reference pattern (plus one shared cross-skill layer) for this.
 
 ### Knowledge frontmatter
 
@@ -115,6 +115,16 @@ Skills adopt 0, 1, 2, or 3 layers as needed — the pattern is adaptive, not man
 | L2 | `learned-principles.md` | Concrete principles distilled from past runs, with `confirmations: N` counter |
 
 Not every skill needs all three. `grilling` uses L0 and L2 only (no fix patterns). A site-scanning skill may use all three.
+
+### Shared layer (L2, cross-skill)
+
+In addition to the three skill-local layers, there is a fourth tier: the **shared knowledge layer** at `packages/forge/skills/shared/knowledge/learned-principles.md`. This file holds promoted cross-skill principles with `shared/K-NNNN` identifiers.
+
+- **Detection**: `forge.doctor` reports cross-skill duplicate L2 entries via normalized-title matching (exact and bounded containment).
+- **Promotion**: `fo-knowledge-distill` executes promotions under operator grilling — the principle moves to the shared layer with summed confirmations and `promotedFrom` provenance; each skill-local copy is rewritten to a pointer entry (`promotedTo: shared/K-NNNN`, `status: superseded`).
+- **Consumption**: knowledge-adopting skills read the shared layer at run start and cite shared principles as `shared/K-NNNN`.
+- **Validation**: `forge.doctor` validates the shared layer file for schema validity and id uniqueness (it is not inside a skill directory, so `forge.skill.validate` does not reach it).
+- **npm portability**: the shared layer ships as an empty template — accumulated promotions are project-specific.
 
 ### Entry format
 
@@ -148,6 +158,7 @@ status: active
 | `expiresAt` | `YYYY-MM-DD` \| `null` | optional | all | Date after which the entry is stale |
 | `supersedes` | `K-NNNN[]` | optional | all | Entries this one replaces (must resolve in same file) |
 | `promotedTo` | `shared/K-NNNN` \| `null` | optional | all | Cross-file promotion target |
+| `promotedFrom` | `<skill>/K-NNNN[]` | optional | shared | Provenance — which skill-local entries were promoted into this shared entry |
 | `status` | `active` \| `stale` \| `superseded` \| `archived` | all | all | Lifecycle state |
 
 #### Layer-specific rules
