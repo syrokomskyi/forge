@@ -80,6 +80,12 @@ export const forgeBindingsSchema = z.object({
       staleDays: z.number().positive().optional(),
     })
     .optional(),
+  // RFC-0664: optional memory layer budget override (MEMORY.md hot store)
+  memory: z
+    .object({
+      budget: z.number().int().positive().default(4096),
+    })
+    .optional(),
 });
 
 export interface ForgeBindings {
@@ -121,6 +127,10 @@ export interface ForgeBindings {
     };
     retentionDays?: number;
     staleDays?: number;
+  };
+  // RFC-0664: optional memory layer budget override (MEMORY.md hot store)
+  memory?: {
+    budget: number;
   };
 }
 
