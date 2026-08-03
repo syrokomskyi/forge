@@ -246,6 +246,12 @@ In the creative register, the agent commits all changes automatically after each
 
 <!-- forge:end behavioral-layer -->
 
+## Project memory layer
+
+`.agents/memory/MEMORY.md` is the curated hot store (versioned). `.agents/memory/daily/YYYY-MM-DD.md` are append-only warm logs (git-ignored).
+
+**Session-start read discipline (advisory):** At session start, read `MEMORY.md` (always), then `daily/<today>.md` and `daily/<yesterday>.md` (if present). Older daily files are cold — use grep when a task references past context.
+
 ## Conventions
 
 - Use `forge.yaml` as the single source of truth for project configuration.
