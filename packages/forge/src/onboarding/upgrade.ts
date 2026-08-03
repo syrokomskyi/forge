@@ -13,6 +13,7 @@ overwriting operator-set values, updates forge.syncedVersion, and runs forge.doc
   <item>RFC-0543: initial forge.upgrade handler — 7-step additive sync flow.</item>
   <item>RFC-0611: added nested AGENTS.md generation after skill sync.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
+  <item>RFC-0664: added scaffoldMemoryLayer step to scaffold .agents/memory/ and .gitignore block.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +30,7 @@ import {
 } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
+import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import type { SkippedSkill } from "./init.ts";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeNextStep, ForgeRuntimeContext } from "../types.ts";
 
@@ -41,6 +43,7 @@ export interface UpgradeResult {
   bindingsAdded: { key: string; value: string }[];
   skippedSkills: SkippedSkill[];
   nestedAgentsGenerated: string[];
+  memoryScaffold: { created: string[]; gitignoreUpdated: boolean; skipped: string[] };
   doctorReport: unknown;
 }
 
@@ -243,6 +246,7 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         doctorReport: null,
       },
       nextSteps: [{ action: "Run 'forge create' to create forge.yaml first", kind: "required" }],
@@ -268,6 +272,7 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         doctorReport: null,
       },
       nextSteps: [
@@ -293,6 +298,7 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         doctorReport: null,
       },
       nextSteps: [
@@ -318,6 +324,7 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         doctorReport: null,
       },
       nextSteps,
@@ -351,6 +358,9 @@ export async function runUpgrade(
   );
 
   const skillsUpdated = [...forgeSkillsUpdated, ...packResult.updated, ...sharedKnowledgeUpdated];
+
+  // Step 3d: Scaffold memory layer (RFC-0664)
+  const memoryScaffold = isDryRun ? { created: [], gitignoreUpdated: false, skipped: [] } : scaffoldMemoryLayer(workspaceRoot);
 
   // Step 4: Add missing binding defaults
   const bindingsAdded = addMissingBindingDefaults(config, isDryRun);
@@ -409,6 +419,7 @@ export async function runUpgrade(
       bindingsAdded,
       skippedSkills: packResult.skipped,
       nestedAgentsGenerated,
+      memoryScaffold,
       doctorReport,
     },
     nextSteps,
