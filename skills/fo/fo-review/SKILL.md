@@ -230,10 +230,10 @@ Derive the `<module-folder>` from the reviewed files: take the package path with
 Write the report to:
 
 ```txt
-docs/reviews/code/<module-folder>/review-<YYYY-MM-DD>-<HH>-<module-folder>.md
+docs/reviews/code/<module-folder>/review-<YYYY-MM-DD>-<HH-mm>-<module-folder>.md
 ```
 
-For example: `docs/reviews/code/packages-growth/review-2026-07-10-19-packages-growth.md`.
+For example: `docs/reviews/code/packages-growth/review-2026-07-10-19-30-packages-growth.md`.
 
 Create any missing parent directories. The file must begin with a YAML frontmatter block:
 
