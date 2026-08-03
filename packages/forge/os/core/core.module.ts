@@ -15,6 +15,7 @@
   <item>RFC-0544 fix: simplify createWrapper — runCreate already populates nextSteps.</item>
   <item>RFC-0546: remove forge.init CLI registration; runInit() remains as internal primitive called by forge.create.</item>
   <item>RFC-0640: register forge.profile.validate command, add --strict flag to forge.doctor.</item>
+  <item>RFC-0662: register forge.skill.knowledge.compact command for skill knowledge lifecycle compaction.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -304,6 +305,53 @@ export const forgeCoreModule: ForgeModule = {
       reads: ["packages/forge/profiles/*.yaml"],
       cacheable: false,
       execute: profileValidateWrapper,
+    });
+
+    // ── forge.skill.knowledge.compact (RFC-0662) ──────────────────────────────
+    const { runKnowledgeCompact } = await import("./handlers/knowledge-compact.ts");
+    registry.registerCommand({
+      name: "forge.skill.knowledge.compact",
+      description:
+        "Compact skill knowledge files: archive expired/superseded/aged L0 entries, mark stale L2 principles. " +
+        "Usage: forge.skill.knowledge.compact --all [--dry-run] [--json] | --skill <name> [--dry-run] [--json]",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        skill: {
+          kind: "string",
+          description:
+            "Compact a single skill's declared knowledge files. Mutually exclusive with --all.",
+        },
+        all: {
+          kind: "boolean",
+          description: "Compact all forge and pack skills declaring knowledge: files.",
+        },
+        "dry-run": {
+          kind: "boolean",
+          description: "Report planned mutations; write nothing.",
+        },
+        json: {
+          kind: "boolean",
+          description: "Machine-readable report.",
+        },
+        "retention-days": {
+          kind: "string",
+          description: "L0 entries older than this many days are archived (default: 90).",
+        },
+        "stale-days": {
+          kind: "string",
+          description:
+            "L2 entries with lastConfirmedAt older than this become stale (default: 90).",
+        },
+      },
+      writes: ["packages/forge/skills/**/*.md", "packages/forge/skills/**/*.archive.md"],
+      reads: [
+        "packages/forge/skills/**/*.md",
+        "packages/forge/skills/**/*.archive.md",
+        "forge.yaml",
+      ],
+      cacheable: false,
+      execute: runKnowledgeCompact,
     });
 
     // ── docs.archive ─────────────────────────────────────────────────────────

@@ -55,6 +55,7 @@
 | fo-idea-implement | fo | user | code-mutation |
 | fo-idea-plan | fo | user | document-only |
 | fo-idea-status | fo | user | read-only |
+| fo-knowledge-distill | fo | user | document-only |
 | fo-memory-sync | fo | user | content-mutation |
 | fo-qa | fo | user | document-only |
 | fo-review | fo | user | read-only |
