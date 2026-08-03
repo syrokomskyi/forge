@@ -1,20 +1,20 @@
 {
   "name": "@warpgogol/forge",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "private": false,
   "type": "module",
-  "license": "MIT",
+  "license": "Apache-2.0",
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
-  "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
-  "homepage": "https://github.com/syrokomskyi/warpgogol-4#readme",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/syrokomskyi/warpgogol-4.git",
-    "directory": "packages/forge"
-  },
-  "bugs": {
-    "url": "https://github.com/syrokomskyi/warpgogol-4/issues"
-  },
+  "keywords": [
+    "rfc",
+    "adr",
+    "governance",
+    "skills",
+    "ai-agent",
+    "documentation",
+    "framework"
+  ],
+  "homepage": "https://warpgogol.com",
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
@@ -126,7 +126,8 @@
     "src/onboarding/templates/",
     "os/rfc/rfc-0000-template.md",
     "AGENTS.md",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
