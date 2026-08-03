@@ -110,6 +110,20 @@ export {
   type ProfileInvariant,
 } from "./profiles/profile-schema.ts";
 
+// Knowledge module (RFC-0660)
+export {
+  parseKnowledgeFile,
+  serializeKnowledgeFile,
+  knowledgeEntryMetaSchema,
+  type KnowledgeLayer,
+  type KnowledgeEntryStatus,
+  type KnowledgeEntryMeta,
+  type KnowledgeEntry,
+  type LegacySection,
+  type ParseIssue,
+  type ParsedKnowledgeFile,
+} from "./knowledge/index.ts";
+
 // Validators
 export { runSkillValidate } from "./validators/skill-validate.ts";
 export { runPortValidate } from "./validators/port-validate.ts";
