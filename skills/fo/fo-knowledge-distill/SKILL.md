@@ -61,10 +61,11 @@ Group recurring Q&A themes from L0. For each theme, propose either:
 
 Present proposals as a table:
 
-| # | Proposed entry | Layer | Source entries | Rationale |
-| --- | --- | --- | --- | --- |
+| #   | Proposed entry | Layer | Source entries | Rationale |
+| --- | -------------- | ----- | -------------- | --------- |
 
 For each proposal, use `ask_user_question` to let the operator:
+
 - **Confirm** — the entry is written as proposed.
 - **Edit** — the operator provides corrections; the entry is written with edits.
 - **Drop** — the proposal is discarded.
@@ -119,7 +120,7 @@ Commit only the mutated knowledge files. Reference this skill and the RFC-0662 l
 
 All knowledge files use the RFC-0660 structured entry format:
 
-```markdown
+````markdown
 <!-- knowledge-layer: L2 -->
 # learned-principles.md
 
@@ -132,9 +133,10 @@ created: 2026-08-03
 lastConfirmedAt: 2026-08-03
 confirmations: 1
 status: active
-```
+````
 
 Body text describing the principle.
+
 ```
 
 See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern (L0 raw logs, L1 fix patterns, L2 learned principles), entry format, and mutation contract.
@@ -146,3 +148,23 @@ See `writing-great-skills` § Cumulative knowledge pattern for the three-layer r
 - **No semantic logic in command handlers.** The `forge.skill.knowledge.compact` command handles mechanical archival only. Semantic grouping and promotion live in this skill.
 - **No LLM logic in `src/knowledge/`.** Deterministic planning only; meaning work lives here.
 - **Read archives too.** When distilling, read both live and archive files — archived material may still contain themes worth re-distilling.
+
+## Cross-skill promotion
+
+When `forge.doctor` reports `knowledge-duplicate` warnings (cross-skill L2 entries with matching normalized titles), or when the operator identifies a promotion candidate, execute the promotion protocol:
+
+### Promotion protocol
+
+1. **Present the pair** — show both titles, bodies, confirmations, and the proposed merged shared entry (merged body, summed confirmations, `promotedFrom` provenance). The operator approves, edits, or rejects via grilling.
+2. **Write the shared entry** — append to `packages/forge/skills/shared/knowledge/learned-principles.md` with the next `K-NNNN` id, `status: active`, `created: today`, `lastConfirmedAt: today`, `confirmations` (sum of sources), and `promotedFrom: ["<skill>/K-NNNN", ...]`.
+3. **Rewrite local copies** — each skill-local entry keeps its heading and id but its metadata is rewritten: `promotedTo: shared/K-NNNN`, `status: superseded`; body replaced with one line: "Promoted to shared layer as shared/K-NNNN." The next compact run archives these pointer entries out of the hot file.
+4. **Cite, don't copy** — future distill runs in any skill reference the shared id (`shared/K-NNNN`) instead of re-creating the principle locally.
+5. **Commit** — shared file + all touched skill files in one commit.
+
+### Promotion constraints
+
+- **Promotion requires operator approval inside grilling** — detection is deterministic, promotion is human. Never promote without explicit operator approval for each pair.
+- **Never copy shared-layer content into skill-local files** — cite via `shared/K-NNNN`, do not duplicate.
+- **Never promote project-specific knowledge from pack skills into the forge shared layer** — domain-neutrality is checked during grilling. If the principle is project-specific, it stays pack-local.
+- **Portability gate** — grilling must include the question: "Is this principle genuinely cross-skill, or is it specific to one skill's domain?" Only genuinely cross-skill principles promote.
+```
