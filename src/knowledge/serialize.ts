@@ -26,7 +26,6 @@ const FIELD_ORDER: (keyof KnowledgeEntryMeta)[] = [
 
 function formatYamlValue(value: unknown): string {
   if (value === null) return "null";
-  if (value === undefined) return "null";
   if (Array.isArray(value)) {
     if (value.length === 0) return "[]";
     return `[${value.join(", ")}]`;
