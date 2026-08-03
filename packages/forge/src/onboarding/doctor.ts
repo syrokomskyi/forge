@@ -17,6 +17,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0611: added nested AGENTS.md checks — missing, stale (dryRun comparison), hand-written improvement.</item>
   <item>RFC-0640: added domain reporting, invariant listing (reported-only), terminology resolution, --strict flag, and software-specific check skipping for non-software domains.</item>
   <item>RFC-0660: added legacy-section count reporting for structured knowledge files.</item>
+  <item>RFC-0661: added knowledge-budgets check — validates override shape, computes per-skill budget reports, reports summary with headroom %.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,13 +32,15 @@ import type {
 } from "../types.ts";
 import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
-import { parseKnowledgeFile } from "../knowledge/index.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd } from "./nested-agents-templates.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
 import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import { runProfileValidate } from "./profile-validate.ts";
+import { parseKnowledgeFile } from "../knowledge/index.ts";
+import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
+import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS } from "../knowledge/budgets.ts";
 
 interface DoctorCheck {
   name: string;
@@ -336,6 +339,119 @@ function checkLegacyKnowledgeSections(
       totalLegacy === 0
         ? "No legacy knowledge sections"
         : `${totalLegacy} legacy section${totalLegacy === 1 ? "" : "s"} across ${filesWithLegacy} knowledge file${filesWithLegacy === 1 ? "" : "s"} — run the knowledge compaction command to migrate`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Knowledge budget check (RFC-0661)
+// ---------------------------------------------------------------------------
+
+function checkKnowledgeBudgets(
+  workspaceRoot: string,
+  forgeRoot: string,
+): DoctorCheck {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return { name: "knowledge-budgets", status: "pass", message: "No forge.yaml — budget check skipped" };
+  }
+
+  // Validate override shape if present
+  const overrideWarnings: string[] = [];
+  const effectiveBudgets = resolveKnowledgeBudgets(workspaceRoot);
+  let usingDefaults = true;
+
+  try {
+    const forgeYamlPath = join(workspaceRoot, "forge.yaml");
+    const content = readFileSync(forgeYamlPath, "utf8");
+    const parsed = parseYaml(content) as Record<string, unknown>;
+    const bindings = parsed?.bindings as Record<string, unknown> | undefined;
+    const knowledge = bindings?.knowledge as Record<string, unknown> | undefined;
+    const budgets = knowledge?.budgets as { hot?: unknown; warm?: unknown } | undefined;
+
+    if (budgets) {
+      usingDefaults = false;
+      if (typeof budgets.hot !== "number" || budgets.hot <= 0 || !Number.isInteger(budgets.hot)) {
+        overrideWarnings.push(`bindings.knowledge.budgets.hot invalid (got ${String(budgets.hot)}), using default ${DEFAULT_KNOWLEDGE_BUDGETS.hot}`);
+      }
+      if (typeof budgets.warm !== "number" || budgets.warm <= 0 || !Number.isInteger(budgets.warm)) {
+        overrideWarnings.push(`bindings.knowledge.budgets.warm invalid (got ${String(budgets.warm)}), using default ${DEFAULT_KNOWLEDGE_BUDGETS.warm}`);
+      }
+    }
+  } catch {
+    // forge.yaml not readable — defaults already applied
+  }
+
+  // Collect all parsed knowledge files from forge skills and pack skills
+  const parsedFiles: { file: ParsedKnowledgeFile; skillName: string; pack?: string }[] = [];
+
+  for (const skill of FORGE_SKILLS) {
+    if (!skill.knowledge || skill.knowledge.length === 0) continue;
+    const skillDir = join(forgeRoot, dirname(skill.path));
+    for (const kf of skill.knowledge) {
+      const kfPath = join(skillDir, kf);
+      try {
+        const parsed = parseKnowledgeFile(kfPath);
+        if (parsed.layer !== null && parsed.layer !== "L0" && !parsed.isKnowledgeAdjacent && parsed.parseIssues.length === 0) {
+          parsedFiles.push({ file: parsed, skillName: skill.name });
+        }
+      } catch {
+        // File read errors are handled by stale knowledge check
+      }
+    }
+  }
+
+  const packSkills = discoverPackSkills(workspaceRoot, config);
+  for (const skill of packSkills) {
+    if (!skill.knowledge || skill.knowledge.length === 0) continue;
+    const skillDir = join(workspaceRoot, skill.dir, dirname(skill.path));
+    for (const kf of skill.knowledge) {
+      const kfPath = join(skillDir, kf);
+      try {
+        const parsed = parseKnowledgeFile(kfPath);
+        if (parsed.layer !== null && parsed.layer !== "L0" && !parsed.isKnowledgeAdjacent && parsed.parseIssues.length === 0) {
+          parsedFiles.push({ file: parsed, skillName: skill.name, pack: skill.pack });
+        }
+      } catch {
+        // File read errors are handled by stale knowledge check
+      }
+    }
+  }
+
+  // Compute budget reports
+  const filesForBudget = parsedFiles.map((p) => p.file);
+  const skillNames = new Map<string, string>();
+  for (const p of parsedFiles) {
+    skillNames.set(p.file.path, p.skillName);
+  }
+
+  const reports = computeLayerBudgets(filesForBudget, effectiveBudgets, skillNames);
+
+  // Build summary
+  const budgetSource = usingDefaults ? "defaults" : "override";
+  const parts: string[] = [`budgets: hot=${effectiveBudgets.hot} warm=${effectiveBudgets.warm} (${budgetSource})`];
+
+  if (reports.length > 0) {
+    const summary = reports.map((r) => {
+      const pct = Math.round((r.activeChars / r.budget) * 100);
+      return `${r.skill}/${r.file}[${r.layer}]: ${r.activeChars}/${r.budget} (${pct}%)`;
+    });
+    parts.push(`${reports.length} file${reports.length === 1 ? "" : "s"}: ${summary.join(", ")}`);
+  } else {
+    parts.push("no hot/warm knowledge files to check");
+  }
+
+  if (overrideWarnings.length > 0) {
+    parts.push(overrideWarnings.join("; "));
+  }
+
+  const status: DoctorCheck["status"] = overrideWarnings.length > 0 ? "warn" : "pass";
+
+  return {
+    name: "knowledge-budgets",
+    status,
+    message: parts.join(" | "),
   };
 }
 
@@ -759,6 +875,10 @@ export async function runDoctor(
   // RFC-0660: Check legacy sections in knowledge files
   const legacyCheck = checkLegacyKnowledgeSections(workspaceRoot, forgeRoot);
   checks.push(legacyCheck);
+
+  // RFC-0661: Check knowledge layer token budgets
+  const budgetCheck = checkKnowledgeBudgets(workspaceRoot, forgeRoot);
+  checks.push(budgetCheck);
 
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
