@@ -12,6 +12,7 @@ overwriting operator-set values, updates forge.syncedVersion, and runs forge.doc
 <CHANGE_SUMMARY>
   <item>RFC-0543: initial forge.upgrade handler — 7-step additive sync flow.</item>
   <item>RFC-0611: added nested AGENTS.md generation after skill sync.</item>
+  <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -96,6 +97,27 @@ function syncForgeSkills(
     updated.push(skillName);
   }
 
+  return updated;
+}
+
+function syncSharedKnowledge(
+  workspaceRoot: string,
+  forgeRoot: string,
+  skillsDir: string,
+  dryRun: boolean,
+): string[] {
+  const updated: string[] = [];
+  const srcPath = path.join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
+  if (!fs.existsSync(srcPath)) return updated;
+
+  const destDir = path.join(workspaceRoot, skillsDir, "shared-knowledge");
+  const destPath = path.join(destDir, "learned-principles.md");
+
+  if (!dryRun) {
+    fs.mkdirSync(destDir, { recursive: true });
+    fs.writeFileSync(destPath, fs.readFileSync(srcPath, "utf8"), "utf8");
+  }
+  updated.push("shared-knowledge");
   return updated;
 }
 
@@ -320,7 +342,15 @@ export async function runUpgrade(
     isDryRun,
   );
 
-  const skillsUpdated = [...forgeSkillsUpdated, ...packResult.updated];
+  // Step 3c: Sync shared knowledge layer (RFC-0663)
+  const sharedKnowledgeUpdated = syncSharedKnowledge(
+    workspaceRoot,
+    forgeRoot,
+    config.paths.skillsDir,
+    isDryRun,
+  );
+
+  const skillsUpdated = [...forgeSkillsUpdated, ...packResult.updated, ...sharedKnowledgeUpdated];
 
   // Step 4: Add missing binding defaults
   const bindingsAdded = addMissingBindingDefaults(config, isDryRun);

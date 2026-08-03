@@ -19,6 +19,7 @@
   <item>RFC-0552: add skippedSkills to InitResult, detect Forge-vs-pack skill name conflicts.</item>
   <item>RFC-0640: accept optional domain fields from profile (register, domain, terminology, semanticBindings) and write them into PREFERENCES.md and forge.yaml.</item>
   <item>RFC-0643: accept optional profileId and write it to forge.yaml as the `profile` field.</item>
+  <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -280,6 +281,16 @@ export function runInit(
         // Frontmatter parse error — SKILL-01 will catch this in validation
       }
     }
+  }
+
+  // RFC-0663: Sync shared knowledge layer to .agents/skills/shared-knowledge/
+  const sharedKnowledgeSrc = path.join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
+  if (fs.existsSync(sharedKnowledgeSrc)) {
+    const sharedKnowledgeDestDir = path.join(agentsSkillsDir, "shared-knowledge");
+    fs.mkdirSync(sharedKnowledgeDestDir, { recursive: true });
+    const sharedKnowledgeDest = path.join(sharedKnowledgeDestDir, "learned-principles.md");
+    fs.writeFileSync(sharedKnowledgeDest, fs.readFileSync(sharedKnowledgeSrc, "utf8"), "utf8");
+    created.push(`${config.paths.skillsDir}/shared-knowledge/learned-principles.md`);
   }
 
   // 4. Create docs directories from config paths
