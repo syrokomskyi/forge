@@ -64,7 +64,7 @@ Build the full path table for both Codex and Claude Code. Check which paths exis
 
 ### 2. Read knowledge files
 
-Read `fix-patterns.md` and `learned-principles.md` for accumulated filtering and import patterns from previous runs across all projects.
+Read `fix-patterns.md` and `learned-principles.md` for accumulated filtering and import patterns from previous runs across all projects. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`.
 
 ### 3. Discover external memory and sessions
 

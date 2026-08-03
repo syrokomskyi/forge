@@ -165,8 +165,17 @@ Files declared in `knowledge:` frontmatter that do not use `### K-NNNN:` heading
 `forge.skill.validate` enforces:
 - **SKILL-19**: entry metadata schema validity (errors) and legacy section warnings (migration window).
 - **SKILL-20**: identifier uniqueness (`K-NNNN` format, no duplicates, `supersedes` references resolve, `promotedTo` format).
+- **SKILL-21**: hot (L2) and warm (L1) layer character budget warnings — warnings only, never build gates. Defaults: hot=4096, warm=8192. Override in `forge.yaml` under `bindings.knowledge.budgets`.
 
-`forge.doctor` reports legacy section counts as informational warnings.
+`forge.doctor` reports legacy section counts and knowledge budget summaries as informational warnings.
+
+### Reading discipline
+
+When a skill declares `knowledge:` files, the skill body MUST include a one-line instruction telling the agent how to read them. Add this line to the skill's process section:
+
+> Read declared knowledge files at the start of each run, in declaration order. Apply only entries with `status: active`. Skip entries with `status: stale`, `superseded`, or `archived`.
+
+This ensures the agent knows to load and filter knowledge entries by lifecycle status, rather than blindly applying all entries including stale ones.
 
 ### Confidence progression
 
