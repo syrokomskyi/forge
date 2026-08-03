@@ -118,6 +118,11 @@ When the operator describes a significant idea or change, the agent SHOULD proac
 
 The agent SHOULD auto-save sessions at the end of each session unless opted out via `PREFERENCES.md` (`saveSessions: false`). Companion-mode session saving can be opted out separately.
 
+Session save mechanism:
+1. Export the conversation as a raw ATIF file to `docs/sessions/.raw/` (create the directory with `mkdir -p docs/sessions/.raw` if it does not exist).
+2. Run `ref(forge.yaml bindings.commands.sessionSave)` to convert the raw file to structured markdown in `docs/sessions/`.
+3. If the command fails or the binding is null, create the session file manually in `docs/sessions/` with frontmatter (id, date, type, relatedRfcs).
+
 ### Auto-review
 
 The agent SHOULD auto-run `fo-review` after implementing a significant change. Review results are presented in creator language — only actionable issues are highlighted.

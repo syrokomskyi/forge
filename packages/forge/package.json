@@ -5,15 +5,7 @@
   "type": "module",
   "license": "MIT",
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
-  "keywords": [
-    "rfc",
-    "adr",
-    "governance",
-    "skills",
-    "ai-agent",
-    "documentation",
-    "framework"
-  ],
+  "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
   "homepage": "https://github.com/syrokomskyi/warpgogol-4#readme",
   "repository": {
     "type": "git",
@@ -131,6 +123,7 @@
     "bin/cli.js",
     "skills/",
     "profiles/",
+    "src/onboarding/templates/",
     "os/rfc/rfc-0000-template.md",
     "AGENTS.md",
     "README.md"
