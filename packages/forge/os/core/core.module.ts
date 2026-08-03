@@ -173,7 +173,7 @@ export const forgeCoreModule: ForgeModule = {
     registry.registerCommand({
       name: "forge.skill.validate",
       description:
-        "Validate all forge skills against frontmatter contract and invariants SKILL-01..SKILL-13.",
+        "Validate all forge skills against frontmatter contract and invariants SKILL-01..SKILL-20.",
       scope: "workspace",
       supportsAllSites: false,
       flags: {},
