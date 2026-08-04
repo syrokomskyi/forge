@@ -311,3 +311,16 @@ Prose-only policy RFCs (skill-text-only, no code/command/contract changes) MUST 
 ## RFC frontmatter: file system responsibilities table
 
 Skill-text-only RFCs MUST include `packages/forge/AGENTS.md` in the file system responsibilities table with the note "No change needed — documents skill infrastructure, not individual skill behavior." This preempts a recurring audit finding (5 consecutive RFCs). The `packages/forge/AGENTS.md` file documents skill infrastructure (sync paths, validator rules, import constraints), not individual skill behavior — so it never needs updating when a skill's text changes.
+
+## rfc.create title reuse
+
+`rfc.create` may reuse the title from a previous invocation in the same session. After creating an RFC, always verify the generated filename matches the intended title before populating content. If the filename is wrong, delete the file and re-run `rfc.create` with the correct `--title`. Do not rename the file — the RFC ID is assigned by the command and must not be manually changed.
+
+## Profile-driven RFC conventions
+
+All profile-driven RFCs (RFC-0674 onwards) MUST follow these conventions:
+
+- **CLI flags**: every proposed command MUST support `--dry-run`, `--json`, and `--profile` flags. These are the standard Forge lifecycle flags.
+- **Schema extensions**: all new profile schema fields MUST be optional (`z.optional()`) — existing profiles must continue to validate without changes.
+- **No domain-specific logic in Forge core**: all behavior is driven by profile YAML declarations. Forge source must not import domain-specific packages or hardcode domain-specific rules.
+- **File system responsibilities table**: every profile-driven RFC MUST list `packages/forge/src/profiles/profile-schema.ts` and `packages/forge/os/core/core.module.ts` in the table.
