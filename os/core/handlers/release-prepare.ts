@@ -8,10 +8,13 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0680: initial forge.release.prepare handler with manifest generation, artifact hashing, --dry-run.</item>
+  <item>RFC-0680 review fix: remove unused artifactId param from findBuiltArtifacts (A-2).</item>
+  <item>RFC-0680 review fix: use writeFileIfChanged for manifest write (B-1, DNA-34).</item>
+  <item>RFC-0680 review fix: document validationPassed semantics (G-3).</item>
 </CHANGE_SUMMARY>
 */
 
-import { readFile, writeFile, copyFile, mkdir, stat } from "node:fs/promises";
+import { readFile, copyFile, mkdir, stat } from "node:fs/promises";
 import { join, basename } from "node:path";
 import { createHash } from "node:crypto";
 import type {
@@ -22,6 +25,7 @@ import type {
 import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
 import { byteHashFile } from "@warpgogol/fingerprint";
 import { collectFiles } from "@warpgogol/share/fs";
+import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type { ProfileRelease } from "../../../src/profiles/profile-schema.ts";
 
 export interface ReleaseManifest {
@@ -65,7 +69,6 @@ async function readVersionFromPackageJson(workspaceRoot: string): Promise<string
 
 async function findBuiltArtifacts(
   workspaceRoot: string,
-  artifactId: string,
   extensions: string[],
   produceOutput?: string,
 ): Promise<string[]> {
@@ -174,7 +177,6 @@ export async function runReleasePrepare(
   for (const artifact of filteredArtifacts) {
     const builtFiles = await findBuiltArtifacts(
       workspaceRoot,
-      artifact.id,
       artifact.extensions,
       artifact.produce?.output,
     );
@@ -240,6 +242,11 @@ export async function runReleasePrepare(
     validationPassed: true,
   };
 
+  // G-3 note: validationPassed is set to true because forge.release.prepare
+  // does not run validation itself — the operator is expected to run
+  // `forge.validate` before `forge.release.prepare`. This mirrors the
+  // prepare-then-publish separation: prepare assumes prior validation.
+
   if (dryRun) {
     logger.info(`[dry-run] forge.release.prepare — profile: ${profile.id}`);
     logger.info(`  releaseId: ${releaseId}`);
@@ -268,7 +275,7 @@ export async function runReleasePrepare(
   }
 
   const manifestPath = join(releaseDir, releaseConfig.manifestName);
-  await writeFile(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
+  await writeFileIfChanged(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
 
   logger.success(`  Release prepared: ${manifestArtifacts.length} artifact(s)`);
   logger.info(`  Manifest: ${manifestPath}`);

@@ -8,10 +8,13 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0680: initial forge.release.publish handler with local/r2/s3 targets, --dry-run, env var validation.</item>
+  <item>RFC-0680 review fix: remove unused readdir import (A-1).</item>
+  <item>RFC-0680 review fix: add S3_ENDPOINT to required env vars (G-1).</item>
+  <item>RFC-0680 review fix: add 30s request timeout on S3Client (G-2).</item>
 </CHANGE_SUMMARY>
 */
 
-import { readFile, copyFile, mkdir, readdir } from "node:fs/promises";
+import { readFile, copyFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
 import type {
   ForgeCommandInput,
@@ -34,7 +37,7 @@ function getRequiredEnvVars(target: string): string[] {
     return ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"];
   }
   if (target === "s3") {
-    return ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"];
+    return ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_ENDPOINT"];
   }
   return [];
 }
@@ -46,11 +49,7 @@ export async function runReleasePublish(
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
 
-  const resolved = resolveActiveProfile(
-    workspaceRoot,
-    context.forgeRoot,
-    profileIdOverride,
-  );
+  const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {
     return {
       data: {
@@ -61,11 +60,8 @@ export async function runReleasePublish(
         manifestPath: "",
       },
       exitCode: 1,
-      summary:
-        "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
-      nextSteps: [
-        { action: "Set profile in forge.yaml or use --profile <id>", kind: "required" },
-      ],
+      summary: "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
+      nextSteps: [{ action: "Set profile in forge.yaml or use --profile <id>", kind: "required" }],
     };
   }
 
@@ -144,7 +140,10 @@ export async function runReleasePublish(
         target,
         publishedFiles: filesToPublish.map((f) => ({
           path: f,
-          targetPath: target === "local" ? join(releaseDir, "published", basename(f)) : `${target}://${basename(f)}`,
+          targetPath:
+            target === "local"
+              ? join(releaseDir, "published", basename(f))
+              : `${target}://${basename(f)}`,
         })),
         manifestPath,
       },
@@ -181,6 +180,7 @@ export async function runReleasePublish(
       endpoint,
       region: "auto",
       credentials: { accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! },
+      requestHandler: { requestTimeout: 30_000 },
     });
 
     for (const f of filesToPublish) {
