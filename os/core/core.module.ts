@@ -18,6 +18,7 @@
   <item>RFC-0662: register forge.skill.knowledge.compact command for skill knowledge lifecycle compaction.</item>
   <item>RFC-0674: register forge.dev, forge.build, forge.validate lifecycle commands.</item>
   <item>RFC-0678: register forge.determinism.check lifecycle command.</item>
+  <item>RFC-0679: register forge.assets.list, forge.assets.check commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -414,6 +415,60 @@ export const forgeCoreModule: ForgeModule = {
       writes: ["dist/.determinism-cache.json"],
       cacheable: false,
       execute: runDeterminismCheck,
+    });
+
+    // ── forge.assets.list (RFC-0679) ───────────────────────────────────────────
+    const { runAssetsList } = await import("./handlers/assets-list.ts");
+    registry.registerCommand({
+      name: "forge.assets.list",
+      description:
+        "List all assets declared in the active stack profile, grouped by type. Use --dry-run to skip hashing, --type to filter by asset type.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "List assets without computing hashes.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+        type: {
+          kind: "string",
+          description: "Filter assets by type id (e.g. video, audio, image).",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"],
+      cacheable: false,
+      execute: runAssetsList,
+    });
+
+    // ── forge.assets.check (RFC-0679) ──────────────────────────────────────────
+    const { runAssetsCheck } = await import("./handlers/assets-check.ts");
+    registry.registerCommand({
+      name: "forge.assets.check",
+      description:
+        "Check for missing, orphaned, and unreferenced assets. Use --strict to fail on orphaned assets, --dry-run to skip hashing.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Check file existence without computing hashes.",
+        },
+        strict: {
+          kind: "boolean",
+          description: "Exit non-zero when orphaned assets are found.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"],
+      cacheable: false,
+      execute: runAssetsCheck,
     });
 
     // ── forge.skill.knowledge.compact (RFC-0662) ──────────────────────────────
