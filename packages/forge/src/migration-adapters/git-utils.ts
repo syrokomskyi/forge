@@ -14,27 +14,42 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { trashSync } from "../utils/fs-trash-sync.ts";
 import type { AdapterAnalysis } from "./types.ts";
 
-export function runPostSetup(sourceDir: string, targetDir: string, analysis: AdapterAnalysis): void {
+export function runPostSetup(
+  sourceDir: string,
+  targetDir: string,
+  analysis: AdapterAnalysis,
+): void {
   const gitDir = path.join(targetDir, ".git");
 
   if (analysis.gitHistory) {
     try {
       const patchDir = path.join(targetDir, ".forge-migration-patches");
       fs.mkdirSync(patchDir, { recursive: true });
-      execFileSync("git", ["-C", sourceDir, "format-patch", "--all", "-o", patchDir], { stdio: "pipe" });
+      execFileSync("git", ["-C", sourceDir, "format-patch", "--all", "-o", patchDir], {
+        stdio: "pipe",
+      });
       execFileSync("git", ["init"], { cwd: targetDir, stdio: "pipe" });
-      const patches = fs.readdirSync(patchDir).filter((f) => f.endsWith(".patch")).sort();
+      const patches = fs
+        .readdirSync(patchDir)
+        .filter((f) => f.endsWith(".patch"))
+        .sort();
       if (patches.length > 0) {
         for (const patch of patches) {
-          execFileSync("git", ["am", path.join(patchDir, patch)], { cwd: targetDir, stdio: "pipe" });
+          execFileSync("git", ["am", path.join(patchDir, patch)], {
+            cwd: targetDir,
+            stdio: "pipe",
+          });
         }
       }
-      fs.rmSync(patchDir, { recursive: true, force: true });
+      trashSync(patchDir);
       return;
     } catch (err) {
-      console.warn(`forge: git history transfer failed, falling back to clean git init: ${err instanceof Error ? err.message : String(err)}`);
+      console.warn(
+        `forge: git history transfer failed, falling back to clean git init: ${err instanceof Error ? err.message : String(err)}`,
+      );
       if (!fs.existsSync(gitDir)) {
         execFileSync("git", ["init"], { cwd: targetDir, stdio: "pipe" });
       }

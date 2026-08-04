@@ -21,6 +21,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import { trashPath } from "../../../src/utils/fs-trash.ts";
 import { readAllLocks, removeStaleLock, acquireLock, releaseLock } from "./lock.ts";
 
 export interface WerkstattLockRecoverData {
@@ -62,8 +63,8 @@ async function classifyArtifacts(
       if (entry.endsWith(".tmp")) {
         if (purge) {
           try {
-            await fs.unlink(entryPath);
-            recovered.push({ artifact: relPath, action: "removed-tmp" });
+            await trashPath(entryPath);
+            recovered.push({ artifact: relPath, action: "trashed-tmp" });
           } catch (err) {
             failed.push({ artifact: relPath, error: (err as Error).message });
           }
@@ -73,8 +74,8 @@ async function classifyArtifacts(
       } else if (entry.includes(".staging-")) {
         if (purge) {
           try {
-            await fs.rm(entryPath, { recursive: true, force: true });
-            recovered.push({ artifact: relPath, action: "removed-staging" });
+            await trashPath(entryPath);
+            recovered.push({ artifact: relPath, action: "trashed-staging" });
           } catch (err) {
             failed.push({ artifact: relPath, error: (err as Error).message });
           }
