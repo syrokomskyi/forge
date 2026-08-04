@@ -286,6 +286,8 @@ Review the current session to identify discoveries. Use in priority order:
 
 For each candidate, ask: "Would another agent working in this area benefit from knowing this?" If no, drop it. If yes, proceed to categorization.
 
+**No-insights shortcut:** If zero candidates survive filtering, skip Step 3 (Categorize and present) and Step 4 (Route) entirely. Do NOT ask the operator to confirm the absence of insights — proceed directly to Step 7 (Report) with a report that states "No insights found" in the insights section. This avoids a pointless confirmation round when the session produced no durable knowledge worth capturing.
+
 ### 3. Categorize and present
 
 **Language requirement (NON-NEGOTIABLE):** The triage table, the `ask_user_question` confirmation prompt, and all inline commentary MUST be written in `PREFERENCES.md` `aiLanguage`. The English template below is structural only — translate ALL headings, column names, labels, and prose to `aiLanguage` before presenting. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated. Example: if `aiLanguage` is `ru`, the heading is «Сортировка инсайтов сессии», column headers are «№ | Инсайт | Категория | Назначение | Действие».
