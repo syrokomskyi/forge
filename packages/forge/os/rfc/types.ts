@@ -485,7 +485,8 @@ export interface RfcImplementStampResult {
   violations: RfcImplementStampViolation[];
 } // ─── Constants ───────────────────────────────────────────────────────────────
 export const RFC_DIR = "docs/rfcs";
-export const RFC_TEMPLATE_FILE = "os/rfc/rfc-0000-template.md";
+export const RFC_TEMPLATE_FILE = "docs/rfcs/rfc-0000-template.md";
+export const RFC_TEMPLATE_FALLBACK_FILE = "os/rfc/rfc-0000-template.md";
 export const RFC_ID_PATTERN = /^RFC-\d{4}$/;
 
 /** Required H2 sections for every RFC. */
