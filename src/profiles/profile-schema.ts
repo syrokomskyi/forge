@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0638: initial domain-neutral profile schema extensions with six optional fields.</item>
+  <item>RFC-0674: add profileDevServerSchema and devServer field for lifecycle commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -125,6 +126,22 @@ export interface ProfileInvariant {
 }
 
 // ---------------------------------------------------------------------------
+// Profile dev server schema (RFC-0674)
+// ---------------------------------------------------------------------------
+
+export const profileDevServerSchema = z.object({
+  command: z.string().min(1),
+  port: z.number().int().positive().optional(),
+  readinessTimeout: z.number().int().positive().optional(),
+});
+
+export interface ProfileDevServer {
+  command: string;
+  port?: number;
+  readinessTimeout?: number;
+}
+
+// ---------------------------------------------------------------------------
 // Stack profile domain fields
 // ---------------------------------------------------------------------------
 
@@ -135,6 +152,7 @@ export const stackProfileDomainFieldsSchema = z.object({
   workspaceTypes: z.array(profileWorkspaceTypeSchema).optional(),
   invariants: z.array(profileInvariantSchema).optional(),
   register: z.enum(["business", "creative"]).optional(),
+  devServer: profileDevServerSchema.optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -144,4 +162,5 @@ export interface StackProfileDomainFields {
   workspaceTypes?: ProfileWorkspaceType[];
   invariants?: ProfileInvariant[];
   register?: "business" | "creative";
+  devServer?: ProfileDevServer;
 }
