@@ -117,3 +117,21 @@ After completing implementation work, the operator may run a three-step session-
 3. **`fo-handoff`** — what does the next agent need? (continuity document)
 
 Most sessions need only `fo-doc-audit`. `fo-session-retro` is valuable after debugging sessions, exploratory work, or when non-obvious behaviors were discovered. `fo-handoff` is needed when work is incomplete and another agent will continue.
+
+## Context checkpoint between batch items
+
+When the orchestrator skill processes multiple documents (>=2), perform a context checkpoint after completing one document and before starting the next:
+
+1. **Emit checkpoint block** — output a YAML-formatted block in conversation output with the following fields:
+   - `completed`: RFC/ADR id of the completed document
+   - `status`: final status (implemented, accepted, draft, failed)
+   - `commits`: list of commit SHAs produced for this document
+   - `lessons`: 1-3 short freeform sentences capturing key errors, root causes, patterns discovered, or validator quirks encountered during this document's pipeline run
+   - `dependencies`: cross-RFC dependency notes (e.g., "RFC-YYYY depends on RFC-XXXX for schema field Z") — empty if none
+   - `next`: id of the next document to process, or `null` if this was the last
+2. **Release context** — explicitly treat all detailed context from the completed document as no longer actionable: file contents, search results, edit operations, intermediate reasoning. Retain only the checkpoint block. Release means treat as no longer actionable for reasoning, not delete or undo.
+3. **Fresh start** — begin the next document with a fresh read phase: re-read the RFC file and all related documents (amends, supersedes, related RFCs, DNA invariants, AGENTS.md sections).
+
+The checkpoint block doubles as a resume marker: when resuming an interrupted batch, scan conversation output for the last checkpoint block, extract completed ids and statuses, and continue with the next uncompleted item. If no checkpoint markers are found, fall back to the existing resume logic (git log, file inspection, frontmatter status).
+
+**Only applies to batch processing (>=2 documents).** Single-document invocations do not need a checkpoint — the context is already fresh at the start.

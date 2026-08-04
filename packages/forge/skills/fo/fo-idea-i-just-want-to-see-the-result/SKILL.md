@@ -54,6 +54,8 @@ Record the document id(s) and type(s) (RFC or ADR). If multiple documents were c
 
 For each document, run the full pipeline inline. The pipeline differs for RFCs and ADRs.
 
+**Between batch items:** After completing one document's pipeline and before starting the next, perform a context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items. Emit the checkpoint block, release completed-item context, and start the next item with a fresh read phase. This does not pause for operator input — the checkpoint is an agent-internal context management step, not a user interaction.
+
 #### RFC pipeline
 
 Execute these steps **in order**, invoking each skill inline via the `skill` tool. Do not stop between steps. Do not ask the operator "shall I proceed?" between steps — the operator's invocation of this skill IS the instruction to proceed through the entire pipeline.
