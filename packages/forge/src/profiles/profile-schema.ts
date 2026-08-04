@@ -55,6 +55,8 @@ export const profileArtifactSchema = z.object({
   validate: z
     .object({
       command: z.string().min(1),
+      outputFormat: z.enum(["plain", "json"]).optional(),
+      violationPattern: z.string().optional(),
     })
     .optional(),
   determinism: z
@@ -74,6 +76,8 @@ export interface ProfileArtifact {
   };
   validate?: {
     command: string;
+    outputFormat?: "plain" | "json";
+    violationPattern?: string;
   };
   determinism?: {
     hashable: boolean;
