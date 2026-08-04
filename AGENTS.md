@@ -324,3 +324,11 @@ All profile-driven RFCs (RFC-0674 onwards) MUST follow these conventions:
 - **Schema extensions**: all new profile schema fields MUST be optional (`z.optional()`) — existing profiles must continue to validate without changes.
 - **No domain-specific logic in Forge core**: all behavior is driven by profile YAML declarations. Forge source must not import domain-specific packages or hardcode domain-specific rules.
 - **File system responsibilities table**: every profile-driven RFC MUST list `packages/forge/src/profiles/profile-schema.ts` and `packages/forge/os/core/core.module.ts` in the table.
+
+## Workflow file placement
+
+Workflow files MUST live only in `.agents/workflows/`. Do NOT duplicate workflow files in `.windsurf/workflows/` — `.windsurf/workflows/` is IDE-specific config that does not ship to new projects via `forge.create`. `.agents/workflows/` is the single source of truth for workflow definitions.
+
+## Workflow files vs skill content
+
+IDE-specific workflow files (`.windsurf/workflows/`, `.devin/workflows/`) MUST NOT duplicate skill content. Skills (`packages/forge/skills/`) are the portable unit — they ship to every new project via `forge.create`. Workflow files are IDE-specific triggers that reference skills by name; they should not contain the protocol itself. If a workflow file grows beyond a trigger phrase + skill reference, move the content into the skill's `SKILL.md`.
