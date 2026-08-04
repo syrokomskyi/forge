@@ -40,6 +40,52 @@ When the operator says any of the following, invoke this skill via the `skill` t
 
 Do NOT produce a closing summary first — this skill IS the closing protocol. The skill's report is the session-end output. Do not add a separate "session complete" message.
 
+## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
+
+This step ensures the session transcript is persisted to `docs/sessions/` before any retro work begins. Without it, the transcript is lost when the conversation closes.
+
+### 0a. Check preference
+
+Read `PREFERENCES.md` at the repository root. If `saveSessions: false`, skip this step entirely and proceed to Step 1.
+
+### 0b. Construct raw ATIF file
+
+The agent reconstructs the current session's conversation from its context window and writes it as a JSON-lines ATIF file to `docs/sessions/.raw/`. Each line is a JSON object with `role`, `timestamp`, and `content` fields.
+
+**Format:**
+
+```
+{"role":"user","timestamp":"2026-08-04T12:12:00+02:00","content":"<user message>"}
+{"role":"assistant","timestamp":"2026-08-04T12:12:05+02:00","content":"<assistant response>"}
+{"role":"user","timestamp":"2026-08-04T12:15:00+02:00","content":"<next user message>"}
+...
+```
+
+**Instructions:**
+
+1. Create the directory `docs/sessions/.raw/` if it does not exist.
+2. Generate a timestamp-based filename: `<YYYY-MM-DD-HH-MM-SS>-session.atif` (use current time in the operator's timezone).
+3. Reconstruct the conversation from context — include every user message and assistant response you can recall from the current session, in chronological order. This is a best-effort reconstruction: the agent's context window is the source, not an external export tool.
+4. **Redact sensitive information** — remove API keys, passwords, PII, and secret values before writing. Replace with `<redacted>`.
+5. **Truncate very long tool outputs** — if a tool call produced thousands of lines of output, summarize it as `<tool output truncated, N lines>` in the content field. Keep the tool call name and key results.
+6. Write the file using `write_to_file` to `docs/sessions/.raw/<timestamp>-session.atif`.
+
+### 0c. Run session.save
+
+Convert the raw file to structured markdown:
+
+```
+ref(forge.yaml bindings.commands.sessionSave)
+```
+
+This produces a file at `docs/sessions/<id>.md` with auto-extracted metadata (RFC-ids, commit hashes, file paths, commands, session types) and a `## Transcript` section.
+
+### 0d. Verify
+
+Check that the output file was created in `docs/sessions/`. If `session.save` reported "No raw files to process", the raw file was not written correctly — retry 0b.
+
+If the save succeeded, proceed to Step 1. The saved session file will be annotated later by `fo-session-save` if the operator requests it.
+
 ## Pre-retro steps
 
 Before gathering insights, perform these housekeeping steps:
