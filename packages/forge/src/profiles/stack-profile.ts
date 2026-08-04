@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0392: initial stack profile module with zod schema, listStackProfiles, detectStack.</item>
   <item>RFC-0638: extended stackProfileSchema with optional domain-neutral fields (domain, terminology, artifacts, workspaceTypes, invariants, register).</item>
+  <item>RFC-0674: add devServer field to stackProfileSchema for lifecycle commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,6 +59,8 @@ export const stackProfileSchema = z.object({
   workspaceTypes: stackProfileDomainFieldsSchema.shape.workspaceTypes,
   invariants: stackProfileDomainFieldsSchema.shape.invariants,
   register: stackProfileDomainFieldsSchema.shape.register,
+  // RFC-0674: Dev server declaration for lifecycle commands
+  devServer: stackProfileDomainFieldsSchema.shape.devServer,
 });
 
 export interface ProfileFile {
