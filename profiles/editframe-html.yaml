@@ -47,12 +47,24 @@ invariants:
   - id: VIDEO-01
     rule: Composition filenames must use kebab-case (lowercase letters, digits, hyphens only)
     severity: error
+    check:
+      kind: filename-pattern
+      glob: "compositions/**/*.{html,tsx}"
+      pattern: "^[a-z0-9-]+\\.(html|tsx)$"
   - id: VIDEO-02
     rule: Scene durations must use contain mode by default to avoid unexpected cropping
     severity: warning
+    check:
+      kind: file-contains
+      glob: "compositions/**/*.html"
+      pattern: contain
   - id: VIDEO-03
     rule: All speech audio elements must have corresponding ef-captions elements for accessibility
     severity: error
+    check:
+      kind: file-contains
+      glob: "compositions/**/*.html"
+      pattern: ef-captions
 workspace:
   dirs:
     - compositions
