@@ -142,6 +142,47 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && git -
 - If any dirty files remain after committing ours, report them to the operator: "The following files were modified by another agent and left untouched: <list>". Then proceed.
 - If the tree is now clean (or was clean from the start), proceed silently.
 
+### Step 4: RFC implementation verification (NON-NEGOTIABLE)
+
+If any RFC was worked on during this session (implementation, audit, enhance, plan, or fix work), verify that each such RFC is either stamped as `implemented` or has an explicit operator-acknowledged reason for remaining in a non-terminal status. This step prevents sessions from ending with silently unfinished RFCs — the agent must either complete the stamp or obtain explicit operator consent to leave the RFC as-is.
+
+**4a. Identify RFCs touched in this session:**
+
+Scan the session conversation and git log for RFC IDs that were the subject of implementation work:
+
+```bash
+# Session commits that reference RFCs (adjust --since to session start)
+git log --oneline --since="today 00:00:00" --grep="RFC-" -i
+```
+
+Also scan the conversation for any `RFC-XXXX` mentions where the agent performed implementation work (code changes, test creation, validator runs, stamp commands, plan/audit/enhance steps). Exclude RFCs that were only mentioned in passing (e.g. referenced as related context but not worked on).
+
+**4b. Check each RFC's status:**
+
+For each identified RFC, read the frontmatter `status` field from `docs/rfcs/rfc-XXXX-*.md` (or `docs/rfcs/archive/implemented/rfc-XXXX-*.md` if already archived by Step 2).
+
+**4c. Classify and act:**
+
+- **Status `implemented`** — the RFC is complete. No action needed.
+- **Status `rejected` or `superseded`** — terminal status, no action needed.
+- **Status `accepted` (or any other non-terminal status)** — the RFC was worked on but not stamped as `implemented`. This is the state this step targets. For each such RFC, present the status to the operator and ask via `ask_user_question` (in `aiLanguage`):
+
+  | Option | Description |
+  | --- | --- |
+  | Complete now | The agent proceeds to finish the remaining `fo-idea-implement` steps (3.6–3.8: check acceptance criteria with evidence, stamp implemented). This may require running validators, fixing errors, and committing the stamp. |
+  | Leave as-is | The operator explicitly acknowledges the RFC remains in its current non-terminal status with unchecked acceptance criteria. No further action is taken on the RFC. |
+
+  If the operator chooses "Complete now", execute `fo-idea-implement` steps 3.6–3.8 for that RFC before proceeding. If multiple RFCs are in this state, ask about each one (or present them as a batch with `allowMultiple: true`).
+
+**4d. Report:**
+
+Include the RFC status verification result in the session retro report (Step 7). List:
+
+- RFCs verified as `implemented` (count).
+- RFCs left in non-terminal status by explicit operator choice (list with RFC IDs and operator's acknowledgment).
+
+If no RFCs were worked on in this session, skip this step silently.
+
 ## What this skill is NOT
 
 - It is not `fo-doc-audit` — that skill checks whether existing docs are in sync with code changes. This skill captures **new knowledge** that does not yet exist in any doc.
