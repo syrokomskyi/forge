@@ -25,6 +25,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { parseAtif, messagesToTranscriptMarkdown } from "../atif-parser.ts";
+import { trashPath } from "../../../src/utils/fs-trash.ts";
 import {
   SESSION_DIR,
   SESSION_RAW_SUBDIR,
@@ -36,12 +37,19 @@ import {
 const RFC_PATTERN = /\bRFC-\d{4}\b/g;
 const FILE_PATH_PATTERN = /\b(?:packages|docs|services|systems|tools|scripts)\/[^\s"'`<>|]+/g;
 const COMMIT_HASH_PATTERN = /\b[0-9a-f]{7,40}\b/g;
-const COMMAND_PATTERN = /\b(?:session|rfc|adr|plan|audit|docs|mission|forge|compass|werkstatt|spec|naming|workflow|bordbuch|sternsystem|release)\.\w+/g;
+const COMMAND_PATTERN =
+  /\b(?:session|rfc|adr|plan|audit|docs|mission|forge|compass|werkstatt|spec|naming|workflow|bordbuch|sternsystem|release)\.\w+/g;
 
 const TYPE_INDICATORS: Array<{ type: SessionType; patterns: RegExp[] }> = [
   { type: "grilling", patterns: [/grilling/i, /\/grilling/i, /fo-idea.*plan/i] },
-  { type: "mission", patterns: [/mission\.open/i, /mission\.materialize/i, /mission\.reconcile/i, /mission\.close/i] },
-  { type: "implementation", patterns: [/rfc\.implement\.stamp/i, /implement:\s/i, /fo-idea-implement/i] },
+  {
+    type: "mission",
+    patterns: [/mission\.open/i, /mission\.materialize/i, /mission\.reconcile/i, /mission\.close/i],
+  },
+  {
+    type: "implementation",
+    patterns: [/rfc\.implement\.stamp/i, /implement:\s/i, /fo-idea-implement/i],
+  },
   { type: "review", patterns: [/fo-review/i, /review:\s/i] },
   { type: "fix", patterns: [/fo-fix/i, /fix:\s/i] },
 ];
@@ -170,7 +178,11 @@ export async function runSessionSave(
     } catch {
       throw new Error(`Raw file not found: ${rawFileFlag}`);
     }
-    rawFiles = [path.isAbsolute(rawFileFlag) ? path.relative(rawDirPath, resolvedPath) : rawFileFlag.replace(`${SESSION_DIR}/${SESSION_RAW_SUBDIR}/`, "")];
+    rawFiles = [
+      path.isAbsolute(rawFileFlag)
+        ? path.relative(rawDirPath, resolvedPath)
+        : rawFileFlag.replace(`${SESSION_DIR}/${SESSION_RAW_SUBDIR}/`, ""),
+    ];
   } else {
     try {
       const entries = await fs.readdir(rawDirPath, { withFileTypes: true });
@@ -273,7 +285,7 @@ export async function runSessionSave(
       // Delete raw file unless --keep-raw
       if (!keepRaw) {
         try {
-          await fs.unlink(rawFilePath);
+          await trashPath(rawFilePath);
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
             throw err;

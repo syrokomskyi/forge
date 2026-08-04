@@ -6,6 +6,10 @@ import os from "node:os";
 import { runMissionArchive } from "./archive.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
 
+vi.mock("../../../src/utils/fs-trash.ts", () => ({
+  trashPath: (targetPath: string) => fs.rm(targetPath, { recursive: true, force: true }),
+}));
+
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {
     workspaceRoot,

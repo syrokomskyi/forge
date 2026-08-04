@@ -27,6 +27,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import { trashPath } from "../../../src/utils/fs-trash.ts";
 import {
   MISSIONS_DIR,
   ARCHIVE_DIR_NAME,
@@ -89,7 +90,7 @@ async function moveMissionDir(
     // directories (e.g. .astro/) at the source path after the rename.
     // Remove the resurrected source so it doesn't leave orphan directories.
     if (existsSync(sourcePath)) {
-      await fs.rm(sourcePath, { recursive: true, force: true });
+      await trashPath(sourcePath);
     }
   }
 

@@ -25,3 +25,5 @@ export {
 export { toKebabCase } from "./string-utils.ts";
 export { collectFiles, fileExists, type CollectFilesOptions } from "./fs.ts";
 export { byteHash } from "./hash.ts";
+export { trashPath } from "./fs-trash.ts";
+export { trashSync } from "./fs-trash-sync.ts";
