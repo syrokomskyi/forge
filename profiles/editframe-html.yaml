@@ -32,6 +32,18 @@ artifacts:
       inputs:
         - compositions/**/*.html
         - assets/**
+assets:
+  dir: assets
+  types:
+    - id: video
+      extensions: [.mp4, .webm]
+      referencePattern: 'src="([^"]+\.(?:mp4|webm))"'
+    - id: audio
+      extensions: [.mp3, .wav]
+      referencePattern: 'src="([^"]+\.(?:mp3|wav))"'
+    - id: image
+      extensions: [.png, .jpg, .jpeg, .webp, .svg]
+      referencePattern: 'src="([^"]+\.(?:png|jpe?g|webp|svg))"'
 workspaceTypes:
   - id: composition
     detect:
