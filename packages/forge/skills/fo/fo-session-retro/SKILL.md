@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggers: ["session retrospective", "capture insights from this session", "triage session discoveries"]
+triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем эту сессию", "Завершаем сессию", "Заканчиваем сессию", "Завершить сессию", "End session", "Wrap up", "Session end", "/session-end"]
 ---
 
 # Session Retro
@@ -24,6 +24,77 @@ Review the current session for discoveries that other agents would benefit from 
 - **After a debugging session** — when root-cause analysis revealed non-obvious behavior that others would rediscover.
 - **After exploring a new area** — when conventions or patterns were learned that are not yet documented.
 - **Inline by other skills** — `fo-doc-audit` or session-end workflows may delegate here for the "what did you learn?" step.
+
+### Session-end trigger phrases
+
+When the operator says any of the following, invoke this skill via the `skill` tool BEFORE producing a closing summary:
+
+- "Завершаем эту сессию"
+- "Завершаем сессию"
+- "Заканчиваем сессию"
+- "Завершить сессию"
+- "End session"
+- "Wrap up"
+- "Session end"
+- "/session-end"
+
+Do NOT produce a closing summary first — this skill IS the closing protocol. The skill's report is the session-end output. Do not add a separate "session complete" message.
+
+## Pre-retro steps
+
+Before gathering insights, perform these housekeeping steps:
+
+### Step 1: Clean up test temp directories
+
+Remove leftover `tmp-*` and `tmp/` directories created by unit tests anywhere in the repo:
+
+```bash
+find . -type d -name 'tmp-*' -not -path './.git/*' -exec rm -rf {} + 2>/dev/null
+find . -type d -name 'tmp' -not -path './.git/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null
+```
+
+This is safe to auto-run.
+
+### Step 2: Archive terminal documents
+
+Run the `docs.archive` umbrella command to move terminal RFCs, ADRs, plans, audits, sessions, and missions into their respective `archive/` subdirectories:
+
+```bash
+pnpm exec forge docs.archive
+```
+
+The command is idempotent — re-running is safe. If files were moved, commit them in step 3 as part of the clean tree check (they are "our" changes).
+
+### Step 3: Clean tree check (NON-NEGOTIABLE)
+
+Verify that this session has no uncommitted changes left in the working tree. Other agents may be working in parallel, so you MUST distinguish your changes from theirs.
+
+**3a. Collect dirty files from all git repos in the workspace:**
+
+```bash
+# Workspace root
+git status --porcelain
+# All active mission workpieces (glob — safe even if no matches)
+for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && git -C "$d" status --porcelain; done
+```
+
+**3b. Classify each dirty file as "ours" or "theirs":**
+
+- A file is "ours" if EITHER:
+  - You directly modified it via `edit`, `write_to_file`, `multi_edit`, or `edit_notebook` tools.
+  - You indirectly modified it by running a command (`run_command`) that generates or updates it (e.g. codegen pipelines, build commands, etc.).
+- A file is "theirs" if it appears dirty but you have no record of touching it in this session. This means another parallel agent modified it. Do NOT commit, stash, or revert these files.
+
+**3c. Commit our changes:**
+
+- If there are "our" dirty files in the workspace root: `git add <files>` and `git commit -m "<descriptive message>"`.
+- If there are "our" dirty files in a workpiece: `git -C missions/<missionId>/workpiece add <files>` and `git -C missions/<missionId>/workpiece commit -m "<descriptive message>"`.
+- Use descriptive commit messages that explain what the changes are, not just "session cleanup".
+
+**3d. Report remaining dirty files:**
+
+- If any dirty files remain after committing ours, report them to the operator: "The following files were modified by another agent and left untouched: <list>". Then proceed.
+- If the tree is now clean (or was clean from the start), proceed silently.
 
 ## What this skill is NOT
 
@@ -85,6 +156,28 @@ Each discovered insight is categorized into exactly one of six types. The catego
 - Cumulative: builds a profile over time that helps the agent calibrate behavior.
 - Not a rule for all agents — it is specific to this operator.
 - Examples: "prefers concise responses", "works best in morning sessions", "dislikes long explanations", "responds well to visual summaries".
+
+## Insight filtering guidance
+
+When gathering session insights, not every observation deserves to be saved. Apply this filter before presenting the triage table:
+
+**Save as insight** — the observation is:
+
+- A convention or rule that other agents would benefit from following (Rule).
+- An architectural choice with rationale worth preserving (Decision).
+- A cross-workspace invariant that could warrant DNA status (Invariant).
+- A reusable code pattern worth porting (Pattern).
+- A preference or behavioral insight about the operator (Operator).
+- Session-local context useful for the next agent picking up this work area (Context).
+
+**Do NOT save** — the observation is:
+
+- A one-off fact with no future impact (e.g. "RFC-0676 was skipped due to a duplicate"). These are historical events, not knowledge. They do not help future agents work better.
+- A tool quirk already documented elsewhere (check `AGENTS.md` and existing memories first).
+- A transient state that will be irrelevant by the next session (e.g. "file X was dirty at session end").
+- A bug that was found and fixed in the same session with no broader lesson.
+
+When in doubt, ask: "Would another agent working in this area make a different decision if they knew this?" If the answer is no, drop it.
 
 ## Process
 
