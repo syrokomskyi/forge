@@ -16,6 +16,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { resolveForgeRoot } from "../../../src/config/forge-config.ts";
 import { listStackProfiles, type StackProfile } from "../../../src/profiles/stack-profile.ts";
+import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
 
 export interface ResolvedProfile {
   profile: StackProfile;
@@ -41,6 +42,22 @@ function readProfileIdFromForgeYaml(workspaceRoot: string): string | undefined {
     // forge.yaml not parseable — no profile
   }
   return undefined;
+}
+
+export interface LifecycleFlags {
+  dryRun: boolean;
+  profileIdOverride?: string;
+}
+
+export function resolveLifecycleFlags(
+  input: ForgeCommandInput,
+  context: ForgeRuntimeContext,
+): LifecycleFlags {
+  return {
+    dryRun: context.dryRun || input.flags["dry-run"] === true,
+    profileIdOverride:
+      typeof input.flags["profile"] === "string" ? (input.flags["profile"] as string) : undefined,
+  };
 }
 
 export function resolveActiveProfile(

@@ -18,7 +18,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import { resolveActiveProfile } from "./profile-resolve.ts";
+import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
 
 const execAsync = promisify(exec);
 
@@ -42,9 +42,7 @@ export async function runBuild(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeBuildResult>> {
   const { workspaceRoot, logger } = context;
-  const dryRun = context.dryRun || input.flags["dry-run"] === true;
-  const profileIdOverride =
-    typeof input.flags["profile"] === "string" ? (input.flags["profile"] as string) : undefined;
+  const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
 
   const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {

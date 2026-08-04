@@ -17,7 +17,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import { resolveActiveProfile } from "./profile-resolve.ts";
+import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
 
 export interface ForgeDevResult {
   command: "forge.dev";
@@ -32,9 +32,7 @@ export async function runDev(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeDevResult>> {
   const { workspaceRoot, logger } = context;
-  const dryRun = context.dryRun || input.flags["dry-run"] === true;
-  const profileIdOverride =
-    typeof input.flags["profile"] === "string" ? (input.flags["profile"] as string) : undefined;
+  const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
 
   const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {
@@ -92,7 +90,13 @@ export async function runDev(
       cwd: workspaceRoot,
     });
 
+    const onSigint = () => {
+      child.kill("SIGINT");
+    };
+    process.once("SIGINT", onSigint);
+
     child.on("close", (code) => {
+      process.removeListener("SIGINT", onSigint);
       resolve({
         data: {
           command: "forge.dev",
@@ -106,6 +110,7 @@ export async function runDev(
     });
 
     child.on("error", (err) => {
+      process.removeListener("SIGINT", onSigint);
       resolve({
         data: {
           command: "forge.dev",
@@ -116,20 +121,6 @@ export async function runDev(
         },
         exitCode: 1,
         summary: `forge.dev failed: ${err.message}`,
-      });
-    });
-
-    process.on("SIGINT", () => {
-      child.kill("SIGINT");
-      resolve({
-        data: {
-          command: "forge.dev",
-          profileId: profile.id,
-          devServerCommand: command,
-          port,
-          exitCode: 130,
-        },
-        summary: "forge.dev terminated by SIGINT (exit code 130)",
       });
     });
   });
