@@ -59,9 +59,12 @@ function globToRegex(glob: string): RegExp {
   return new RegExp(pattern);
 }
 
+const SKIP_DIRS = new Set(["node_modules", ".git", ".turbo", "dist", ".cache"]);
+
 function collectFiles(dir: string, baseDir: string, results: string[]): void {
   const entries = fs.readdirSync(dir, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.isDirectory() && SKIP_DIRS.has(entry.name)) continue;
     const fullPath = path.join(dir, entry.name);
     const relPath = path.relative(baseDir, fullPath).replace(/\\/g, "/");
     if (entry.isDirectory()) {
@@ -72,152 +75,102 @@ function collectFiles(dir: string, baseDir: string, results: string[]): void {
   }
 }
 
-function checkFilenamePattern(
+function compilePattern(
   invariant: ProfileInvariant,
-  workspaceRoot: string,
-  check: NonNullable<ProfileInvariant["check"]>,
-): InvariantViolation[] {
-  if (!check.glob || !check.pattern) {
-    return [];
-  }
-
-  const allFiles: string[] = [];
-  collectFiles(workspaceRoot, workspaceRoot, allFiles);
-
-  const matchedFiles = allFiles.filter((f) => matchGlob(f, check.glob!));
-  const violations: InvariantViolation[] = [];
-
-  let regex: RegExp;
+  pattern: string,
+): RegExp | { error: InvariantViolation } {
   try {
-    regex = new RegExp(check.pattern);
+    return new RegExp(pattern);
   } catch (err) {
     const e = err as Error;
-    return [
-      {
+    return {
+      error: {
         invariantId: invariant.id,
         severity: "warning",
         rule: invariant.rule,
         file: "",
         message: `Invariant ${invariant.id} has invalid check pattern: ${e.message}`,
       },
-    ];
+    };
   }
-
-  for (const file of matchedFiles) {
-    const filename = path.basename(file);
-    if (!regex.test(filename)) {
-      violations.push({
-        invariantId: invariant.id,
-        severity: invariant.severity,
-        rule: invariant.rule,
-        file,
-        message: `Filename '${filename}' does not match pattern '${check.pattern}'`,
-      });
-    }
-  }
-
-  return violations;
 }
 
-function checkFileContains(
-  invariant: ProfileInvariant,
-  workspaceRoot: string,
-  check: NonNullable<ProfileInvariant["check"]>,
-): InvariantViolation[] {
-  if (!check.glob || !check.pattern) {
-    return [];
-  }
-
-  const allFiles: string[] = [];
-  collectFiles(workspaceRoot, workspaceRoot, allFiles);
-
-  const matchedFiles = allFiles.filter((f) => matchGlob(f, check.glob!));
-  const violations: InvariantViolation[] = [];
-
-  let regex: RegExp;
-  try {
-    regex = new RegExp(check.pattern);
-  } catch (err) {
-    const e = err as Error;
-    return [
-      {
-        invariantId: invariant.id,
-        severity: "warning",
-        rule: invariant.rule,
-        file: "",
-        message: `Invariant ${invariant.id} has invalid check pattern: ${e.message}`,
-      },
-    ];
-  }
-
-  for (const file of matchedFiles) {
-    const fullPath = path.join(workspaceRoot, file);
-    try {
-      const content = fs.readFileSync(fullPath, "utf8");
-      if (!regex.test(content)) {
-        violations.push({
-          invariantId: invariant.id,
-          severity: invariant.severity,
-          rule: invariant.rule,
-          file,
-          message: `File '${file}' does not contain pattern '${check.pattern}'`,
-        });
-      }
-    } catch {
-      // skip unreadable files
-    }
-  }
-
-  return violations;
+function filterByGlob(files: string[], glob: string): string[] {
+  return files.filter((f) => matchGlob(f, glob));
 }
 
-function checkFileNotContains(
+function runCheck(
   invariant: ProfileInvariant,
+  allFiles: string[],
   workspaceRoot: string,
   check: NonNullable<ProfileInvariant["check"]>,
 ): InvariantViolation[] {
-  if (!check.glob || !check.negatedPattern) {
-    return [];
-  }
+  const glob = check.glob;
+  if (!glob) return [];
 
-  const allFiles: string[] = [];
-  collectFiles(workspaceRoot, workspaceRoot, allFiles);
+  const pattern = check.pattern ?? check.negatedPattern;
+  if (!pattern) return [];
 
-  const matchedFiles = allFiles.filter((f) => matchGlob(f, check.glob!));
+  const matchedFiles = filterByGlob(allFiles, glob);
+  const compiled = compilePattern(invariant, pattern);
+  if ("error" in compiled) return [compiled.error];
+  const regex = compiled;
+
   const violations: InvariantViolation[] = [];
 
-  let regex: RegExp;
-  try {
-    regex = new RegExp(check.negatedPattern);
-  } catch (err) {
-    const e = err as Error;
-    return [
-      {
-        invariantId: invariant.id,
-        severity: "warning",
-        rule: invariant.rule,
-        file: "",
-        message: `Invariant ${invariant.id} has invalid check pattern: ${e.message}`,
-      },
-    ];
-  }
-
-  for (const file of matchedFiles) {
-    const fullPath = path.join(workspaceRoot, file);
-    try {
-      const content = fs.readFileSync(fullPath, "utf8");
-      if (regex.test(content)) {
-        violations.push({
-          invariantId: invariant.id,
-          severity: invariant.severity,
-          rule: invariant.rule,
-          file,
-          message: `File '${file}' contains forbidden pattern '${check.negatedPattern}'`,
-        });
+  switch (check.kind) {
+    case "filename-pattern":
+      for (const file of matchedFiles) {
+        const filename = path.basename(file);
+        if (!regex.test(filename)) {
+          violations.push({
+            invariantId: invariant.id,
+            severity: invariant.severity,
+            rule: invariant.rule,
+            file,
+            message: `Filename '${filename}' does not match pattern '${pattern}'`,
+          });
+        }
       }
-    } catch {
-      // skip unreadable files
-    }
+      break;
+    case "file-contains":
+      for (const file of matchedFiles) {
+        const fullPath = path.join(workspaceRoot, file);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          if (!regex.test(content)) {
+            violations.push({
+              invariantId: invariant.id,
+              severity: invariant.severity,
+              rule: invariant.rule,
+              file,
+              message: `File '${file}' does not contain pattern '${pattern}'`,
+            });
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+      break;
+    case "file-not-contains":
+      for (const file of matchedFiles) {
+        const fullPath = path.join(workspaceRoot, file);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          if (regex.test(content)) {
+            violations.push({
+              invariantId: invariant.id,
+              severity: invariant.severity,
+              rule: invariant.rule,
+              file,
+              message: `File '${file}' contains forbidden pattern '${pattern}'`,
+            });
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+      break;
   }
 
   return violations;
@@ -231,6 +184,9 @@ export function checkInvariants(
     return [];
   }
 
+  const allFiles: string[] = [];
+  collectFiles(workspaceRoot, workspaceRoot, allFiles);
+
   return profile.invariants.map((invariant) => {
     if (!invariant.check) {
       return {
@@ -242,18 +198,7 @@ export function checkInvariants(
       };
     }
 
-    let violations: InvariantViolation[] = [];
-    switch (invariant.check.kind) {
-      case "filename-pattern":
-        violations = checkFilenamePattern(invariant, workspaceRoot, invariant.check);
-        break;
-      case "file-contains":
-        violations = checkFileContains(invariant, workspaceRoot, invariant.check);
-        break;
-      case "file-not-contains":
-        violations = checkFileNotContains(invariant, workspaceRoot, invariant.check);
-        break;
-    }
+    const violations = runCheck(invariant, allFiles, workspaceRoot, invariant.check);
 
     return {
       invariantId: invariant.id,
