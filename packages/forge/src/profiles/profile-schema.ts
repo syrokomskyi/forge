@@ -3,12 +3,13 @@
 <purpose>Domain-neutral profile schema extensions — optional fields that allow a stack profile to declare its domain model (terminology, artifacts, workspace types, invariants, register) without breaking backward compatibility.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
-  <item>Do not define enforcement logic for invariants — that is deferred to follow-up RFCs.</item>
+  <item>Do not define enforcement logic for invariants — that lives in the invariant engine module.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0638: initial domain-neutral profile schema extensions with six optional fields.</item>
   <item>RFC-0674: add profileDevServerSchema and devServer field for lifecycle commands.</item>
+  <item>RFC-0675: add profileInvariantCheckSchema and check field to profileInvariantSchema for enforcement.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -110,6 +111,20 @@ export interface ProfileWorkspaceType {
 // Profile invariant schema
 // ---------------------------------------------------------------------------
 
+export const profileInvariantCheckSchema = z.object({
+  kind: z.enum(["filename-pattern", "file-contains", "file-not-contains"]),
+  glob: z.string().optional(),
+  pattern: z.string().optional(),
+  negatedPattern: z.string().optional(),
+});
+
+export interface ProfileInvariantCheck {
+  kind: "filename-pattern" | "file-contains" | "file-not-contains";
+  glob?: string;
+  pattern?: string;
+  negatedPattern?: string;
+}
+
 export const profileInvariantSchema = z.object({
   id: z
     .string()
@@ -117,12 +132,14 @@ export const profileInvariantSchema = z.object({
     .regex(/^[A-Z]+-\d+$/, "Invariant id must match ^[A-Z]+-\\d+$ (e.g. VIDEO-01)"),
   rule: z.string().min(1),
   severity: z.enum(["error", "warning"]),
+  check: profileInvariantCheckSchema.optional(),
 });
 
 export interface ProfileInvariant {
   id: string;
   rule: string;
   severity: "error" | "warning";
+  check?: ProfileInvariantCheck;
 }
 
 // ---------------------------------------------------------------------------
