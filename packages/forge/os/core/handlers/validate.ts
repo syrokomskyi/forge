@@ -48,7 +48,7 @@ export interface ForgeValidateResult {
   allPassed: boolean;
 }
 
-function parseViolations(
+export function parseViolations(
   output: string,
   outputFormat: "plain" | "json" | undefined,
   violationPattern: string | undefined,
@@ -76,7 +76,7 @@ function parseViolations(
 
   if (outputFormat === "plain" && violationPattern) {
     try {
-      const regex = new RegExp(violationPattern, "g");
+      const regex = new RegExp(violationPattern, "gm");
       const violations: ValidateViolation[] = [];
       let match: RegExpExecArray | null;
       while ((match = regex.exec(output)) !== null) {
