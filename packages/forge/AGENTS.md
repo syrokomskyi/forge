@@ -239,6 +239,8 @@ The edit guard skips hand-written nested `AGENTS.md` files (no generated marker)
 
 `forge.agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `forge.doctor` for staleness detection.
 
+- **Doctor stale check MUST use the same rendering pipeline as `forge agents generate`.** The stale check in `checkNestedAgentsMd` (`src/onboarding/doctor.ts`) must call `readPackageInfo` → `buildNestedAgentsMd(ws, config, packageInfo)` → `selectNestedTemplate(wsType, profile, terminology, fallback)` — exactly matching `generateNestedAgentsMd` in `src/onboarding/nested-agents-generate.ts`. Any divergence (missing `packageInfo`, missing `selectNestedTemplate`, missing `resolveAllTerminology`) causes false-positive stale reports for all generated nested `AGENTS.md` files. When modifying either function, verify the other stays in sync.
+
 ## Extended behavioral layer (RFC-0549)
 
 The extended behavioral layer is conditionally included in generated `AGENTS.md` files when the operator's register is `creative`. It adds ten behavioral policies additive to the core layer:
@@ -283,10 +285,10 @@ To publish a new version of `@warpgogol/forge` to NPM:
 2. Bump `forge.syncedVersion` in `forge.yaml` to match.
 3. Run `pnpm --filter @warpgogol/forge run build` — compiles TypeScript to `dist/`.
 4. Run `node packages/forge/scripts/publish-check.mjs` — verifies metadata, dist/ freshness, README, VERSION sourcing, and files array.
-5. Run `npm publish --access public` from `packages/forge/` — publishes to `@warpgogol/forge` on npmjs.org.
+5. Run `pnpm --filter @warpgogol/forge publish --access public` — publishes to `@warpgogol/forge` on npmjs.org. **Do NOT use `npm publish`** — it fails during `prepublishOnly` because `tsc` cannot resolve workspace dependencies (`@warpgogol/share/fs`, `@warpgogol/fingerprint`) outside the pnpm workspace context. `pnpm publish` handles workspace dependencies correctly.
 6. Commit version bumps: `git add packages/forge/package.json forge.yaml && git commit -m "release: @warpgogol/forge@<version>"`.
 
-The `prepublishOnly` script runs `clean → build → publish-check` automatically, so steps 3-4 are redundant if publishing via `npm publish` directly.
+The `prepublishOnly` script runs `clean → build → publish-check` automatically, so steps 3-4 are redundant if publishing via `pnpm publish` directly.
 
 ### `.npmrc` token precedence
 
