@@ -13,7 +13,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `forge.create`, `forge.doctor`, `forge.upgrade`, `forge.agents.generate`, `forge.scaffold`, `forge.port.scaffold`, `forge.skill.validate`, `forge.skill.list`, `forge.port.validate`, `forge.profile.validate`, `docs.archive` | `os/core/` |
+| `forgeCoreModule` | `forge.create`, `forge.doctor`, `forge.upgrade`, `forge.agents.generate`, `forge.scaffold`, `forge.port.scaffold`, `forge.skill.validate`, `forge.skill.list`, `forge.port.validate`, `forge.profile.validate`, `forge.dev`, `forge.build`, `forge.validate`, `docs.archive` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
