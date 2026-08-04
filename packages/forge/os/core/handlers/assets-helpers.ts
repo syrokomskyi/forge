@@ -30,10 +30,7 @@ export interface AssetReference {
   referencedBy: string;
 }
 
-export function classifyAssetType(
-  filePath: string,
-  types: ProfileAssetType[],
-): string | undefined {
+export function classifyAssetType(filePath: string, types: ProfileAssetType[]): string | undefined {
   const ext = extname(filePath).toLowerCase();
   return types.find((t) => t.extensions.some((e) => e.toLowerCase() === ext))?.id;
 }
@@ -119,9 +116,7 @@ export async function extractReferences(
           while ((match = regex.exec(content)) !== null && matchCount < MAX_MATCHES) {
             matchCount++;
             const refPath = match[1] ?? match[0];
-            const normalized = refPath.startsWith("/")
-              ? refPath.slice(1)
-              : refPath;
+            const normalized = refPath.startsWith("/") ? refPath.slice(1) : refPath;
 
             const existing = refMap.get(normalized) ?? [];
             if (!existing.includes(relPath)) {
@@ -143,10 +138,7 @@ export async function extractReferences(
   return refMap;
 }
 
-export function mergeReferences(
-  assets: AssetEntry[],
-  refMap: Map<string, string[]>,
-): AssetEntry[] {
+export function mergeReferences(assets: AssetEntry[], refMap: Map<string, string[]>): AssetEntry[] {
   return assets.map((asset) => {
     const refs = refMap.get(asset.path) ?? [];
     return { ...asset, referencedBy: refs };
@@ -173,15 +165,9 @@ export function findOrphanedAssets(
   assets: AssetEntry[],
   refMap: Map<string, string[]>,
 ): Array<{ path: string; type: string }> {
-  const referencedPaths = new Set<string>();
-  for (const refs of refMap.values()) {
-    for (const ref of refs) {
-      referencedPaths.add(ref);
-    }
-  }
-
+  const referencedAssetPaths = new Set(refMap.keys());
   return assets
-    .filter((a) => !referencedPaths.has(a.path))
+    .filter((a) => !referencedAssetPaths.has(a.path))
     .map((a) => ({ path: a.path, type: a.type }))
     .sort((a, b) => a.path.localeCompare(b.path));
 }
