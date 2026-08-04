@@ -79,7 +79,10 @@ export function parseViolations(
       const regex = new RegExp(violationPattern, "gm");
       const violations: ValidateViolation[] = [];
       let match: RegExpExecArray | null;
-      while ((match = regex.exec(output)) !== null) {
+      const MAX_MATCHES = 1000;
+      let matchCount = 0;
+      while ((match = regex.exec(output)) !== null && matchCount < MAX_MATCHES) {
+        matchCount++;
         const groups = match.groups ?? {};
         violations.push({
           file: String(groups["file"] ?? ""),
@@ -208,7 +211,7 @@ export async function runValidate(
     const outputFormat = artifact.validate.outputFormat;
     const violationPattern = artifact.validate.violationPattern;
     try {
-      const { stdout, stderr } = await execAsync(cmd, { cwd: workspaceRoot });
+      const { stdout, stderr } = await execAsync(cmd, { cwd: workspaceRoot, timeout: 30_000 });
       const violations = parseViolations(stdout + "\n" + stderr, outputFormat, violationPattern);
       results.push({
         id: artifact.id,
