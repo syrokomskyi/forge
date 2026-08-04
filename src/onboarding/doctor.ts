@@ -16,6 +16,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0540: added defaultable-binding-null notices for forge-CLI-backed bindings.</item>
   <item>RFC-0611: added nested AGENTS.md checks — missing, stale (dryRun comparison), hand-written improvement.</item>
   <item>RFC-0640: added domain reporting, invariant listing (reported-only), terminology resolution, --strict flag, and software-specific check skipping for non-software domains.</item>
+  <item>RFC-0675: upgraded domain-invariants check from advisory to enforcement using invariant engine.</item>
   <item>RFC-0660: added legacy-section count reporting for structured knowledge files.</item>
   <item>RFC-0661: added knowledge-budgets check — validates override shape, computes per-skill budget reports, reports summary with headroom %.</item>
   <item>RFC-0663: added knowledge-duplicates check (cross-skill L2 duplicate detection) and shared-knowledge-file check (schema/id uniqueness for the shared layer).</item>
@@ -46,11 +47,14 @@ import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS
 import { detectDuplicatePrinciples } from "../knowledge/index.ts";
 import type { DuplicatePair } from "../knowledge/index.ts";
 import { checkMemoryLayerHealth } from "./memory-scaffold.ts";
+import { checkInvariants } from "./invariant-engine.ts";
+import type { InvariantViolation } from "./invariant-engine.ts";
 
 interface DoctorCheck {
   name: string;
   status: "pass" | "fail" | "warn";
   message: string;
+  invariantViolations?: InvariantViolation[];
 }
 
 interface ForbiddenImport {
@@ -777,6 +781,7 @@ interface DomainReport {
   terminology: Record<string, string>;
   invariants: Array<{ id: string; rule: string; severity: string }>;
   source: "forge.yaml" | "profile" | "default";
+  profileId?: string;
 }
 
 function buildTerminologyMap(
@@ -832,6 +837,7 @@ function resolveDomainReport(workspaceRoot: string, forgeRoot: string): DomainRe
           terminology,
           invariants: profile.invariants ?? [],
           source: "profile",
+          profileId: profile.id,
         };
       }
     }
@@ -1015,13 +1021,43 @@ export async function runDoctor(
   // RFC-0640: Domain info check
   checks.push(checkDomainInfo(domainReport));
 
-  // RFC-0640: List invariants (reported-only, not automatically checked)
+  // RFC-0675: Enforce invariants using the invariant engine
   if (domainReport.invariants.length > 0) {
-    const invariantMessages = domainReport.invariants.map((inv) => `${inv.id}: ${inv.rule}`);
+    const profiles = listStackProfiles(forgeRoot);
+    const profile = domainReport.profileId
+      ? profiles.find((p) => p.id === domainReport.profileId)
+      : undefined;
+
+    const invariantResults = profile
+      ? checkInvariants(profile, workspaceRoot)
+      : [];
+    const allViolations = invariantResults.flatMap((r) => r.violations);
+    const errorViolations = allViolations.filter((v) => v.severity === "error");
+    const warningViolations = allViolations.filter((v) => v.severity === "warning");
+    const checkedCount = invariantResults.filter((r) => r.checked).length;
+    const advisoryCount = invariantResults.filter((r) => !r.checked).length;
+
+    const status: DoctorCheck["status"] =
+      errorViolations.length > 0 ? "fail" :
+      warningViolations.length > 0 ? "warn" :
+      "pass";
+
+    const parts: string[] = [];
+    if (allViolations.length > 0) {
+      parts.push(`${allViolations.length} violation(s)`);
+      for (const v of allViolations.slice(0, 3)) {
+        parts.push(`${v.invariantId}: ${v.file} — ${v.message}`);
+      }
+      if (allViolations.length > 3) parts.push(`(+${allViolations.length - 3} more)`);
+    } else {
+      parts.push(`${checkedCount} checked, ${advisoryCount} advisory`);
+    }
+
     checks.push({
       name: "domain-invariants",
-      status: "pass",
-      message: `${domainReport.invariants.length} invariant(s) declared (advisory): ${invariantMessages.slice(0, 3).join("; ")}${invariantMessages.length > 3 ? ` (+${invariantMessages.length - 3} more)` : ""}`,
+      status,
+      message: parts.join("; "),
+      invariantViolations: allViolations.length > 0 ? allViolations : undefined,
     });
   }
 
