@@ -95,7 +95,7 @@ wsl --install -d Ubuntu
 After the reboot, inside Ubuntu:
 
 ```bash
-sudo apt update && sudo apt install -y build-essential git curl wget jq python3 python3-pip nodejs npm
+rtk sudo apt update && rtk sudo apt install -y build-essential git curl wget jq python3 python3-pip nodejs npm
 ```
 
 Note: requires a reboot.

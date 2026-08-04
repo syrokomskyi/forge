@@ -95,8 +95,8 @@ Before gathering insights, perform these housekeeping steps:
 Remove leftover `tmp-*` and `tmp/` directories created by unit tests anywhere in the repo:
 
 ```bash
-find . -type d -name 'tmp-*' -not -path './.git/*' -exec rm -rf {} + 2>/dev/null
-find . -type d -name 'tmp' -not -path './.git/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null
+rtk find . -type d -name 'tmp-*' -not -path './.git/*' -exec rm -rf {} + 2>/dev/null
+rtk find . -type d -name 'tmp' -not -path './.git/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null
 ```
 
 This is safe to auto-run.
@@ -106,7 +106,7 @@ This is safe to auto-run.
 Run the `docs.archive` umbrella command to move terminal RFCs, ADRs, plans, audits, sessions, and missions into their respective `archive/` subdirectories:
 
 ```bash
-pnpm exec forge docs.archive
+rtk pnpm exec forge docs.archive
 ```
 
 The command is idempotent — re-running is safe. If files were moved, commit them in step 3 as part of the clean tree check (they are "our" changes).
@@ -119,9 +119,9 @@ Verify that this session has no uncommitted changes left in the working tree. Ot
 
 ```bash
 # Workspace root
-git status --porcelain
+rtk git status --porcelain
 # All active mission workpieces (glob — safe even if no matches)
-for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && git -C "$d" status --porcelain; done
+for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk git -C "$d" status --porcelain; done
 ```
 
 **3b. Classify each dirty file as "ours" or "theirs":**
@@ -152,7 +152,7 @@ Scan the session conversation and git log for RFC IDs that were the subject of i
 
 ```bash
 # Session commits that reference RFCs (adjust --since to session start)
-git log --oneline --since="today 00:00:00" --grep="RFC-" -i
+rtk git log --oneline --since="today 00:00:00" --grep="RFC-" -i
 ```
 
 Also scan the conversation for any `RFC-XXXX` mentions where the agent performed implementation work (code changes, test creation, validator runs, stamp commands, plan/audit/enhance steps). Exclude RFCs that were only mentioned in passing (e.g. referenced as related context but not worked on).
