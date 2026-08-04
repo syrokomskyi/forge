@@ -11,13 +11,36 @@
 </CHANGE_SUMMARY>
 */
 
+import fs from "node:fs";
 import path from "node:path";
-import { loadForgeConfig, resolveForgeRoot } from "../../../src/config/forge-config.ts";
+import { parse as parseYaml } from "yaml";
+import { resolveForgeRoot } from "../../../src/config/forge-config.ts";
 import { listStackProfiles, type StackProfile } from "../../../src/profiles/stack-profile.ts";
 
 export interface ResolvedProfile {
   profile: StackProfile;
   profilePath: string;
+}
+
+function readProfileIdFromForgeYaml(workspaceRoot: string): string | undefined {
+  const configPath = path.join(workspaceRoot, "forge.yaml");
+  if (!fs.existsSync(configPath)) {
+    return undefined;
+  }
+  try {
+    const raw = fs.readFileSync(configPath, "utf8");
+    const parsed = parseYaml(raw) as Record<string, unknown>;
+    if (typeof parsed["profile"] === "string") {
+      return parsed["profile"];
+    }
+    const project = parsed["project"] as Record<string, unknown> | undefined;
+    if (project && Array.isArray(project["stack"]) && project["stack"].length > 0) {
+      return project["stack"][0] as string;
+    }
+  } catch {
+    // forge.yaml not parseable — no profile
+  }
+  return undefined;
 }
 
 export function resolveActiveProfile(
@@ -35,8 +58,7 @@ export function resolveActiveProfile(
   let profileId: string | undefined = profileIdOverride;
 
   if (!profileId) {
-    const config = loadForgeConfig(workspaceRoot);
-    profileId = config.profile?.id;
+    profileId = readProfileIdFromForgeYaml(workspaceRoot);
   }
 
   if (!profileId) {
