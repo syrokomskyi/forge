@@ -1,11 +1,12 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for RFC-0674/RFC-0677/RFC-0678 lifecycle handlers — profile resolution, dry-run, build execution, validate with --artifact and violation parsing, determinism check.</purpose>
+<purpose>Unit tests for RFC-0674/RFC-0677/RFC-0678/RFC-0679 lifecycle handlers — profile resolution, dry-run, build execution, validate with --artifact and violation parsing, determinism check, asset management.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0674: initial lifecycle handler tests — profile resolution, dry-run, build execution.</item>
   <item>RFC-0677: added tests for --artifact filtering, violation parsing (json/plain), allPassed, empty-state.</item>
   <item>RFC-0678: added tests for determinism check — dry-run, --artifact, no-hashable, cache hit, non-deterministic detection.</item>
+  <item>RFC-0679: added tests for asset list/check — dry-run, --type, missing, orphaned, --strict.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,6 +19,8 @@ import { resolveActiveProfile } from "./profile-resolve.ts";
 import { runBuild } from "./build.ts";
 import { runValidate, parseViolations } from "./validate.ts";
 import { runDeterminismCheck } from "./determinism-check.ts";
+import { runAssetsList } from "./assets-list.ts";
+import { runAssetsCheck } from "./assets-check.ts";
 import { runDev } from "./dev.ts";
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..", "..");
@@ -335,4 +338,118 @@ test("runDeterminismCheck cache hit skips double-build", async () => {
   expect(result2.data?.artifacts[0].cached).toBe(true);
   expect(result2.data?.artifacts[0].deterministic).toBe(true);
   expect(result2.data?.artifacts[0].firstBuildHash).toBe("sha256:cached-hash");
+});
+
+// ── runAssetsList RFC-0679 ───────────────────────────────────────────────────
+
+test("runAssetsList --dry-run lists assets without hashing", async () => {
+  // Create asset files
+  mkdirSync(join(tmpDir, "assets", "videos"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "videos", "intro.mp4"), "fake-mp4");
+  mkdirSync(join(tmpDir, "assets", "audio"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "audio", "narration.mp3"), "fake-mp3");
+
+  const result = await runAssetsList(input({ "dry-run": true }), makeContext(tmpDir));
+  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.assets.length).toBe(2);
+  const video = result.data?.assets.find((a) => a.type === "video");
+  expect(video).toBeDefined();
+  expect(video!.path).toBe("assets/videos/intro.mp4");
+  expect(video!.hash).toBe(""); // dry-run skips hashing
+  expect(video!.size).toBe(0);
+});
+
+test("runAssetsList --type video filters by type", async () => {
+  mkdirSync(join(tmpDir, "assets", "videos"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "videos", "intro.mp4"), "fake-mp4");
+  mkdirSync(join(tmpDir, "assets", "audio"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "audio", "narration.mp3"), "fake-mp3");
+
+  const result = await runAssetsList(
+    input({ "dry-run": true, type: "video" }),
+    makeContext(tmpDir),
+  );
+  expect(result.data?.assets.length).toBe(1);
+  expect(result.data?.assets[0].type).toBe("video");
+});
+
+test("runAssetsList returns exit 1 when no active profile found", async () => {
+  const dir = makeTempWorkspace();
+  const result = await runAssetsList(input({}), makeContext(dir));
+  expect(result.exitCode).toBe(1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("runAssetsList returns exit 0 when profile has no assets declaration", async () => {
+  const dir = makeTempWorkspace(`profile: astro-typescript-turborepo\n`);
+  const result = await runAssetsList(input({}), makeContext(dir));
+  expect(result.exitCode).toBe(0);
+  expect(result.summary).toContain("does not declare assets");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── runAssetsCheck RFC-0679 ──────────────────────────────────────────────────
+
+test("runAssetsCheck detects missing assets referenced by compositions", async () => {
+  // Create a composition that references a non-existent asset
+  mkdirSync(join(tmpDir, "compositions"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "compositions", "intro.html"),
+    '<ef-video src="assets/videos/missing.mp4"></ef-video>',
+  );
+
+  const result = await runAssetsCheck(input({ "dry-run": true }), makeContext(tmpDir));
+  expect(result.exitCode).toBe(1);
+  expect(result.data?.check.missing.length).toBeGreaterThan(0);
+  const missing = result.data?.check.missing.find((m) => m.path.includes("missing.mp4"));
+  expect(missing).toBeDefined();
+  expect(missing!.referencedBy).toContain("compositions/intro.html");
+});
+
+test("runAssetsCheck detects orphaned assets not referenced by any composition", async () => {
+  // Create an asset with no composition referencing it
+  mkdirSync(join(tmpDir, "assets", "audio"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "audio", "unused.mp3"), "fake-mp3");
+
+  const result = await runAssetsCheck(input({ "dry-run": true }), makeContext(tmpDir));
+  // Without --strict, orphaned assets are warnings (exit 0)
+  expect(result.data?.check.orphaned.length).toBeGreaterThan(0);
+  const orphaned = result.data?.check.orphaned.find((o) => o.path.includes("unused.mp3"));
+  expect(orphaned).toBeDefined();
+  expect(orphaned!.type).toBe("audio");
+});
+
+test("runAssetsCheck --strict exits non-zero when orphaned assets are found", async () => {
+  mkdirSync(join(tmpDir, "assets", "audio"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "audio", "unused.mp3"), "fake-mp3");
+
+  const result = await runAssetsCheck(
+    input({ "dry-run": true, strict: true }),
+    makeContext(tmpDir),
+  );
+  expect(result.exitCode).toBe(1);
+  expect(result.data?.check.orphaned.length).toBeGreaterThan(0);
+});
+
+test("runAssetsCheck --dry-run only checks file existence", async () => {
+  mkdirSync(join(tmpDir, "assets", "videos"), { recursive: true });
+  writeFileSync(join(tmpDir, "assets", "videos", "intro.mp4"), "fake-mp4");
+  mkdirSync(join(tmpDir, "compositions"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "compositions", "intro.html"),
+    '<ef-video src="assets/videos/intro.mp4"></ef-video>',
+  );
+
+  const result = await runAssetsCheck(input({ "dry-run": true }), makeContext(tmpDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.check.missing).toEqual([]);
+  expect(result.data?.check.orphaned).toEqual([]);
+  expect(result.data?.allOk).toBe(true);
+});
+
+test("runAssetsCheck returns exit 1 when no active profile found", async () => {
+  const dir = makeTempWorkspace();
+  const result = await runAssetsCheck(input({}), makeContext(dir));
+  expect(result.exitCode).toBe(1);
+  rmSync(dir, { recursive: true, force: true });
 });
