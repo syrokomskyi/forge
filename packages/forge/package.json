@@ -130,6 +130,8 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@warpgogol/fingerprint": "workspace:*",
+    "@warpgogol/share": "workspace:*",
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
