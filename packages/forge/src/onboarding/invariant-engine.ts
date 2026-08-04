@@ -40,9 +40,21 @@ function matchGlob(filePath: string, glob: string): boolean {
 
 function globToRegex(glob: string): RegExp {
   let pattern = glob.replace(/[.+^${}()|[\]\\]/g, "\\$&");
-  pattern = pattern.replace(/\*/g, ".*");
-  pattern = pattern.replace(/\?/g, ".");
-  pattern = pattern.replace(/\.(\*\*)\./g, "(?:.*/)?");
+  // Handle **/ : matches zero or more directory segments
+  pattern = pattern.replace(/\*\*\//g, "@@GLOBSTAR@@");
+  // Handle remaining ** (not followed by /)
+  pattern = pattern.replace(/\*\*/g, "@@GLOBSTAR2@@");
+  // Handle single * (matches within a path segment, no /)
+  pattern = pattern.replace(/\*/g, "[^/]*");
+  pattern = pattern.replace(/\?/g, "[^/]");
+  // Restore globstars
+  pattern = pattern.replace(/@@GLOBSTAR@@/g, "(?:[^/]+/)*");
+  pattern = pattern.replace(/@@GLOBSTAR2@@/g, ".*");
+  // Handle brace expansion {a,b}
+  pattern = pattern.replace(/\\{([^}]+)\\}/g, (_match, content: string) => {
+    const options = content.split(",").map((s: string) => s.trim());
+    return `(${options.join("|")})`;
+  });
   pattern = `^${pattern}$`;
   return new RegExp(pattern);
 }
