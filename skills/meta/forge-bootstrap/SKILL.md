@@ -198,6 +198,8 @@ The transplant mode performs real code migration via a migration-adapter registr
 
 After git init (greenfield step 6.4) or after post-setup (transplant step 6.6), commit the synced Forge and pack skills to git:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```
 rtk git add .agents/skills/
 rtk git commit -m "chore: sync Forge skills"
