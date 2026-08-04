@@ -217,7 +217,11 @@ Run `rtk --version` silently. If the command succeeds and reports a version, RTK
 
 If `rtk --version` fails with "command not found" or returns a different tool, proceed to installation.
 
-#### 6.10.2. Install RTK (Linux/macOS)
+#### 6.10.2. Install RTK (cross-platform)
+
+Detect the platform: run `process.platform` (Node.js) or check `$env:OS` (PowerShell). On Linux/macOS, use the install script. On Windows, use Cargo or a prebuilt binary.
+
+**Linux/macOS:**
 
 Install RTK from the official repository `github.com/rtk-ai/rtk` using the install script:
 
@@ -231,7 +235,24 @@ If the install script fails (e.g. no `curl`, network restriction), try the Cargo
 cargo install --git https://github.com/rtk-ai/rtk
 ```
 
-If both methods fail, log the error silently (in agent logs, not shown to the operator), note RTK as "not installed" in the welcoming report, and continue to the next step. The operator can install RTK manually later.
+**Windows (PowerShell):**
+
+Primary — install via Cargo (works if Rust is installed):
+
+```
+cargo install --git https://github.com/rtk-ai/rtk
+```
+
+Secondary — download the prebuilt binary via PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force -Path "$env:USERPROFILE\.cargo\bin" | Out-Null
+Invoke-WebRequest -Uri "https://github.com/rtk-ai/rtk/releases/latest/download/rtk-x86_64-pc-windows-msvc.exe" -OutFile "$env:USERPROFILE\.cargo\bin\rtk.exe"
+```
+
+If the prebuilt binary URL is unavailable or the download fails, note RTK as "not installed" and continue.
+
+If all methods fail on any platform, log the error silently (in agent logs, not shown to the operator), note RTK as "not installed" in the welcoming report, and continue to the next step. The operator can install RTK manually later.
 
 After installation, verify with `rtk --version` and `rtk gain` — confirm the command exists and `rtk gain` shows statistics (not "command not found").
 
