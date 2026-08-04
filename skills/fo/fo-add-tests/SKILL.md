@@ -84,7 +84,7 @@ Mock at **system boundaries** only — external APIs, databases, time, randomnes
 For the target package:
 
 ```sh
-pnpm --filter <package-name> test
+rtk pnpm --filter <package-name> test
 ```
 
 If the tests fail (red):

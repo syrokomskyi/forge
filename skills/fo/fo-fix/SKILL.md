@@ -121,8 +121,8 @@ All scoped checks must pass. If any fails:
 Stage and commit the changes with a descriptive message.
 
 ```text
-git add ...
-git commit -m "fix(scope): ..."
+rtk git add ...
+rtk git commit -m "fix(scope): ..."
 ```
 
 Do not commit secrets, API keys, or unrelated changes.

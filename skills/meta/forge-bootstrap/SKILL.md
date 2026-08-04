@@ -199,8 +199,8 @@ The transplant mode performs real code migration via a migration-adapter registr
 After git init (greenfield step 6.4) or after post-setup (transplant step 6.6), commit the synced Forge and pack skills to git:
 
 ```
-git add .agents/skills/
-git commit -m "chore: sync Forge skills"
+rtk git add .agents/skills/
+rtk git commit -m "chore: sync Forge skills"
 ```
 
 This ensures skills are tracked in version control from the start. The commit includes only `.agents/skills/` — no other files.

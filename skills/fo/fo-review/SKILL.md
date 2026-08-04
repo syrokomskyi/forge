@@ -52,13 +52,13 @@ Run the mechanical floor first — it catches type errors, lint violations, and 
 For a single affected package:
 
 ```sh
-pnpm --filter <package-name> build:check
+rtk pnpm --filter <package-name> build:check
 ```
 
 For an affected app:
 
 ```sh
-pnpm --filter <app-name> exec astro check
+rtk pnpm --filter <app-name> exec astro check
 ```
 
 For cross-workspace changes, run the affected workspaces' checks individually rather than a full root build.
