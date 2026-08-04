@@ -30,9 +30,8 @@ artifacts:
     determinism:
       hashable: true
       inputs:
-        - composition files
-        - assets
-        - editframe version
+        - compositions/**/*.html
+        - assets/**
 workspaceTypes:
   - id: composition
     detect:
