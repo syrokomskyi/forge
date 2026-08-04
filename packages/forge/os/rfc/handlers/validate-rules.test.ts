@@ -2,9 +2,11 @@ import { test, expect, describe } from "vitest";
 import { validateSingleRfc, type AddViolationFn } from "./validate-rules.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import { mkdtempSync, rmSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+
+const testWorkspace = join(tmpdir(), "test-workspace");
 
 function makeParsed(
   status: string,
@@ -114,7 +116,7 @@ async function runValidate(
     new Set(),
     new Set(),
     new Set(Object.keys(parsed.frontmatter)),
-    "/tmp/test-workspace",
+    testWorkspace,
     add,
   );
   return violations;
@@ -234,7 +236,7 @@ describe("V-31: filename-number uniqueness and filename/id consistency", () => {
       new Set(),
       new Set(),
       new Set(Object.keys(parsed.frontmatter)),
-      "/tmp/test-workspace",
+      testWorkspace,
       add,
       seenFilenameNumbers,
     );
@@ -254,7 +256,7 @@ describe("V-31: filename-number uniqueness and filename/id consistency", () => {
       new Set(),
       new Set(),
       new Set(Object.keys(parsed.frontmatter)),
-      "/tmp/test-workspace",
+      testWorkspace,
       add,
       seenFilenameNumbers,
     );
@@ -277,7 +279,7 @@ describe("V-31: filename-number uniqueness and filename/id consistency", () => {
       new Set(),
       new Set(),
       new Set(Object.keys(parsed.frontmatter)),
-      "/tmp/test-workspace",
+      testWorkspace,
       add,
       seenFilenameNumbers,
     );
@@ -297,7 +299,7 @@ describe("V-31: filename-number uniqueness and filename/id consistency", () => {
       new Set(),
       new Set(),
       new Set(Object.keys(parsed.frontmatter)),
-      "/tmp/test-workspace",
+      testWorkspace,
       add,
     );
     const v31 = filterRule(violations, "V-31");
@@ -312,10 +314,12 @@ describe("V-32: implementation commit drift detection", () => {
     execSync("git config user.email test@test.com", { cwd: dir, timeout: 5000 });
     execSync("git config user.name Test", { cwd: dir, timeout: 5000 });
     for (const c of commits) {
-      execSync(
-        `GIT_AUTHOR_DATE="${c.date}" GIT_COMMITTER_DATE="${c.date}" git commit --allow-empty -m "${c.message}"`,
-        { cwd: dir, timeout: 5000 },
-      );
+      execFileSync("git", ["commit", "--allow-empty", "-m", c.message], {
+        cwd: dir,
+        timeout: 5000,
+        env: { ...process.env, GIT_AUTHOR_DATE: c.date, GIT_COMMITTER_DATE: c.date },
+        stdio: "pipe",
+      });
     }
     return dir;
   }
@@ -392,7 +396,7 @@ describe("V-32: implementation commit drift detection", () => {
 
   test("no V-32 in non-git directory", async () => {
     const parsed = makeParsed("accepted", BASE_BODY);
-    const violations = await runValidateInDir(parsed, "/tmp/nonexistent-xyz");
+    const violations = await runValidateInDir(parsed, join(tmpdir(), "nonexistent-xyz"));
     const v32 = filterRule(violations, "V-32");
     expect(v32).toHaveLength(0);
   });

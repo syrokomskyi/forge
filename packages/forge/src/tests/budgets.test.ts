@@ -1,16 +1,20 @@
 import { test, expect, describe } from "vitest";
-import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS } from "../knowledge/budgets.ts";
+import {
+  computeLayerBudgets,
+  resolveKnowledgeBudgets,
+  DEFAULT_KNOWLEDGE_BUDGETS,
+} from "../knowledge/budgets.ts";
 import type { ParsedKnowledgeFile, KnowledgeLayer } from "../knowledge/schema.ts";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
+const testDir = path.join(os.tmpdir(), "test");
+
 // Helper: create a minimal ParsedKnowledgeFile for testing
-function makeParsedFile(
-  overrides: Partial<ParsedKnowledgeFile> = {},
-): ParsedKnowledgeFile {
+function makeParsedFile(overrides: Partial<ParsedKnowledgeFile> = {}): ParsedKnowledgeFile {
   return {
-    path: "/tmp/test/learned-principles.md",
+    path: path.join(testDir, "learned-principles.md"),
     layer: "L2",
     preamble: "",
     entries: [],
@@ -112,14 +116,21 @@ describe("computeLayerBudgets", () => {
       entries: [
         makeActiveEntry("K-0001", "Short body."),
         {
-          meta: { id: "K-0002", layer: "L2", created: "2026-01-01", lastConfirmedAt: "2026-01-10", confirmations: 2, status: "stale" },
+          meta: {
+            id: "K-0002",
+            layer: "L2",
+            created: "2026-01-01",
+            lastConfirmedAt: "2026-01-10",
+            confirmations: 2,
+            status: "stale",
+          },
           title: "Stale entry",
           body: "This should not be counted.",
           lineStart: 10,
         },
       ],
     });
-    const skillNames = new Map([["/tmp/test/learned-principles.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "learned-principles.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(1);
     // Only K-0001 (active) should be counted
@@ -132,7 +143,7 @@ describe("computeLayerBudgets", () => {
     const file = makeParsedFile({
       entries: [makeActiveEntry("K-0001", longBody)],
     });
-    const skillNames = new Map([["/tmp/test/learned-principles.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "learned-principles.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(1);
     expect(reports[0].layer).toBe("L2");
@@ -142,14 +153,14 @@ describe("computeLayerBudgets", () => {
 
   test("skips files with undeterminable layer (null)", () => {
     const file = makeParsedFile({ layer: null });
-    const skillNames = new Map([["/tmp/test/unknown.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "unknown.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(0);
   });
 
   test("skips L0 (cold) files — no budget by design", () => {
     const file = makeParsedFile({ layer: "L0" });
-    const skillNames = new Map([["/tmp/test/qa-log.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "qa-log.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(0);
   });
@@ -158,14 +169,14 @@ describe("computeLayerBudgets", () => {
     const file = makeParsedFile({
       parseIssues: [{ line: 1, message: "Bad YAML" }],
     });
-    const skillNames = new Map([["/tmp/test/learned-principles.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "learned-principles.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(0);
   });
 
   test("skips knowledge-adjacent files", () => {
     const file = makeParsedFile({ isKnowledgeAdjacent: true });
-    const skillNames = new Map([["/tmp/test/learned-principles.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "learned-principles.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(0);
   });
@@ -173,7 +184,7 @@ describe("computeLayerBudgets", () => {
   test("uses warm budget for L1 files", () => {
     const file = makeParsedFile({
       layer: "L1",
-      path: "/tmp/test/fix-patterns.md",
+      path: path.join(testDir, "fix-patterns.md"),
       entries: [
         {
           meta: { id: "K-0001", layer: "L1", created: "2026-01-01", status: "active" },
@@ -183,7 +194,7 @@ describe("computeLayerBudgets", () => {
         },
       ],
     });
-    const skillNames = new Map([["/tmp/test/fix-patterns.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "fix-patterns.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(1);
     expect(reports[0].layer).toBe("L1");
@@ -193,7 +204,7 @@ describe("computeLayerBudgets", () => {
 
   test("empty file produces zero-size report", () => {
     const file = makeParsedFile({ entries: [] });
-    const skillNames = new Map([["/tmp/test/learned-principles.md", "test-skill"]]);
+    const skillNames = new Map([[path.join(testDir, "learned-principles.md"), "test-skill"]]);
     const reports = computeLayerBudgets([file], DEFAULT_KNOWLEDGE_BUDGETS, skillNames);
     expect(reports).toHaveLength(1);
     expect(reports[0].activeChars).toBe(0);
