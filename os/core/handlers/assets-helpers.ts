@@ -13,8 +13,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join, relative, extname } from "node:path";
-import { collectFiles } from "@warpgogol/share/fs";
-import { byteHashFile } from "@warpgogol/fingerprint";
+import { loadWorkspaceDeps } from "./workspace-deps.ts";
 import type { ProfileAsset, ProfileAssetType } from "../../../src/profiles/profile-schema.ts";
 
 export interface AssetEntry {
@@ -40,6 +39,7 @@ export async function scanAssets(
   assetsConfig: ProfileAsset,
   options: { dryRun?: boolean; typeFilter?: string } = {},
 ): Promise<AssetEntry[]> {
+  const { collectFiles, byteHashFile } = await loadWorkspaceDeps();
   const assetsDir = join(workspaceRoot, assetsConfig.dir);
   const allFiles = await collectFiles(assetsDir, {
     ignore: (name) => name.startsWith("-") || name.startsWith("old-") || name === ".DS_Store",
@@ -87,6 +87,7 @@ export async function extractReferences(
 ): Promise<Map<string, string[]>> {
   const refMap = new Map<string, string[]>();
 
+  const { collectFiles } = await loadWorkspaceDeps();
   const allFiles = await collectFiles(workspaceRoot, {
     extensions: compositionExtensions,
     ignore: (name) =>

@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/forge",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
@@ -125,7 +125,8 @@
     "build": "pnpm exec tsc -p tsconfig.json",
     "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build && node scripts/publish-check.mjs",
+    "prepublishOnly": "pnpm run clean && pnpm run build && node scripts/publish-check.mjs && node scripts/strip-workspace-deps.mjs",
+    "postpublish": "git checkout -- packages/forge/package.json",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
