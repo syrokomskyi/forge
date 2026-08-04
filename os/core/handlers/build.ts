@@ -42,7 +42,7 @@ export async function runBuild(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeBuildResult>> {
   const { workspaceRoot, logger } = context;
-  const dryRun = input.flags["dry-run"] === true;
+  const dryRun = context.dryRun || input.flags["dry-run"] === true;
   const profileIdOverride =
     typeof input.flags["profile"] === "string" ? (input.flags["profile"] as string) : undefined;
 
@@ -71,9 +71,7 @@ export async function runBuild(
       },
       exitCode: 1,
       summary: `Profile ${profile.id} does not declare any artifacts.`,
-      nextSteps: [
-        { action: `Add artifacts section to profile ${profile.id}`, kind: "required" },
-      ],
+      nextSteps: [{ action: `Add artifacts section to profile ${profile.id}`, kind: "required" }],
     };
   }
 
