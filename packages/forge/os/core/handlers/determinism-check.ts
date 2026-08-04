@@ -17,8 +17,7 @@ import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
 import { createHash } from "node:crypto";
-import { collectFiles } from "@warpgogol/share/fs";
-import { byteHashFile } from "@warpgogol/fingerprint";
+import { loadWorkspaceDeps } from "./workspace-deps.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -90,10 +89,8 @@ function matchesGlob(filePath: string, patterns: string[]): boolean {
   return patterns.some((pattern) => globToRegex(pattern).test(filePath));
 }
 
-async function computeInputHash(
-  workspaceRoot: string,
-  inputPatterns: string[],
-): Promise<string> {
+async function computeInputHash(workspaceRoot: string, inputPatterns: string[]): Promise<string> {
+  const { collectFiles, byteHashFile } = await loadWorkspaceDeps();
   const allFiles = await collectFiles(workspaceRoot, {
     ignore: (name) =>
       name.startsWith("-") ||
@@ -144,15 +141,9 @@ export async function runDeterminismCheck(
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
   const artifactFilter =
-    typeof input.flags["artifact"] === "string"
-      ? (input.flags["artifact"] as string)
-      : undefined;
+    typeof input.flags["artifact"] === "string" ? (input.flags["artifact"] as string) : undefined;
 
-  const resolved = resolveActiveProfile(
-    workspaceRoot,
-    context.forgeRoot,
-    profileIdOverride,
-  );
+  const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {
     return {
       data: {
@@ -162,11 +153,8 @@ export async function runDeterminismCheck(
         allDeterministic: false,
       },
       exitCode: 1,
-      summary:
-        "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
-      nextSteps: [
-        { action: "Set profile in forge.yaml or use --profile <id>", kind: "required" },
-      ],
+      summary: "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
+      nextSteps: [{ action: "Set profile in forge.yaml or use --profile <id>", kind: "required" }],
     };
   }
 
@@ -182,9 +170,7 @@ export async function runDeterminismCheck(
       },
       exitCode: 1,
       summary: `Profile ${profile.id} does not declare any artifacts.`,
-      nextSteps: [
-        { action: `Add artifacts section to profile ${profile.id}`, kind: "required" },
-      ],
+      nextSteps: [{ action: `Add artifacts section to profile ${profile.id}`, kind: "required" }],
     };
   }
 
@@ -200,9 +186,7 @@ export async function runDeterminismCheck(
         },
         exitCode: 1,
         summary: `Artifact ${artifactFilter} not declared in profile ${profile.id}.`,
-        nextSteps: [
-          { action: `Check artifacts in profile ${profile.id}`, kind: "required" },
-        ],
+        nextSteps: [{ action: `Check artifacts in profile ${profile.id}`, kind: "required" }],
       };
     }
   }
@@ -211,9 +195,7 @@ export async function runDeterminismCheck(
     ? profile.artifacts.filter((a) => a.id === artifactFilter)
     : profile.artifacts;
 
-  const hashableArtifacts = artifactsToCheck.filter(
-    (a) => a.determinism?.hashable === true,
-  );
+  const hashableArtifacts = artifactsToCheck.filter((a) => a.determinism?.hashable === true);
 
   if (hashableArtifacts.length === 0) {
     return {
@@ -304,6 +286,7 @@ export async function runDeterminismCheck(
     const absOutputPath = join(workspaceRoot, outputPath);
 
     try {
+      const { byteHashFile } = await loadWorkspaceDeps();
       await execAsync(produceCommand, { cwd: workspaceRoot, timeout: 60_000 });
       const firstHash = await byteHashFile(absOutputPath);
 
