@@ -94,6 +94,8 @@ wsl --install -d Ubuntu
 
 After the reboot, inside Ubuntu:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```bash
 rtk sudo apt update && rtk sudo apt install -y build-essential git curl wget jq python3 python3-pip nodejs npm
 ```

@@ -51,6 +51,8 @@ Run the mechanical floor first — it catches type errors, lint violations, and 
 
 For a single affected package:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```sh
 rtk pnpm --filter <package-name> build:check
 ```

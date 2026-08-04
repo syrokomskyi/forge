@@ -36,6 +36,8 @@ Check the operator's input for:
 
 **Always** make a single call to `rfc.list --json` (no `--status` flag) and a single call to `adr.list --json`. Filter by status in memory from the returned `entries` array. Never make per-status calls.
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```sh
 ref(forge.yaml bindings.commands.validateRfc) --list --json
 ref(forge.yaml bindings.commands.validateAdr) --list --json

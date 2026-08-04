@@ -83,6 +83,8 @@ Mock at **system boundaries** only — external APIs, databases, time, randomnes
 
 For the target package:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```sh
 rtk pnpm --filter <package-name> test
 ```
