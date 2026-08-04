@@ -19,6 +19,7 @@
   <item>RFC-0674: register forge.dev, forge.build, forge.validate lifecycle commands.</item>
   <item>RFC-0678: register forge.determinism.check lifecycle command.</item>
   <item>RFC-0679: register forge.assets.list, forge.assets.check commands.</item>
+  <item>RFC-0680: register forge.release.prepare, forge.release.publish commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -469,6 +470,54 @@ export const forgeCoreModule: ForgeModule = {
       reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"],
       cacheable: false,
       execute: runAssetsCheck,
+    });
+
+    // ── forge.release.prepare (RFC-0680) ────────────────────────────────────────
+    const { runReleasePrepare } = await import("./handlers/release-prepare.ts");
+    registry.registerCommand({
+      name: "forge.release.prepare",
+      description:
+        "Bundle built artifacts into a release package with a manifest. Use --dry-run to preview without writing.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print the resolved release steps without executing.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "dist/**"],
+      writes: ["release/**"],
+      cacheable: false,
+      execute: runReleasePrepare,
+    });
+
+    // ── forge.release.publish (RFC-0680) ───────────────────────────────────────
+    const { runReleasePublish } = await import("./handlers/release-publish.ts");
+    registry.registerCommand({
+      name: "forge.release.publish",
+      description:
+        "Publish a prepared release to the declared target (local, R2, S3). Use --dry-run to preview without uploading.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print the resolved publish target and file list without uploading.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "release/**"],
+      writes: ["release/published/**"],
+      cacheable: false,
+      execute: runReleasePublish,
     });
 
     // ── forge.skill.knowledge.compact (RFC-0662) ──────────────────────────────
