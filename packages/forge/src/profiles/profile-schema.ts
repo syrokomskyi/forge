@@ -11,6 +11,7 @@
   <item>RFC-0674: add profileDevServerSchema and devServer field for lifecycle commands.</item>
   <item>RFC-0675: add profileInvariantCheckSchema and check field to profileInvariantSchema for enforcement.</item>
   <item>RFC-0679: add profileAssetSchema and assets field for asset management commands.</item>
+  <item>RFC-0680: add profileReleaseSchema and release field for release lifecycle commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -190,6 +191,36 @@ export interface ProfileAsset {
 }
 
 // ---------------------------------------------------------------------------
+// Profile release schema (RFC-0680)
+// ---------------------------------------------------------------------------
+
+export const profileReleaseSchema = z.object({
+  target: z.enum(["local", "r2", "s3"]),
+  outputDir: z.string().min(1),
+  manifestName: z.string().default("release-manifest.json"),
+  includeArtifacts: z.array(z.string()).optional(),
+  r2: z
+    .object({
+      bucket: z.string().min(1),
+      accountId: z.string().min(1),
+      prefix: z.string().default(""),
+    })
+    .optional(),
+});
+
+export interface ProfileRelease {
+  target: "local" | "r2" | "s3";
+  outputDir: string;
+  manifestName: string;
+  includeArtifacts?: string[];
+  r2?: {
+    bucket: string;
+    accountId: string;
+    prefix: string;
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Stack profile domain fields
 // ---------------------------------------------------------------------------
 
@@ -202,6 +233,7 @@ export const stackProfileDomainFieldsSchema = z.object({
   register: z.enum(["business", "creative"]).optional(),
   devServer: profileDevServerSchema.optional(),
   assets: profileAssetSchema.optional(),
+  release: profileReleaseSchema.optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -213,4 +245,5 @@ export interface StackProfileDomainFields {
   register?: "business" | "creative";
   devServer?: ProfileDevServer;
   assets?: ProfileAsset;
+  release?: ProfileRelease;
 }

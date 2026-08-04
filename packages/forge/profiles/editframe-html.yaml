@@ -44,6 +44,10 @@ assets:
     - id: image
       extensions: [.png, .jpg, .jpeg, .webp, .svg]
       referencePattern: 'src="([^"]+\.(?:png|jpe?g|webp|svg))"'
+release:
+  target: local
+  outputDir: release
+  manifestName: release-manifest.json
 workspaceTypes:
   - id: composition
     detect:
