@@ -36,8 +36,10 @@ import type {
 import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
-import { buildNestedAgentsMd } from "./nested-agents-templates.ts";
-import { listStackProfiles } from "../profiles/stack-profile.ts";
+import { buildNestedAgentsMd, selectNestedTemplate } from "./nested-agents-templates.ts";
+import { readPackageInfo } from "./nested-agents-generate.ts";
+import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
+import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import { runProfileValidate } from "./profile-validate.ts";
@@ -739,8 +741,14 @@ async function checkNestedAgentsMd(
     }
 
     // Stale check: compare in-memory render to committed file
+    // Must match the generate pipeline: readPackageInfo + buildNestedAgentsMd + selectNestedTemplate
     try {
-      const expected = buildNestedAgentsMd(ws, config);
+      const packageInfo = readPackageInfo(workspaceRoot, ws.path);
+      const fallback = buildNestedAgentsMd(ws, config, packageInfo);
+      const profile = config.profile as StackProfile | undefined;
+      const terminology = resolveAllTerminology(config, profile);
+      const wsType = workspaceTypes?.find((wt) => wt.id === ws.type);
+      const expected = selectNestedTemplate(wsType, profile, terminology, fallback);
       const actual = await readFile(join(workspaceRoot, ws.path, "AGENTS.md"), "utf8");
       if (expected !== actual) {
         stale++;
