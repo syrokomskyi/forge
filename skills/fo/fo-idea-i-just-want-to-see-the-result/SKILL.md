@@ -56,6 +56,10 @@ For each document, run the full pipeline inline. The pipeline differs for RFCs a
 
 **Between batch items:** After completing one document's pipeline and before starting the next, perform a context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items. Emit the checkpoint block, release completed-item context, and start the next item with a fresh read phase. This does not pause for operator input — the checkpoint is an agent-internal context management step, not a user interaction.
 
+**Batch plan preview:** When processing >=2 documents, emit a batch plan preview per `_shared/fo-pipeline-conventions.md` §Batch plan preview before starting the first document.
+
+**Progress beacon:** After completing each pipeline step, emit a one-line progress beacon per `_shared/fo-pipeline-conventions.md` §Progress beacon. The beacon is informational — it does not pause the pipeline.
+
 #### RFC pipeline
 
 Execute these steps **in order**, invoking each skill inline via the `skill` tool. Do not stop between steps. Do not ask the operator "shall I proceed?" between steps — the operator's invocation of this skill IS the instruction to proceed through the entire pipeline.
@@ -81,6 +85,10 @@ Invoke `fo-idea-implement` on the RFC. Pass the RFC id. Wait for it to complete.
 - Run `fo-fix` if the review has findings.
 
 Do not invoke `fo-review` or `fo-fix` separately — they are built into `fo-idea-implement`.
+
+**Step-level checkpoints:** When implementing an RFC with >=5 plan steps, perform a step checkpoint after each plan step per `_shared/fo-pipeline-conventions.md` §Step-level context checkpoint during implementation. Emit the step-checkpoint block, release completed-step context, and start the next step with a fresh plan read.
+
+**Error checkpoint:** If a pipeline step fails after 2 auto-fix attempts, emit a structured error checkpoint per `_shared/fo-pipeline-conventions.md` §Error checkpoint for pipeline step failures. Stop the pipeline and report to the operator.
 
 **Fallback verification (MANDATORY).** After `fo-idea-implement` returns, verify that review and fix were actually executed:
 
