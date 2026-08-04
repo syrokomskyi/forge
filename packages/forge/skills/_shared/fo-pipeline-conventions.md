@@ -135,3 +135,50 @@ When the orchestrator skill processes multiple documents (>=2), perform a contex
 The checkpoint block doubles as a resume marker: when resuming an interrupted batch, scan conversation output for the last checkpoint block, extract completed ids and statuses, and continue with the next uncompleted item. If no checkpoint markers are found, fall back to the existing resume logic (git log, file inspection, frontmatter status).
 
 **Only applies to batch processing (>=2 documents).** Single-document invocations do not need a checkpoint — the context is already fresh at the start.
+
+## Step-level context checkpoint during implementation
+
+When the orchestrator skill implements a single RFC with >=5 plan steps, perform a step checkpoint after completing each plan step and committing:
+
+1. **Emit step-checkpoint block** — output a YAML-formatted block in conversation output with the following fields:
+   - `rfc`: RFC id being implemented
+   - `step`: plan step number (e.g., 3)
+   - `title`: plan step title
+   - `commit`: SHA of the commit produced by this step
+   - `decisions`: 1-3 short freeform sentences capturing key micro-decisions made during this step (e.g., "used flag instead of new command", "skipped validator X because it's in package Y, not in scope")
+   - `errors`: list of errors encountered and fixed during this step — empty if none
+   - `nextStep`: number of the next plan step, or `null` if this was the last
+2. **Release step context** — treat all detailed context from the completed step as no longer actionable: codebase search results, file reads, edit operations, validation output. Retain only the step-checkpoint block and the RFC's plan file.
+3. **Fresh start** — begin the next plan step with a fresh read of the plan file and the specific files the next step touches.
+
+The step checkpoint doubles as a resume marker: when resuming an interrupted implementation, scan conversation output for the last step-checkpoint block, extract the completed step number, and resume from the next step.
+
+**Only applies to plans with >=5 steps.** Small plans (4 or fewer steps) do not need step checkpoints — the context is manageable without them.
+
+## Progress beacon
+
+The orchestrator skill emits a one-line progress beacon after completing each pipeline step (audit, enhance, plan, implement, review, fix) for each RFC. The beacon is informational only — it does not pause the pipeline, does not request operator input, and does not release context.
+
+Format: `[beacon] RFC-XXXX | <step> ✓ | next: <next-step>`
+
+For failed steps being fixed: `[beacon] RFC-XXXX | <step> ✗ (fixing...) | next: <next-step>`
+
+The beacon text must use `aiLanguage` per the language policy.
+
+## Error checkpoint for pipeline step failures
+
+When a pipeline step fails and cannot be auto-fixed within 2 attempts (per §Command execution timeout discipline), emit a structured error checkpoint block in conversation output:
+
+1. **Emit error checkpoint** — output a YAML block with: rfc, step, planStep (if within implement phase), error (command, exitCode, summary, attempts), partialState (filesModified, commits, rfcStatus), resumePoint.
+2. **Stop the pipeline** — do not continue to the next pipeline step. The error is not auto-fixable; continuing would compound the problem. This is an **explicit exception** to the orchestrator's "no pauses between pipeline steps" constraint. The "no pauses" directive assumes the pipeline can proceed; when an error is unfixable after 2 attempts, continuing is impossible and the exception is justified. The pause is for error reporting, not for optional operator input.
+3. **Report to operator** — present the error checkpoint in `aiLanguage` and ask the operator how to proceed: fix manually, skip the step, or abort the RFC.
+
+The error checkpoint doubles as a resume marker: when resuming an interrupted session, scan for the last error checkpoint. If found, resume from the failed step using the partialState and resumePoint fields.
+
+## Batch plan preview
+
+When the orchestrator skill processes multiple documents (>=2), emit a batch plan preview before starting the first document. The preview is a table showing: processing order, document id, type, complexity estimate, dependencies, and notes.
+
+The preview is informational — it does not pause for operator approval unless the operator explicitly requests confirmation. The operator's invocation of the orchestrator is the instruction to proceed.
+
+The preview text must use `aiLanguage` per the language policy.
