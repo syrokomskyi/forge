@@ -126,7 +126,7 @@
     "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
     "clean": "rm -rf dist",
     "prepublishOnly": "pnpm run clean && pnpm run build && node scripts/publish-check.mjs && node scripts/strip-workspace-deps.mjs",
-    "postpublish": "git checkout -- packages/forge/package.json",
+    "postpublish": "git checkout -- ./package.json",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },
