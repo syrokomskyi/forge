@@ -12,6 +12,7 @@ Deterministic only — no LLM/intelligent annotation (that is fo-session-save sk
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0537: implement session.save command handler.</item>
+  <item>Replace fs.unlink with trashPath for raw file deletion (trash bin for LLM-initiated deletions).</item>
 </CHANGE_SUMMARY>
 */
 
