@@ -17,6 +17,7 @@
   <item>RFC-0640: register forge.profile.validate command, add --strict flag to forge.doctor.</item>
   <item>RFC-0662: register forge.skill.knowledge.compact command for skill knowledge lifecycle compaction.</item>
   <item>RFC-0674: register forge.dev, forge.build, forge.validate lifecycle commands.</item>
+  <item>RFC-0678: register forge.determinism.check lifecycle command.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -385,6 +386,34 @@ export const forgeCoreModule: ForgeModule = {
       reads: ["forge.yaml", "packages/forge/profiles/*.yaml"],
       cacheable: false,
       execute: runValidate,
+    });
+
+    // ── forge.determinism.check (RFC-0678) ─────────────────────────────────────
+    const { runDeterminismCheck } = await import("./handlers/determinism-check.ts");
+    registry.registerCommand({
+      name: "forge.determinism.check",
+      description:
+        "Verify artifact determinism by building twice and comparing output hashes. Reads determinism.inputs glob patterns from the active stack profile. Use --dry-run to print resolved inputs, --artifact to check a single artifact.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print resolved determinism inputs without executing builds.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+        artifact: {
+          kind: "string",
+          description: "Check only the specified artifact id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "dist/.determinism-cache.json"],
+      writes: ["dist/.determinism-cache.json"],
+      cacheable: false,
+      execute: runDeterminismCheck,
     });
 
     // ── forge.skill.knowledge.compact (RFC-0662) ──────────────────────────────
