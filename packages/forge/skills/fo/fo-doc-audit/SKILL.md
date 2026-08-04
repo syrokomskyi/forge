@@ -124,6 +124,8 @@ If yes, update the **template** files in `packages/os/site-kernel-onboarding/src
 
 If yes, **do not edit the generated file directly**. Update the source registry or generator, then run the regeneration command:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```sh
 ref(forge.yaml bindings.commands.produce) --workspace=ecosystem.manifest.generate
 ref(forge.yaml bindings.commands.produce) --workspace=command.manifest.generate

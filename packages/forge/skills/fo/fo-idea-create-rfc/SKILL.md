@@ -31,6 +31,8 @@ Create a complete, `rfc.validate`-ready RFC draft in `docs/rfcs/` using the full
 
 Confirm that the proposed change is not already covered by an accepted/implemented RFC. Before drafting, run:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```sh
 ref(forge.yaml bindings.commands.validateRfc) --status accepted --json
 ```

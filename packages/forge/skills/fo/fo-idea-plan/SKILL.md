@@ -64,7 +64,9 @@ If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruc
 3. Set `updatedAt` to today's date.
 4. Commit:
 
-   ```txt
+   > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
+```txt
    rfc: accept RFC-XXXX <short title>
 
    Transition RFC-XXXX to accepted status for planning.

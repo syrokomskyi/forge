@@ -73,7 +73,9 @@ Execute the plan's step sequence in order. For each step:
 2. **Validate** — run the step's validation command (lightweight only: `rfc.validate`, type checks, unit tests on touched files). Do **not** run heavy checks (`root build`, `build:check`, `astro:check`) during implementation — they run only after all steps are complete.
 3. **Commit** after each step or phase that produces a coherent, complete unit of work:
 
-   ```txt
+   > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
+```txt
    implement: RFC-XXXX step N — <step title>
 
    <one-line description of what was done in this step>.

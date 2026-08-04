@@ -95,7 +95,9 @@ Otherwise, determine which workspaces were touched by the fixes in step 2 and ru
 
 - **For each touched `apps/*` workspace:**
 
-  ```sh
+  > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
+```sh
   pnpm --filter <app-name> exec astro check
   ```
 

@@ -67,7 +67,9 @@ Read the RFC's `status` frontmatter:
 - **`draft`** — proceed with enhancement.
 - **`reviewing`** — transition to `draft` before enhancement. Set `status: draft`, update `updatedAt` to today's date, commit:
 
-  ```txt
+  > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
+```txt
   rfc: revert RFC-XXXX to draft for enhancement
 
   Transition RFC-XXXX from reviewing to draft before enhance.

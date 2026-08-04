@@ -53,6 +53,8 @@ Read the full RFC file at `docs/rfcs/rfc-XXXX-*.md` for the first RFC to process
 
 Run the mechanical floor first — it catches format, referential, and structural violations that don't need semantic judgment:
 
+> Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
+
 ```sh
 ref(forge.yaml bindings.commands.validateRfc) --json
 ```
