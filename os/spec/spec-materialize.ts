@@ -17,6 +17,7 @@ import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { toKebabCase } from "../../src/utils/string-utils.ts";
 import { loadForgeConfig, resolveForgeRoot } from "../../src/config/forge-config.ts";
+import { resolveRfcTemplate } from "../rfc/handlers/shared.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -278,14 +279,8 @@ export async function runSpecMaterialize(
     }
   }
 
-  // Load template from forge root (ships inside the package at os/rfc/)
-  let templatePath: string;
-  try {
-    const forgeRoot = resolveForgeRoot(workspaceRoot);
-    templatePath = path.join(forgeRoot, "os", "rfc", "rfc-0000-template.md");
-  } catch {
-    templatePath = path.join(workspaceRoot, "os", "rfc", "rfc-0000-template.md");
-  }
+  // Load template via resolveRfcTemplate (project-level first, then forge package fallback)
+  const templatePath = resolveRfcTemplate(workspaceRoot);
   let templateContent: string;
   try {
     templateContent = await fs.readFile(templatePath, "utf-8");

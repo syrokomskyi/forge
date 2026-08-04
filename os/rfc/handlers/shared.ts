@@ -16,7 +16,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { resolveForgeRoot } from "../../../src/config/forge-config.ts";
-import { RFC_TEMPLATE_FILE } from "../types.ts";
+import { RFC_TEMPLATE_FILE, RFC_TEMPLATE_FALLBACK_FILE } from "../types.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 
 export function toIsoDate(date: Date): string {
@@ -85,20 +85,26 @@ export function commandBuckets(fm: Record<string, unknown>): {
 export type { ParsedRfc };
 
 // ---------------------------------------------------------------------------
-// RFC template resolver — finds rfc-0000-template.md from forge root or module location
+// RFC template resolver — finds rfc-0000-template.md from project docs/rfcs/
+// first (canonical location, mirroring ADR pattern), then falls back to the
+// forge package copy (npm consumers without a project-level template).
 // ---------------------------------------------------------------------------
 
 export function resolveRfcTemplate(workspaceRoot: string): string {
-  // 1. Try forge root (monorepo or npm-installed)
+  // 1. Try project-level docs/rfcs/rfc-0000-template.md (canonical, like ADR)
+  const projectPath = path.join(workspaceRoot, RFC_TEMPLATE_FILE);
+  if (existsSync(projectPath)) return projectPath;
+
+  // 2. Try forge root (monorepo or npm-installed) — fallback copy
   try {
     const forgeRoot = resolveForgeRoot(workspaceRoot);
-    const p = path.join(forgeRoot, RFC_TEMPLATE_FILE);
+    const p = path.join(forgeRoot, RFC_TEMPLATE_FALLBACK_FILE);
     if (existsSync(p)) return p;
   } catch {
     // forge root not resolvable — fall through to module-relative search
   }
 
-  // 2. Fallback: walk up from this module's location to find os/rfc/rfc-0000-template.md
+  // 3. Fallback: walk up from this module's location to find os/rfc/rfc-0000-template.md
   const here = path.dirname(fileURLToPath(import.meta.url));
   let dir = here;
   for (let i = 0; i < 10; i++) {
@@ -110,6 +116,6 @@ export function resolveRfcTemplate(workspaceRoot: string): string {
   }
 
   throw new Error(
-    `RFC template not found. Tried forge root relative to ${workspaceRoot} and module-relative search from ${here}.`,
+    `RFC template not found. Tried ${RFC_TEMPLATE_FILE} relative to ${workspaceRoot}, forge root, and module-relative search from ${here}.`,
   );
 }
