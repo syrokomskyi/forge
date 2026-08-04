@@ -14,6 +14,9 @@ terminology:
   output: render
   verify: render-verify
   operator: director
+devServer:
+  command: editframe preview
+  port: 4321
 artifacts:
   - id: composition
     extensions:
