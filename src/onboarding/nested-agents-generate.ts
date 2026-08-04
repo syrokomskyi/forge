@@ -35,7 +35,7 @@ export interface NestedGenerateResult {
   workspaceTypeMap?: { [relPath: string]: string };
 }
 
-function readPackageInfo(workspaceRoot: string, wsPath: string): PackageInfo | undefined {
+export function readPackageInfo(workspaceRoot: string, wsPath: string): PackageInfo | undefined {
   const pkgJsonPath = path.join(workspaceRoot, wsPath, "package.json");
   try {
     const raw = fs.readFileSync(pkgJsonPath, "utf8");
