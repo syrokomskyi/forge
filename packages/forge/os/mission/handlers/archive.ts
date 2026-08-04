@@ -15,6 +15,7 @@ archive subdirectories back to missions/.
 <CHANGE_SUMMARY>
   <item>RFC-0573: implement mission.archive command.</item>
   <item>RFC-0573: extract moveMissionDir helper to eliminate Phase 1/2 duplication.</item>
+  <item>Replace fs.rm with trashPath for post-rename cleanup (trash bin for LLM-initiated deletions).</item>
 </CHANGE_SUMMARY>
 */
 

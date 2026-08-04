@@ -10,6 +10,7 @@ Classifies and cleans stale locks and staging artifacts (RFC-0362 §8).</purpose
 <CHANGE_SUMMARY>
   <item>RFC-0362: initial lock.recover command handler.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-handoff to @warpgogol/forge for autonomous mode.</item>
+  <item>Replace fs.unlink/fs.rm with trashPath for artifact cleanup (trash bin for LLM-initiated deletions).</item>
 </CHANGE_SUMMARY>
 */
 

@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0547: extract shared postSetup git logic from duplicated adapter implementations.</item>
+  <item>Replace fs.rmSync with trashSync for patch directory cleanup (trash bin for LLM-initiated deletions).</item>
 </CHANGE_SUMMARY>
 */
 
