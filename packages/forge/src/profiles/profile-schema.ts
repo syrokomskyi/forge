@@ -10,6 +10,7 @@
   <item>RFC-0638: initial domain-neutral profile schema extensions with six optional fields.</item>
   <item>RFC-0674: add profileDevServerSchema and devServer field for lifecycle commands.</item>
   <item>RFC-0675: add profileInvariantCheckSchema and check field to profileInvariantSchema for enforcement.</item>
+  <item>RFC-0679: add profileAssetSchema and assets field for asset management commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -163,6 +164,32 @@ export interface ProfileDevServer {
 }
 
 // ---------------------------------------------------------------------------
+// Profile asset schema (RFC-0679)
+// ---------------------------------------------------------------------------
+
+export const profileAssetTypeSchema = z.object({
+  id: z.string().min(1),
+  extensions: z.array(z.string().min(1)),
+  referencePattern: z.string().optional(),
+});
+
+export interface ProfileAssetType {
+  id: string;
+  extensions: string[];
+  referencePattern?: string;
+}
+
+export const profileAssetSchema = z.object({
+  dir: z.string().min(1),
+  types: z.array(profileAssetTypeSchema),
+});
+
+export interface ProfileAsset {
+  dir: string;
+  types: ProfileAssetType[];
+}
+
+// ---------------------------------------------------------------------------
 // Stack profile domain fields
 // ---------------------------------------------------------------------------
 
@@ -174,6 +201,7 @@ export const stackProfileDomainFieldsSchema = z.object({
   invariants: z.array(profileInvariantSchema).optional(),
   register: z.enum(["business", "creative"]).optional(),
   devServer: profileDevServerSchema.optional(),
+  assets: profileAssetSchema.optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -184,4 +212,5 @@ export interface StackProfileDomainFields {
   invariants?: ProfileInvariant[];
   register?: "business" | "creative";
   devServer?: ProfileDevServer;
+  assets?: ProfileAsset;
 }
