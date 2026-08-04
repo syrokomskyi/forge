@@ -16,6 +16,7 @@
   <item>RFC-0546: remove forge.init CLI registration; runInit() remains as internal primitive called by forge.create.</item>
   <item>RFC-0640: register forge.profile.validate command, add --strict flag to forge.doctor.</item>
   <item>RFC-0662: register forge.skill.knowledge.compact command for skill knowledge lifecycle compaction.</item>
+  <item>RFC-0674: register forge.dev, forge.build, forge.validate lifecycle commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,6 +48,9 @@ export const forgeCoreModule: ForgeModule = {
     const { runUpgrade } = await import("../../src/onboarding/upgrade.ts");
     const { runCreate } = await import("../../src/onboarding/create.ts");
     const { runProfileValidate } = await import("../../src/onboarding/profile-validate.ts");
+    const { runDev } = await import("./handlers/dev.ts");
+    const { runBuild } = await import("./handlers/build.ts");
+    const { runValidate } = await import("./handlers/validate.ts");
 
     const scaffoldWrapper = async (
       input: ForgeCommandInput,
@@ -310,6 +314,85 @@ export const forgeCoreModule: ForgeModule = {
       reads: ["packages/forge/profiles/*.yaml"],
       cacheable: false,
       execute: profileValidateWrapper,
+    });
+
+    // ── forge.dev (RFC-0674) ──────────────────────────────────────────────────
+    registry.registerCommand({
+      name: "forge.dev",
+      description:
+        "Start the dev/preview server declared in the active stack profile. Use --dry-run to print the resolved command without executing.",
+      scope: "workspace",
+      supportsAllSites: false,
+      longRunning: true,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print the resolved dev server command without executing.",
+        },
+        json: {
+          kind: "boolean",
+          description: "Output structured JSON with resolved command and exit code.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml"],
+      cacheable: false,
+      execute: runDev,
+    });
+
+    // ── forge.build (RFC-0674) ────────────────────────────────────────────────
+    registry.registerCommand({
+      name: "forge.build",
+      description:
+        "Execute produce commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print resolved produce commands without executing.",
+        },
+        json: {
+          kind: "boolean",
+          description: "Output structured JSON with per-artifact results.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml"],
+      cacheable: false,
+      execute: runBuild,
+    });
+
+    // ── forge.validate (RFC-0674) ─────────────────────────────────────────────
+    registry.registerCommand({
+      name: "forge.validate",
+      description:
+        "Execute validate commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
+      scope: "workspace",
+      supportsAllSites: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print resolved validate commands without executing.",
+        },
+        json: {
+          kind: "boolean",
+          description: "Output structured JSON with per-artifact results.",
+        },
+        profile: {
+          kind: "string",
+          description: "Override the active profile id.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/profiles/*.yaml"],
+      cacheable: false,
+      execute: runValidate,
     });
 
     // ── forge.skill.knowledge.compact (RFC-0662) ──────────────────────────────
