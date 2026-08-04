@@ -329,10 +329,6 @@ export const forgeCoreModule: ForgeModule = {
           kind: "boolean",
           description: "Print the resolved dev server command without executing.",
         },
-        json: {
-          kind: "boolean",
-          description: "Output structured JSON with resolved command and exit code.",
-        },
         profile: {
           kind: "string",
           description: "Override the active profile id.",
@@ -355,10 +351,6 @@ export const forgeCoreModule: ForgeModule = {
           kind: "boolean",
           description: "Print resolved produce commands without executing.",
         },
-        json: {
-          kind: "boolean",
-          description: "Output structured JSON with per-artifact results.",
-        },
         profile: {
           kind: "string",
           description: "Override the active profile id.",
@@ -380,10 +372,6 @@ export const forgeCoreModule: ForgeModule = {
         "dry-run": {
           kind: "boolean",
           description: "Print resolved validate commands without executing.",
-        },
-        json: {
-          kind: "boolean",
-          description: "Output structured JSON with per-artifact results.",
         },
         profile: {
           kind: "string",
