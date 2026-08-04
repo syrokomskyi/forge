@@ -7,6 +7,7 @@
   <item>RFC-0677: added tests for --artifact filtering, violation parsing (json/plain), allPassed, empty-state.</item>
   <item>RFC-0678: added tests for determinism check — dry-run, --artifact, no-hashable, cache hit, non-deterministic detection.</item>
   <item>RFC-0679: added tests for asset list/check — dry-run, --type, missing, orphaned, --strict.</item>
+  <item>RFC-0680: added tests for release prepare/publish — dry-run, manifest generation, publish dry-run, no-release-config.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,8 @@ import { runValidate, parseViolations } from "./validate.ts";
 import { runDeterminismCheck } from "./determinism-check.ts";
 import { runAssetsList } from "./assets-list.ts";
 import { runAssetsCheck } from "./assets-check.ts";
+import { runReleasePrepare } from "./release-prepare.ts";
+import { runReleasePublish } from "./release-publish.ts";
 import { runDev } from "./dev.ts";
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..", "..");
@@ -450,6 +453,87 @@ test("runAssetsCheck --dry-run only checks file existence", async () => {
 test("runAssetsCheck returns exit 1 when no active profile found", async () => {
   const dir = makeTempWorkspace();
   const result = await runAssetsCheck(input({}), makeContext(dir));
+  expect(result.exitCode).toBe(1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+// ── runReleasePrepare RFC-0680 ───────────────────────────────────────────────
+
+test("runReleasePrepare --dry-run prints resolved release steps", async () => {
+  // Create a built artifact in dist/
+  mkdirSync(join(tmpDir, "dist"), { recursive: true });
+  writeFileSync(join(tmpDir, "dist", "intro.mp4"), "fake-mp4-content");
+
+  const result = await runReleasePrepare(input({ "dry-run": true }), makeContext(tmpDir));
+  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.manifest.schemaVersion).toBe("1");
+  expect(result.data?.manifest.artifacts.length).toBeGreaterThan(0);
+  expect(result.data?.manifest.artifacts[0].artifactId).toBe("composition");
+  expect(result.data?.manifest.determinismChecked).toBe(false);
+  expect(result.data?.manifest.validationPassed).toBe(true);
+});
+
+test("runReleasePrepare generates manifest with artifact hashes", async () => {
+  mkdirSync(join(tmpDir, "dist"), { recursive: true });
+  writeFileSync(join(tmpDir, "dist", "intro.mp4"), "fake-mp4-content");
+
+  const result = await runReleasePrepare(input({}), makeContext(tmpDir));
+  expect(result.exitCode ?? 0).toBe(0);
+  expect(result.data?.manifest.artifacts.length).toBeGreaterThan(0);
+  expect(result.data?.manifest.artifacts[0].hash).toBeTruthy();
+  expect(result.data?.manifest.artifacts[0].size).toBeGreaterThan(0);
+  expect(result.data?.manifest.releaseId).toContain("editframe-html-");
+  expect(result.data?.manifest.schemaVersion).toBe("1");
+});
+
+test("runReleasePrepare returns exit 1 when no release config", async () => {
+  const dir = makeTempWorkspace(`profile: astro-typescript-turborepo\n`);
+  const result = await runReleasePrepare(input({}), makeContext(dir));
+  expect(result.exitCode).toBe(1);
+  expect(result.summary).toContain("does not declare a release");
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("runReleasePrepare returns exit 1 when no active profile", async () => {
+  const dir = makeTempWorkspace();
+  const result = await runReleasePrepare(input({}), makeContext(dir));
+  expect(result.exitCode).toBe(1);
+  rmSync(dir, { recursive: true, force: true });
+});
+
+test("runReleasePrepare returns exit 1 when build output not found", async () => {
+  // No dist/ directory created
+  const result = await runReleasePrepare(input({}), makeContext(tmpDir));
+  expect(result.exitCode).toBe(1);
+  expect(result.summary).toContain("no built output");
+});
+
+// ── runReleasePublish RFC-0680 ───────────────────────────────────────────────
+
+test("runReleasePublish --dry-run does not upload anything", async () => {
+  // Prepare a release first
+  mkdirSync(join(tmpDir, "dist"), { recursive: true });
+  writeFileSync(join(tmpDir, "dist", "intro.mp4"), "fake-mp4-content");
+  await runReleasePrepare(input({}), makeContext(tmpDir));
+
+  const result = await runReleasePublish(input({ "dry-run": true }), makeContext(tmpDir));
+  expect(result.exitCode ?? 0).toBe(0);
+  expect(result.data?.target).toBe("local");
+  expect(result.data?.publishedFiles.length).toBeGreaterThan(0);
+  // Should not have created a published/ directory
+  expect(result.summary).toContain("[dry-run]");
+});
+
+test("runReleasePublish returns exit 1 when no manifest found", async () => {
+  // No release prepared — release dir doesn't exist
+  const result = await runReleasePublish(input({}), makeContext(tmpDir));
+  expect(result.exitCode).toBe(1);
+  expect(result.summary).toContain("No release manifest found");
+});
+
+test("runReleasePublish returns exit 1 when no active profile", async () => {
+  const dir = makeTempWorkspace();
+  const result = await runReleasePublish(input({}), makeContext(dir));
   expect(result.exitCode).toBe(1);
   rmSync(dir, { recursive: true, force: true });
 });

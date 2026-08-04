@@ -71,11 +71,6 @@ async function findBuiltArtifacts(
 ): Promise<string[]> {
   if (produceOutput) {
     const outputPattern = produceOutput.replace("{composition}", "*");
-    const distDir = join(workspaceRoot, "dist");
-    const files = await collectFiles(distDir, {
-      extensions,
-      ignore: (name) => name.startsWith("-") || name.startsWith("old-") || name === ".DS_Store",
-    });
     const basePattern = basename(outputPattern);
     const isGlob = basePattern.includes("*");
     if (!isGlob) {
@@ -87,6 +82,14 @@ async function findBuiltArtifacts(
         return [];
       }
     }
+    // Extract extension from the output pattern (e.g. "*.mp4" → ".mp4")
+    const extMatch = basePattern.match(/(\.[^.]+)$/);
+    const outputExts = extMatch ? [extMatch[1]] : extensions;
+    const distDir = join(workspaceRoot, "dist");
+    const files = await collectFiles(distDir, {
+      extensions: outputExts,
+      ignore: (name) => name.startsWith("-") || name.startsWith("old-") || name === ".DS_Store",
+    });
     const regex = new RegExp(
       "^" + basePattern.replace(/[.+^${}()|[\]\\]/g, "\\$&").replace(/\*/g, ".*") + "$",
     );
@@ -106,11 +109,7 @@ export async function runReleasePrepare(
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
 
-  const resolved = resolveActiveProfile(
-    workspaceRoot,
-    context.forgeRoot,
-    profileIdOverride,
-  );
+  const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {
     return {
       data: {
@@ -129,11 +128,8 @@ export async function runReleasePrepare(
         },
       },
       exitCode: 1,
-      summary:
-        "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
-      nextSteps: [
-        { action: "Set profile in forge.yaml or use --profile <id>", kind: "required" },
-      ],
+      summary: "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
+      nextSteps: [{ action: "Set profile in forge.yaml or use --profile <id>", kind: "required" }],
     };
   }
 
