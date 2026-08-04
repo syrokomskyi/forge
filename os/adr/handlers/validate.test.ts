@@ -1,6 +1,6 @@
 import { test, expect, describe } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
-import { execSync } from "node:child_process";
+import { execSync, execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runAdrValidate } from "./validate.ts";
@@ -55,10 +55,12 @@ function createGitRepoWithCommits(commits: { message: string; date: string }[]):
   execSync("git config user.email test@test.com", { cwd: dir, timeout: 5000 });
   execSync("git config user.name Test", { cwd: dir, timeout: 5000 });
   for (const c of commits) {
-    execSync(
-      `GIT_AUTHOR_DATE="${c.date}" GIT_COMMITTER_DATE="${c.date}" git commit --allow-empty -m "${c.message}"`,
-      { cwd: dir, timeout: 5000 },
-    );
+    execFileSync("git", ["commit", "--allow-empty", "-m", c.message], {
+      cwd: dir,
+      timeout: 5000,
+      env: { ...process.env, GIT_AUTHOR_DATE: c.date, GIT_COMMITTER_DATE: c.date },
+      stdio: "pipe",
+    });
   }
   return dir;
 }

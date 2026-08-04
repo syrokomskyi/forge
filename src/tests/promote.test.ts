@@ -10,6 +10,10 @@ import type {
   KnowledgeEntryMeta,
   KnowledgeEntry,
 } from "../knowledge/schema.ts";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const testDir = join(tmpdir(), "test");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +53,7 @@ function makeParsedFile(
   overrides: Partial<ParsedKnowledgeFile> = {},
 ): ParsedKnowledgeFile {
   return {
-    path: "/tmp/test/learned-principles.md",
+    path: join(testDir, "learned-principles.md"),
     layer: "L2",
     preamble: "",
     entries,
@@ -78,11 +82,15 @@ describe("normalizeTitle", () => {
   });
 
   test("collapses whitespace", () => {
-    expect(normalizeTitle("  Redact   Sensitive  Information  ")).toBe("redact sensitive information");
+    expect(normalizeTitle("  Redact   Sensitive  Information  ")).toBe(
+      "redact sensitive information",
+    );
   });
 
   test("drops stop-words (the, a, an)", () => {
-    expect(normalizeTitle("The Redact a Sensitive an Information")).toBe("redact sensitive information");
+    expect(normalizeTitle("The Redact a Sensitive an Information")).toBe(
+      "redact sensitive information",
+    );
   });
 
   test("preserves 'always' and 'never'", () => {
@@ -106,8 +114,14 @@ describe("normalizeTitle", () => {
 describe("detectDuplicatePrinciples", () => {
   test("exact match — two entries with identical normalized titles", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -120,8 +134,14 @@ describe("detectDuplicatePrinciples", () => {
 
   test("no match — different titles", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Verify before trusting")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Verify before trusting")]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -157,7 +177,8 @@ describe("detectDuplicatePrinciples", () => {
 
   test("containment bounded — shorter title < 60% of longer produces no match", () => {
     const shortTitle = "always verify ids before trusting"; // 33 chars
-    const longTitle = "always verify ids before trusting them in production environments with proper validation and care"; // 85 chars, 33/85 = 38.8%
+    const longTitle =
+      "always verify ids before trusting them in production environments with proper validation and care"; // 85 chars, 33/85 = 38.8%
 
     const files = [
       { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", shortTitle)]) },
@@ -170,8 +191,18 @@ describe("detectDuplicatePrinciples", () => {
 
   test("exclusion — pairs linked by promotedTo are excluded", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information", { promotedTo: "shared/K-0001" })]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information", { promotedTo: "shared/K-0001" })]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([
+          makeEntry("K-0001", "Redact sensitive information", { promotedTo: "shared/K-0001" }),
+        ]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([
+          makeEntry("K-0005", "Redact sensitive information", { promotedTo: "shared/K-0001" }),
+        ]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -180,8 +211,16 @@ describe("detectDuplicatePrinciples", () => {
 
   test("exclusion — pairs linked by supersedes are excluded", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information", { supersedes: ["K-0005"] })]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([
+          makeEntry("K-0001", "Redact sensitive information", { supersedes: ["K-0005"] }),
+        ]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -190,8 +229,16 @@ describe("detectDuplicatePrinciples", () => {
 
   test("exclusion — entries with status: stale are excluded", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information", { status: "stale" })]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([
+          makeEntry("K-0001", "Redact sensitive information", { status: "stale" }),
+        ]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -200,8 +247,16 @@ describe("detectDuplicatePrinciples", () => {
 
   test("exclusion — entries with status: archived are excluded", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information", { status: "archived" })]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([
+          makeEntry("K-0001", "Redact sensitive information", { status: "archived" }),
+        ]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -210,9 +265,18 @@ describe("detectDuplicatePrinciples", () => {
 
   test("multiple skills — detection across 3+ skills", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]) },
-      { skill: "grilling", parsed: makeParsedFile([makeEntry("K-0010", "Redact sensitive information")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")]),
+      },
+      {
+        skill: "grilling",
+        parsed: makeParsedFile([makeEntry("K-0010", "Redact sensitive information")]),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -222,8 +286,16 @@ describe("detectDuplicatePrinciples", () => {
 
   test("knowledge-adjacent files are excluded", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]) },
-      { skill: "fo-memory-sync", parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")], { isKnowledgeAdjacent: true }) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]),
+      },
+      {
+        skill: "fo-memory-sync",
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")], {
+          isKnowledgeAdjacent: true,
+        }),
+      },
     ];
 
     const pairs = detectDuplicatePrinciples(files);
@@ -232,10 +304,15 @@ describe("detectDuplicatePrinciples", () => {
 
   test("files with parse issues are excluded", () => {
     const files = [
-      { skill: "fo-session-save", parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]) },
+      {
+        skill: "fo-session-save",
+        parsed: makeParsedFile([makeEntry("K-0001", "Redact sensitive information")]),
+      },
       {
         skill: "fo-memory-sync",
-        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")], { parseIssues: [{ line: 1, message: "bad" }] }),
+        parsed: makeParsedFile([makeEntry("K-0005", "Redact sensitive information")], {
+          parseIssues: [{ line: 1, message: "bad" }],
+        }),
       },
     ];
 
@@ -261,45 +338,104 @@ describe("detectDuplicatePrinciples", () => {
 describe("planPromotion", () => {
   test("summed confirmations — two sources with 3 and 5 produce 8", () => {
     const sources = [
-      { skill: "fo-session-save", file: "/path/a.md", entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }) },
-      { skill: "fo-memory-sync", file: "/path/b.md", entry: makeEntry("K-0005", "Redact sensitive information", { confirmations: 5 }) },
+      {
+        skill: "fo-session-save",
+        file: "/path/a.md",
+        entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }),
+      },
+      {
+        skill: "fo-memory-sync",
+        file: "/path/b.md",
+        entry: makeEntry("K-0005", "Redact sensitive information", { confirmations: 5 }),
+      },
     ];
 
-    const plan = planPromotion(sources, { title: "Redact sensitive information", body: "Merged body." }, "K-0001", "2026-08-03");
+    const plan = planPromotion(
+      sources,
+      { title: "Redact sensitive information", body: "Merged body." },
+      "K-0001",
+      "2026-08-03",
+    );
 
     expect(plan.sharedEntry.meta.confirmations).toBe(8);
   });
 
   test("promotedFrom provenance — lists all source skill/id pairs", () => {
     const sources = [
-      { skill: "fo-session-save", file: "/path/a.md", entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }) },
-      { skill: "fo-memory-sync", file: "/path/b.md", entry: makeEntry("K-0005", "Redact sensitive information", { confirmations: 5 }) },
+      {
+        skill: "fo-session-save",
+        file: "/path/a.md",
+        entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }),
+      },
+      {
+        skill: "fo-memory-sync",
+        file: "/path/b.md",
+        entry: makeEntry("K-0005", "Redact sensitive information", { confirmations: 5 }),
+      },
     ];
 
-    const plan = planPromotion(sources, { title: "Redact sensitive information", body: "Merged body." }, "K-0001", "2026-08-03");
+    const plan = planPromotion(
+      sources,
+      { title: "Redact sensitive information", body: "Merged body." },
+      "K-0001",
+      "2026-08-03",
+    );
 
-    expect(plan.sharedEntry.meta.promotedFrom).toEqual(["fo-session-save/K-0001", "fo-memory-sync/K-0005"]);
+    expect(plan.sharedEntry.meta.promotedFrom).toEqual([
+      "fo-session-save/K-0001",
+      "fo-memory-sync/K-0005",
+    ]);
   });
 
   test("pointer list — one pointer per source entry", () => {
     const sources = [
-      { skill: "fo-session-save", file: "/path/a.md", entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }) },
-      { skill: "fo-memory-sync", file: "/path/b.md", entry: makeEntry("K-0005", "Redact sensitive information", { confirmations: 5 }) },
+      {
+        skill: "fo-session-save",
+        file: "/path/a.md",
+        entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }),
+      },
+      {
+        skill: "fo-memory-sync",
+        file: "/path/b.md",
+        entry: makeEntry("K-0005", "Redact sensitive information", { confirmations: 5 }),
+      },
     ];
 
-    const plan = planPromotion(sources, { title: "Redact sensitive information", body: "Merged body." }, "K-0001", "2026-08-03");
+    const plan = planPromotion(
+      sources,
+      { title: "Redact sensitive information", body: "Merged body." },
+      "K-0001",
+      "2026-08-03",
+    );
 
     expect(plan.localPointers).toHaveLength(2);
-    expect(plan.localPointers[0]).toEqual({ skill: "fo-session-save", file: "/path/a.md", entryId: "K-0001" });
-    expect(plan.localPointers[1]).toEqual({ skill: "fo-memory-sync", file: "/path/b.md", entryId: "K-0005" });
+    expect(plan.localPointers[0]).toEqual({
+      skill: "fo-session-save",
+      file: "/path/a.md",
+      entryId: "K-0001",
+    });
+    expect(plan.localPointers[1]).toEqual({
+      skill: "fo-memory-sync",
+      file: "/path/b.md",
+      entryId: "K-0005",
+    });
   });
 
   test("shared entry metadata — status active, created today, lastConfirmedAt today", () => {
     const sources = [
-      { skill: "fo-session-save", file: "/path/a.md", entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }) },
+      {
+        skill: "fo-session-save",
+        file: "/path/a.md",
+        entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }),
+      },
     ];
 
-    const plan = planPromotion(sources, { title: "Redact sensitive information", body: "Merged body." }, "K-0001", "2026-08-03");
+    const plan = planPromotion(
+      sources,
+      { title: "Redact sensitive information", body: "Merged body." },
+      "K-0001",
+      "2026-08-03",
+    );
 
     expect(plan.sharedEntry.meta.status).toBe("active");
     expect(plan.sharedEntry.meta.created).toBe("2026-08-03");
@@ -310,10 +446,19 @@ describe("planPromotion", () => {
 
   test("shared entry carries merged title and body", () => {
     const sources = [
-      { skill: "fo-session-save", file: "/path/a.md", entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }) },
+      {
+        skill: "fo-session-save",
+        file: "/path/a.md",
+        entry: makeEntry("K-0001", "Redact sensitive information", { confirmations: 3 }),
+      },
     ];
 
-    const plan = planPromotion(sources, { title: "Redact sensitive information", body: "Merged body." }, "K-0001", "2026-08-03");
+    const plan = planPromotion(
+      sources,
+      { title: "Redact sensitive information", body: "Merged body." },
+      "K-0001",
+      "2026-08-03",
+    );
 
     expect(plan.sharedEntry.title).toBe("Redact sensitive information");
     expect(plan.sharedEntry.body).toBe("Merged body.");
@@ -321,10 +466,19 @@ describe("planPromotion", () => {
 
   test("single source — confirmations from one entry", () => {
     const sources = [
-      { skill: "grilling", file: "/path/a.md", entry: makeEntry("K-0001", "Test principle", { confirmations: 7 }) },
+      {
+        skill: "grilling",
+        file: "/path/a.md",
+        entry: makeEntry("K-0001", "Test principle", { confirmations: 7 }),
+      },
     ];
 
-    const plan = planPromotion(sources, { title: "Test principle", body: "Body." }, "K-0001", "2026-08-03");
+    const plan = planPromotion(
+      sources,
+      { title: "Test principle", body: "Body." },
+      "K-0001",
+      "2026-08-03",
+    );
 
     expect(plan.sharedEntry.meta.confirmations).toBe(7);
     expect(plan.localPointers).toHaveLength(1);

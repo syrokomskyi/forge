@@ -280,7 +280,8 @@ test("migrate excludes .git directory from copy", async () => {
   execSync("git init", { cwd: sourceDir, stdio: "pipe" });
   execSync('git config user.email "test@test.com"', { cwd: sourceDir, stdio: "pipe" });
   execSync('git config user.name "Test"', { cwd: sourceDir, stdio: "pipe" });
-  execSync("git add . && git commit -m 'initial'", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git commit -m initial", { cwd: sourceDir, stdio: "pipe" });
 
   const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
   const result = nodeTypescriptPnpmAdapter.migrate(sourceDir, targetDir, analysis);
@@ -340,7 +341,8 @@ test("postSetup transfers git history via format-patch + git am when source has 
   execSync('git config user.email "test@test.com"', { cwd: sourceDir, stdio: "pipe" });
   execSync('git config user.name "Test"', { cwd: sourceDir, stdio: "pipe" });
   await writeFile(join(sourceDir, "README.md"), "hello");
-  execSync("git add . && git commit -m 'initial'", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .", { cwd: sourceDir, stdio: "pipe" });
+  execSync("git commit -m initial", { cwd: sourceDir, stdio: "pipe" });
 
   const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
   expect(analysis.gitHistory).toBe(true);

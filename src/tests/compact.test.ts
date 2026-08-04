@@ -19,6 +19,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 
+const testDir = path.join(os.tmpdir(), "test");
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -41,7 +43,7 @@ function makeMeta(overrides: Partial<KnowledgeEntryMeta> = {}): KnowledgeEntryMe
 
 function makeParsedFile(overrides: Partial<ParsedKnowledgeFile> = {}): ParsedKnowledgeFile {
   return {
-    path: "/tmp/test/learned-principles.md",
+    path: path.join(testDir, "learned-principles.md"),
     layer: "L2",
     preamble: "",
     entries: [],
@@ -297,15 +299,15 @@ describe("planCompaction", () => {
   });
 
   test("archiveFile path is correct for qa-log.md", () => {
-    const file = makeParsedFile({ path: "/tmp/test/qa-log.md", layer: "L0" });
+    const file = makeParsedFile({ path: path.join(testDir, "qa-log.md"), layer: "L0" });
     const plans = planCompaction([file], DEFAULT_OPTIONS);
-    expect(plans[0].archiveFile).toBe("/tmp/test/qa-log.archive.md");
+    expect(plans[0].archiveFile).toBe(path.join(testDir, "qa-log.archive.md"));
   });
 
   test("archiveFile path is correct for learned-principles.md", () => {
-    const file = makeParsedFile({ path: "/tmp/test/learned-principles.md", layer: "L2" });
+    const file = makeParsedFile({ path: path.join(testDir, "learned-principles.md"), layer: "L2" });
     const plans = planCompaction([file], DEFAULT_OPTIONS);
-    expect(plans[0].archiveFile).toBe("/tmp/test/learned-principles.archive.md");
+    expect(plans[0].archiveFile).toBe(path.join(testDir, "learned-principles.archive.md"));
   });
 });
 

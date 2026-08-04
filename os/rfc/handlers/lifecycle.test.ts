@@ -2,6 +2,10 @@ import { test, expect, describe } from "vitest";
 import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import type { CommandRegistry } from "../../../src/types.ts";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+const testWorkspaceRoot = join(tmpdir(), "test");
 
 function makeParsed(
   status: string,
@@ -42,7 +46,7 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
       ],
     ]);
     const { violations } = await collectRfcCommandLifecycleViolations(
-      "/tmp/test",
+      testWorkspaceRoot,
       ["archive/implemented/rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
@@ -62,7 +66,7 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
       ],
     ]);
     const { violations } = await collectRfcCommandLifecycleViolations(
-      "/tmp/test",
+      testWorkspaceRoot,
       ["archive/implemented/rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
@@ -82,7 +86,7 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
       ],
     ]);
     const { violations } = await collectRfcCommandLifecycleViolations(
-      "/tmp/test",
+      testWorkspaceRoot,
       ["archive/implemented/rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
@@ -102,7 +106,7 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
       ],
     ]);
     const { violations } = await collectRfcCommandLifecycleViolations(
-      "/tmp/test",
+      testWorkspaceRoot,
       ["archive/implemented/rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
@@ -122,7 +126,7 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
       ],
     ]);
     const { violations } = await collectRfcCommandLifecycleViolations(
-      "/tmp/test",
+      testWorkspaceRoot,
       ["archive/implemented/rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
@@ -142,7 +146,7 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
       ],
     ]);
     const { violations } = await collectRfcCommandLifecycleViolations(
-      "/tmp/test",
+      testWorkspaceRoot,
       ["archive/implemented/rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
