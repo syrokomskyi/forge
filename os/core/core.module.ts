@@ -361,11 +361,11 @@ export const forgeCoreModule: ForgeModule = {
       execute: runBuild,
     });
 
-    // ── forge.validate (RFC-0674) ─────────────────────────────────────────────
+    // ── forge.validate (RFC-0674, RFC-0677) ───────────────────────────────────
     registry.registerCommand({
       name: "forge.validate",
       description:
-        "Execute validate commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
+        "Execute validate commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands. Use --artifact to validate a single artifact.",
       scope: "workspace",
       supportsAllSites: false,
       flags: {
@@ -376,6 +376,10 @@ export const forgeCoreModule: ForgeModule = {
         profile: {
           kind: "string",
           description: "Override the active profile id.",
+        },
+        artifact: {
+          kind: "string",
+          description: "Validate only the specified artifact id.",
         },
       },
       reads: ["forge.yaml", "packages/forge/profiles/*.yaml"],
