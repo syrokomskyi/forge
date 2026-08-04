@@ -11,6 +11,7 @@
   <item>RFC-0638: extended stackProfileSchema with optional domain-neutral fields (domain, terminology, artifacts, workspaceTypes, invariants, register).</item>
   <item>RFC-0674: add devServer field to stackProfileSchema for lifecycle commands.</item>
   <item>RFC-0679: add assets field to stackProfileSchema for asset management commands.</item>
+  <item>RFC-0680: add release field to stackProfileSchema for release lifecycle commands.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -64,6 +65,8 @@ export const stackProfileSchema = z.object({
   devServer: stackProfileDomainFieldsSchema.shape.devServer,
   // RFC-0679: Asset management declaration
   assets: stackProfileDomainFieldsSchema.shape.assets,
+  // RFC-0680: Release lifecycle declaration
+  release: stackProfileDomainFieldsSchema.shape.release,
 });
 
 export interface ProfileFile {
