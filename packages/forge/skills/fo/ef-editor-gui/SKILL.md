@@ -87,16 +87,45 @@ Each playback control (`ef-play`, `ef-pause`, `ef-toggle-play`, `ef-toggle-loop`
 
 ## Element reference
 
-| Element                | Purpose                           |
-| ---------------------- | --------------------------------- |
-| `ef-canvas`            | Interactive composition canvas    |
-| `ef-controls`          | Proxy container for shared target |
-| `ef-preview`           | Live composition preview          |
-| `ef-scrubber`          | Seekable timeline scrubber        |
-| `ef-timeline`          | Timeline container                |
-| `ef-time-display`      | Time display                      |
-| `ef-toggle-play`       | Play/pause toggle                 |
-| `ef-transform-handles` | Element transform controls        |
-| `ef-trim-handles`      | Video trim controls               |
-| `ef-tree`              | Composition hierarchy tree        |
-| `ef-workbench`         | Full editor layout                |
+| Element                          | Purpose                                          |
+| -------------------------------- | ------------------------------------------------ |
+| `ef-canvas`                      | Interactive composition canvas                   |
+| `ef-canvas-selection-box`        | Selection rectangle overlay on canvas            |
+| `ef-composition-thumbnail-strip` | Thumbnail overview of the composition            |
+| `ef-controls`                    | Proxy container for shared target                |
+| `ef-dial`                        | Rotary dial control for parameters               |
+| `ef-fit-scale`                   | Fit or scale canvas to viewport                  |
+| `ef-fullscreen`                  | Fullscreen toggle                                |
+| `ef-hierarchy`                   | Alternative hierarchy view with selection bridge |
+| `ef-hierarchy-item`              | Item in hierarchy view                           |
+| `ef-mute`                        | Mute toggle                                      |
+| `ef-overlay-item`                | Individual overlay panel                         |
+| `ef-overlay-layer`               | Overlay container                                |
+| `ef-pause`                       | Pause button                                     |
+| `ef-pip`                         | Picture-in-picture toggle                        |
+| `ef-play`                        | Play button                                      |
+| `ef-preview`                     | Live composition preview                         |
+| `ef-resolution`                  | Resolution selector                              |
+| `ef-scrubber`                    | Seekable timeline scrubber                       |
+| `ef-thumbnail-strip`             | Thumbnail strip for timeline                     |
+| `ef-time-display`                | Time display                                     |
+| `ef-timeline`                    | Timeline container                               |
+| `ef-timeline-row`                | Single track row in timeline                     |
+| `ef-timeline-ruler`              | Time ruler with markers                          |
+| `ef-toggle-loop`                 | Toggle loop mode                                 |
+| `ef-toggle-play`                 | Play/pause toggle                                |
+| `ef-transform-handles`           | Drag, resize, rotate handles for elements        |
+| `ef-tree`                        | Composition hierarchy tree                       |
+| `ef-tree-item`                   | Item in hierarchy tree                           |
+| `ef-trim-handles`                | Trim start/end of video clips                    |
+| `ef-volume`                      | Volume control                                   |
+| `ef-waveform-strip`              | Audio waveform strip for timeline                |
+| `ef-workbench`                   | Full editor layout with panels                   |
+
+### `ef-workbench`
+
+Composes a hierarchy panel, a canvas and selection view, a timeline, and transport controls into one panel layout (DOM preview mode only).
+
+**Attributes:** `rendering` (boolean, collapses to bare stage during native render), `resolution` (string, e.g. `"1920x1080"`).
+
+**Methods:** `exportVideo(options?)` — renders the composition to an MP4 through an offscreen clone. Dispatches `export-start`, `export-progress`, `export-complete`, `export-error` events. Options: `width`, `height`, `fps`, `from`, `to`, `videoCodec`, `audioCodec`, `videoBitrate`, `audioBitrate`, `audioSampleRate`.

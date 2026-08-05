@@ -55,7 +55,9 @@ export default withEditframe(
 );
 ```
 
-`withEditframe` starts a sidecar HTTP server next to `next dev`, on port 3099 by default. The sidecar does not start in production.
+`withEditframe` starts a sidecar HTTP server next to `next dev`, on port 3099 by default. Override the port with a `port` option. It also adds `rewrites()` rules that proxy Editframe's requests to that sidecar, so compositions still make same-origin requests. Run `next dev` as usual. No other setup is necessary.
+
+The sidecar does not start in production. Deploy against real media (cloud renders, uploaded files) instead.
 
 ## Framework-agnostic setup
 
@@ -91,6 +93,10 @@ server.listen(3001, () => console.log("Editframe dev server running on http://lo
 - **Local image and caption serving** — `<Image>` and caption generation work against local files.
 - **A local files API** that mirrors the shape of the production files API.
 - **URL signing** — `ef-configuration`'s default `signing-url` forwards to the real Editframe cloud API. Set `EF_TOKEN` before starting the dev server. Set `EF_HOST` to point at a non-default API host.
+
+## Framework-agnostic middleware integration
+
+If your toolchain already exposes a Connect-compatible middleware stack (Express, Connect, or a custom Vite integration), call `createEditframeRouter(...)` with the same three arguments instead. Mount the result with `.use()`. `createEditframeDevServer` wraps that same router in its own standalone `http.Server`, for toolchains with no middleware stack of their own.
 
 ## Visual regression testing (Vite only)
 

@@ -7,7 +7,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
 - `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed.
 - `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/site-kernel`.
-- `skills/` — forge-managed skill definitions (35 fo skills + 4 shared + 3 meta = 42 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
+- `skills/` — forge-managed skill definitions (36 fo skills + 5 shared + 3 meta = 44 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
 ## OS modules
 
