@@ -396,8 +396,8 @@ test("runAssetsCheck detects missing assets referenced by compositions", async (
   // Create a composition that references a non-existent asset
   mkdirSync(join(tmpDir, "compositions"), { recursive: true });
   writeFileSync(
-    join(tmpDir, "compositions", "intro.html"),
-    '<ef-video src="assets/videos/missing.mp4"></ef-video>',
+    join(tmpDir, "compositions", "intro.tsx"),
+    '<Video src="assets/videos/missing.mp4" />',
   );
 
   const result = await runAssetsCheck(input({ "dry-run": true }), makeContext(tmpDir));
@@ -405,7 +405,7 @@ test("runAssetsCheck detects missing assets referenced by compositions", async (
   expect(result.data?.check.missing.length).toBeGreaterThan(0);
   const missing = result.data?.check.missing.find((m) => m.path.includes("missing.mp4"));
   expect(missing).toBeDefined();
-  expect(missing!.referencedBy).toContain("compositions/intro.html");
+  expect(missing!.referencedBy).toContain("compositions/intro.tsx");
 });
 
 test("runAssetsCheck detects orphaned assets not referenced by any composition", async () => {
@@ -438,8 +438,8 @@ test("runAssetsCheck --dry-run only checks file existence", async () => {
   writeFileSync(join(tmpDir, "assets", "videos", "intro.mp4"), "fake-mp4");
   mkdirSync(join(tmpDir, "compositions"), { recursive: true });
   writeFileSync(
-    join(tmpDir, "compositions", "intro.html"),
-    '<ef-video src="assets/videos/intro.mp4"></ef-video>',
+    join(tmpDir, "compositions", "intro.tsx"),
+    '<Video src="assets/videos/intro.mp4" />',
   );
 
   const result = await runAssetsCheck(input({ "dry-run": true }), makeContext(tmpDir));

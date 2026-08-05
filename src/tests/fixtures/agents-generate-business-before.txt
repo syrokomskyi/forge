@@ -37,9 +37,15 @@
 
 | Name | Category | Invocation | Concerns |
 | --- | --- | --- | --- |
+| ef-brand-video-generator | fo | user | content-mutation |
+| ef-composition | fo | user | content-mutation |
 | ef-composition-review | fo | user | read-only |
+| ef-dev-server | fo | user | read-only |
+| ef-editor-gui | fo | user | read-only |
+| ef-motion-design | fo | user | read-only |
 | ef-onboard | fo | user | content-mutation |
 | ef-render-verify | fo | user | read-only |
+| ef-webhooks | fo | user | read-only |
 | fo-add-tests | fo | user | code-mutation |
 | fo-architecture | fo | user | document-only |
 | fo-compass-annotate | fo | user | content-mutation |

@@ -65,7 +65,7 @@ invariants:
     check:
       kind: filename-pattern
       glob: "compositions/**/*.tsx"
-      pattern: "^[a-z0-9-]+\.tsx$"
+      pattern: "^[a-z0-9-]+\\.tsx$"
   - id: VIDEO-02
     rule: Scene durations must use contain mode by default to avoid unexpected cropping
     severity: warning
