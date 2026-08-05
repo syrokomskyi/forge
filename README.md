@@ -12,11 +12,44 @@ pnpm add @warpgogol/forge
 
 ## Quick start
 
+### Create a new project
+
 ```sh
-# Create a new project with forge (scaffold + init in one command)
+# Create a new project (scaffold + init + skills + AGENTS.md in one command)
 npx forge create my-project
 
-# Diagnose your setup
+# With a specific stack profile
+npx forge create my-site --profile astro-typescript-turborepo
+npx forge create my-game --profile phaser-turborepo
+npx forge create my-video --profile editframe
+
+# With a non-default package manager
+npx forge create my-project --package-manager npm
+```
+
+### Bring an existing project into Forge
+
+There is no CLI command for transplant — it is an interactive, AI-guided process:
+
+```sh
+# 1. Create a new empty Forge project
+npx forge create my-project
+
+# 2. Open the project in Windsurf (tested with forge) or your preferred IDE
+
+# 3. Run the /forge-bootstrap skill and choose "transplant" mode
+#    The skill will:
+#    - Ask for the path to your existing codebase
+#    - Detect the stack automatically (Astro, Phaser, Editframe, etc.)
+#    - Migrate all files (including .env and git-ignored files)
+#    - Optionally transfer git history
+#    - Verify the build
+```
+
+### Diagnose and validate
+
+```sh
+# Check project health
 npx forge doctor
 
 # Validate RFCs
@@ -25,6 +58,24 @@ npx forge rfc.validate
 # List available skills
 npx forge skill.list
 ```
+
+## Stack profiles
+
+A stack profile defines the project scaffold: directory structure, dependencies, CI config, and first workspace. Choose a profile with `--profile` when creating a new project.
+
+| Profile | Description | First workspace | Use case |
+| --- | --- | --- | --- |
+| `forge-shell` | Minimal Forge shell (default) | — | Governance-only projects, libraries, non-web projects |
+| `astro-typescript-turborepo` | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Websites, web apps, content-driven sites |
+| `phaser-turborepo` | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
+| `editframe` | Editframe React + Vite + TailwindCSS | `compositions/my-first-video` | Video compositions, brand videos, motion design |
+
+```sh
+# List available profiles (after install)
+npx forge profile.validate
+```
+
+When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `editframe.config.*`, etc.).
 
 ## Upgrade flow
 
@@ -45,7 +96,7 @@ npx forge doctor
 
 ## What forge gives you
 
-- **27 skills** (fo-pipeline, grilling, preferences, skill authoring) — deployed to `.agents/skills/` by `forge create`
+- **44 skills** (fo-pipeline, grilling, preferences, skill authoring, Editframe video composition) — deployed to `.agents/skills/` by `forge create`
 - **RFC workflow** — create, validate, list, graph, archive, acceptance probes, decision logs, DNA trace
 - **ADR workflow** — lightweight architectural decision records
 - **Spec vendoring** — vendor external spec packages as immutable snapshots with integrity manifests
@@ -60,7 +111,9 @@ The typical forge project lifecycle:
 
 1. **Create** — `forge create` bootstraps a new project with forge.yaml, skills, and docs directories
 2. **IDE** — open the project in Windsurf (tested with forge) or your preferred IDE
-3. **Bootstrap** — run `/forge-bootstrap` to configure the project (greenfield interview or transplant from an existing codebase)
+3. **Bootstrap** — run `/forge-bootstrap` to configure the project interactively. The skill supports two modes:
+   - **Greenfield** — start a new project from scratch: pick a stack, fill in bindings, init git
+   - **Transplant** — bring an existing codebase into Forge: detect the stack, migrate code (including git-ignored files like `.env`), optionally transfer git history, verify the build
 4. **Upgrade** — when a new `@warpgogol/forge` version is published, run `forge upgrade` to sync skills and binding defaults additively
 
 ## forge.yaml
@@ -119,7 +172,7 @@ await forgeRfcModule.register(registry);
 | `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
 | `os/` | ForgeModule registrations. `compass` and `werkstatt` dynamically import `@warpgogol/site-kernel-*` (graceful degradation in autonomous mode). |
 | `bin/` | CLI entrypoint (`forge` command). |
-| `skills/` | 27 skill definitions (SKILL.md with frontmatter). |
+| `skills/` | 44 skill definitions (36 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
 | `scripts/` | Publication hygiene check (`publish-check.mjs`) run by `prepublishOnly`. |
 | `profiles/` | Stack profiles for `forge.scaffold`. |
 

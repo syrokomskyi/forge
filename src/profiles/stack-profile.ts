@@ -67,6 +67,10 @@ export const stackProfileSchema = z.object({
   assets: stackProfileDomainFieldsSchema.shape.assets,
   // RFC-0680: Release lifecycle declaration
   release: stackProfileDomainFieldsSchema.shape.release,
+  // Prerequisites: system-level dependency checks (e.g. FFmpeg)
+  prerequisites: stackProfileDomainFieldsSchema.shape.prerequisites,
+  // Templates: multi-template profiles (e.g. React + HTML)
+  templates: stackProfileDomainFieldsSchema.shape.templates,
 });
 
 export interface ProfileFile {
@@ -89,6 +93,8 @@ export interface StackProfile extends StackProfileDomainFields {
     files: ProfileFile[];
     install: string[];
   };
+  prerequisites?: import("./profile-schema.ts").ProfilePrerequisite[];
+  templates?: import("./profile-schema.ts").ProfileTemplate[];
 }
 
 // ---------------------------------------------------------------------------
