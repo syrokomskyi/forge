@@ -122,10 +122,13 @@ export async function runScaffoldProject(
       execSync(cmd, { cwd: workspaceRoot, stdio: "pipe", timeout: 60000 });
       installLog.push(`${cmd} — ok`);
     } catch (err) {
-      const stderr = (err as Error).message;
-      errors.push(`Install step failed: ${cmd}\n${stderr}`);
+      const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
+      const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
+      const details = [stderr, stdout].filter(Boolean).join("\n");
+      errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
       if (outputFormat === "pretty") {
         logger.error(`Install failed: ${cmd}`);
+        if (details) logger.error(details);
       }
       return {
         data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
@@ -174,13 +177,16 @@ export async function runScaffoldProject(
     // Run first workspace install commands
     for (const cmd of effectiveFirstWorkspace.install) {
       try {
-        execSync(cmd, { cwd: workspaceRoot, stdio: "pipe", timeout: 60000 });
+        execSync(cmd, { cwd: wsDir, stdio: "pipe", timeout: 60000 });
         installLog.push(`${cmd} — ok`);
       } catch (err) {
-        const stderr = (err as Error).message;
-        errors.push(`Install step failed: ${cmd}\n${stderr}`);
+        const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
+        const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
+        const details = [stderr, stdout].filter(Boolean).join("\n");
+        errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
         if (outputFormat === "pretty") {
           logger.error(`Install failed: ${cmd}`);
+          if (details) logger.error(details);
         }
         return {
           data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
