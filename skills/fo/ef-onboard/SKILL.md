@@ -64,7 +64,7 @@ If `forge create` fails (missing profile, network error, permission issue), repo
 
 ### 4. Install Editframe domain skills
 
-Editframe publishes six domain skills via `npm create @editframe`. To make them available alongside forge skills:
+Editframe publishes domain skills via `npm create @editframe`. To make them available alongside forge skills:
 
 1. Run `npm create @editframe@latest` in the project directory. This installs Editframe's domain skills to `.agents/skills/editframe-*/`.
 2. Report which skills were installed.
