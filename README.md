@@ -14,7 +14,7 @@ pnpm add @warpgogol/forge
 
 ### For creative operators — no terminal needed
 
-You don't need to know what a terminal is. You don't need to type a single command. If you have an AI-powered IDE (like Windsurf, Devin, or Cursor), Forge works entirely through conversation.
+You don't need to know what a terminal is. You don't need to type a single command. If you have an AI-powered IDE - like Devin (Windsurf), or Cursor, - Forge works entirely through conversation.
 
 #### Start a new project from scratch
 
