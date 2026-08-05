@@ -51,7 +51,7 @@ Prioritize getting all answers before starting to build. This minimizes wait tim
 
 ### 3. Scaffold
 
-Run `forge create --profile editframe` to scaffold the project with Forge governance (invariants, AGENTS.md templates, forge skills). The `editframe` profile scaffolds a React + TypeScript + Vite project with `@editframe/react` pre-configured.
+Run `forge create --name <project-name> --profile editframe` to scaffold the project with Forge governance (invariants, AGENTS.md templates, forge skills). The `editframe` profile scaffolds a React + TypeScript + Vite project with `@editframe/react` pre-configured.
 
 If `forge create` fails (missing profile, network error, permission issue), report the error to the operator and stop. Do not proceed to subsequent steps without a scaffolded project.
 

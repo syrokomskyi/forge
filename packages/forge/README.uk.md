@@ -190,7 +190,7 @@ ffmpeg -version
 - **«EACCES permission denied» в Ubuntu під час глобального встановлення Forge** — Виконайте `sudo pnpm add -g @warpgogol/forge`.
 - **«corepack: command not found»** — Ваша версія Node.js занадто стара. Встановіть Node.js 22+ за кроками вище.
 - **Windsurf не бачить `forge`** — Закрийте та знову відкрийте Windsurf після встановлення Forge. IDE потрібно перезапустити, щоб підхопити нові глобальні команди.
-- **ШІ-агент не знає про Forge** — Ви відкрили порожню папку, але ШІ-агент не має контексту Forge. Спочатку виконайте `forge create my-project --profile editframe` (або відповідний профіль) у терміналі, потім відкрийте створену папку в вашому IDE. Команда `forge create` наповнює папку навичками, конфігурацією та `AGENTS.md` — без цього ШІ-агент не може виявити Forge.
+- **ШІ-агент не знає про Forge** — Ви відкрили порожню папку, але ШІ-агент не має контексту Forge. Спочатку виконайте `forge create --name my-project --profile editframe` (або відповідний профіль) у терміналі, потім відкрийте створену папку в вашому IDE. Команда `forge create` наповнює папку навичками, конфігурацією та `AGENTS.md` — без цього ШІ-агент не може виявити Forge.
 
 ---
 
@@ -205,7 +205,7 @@ ffmpeg -version
 1. **Створіть проєкт Forge.** Відкрийте термінал (PowerShell на Windows, Термінал на Ubuntu) і виконайте:
 
    ```sh
-   forge create my-brand-video --profile editframe
+   forge create --name my-brand-video --profile editframe
    ```
 
    Замініть `my-brand-video` на назву вашого проєкту (малі літери та дефіси). Це створить нову папку з усьом, що потрібно Forge — навичками, конфігурацією та структурою проєкту. Для інших типів проєктів використовуйте інший `--profile`:
@@ -254,7 +254,7 @@ ffmpeg -version
 1. **Створіть проєкт Forge.** Відкрийте термінал і виконайте:
 
    ```sh
-   forge create my-project
+   forge create --name my-project
    ```
 
    Потім відкрийте створену папку в вашому IDE.
@@ -282,20 +282,20 @@ ffmpeg -version
 
 ```sh
 # Створити новий проєкт (каркас + ініціалізація + навички + AGENTS.md однією командою)
-forge create my-project
+forge create --name my-project
 
 # З конкретним профілем стеку
-forge create my-site --profile astro-typescript-turborepo
-forge create my-game --profile phaser-turborepo
-forge create my-video --profile editframe
-forge create my-library --profile forge-shell
+forge create --name my-site --profile astro-typescript-turborepo
+forge create --name my-game --profile phaser-turborepo
+forge create --name my-video --profile editframe
+forge create --name my-library --profile forge-shell
 
 ```
 
 Якщо Forge не встановлено глобально, використовуйте `pnpm dlx`:
 
 ```sh
-pnpm dlx @warpgogol/forge create my-project
+pnpm dlx @warpgogol/forge create --name my-project
 ```
 
 #### Перенесення наявного проєкту у Forge
@@ -304,7 +304,7 @@ CLI-команди для перенесення немає — це інтер�
 
 ```sh
 # 1. Створіть новий порожній проєкт Forge
-forge create my-project
+forge create --name my-project
 
 # 2. Відкрийте проєкт у Windsurf (протестовано з Forge) або вашому IDE
 

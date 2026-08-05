@@ -190,7 +190,7 @@ You should see version information, not an error.
 - **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
 - **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 22+ using the steps above.
 - **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
-- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create my-project --profile editframe` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --name my-project --profile editframe` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
 ---
 
@@ -205,7 +205,7 @@ You need to run one command in the terminal to create your project. After that, 
 1. **Create a Forge project.** Open a terminal (PowerShell on Windows, Terminal on Ubuntu) and run:
 
    ```sh
-   forge create my-brand-video --profile editframe
+   forge create --name my-brand-video --profile editframe
    ```
 
    Replace `my-brand-video` with your project name (lowercase letters and hyphens). This creates a new folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
@@ -254,7 +254,7 @@ If you already have a project somewhere else and want to move it into Forge:
 1. **Create a Forge project.** Open a terminal and run:
 
    ```sh
-   forge create my-project
+   forge create --name my-project
    ```
 
    Then open the created folder in your AI IDE.
@@ -282,20 +282,20 @@ Just tell the AI agent. It can check the project's health, fix issues, and expla
 
 ```sh
 # Create a new project (scaffold + init + skills + AGENTS.md in one command)
-forge create my-project
+forge create --name my-project
 
 # With a specific stack profile
-forge create my-site --profile astro-typescript-turborepo
-forge create my-game --profile phaser-turborepo
-forge create my-video --profile editframe
-forge create my-library --profile forge-shell
+forge create --name my-site --profile astro-typescript-turborepo
+forge create --name my-game --profile phaser-turborepo
+forge create --name my-video --profile editframe
+forge create --name my-library --profile forge-shell
 
 ```
 
 If Forge is not installed globally, use `pnpm dlx` instead:
 
 ```sh
-pnpm dlx @warpgogol/forge create my-project
+pnpm dlx @warpgogol/forge create --name my-project
 ```
 
 #### Bring an existing project into Forge
@@ -304,7 +304,7 @@ There is no CLI command for transplant — it is an interactive, AI-guided proce
 
 ```sh
 # 1. Create a new empty Forge project
-forge create my-project
+forge create --name my-project
 
 # 2. Open the project in Windsurf (tested with forge) or your preferred IDE
 
