@@ -16,6 +16,8 @@ source: https://editframe.com/skills/editor-gui.md
 
 <!-- skill-lint-disable SKILL-17 -->
 
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
 # Editor Toolkit
 
 The Editframe editor toolkit provides visual composition editing controls: timeline, scrubber, canvas, preview, playback, and transformation.

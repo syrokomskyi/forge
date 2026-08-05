@@ -16,6 +16,8 @@ source: domain-knowledge
 
 <!-- skill-lint-disable SKILL-17 -->
 
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
 # Motion Design
 
 Motion design patterns for Editframe compositions: transitions, animations, easing, and kinetic typography. These patterns enhance video compositions with professional motion graphics.

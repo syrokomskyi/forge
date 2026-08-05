@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем эту сессию", "Завершаем сессию", "Заканчиваем сессию", "Завершить сессию", "End session", "Wrap up", "Session end", "/session-end"]
+triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем сессию", "/session-end"]
 ---
 
 # Session Retro
@@ -261,7 +261,7 @@ When gathering session insights, not every observation deserves to be saved. App
 
 **Do NOT save** — the observation is:
 
-- A one-off fact with no future impact (e.g. "RFC-0676 was skipped due to a duplicate"). These are historical events, not knowledge. They do not help future agents work better.
+- A one-off fact with no future impact (e.g. "an RFC was skipped due to a duplicate"). These are historical events, not knowledge. They do not help future agents work better.
 - A tool quirk already documented elsewhere (check `AGENTS.md` and existing memories first).
 - A transient state that will be irrelevant by the next session (e.g. "file X was dirty at session end").
 - A bug that was found and fixed in the same session with no broader lesson.
