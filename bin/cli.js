@@ -1,9 +1,9 @@
 #!/usr/bin/env node
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { dirname, resolve } from "node:path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const distEntry = resolve(__dirname, "..", "dist", "bin", "cli.js");
+const distEntry = pathToFileURL(resolve(__dirname, "..", "dist", "bin", "cli.js")).href;
 
 try {
   await import(distEntry);
