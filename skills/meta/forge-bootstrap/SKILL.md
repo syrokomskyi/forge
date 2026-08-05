@@ -301,7 +301,7 @@ In the welcoming report (step 11, Section 3 "What was done"), mention RTK in cre
 - If partially installed: "Token optimization was set up but isn't fully active yet. Try restarting your AI assistant, or ask me to check it later."
 - If installation failed: "Token optimization couldn't be installed automatically. I'll show you how to set it up manually when you're ready."
 
-The RTK usage rule is automatically included in the generated `AGENTS.md` by `agents.generate` — the operator does not need to configure it manually.
+The RTK usage rule is automatically included in the generated `AGENTS.md` by `forge.agents.generate` — the operator does not need to configure it manually.
 
 ### 7. Auto-run doctor (new)
 
