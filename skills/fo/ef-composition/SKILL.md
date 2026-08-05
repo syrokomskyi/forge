@@ -16,6 +16,8 @@ source: https://editframe.com/skills/composition.md
 
 <!-- skill-lint-disable SKILL-17 -->
 
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
 # Video Composition
 
 Build video scenes with React components from `@editframe/react`, for example `<Timegroup>` and `<Video>`. Both HTML web component syntax (`<ef-timegroup>`) and React syntax (`<Timegroup>`) share the same composition model and rendering pipeline.

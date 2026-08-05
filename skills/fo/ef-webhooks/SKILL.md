@@ -16,6 +16,8 @@ source: https://editframe.com/skills/webhooks.md
 
 <!-- skill-lint-disable SKILL-17 -->
 
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
 # Webhooks
 
 Use webhooks to receive real-time HTTP POST notifications when a render completes or a file finishes processing. Use them instead of polling `getRenderProgress`/`getFileProcessingProgress`.

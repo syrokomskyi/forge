@@ -16,6 +16,8 @@ source: https://editframe.com/skills/dev-server.md
 
 <!-- skill-lint-disable SKILL-17 -->
 
+Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
 # Dev Server
 
 The Editframe dev server provides JIT video transcoding, local image and caption serving, and a local files API that mirrors the production files API. It integrates with Vite, Next.js, or any framework-agnostic setup.
