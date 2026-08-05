@@ -363,4 +363,28 @@ describe("invariant-engine", () => {
     expect(results).toHaveLength(1);
     expect(results[0].violations).toHaveLength(0);
   });
+
+  it("html-attribute-pattern with missing element/attribute produces warning violation", () => {
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "html-attribute-pattern" as const,
+            glob: "compositions/**/*.html",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].severity).toBe("warning");
+    expect(results[0].violations[0].message).toContain("without element or attribute");
+  });
 });

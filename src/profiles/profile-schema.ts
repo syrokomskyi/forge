@@ -132,9 +132,11 @@ export const profileInvariantCheckSchema = z
     attribute: z.string().optional(),
   })
   .refine(
-    (v) => v.kind !== "html-attribute-pattern" || (v.element != null && v.attribute != null),
+    (v) =>
+      v.kind !== "html-attribute-pattern" ||
+      (v.element != null && v.attribute != null && v.pattern != null),
     {
-      message: "element and attribute are required for kind: html-attribute-pattern",
+      message: "element, attribute, and pattern are required for kind: html-attribute-pattern",
     },
   );
 
