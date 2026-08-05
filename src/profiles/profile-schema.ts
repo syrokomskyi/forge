@@ -12,6 +12,7 @@
   <item>RFC-0675: add profileInvariantCheckSchema and check field to profileInvariantSchema for enforcement.</item>
   <item>RFC-0679: add profileAssetSchema and assets field for asset management commands.</item>
   <item>RFC-0680: add profileReleaseSchema and release field for release lifecycle commands.</item>
+  <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -119,33 +120,29 @@ export interface ProfileWorkspaceType {
 
 export const profileInvariantCheckSchema = z
   .object({
-    kind: z.enum([
-      "filename-pattern",
-      "file-contains",
-      "file-not-contains",
-      "html-attribute-pattern",
-    ]),
+    kind: z.enum(["filename-pattern", "file-contains", "file-not-contains", "attribute-pattern"]),
     glob: z.string().optional(),
     pattern: z.string().optional(),
     negatedPattern: z.string().optional(),
-    element: z.string().optional(),
+    elements: z.array(z.string()).optional(),
     attribute: z.string().optional(),
   })
   .refine(
     (v) =>
-      v.kind !== "html-attribute-pattern" ||
-      (v.element != null && v.attribute != null && v.pattern != null),
+      v.kind !== "attribute-pattern" ||
+      (v.elements != null && v.elements.length > 0 && v.attribute != null && v.pattern != null),
     {
-      message: "element, attribute, and pattern are required for kind: html-attribute-pattern",
+      message:
+        "elements (non-empty array), attribute, and pattern are required for kind: attribute-pattern",
     },
   );
 
 export interface ProfileInvariantCheck {
-  kind: "filename-pattern" | "file-contains" | "file-not-contains" | "html-attribute-pattern";
+  kind: "filename-pattern" | "file-contains" | "file-not-contains" | "attribute-pattern";
   glob?: string;
   pattern?: string;
   negatedPattern?: string;
-  element?: string;
+  elements?: string[];
   attribute?: string;
 }
 

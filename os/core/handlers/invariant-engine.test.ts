@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0675: initial invariant engine unit tests.</item>
   <item>RFC-0691: add html-attribute-pattern check kind tests.</item>
+  <item>RFC-0694: replace html-attribute-pattern tests with attribute-pattern (elements array) tests, add JSX syntax test.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -210,7 +211,7 @@ describe("invariant-engine", () => {
     expect(results).toHaveLength(0);
   });
 
-  it("html-attribute-pattern detects invalid attribute values", () => {
+  it("attribute-pattern detects invalid attribute values", () => {
     writeFile(
       tempDir,
       "compositions/video.html",
@@ -225,9 +226,9 @@ describe("invariant-engine", () => {
           rule: "All duration values must be valid CSS time strings",
           severity: "error",
           check: {
-            kind: "html-attribute-pattern",
+            kind: "attribute-pattern",
             glob: "compositions/**/*.html",
-            element: "ef-timegroup",
+            elements: ["ef-timegroup"],
             attribute: "duration",
             pattern: "^\\d+(\\.\\d+)?(s|ms)$",
           },
@@ -243,7 +244,7 @@ describe("invariant-engine", () => {
     expect(results[0].violations[0].message).toContain("does not match pattern");
   });
 
-  it("html-attribute-pattern passes valid attribute values", () => {
+  it("attribute-pattern passes valid attribute values", () => {
     writeFile(
       tempDir,
       "compositions/video.html",
@@ -258,9 +259,9 @@ describe("invariant-engine", () => {
           rule: "All duration values must be valid CSS time strings",
           severity: "error",
           check: {
-            kind: "html-attribute-pattern",
+            kind: "attribute-pattern",
             glob: "compositions/**/*.html",
-            element: "ef-timegroup",
+            elements: ["ef-timegroup"],
             attribute: "duration",
             pattern: "^\\d+(\\.\\d+)?(s|ms)$",
           },
@@ -273,7 +274,7 @@ describe("invariant-engine", () => {
     expect(results[0].violations).toHaveLength(0);
   });
 
-  it("html-attribute-pattern skips elements without the declared attribute", () => {
+  it("attribute-pattern skips elements without the declared attribute", () => {
     writeFile(
       tempDir,
       "compositions/video.html",
@@ -288,9 +289,9 @@ describe("invariant-engine", () => {
           rule: "All duration values must be valid CSS time strings",
           severity: "error",
           check: {
-            kind: "html-attribute-pattern",
+            kind: "attribute-pattern",
             glob: "compositions/**/*.html",
-            element: "ef-timegroup",
+            elements: ["ef-timegroup"],
             attribute: "duration",
             pattern: "^\\d+(\\.\\d+)?(s|ms)$",
           },
@@ -303,7 +304,7 @@ describe("invariant-engine", () => {
     expect(results[0].violations).toHaveLength(0);
   });
 
-  it("html-attribute-pattern handles multiple elements in one file", () => {
+  it("attribute-pattern handles multiple elements in one file", () => {
     writeFile(
       tempDir,
       "compositions/video.html",
@@ -318,9 +319,9 @@ describe("invariant-engine", () => {
           rule: "All duration values must be valid CSS time strings",
           severity: "error",
           check: {
-            kind: "html-attribute-pattern",
+            kind: "attribute-pattern",
             glob: "compositions/**/*.html",
-            element: "ef-timegroup",
+            elements: ["ef-timegroup"],
             attribute: "duration",
             pattern: "^\\d+(\\.\\d+)?(s|ms)$",
           },
@@ -334,7 +335,7 @@ describe("invariant-engine", () => {
     expect(results[0].violations[0].message).toContain("'3'");
   });
 
-  it("html-attribute-pattern handles single-quoted attribute values", () => {
+  it("attribute-pattern handles single-quoted attribute values", () => {
     writeFile(
       tempDir,
       "compositions/video.html",
@@ -349,9 +350,9 @@ describe("invariant-engine", () => {
           rule: "All duration values must be valid CSS time strings",
           severity: "error",
           check: {
-            kind: "html-attribute-pattern",
+            kind: "attribute-pattern",
             glob: "compositions/**/*.html",
-            element: "ef-timegroup",
+            elements: ["ef-timegroup"],
             attribute: "duration",
             pattern: "^\\d+(\\.\\d+)?(s|ms)$",
           },
@@ -364,7 +365,7 @@ describe("invariant-engine", () => {
     expect(results[0].violations).toHaveLength(0);
   });
 
-  it("html-attribute-pattern with missing element/attribute produces warning violation", () => {
+  it("attribute-pattern with missing elements/attribute produces warning violation", () => {
     const profile: StackProfile = {
       ...baseProfile,
       invariants: [
@@ -373,7 +374,7 @@ describe("invariant-engine", () => {
           rule: "All duration values must be valid CSS time strings",
           severity: "error",
           check: {
-            kind: "html-attribute-pattern" as const,
+            kind: "attribute-pattern" as const,
             glob: "compositions/**/*.html",
             pattern: "^\\d+(\\.\\d+)?(s|ms)$",
           },
@@ -385,6 +386,86 @@ describe("invariant-engine", () => {
     expect(results).toHaveLength(1);
     expect(results[0].violations).toHaveLength(1);
     expect(results[0].violations[0].severity).toBe("warning");
-    expect(results[0].violations[0].message).toContain("without element or attribute");
+    expect(results[0].violations[0].message).toContain("without elements or attribute");
+  });
+
+  it("attribute-pattern detects JSX syntax with elements array", () => {
+    writeFile(tempDir, "compositions/video.tsx", '<Timegroup duration="5s">hello</Timegroup>');
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "attribute-pattern",
+            glob: "compositions/**/*.tsx",
+            elements: ["ef-timegroup", "Timegroup"],
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
+  });
+
+  it("attribute-pattern detects invalid JSX attribute values", () => {
+    writeFile(tempDir, "compositions/video.tsx", '<Timegroup duration="5">hello</Timegroup>');
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "attribute-pattern",
+            glob: "compositions/**/*.tsx",
+            elements: ["ef-timegroup", "Timegroup"],
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].file).toBe("compositions/video.tsx");
+    expect(results[0].violations[0].message).toContain("<Timegroup>");
+  });
+
+  it("attribute-pattern with empty elements array produces warning violation", () => {
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "attribute-pattern" as const,
+            glob: "compositions/**/*.tsx",
+            elements: [],
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].severity).toBe("warning");
+    expect(results[0].violations[0].message).toContain("without elements or attribute");
   });
 });

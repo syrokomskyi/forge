@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Generic invariant enforcement engine — reads check declarations from profile invariants and verifies files against them. Supports filename-pattern, file-contains, file-not-contains, and html-attribute-pattern check kinds.</purpose>
+<purpose>Generic invariant enforcement engine — reads check declarations from profile invariants and verifies files against them. Supports filename-pattern, file-contains, file-not-contains, and attribute-pattern check kinds.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement domain-specific validation logic — all rules are declared in profile YAML.</item>
@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0675: initial invariant enforcement engine with three check kinds.</item>
   <item>RFC-0691: add html-attribute-pattern check kind for HTML attribute value validation.</item>
+  <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -100,6 +101,10 @@ function filterByGlob(files: string[], glob: string): string[] {
   return files.filter((f) => matchGlob(f, glob));
 }
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function runCheck(
   invariant: ProfileInvariant,
   allFiles: string[],
@@ -172,20 +177,21 @@ function runCheck(
         }
       }
       break;
-    case "html-attribute-pattern": {
-      const element = check.element;
+    case "attribute-pattern": {
+      const elements = check.elements;
       const attribute = check.attribute;
-      if (!element || !attribute) {
+      if (!elements || elements.length === 0 || !attribute) {
         violations.push({
           invariantId: invariant.id,
           severity: "warning",
           rule: invariant.rule,
           file: "",
-          message: `Invariant ${invariant.id} has html-attribute-pattern check without element or attribute`,
+          message: `Invariant ${invariant.id} has attribute-pattern check without elements or attribute`,
         });
         break;
       }
-      const elementRegex = new RegExp(`<${element}[^>]*>`, "gi");
+      const elementAlternation = elements.map(escapeRegex).join("|");
+      const elementRegex = new RegExp(`<(${elementAlternation})[^>]*>`, "gi");
       const attrRegex = new RegExp(
         `${attribute}="([^"]*)"|${attribute}='([^']*)'`,
         "i",
@@ -197,6 +203,7 @@ function runCheck(
           let match: RegExpExecArray | null;
           while ((match = elementRegex.exec(content)) !== null) {
             const elementSnippet = match[0];
+            const matchedElement = match[1];
             const attrMatch = attrRegex.exec(elementSnippet);
             if (!attrMatch) continue;
             const attrValue = attrMatch[1] ?? attrMatch[2] ?? "";
@@ -206,7 +213,7 @@ function runCheck(
                 severity: invariant.severity,
                 rule: invariant.rule,
                 file,
-                message: `Element <${element}> attribute '${attribute}' value '${attrValue}' does not match pattern '${pattern}'`,
+                message: `Element <${matchedElement}> attribute '${attribute}' value '${attrValue}' does not match pattern '${pattern}'`,
               });
             }
           }
