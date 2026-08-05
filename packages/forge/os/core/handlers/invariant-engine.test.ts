@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0675: initial invariant engine unit tests.</item>
+  <item>RFC-0691: add html-attribute-pattern check kind tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -207,5 +208,159 @@ describe("invariant-engine", () => {
 
     const results = checkInvariants(profile, tempDir);
     expect(results).toHaveLength(0);
+  });
+
+  it("html-attribute-pattern detects invalid attribute values", () => {
+    writeFile(
+      tempDir,
+      "compositions/video.html",
+      '<ef-timegroup duration="5">hello</ef-timegroup>',
+    );
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "html-attribute-pattern",
+            glob: "compositions/**/*.html",
+            element: "ef-timegroup",
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].invariantId).toBe("VIDEO-05");
+    expect(results[0].violations[0].file).toBe("compositions/video.html");
+    expect(results[0].violations[0].message).toContain("does not match pattern");
+  });
+
+  it("html-attribute-pattern passes valid attribute values", () => {
+    writeFile(
+      tempDir,
+      "compositions/video.html",
+      '<ef-timegroup duration="5s">hello</ef-timegroup>',
+    );
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "html-attribute-pattern",
+            glob: "compositions/**/*.html",
+            element: "ef-timegroup",
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
+  });
+
+  it("html-attribute-pattern skips elements without the declared attribute", () => {
+    writeFile(
+      tempDir,
+      "compositions/video.html",
+      '<ef-timegroup mode="sequence">hello</ef-timegroup>',
+    );
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "html-attribute-pattern",
+            glob: "compositions/**/*.html",
+            element: "ef-timegroup",
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
+  });
+
+  it("html-attribute-pattern handles multiple elements in one file", () => {
+    writeFile(
+      tempDir,
+      "compositions/video.html",
+      '<ef-timegroup duration="5s">hello</ef-timegroup><ef-timegroup duration="3">world</ef-timegroup>',
+    );
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "html-attribute-pattern",
+            glob: "compositions/**/*.html",
+            element: "ef-timegroup",
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].message).toContain("'3'");
+  });
+
+  it("html-attribute-pattern handles single-quoted attribute values", () => {
+    writeFile(
+      tempDir,
+      "compositions/video.html",
+      "<ef-timegroup duration='5s'>hello</ef-timegroup>",
+    );
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "VIDEO-05",
+          rule: "All duration values must be valid CSS time strings",
+          severity: "error",
+          check: {
+            kind: "html-attribute-pattern",
+            glob: "compositions/**/*.html",
+            element: "ef-timegroup",
+            attribute: "duration",
+            pattern: "^\\d+(\\.\\d+)?(s|ms)$",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
   });
 });

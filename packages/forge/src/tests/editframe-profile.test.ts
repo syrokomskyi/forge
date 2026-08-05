@@ -9,10 +9,7 @@
 
 import { test, expect } from "vitest";
 import { join } from "node:path";
-import {
-  loadStackProfile,
-  stackProfileSchema,
-} from "../profiles/stack-profile.ts";
+import { loadStackProfile, stackProfileSchema } from "../profiles/stack-profile.ts";
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..");
 const PROFILE_PATH = join(FORGE_ROOT, "profiles", "editframe-html.yaml");
@@ -76,7 +73,7 @@ test("editframe-html profile declares at least 3 VIDEO-* invariants", () => {
   const profile = loadStackProfile(PROFILE_PATH);
   expect(profile.invariants).toBeDefined();
   const videoInvariants = profile.invariants?.filter((i) => i.id.startsWith("VIDEO-"));
-  expect(videoInvariants?.length).toBeGreaterThanOrEqual(3);
+  expect(videoInvariants?.length).toBeGreaterThanOrEqual(9);
 });
 
 test("editframe-html profile includes workspace layout with compositions/ directory", () => {
