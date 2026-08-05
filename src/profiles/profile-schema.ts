@@ -117,18 +117,34 @@ export interface ProfileWorkspaceType {
 // Profile invariant schema
 // ---------------------------------------------------------------------------
 
-export const profileInvariantCheckSchema = z.object({
-  kind: z.enum(["filename-pattern", "file-contains", "file-not-contains"]),
-  glob: z.string().optional(),
-  pattern: z.string().optional(),
-  negatedPattern: z.string().optional(),
-});
+export const profileInvariantCheckSchema = z
+  .object({
+    kind: z.enum([
+      "filename-pattern",
+      "file-contains",
+      "file-not-contains",
+      "html-attribute-pattern",
+    ]),
+    glob: z.string().optional(),
+    pattern: z.string().optional(),
+    negatedPattern: z.string().optional(),
+    element: z.string().optional(),
+    attribute: z.string().optional(),
+  })
+  .refine(
+    (v) => v.kind !== "html-attribute-pattern" || (v.element != null && v.attribute != null),
+    {
+      message: "element and attribute are required for kind: html-attribute-pattern",
+    },
+  );
 
 export interface ProfileInvariantCheck {
-  kind: "filename-pattern" | "file-contains" | "file-not-contains";
+  kind: "filename-pattern" | "file-contains" | "file-not-contains" | "html-attribute-pattern";
   glob?: string;
   pattern?: string;
   negatedPattern?: string;
+  element?: string;
+  attribute?: string;
 }
 
 export const profileInvariantSchema = z.object({

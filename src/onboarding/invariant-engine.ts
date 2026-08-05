@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Generic invariant enforcement engine — reads check declarations from profile invariants and verifies files against them. Supports filename-pattern, file-contains, and file-not-contains check kinds.</purpose>
+<purpose>Generic invariant enforcement engine — reads check declarations from profile invariants and verifies files against them. Supports filename-pattern, file-contains, file-not-contains, and html-attribute-pattern check kinds.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement domain-specific validation logic — all rules are declared in profile YAML.</item>
@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0675: initial invariant enforcement engine with three check kinds.</item>
+  <item>RFC-0691: add html-attribute-pattern check kind for HTML attribute value validation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -171,6 +172,50 @@ function runCheck(
         }
       }
       break;
+    case "html-attribute-pattern": {
+      const element = check.element;
+      const attribute = check.attribute;
+      if (!element || !attribute) {
+        violations.push({
+          invariantId: invariant.id,
+          severity: "warning",
+          rule: invariant.rule,
+          file: "",
+          message: `Invariant ${invariant.id} has html-attribute-pattern check without element or attribute`,
+        });
+        break;
+      }
+      const elementRegex = new RegExp(`<${element}[^>]*>`, "gi");
+      const attrRegex = new RegExp(
+        `${attribute}="([^"]*)"|${attribute}='([^']*)'`,
+        "i",
+      );
+      for (const file of matchedFiles) {
+        const fullPath = path.join(workspaceRoot, file);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          let match: RegExpExecArray | null;
+          while ((match = elementRegex.exec(content)) !== null) {
+            const elementSnippet = match[0];
+            const attrMatch = attrRegex.exec(elementSnippet);
+            if (!attrMatch) continue;
+            const attrValue = attrMatch[1] ?? attrMatch[2] ?? "";
+            if (!regex.test(attrValue)) {
+              violations.push({
+                invariantId: invariant.id,
+                severity: invariant.severity,
+                rule: invariant.rule,
+                file,
+                message: `Element <${element}> attribute '${attribute}' value '${attrValue}' does not match pattern '${pattern}'`,
+              });
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+      break;
+    }
   }
 
   return violations;
