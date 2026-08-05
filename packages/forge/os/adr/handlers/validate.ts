@@ -14,7 +14,12 @@
 
 import path from "node:path";
 import { execFile } from "node:child_process";
-import { listAdrFiles, readAndParseAdr, type ParsedAdr } from "../frontmatter-io.ts";
+import {
+  listAdrFiles,
+  readAndParseAdr,
+  adrFileMatchesId,
+  type ParsedAdr,
+} from "../frontmatter-io.ts";
 import { listRfcFiles, readAndParseRfc } from "../../rfc/frontmatter-io.ts";
 import type {
   ForgeCommandInput,
@@ -55,7 +60,7 @@ export async function runAdrValidate(
 
   const allFiles = await listAdrFiles(adrDirPath);
   const filesToValidate = targetId
-    ? allFiles.filter((f) => f.toLowerCase().startsWith(targetId.toLowerCase()))
+    ? allFiles.filter((f) => adrFileMatchesId(f, targetId))
     : allFiles;
 
   if (filesToValidate.length === 0) {

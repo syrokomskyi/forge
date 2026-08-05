@@ -62,6 +62,10 @@ export async function listAdrFiles(adrDirPath: string): Promise<string[]> {
   return results.sort();
 }
 
+export function adrFileMatchesId(fileName: string, targetId: string): boolean {
+  return path.basename(fileName).toLowerCase().startsWith(targetId.toLowerCase());
+}
+
 export async function readAndParseAdr(
   adrDirPath: string,
   fileName: string,
