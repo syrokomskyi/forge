@@ -13,7 +13,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `forge.create`, `forge.doctor`, `forge.upgrade`, `forge.agents.generate`, `forge.scaffold`, `forge.port.scaffold`, `forge.skill.validate`, `forge.skill.list`, `forge.port.validate`, `forge.profile.validate`, `forge.dev`, `forge.build`, `forge.validate`, `docs.archive` | `os/core/` |
+| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `docs.archive` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
@@ -34,15 +34,15 @@ When archiving terminal artifacts, prefer the `docs.archive` umbrella command ov
 
 ## Skills
 
-Skills live in `skills/` and are synced to `.agents/skills/` by `forge.create`. Each skill has a `SKILL.md` with standardized frontmatter (name, description, category, concerns, dependsOn).
+Skills live in `skills/` and are synced to `.agents/skills/` by `create`. Each skill has a `SKILL.md` with standardized frontmatter (name, description, category, concerns, dependsOn).
 
-- **When editing a skill in `packages/forge/skills/`**, the synced copy in `.agents/skills/<name>/SKILL.md` MUST also be committed in the same session — `forge.create` is not run automatically after manual edits. Stale `.agents/skills/` copies cause `forge.doctor` to report drift.
-- **Canonical sync path is flat**: `.agents/skills/<name>/SKILL.md` (e.g. `.agents/skills/fo-idea-implement/SKILL.md`). Both `forge.create` (`init.ts`) and `forge.upgrade` (`upgrade.ts`) sync to this flat path. A nested `.agents/skills/fo/<name>/SKILL.md` path is NOT created or maintained by forge — it is a stale artifact if present and should be removed.
+- **When editing a skill in `packages/forge/skills/`**, the synced copy in `.agents/skills/<name>/SKILL.md` MUST also be committed in the same session — `create` is not run automatically after manual edits. Stale `.agents/skills/` copies cause `doctor` to report drift.
+- **Canonical sync path is flat**: `.agents/skills/<name>/SKILL.md` (e.g. `.agents/skills/fo-idea-implement/SKILL.md`). Both `create` (`init.ts`) and `upgrade` (`upgrade.ts`) sync to this flat path. A nested `.agents/skills/fo/<name>/SKILL.md` path is NOT created or maintained by forge — it is a stale artifact if present and should be removed.
 - **`FORGE_SKILLS[].path` is relative to the forge package root** and already includes the `skills/` prefix — resolve via `path.join(forgeRoot, skill.path)` (see `init.ts`). Never join a `skillsRoot` with `skill.path`: that produces a doubled `skills/skills/` prefix and silently finds nothing.
 
-The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file modifications), `document-only` (modifies `.md` files only), `content-mutation` (modifies content `.md`/`.yaml` but not executable code), `code-mutation` (modifies `.ts`/`.astro` code). `forge.skill.validate` enforces this via SKILL-12.
+The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file modifications), `document-only` (modifies `.md` files only), `content-mutation` (modifies content `.md`/`.yaml` but not executable code), `code-mutation` (modifies `.ts`/`.astro` code). `skill.validate` enforces this via SKILL-12.
 
-The optional `knowledge` field (RFC-0524) declares cumulative knowledge files as an array of file names relative to the SKILL.md directory (e.g. `knowledge: [qa-log.md, learned-principles.md]`). `forge.skill.validate` enforces SKILL-13: declared knowledge files must exist. `forge.create` syncs them to `.agents/skills/`. `forge.doctor` detects stale copies. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern, entry format, and mutation contract. RFC-0660 adds SKILL-19 (entry schema validity) and SKILL-20 (identifier uniqueness) for structured knowledge entries, and `forge.doctor` reports legacy-section counts. RFC-0661 adds SKILL-21 (hot/warm layer character budget warnings — warnings only, never build gates) and `forge.doctor` reports budget summaries with headroom %.
+The optional `knowledge` field (RFC-0524) declares cumulative knowledge files as an array of file names relative to the SKILL.md directory (e.g. `knowledge: [qa-log.md, learned-principles.md]`). `skill.validate` enforces SKILL-13: declared knowledge files must exist. `create` syncs them to `.agents/skills/`. `doctor` detects stale copies. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern, entry format, and mutation contract. RFC-0660 adds SKILL-19 (entry schema validity) and SKILL-20 (identifier uniqueness) for structured knowledge entries, and `doctor` reports legacy-section counts. RFC-0661 adds SKILL-21 (hot/warm layer character budget warnings — warnings only, never build gates) and `doctor` reports budget summaries with headroom %.
 
 ### Validator return-type refactoring
 
@@ -58,12 +58,12 @@ skillPacks:
     dir: packages/warpgogol-skills/skills
 ```
 
-- `forge.create` syncs pack skills alongside forge skills into `.agents/skills/`.
-- `forge.skill.validate` validates pack skills with SKILL-01..13 plus SKILL-14 (pack skill name must start with pack prefix), SKILL-15 (non-forge skill may not use `fo-` prefix), and SKILL-17 (no platform RFC/ADR ids or platform names).
+- `create` syncs pack skills alongside forge skills into `.agents/skills/`.
+- `skill.validate` validates pack skills with SKILL-01..13 plus SKILL-14 (pack skill name must start with pack prefix), SKILL-15 (non-forge skill may not use `fo-` prefix), and SKILL-17 (no platform RFC/ADR ids or platform names).
 - SKILL-07 enforces asymmetric dependency direction: pack skills may depend on forge skills, but forge skills may not depend on pack skills (breaks portability).
-- `forge.skill.list` includes pack skills with `pack:<prefix>` annotation.
-- `forge.doctor` checks for stale/missing pack skill copies and validates `skillPacks` config (unique prefixes, unique dirs, no `fo` prefix, dir exists).
-- **RFC-0552:** `forge.create` (via `runInit`) and `forge.upgrade` (via `syncPackSkills`) detect pack skills whose name conflicts with a Forge skill name. Conflicting pack skills are skipped (not copied to `.agents/skills/`) and reported in `skippedSkills` on `InitResult` and `UpgradeResult`. The `forge-bootstrap` skill reports skipped skills to the operator during onboarding. The `forge-bootstrap` skill also runs `git init` for greenfield projects without a `.git` directory and commits synced skills to git.
+- `skill.list` includes pack skills with `pack:<prefix>` annotation.
+- `doctor` checks for stale/missing pack skill copies and validates `skillPacks` config (unique prefixes, unique dirs, no `fo` prefix, dir exists).
+- **RFC-0552:** `create` (via `runInit`) and `upgrade` (via `syncPackSkills`) detect pack skills whose name conflicts with a Forge skill name. Conflicting pack skills are skipped (not copied to `.agents/skills/`) and reported in `skippedSkills` on `InitResult` and `UpgradeResult`. The `forge-bootstrap` skill reports skipped skills to the operator during onboarding. The `forge-bootstrap` skill also runs `git init` for greenfield projects without a `.git` directory and commits synced skills to git.
 
 ## Import rules
 
@@ -82,7 +82,7 @@ The `commands.changed` field in RFC frontmatter must only list **registered CLI 
 
 ## RFC frontmatter: YAML backtick quoting
 
-YAML plain scalar values that **start with a backtick** (`` ` ``) must be double-quoted. Backtick is a reserved character in YAML plain scalars — the parser fails with "Plain value cannot start with reserved character `" and `rfc.implement.stamp`reports "Could not parse target RFC" (RFC-IMP-01). This commonly affects`successSignals`, `nonGoals`, and other list items in RFC frontmatter that reference code identifiers in backticks. Always quote such strings: `` - "`forge.doctor`reports domain information" `` instead of `` -`forge.doctor` reports domain information ``.
+YAML plain scalar values that **start with a backtick** (`` ` ``) must be double-quoted. Backtick is a reserved character in YAML plain scalars — the parser fails with "Plain value cannot start with reserved character `" and `rfc.implement.stamp`reports "Could not parse target RFC" (RFC-IMP-01). This commonly affects`successSignals`, `nonGoals`, and other list items in RFC frontmatter that reference code identifiers in backticks. Always quote such strings: `` - "`doctor`reports domain information" `` instead of `` -`doctor` reports domain information ``.
 
 **Agent action:** After creating an RFC with `rfc.create`, scan the generated `successSignals` and `nonGoals` sections for unquoted backtick entries. Fix them immediately before committing. This prevents a recurring pattern where `ecosystem.manifest.generate` and `rfc.implement.stamp` fail on RFCs created with backtick-heavy frontmatter.
 
@@ -104,20 +104,20 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 
 ## forge.yaml (RFC-0391)
 
-`forge.yaml` is the machine-readable project configuration file at the project root. It records project name, stack, package manager, and docs paths. `forge.create` creates it; `forge.doctor` checks for it; `forge.agents.generate` reads it to produce `AGENTS.md`.
+`forge.yaml` is the machine-readable project configuration file at the project root. It records project name, stack, package manager, and docs paths. `create` creates it; `doctor` checks for it; `agents.generate` reads it to produce `AGENTS.md`.
 
-- **MUST NOT** run `forge.agents.generate` against this monorepo's root `AGENTS.md` — it is hand-written and carries no generated marker; the edit guard enforces this, do not bypass it.
-- **MUST NOT** re-add any `@warpgogol/*` import to `packages/forge` source — `forge.doctor` autonomy guard will fail.
+- **MUST NOT** run `agents.generate` against this monorepo's root `AGENTS.md` — it is hand-written and carries no generated marker; the edit guard enforces this, do not bypass it.
+- **MUST NOT** re-add any `@warpgogol/*` import to `packages/forge` source — `doctor` autonomy guard will fail.
 - **MUST NOT** hand-edit a generated `AGENTS.md` in bootstrapped projects — edit `forge.yaml` and regenerate.
 
 ## Stack profiles (RFC-0392)
 
-Stack profiles are YAML documents under `profiles/` describing a supported stack (detection markers, workspace layout, install steps, baseline files). `forge.scaffold` creates a working pnpm + Turborepo monorepo from a chosen profile in an empty directory. The migration-adapter registry (RFC-0546) detects the stack of an existing project during `forge-bootstrap` transplant mode.
+Stack profiles are YAML documents under `profiles/` describing a supported stack (detection markers, workspace layout, install steps, baseline files). `scaffold` creates a working pnpm + Turborepo monorepo from a chosen profile in an empty directory. The migration-adapter registry (RFC-0546) detects the stack of an existing project during `forge-bootstrap` transplant mode.
 
 - **MUST NOT** scaffold into a non-empty directory — no `--force` flag.
 - **MUST NOT** add stack profiles for stacks forge cannot scaffold end-to-end.
 - **MUST** reference all template files in `profiles/<profile>-templates/` from the profile YAML (`workspaceTypes[].agentsMdTemplate` or `firstWorkspace.files`) or document them in the `agentsMdTemplate` file. Unreferenced template files are orphan artifacts that operators cannot discover.
-- Shipped profiles: `astro-typescript-turborepo`, `phaser-turborepo`, `forge-shell` (minimal — default for `forge.create`), `editframe` (video domain — first non-software profile, RFC-0641, React template RFC-0694).
+- Shipped profiles: `astro-typescript-turborepo`, `phaser-turborepo`, `forge-shell` (minimal — default for `create`), `editframe` (video domain — first non-software profile, RFC-0641, React template RFC-0694).
 - **MUST** include a `.github/workflows/ci.yml` template in every stack profile's `workspace.files` list. The CI template MUST include `concurrency` (cancel superseded PR runs), `permissions: contents: read` at workflow level, `timeout-minutes` per job, `env: TZ: UTC` per job, `actions/checkout@v5`, and `actions/setup-node@v5` with Node 24. New projects inherit reliable CI from the scaffold — operators should not need to hand-write CI from scratch.
 
 ### Domain fields (RFC-0638)
@@ -126,10 +126,10 @@ The `forge/stack-profile@1` schema includes six optional domain-neutral fields t
 
 - **`domain`** — string identifying the project domain (e.g. `software`, `video`, `book`, `music`, `game`, `illustration`). Used for profile detection and doctor output.
 - **`terminology`** — map of universal concept keys to domain-specific terms (e.g. `artifact: "composition"`). Open vocabulary; universal keys have built-in defaults exported as `TERMINOLOGY_DEFAULTS`. Missing keys fall back to the default term.
-- **`artifacts`** — array of artifact definitions (id, extensions, produce/validate commands, determinism properties). Used by `forge.doctor` for domain-specific health checks in follow-up RFCs.
-- **`workspaceTypes`** — array of workspace type definitions (id, detection markers, associated skills, AGENTS.md template). Used by `forge.agents.generate` for per-domain workspace detection in follow-up RFCs.
+- **`artifacts`** — array of artifact definitions (id, extensions, produce/validate commands, determinism properties). Used by `doctor` for domain-specific health checks in follow-up RFCs.
+- **`workspaceTypes`** — array of workspace type definitions (id, detection markers, associated skills, AGENTS.md template). Used by `agents.generate` for per-domain workspace detection in follow-up RFCs.
 - **`invariants`** — array of domain-specific invariant definitions (id matching `^[A-Z]+-\d+$`, rule text, severity). Schema only — enforcement is deferred to follow-up RFCs.
-- **`register`** — string selecting the default behavioral register (`business` or `creative`). Used by `forge.create` as a one-time default for new projects; existing `PREFERENCES.md` is never overwritten.
+- **`register`** — string selecting the default behavioral register (`business` or `creative`). Used by `create` as a one-time default for new projects; existing `PREFERENCES.md` is never overwritten.
 
 Types and schemas are exported from `@warpgogol/forge`: `StackProfileDomainFields`, `ProfileArtifact`, `ProfileWorkspaceType`, `ProfileInvariant`, `stackProfileDomainFieldsSchema`, `UNIVERSAL_TERMINOLOGY_KEYS`, `TERMINOLOGY_DEFAULTS`.
 
@@ -137,25 +137,25 @@ Types and schemas are exported from `@warpgogol/forge`: `StackProfileDomainField
 
 The following commands are domain-aware — they read domain fields from the stack profile and `forge.yaml` to adapt their behavior:
 
-- **`forge.profile.validate`** — validates profile YAML files under `packages/forge/profiles/` against the `forge/stack-profile@1` schema (including RFC-0638 domain fields). Supports `--id <profile-id>` to validate a single profile. Returns exit 1 if any profile is invalid.
-- **`forge.create`** — reads `domain`, `terminology`, `register`, and artifact-derived semantic bindings from the selected profile and writes them into `forge.yaml` (domain, terminology, bindings.commands) and `PREFERENCES.md` (register). When the profile has no domain fields, behavior is unchanged (software-domain fallback).
-- **`forge.doctor`** — reports domain info (domain, source, register, terminology, invariant count) as a `domain-info` check. Enforces profile invariants via the invariant engine as a `domain-invariants` check (RFC-0675) — invariants with a `check` declaration are actively verified (`filename-pattern`, `file-contains`, `file-not-contains`, `attribute-pattern`); invariants without `check` remain advisory. The `attribute-pattern` check kind (RFC-0694) validates attribute values on elements matching a tag selector — requires `elements` (array) and `attribute` fields (schema-enforced via `.refine()`). Reports `fail` for error-severity violations, `warn` for warning-severity. The `--strict` flag elevates `warn` to `fail` for `domain-invariants` and `profile-validate` checks. `--json` includes `invariantViolations` array in the `domain-invariants` check. Runs `forge.profile.validate` as an advisory `profile-validate` check (warn status on failure, not gating — shipped profiles are forge-internal). Nested AGENTS.md check runs for all domains — profile-driven workspace types replace hardcoded detection when present. Domain is resolved via a three-tier chain: `forge.yaml` `project.domain` → stack profile `domain` → default `software`.
-- **`forge.agents.generate`** — loads `workspaceTypes[]` from the matching stack profile and passes them to `discoverWorkspaces` for profile-driven workspace type detection. When the profile has no `workspaceTypes`, falls back to hardcoded detection (astro.config → app, Dockerfile → service, else package).
+- **`profile.validate`** — validates profile YAML files under `packages/forge/profiles/` against the `forge/stack-profile@1` schema (including RFC-0638 domain fields). Supports `--id <profile-id>` to validate a single profile. Returns exit 1 if any profile is invalid.
+- **`create`** — reads `domain`, `terminology`, `register`, and artifact-derived semantic bindings from the selected profile and writes them into `forge.yaml` (domain, terminology, bindings.commands) and `PREFERENCES.md` (register). When the profile has no domain fields, behavior is unchanged (software-domain fallback).
+- **`doctor`** — reports domain info (domain, source, register, terminology, invariant count) as a `domain-info` check. Enforces profile invariants via the invariant engine as a `domain-invariants` check (RFC-0675) — invariants with a `check` declaration are actively verified (`filename-pattern`, `file-contains`, `file-not-contains`, `attribute-pattern`); invariants without `check` remain advisory. The `attribute-pattern` check kind (RFC-0694) validates attribute values on elements matching a tag selector — requires `elements` (array) and `attribute` fields (schema-enforced via `.refine()`). Reports `fail` for error-severity violations, `warn` for warning-severity. The `--strict` flag elevates `warn` to `fail` for `domain-invariants` and `profile-validate` checks. `--json` includes `invariantViolations` array in the `domain-invariants` check. Runs `profile.validate` as an advisory `profile-validate` check (warn status on failure, not gating — shipped profiles are forge-internal). Nested AGENTS.md check runs for all domains — profile-driven workspace types replace hardcoded detection when present. Domain is resolved via a three-tier chain: `forge.yaml` `project.domain` → stack profile `domain` → default `software`.
+- **`agents.generate`** — loads `workspaceTypes[]` from the matching stack profile and passes them to `discoverWorkspaces` for profile-driven workspace type detection. When the profile has no `workspaceTypes`, falls back to hardcoded detection (astro.config → app, Dockerfile → service, else package).
 
 ### Per-domain AGENTS.md templates (RFC-0643)
 
-`forge.agents.generate` uses profile terminology and register to produce domain-appropriate AGENTS.md files. When no profile is loaded (or the profile has no domain fields), output is identical to the pre-RFC-0643 implementation — no regression for existing software-domain projects.
+`agents.generate` uses profile terminology and register to produce domain-appropriate AGENTS.md files. When no profile is loaded (or the profile has no domain fields), output is identical to the pre-RFC-0643 implementation — no regression for existing software-domain projects.
 
 - **Root AGENTS.md templates**: Static prose (header, project section, paths section, conventions) is extracted to template files at `src/onboarding/templates/root-agents-business.md` and `root-agents-creative.md`. `selectRootTemplate(register)` returns the appropriate template. Dynamic sections (skills table, capabilities, behavioral layer) remain inline and are inserted at the `{{dynamicSections}}` marker.
 - **Nested AGENTS.md templates**: `selectNestedTemplate(workspaceType, profile, terminology, fallback)` reads `workspaceTypes[].agentsMdTemplate` from the profile. Template paths are relative to `packages/forge/profiles/`. Absolute paths and parent-directory traversal (`..`) are rejected with a silent fallback to the hardcoded template.
 - **Terminology substitution**: `substituteTemplate(content, terminology)` replaces `{{terminology.key}}` placeholders with resolved values. Runs on the final assembled content (after dynamic sections are appended), so the behavioral layer's fixed policy text also receives terminology substitution. Unknown keys resolve to the key name itself — no error.
 - **`{{terminology.key}}` placeholder syntax**: AGENTS.md templates use `{{terminology.key}}` (double-brace), not `ref(bindings.terminology.key)` (skill syntax). The two are documented separately.
 - **`details` field in `--json` output**: `AgentsGenerateResult` includes an optional `details` array with per-file metadata: `{ path, domain?, register?, workspaceType? }`. The `generated` field remains `string[]` for backward compatibility.
-- **`profile` field in `forge.yaml`**: `forge.create` writes `profile: <id>` to `forge.yaml`. `loadForgeConfig` loads the corresponding `profiles/<id>.yaml` and attaches it as `config.profile` (a `StackProfile` object). The profile object is stripped before serialization — `forge.yaml` stores the profile id (string), not the full profile.
+- **`profile` field in `forge.yaml`**: `create` writes `profile: <id>` to `forge.yaml`. `loadForgeConfig` loads the corresponding `profiles/<id>.yaml` and attaches it as `config.profile` (a `StackProfile` object). The profile object is stripped before serialization — `forge.yaml` stores the profile id (string), not the full profile.
 - **Template comments MUST NOT use literal `{{placeholder}}` syntax**: `replaceProjectPlaceholders()` runs on the entire template content, including HTML comments. A comment like `<!-- inserted at {{dynamicSections}} -->` will have the placeholder replaced with the full dynamic sections content, breaking the comment and inflating the output. Use plain text names (e.g. `dynamicSections marker`) in comments instead of `{{...}}` syntax.
 - **All template content MUST be external files, not inline `lines.push()` string arrays.** Fixed prose and policy text in forge generators (e.g. `agents-generate.ts`, `nested-agents-templates.ts`) must live in `.md` template files under `src/onboarding/templates/` or `profiles/`, loaded via `fs.readFileSync` with placeholder substitution. Inline `lines.push("### Section heading")` patterns for fixed text are a contract violation — they embed template content in source code, making it harder to review and maintain. Dynamic, data-driven content (tables generated from registry data, conditional sections from config) remains inline.
 - **Template files read at runtime via `fs.readFileSync` MUST be listed in `package.json` `files` array.** TypeScript compilation (`tsc`) does not copy `.md` template files to `dist/`. Without an explicit `files` entry, template files exist on disk in development but are missing from the published npm package — the generator silently falls back to empty content. The test `src/tests/package-files.test.ts` guards this: it verifies that `src/onboarding/templates/` is in the `files` array and that all expected template files exist and are readable.
-- **Profile object stripping before YAML serialization**: `loadForgeConfig` attaches a full `StackProfile` object to `config.profile`. Before serializing the config back to YAML (e.g. in `forge.create` post-processing), the profile object MUST be stripped back to its string id. Otherwise `forge.yaml` contains an object instead of a string and fails schema validation on re-read.
+- **Profile object stripping before YAML serialization**: `loadForgeConfig` attaches a full `StackProfile` object to `config.profile`. Before serializing the config back to YAML (e.g. in `create` post-processing), the profile object MUST be stripped back to its string id. Otherwise `forge.yaml` contains an object instead of a string and fails schema validation on re-read.
 - **Profile invariant `rule` fields containing colons MUST be double-quoted.** YAML plain scalars with colons (e.g. `rule: mode attribute must be one of: sequence, fixed, contain, fit`) cause "Nested mappings are not allowed in compact mappings" parsing errors. Always quote rule fields that contain colons: `rule: "mode attribute must be one of: sequence, fixed, contain, fit"`. This also applies to any other YAML string field in profile YAML that may contain colons.
 
 ## Bindings contract (RFC-0393)
@@ -163,11 +163,11 @@ The following commands are domain-aware — they read domain fields from the sta
 The `bindings` section in `forge.yaml` de-hardcodes project-specific values from fo-skills. Skills reference bindings by key (e.g. `ref(forge.yaml bindings.commands.validateRfc)`) instead of hardcoding commands, paths, or terminology.
 
 - `forgeBindingsSchema` + `resolveBinding(config, key, placeholders?)` are exported from `@warpgogol/forge`.
-- `forge.doctor` validates bindings: checks path existence, reports resolved/absent/invalid, and emits `defaultable-binding-null` notices for forge-CLI-backed bindings that are null (RFC-0540).
-- `forge.create` writes forge-CLI-backed defaults for commands forge provides (`validateRfc`, `validateAdr`, `implementStamp`, `specValidate`) and null for stack-dependent commands (`typecheck`, `test`, `scopedBuild`). The package manager from `forge.yaml` determines the runner prefix (`pnpm exec`, `npx`, `yarn exec`, `bunx`).
-- `forge.skill.validate` enforces SKILL-11: canonical skill bodies must not contain hardcoded `pnpm exec site-kernel run` or `docs/architecture-dna.md` in instruction lines (code blocks and `run:` directives). Supports `<!-- skill-lint-disable SKILL-11 -->` escape hatch.
-- `forge.skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@warpgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
-- `forge.skill.validate` enforces SKILL-18: canonical forge skill bodies must not reference software-specific binding keys (`bindings.commands.typecheck`, `bindings.commands.scopedBuild`, `bindings.commands.test`) in instruction lines (code blocks and `run:` directives). Skills must reference semantic keys (`bindings.commands.validate`, `bindings.commands.produce`, `bindings.commands.verify`) instead. Supports `<!-- skill-lint-disable SKILL-18 -->` escape hatch. Applies to forge skills only, not pack skills.
+- `doctor` validates bindings: checks path existence, reports resolved/absent/invalid, and emits `defaultable-binding-null` notices for forge-CLI-backed bindings that are null (RFC-0540).
+- `create` writes forge-CLI-backed defaults for commands forge provides (`validateRfc`, `validateAdr`, `implementStamp`, `specValidate`) and null for stack-dependent commands (`typecheck`, `test`, `scopedBuild`). The package manager from `forge.yaml` determines the runner prefix (`pnpm exec`, `npx`, `yarn exec`, `bunx`).
+- `skill.validate` enforces SKILL-11: canonical skill bodies must not contain hardcoded `pnpm exec site-kernel run` or `docs/architecture-dna.md` in instruction lines (code blocks and `run:` directives). Supports `<!-- skill-lint-disable SKILL-11 -->` escape hatch.
+- `skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@warpgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
+- `skill.validate` enforces SKILL-18: canonical forge skill bodies must not reference software-specific binding keys (`bindings.commands.typecheck`, `bindings.commands.scopedBuild`, `bindings.commands.test`) in instruction lines (code blocks and `run:` directives). Skills must reference semantic keys (`bindings.commands.validate`, `bindings.commands.produce`, `bindings.commands.verify`) instead. Supports `<!-- skill-lint-disable SKILL-18 -->` escape hatch. Applies to forge skills only, not pack skills.
 - Skills declare binding requirements in frontmatter: `bindings: { requires: [...], optional: [...] }`.
 - Degradation contract: required binding unresolvable → skill refuses to start; optional binding absent → step skipped with `Degraded:` line in report.
 - **RFC-0609: Binding templates must use flag format.** CLI binding templates in `FORGE_CLI_BINDING_DEFAULTS` and `forge.yaml` must use `--id {id}` (flag format), not `{id}` (positional). For example: `forge rfc.validate --id {id} --json`, not `forge rfc.validate {id} --json`. This applies to `validateRfc`, `validateAdr`, and any future binding that passes an identifier to a command.
@@ -182,7 +182,7 @@ The `forge/bindings@1` schema includes five optional semantic command keys that 
 - **`commands.preview`** — domain-neutral preview command (e.g. dev server, live preview).
 - **`commands.lint`** — domain-neutral linting command.
 
-All semantic keys are optional with `null` defaults. `applyCliBindingDefaults` initializes them with `null` (they are stack-dependent, not CLI-backed). `forge.doctor` does **not** validate semantic keys — they are opt-in per-domain, so reporting them as `absent` for projects that intentionally leave them `null` would be noise. Skills reference them via `ref(bindings.commands.produce)` etc.
+All semantic keys are optional with `null` defaults. `applyCliBindingDefaults` initializes them with `null` (they are stack-dependent, not CLI-backed). `doctor` does **not** validate semantic keys — they are opt-in per-domain, so reporting them as `absent` for projects that intentionally leave them `null` would be noise. Skills reference them via `ref(bindings.commands.produce)` etc.
 
 ### Terminology resolution (RFC-0639)
 
@@ -201,33 +201,33 @@ If the key is not found in any tier, the key itself is returned. The `terminolog
 Every forge CLI command's output ends with a **Next steps** block in pretty mode and a `nextSteps` array in `--json` mode. Each entry is `{ action: string, kind: "required" | "optional" }`.
 
 - `renderNextSteps`, `renderIdeRecommendation`, and `generateHelp` are pure functions in `src/cli-output.ts` — importable by `bin/cli.ts` and unit tests.
-- `forge.create` prints an IDE recommendation (Windsurf tested, alternatives without guarantee) after the Next steps block in pretty mode.
+- `create` prints an IDE recommendation (Windsurf tested, alternatives without guarantee) after the Next steps block in pretty mode.
 - All forge CLI natural-language output is English regardless of `PREFERENCES.md` — `aiLanguage` governs agent chat, not the forge binary.
 - `printHelp` is generated from the registry via `generateHelp` — no hand-maintained command list. `--help <command>` prints per-command flags and description.
 - `ForgeNextStep` type and `nextSteps?` field are on `ForgeCommandResult` directly (cross-cutting), not inside command-specific `data`.
-- Lifecycle commands (`forge.create`, `forge.scaffold`, `forge.doctor`, `forge.port.scaffold`) MUST populate `nextSteps`. Pass-state validators MAY leave the array empty.
-- Future commands (`forge.create`, `forge.upgrade`) MUST conform to the `nextSteps` contract from day one.
+- Lifecycle commands (`create`, `scaffold`, `doctor`, `port.scaffold`) MUST populate `nextSteps`. Pass-state validators MAY leave the array empty.
+- Future commands (`create`, `upgrade`) MUST conform to the `nextSteps` contract from day one.
 - Skill reports (agent chat output) use the operator's `aiLanguage` and contain zero CLI commands, guides, or format references in user-facing text. The system hides all complexity from the operator. CLI output remains English per RFC-0542; only the skill (agent chat) uses `aiLanguage`. The `forge-bootstrap` welcoming report is the canonical example of this contract.
 
 ## Silent upgrade trigger (RFC-0554)
 
-The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against the installed `@warpgogol/forge` version. If they differ, it runs `forge upgrade --update-npm` invisibly — the operator is never informed about migration, version numbers, or upgrade mechanics. The npm update is skipped automatically in monorepo environments (where `packages/forge/` exists). The `forge.upgrade` CLI command remains available for manual sync (with or without `--update-npm`). This is not a dual-path: it is a single upgrade mechanism (`runUpgrade`) with two entry points (CLI and `forge-bootstrap`).
+The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against the installed `@warpgogol/forge` version. If they differ, it runs `forge upgrade --update-npm` invisibly — the operator is never informed about migration, version numbers, or upgrade mechanics. The npm update is skipped automatically in monorepo environments (where `packages/forge/` exists). The `upgrade` CLI command remains available for manual sync (with or without `--update-npm`). This is not a dual-path: it is a single upgrade mechanism (`runUpgrade`) with two entry points (CLI and `forge-bootstrap`).
 
 ## Core behavioral layer (RFC-0548)
 
-`forge.agents.generate` now includes a **Core behavioral layer** section in generated `AGENTS.md` files. This section is wrapped in `<!-- forge:begin behavioral-layer -->` / `<!-- forge:end behavioral-layer -->` markers and contains:
+`agents.generate` now includes a **Core behavioral layer** section in generated `AGENTS.md` files. This section is wrapped in `<!-- forge:begin behavioral-layer -->` / `<!-- forge:end behavioral-layer -->` markers and contains:
 
 - **Intent-to-skill routing table** — generated from `triggers` fields in fo-skill frontmatter. Each row maps natural-language trigger phrases to the corresponding skill.
 - **Fixed policy text** for 20 core behavioral areas: auto-grilling, auto-session-save, auto-review, context awareness, creator-facing communication, adaptive learning, proactive guidance, live operator feedback, register parameter, pushback policy, external capabilities (MCP), safety net, invisible quality, first creation moment, creative health, sharing and feedback, cultural awareness, indirect teaching, ownership, and commit policy (RFC-0551).
 - **Conditional extended behavioral layer** (RFC-0549) — included only when the register is `creative` (read from `PREFERENCES.md` `register` field). Contains ten sections: personal connection, creative memory, emotional rhythm (questions not declarations), gentle accountability, creative partnership, visual thinking, audience empathy, creative companion (companion mode, `saveCompanionSessions` flag, pull-only inspiration feed), creative confidence (outcome-based praise, never refuse creative direction), and always-next-step (RFC-0551, supersedes the "at most one per session" anticipatory suggestion limit). Content is loaded from `src/onboarding/templates/behavioral-layer-extended.md`.
 
-`forge.create` auto-runs `forge.agents.generate` after `forge.init`, so newly created projects get the behavioral layer from day one. If generation fails, a warning is logged but the create command continues.
+`create` auto-runs `agents.generate` after `forge.init`, so newly created projects get the behavioral layer from day one. If generation fails, a warning is logged but the create command continues.
 
 The `triggers` field in skill frontmatter is validated by SKILL-16: optional array of 1-5 natural-language strings (each 5-100 characters), only allowed on fo-category skills. Pack skills may not declare triggers.
 
 ## Nested AGENTS.md generation (RFC-0611)
 
-`forge.agents.generate` also generates nested `AGENTS.md` files for workspace directories (directories containing `package.json`). Workspace type is auto-detected by content markers:
+`agents.generate` also generates nested `AGENTS.md` files for workspace directories (directories containing `package.json`). Workspace type is auto-detected by content markers:
 
 - **app** — directory with `astro.config.*`
 - **service** — directory with `Dockerfile` or `service.config.yaml`
@@ -236,9 +236,9 @@ The `triggers` field in skill frontmatter is validated by SKILL-16: optional arr
 
 Workspace-type detection rules are defined in RFC-0611. Agents MUST NOT add new detection rules without an amending RFC.
 
-The edit guard skips hand-written nested `AGENTS.md` files (no generated marker) and reports them in the `skipped` array. Generated files (with marker) are regenerated if content differs. `forge.upgrade` also runs nested generation after skill sync. `forge.doctor` checks for missing, stale (in-memory comparison), and hand-written improvement opportunities.
+The edit guard skips hand-written nested `AGENTS.md` files (no generated marker) and reports them in the `skipped` array. Generated files (with marker) are regenerated if content differs. `upgrade` also runs nested generation after skill sync. `doctor` checks for missing, stale (in-memory comparison), and hand-written improvement opportunities.
 
-`forge.agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `forge.doctor` for staleness detection.
+`agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `doctor` for staleness detection.
 
 - **Doctor stale check MUST use the same rendering pipeline as `forge agents generate`.** The stale check in `checkNestedAgentsMd` (`src/onboarding/doctor.ts`) must call `readPackageInfo` → `buildNestedAgentsMd(ws, config, packageInfo)` → `selectNestedTemplate(wsType, profile, terminology, fallback)` — exactly matching `generateNestedAgentsMd` in `src/onboarding/nested-agents-generate.ts`. Any divergence (missing `packageInfo`, missing `selectNestedTemplate`, missing `resolveAllTerminology`) causes false-positive stale reports for all generated nested `AGENTS.md` files. When modifying either function, verify the other stays in sync.
 
@@ -304,7 +304,7 @@ When publishing `@warpgogol/forge`, npm resolves the auth token from `.npmrc` fi
 
 ## CLI invocation and test fixtures
 
-- **Running forge CLI commands on the workspace root** — `pnpm --filter @warpgogol/forge exec forge <command>` runs from the package directory (`packages/forge/`), where `forge.yaml` is not found. To run forge commands against the workspace root (e.g. `forge.doctor`, `rfc.validate`, `forge.upgrade`), use `node packages/forge/bin/cli.js <command>` from the workspace root instead.
+- **Running forge CLI commands on the workspace root** — `pnpm --filter @warpgogol/forge exec forge <command>` runs from the package directory (`packages/forge/`), where `forge.yaml` is not found. To run forge commands against the workspace root (e.g. `doctor`, `rfc.validate`, `upgrade`), use `node packages/forge/bin/cli.js <command>` from the workspace root instead.
 - **Golden fixture for `agents-generate`** — when adding or modifying sections in `agents-generate.ts`, the golden fixture `src/tests/fixtures/agents-generate-business-before.txt` MUST be updated to match the new generated output. The test `agents-generate-domain.test.ts` compares generated content against this fixture with `expect(content).toBe(goldenFixture)` — a mismatch fails the test.
 - **SKILL-17 brand pattern must be case-sensitive** — the brand regex in `skill-validate.ts` uses a `@`-lookbehind to allow `@warpgogol/<pkg>` npm-scope references in skill instruction lines. Making the regex case-insensitive (`/gi`) defeats the lookbehind and false-flags every `@warpgogol` import as a brand violation. Keep the regex case-sensitive (`/g` only) so the `@`-scope allowance works correctly.
 - **`vi.resetModules()` before `vi.doMock()` for Node builtins** — when mocking Node built-in modules (e.g. `node:child_process`) in vitest, `vi.resetModules()` MUST be called BEFORE `vi.doMock()`. Without `resetModules()` first, the module cache retains the original module and the mock is not applied on re-import via dynamic `import()`. After the test, call `vi.doUnmock()` and `vi.resetModules()` to restore. Discovered during `upgrade.test.ts` `--update-npm` mock testing.
@@ -334,8 +334,8 @@ All profile-driven RFCs (RFC-0674 onwards) MUST follow these conventions:
 
 ## Workflow file placement
 
-Workflow files MUST live only in `.agents/workflows/`. Do NOT duplicate workflow files in `.windsurf/workflows/` — `.windsurf/workflows/` is IDE-specific config that does not ship to new projects via `forge.create`. `.agents/workflows/` is the single source of truth for workflow definitions.
+Workflow files MUST live only in `.agents/workflows/`. Do NOT duplicate workflow files in `.windsurf/workflows/` — `.windsurf/workflows/` is IDE-specific config that does not ship to new projects via `create`. `.agents/workflows/` is the single source of truth for workflow definitions.
 
 ## Workflow files vs skill content
 
-IDE-specific workflow files (`.windsurf/workflows/`, `.devin/workflows/`) MUST NOT duplicate skill content. Skills (`packages/forge/skills/`) are the portable unit — they ship to every new project via `forge.create`. Workflow files are IDE-specific triggers that reference skills by name; they should not contain the protocol itself. If a workflow file grows beyond a trigger phrase + skill reference, move the content into the skill's `SKILL.md`.
+IDE-specific workflow files (`.windsurf/workflows/`, `.devin/workflows/`) MUST NOT duplicate skill content. Skills (`packages/forge/skills/`) are the portable unit — they ship to every new project via `create`. Workflow files are IDE-specific triggers that reference skills by name; they should not contain the protocol itself. If a workflow file grows beyond a trigger phrase + skill reference, move the content into the skill's `SKILL.md`.

@@ -447,7 +447,7 @@ await forgeRfcModule.register(registry);
 | `bin/` | Точка входу CLI (команда `forge`). |
 | `skills/` | 44 визначення навичок (36 fo + 5 спільних + 3 мета) з frontmatter SKILL.md. |
 | `scripts/` | Перевірка гігієни публікації (`publish-check.mjs`), запускається `prepublishOnly`. |
-| `profiles/` | Профілі стеків для `forge.scaffold`. |
+| `profiles/` | Профілі стеків для `scaffold`. |
 
 ## Публікація в npm
 

@@ -447,7 +447,7 @@ await forgeRfcModule.register(registry);
 | `bin/` | CLI entrypoint (`forge` command). |
 | `skills/` | 44 skill definitions (36 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
 | `scripts/` | Publication hygiene check (`publish-check.mjs`) run by `prepublishOnly`. |
-| `profiles/` | Stack profiles for `forge.scaffold`. |
+| `profiles/` | Stack profiles for `scaffold`. |
 
 ## Publishing to npm
 

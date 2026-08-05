@@ -1,6 +1,6 @@
 ---
 name: skill-create
-description: Guides an agent through creating a new forge-compliant skill — determines category, invocation, concerns, dependencies, generates frontmatter, calls forge.port.scaffold, and validates.
+description: Guides an agent through creating a new forge-compliant skill — determines category, invocation, concerns, dependencies, generates frontmatter, calls port.scaffold, and validates.
 invocation: user
 category: meta
 concerns: document-only
@@ -12,7 +12,7 @@ languagePolicy: ref(PREFERENCES.md)
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 
-Interactive skill that guides an agent through creating a new forge-compliant skill. This is the agent-facing workflow; `forge.port.scaffold --type skill` is the machine-facing OS command that does the actual file generation.
+Interactive skill that guides an agent through creating a new forge-compliant skill. This is the agent-facing workflow; `port.scaffold --type skill` is the machine-facing OS command that does the actual file generation.
 
 ## Process
 
@@ -50,7 +50,7 @@ Present the analysis to the operator. If they confirm, create the knowledge file
 
 ### 2. Scaffold
 
-Run `forge.port.scaffold --name <name> --type skill --category <category>` to generate the SKILL.md skeleton with standardized frontmatter.
+Run `port.scaffold --name <name> --type skill --category <category>` to generate the SKILL.md skeleton with standardized frontmatter.
 
 ### 3. Write the body
 
@@ -58,7 +58,7 @@ Fill the SKILL.md body with the skill's behavioral instructions. Follow the conv
 
 ### 4. Validate
 
-Run `forge.skill.validate` to verify the new skill passes all invariants (SKILL-01 through SKILL-13).
+Run `skill.validate` to verify the new skill passes all invariants (SKILL-01 through SKILL-13).
 
 ### 5. Register
 

@@ -21,13 +21,13 @@ This skill assists the operator in the knowledge distillation lifecycle: reading
 ## When to invoke
 
 - **After a productive session** — when the session generated raw Q&A pairs or debugging insights that could benefit future agents.
-- **When `forge.skill.knowledge.compact --all-skills --dry-run` reports legacy sections** — this skill performs the actual migration with operator approval.
+- **When `skill.knowledge.compact --all-skills --dry-run` reports legacy sections** — this skill performs the actual migration with operator approval.
 - **When a SKILL-21 budget warning appears** — distill to reduce active knowledge volume.
 - **When the operator asks to "distill", "compact", or "maintain" skill knowledge.**
 
 ## What this skill is NOT
 
-- It is NOT `forge.skill.knowledge.compact` — that command handles mechanical archival (expiry, supersession, L0 retention, L2 staleness). This skill handles semantic work: grouping, promoting, and migrating.
+- It is NOT `skill.knowledge.compact` — that command handles mechanical archival (expiry, supersession, L0 retention, L2 staleness). This skill handles semantic work: grouping, promoting, and migrating.
 - It is NOT `fo-session-retro` — that skill triages session discoveries and routes them. This skill works within a single skill's knowledge files.
 - It is NOT `fo-extract-dna` — that skill extracts architectural invariants. This skill distills operational knowledge (fix patterns, learned principles).
 
@@ -104,7 +104,7 @@ Apply approved mutations via the knowledge serializer (`serializeKnowledgeFile`)
 
 If retention/expiry candidates remain after distillation:
 
-- Recommend `forge.skill.knowledge.compact --skill <name>` to the operator.
+- Recommend `skill.knowledge.compact --skill <name>` to the operator.
 - Offer to run it via `ask_user_question`.
 - If the operator declines, note it in the session summary.
 
@@ -145,13 +145,13 @@ See `writing-great-skills` § Cumulative knowledge pattern for the three-layer r
 
 - **Operator approval on every mutation.** Never write to a knowledge file without explicit approval for each entry.
 - **Serializer only.** Always use `serializeKnowledgeFile` from the forge knowledge module. Never string-splice markdown.
-- **No semantic logic in command handlers.** The `forge.skill.knowledge.compact` command handles mechanical archival only. Semantic grouping and promotion live in this skill.
+- **No semantic logic in command handlers.** The `skill.knowledge.compact` command handles mechanical archival only. Semantic grouping and promotion live in this skill.
 - **No LLM logic in `src/knowledge/`.** Deterministic planning only; meaning work lives here.
 - **Read archives too.** When distilling, read both live and archive files — archived material may still contain themes worth re-distilling.
 
 ## Cross-skill promotion
 
-When `forge.doctor` reports `knowledge-duplicate` warnings (cross-skill L2 entries with matching normalized titles), or when the operator identifies a promotion candidate, execute the promotion protocol:
+When `doctor` reports `knowledge-duplicate` warnings (cross-skill L2 entries with matching normalized titles), or when the operator identifies a promotion candidate, execute the promotion protocol:
 
 ### Promotion protocol
 

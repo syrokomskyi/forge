@@ -102,7 +102,7 @@ knowledge:
   - learned-principles.md
 ```
 
-`forge.skill.validate` enforces SKILL-13: declared knowledge files must exist. `forge.create` syncs them to `.agents/skills/`. `forge.doctor` detects stale copies.
+`skill.validate` enforces SKILL-13: declared knowledge files must exist. `create` syncs them to `.agents/skills/`. `doctor` detects stale copies.
 
 ### Three-layer reference pattern
 
@@ -120,10 +120,10 @@ Not every skill needs all three. `grilling` uses L0 and L2 only (no fix patterns
 
 In addition to the three skill-local layers, there is a fourth tier: the **shared knowledge layer** at `packages/forge/skills/shared/knowledge/learned-principles.md`. This file holds promoted cross-skill principles with `shared/K-NNNN` identifiers.
 
-- **Detection**: `forge.doctor` reports cross-skill duplicate L2 entries via normalized-title matching (exact and bounded containment).
+- **Detection**: `doctor` reports cross-skill duplicate L2 entries via normalized-title matching (exact and bounded containment).
 - **Promotion**: `fo-knowledge-distill` executes promotions under operator grilling — the principle moves to the shared layer with summed confirmations and `promotedFrom` provenance; each skill-local copy is rewritten to a pointer entry (`promotedTo: shared/K-NNNN`, `status: superseded`).
 - **Consumption**: knowledge-adopting skills read the shared layer at run start and cite shared principles as `shared/K-NNNN`.
-- **Validation**: `forge.doctor` validates the shared layer file for schema validity and id uniqueness (it is not inside a skill directory, so `forge.skill.validate` does not reach it).
+- **Validation**: `doctor` validates the shared layer file for schema validity and id uniqueness (it is not inside a skill directory, so `skill.validate` does not reach it).
 - **npm portability**: the shared layer ships as an empty template — accumulated promotions are project-specific.
 
 ### Entry format
@@ -173,12 +173,12 @@ Files declared in `knowledge:` frontmatter that do not use `### K-NNNN:` heading
 
 #### Validation
 
-`forge.skill.validate` enforces:
+`skill.validate` enforces:
 - **SKILL-19**: entry metadata schema validity (errors) and legacy section warnings (migration window).
 - **SKILL-20**: identifier uniqueness (`K-NNNN` format, no duplicates, `supersedes` references resolve, `promotedTo` format).
 - **SKILL-21**: hot (L2) and warm (L1) layer character budget warnings — warnings only, never build gates. Defaults: hot=4096, warm=8192. Override in `forge.yaml` under `bindings.knowledge.budgets`.
 
-`forge.doctor` reports legacy section counts and knowledge budget summaries as informational warnings.
+`doctor` reports legacy section counts and knowledge budget summaries as informational warnings.
 
 ### Reading discipline
 
@@ -195,11 +195,11 @@ L2 entries carry a `confirmations: N` counter. When confirmations reach threshol
 ### Mutation contract
 
 - **Source-of-truth**: `packages/forge/skills/<category>/<name>/`. Skills mutate knowledge files here during runs and commit to main repo. Skills always read from source.
-- **Runtime copy**: `.agents/skills/<name>/`. Synced by `forge.create`. Read-only — skills never write here. The `.agents/` copy exists for consumers who install `@warpgogol/forge` as an npm package.
+- **Runtime copy**: `.agents/skills/<name>/`. Synced by `create`. Read-only — skills never write here. The `.agents/` copy exists for consumers who install `@warpgogol/forge` as an npm package.
 - **Sync**: one-way (source → `.agents/`), never the reverse.
-- **Stale detection**: `forge.doctor` compares source and `.agents/` copies, reports drift as warnings.
+- **Stale detection**: `doctor` compares source and `.agents/` copies, reports drift as warnings.
 
 ### npm portability
 
-`@warpgogol/forge` is published to npm with `skills/` in the `files` array. Knowledge files ship as empty templates (header comments only). Forge's accumulated Q&A and learned principles are project-specific and should not leak to npm consumers. Each project accumulates its own knowledge locally after running `forge.create`.
+`@warpgogol/forge` is published to npm with `skills/` in the `files` array. Knowledge files ship as empty templates (header comments only). Forge's accumulated Q&A and learned principles are project-specific and should not leak to npm consumers. Each project accumulates its own knowledge locally after running `create`.
 ```

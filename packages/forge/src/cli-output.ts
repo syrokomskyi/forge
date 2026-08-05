@@ -50,7 +50,8 @@ Registered commands (${commands.length}):`;
     .map((cmd) => {
       const desc =
         cmd.description.length > 80 ? cmd.description.slice(0, 77) + "..." : cmd.description;
-      return `  ${cmd.name.padEnd(40)} ${desc}`;
+      const displayName = cmd.name.replace(/^forge\./, "");
+      return `  ${displayName.padEnd(40)} ${desc}`;
     })
     .join("\n");
 
