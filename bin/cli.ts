@@ -201,13 +201,15 @@ function resolveForgeRootFromCli(): string | undefined {
 }
 
 function printCommandHelp(registry: ForgeCliRegistry, commandName: string): void {
-  const cmd = registry.getCommand(commandName);
-  if (!cmd) {
+  const resolved = resolveCommandName(commandName, registry);
+  const cmd = resolved ? registry.getCommand(resolved) : undefined;
+  if (!resolved || !cmd) {
     logger.error(`Unknown command: ${commandName}`);
     logger.info(`Run 'forge --help' for available commands.`);
     process.exit(1);
   }
-  console.log(`forge ${cmd.name}`);
+  const displayName = resolved.replace(/^forge\./, "");
+  console.log(`forge ${displayName}`);
   console.log(`\n  ${cmd.description}`);
   if (cmd.flags && Object.keys(cmd.flags).length > 0) {
     console.log("\nFlags:");
@@ -217,6 +219,27 @@ function printCommandHelp(registry: ForgeCliRegistry, commandName: string): void
     }
   }
   process.exit(0);
+}
+
+// ---------------------------------------------------------------------------
+// Command-name resolution (RFC-0699)
+// ---------------------------------------------------------------------------
+
+function resolveCommandName(commandName: string, registry: ForgeCliRegistry): string | undefined {
+  if (registry.getCommand(commandName)) {
+    if (commandName.startsWith("forge.")) {
+      const unqualified = commandName.slice("forge.".length);
+      logger.warn("'" + commandName + "' is deprecated; use '" + unqualified + "'");
+    }
+    return commandName;
+  }
+  if (!commandName.includes(".")) {
+    const qualified = "forge." + commandName;
+    if (registry.getCommand(qualified)) {
+      return qualified;
+    }
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -248,7 +271,8 @@ async function main(): Promise<void> {
   const { flags } = parseArgs(rest);
 
   const registry = await buildRegistry();
-  const command = registry.getCommand(commandName);
+  const resolved = resolveCommandName(commandName, registry);
+  const command = resolved ? registry.getCommand(resolved) : undefined;
 
   if (!command) {
     logger.error(`Unknown command: ${commandName}`);

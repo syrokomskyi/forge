@@ -56,7 +56,7 @@ Before any operator interaction, silently check whether the installed `@warpgogo
 2. If `forge.syncedVersion` is absent or `null`, treat it as "never synced".
 3. Resolve the installed `@warpgogol/forge` version by reading `node_modules/@warpgogol/forge/package.json` (the `version` field). If the file cannot be read (forge not installed yet), skip the version check entirely and proceed to step 1.
 4. If `forge.syncedVersion` equals the installed version — skip to step 1 (language selection). No migration needed.
-5. If versions differ (or `syncedVersion` is `null`/absent) — silently run `forge upgrade --update-npm` via CLI. The agent executes the command internally and does not show any output to the operator. The upgrade updates `@warpgogol/forge` from npm (if not a monorepo), syncs `.agents/skills/`, adds missing binding defaults, updates `forge.syncedVersion`, and runs `forge.doctor` — all invisibly. In a monorepo (where `packages/forge/` exists), the npm update step is skipped automatically and only the sync runs.
+5. If versions differ (or `syncedVersion` is `null`/absent) — silently run `forge upgrade --update-npm` via CLI. The agent executes the command internally and does not show any output to the operator. The upgrade updates `@warpgogol/forge` from npm (if not a monorepo), syncs `.agents/skills/`, adds missing binding defaults, updates `forge.syncedVersion`, and runs `doctor` — all invisibly. In a monorepo (where `packages/forge/` exists), the npm update step is skipped automatically and only the sync runs.
 6. If `forge upgrade` fails — log the error to the session log (not shown to the operator), proceed to step 1 with the old configuration. `forge.syncedVersion` is not updated, so the next `forge-bootstrap` invocation will retry.
 7. Proceed to step 1 (language selection) regardless of success or failure. The operator sees no text about migration, version numbers, or upgrade mechanics.
 
@@ -301,17 +301,17 @@ In the welcoming report (step 11, Section 3 "What was done"), mention RTK in cre
 - If partially installed: "Token optimization was set up but isn't fully active yet. Try restarting your AI assistant, or ask me to check it later."
 - If installation failed: "Token optimization couldn't be installed automatically. I'll show you how to set it up manually when you're ready."
 
-The RTK usage rule is automatically included in the generated `AGENTS.md` by `forge.agents.generate` — the operator does not need to configure it manually.
+The RTK usage rule is automatically included in the generated `AGENTS.md` by `agents.generate` — the operator does not need to configure it manually.
 
 ### 7. Auto-run doctor (new)
 
-The skill runs `forge.doctor` internally — not as a CLI command the operator types. The operator never sees a command or a terminal.
+The skill runs `doctor` internally — not as a CLI command the operator types. The operator never sees a command or a terminal.
 
 If doctor reports issues, the skill presents them in human language (in `aiLanguage`) with proposed solutions. The operator can choose to fix or defer.
 
 If doctor passes, the skill confirms everything is healthy.
 
-If `forge.doctor` is unavailable (forge not installed as devDependency yet), the skill skips auto-doctor and notes it in the report. The operator can ask the agent to run it later.
+If `doctor` is unavailable (forge not installed as devDependency yet), the skill skips auto-doctor and notes it in the report. The operator can ask the agent to run it later.
 
 ### 8. Auto-create ADR (new, both greenfield and transplant, silent)
 
@@ -430,8 +430,8 @@ A short description after every onboarding, read from `forge-about.md`. The skil
 - No adapter matches the source directory → skill reports "no migration adapter detected for this project type" and falls back to the greenfield interview for bindings (no code migration).
 - Multiple adapters match → skill asks the operator to choose.
 - File conflict (source and forge both have the same non-protected file) → skill shows the conflict and asks the operator to choose (source-wins or forge-wins).
-- `forge.doctor` finds issues → skill presents them in human language with proposed solutions; operator can choose to fix or defer.
-- `forge.doctor` is unavailable → skill skips auto-doctor and notes it in the report; operator can ask the agent to run it later.
+- `doctor` finds issues → skill presents them in human language with proposed solutions; operator can choose to fix or defer.
+- `doctor` is unavailable → skill skips auto-doctor and notes it in the report; operator can ask the agent to run it later.
 - Auto-ADR creation fails → skill reports the error silently (in agent logs, not to operator), leaves the ADR file in place for the agent to fix, and continues to the welcoming report. The operator is never told about the ADR.
 - Project analysis finds nothing recommendable (transplant) → skill skips recommendations and proceeds to the welcoming report with a direct invitation to start creating.
 - Git history transfer fails → skill warns and continues with clean `git init`.

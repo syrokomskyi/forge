@@ -15,7 +15,7 @@ bindings:
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the `my-preferences` skill semantics.
 
-Interactive skill for porting reusable patterns from project work into forge. Process: identify pattern → grill operator about portability boundaries → create RFC/ADR if needed → scaffold via `forge.port.scaffold` → implement → validate via `forge.port.validate` → update registry.
+Interactive skill for porting reusable patterns from project work into forge. Process: identify pattern → grill operator about portability boundaries → create RFC/ADR if needed → scaffold via `port.scaffold` → implement → validate via `port.validate` → update registry.
 
 ## Process
 
@@ -38,7 +38,7 @@ If the port involves architectural decisions (new package boundaries, command ow
 
 ### 4. Scaffold
 
-Run `forge.port.scaffold --name <name> --type <skill|command> --category <category>` to generate the skeleton.
+Run `port.scaffold --name <name> --type <skill|command> --category <category>` to generate the skeleton.
 
 ### 5. Implement
 
@@ -50,7 +50,7 @@ Port the implementation, ensuring:
 
 ### 6. Validate
 
-Run `forge.port.validate --name <name>` to verify the ported artifact has no project-specific dependencies.
+Run `port.validate --name <name>` to verify the ported artifact has no project-specific dependencies.
 
 ### 7. Update registry
 
