@@ -21,6 +21,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0661: added knowledge-budgets check — validates override shape, computes per-skill budget reports, reports summary with headroom %.</item>
   <item>RFC-0663: added knowledge-duplicates check (cross-skill L2 duplicate detection) and shared-knowledge-file check (schema/id uniqueness for the shared layer).</item>
   <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
+  <item>RFC-0704: added independent-version-packages check — validates that paths in independentVersionPackages exist and contain package.json.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -611,6 +612,52 @@ function checkSharedKnowledgeFile(
 }
 
 // ---------------------------------------------------------------------------
+// Independent version packages diagnostics (RFC-0704)
+// ---------------------------------------------------------------------------
+
+async function checkIndependentVersionPackages(workspaceRoot: string): Promise<DoctorCheck> {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return { name: "independent-version-packages", status: "pass", message: "No forge.yaml — independent version packages check skipped" };
+  }
+
+  if (!config.independentVersionPackages || config.independentVersionPackages.length === 0) {
+    return { name: "independent-version-packages", status: "pass", message: "No independent version packages declared" };
+  }
+
+  const issues: string[] = [];
+  let validCount = 0;
+
+  for (const pkgPath of config.independentVersionPackages) {
+    const dirExists = await pathExists(join(workspaceRoot, pkgPath));
+    const pkgJsonExists = await pathExists(join(workspaceRoot, pkgPath, "package.json"));
+    if (!dirExists) {
+      issues.push(`path '${pkgPath}' does not exist`);
+    } else if (!pkgJsonExists) {
+      issues.push(`path '${pkgPath}' has no package.json`);
+    } else {
+      validCount++;
+    }
+  }
+
+  if (issues.length === 0) {
+    return {
+      name: "independent-version-packages",
+      status: "pass",
+      message: `${validCount} independent version package${validCount === 1 ? "" : "s"} declared`,
+    };
+  }
+
+  return {
+    name: "independent-version-packages",
+    status: "warn",
+    message: `${issues.length} issue${issues.length === 1 ? "" : "s"}: ${issues.join(", ")}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Pack skill diagnostics (RFC-0539)
 // ---------------------------------------------------------------------------
 
@@ -1177,6 +1224,10 @@ export async function runDoctor(
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
   checks.push(packCheck);
+
+  // RFC-0704: Check independent version packages — paths must exist and contain package.json
+  const independentCheck = await checkIndependentVersionPackages(workspaceRoot);
+  checks.push(independentCheck);
 
   // RFC-0611: Check nested AGENTS.md — missing, stale, hand-written
   // RFC-0640: Use profile-driven workspace types when available (all domains)
