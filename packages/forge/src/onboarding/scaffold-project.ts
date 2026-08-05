@@ -117,10 +117,19 @@ export async function runScaffoldProject(
   }
 
   // Run install commands
+  if (outputFormat === "pretty" && profile.install.length > 0) {
+    logger.info(`Installing ${profile.install.length} root workspace package(s)...`);
+  }
   for (const cmd of profile.install) {
+    if (outputFormat === "pretty") {
+      logger.info(`Running: ${cmd}`);
+    }
     try {
       execSync(cmd, { cwd: workspaceRoot, stdio: "pipe", timeout: 60000 });
       installLog.push(`${cmd} — ok`);
+      if (outputFormat === "pretty") {
+        logger.success(`Finished: ${cmd}`);
+      }
     } catch (err) {
       const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
       const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
@@ -175,10 +184,19 @@ export async function runScaffoldProject(
     }
 
     // Run first workspace install commands
+    if (outputFormat === "pretty" && effectiveFirstWorkspace.install.length > 0) {
+      logger.info(`Installing first workspace packages in ${effectiveFirstWorkspace.path}...`);
+    }
     for (const cmd of effectiveFirstWorkspace.install) {
+      if (outputFormat === "pretty") {
+        logger.info(`Running: ${cmd}`);
+      }
       try {
         execSync(cmd, { cwd: wsDir, stdio: "pipe", timeout: 60000 });
         installLog.push(`${cmd} — ok`);
+        if (outputFormat === "pretty") {
+          logger.success(`Finished: ${cmd}`);
+        }
       } catch (err) {
         const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
         const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
