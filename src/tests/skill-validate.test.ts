@@ -254,16 +254,17 @@ describe("SKILL-21: knowledge layer token budget warnings (RFC-0661)", () => {
   });
 });
 
-describe("ef-composition-review and ef-render-verify skills", () => {
+describe("ef-composition-review, ef-render-verify, and ef-onboard skills", () => {
   const workspaceRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
 
-  test("FORGE_SKILLS registry includes both ef- skills", () => {
+  test("FORGE_SKILLS registry includes all three ef- skills", () => {
     const names = FORGE_SKILLS.map((s) => s.name);
     expect(names).toContain("ef-composition-review");
     expect(names).toContain("ef-render-verify");
+    expect(names).toContain("ef-onboard");
   });
 
-  test("both ef- skills have category fo and concerns read-only", () => {
+  test("ef-composition-review and ef-render-verify have category fo and concerns read-only", () => {
     const review = FORGE_SKILLS.find((s) => s.name === "ef-composition-review");
     const verify = FORGE_SKILLS.find((s) => s.name === "ef-render-verify");
     expect(review).toBeDefined();
@@ -272,6 +273,13 @@ describe("ef-composition-review and ef-render-verify skills", () => {
     expect(review?.concerns).toBe("read-only");
     expect(verify?.category).toBe("fo");
     expect(verify?.concerns).toBe("read-only");
+  });
+
+  test("ef-onboard has category fo and concerns content-mutation", () => {
+    const onboard = FORGE_SKILLS.find((s) => s.name === "ef-onboard");
+    expect(onboard).toBeDefined();
+    expect(onboard?.category).toBe("fo");
+    expect(onboard?.concerns).toBe("content-mutation");
   });
 
   test("forge.skill.validate passes with zero violations for ef-composition-review", () => {
@@ -284,5 +292,11 @@ describe("ef-composition-review and ef-render-verify skills", () => {
     const result = runSkillValidate({}, { workspaceRoot });
     const verifyViolations = result.violations.filter((v) => v.skill === "ef-render-verify");
     expect(verifyViolations).toEqual([]);
+  });
+
+  test("forge.skill.validate passes with zero violations for ef-onboard", () => {
+    const result = runSkillValidate({}, { workspaceRoot });
+    const onboardViolations = result.violations.filter((v) => v.skill === "ef-onboard");
+    expect(onboardViolations).toEqual([]);
   });
 });
