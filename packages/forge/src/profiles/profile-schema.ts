@@ -13,6 +13,8 @@
   <item>RFC-0679: add profileAssetSchema and assets field for asset management commands.</item>
   <item>RFC-0680: add profileReleaseSchema and release field for release lifecycle commands.</item>
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
+  <item>Add prerequisites field for profile-declared system dependency checks (e.g. FFmpeg).</item>
+  <item>Add templates field for multi-template profiles (e.g. React + HTML).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -236,6 +238,55 @@ export interface ProfileRelease {
 }
 
 // ---------------------------------------------------------------------------
+// Profile prerequisite schema
+// ---------------------------------------------------------------------------
+
+export const profilePrerequisiteSchema = z.object({
+  id: z.string().min(1),
+  name: z.string().min(1),
+  check: z.string().min(1),
+  installHint: z.string().optional(),
+  severity: z.enum(["error", "warning"]).default("error"),
+});
+
+export interface ProfilePrerequisite {
+  id: string;
+  name: string;
+  check: string;
+  installHint?: string;
+  severity: "error" | "warning";
+}
+
+// ---------------------------------------------------------------------------
+// Profile template schema (multi-template profiles)
+// ---------------------------------------------------------------------------
+
+export const profileTemplateSchema = z.object({
+  id: z.string().min(1),
+  default: z.boolean().optional(),
+  firstWorkspace: z.object({
+    path: z.string().min(1),
+    files: z.array(
+      z.object({
+        path: z.string().min(1),
+        content: z.string(),
+      }),
+    ),
+    install: z.array(z.string()).default([]),
+  }),
+});
+
+export interface ProfileTemplate {
+  id: string;
+  default?: boolean;
+  firstWorkspace: {
+    path: string;
+    files: Array<{ path: string; content: string }>;
+    install: string[];
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Stack profile domain fields
 // ---------------------------------------------------------------------------
 
@@ -249,6 +300,8 @@ export const stackProfileDomainFieldsSchema = z.object({
   devServer: profileDevServerSchema.optional(),
   assets: profileAssetSchema.optional(),
   release: profileReleaseSchema.optional(),
+  prerequisites: z.array(profilePrerequisiteSchema).optional(),
+  templates: z.array(profileTemplateSchema).optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -261,4 +314,6 @@ export interface StackProfileDomainFields {
   devServer?: ProfileDevServer;
   assets?: ProfileAsset;
   release?: ProfileRelease;
+  prerequisites?: ProfilePrerequisite[];
+  templates?: ProfileTemplate[];
 }

@@ -42,6 +42,7 @@ export async function runScaffoldProject(
   const { workspaceRoot, logger, outputFormat } = context;
   const profileId = input.flags["profile"] as string | undefined;
   const projectName = input.flags["name"] as string | undefined;
+  const templateId = input.flags["template"] as string | undefined;
 
   const created: string[] = [];
   const installLog: string[] = [];
@@ -134,14 +135,34 @@ export async function runScaffoldProject(
     }
   }
 
-  // Create first workspace if defined
-  if (profile.firstWorkspace) {
-    const wsPath = profile.firstWorkspace.path.replace("my-site", projectName).replace("my-game", projectName);
+  // Create first workspace if defined (use template override if --template is provided)
+  let templateError: string | null = null;
+  const effectiveFirstWorkspace = (() => {
+    if (templateId && profile.templates) {
+      const template = profile.templates.find((t) => t.id === templateId);
+      if (template) return template.firstWorkspace;
+      templateError = `Unknown template "${templateId}". Available: ${profile.templates.map((t) => t.id).join(", ")}`;
+      return undefined;
+    }
+    // Use default template if no --template specified and templates exist
+    if (profile.templates && profile.templates.length > 0) {
+      const defaultTemplate = profile.templates.find((t) => t.default) ?? profile.templates[0];
+      return defaultTemplate.firstWorkspace;
+    }
+    return profile.firstWorkspace;
+  })();
+
+  if (templateError) {
+    return fail("forge.scaffold", profileId, templateError, errors, outputFormat, logger);
+  }
+
+  if (effectiveFirstWorkspace) {
+    const wsPath = effectiveFirstWorkspace.path.replace("my-site", projectName).replace("my-game", projectName);
     const wsDir = path.join(workspaceRoot, wsPath);
     fs.mkdirSync(wsDir, { recursive: true });
     created.push(`${wsPath}/`);
 
-    for (const file of profile.firstWorkspace.files) {
+    for (const file of effectiveFirstWorkspace.files) {
       const filePath = path.join(wsDir, file.path);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
       // Replace placeholder names
@@ -151,7 +172,7 @@ export async function runScaffoldProject(
     }
 
     // Run first workspace install commands
-    for (const cmd of profile.firstWorkspace.install) {
+    for (const cmd of effectiveFirstWorkspace.install) {
       try {
         execSync(cmd, { cwd: workspaceRoot, stdio: "pipe", timeout: 60000 });
         installLog.push(`${cmd} — ok`);

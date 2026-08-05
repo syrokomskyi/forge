@@ -21,6 +21,7 @@ artifacts:
   - id: composition
     extensions:
       - .tsx
+      - .html
     produce:
       command: editframe render
       output: dist/{composition}.mp4
@@ -30,6 +31,7 @@ artifacts:
       hashable: true
       inputs:
         - compositions/**/*.tsx
+        - compositions/**/*.html
         - assets/**
 assets:
   dir: assets
@@ -47,6 +49,17 @@ release:
   target: local
   outputDir: release
   manifestName: release-manifest.json
+prerequisites:
+  - id: nodejs
+    name: Node.js 18+
+    check: node --version
+    installHint: "https://nodejs.org/en/download/"
+    severity: error
+  - id: ffmpeg
+    name: FFmpeg
+    check: ffmpeg -version
+    installHint: "https://ffmpeg.org/download.html"
+    severity: error
 workspaceTypes:
   - id: composition
     detect:
@@ -58,41 +71,51 @@ workspaceTypes:
       - ef-composition-review
       - ef-render-verify
     agentsMdTemplate: editframe-templates/composition-agents.md
+  - id: html-composition
+    detect:
+      glob: "*.html"
+      contains: ef-timegroup
+      packageJsonDep: "@editframe/cli"
+    skills:
+      - ef-onboard
+      - ef-composition-review
+      - ef-render-verify
+    agentsMdTemplate: editframe-templates/html-composition-agents.md
 invariants:
   - id: VIDEO-01
     rule: Composition filenames must use kebab-case (lowercase letters, digits, hyphens only)
     severity: error
     check:
       kind: filename-pattern
-      glob: "compositions/**/*.tsx"
-      pattern: "^[a-z0-9-]+\\.tsx$"
+      glob: "compositions/**/*.{tsx,html}"
+      pattern: "^[a-z0-9-]+\\.(tsx|html)$"
   - id: VIDEO-02
     rule: Scene durations must use contain mode by default to avoid unexpected cropping
     severity: warning
     check:
       kind: file-contains
-      glob: "compositions/**/*.tsx"
+      glob: "compositions/**/*.{tsx,html}"
       pattern: contain
   - id: VIDEO-03
     rule: All speech audio elements must have corresponding Captions components for accessibility
     severity: error
     check:
       kind: file-contains
-      glob: "compositions/**/*.tsx"
+      glob: "compositions/**/*.{tsx,html}"
       pattern: Captions
   - id: VIDEO-04
     rule: Root Timegroup must declare duration or use mode="contain" or mode="fit"
     severity: error
     check:
       kind: file-contains
-      glob: "compositions/**/*.tsx"
-      pattern: 'Timegroup[^>]*(duration|mode="contain"|mode="fit")[^>]*>'
+      glob: "compositions/**/*.{tsx,html}"
+      pattern: 'Timegroup[^>]*(duration|mode="contain"|mode="fit")[^>]*>|ef-timegroup[^>]*(duration|mode="contain"|mode="fit")[^>]*>'
   - id: VIDEO-05
     rule: All duration values must be valid CSS time strings (e.g. 5s, 500ms, 2.5s)
     severity: error
     check:
       kind: attribute-pattern
-      glob: "compositions/**/*.tsx"
+      glob: "compositions/**/*.{tsx,html}"
       elements:
         - ef-timegroup
         - Timegroup
@@ -103,7 +126,7 @@ invariants:
     severity: error
     check:
       kind: attribute-pattern
-      glob: "compositions/**/*.tsx"
+      glob: "compositions/**/*.{tsx,html}"
       elements:
         - ef-timegroup
         - Timegroup
@@ -114,7 +137,7 @@ invariants:
     severity: warning
     check:
       kind: attribute-pattern
-      glob: "compositions/**/*.tsx"
+      glob: "compositions/**/*.{tsx,html}"
       elements:
         - ef-timegroup
         - Timegroup
@@ -125,14 +148,14 @@ invariants:
     severity: warning
     check:
       kind: file-not-contains
-      glob: "compositions/**/*.tsx"
-      negatedPattern: "<Timegroup[^>]*loop[^>]*>[\\s\\S]*<Timegroup[^>]*loop"
+      glob: "compositions/**/*.{tsx,html}"
+      negatedPattern: "<(Timegroup|ef-timegroup)[^>]*loop[^>]*>[\\s\\S]*<(Timegroup|ef-timegroup)[^>]*loop"
   - id: VIDEO-09
     rule: offset values must be valid CSS time strings (e.g. 0.5s, 3s, 500ms)
     severity: warning
     check:
       kind: attribute-pattern
-      glob: "compositions/**/*.tsx"
+      glob: "compositions/**/*.{tsx,html}"
       elements:
         - ef-timegroup
         - Timegroup
@@ -321,7 +344,7 @@ workspace:
 
         console.log(`Cleaned ${toDelete.length} directories.`);
 install:
-  - pnpm add -D @editframe/react @editframe/cli @editframe/vite-plugin @warpgogol/forge turbo prettier react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite
+  - pnpm add -D @editframe/cli @warpgogol/forge turbo prettier
 firstWorkspace:
   path: compositions/my-first-video
   files:
@@ -368,4 +391,88 @@ firstWorkspace:
           );
         }
   install:
-    - pnpm add -D vitest
+    - pnpm add -D @editframe/react @editframe/vite-plugin react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
+templates:
+  - id: react
+    default: true
+    firstWorkspace:
+      path: compositions/my-first-video
+      files:
+        - path: package.json
+          content: |
+            {
+              "name": "my-first-video",
+              "version": "0.1.0",
+              "private": true,
+              "type": "module",
+              "scripts": {
+                "preview": "editframe preview",
+                "render": "editframe render -o dist/my-first-video.mp4",
+                "check": "editframe check"
+              }
+            }
+        - path: composition.tsx
+          content: |
+            /*
+              Editframe React composition — my-first-video
+              This file declares a video composition using @editframe/react components.
+              Run `editframe preview` to preview, `editframe render` to produce output.
+            */
+            import { TimelineRoot, Timegroup, Video, Text, Audio, Captions } from "@editframe/react";
+
+            export default function Composition() {
+              return (
+                <TimelineRoot>
+                  <Timegroup duration="10s">
+                    <Video src="assets/background.mp4" fit="contain" duration="10s" />
+                    <Text
+                      text="Hello, Editframe!"
+                      x="50%"
+                      y="50%"
+                      fontSize="48px"
+                      color="white"
+                      textAlign="center"
+                      duration="5s"
+                    />
+                    <Audio src="assets/narration.mp3" />
+                    <Captions src="assets/captions.vtt" />
+                  </Timegroup>
+                </TimelineRoot>
+              );
+            }
+      install:
+        - pnpm add -D @editframe/react @editframe/vite-plugin react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
+  - id: html
+    firstWorkspace:
+      path: compositions/my-first-video
+      files:
+        - path: package.json
+          content: |
+            {
+              "name": "my-first-video",
+              "version": "0.1.0",
+              "private": true,
+              "type": "module",
+              "scripts": {
+                "preview": "editframe preview",
+                "render": "editframe render -o dist/my-first-video.mp4",
+                "check": "editframe check"
+              }
+            }
+        - path: index.html
+          content: |
+            <!--
+              Editframe HTML composition — my-first-video
+              This file declares a video composition using Editframe web components.
+              Run `editframe preview` to preview, `editframe render` to produce output.
+            -->
+            <ef-timeline duration="10s">
+              <ef-timegroup duration="10s" mode="contain">
+                <ef-video src="assets/background.mp4" fit="contain" duration="10s"></ef-video>
+                <ef-text text="Hello, Editframe!" x="50%" y="50%" font-size="48px" color="white" text-align="center" duration="5s"></ef-text>
+                <ef-audio src="assets/narration.mp3"></ef-audio>
+                <ef-captions src="assets/captions.vtt"></ef-captions>
+              </ef-timegroup>
+            </ef-timeline>
+      install:
+        - pnpm add -D vitest

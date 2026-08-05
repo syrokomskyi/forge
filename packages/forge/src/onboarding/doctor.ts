@@ -51,6 +51,8 @@ import type { DuplicatePair } from "../knowledge/index.ts";
 import { checkMemoryLayerHealth } from "./memory-scaffold.ts";
 import { checkInvariants } from "./invariant-engine.ts";
 import type { InvariantViolation } from "./invariant-engine.ts";
+import { execSync } from "node:child_process";
+import type { ProfilePrerequisite } from "../profiles/profile-schema.ts";
 
 interface DoctorCheck {
   name: string;
@@ -947,6 +949,41 @@ function checkMemoryLayer(workspaceRoot: string): DoctorCheck {
   };
 }
 
+// ---------------------------------------------------------------------------
+// Prerequisite checks (profile-declared system dependencies)
+// ---------------------------------------------------------------------------
+
+function checkPrerequisites(prerequisites: ProfilePrerequisite[]): DoctorCheck {
+  if (prerequisites.length === 0) {
+    return { name: "prerequisites", status: "pass", message: "No prerequisites declared" };
+  }
+
+  const results: Array<{ id: string; name: string; status: "pass" | "fail"; message: string }> = [];
+
+  for (const prereq of prerequisites) {
+    try {
+      execSync(prereq.check, { stdio: "pipe", timeout: 10000 });
+      results.push({ id: prereq.id, name: prereq.name, status: "pass", message: `${prereq.name} found` });
+    } catch {
+      const hint = prereq.installHint ? ` — install: ${prereq.installHint}` : "";
+      results.push({ id: prereq.id, name: prereq.name, status: "fail", message: `${prereq.name} not found${hint}` });
+    }
+  }
+
+  const failed = results.filter((r) => r.status === "fail");
+  const hasErrors = failed.some((r) => prerequisites.find((p) => p.id === r.id)?.severity === "error");
+  const hasWarnings = failed.some((r) => prerequisites.find((p) => p.id === r.id)?.severity === "warning");
+
+  const status: DoctorCheck["status"] = hasErrors ? "fail" : hasWarnings ? "warn" : "pass";
+
+  const parts = results.map((r) => `${r.name}: ${r.status === "pass" ? "ok" : "missing"}`);
+  return {
+    name: "prerequisites",
+    status,
+    message: `${results.length} prerequisite(s): ${parts.join(", ")}`,
+  };
+}
+
 export async function runDoctor(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -1067,6 +1104,15 @@ export async function runDoctor(
       message: parts.join("; "),
       invariantViolations: allViolations.length > 0 ? allViolations : undefined,
     });
+  }
+
+  // Prerequisite checks (profile-declared system dependencies)
+  if (domainReport.profileId) {
+    const profiles = listStackProfiles(forgeRoot);
+    const profile = profiles.find((p) => p.id === domainReport.profileId);
+    if (profile?.prerequisites && profile.prerequisites.length > 0) {
+      checks.push(checkPrerequisites(profile.prerequisites));
+    }
   }
 
   // RFC-0640: Run forge.profile.validate as advisory check (warn on failure, not fail)

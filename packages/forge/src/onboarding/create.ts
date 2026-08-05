@@ -99,6 +99,7 @@ export async function runCreate(
   const name = input.flags["name"] as string | undefined;
   const profile = (input.flags["profile"] as string | undefined) ?? "forge-shell";
   const packageManager = (input.flags["package-manager"] as string | undefined) ?? "pnpm";
+  const template = input.flags["template"] as string | undefined;
 
   const errors: string[] = [];
 
@@ -184,7 +185,7 @@ export async function runCreate(
   // 6. Run forge.scaffold inside target dir
   const scaffoldInput: ForgeCommandInput = {
     argv: [],
-    flags: { profile, name },
+    flags: { profile, name, ...(template ? { template } : {}) },
   };
   const scaffoldResult = await runScaffoldProject(scaffoldInput, childContext);
   if (scaffoldResult.exitCode !== 0) {
@@ -282,13 +283,15 @@ Your Forge project is ready. You have two options — just tell the AI agent wha
 
 Tell the AI agent what you want to build. Describe your idea in your own words — a website, a game, a blog, a tool — and the system will set everything up and start creating with you.
 
+The agent will run \`/forge-bootstrap\` to configure your project interactively (language, stack bindings, git init).
+
 ## Option B: Bring your existing project
 
 If you already have a project elsewhere and want to move it into Forge, tell the AI agent:
 
 > I want to bring my existing project into Forge.
 
-The system will guide you through the process — it detects your project type, migrates the code, and preserves your Git history.
+The system will guide you through the process — it detects your project type, migrates the code (including \`.env\` and git-ignored files), optionally transfers git history, and verifies the build.
 
 ---
 

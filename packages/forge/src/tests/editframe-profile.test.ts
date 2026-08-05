@@ -97,17 +97,57 @@ test("editframe profile includes @warpgogol/forge in install steps", () => {
   expect(hasForge).toBe(true);
 });
 
-test("editframe profile invariants use attribute-pattern with elements array", () => {
+test("editframe profile declares prerequisites for Node.js and FFmpeg", () => {
   const profile = loadStackProfile(PROFILE_PATH);
-  const attrPatternInvariants = profile.invariants?.filter(
-    (i) => i.check?.kind === "attribute-pattern",
-  );
-  expect(attrPatternInvariants?.length).toBeGreaterThanOrEqual(4);
-  for (const inv of attrPatternInvariants ?? []) {
-    expect(inv.check?.elements).toBeDefined();
-    expect(inv.check?.elements?.length).toBeGreaterThan(0);
-    expect(inv.check?.elements).toContain("Timegroup");
-    expect(inv.check?.attribute).toBeDefined();
-    expect(inv.check?.pattern).toBeDefined();
+  expect(profile.prerequisites).toBeDefined();
+  expect(profile.prerequisites?.length).toBeGreaterThanOrEqual(2);
+  const nodePrereq = profile.prerequisites?.find((p) => p.id === "nodejs");
+  expect(nodePrereq).toBeDefined();
+  expect(nodePrereq?.check).toBe("node --version");
+  expect(nodePrereq?.severity).toBe("error");
+  const ffmpegPrereq = profile.prerequisites?.find((p) => p.id === "ffmpeg");
+  expect(ffmpegPrereq).toBeDefined();
+  expect(ffmpegPrereq?.check).toBe("ffmpeg -version");
+  expect(ffmpegPrereq?.severity).toBe("error");
+});
+
+test("editframe profile declares templates with react (default) and html", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  expect(profile.templates).toBeDefined();
+  expect(profile.templates?.length).toBe(2);
+  const reactTemplate = profile.templates?.find((t) => t.id === "react");
+  expect(reactTemplate).toBeDefined();
+  expect(reactTemplate?.default).toBe(true);
+  const reactTsx = reactTemplate?.firstWorkspace.files.find((f) => f.path === "composition.tsx");
+  expect(reactTsx).toBeDefined();
+  expect(reactTsx?.content).toContain("TimelineRoot");
+  const htmlTemplate = profile.templates?.find((t) => t.id === "html");
+  expect(htmlTemplate).toBeDefined();
+  expect(htmlTemplate?.default).toBeUndefined();
+  const htmlFile = htmlTemplate?.firstWorkspace.files.find((f) => f.path === "index.html");
+  expect(htmlFile).toBeDefined();
+  expect(htmlFile?.content).toContain("ef-timegroup");
+});
+
+test("editframe profile declares html-composition workspace type", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  const htmlType = profile.workspaceTypes?.find((w) => w.id === "html-composition");
+  expect(htmlType).toBeDefined();
+  expect(htmlType?.detect.glob).toBe("*.html");
+  expect(htmlType?.detect.contains).toBe("ef-timegroup");
+});
+
+test("editframe profile invariants cover both .tsx and .html files", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  const allGlobs = profile.invariants?.map((i) => i.check?.glob) ?? [];
+  for (const glob of allGlobs) {
+    expect(glob).toContain("{tsx,html}");
   }
+});
+
+test("editframe profile artifacts include .html extension", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  const composition = profile.artifacts?.find((a) => a.id === "composition");
+  expect(composition?.extensions).toContain(".html");
+  expect(composition?.extensions).toContain(".tsx");
 });

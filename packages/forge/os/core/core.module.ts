@@ -254,6 +254,11 @@ export const forgeCoreModule: ForgeModule = {
           description: "Stack profile id (e.g. astro-typescript-turborepo).",
         },
         name: { kind: "string", required: true, description: "Project name (kebab-case)." },
+        template: {
+          kind: "string",
+          required: false,
+          description: "Template id for multi-template profiles (e.g. react, html).",
+        },
       },
       cacheable: false,
       execute: runScaffoldProject,
@@ -285,6 +290,10 @@ export const forgeCoreModule: ForgeModule = {
         "package-manager": {
           kind: "string",
           description: "Package manager to write into forge.yaml (default: pnpm).",
+        },
+        template: {
+          kind: "string",
+          description: "Template id for multi-template profiles (e.g. react, html).",
         },
       },
       cacheable: false,
