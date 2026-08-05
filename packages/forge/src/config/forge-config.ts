@@ -20,6 +20,7 @@
   <item>RFC-0643: added optional profile field to forgeConfigSchema and ForgeConfig; loadForgeConfig loads profiles/<id>.yaml when present.</item>
   <item>RFC-0661: added optional knowledge.budgets binding for hot/warm layer character budget overrides.</item>
   <item>RFC-0662: added optional knowledge.retentionDays and knowledge.staleDays bindings for compaction overrides.</item>
+  <item>RFC-0704: added optional independentVersionPackages field to forgeConfigSchema for packages with autonomous npm versions.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -204,6 +205,8 @@ export const forgeConfigSchema = z.object({
     .optional(),
   /** RFC-0643: profile id — when present, loadForgeConfig loads the corresponding profiles/<id>.yaml */
   profile: z.string().optional(),
+  /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
+  independentVersionPackages: z.array(z.string()).optional(),
 });
 
 export interface ForgeConfig {
@@ -234,6 +237,8 @@ export interface ForgeConfig {
   forge?: { syncedVersion: string | null };
   /** RFC-0643: loaded stack profile — present when forge.yaml has a `profile` field */
   profile?: StackProfile;
+  /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
+  independentVersionPackages?: string[];
 }
 
 // ---------------------------------------------------------------------------
