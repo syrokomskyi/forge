@@ -173,6 +173,9 @@ workspace:
           - "compositions/*"
           - "packages/*"
           - "services/*"
+        allowBuilds:
+          "@editframe/cli": true
+          node-av: true
     - path: turbo.json
       content: |
         {
@@ -390,6 +393,8 @@ firstWorkspace:
       content: |
         import React from "react";
         import { createRoot } from "react-dom/client";
+        import "@editframe/elements/gui";
+        import "@editframe/elements/styles.css";
         import Composition from "../composition";
 
         const root = document.getElementById("root");
@@ -404,10 +409,14 @@ firstWorkspace:
       content: |
         import { defineConfig } from "vite";
         import react from "@vitejs/plugin-react";
-        import editframePlugin from "@editframe/vite-plugin";
+        import { vitePluginEditframe as editframePlugin } from "@editframe/vite-plugin";
+        import path from "node:path";
+
+        const root = import.meta.dirname;
+        const cacheRoot = path.join(root, ".ef-cache");
 
         export default defineConfig({
-          plugins: [react(), editframePlugin()],
+          plugins: [react(), editframePlugin({ root, cacheRoot })],
         });
     - path: tsconfig.json
       content: |
@@ -432,7 +441,7 @@ firstWorkspace:
           This file declares a video composition using @editframe/react components.
           Run `editframe preview` to preview, `editframe render` to produce output.
         */
-        import { TimelineRoot, Timegroup, Text } from "@editframe/react";
+        import { Configuration, TimelineRoot, Timegroup, Text, Workbench } from "@editframe/react";
 
         function Timeline({ id }: { id: string }) {
           return (
@@ -451,10 +460,16 @@ firstWorkspace:
         }
 
         export default function Composition() {
-          return <TimelineRoot id="root" component={Timeline} />;
+          return (
+            <Configuration>
+              <Workbench resolution="1920x1080">
+                <TimelineRoot id="root" component={Timeline} />
+              </Workbench>
+            </Configuration>
+          );
         }
   install:
-    - pnpm add -D @editframe/react @editframe/vite-plugin @editframe/dev-server react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
+    - pnpm add -D @editframe/react @editframe/elements @editframe/vite-plugin @editframe/dev-server react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
 templates:
   - id: react
     default: true
@@ -492,6 +507,8 @@ templates:
           content: |
             import React from "react";
             import { createRoot } from "react-dom/client";
+            import "@editframe/elements/gui";
+            import "@editframe/elements/styles.css";
             import Composition from "../composition";
 
             const root = document.getElementById("root");
@@ -506,10 +523,14 @@ templates:
           content: |
             import { defineConfig } from "vite";
             import react from "@vitejs/plugin-react";
-            import editframePlugin from "@editframe/vite-plugin";
+            import { vitePluginEditframe as editframePlugin } from "@editframe/vite-plugin";
+            import path from "node:path";
+
+            const root = import.meta.dirname;
+            const cacheRoot = path.join(root, ".ef-cache");
 
             export default defineConfig({
-              plugins: [react(), editframePlugin()],
+              plugins: [react(), editframePlugin({ root, cacheRoot })],
             });
         - path: tsconfig.json
           content: |
@@ -534,7 +555,7 @@ templates:
               This file declares a video composition using @editframe/react components.
               Run `editframe preview` to preview, `editframe render` to produce output.
             */
-            import { TimelineRoot, Timegroup, Text } from "@editframe/react";
+            import { Configuration, TimelineRoot, Timegroup, Text, Workbench } from "@editframe/react";
 
             function Timeline({ id }: { id: string }) {
               return (
@@ -553,10 +574,16 @@ templates:
             }
 
             export default function Composition() {
-              return <TimelineRoot id="root" component={Timeline} />;
+              return (
+                <Configuration>
+                  <Workbench resolution="1920x1080">
+                    <TimelineRoot id="root" component={Timeline} />
+                  </Workbench>
+                </Configuration>
+              );
             }
       install:
-        - pnpm add -D @editframe/react @editframe/vite-plugin @editframe/dev-server react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
+        - pnpm add -D @editframe/react @editframe/elements @editframe/vite-plugin @editframe/dev-server react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
   - id: html
     firstWorkspace:
       path: compositions/my-first-video
