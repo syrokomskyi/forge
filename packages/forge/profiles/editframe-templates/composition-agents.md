@@ -22,8 +22,7 @@ Additional time model invariants (VIDEO-04 through VIDEO-09) may be available. R
 
 Editframe compositions use a time model based on `Timegroup` components from `@editframe/react`:
 
-- **`TimelineRoot`** — the root container for the composition.
-- **`Timegroup`** — a container that groups scenes and controls timing. The root Timegroup defines the composition's total duration.
+- **`Timegroup`** — a container that groups scenes and controls timing. The root Timegroup defines the composition's total duration. Inside a `Workbench`, use `Timegroup` directly as the root temporal element — do NOT wrap it in `TimelineRoot`, which renders a `<div style="display: contents">` wrapper that breaks Workbench's DOM structure.
 - **`mode`** — timing behavior for children: `sequence` (play one after another), `fixed` (play at absolute offset), `contain` (fit within parent duration), `fit` (scale to fit).
 - **`duration`** — CSS time string (e.g. `5s`, `300ms`, `2.5s`) defining how long the element plays.
 - **`offset`** — CSS time string defining when the element starts relative to its parent.
@@ -32,7 +31,7 @@ Editframe compositions use a time model based on `Timegroup` components from `@e
 
 ## Workflow
 
-1. Create a `.tsx` file with `@editframe/react` components (`TimelineRoot`, `Timegroup`, `Video`, `Audio`, `Text`, `Captions`).
+1. Create a `.tsx` file with `@editframe/react` components (`Workbench`, `Configuration`, `Timegroup`, `Video`, `Audio`, `Text`, `Captions`). Use `Timegroup` as the root temporal element inside `Workbench > Configuration` — do NOT use `TimelineRoot` inside `Workbench`.
 2. Run `editframe preview` to preview the composition in the browser.
 3. Run `ef-composition-review` to review the composition for time model correctness, accessibility, and best practices.
 4. Run `editframe check` to validate the composition structure.

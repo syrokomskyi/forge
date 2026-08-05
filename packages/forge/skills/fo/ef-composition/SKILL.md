@@ -27,18 +27,27 @@ Web component attributes use kebab-case (`file-id`, `api-host`). React props use
 ## Quick Start
 
 ```tsx
-import { TimelineRoot, Timegroup, Video, Text, Audio, Captions } from "@editframe/react";
+import { Configuration, Timegroup, Video, Text, Audio, Captions, Workbench } from "@editframe/react";
 
 export default function Composition() {
   return (
-    <TimelineRoot>
-      <Timegroup duration="10s">
-        <Video src="assets/background.mp4" fit="contain" duration="10s" />
-        <Text text="Hello, Editframe!" x="50%" y="50%" fontSize="48px" color="white" duration="5s" />
-        <Audio src="assets/narration.mp3" />
-        <Captions src="assets/captions.vtt" />
-      </Timegroup>
-    </TimelineRoot>
+    <Workbench resolution="1920x1080">
+      <Configuration>
+        <Timegroup
+          id="root"
+          duration="10s"
+          mode="contain"
+          style={{ width: "1920px", height: "1080px", background: "#000", display: "flex", alignItems: "center", justifyContent: "center" }}
+        >
+          <Video src="assets/background.mp4" fit="contain" duration="10s" />
+          <Text duration="5s" style={{ color: "white", fontSize: "48px", textAlign: "center" }}>
+            Hello, Editframe!
+          </Text>
+          <Audio src="assets/narration.mp3" />
+          <Captions src="assets/captions.vtt" />
+        </Timegroup>
+      </Configuration>
+    </Workbench>
   );
 }
 ```
@@ -55,7 +64,7 @@ Run `ref(forge.yaml bindings.commands.devServer)` to preview. Run `ref(forge.yam
 
 ### Time model
 
-A composition is a tree of `Timegroup` elements. The root `Timegroup` defines the composition's total duration. Child elements inherit timing context from their parent.
+A composition is a tree of `Timegroup` elements. The root `Timegroup` defines the composition's total duration. Child elements inherit timing context from their parent. Inside a `Workbench`, use `Timegroup` directly as the root temporal element — do NOT wrap it in `TimelineRoot`, which renders a `<div style="display: contents">` wrapper that breaks Workbench's DOM structure.
 
 ### Timegroups and sequencing
 
@@ -136,7 +145,7 @@ For 3D in a Web Worker, use `OffscreenCompositionCanvas` with `@react-three/offs
 | `ef-timegroup` | `Timegroup` | `duration`, `mode`, `fps`, `offset`, `loop` |
 | `ef-video` | `Video` | `src`, `fit`, `duration`, `fileId`, `sourcein`, `sourceout`, `trimstart`, `trimend` |
 | `ef-audio` | `Audio` | `src`, `duration`, `volume`, `mute`, `loop`, `fftSize`, `fftGain` |
-| `ef-text` | `Text` | `text`, `x`, `y`, `fontSize`, `color`, `textAlign`, `duration`, `split`, `stagger` |
+| `ef-text` | `Text` | `duration`, `split`, `stagger` — text content passed as children, styling via `style` prop or CSS classes |
 | `ef-captions` | `Captions` | `captionsSrc`, `captionsScript`, `target`, `wordStyle`, `duration` |
 | `ef-image` | `Image` | `src`, `fit`, `duration`, `fileId` |
 | `ef-waveform` | `Waveform` | `target`, `mode`, `color` |

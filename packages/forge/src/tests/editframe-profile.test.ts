@@ -6,6 +6,7 @@
   <item>RFC-0641: initial editframe-html profile tests.</item>
   <item>RFC-0694: update for editframe profile rename and React template.</item>
   <item>Bootstrap fix: regression tests for 7 editframe React template bugs (vite import, plugin options, Configuration/Workbench wrappers, elements/gui+styles imports, @editframe/elements dep, allowBuilds).</item>
+  <item>Expert report fix: remove TimelineRoot from templates (breaks Workbench DOM), Text as children with style prop, Timegroup with explicit dimensions, main.tsx height 100% + ef-workbench display:grid override, tailwindcss plugin in vite.config.ts, src/index.css with tailwindcss import.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -62,7 +63,7 @@ test("editframe profile declares workspaceTypes with composition detection marke
   const compositionType = profile.workspaceTypes?.find((w) => w.id === "composition");
   expect(compositionType).toBeDefined();
   expect(compositionType?.detect.glob).toBe("*.tsx");
-  expect(compositionType?.detect.contains).toBe("TimelineRoot");
+  expect(compositionType?.detect.contains).toBe("Timegroup");
   expect(compositionType?.detect.packageJsonDep).toBe("@editframe/react");
 });
 
@@ -89,8 +90,9 @@ test("editframe profile includes first workspace template with sample React comp
   expect(profile.firstWorkspace?.path).toBe("compositions/my-first-video");
   const tsxFile = profile.firstWorkspace?.files.find((f) => f.path === "composition.tsx");
   expect(tsxFile).toBeDefined();
-  expect(tsxFile?.content).toContain("TimelineRoot");
+  expect(tsxFile?.content).toContain("Timegroup");
   expect(tsxFile?.content).toContain("@editframe/react");
+  expect(tsxFile?.content).not.toContain("TimelineRoot");
 });
 
 test("editframe profile includes @warpgogol/forge in install steps", () => {
@@ -122,7 +124,8 @@ test("editframe profile declares templates with react (default) and html", () =>
   expect(reactTemplate?.default).toBe(true);
   const reactTsx = reactTemplate?.firstWorkspace.files.find((f) => f.path === "composition.tsx");
   expect(reactTsx).toBeDefined();
-  expect(reactTsx?.content).toContain("TimelineRoot");
+  expect(reactTsx?.content).toContain("Timegroup");
+  expect(reactTsx?.content).not.toContain("TimelineRoot");
   const htmlTemplate = profile.templates?.find((t) => t.id === "html");
   expect(htmlTemplate).toBeDefined();
   expect(htmlTemplate?.default).toBeUndefined();
@@ -231,4 +234,92 @@ test("reference template composition.tsx includes Configuration and Workbench", 
   const content = readFileSync(templatePath, "utf8");
   expect(content).toContain("Configuration");
   expect(content).toContain("Workbench");
+  expect(content).not.toContain("TimelineRoot");
+});
+
+// --- Template bug-fix regression tests (6 fixes from expert report) ---
+
+test("bug 1: composition.tsx does not use TimelineRoot inside Workbench", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).not.toContain("TimelineRoot");
+    expect(tsxFile?.content).toContain("<Workbench");
+    expect(tsxFile?.content).toContain("<Configuration>");
+    expect(tsxFile?.content).toContain("<Timegroup");
+  }
+});
+
+test("bug 2: main.tsx includes ef-workbench display:grid override", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const mainFile = files.find((f) => f.path === "src/main.tsx");
+    expect(mainFile, `${label}: src/main.tsx should exist`).toBeDefined();
+    expect(mainFile?.content).toContain("ef-workbench { display: grid; }");
+  }
+});
+
+test("bug 3: main.tsx sets height 100% on html, body, and #root", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const mainFile = files.find((f) => f.path === "src/main.tsx");
+    expect(mainFile, `${label}: src/main.tsx should exist`).toBeDefined();
+    expect(mainFile?.content).toContain('document.documentElement.style.height = "100%"');
+    expect(mainFile?.content).toContain('document.body.style.height = "100%"');
+    expect(mainFile?.content).toContain('document.body.style.margin = "0"');
+    expect(mainFile?.content).toContain('rootEl.style.height = "100%"');
+  }
+});
+
+test("bug 4: Text uses style prop for visual styling, not HTML attributes", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).not.toContain('fontSize="48px"');
+    expect(tsxFile?.content).not.toContain('color="white"');
+    expect(tsxFile?.content).toContain(
+      'style={{ color: "white", fontSize: "48px", textAlign: "center" }}',
+    );
+  }
+});
+
+test("bug 5: Timegroup has explicit dimensions matching resolution", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).toContain('width: "1920px"');
+    expect(tsxFile?.content).toContain('height: "1080px"');
+  }
+});
+
+test("bug 6: Text content passed as children, not text prop", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).not.toContain('text="Hello');
+    expect(tsxFile?.content).toContain("Hello, Editframe!");
+  }
+});
+
+test("bonus: vite.config.ts includes tailwindcss plugin", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const viteFile = files.find((f) => f.path === "vite.config.ts");
+    expect(viteFile, `${label}: vite.config.ts should exist`).toBeDefined();
+    expect(viteFile?.content).toContain("@tailwindcss/vite");
+    expect(viteFile?.content).toContain("tailwindcss()");
+  }
+});
+
+test("bonus: src/index.css exists with tailwindcss import", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const cssFile = files.find((f) => f.path === "src/index.css");
+    expect(cssFile, `${label}: src/index.css should exist`).toBeDefined();
+    expect(cssFile?.content).toContain('@import "tailwindcss"');
+  }
 });

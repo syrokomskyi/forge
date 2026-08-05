@@ -64,7 +64,7 @@ workspaceTypes:
   - id: composition
     detect:
       glob: "*.tsx"
-      contains: TimelineRoot
+      contains: Timegroup
       packageJsonDep: "@editframe/react"
     skills:
       - ef-onboard
@@ -397,6 +397,16 @@ firstWorkspace:
         import "@editframe/elements/styles.css";
         import Composition from "../composition";
 
+        document.documentElement.style.height = "100%";
+        document.body.style.height = "100%";
+        document.body.style.margin = "0";
+        const rootEl = document.getElementById("root");
+        if (rootEl) rootEl.style.height = "100%";
+
+        const styleOverride = document.createElement("style");
+        styleOverride.textContent = "ef-workbench { display: grid; }";
+        document.head.appendChild(styleOverride);
+
         const root = document.getElementById("root");
         if (!root) throw new Error("#root element not found");
 
@@ -410,13 +420,14 @@ firstWorkspace:
         import { defineConfig } from "vite";
         import react from "@vitejs/plugin-react";
         import { vitePluginEditframe as editframePlugin } from "@editframe/vite-plugin";
+        import tailwindcss from "@tailwindcss/vite";
         import path from "node:path";
 
         const root = import.meta.dirname;
         const cacheRoot = path.join(root, ".ef-cache");
 
         export default defineConfig({
-          plugins: [react(), editframePlugin({ root, cacheRoot })],
+          plugins: [react(), tailwindcss(), editframePlugin({ root, cacheRoot })],
         });
     - path: tsconfig.json
       content: |
@@ -434,6 +445,9 @@ firstWorkspace:
           },
           "include": ["src", "composition.tsx", "vite.config.ts"]
         }
+    - path: src/index.css
+      content: |
+        @import "tailwindcss";
     - path: composition.tsx
       content: |
         /*
@@ -441,31 +455,34 @@ firstWorkspace:
           This file declares a video composition using @editframe/react components.
           Run `editframe preview` to preview, `editframe render` to produce output.
         */
-        import { Configuration, TimelineRoot, Timegroup, Text, Workbench } from "@editframe/react";
-
-        function Timeline({ id }: { id: string }) {
-          return (
-            <Timegroup id={id} duration="10s" mode="contain">
-              <Text
-                text="Hello, Editframe!"
-                x="50%"
-                y="50%"
-                fontSize="48px"
-                color="white"
-                textAlign="center"
-                duration="5s"
-              />
-            </Timegroup>
-          );
-        }
+        import { Configuration, Timegroup, Text, Workbench } from "@editframe/react";
 
         export default function Composition() {
           return (
-            <Configuration>
-              <Workbench resolution="1920x1080">
-                <TimelineRoot id="root" component={Timeline} />
-              </Workbench>
-            </Configuration>
+            <Workbench resolution="1920x1080">
+              <Configuration>
+                <Timegroup
+                  id="root"
+                  duration="10s"
+                  mode="contain"
+                  style={{
+                    width: "1920px",
+                    height: "1080px",
+                    background: "#000",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <Text
+                    duration="5s"
+                    style={{ color: "white", fontSize: "48px", textAlign: "center" }}
+                  >
+                    Hello, Editframe!
+                  </Text>
+                </Timegroup>
+              </Configuration>
+            </Workbench>
           );
         }
   install:
@@ -511,6 +528,16 @@ templates:
             import "@editframe/elements/styles.css";
             import Composition from "../composition";
 
+            document.documentElement.style.height = "100%";
+            document.body.style.height = "100%";
+            document.body.style.margin = "0";
+            const rootEl = document.getElementById("root");
+            if (rootEl) rootEl.style.height = "100%";
+
+            const styleOverride = document.createElement("style");
+            styleOverride.textContent = "ef-workbench { display: grid; }";
+            document.head.appendChild(styleOverride);
+
             const root = document.getElementById("root");
             if (!root) throw new Error("#root element not found");
 
@@ -524,13 +551,14 @@ templates:
             import { defineConfig } from "vite";
             import react from "@vitejs/plugin-react";
             import { vitePluginEditframe as editframePlugin } from "@editframe/vite-plugin";
+            import tailwindcss from "@tailwindcss/vite";
             import path from "node:path";
 
             const root = import.meta.dirname;
             const cacheRoot = path.join(root, ".ef-cache");
 
             export default defineConfig({
-              plugins: [react(), editframePlugin({ root, cacheRoot })],
+              plugins: [react(), tailwindcss(), editframePlugin({ root, cacheRoot })],
             });
         - path: tsconfig.json
           content: |
@@ -548,6 +576,9 @@ templates:
               },
               "include": ["src", "composition.tsx", "vite.config.ts"]
             }
+        - path: src/index.css
+          content: |
+            @import "tailwindcss";
         - path: composition.tsx
           content: |
             /*
@@ -555,31 +586,34 @@ templates:
               This file declares a video composition using @editframe/react components.
               Run `editframe preview` to preview, `editframe render` to produce output.
             */
-            import { Configuration, TimelineRoot, Timegroup, Text, Workbench } from "@editframe/react";
-
-            function Timeline({ id }: { id: string }) {
-              return (
-                <Timegroup id={id} duration="10s" mode="contain">
-                  <Text
-                    text="Hello, Editframe!"
-                    x="50%"
-                    y="50%"
-                    fontSize="48px"
-                    color="white"
-                    textAlign="center"
-                    duration="5s"
-                  />
-                </Timegroup>
-              );
-            }
+            import { Configuration, Timegroup, Text, Workbench } from "@editframe/react";
 
             export default function Composition() {
               return (
-                <Configuration>
-                  <Workbench resolution="1920x1080">
-                    <TimelineRoot id="root" component={Timeline} />
-                  </Workbench>
-                </Configuration>
+                <Workbench resolution="1920x1080">
+                  <Configuration>
+                    <Timegroup
+                      id="root"
+                      duration="10s"
+                      mode="contain"
+                      style={{
+                        width: "1920px",
+                        height: "1080px",
+                        background: "#000",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Text
+                        duration="5s"
+                        style={{ color: "white", fontSize: "48px", textAlign: "center" }}
+                      >
+                        Hello, Editframe!
+                      </Text>
+                    </Timegroup>
+                  </Configuration>
+                </Workbench>
               );
             }
       install:
@@ -609,8 +643,8 @@ templates:
               Run `editframe preview` to preview, `editframe render` to produce output.
             -->
             <ef-timeline duration="10s">
-              <ef-timegroup duration="10s" mode="contain">
-                <ef-text text="Hello, Editframe!" x="50%" y="50%" font-size="48px" color="white" text-align="center" duration="5s"></ef-text>
+              <ef-timegroup duration="10s" mode="contain" style="width:1920px;height:1080px;background:#000;display:flex;align-items:center;justify-content:center;">
+                <ef-text duration="5s" style="color:white;font-size:48px;text-align:center;">Hello, Editframe!</ef-text>
               </ef-timegroup>
             </ef-timeline>
       install:
