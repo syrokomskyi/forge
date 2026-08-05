@@ -38,12 +38,17 @@ Editframe compositions use a time model based on `ef-timegroup` elements:
 5. Run `editframe render -o dist/<name>.mp4` to produce the final video output.
 6. Run `ef-render-verify` to verify the render — validation, build, determinism, output inspection.
 
-## Skill usage
+## Skills
 
-Two forge-level skills are available for composition work:
+- **ef-onboard** — onboard a new project: prerequisites, discovery, scaffold, preview. Trigger: "create a new video project".
+- **ef-composition-review** — review a composition for time model correctness, accessibility, and best practices before rendering. Trigger: "review this composition".
+- **ef-render-verify** — verify a render: validate, build, check determinism, inspect output. Trigger: "render and verify".
 
-- **`ef-composition-review`** — review a composition for time model correctness, accessibility, asset references, and best practices. Run `forge doctor` for automated invariant checks. Use this skill before rendering to catch issues early.
-- **`ef-render-verify`** — verify a render pipeline: run `forge validate`, `forge build`, `forge determinism check`, and inspect the output MP4. Use this skill after rendering to confirm the output is correct and reproducible.
+## External resources
+
+- [Editframe llms.txt](https://editframe.com/llms.txt) — machine-readable index of Editframe domain skills
+- [Editframe composition skill](https://editframe.com/skills/composition.md) — full reference for time model, elements, and rendering
+- [Editframe getting started](https://editframe.com/getting-started) — step-by-step guide and agent prompt
 
 ## Reference template
 

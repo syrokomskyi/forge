@@ -55,6 +55,7 @@ workspaceTypes:
       contains: ef-timegroup
       packageJsonDep: "@editframe/cli"
     skills:
+      - ef-onboard
       - ef-composition-review
       - ef-render-verify
     agentsMdTemplate: editframe-html-templates/composition-agents.md
