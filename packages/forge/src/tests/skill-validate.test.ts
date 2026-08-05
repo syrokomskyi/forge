@@ -1,5 +1,6 @@
 import { test, expect, describe } from "vitest";
 import { runSkillValidate } from "../validators/skill-validate.ts";
+import { FORGE_SKILLS } from "../registry.ts";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
@@ -250,5 +251,38 @@ describe("SKILL-21: knowledge layer token budget warnings (RFC-0661)", () => {
     const skill21Warnings = result.warnings.filter((w) => w.rule === "SKILL-21");
     // All existing knowledge files are knowledge-adjacent (freeform), so no budget warnings
     expect(skill21Warnings).toEqual([]);
+  });
+});
+
+describe("ef-composition-review and ef-render-verify skills", () => {
+  const workspaceRoot = path.resolve(import.meta.dirname, "..", "..", "..", "..");
+
+  test("FORGE_SKILLS registry includes both ef- skills", () => {
+    const names = FORGE_SKILLS.map((s) => s.name);
+    expect(names).toContain("ef-composition-review");
+    expect(names).toContain("ef-render-verify");
+  });
+
+  test("both ef- skills have category fo and concerns read-only", () => {
+    const review = FORGE_SKILLS.find((s) => s.name === "ef-composition-review");
+    const verify = FORGE_SKILLS.find((s) => s.name === "ef-render-verify");
+    expect(review).toBeDefined();
+    expect(verify).toBeDefined();
+    expect(review?.category).toBe("fo");
+    expect(review?.concerns).toBe("read-only");
+    expect(verify?.category).toBe("fo");
+    expect(verify?.concerns).toBe("read-only");
+  });
+
+  test("forge.skill.validate passes with zero violations for ef-composition-review", () => {
+    const result = runSkillValidate({}, { workspaceRoot });
+    const reviewViolations = result.violations.filter((v) => v.skill === "ef-composition-review");
+    expect(reviewViolations).toEqual([]);
+  });
+
+  test("forge.skill.validate passes with zero violations for ef-render-verify", () => {
+    const result = runSkillValidate({}, { workspaceRoot });
+    const verifyViolations = result.violations.filter((v) => v.skill === "ef-render-verify");
+    expect(verifyViolations).toEqual([]);
   });
 });
