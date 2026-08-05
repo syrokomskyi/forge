@@ -1,26 +1,223 @@
 # @warpgogol/forge
 
+[Українська](README.uk.md) | English
+
 Portable governance engine for AI-assisted project development. Provides skills, RFC/ADR workflows, naming conventions, spec vendoring, and a CLI — all framework-agnostic and dependency-free (only `yaml` + `zod`).
 
-## Install
+## What you can build with Forge
+
+Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
+
+| Project type | What it is | Example ideas |
+| --- | --- | --- |
+| **Website** | A public website or web app — pages, blog, portfolio, landing page, online store | Photography studio site, restaurant website, SaaS landing page |
+| **Browser game** | An interactive game that runs in a web browser — 2D, arcade, puzzle, adventure | Catch falling stars, tile-matching puzzle, platformer |
+| **Video** | A programmatic video composition — animated logo, intro, product showcase, motion design | Brand intro video, product demo, social media ad clip |
+| **Governance / library** | A code library or governance-only project — no website, no game, no video, just structure and documentation | npm package, internal toolkit, documentation hub |
+
+Each project type gets its own scaffold: the right folder structure, the right dependencies, the right tools. You don't need to know what any of those are — Forge sets them up for you.
+
+---
+
+## Complete installation guide (from zero)
+
+If you've never programmed before, this section takes you from a completely empty computer to a working Forge setup. Follow the steps for your operating system.
+
+### What you need
+
+You need two free programs:
+
+- **Node.js** (version 22 or newer) — lets your computer run JavaScript tools.
+- **pnpm** — the package manager Forge uses to install dependencies. It's built into Node.js and just needs to be switched on.
+
+Both are free. You install Node.js first, then enable pnpm with a single command.
+
+### Ubuntu
+
+#### Step 1 — Install Node.js
+
+1. Open the **Terminal** app (press `Ctrl + Alt + T`, or search for "Terminal" in your applications).
+
+2. Download and install Node.js 22 (LTS) by pasting this command and pressing Enter:
+
+   ```sh
+   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+   ```
+
+   You'll be asked for your password — type it (you won't see the characters as you type, that's normal) and press Enter.
+
+3. Verify it worked:
+
+   ```sh
+   node --version
+   ```
+
+   You should see a version number like `v22.x.x`, not an error message.
+
+#### Step 2 — Enable pnpm
+
+Node.js includes a tool called **Corepack** that manages package managers. Enable pnpm with:
 
 ```sh
-npm install @warpgogol/forge
-# or
-pnpm add @warpgogol/forge
+corepack enable pnpm
 ```
+
+Verify:
+
+```sh
+pnpm --version
+```
+
+You should see a version number like `10.x.x`.
+
+#### Step 3 — Install Forge globally
+
+Installing Forge globally means the `forge` command is available everywhere on your computer, not just inside one project:
+
+```sh
+pnpm add -g @warpgogol/forge
+```
+
+Verify:
+
+```sh
+forge --version
+```
+
+You should see a version number. Forge is now installed and ready.
+
+#### Step 4 — Install an AI-powered IDE
+
+Forge works through conversation with an AI agent. You need an IDE that supports AI agents. We recommend **Windsurf** (tested with Forge):
+
+1. Go to [windsurf.com](https://windsurf.com) and download the Linux version.
+2. Open the downloaded file and follow the installer.
+3. Launch Windsurf.
+
+You can also use **Cursor** ([cursor.com](https://cursor.com)) or any IDE that supports AI agent skills.
+
+### Windows
+
+#### Step 1 — Install Node.js
+
+1. Go to [nodejs.org](https://nodejs.org) in your web browser.
+2. Download the **LTS version** (it will say "LTS" and "Recommended for Most Users"). It should be version 22.x or newer.
+3. Run the downloaded installer (`.msi` file). Accept all default options by clicking **Next** through each screen, then **Install**. If Windows asks for permission, click **Yes**.
+
+4. Verify it worked. Open **PowerShell** (search for "PowerShell" in the Start menu) and type:
+
+   ```sh
+   node --version
+   ```
+
+   You should see a version number like `v22.x.x`, not an error message.
+
+#### Step 2 — Enable pnpm
+
+Node.js includes a tool called **Corepack** that manages package managers. Enable pnpm with:
+
+```sh
+corepack enable pnpm
+```
+
+Verify:
+
+```sh
+pnpm --version
+```
+
+You should see a version number like `10.x.x`.
+
+#### Step 3 — Install Forge globally
+
+Installing Forge globally means the `forge` command is available everywhere on your computer, not just inside one project:
+
+```sh
+pnpm add -g @warpgogol/forge
+```
+
+Verify:
+
+```sh
+forge --version
+```
+
+You should see a version number. Forge is now installed and ready.
+
+#### Step 4 — Install an AI-powered IDE
+
+Forge works through conversation with an AI agent. You need an IDE that supports AI agents. We recommend **Windsurf** (tested with Forge):
+
+1. Go to [windsurf.com](https://windsurf.com) and download the Windows version.
+2. Run the downloaded installer and follow the setup wizard.
+3. Launch Windsurf.
+
+You can also use **Cursor** ([cursor.com](https://cursor.com)) or any IDE that supports AI agent skills.
+
+### Optional — Install FFmpeg (only for video projects)
+
+If you're planning to create **video** projects (the `editframe` profile), you need **FFmpeg** — a free tool for processing video and audio.
+
+**Ubuntu:**
+
+```sh
+sudo apt-get install -y ffmpeg
+ffmpeg -version
+```
+
+**Windows:**
+
+1. Go to [ffmpeg.org/download.html](https://ffmpeg.org/download.html) in your browser.
+2. Download a Windows build (look for "Windows builds" — the gyan.dev or BtbN builds are good choices).
+3. Extract the downloaded `.zip` file to a folder, e.g. `C:\ffmpeg`.
+4. Add FFmpeg to your system PATH:
+   - Open the Start menu, search for "Environment Variables", and click "Edit the system environment variables".
+   - Click **Environment Variables**.
+   - Under "System variables" (or "User variables"), find **Path**, select it, and click **Edit**.
+   - Click **New** and type `C:\ffmpeg\bin` (or wherever you extracted FFmpeg, in the `bin` subfolder).
+   - Click **OK** on all three windows.
+5. Close and reopen PowerShell, then verify:
+
+   ```sh
+   ffmpeg -version
+   ```
+
+You should see version information, not an error.
+
+### Troubleshooting
+
+- **"command not found" after installing Node.js** — Close and reopen your terminal (Ubuntu) or PowerShell (Windows). The system needs to reload the list of available commands.
+- **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
+- **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 22+ using the steps above.
+- **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create my-project --profile editframe` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+
+---
 
 ## Quick start
 
-### For creative operators — no terminal needed
+### For creative operators — one command, then just talk
 
-You don't need to know what a terminal is. You don't need to type a single command. If you have an AI-powered IDE - like Devin (Windsurf), or Cursor, - Forge works entirely through conversation.
+You need to run one command in the terminal to create your project. After that, everything works through conversation with an AI agent — no more commands.
 
 #### Start a new project from scratch
 
-1. **Create an empty folder** on your computer — anywhere you like. Name it whatever you want your project to be called (use lowercase letters and hyphens, e.g. `my-brand-video`).
+1. **Create a Forge project.** Open a terminal (PowerShell on Windows, Terminal on Ubuntu) and run:
 
-2. **Open that folder in your AI IDE.** The folder is empty — that's exactly what we want.
+   ```sh
+   forge create my-brand-video --profile editframe
+   ```
+
+   Replace `my-brand-video` with your project name (lowercase letters and hyphens). This creates a new folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
+
+   | What you want to build                    | Profile flag                           |
+   | ----------------------------------------- | -------------------------------------- |
+   | Video (brand video, intro, motion design) | `--profile editframe`                  |
+   | Website (landing page, blog, portfolio)   | `--profile astro-typescript-turborepo` |
+   | Browser game (2D, arcade, puzzle)         | `--profile phaser-turborepo`           |
+   | Library or governance-only project        | `--profile forge-shell`                |
+
+2. **Open the project folder in your AI IDE.** Open the folder that was created in step 1 in Windsurf or your preferred IDE.
 
 3. **Tell the AI agent what you want to build.** Just type it in the chat, in your own words. For example:
 
@@ -34,33 +231,44 @@ You don't need to know what a terminal is. You don't need to type a single comma
 
    > I want to make a browser game where you catch falling stars.
 
+   Or:
+
+   > I want to create a TypeScript library for calculating astrology charts.
+
    That's it. The AI agent will do everything else:
-   - Install Forge and all necessary tools
-   - Set up the project structure based on what you described (video, website, game, etc.)
+   - Set up the project structure based on what you described (video, website, game, library, etc.)
    - Configure language preferences and project settings
-   - Start a live preview so you can see your work
+   - Start a live preview so you can see your work (for websites, games, and videos)
    - Tell you the URL to open in your browser
 
-4. **Watch the preview.** The AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
+4. **Watch the preview.** For websites, games, and videos, the AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
 
-5. **Create together.** From here on, you just talk. Want a different color? Want to add a scene? Want to change the music? Just say it. The agent handles all the technical work.
+   For governance and library projects, there's no visual preview — the agent will set up the project structure and tell you when it's ready.
+
+5. **Create together.** From here on, you just talk. Want a different color? Want to add a scene? Want to change the music? Want to add a new function to your library? Just say it. The agent handles all the technical work.
 
 #### Bring an existing project into Forge
 
 If you already have a project somewhere else and want to move it into Forge:
 
-1. **Create an empty folder** and open it in your AI IDE.
+1. **Create a Forge project.** Open a terminal and run:
+
+   ```sh
+   forge create my-project
+   ```
+
+   Then open the created folder in your AI IDE.
 
 2. **Tell the AI agent:**
 
    > I want to bring my existing project into Forge. It's located at /path/to/my/project.
 
    The agent will:
-   - Detect what kind of project it is (website, video, game, etc.)
+   - Detect what kind of project it is (website, video, game, library, etc.)
    - Move all your files into the new Forge project — including hidden files like `.env`
    - Optionally bring your git history
    - Verify everything builds correctly
-   - Start a live preview
+   - Start a live preview (for visual project types)
 
 #### What if something goes wrong?
 
@@ -74,15 +282,20 @@ Just tell the AI agent. It can check the project's health, fix issues, and expla
 
 ```sh
 # Create a new project (scaffold + init + skills + AGENTS.md in one command)
-npx forge create my-project
+forge create my-project
 
 # With a specific stack profile
-npx forge create my-site --profile astro-typescript-turborepo
-npx forge create my-game --profile phaser-turborepo
-npx forge create my-video --profile editframe
+forge create my-site --profile astro-typescript-turborepo
+forge create my-game --profile phaser-turborepo
+forge create my-video --profile editframe
+forge create my-library --profile forge-shell
 
-# With a non-default package manager
-npx forge create my-project --package-manager npm
+```
+
+If Forge is not installed globally, use `pnpm dlx` instead:
+
+```sh
+pnpm dlx @warpgogol/forge create my-project
 ```
 
 #### Bring an existing project into Forge
@@ -91,7 +304,7 @@ There is no CLI command for transplant — it is an interactive, AI-guided proce
 
 ```sh
 # 1. Create a new empty Forge project
-npx forge create my-project
+forge create my-project
 
 # 2. Open the project in Windsurf (tested with forge) or your preferred IDE
 
@@ -108,29 +321,31 @@ npx forge create my-project
 
 ```sh
 # Check project health
-npx forge doctor
+forge doctor
 
 # Validate RFCs
-npx forge rfc.validate
+forge rfc.validate
 
 # List available skills
-npx forge skill.list
+forge skill.list
 ```
 
 ## Stack profiles
 
 A stack profile defines the project scaffold: directory structure, dependencies, CI config, and first workspace. Choose a profile with `--profile` when creating a new project.
 
-| Profile | Description | First workspace | Use case |
-| --- | --- | --- | --- |
-| `forge-shell` | Minimal Forge shell (default) | — | Governance-only projects, libraries, non-web projects |
-| `astro-typescript-turborepo` | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Websites, web apps, content-driven sites |
-| `phaser-turborepo` | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
-| `editframe` | Editframe React + Vite + TailwindCSS | `compositions/my-first-video` | Video compositions, brand videos, motion design |
+| Profile | Project type | Description | First workspace | Use case |
+| --- | --- | --- | --- | --- |
+| `forge-shell` | Governance / library | Minimal Forge shell (default) | — | Governance-only projects, libraries, non-web projects |
+| `astro-typescript-turborepo` | Website | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Websites, web apps, content-driven sites |
+| `phaser-turborepo` | Browser game | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
+| `editframe` | Video | Editframe React + Vite + TailwindCSS | `compositions/my-first-video` | Video compositions, brand videos, motion design |
+
+The `editframe` profile also supports an **HTML template** (instead of React) for users who prefer web components over JSX. Choose between the two during project setup.
 
 ```sh
 # List available profiles (after install)
-npx forge profile.validate
+forge profile.validate
 ```
 
 When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `editframe.config.*`, etc.).
@@ -141,13 +356,13 @@ When a new version of `@warpgogol/forge` is published, consumers upgrade additiv
 
 ```sh
 # 1. Install the latest version
-npm install @warpgogol/forge@latest
+pnpm add -g @warpgogol/forge@latest
 
 # 2. Sync skills and binding defaults from the installed version
-npx forge upgrade
+forge upgrade
 
 # 3. Check project health
-npx forge doctor
+forge doctor
 ```
 
 `forge upgrade` is additive — it never overwrites operator-set bindings, never deletes files, and is idempotent. It updates `forge.syncedVersion` in `forge.yaml` to track the last synced version. Use `--dry-run` to preview changes.
