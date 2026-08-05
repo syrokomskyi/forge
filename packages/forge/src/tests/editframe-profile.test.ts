@@ -5,11 +5,13 @@
 <CHANGE_SUMMARY>
   <item>RFC-0641: initial editframe-html profile tests.</item>
   <item>RFC-0694: update for editframe profile rename and React template.</item>
+  <item>Bootstrap fix: regression tests for 7 editframe React template bugs (vite import, plugin options, Configuration/Workbench wrappers, elements/gui+styles imports, @editframe/elements dep, allowBuilds).</item>
 </CHANGE_SUMMARY>
 */
 
 import { test, expect } from "vitest";
 import { join } from "node:path";
+import { readFileSync } from "node:fs";
 import { loadStackProfile, stackProfileSchema } from "../profiles/stack-profile.ts";
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..");
@@ -150,4 +152,83 @@ test("editframe profile artifacts include .html extension", () => {
   const composition = profile.artifacts?.find((a) => a.id === "composition");
   expect(composition?.extensions).toContain(".html");
   expect(composition?.extensions).toContain(".tsx");
+});
+
+// --- Bootstrap regression tests (7 bug fixes) ---
+
+function getReactTemplateFiles(profile: ReturnType<typeof loadStackProfile>) {
+  const sources = [
+    { label: "firstWorkspace", files: profile.firstWorkspace?.files ?? [] },
+    {
+      label: "templates[react]",
+      files: profile.templates?.find((t) => t.id === "react")?.firstWorkspace.files ?? [],
+    },
+  ];
+  return sources;
+}
+
+test("bug 1: pnpm-workspace.yaml includes allowBuilds with boolean true values", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  const wsFile = profile.workspace.files.find((f) => f.path === "pnpm-workspace.yaml");
+  expect(wsFile).toBeDefined();
+  expect(wsFile?.content).toContain("allowBuilds:");
+  expect(wsFile?.content).toContain('"@editframe/cli": true');
+  expect(wsFile?.content).toContain("node-av: true");
+  expect(wsFile?.content).not.toContain("set this to");
+});
+
+test("bugs 2,3: vite.config.ts uses named import and passes root+cacheRoot to plugin", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const viteFile = files.find((f) => f.path === "vite.config.ts");
+    expect(viteFile, `${label}: vite.config.ts should exist`).toBeDefined();
+    expect(viteFile?.content).toContain("vitePluginEditframe as editframePlugin");
+    expect(viteFile?.content).not.toContain('import editframePlugin from "@editframe/vite-plugin"');
+    expect(viteFile?.content).toContain("import.meta.dirname");
+    expect(viteFile?.content).toContain("cacheRoot");
+    expect(viteFile?.content).toContain("editframePlugin({ root, cacheRoot })");
+    expect(viteFile?.content).not.toContain("editframePlugin()");
+  }
+});
+
+test("bug 4: composition.tsx wraps in Configuration + Workbench", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).toContain("Configuration");
+    expect(tsxFile?.content).toContain("Workbench");
+    expect(tsxFile?.content).toContain('resolution="1920x1080"');
+  }
+});
+
+test("bugs 5,6: src/main.tsx imports @editframe/elements/gui and styles.css", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const mainFile = files.find((f) => f.path === "src/main.tsx");
+    expect(mainFile, `${label}: src/main.tsx should exist`).toBeDefined();
+    expect(mainFile?.content).toContain('import "@editframe/elements/gui"');
+    expect(mainFile?.content).toContain('import "@editframe/elements/styles.css"');
+  }
+});
+
+test("bug 7: @editframe/elements in install list for both firstWorkspace and react template", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  const fwInstall = profile.firstWorkspace?.install ?? [];
+  const reactInstall =
+    profile.templates?.find((t) => t.id === "react")?.firstWorkspace.install ?? [];
+  for (const [label, install] of [
+    ["firstWorkspace", fwInstall],
+    ["templates[react]", reactInstall],
+  ] as const) {
+    const hasElements = install.some((cmd) => cmd.includes("@editframe/elements"));
+    expect(hasElements, `${label}: install should include @editframe/elements`).toBe(true);
+  }
+});
+
+test("reference template composition.tsx includes Configuration and Workbench", () => {
+  const templatePath = join(FORGE_ROOT, "profiles", "editframe-templates", "composition.tsx");
+  const content = readFileSync(templatePath, "utf8");
+  expect(content).toContain("Configuration");
+  expect(content).toContain("Workbench");
 });

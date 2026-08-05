@@ -122,7 +122,8 @@ test("scaffold editframe without --template defaults to react (composition.tsx)"
   expect(result.exitCode).toBe(0);
   const compDir = join(tempDir, "compositions", "my-first-video");
   expect(existsSync(join(compDir, "composition.tsx"))).toBe(true);
-  expect(existsSync(join(compDir, "index.html"))).toBe(false);
+  // index.html is part of the React+Vite template (Vite entry point)
+  expect(existsSync(join(compDir, "index.html"))).toBe(true);
 });
 
 test("scaffold editframe with unknown template fails with error", async () => {
