@@ -162,7 +162,7 @@ test("all shipped profiles parse without changes", () => {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);
     // Domain fields should be undefined for existing software-domain profiles
-    if (profile.id !== "editframe-html") {
+    if (profile.id !== "editframe") {
       expect(profile.domain).toBeUndefined();
       expect(profile.register).toBeUndefined();
     }
