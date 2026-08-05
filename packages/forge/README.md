@@ -12,7 +12,65 @@ pnpm add @warpgogol/forge
 
 ## Quick start
 
-### Create a new project
+### For creative operators — no terminal needed
+
+You don't need to know what a terminal is. You don't need to type a single command. If you have an AI-powered IDE (like Windsurf, Devin, or Cursor), Forge works entirely through conversation.
+
+#### Start a new project from scratch
+
+1. **Create an empty folder** on your computer — anywhere you like. Name it whatever you want your project to be called (use lowercase letters and hyphens, e.g. `my-brand-video`).
+
+2. **Open that folder in your AI IDE.** The folder is empty — that's exactly what we want.
+
+3. **Tell the AI agent what you want to build.** Just type it in the chat, in your own words. For example:
+
+   > I want to create a brand video for my coffee shop. It should have an animated logo, a short intro, and a product showcase.
+
+   Or:
+
+   > I want to build a website for my photography studio.
+
+   Or:
+
+   > I want to make a browser game where you catch falling stars.
+
+   That's it. The AI agent will do everything else:
+   - Install Forge and all necessary tools
+   - Set up the project structure based on what you described (video, website, game, etc.)
+   - Configure language preferences and project settings
+   - Start a live preview so you can see your work
+   - Tell you the URL to open in your browser
+
+4. **Watch the preview.** The AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
+
+5. **Create together.** From here on, you just talk. Want a different color? Want to add a scene? Want to change the music? Just say it. The agent handles all the technical work.
+
+#### Bring an existing project into Forge
+
+If you already have a project somewhere else and want to move it into Forge:
+
+1. **Create an empty folder** and open it in your AI IDE.
+
+2. **Tell the AI agent:**
+
+   > I want to bring my existing project into Forge. It's located at /path/to/my/project.
+
+   The agent will:
+   - Detect what kind of project it is (website, video, game, etc.)
+   - Move all your files into the new Forge project — including hidden files like `.env`
+   - Optionally bring your git history
+   - Verify everything builds correctly
+   - Start a live preview
+
+#### What if something goes wrong?
+
+Just tell the AI agent. It can check the project's health, fix issues, and explain what happened — all in plain language. You never need to open a terminal or run commands yourself.
+
+---
+
+### For developers — CLI commands
+
+#### Create a new project
 
 ```sh
 # Create a new project (scaffold + init + skills + AGENTS.md in one command)
@@ -27,7 +85,7 @@ npx forge create my-video --profile editframe
 npx forge create my-project --package-manager npm
 ```
 
-### Bring an existing project into Forge
+#### Bring an existing project into Forge
 
 There is no CLI command for transplant — it is an interactive, AI-guided process:
 
@@ -46,7 +104,7 @@ npx forge create my-project
 #    - Verify the build
 ```
 
-### Diagnose and validate
+#### Diagnose and validate
 
 ```sh
 # Check project health
