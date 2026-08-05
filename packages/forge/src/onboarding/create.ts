@@ -174,6 +174,9 @@ export async function runCreate(
       forgeRoot = context.workspaceRoot;
     }
   }
+  if (outputFormat === "pretty") {
+    logger.info(`Using forge root: ${forgeRoot}`);
+  }
 
   // 5. Build child context with workspaceRoot = targetDir and forgeRoot override
   const childContext: ForgeRuntimeContext = {
@@ -214,10 +217,25 @@ export async function runCreate(
   };
   const initResult: InitResult = runInit(initInput, childContext, initDomainFields);
 
+  if (outputFormat === "pretty") {
+    logger.info(`Init: ${initResult.status} — ${initResult.created.length} created, ${initResult.skipped.length} skipped, ${initResult.errors.length} errors`);
+    if (initResult.errors.length > 0) {
+      for (const err of initResult.errors.slice(0, 3)) {
+        logger.warn(`  init error: ${err}`);
+      }
+    }
+  }
+
   // 7.5. Scaffold memory layer (RFC-0664) — runs regardless of init success
   const memoryScaffoldResult = scaffoldMemoryLayer(targetDir);
 
   if (initResult.status !== "pass") {
+    if (outputFormat === "pretty") {
+      logger.error(`Init failed with ${initResult.errors.length} error(s):`);
+      for (const err of initResult.errors.slice(0, 5)) {
+        logger.error(`  ${err}`);
+      }
+    }
     return {
       data: {
         command: "forge.create",
@@ -263,13 +281,23 @@ export async function runCreate(
       argv: [],
       flags: {},
     };
+    if (outputFormat === "pretty") {
+      logger.info("Generating AGENTS.md...");
+    }
     const agentsResult = await runAgentsGenerate(agentsInput, childContext);
+    if (outputFormat === "pretty") {
+      logger.info(`Agents.generate: ${agentsResult.exitCode === 0 ? "ok" : "failed"} — ${(agentsResult.data?.generated ?? []).length} generated, ${(agentsResult.data?.errors ?? []).length} errors`);
+    }
     if (agentsResult.exitCode !== 0 && outputFormat === "pretty") {
       logger.warn("forge.agents.generate failed — AGENTS.md not generated. Run 'forge agents generate' manually after fixing the issue.");
+      for (const err of (agentsResult.data?.errors ?? []).slice(0, 3)) {
+        logger.warn(`  ${err}`);
+      }
     }
-  } catch {
+  } catch (err) {
     if (outputFormat === "pretty") {
       logger.warn("forge.agents.generate failed — AGENTS.md not generated. Run 'forge agents generate' manually after fixing the issue.");
+      logger.warn(`  ${(err as Error).message}`);
     }
   }
 
