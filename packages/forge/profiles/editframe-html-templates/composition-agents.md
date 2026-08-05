@@ -10,16 +10,40 @@ This workspace contains an Editframe video composition.
 
 ## Quality invariants
 
-- **VIDEO-01**: Composition filenames must use kebab-case (lowercase letters, digits, hyphens only). This ensures consistent naming across the project. Severity: error.
-- **VIDEO-02**: Scene durations must use `contain` fit mode by default to avoid unexpected cropping of video content. Use `cover` or `fill` only when intentionally overriding the default. Severity: warning.
-- **VIDEO-03**: All speech audio elements (`ef-audio` with speech content) must have corresponding `ef-captions` elements for accessibility. Severity: error.
+| ID | Description | Severity |
+| --- | --- | --- |
+| VIDEO-01 | Composition filenames must use kebab-case (lowercase letters, digits, hyphens only). | error |
+| VIDEO-02 | Scene durations must use `contain` fit mode by default to avoid unexpected cropping. Use `cover` or `fill` only when intentionally overriding. | warning |
+| VIDEO-03 | All speech audio elements (`ef-audio` with speech content) must have corresponding `ef-captions` elements for accessibility. | error |
+
+Additional time model invariants (VIDEO-04 through VIDEO-09) may be available. Run `forge doctor` to check the full invariant set enforced by the active profile.
+
+## Time model concepts
+
+Editframe compositions use a time model based on `ef-timegroup` elements:
+
+- **`ef-timegroup`** — a container that groups scenes and controls timing. The root timegroup defines the composition's total duration.
+- **`mode`** — timing behavior for children: `sequence` (play one after another), `fixed` (play at absolute offset), `contain` (fit within parent duration), `fit` (scale to fit).
+- **`duration`** — CSS time string (e.g. `5s`, `300ms`, `2.5s`) defining how long the element plays.
+- **`offset`** — CSS time string defining when the element starts relative to its parent.
+- **`fps`** — positive integer defining frames per second (e.g. `30`, `60`).
+- **`loop`** — boolean, only on the root timegroup. Nested timegroups should not loop.
 
 ## Workflow
 
 1. Create a `.html` file with Editframe custom elements (`ef-timegroup`, `ef-video`, `ef-audio`, `ef-text`, `ef-captions`).
 2. Run `editframe preview` to preview the composition in the browser.
-3. Run `editframe check` to validate the composition structure.
-4. Run `editframe render -o dist/<name>.mp4` to produce the final video output.
+3. Run `ef-composition-review` to review the composition for time model correctness, accessibility, and best practices.
+4. Run `editframe check` to validate the composition structure.
+5. Run `editframe render -o dist/<name>.mp4` to produce the final video output.
+6. Run `ef-render-verify` to verify the render — validation, build, determinism, output inspection.
+
+## Skill usage
+
+Two forge-level skills are available for composition work:
+
+- **`ef-composition-review`** — review a composition for time model correctness, accessibility, asset references, and best practices. Run `forge doctor` for automated invariant checks. Use this skill before rendering to catch issues early.
+- **`ef-render-verify`** — verify a render pipeline: run `forge validate`, `forge build`, `forge determinism check`, and inspect the output MP4. Use this skill after rendering to confirm the output is correct and reproducible.
 
 ## Reference template
 
