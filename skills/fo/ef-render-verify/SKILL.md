@@ -18,7 +18,7 @@ A read-only verification of an Editframe render pipeline. The skill runs validat
 
 ## Scope
 
-This skill verifies render output for `.html` composition files using the `editframe-html` stack profile. It uses `forge validate`, `forge build`, and `forge determinism check` — all profile-driven commands.
+This skill verifies render output for `.tsx` composition files using the `editframe` stack profile. It uses `forge validate`, `forge build`, and `forge determinism check` — all profile-driven commands.
 
 ## Process
 
@@ -40,7 +40,7 @@ Check the render output:
 
 - Verify the output MP4 file exists at the expected path (`dist/{composition}.mp4`).
 - Check that the file size is non-zero.
-- Check that the duration matches the root `ef-timegroup`'s `duration` attribute (if ffprobe or equivalent is available).
+- Check that the duration matches the root `Timegroup`'s `duration` prop (if ffprobe or equivalent is available).
 
 ### 5. Report
 
