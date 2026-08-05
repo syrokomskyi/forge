@@ -216,6 +216,23 @@ export async function runScaffoldProject(
     }
   }
 
+  // Format generated files with prettier if it's available
+  try {
+    if (outputFormat === "pretty") {
+      logger.info("Formatting generated files with prettier...");
+    }
+    execSync("npx prettier --write .", { cwd: workspaceRoot, stdio: "pipe", timeout: 30000 });
+    installLog.push("prettier --write . — ok");
+    if (outputFormat === "pretty") {
+      logger.success("Formatting complete.");
+    }
+  } catch {
+    // Prettier is optional — don't fail the scaffold if it's not available
+    if (outputFormat === "pretty") {
+      logger.info("Skipping prettier formatting (not available yet).");
+    }
+  }
+
   if (outputFormat === "pretty") {
     logger.success(`Scaffolded ${profile.displayName} in ${workspaceRoot}`);
     for (const f of created) {

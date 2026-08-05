@@ -291,6 +291,7 @@ workspace:
           "version": "0.1.0",
           "private": true,
           "type": "module",
+          "packageManager": "pnpm@11.10.0",
           "engines": {
             "node": ">=22"
           },
@@ -304,6 +305,16 @@ workspace:
             "upgrade-packages": "pnpm -r up"
           }
         }
+    - path: .prettierrc.mjs
+      content: |
+        /** @type {import("prettier").Config} */
+        export default {
+          semi: true,
+          singleQuote: false,
+          trailingComma: "all",
+          printWidth: 100,
+          tabWidth: 2,
+        };
     - path: scripts/clean.mjs
       content: |
         import { readdir, rm } from "node:fs/promises";
@@ -361,6 +372,59 @@ firstWorkspace:
             "check": "editframe check"
           }
         }
+    - path: index.html
+      content: |
+        <!doctype html>
+        <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>my-first-video</title>
+          </head>
+          <body>
+            <div id="root"></div>
+            <script type="module" src="/src/main.tsx"></script>
+          </body>
+        </html>
+    - path: src/main.tsx
+      content: |
+        import React from "react";
+        import { createRoot } from "react-dom/client";
+        import Composition from "../composition";
+
+        const root = document.getElementById("root");
+        if (!root) throw new Error("#root element not found");
+
+        createRoot(root).render(
+          <React.StrictMode>
+            <Composition />
+          </React.StrictMode>,
+        );
+    - path: vite.config.ts
+      content: |
+        import { defineConfig } from "vite";
+        import react from "@vitejs/plugin-react";
+        import editframePlugin from "@editframe/vite-plugin";
+
+        export default defineConfig({
+          plugins: [react(), editframePlugin()],
+        });
+    - path: tsconfig.json
+      content: |
+        {
+          "compilerOptions": {
+            "target": "ES2022",
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "jsx": "react-jsx",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "noEmit": true,
+            "lib": ["ES2022", "DOM", "DOM.Iterable"]
+          },
+          "include": ["src", "composition.tsx", "vite.config.ts"]
+        }
     - path: composition.tsx
       content: |
         /*
@@ -368,30 +432,29 @@ firstWorkspace:
           This file declares a video composition using @editframe/react components.
           Run `editframe preview` to preview, `editframe render` to produce output.
         */
-        import { TimelineRoot, Timegroup, Video, Text, Audio, Captions } from "@editframe/react";
+        import { TimelineRoot, Timegroup, Text } from "@editframe/react";
 
-        export default function Composition() {
+        function Timeline({ id }: { id: string }) {
           return (
-            <TimelineRoot>
-              <Timegroup duration="10s">
-                <Video src="assets/background.mp4" fit="contain" duration="10s" />
-                <Text
-                  text="Hello, Editframe!"
-                  x="50%"
-                  y="50%"
-                  fontSize="48px"
-                  color="white"
-                  textAlign="center"
-                  duration="5s"
-                />
-                <Audio src="assets/narration.mp3" />
-                <Captions src="assets/captions.vtt" />
-              </Timegroup>
-            </TimelineRoot>
+            <Timegroup id={id} duration="10s" mode="contain">
+              <Text
+                text="Hello, Editframe!"
+                x="50%"
+                y="50%"
+                fontSize="48px"
+                color="white"
+                textAlign="center"
+                duration="5s"
+              />
+            </Timegroup>
           );
         }
+
+        export default function Composition() {
+          return <TimelineRoot id="root" component={Timeline} />;
+        }
   install:
-    - pnpm add -D @editframe/react @editframe/vite-plugin react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
+    - pnpm add -D @editframe/react @editframe/vite-plugin @editframe/dev-server react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
 templates:
   - id: react
     default: true
@@ -411,6 +474,59 @@ templates:
                 "check": "editframe check"
               }
             }
+        - path: index.html
+          content: |
+            <!doctype html>
+            <html lang="en">
+              <head>
+                <meta charset="UTF-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+                <title>my-first-video</title>
+              </head>
+              <body>
+                <div id="root"></div>
+                <script type="module" src="/src/main.tsx"></script>
+              </body>
+            </html>
+        - path: src/main.tsx
+          content: |
+            import React from "react";
+            import { createRoot } from "react-dom/client";
+            import Composition from "../composition";
+
+            const root = document.getElementById("root");
+            if (!root) throw new Error("#root element not found");
+
+            createRoot(root).render(
+              <React.StrictMode>
+                <Composition />
+              </React.StrictMode>,
+            );
+        - path: vite.config.ts
+          content: |
+            import { defineConfig } from "vite";
+            import react from "@vitejs/plugin-react";
+            import editframePlugin from "@editframe/vite-plugin";
+
+            export default defineConfig({
+              plugins: [react(), editframePlugin()],
+            });
+        - path: tsconfig.json
+          content: |
+            {
+              "compilerOptions": {
+                "target": "ES2022",
+                "module": "ESNext",
+                "moduleResolution": "bundler",
+                "jsx": "react-jsx",
+                "strict": true,
+                "esModuleInterop": true,
+                "skipLibCheck": true,
+                "noEmit": true,
+                "lib": ["ES2022", "DOM", "DOM.Iterable"]
+              },
+              "include": ["src", "composition.tsx", "vite.config.ts"]
+            }
         - path: composition.tsx
           content: |
             /*
@@ -418,30 +534,29 @@ templates:
               This file declares a video composition using @editframe/react components.
               Run `editframe preview` to preview, `editframe render` to produce output.
             */
-            import { TimelineRoot, Timegroup, Video, Text, Audio, Captions } from "@editframe/react";
+            import { TimelineRoot, Timegroup, Text } from "@editframe/react";
 
-            export default function Composition() {
+            function Timeline({ id }: { id: string }) {
               return (
-                <TimelineRoot>
-                  <Timegroup duration="10s">
-                    <Video src="assets/background.mp4" fit="contain" duration="10s" />
-                    <Text
-                      text="Hello, Editframe!"
-                      x="50%"
-                      y="50%"
-                      fontSize="48px"
-                      color="white"
-                      textAlign="center"
-                      duration="5s"
-                    />
-                    <Audio src="assets/narration.mp3" />
-                    <Captions src="assets/captions.vtt" />
-                  </Timegroup>
-                </TimelineRoot>
+                <Timegroup id={id} duration="10s" mode="contain">
+                  <Text
+                    text="Hello, Editframe!"
+                    x="50%"
+                    y="50%"
+                    fontSize="48px"
+                    color="white"
+                    textAlign="center"
+                    duration="5s"
+                  />
+                </Timegroup>
               );
             }
+
+            export default function Composition() {
+              return <TimelineRoot id="root" component={Timeline} />;
+            }
       install:
-        - pnpm add -D @editframe/react @editframe/vite-plugin react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
+        - pnpm add -D @editframe/react @editframe/vite-plugin @editframe/dev-server react react-dom typescript @types/react @types/react-dom vite @vitejs/plugin-react tailwindcss @tailwindcss/vite vitest
   - id: html
     firstWorkspace:
       path: compositions/my-first-video
@@ -468,10 +583,7 @@ templates:
             -->
             <ef-timeline duration="10s">
               <ef-timegroup duration="10s" mode="contain">
-                <ef-video src="assets/background.mp4" fit="contain" duration="10s"></ef-video>
                 <ef-text text="Hello, Editframe!" x="50%" y="50%" font-size="48px" color="white" text-align="center" duration="5s"></ef-text>
-                <ef-audio src="assets/narration.mp3"></ef-audio>
-                <ef-captions src="assets/captions.vtt"></ef-captions>
               </ef-timegroup>
             </ef-timeline>
       install:
