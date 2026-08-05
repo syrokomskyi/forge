@@ -20,6 +20,7 @@
   <item>RFC-0678: register forge.determinism.check lifecycle command.</item>
   <item>RFC-0679: register forge.assets.list, forge.assets.check commands.</item>
   <item>RFC-0680: register forge.release.prepare, forge.release.publish commands.</item>
+  <item>ADR-0021: profile-driven video lifecycle — all lifecycle commands read behavior from profile YAML, zero domain-specific code in Forge source.</item>
 </CHANGE_SUMMARY>
 */
 
