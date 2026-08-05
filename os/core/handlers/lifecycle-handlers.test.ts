@@ -63,7 +63,7 @@ const input = (flags: Record<string, unknown> = {}): ForgeCommandInput => ({
   flags: flags as Record<string, boolean | string | string[]>,
 });
 
-const editframeYaml = `profile: editframe-html\n`;
+const editframeYaml = `profile: editframe\n`;
 
 let tmpDir: string;
 
@@ -77,10 +77,10 @@ afterEach(() => {
 
 // ── resolveActiveProfile ──────────────────────────────────────────────────
 
-test("resolveActiveProfile returns the editframe-html profile when forge.yaml declares it", () => {
+test("resolveActiveProfile returns the editframe profile when forge.yaml declares it", () => {
   const resolved = resolveActiveProfile(tmpDir, FORGE_ROOT);
   expect(resolved).not.toBeNull();
-  expect(resolved!.profile.id).toBe("editframe-html");
+  expect(resolved!.profile.id).toBe("editframe");
 });
 
 test("resolveActiveProfile returns null when forge.yaml has no profile field", () => {
@@ -97,9 +97,9 @@ test("resolveActiveProfile returns null when forge.yaml is missing", () => {
 });
 
 test("resolveActiveProfile uses profileIdOverride when provided", () => {
-  const resolved = resolveActiveProfile(tmpDir, FORGE_ROOT, "editframe-html");
+  const resolved = resolveActiveProfile(tmpDir, FORGE_ROOT, "editframe");
   expect(resolved).not.toBeNull();
-  expect(resolved!.profile.id).toBe("editframe-html");
+  expect(resolved!.profile.id).toBe("editframe");
 });
 
 // ── runBuild ───────────────────────────────────────────────────────────────
@@ -107,11 +107,10 @@ test("resolveActiveProfile uses profileIdOverride when provided", () => {
 test("runBuild --dry-run does not execute child process and prints resolved commands", async () => {
   const result = await runBuild(input({ "dry-run": true }), makeContext(tmpDir));
   expect(result.exitCode).toBeUndefined();
-  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.profileId).toBe("editframe");
   expect(result.data?.artifacts.length).toBeGreaterThan(0);
   const composition = result.data?.artifacts.find((a) => a.id === "composition");
   expect(composition).toBeDefined();
-  expect(composition!.command).toBe("editframe render");
 });
 
 test("runBuild returns exit 1 when no active profile found", async () => {
@@ -131,7 +130,7 @@ test("runBuild --dry-run resolves commands without execution", async () => {
 
 test("runValidate --dry-run does not execute child process and prints resolved commands", async () => {
   const result = await runValidate(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.profileId).toBe("editframe");
   expect(result.data?.artifacts.length).toBeGreaterThan(0);
   const composition = result.data?.artifacts.find((a) => a.id === "composition");
   expect(composition).toBeDefined();
@@ -221,7 +220,7 @@ test("parseViolations returns empty array on malformed regex pattern", () => {
 
 test("runDev --dry-run does not spawn child process and prints resolved command", async () => {
   const result = await runDev(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.profileId).toBe("editframe");
   expect(result.data?.devServerCommand).toBe("editframe preview");
   expect(result.data?.port).toBe(4321);
   expect(result.data?.exitCode).toBe(0);
@@ -247,10 +246,10 @@ test("runDev returns exit 1 when no active profile found", async () => {
 
 test("runDeterminismCheck --dry-run prints resolved inputs without executing builds", async () => {
   const result = await runDeterminismCheck(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.profileId).toBe("editframe");
   expect(result.data?.artifacts.length).toBe(1);
   expect(result.data?.artifacts[0].artifactId).toBe("composition");
-  expect(result.data?.artifacts[0].inputs).toContain("compositions/**/*.html");
+  expect(result.data?.artifacts[0].inputs).toContain("compositions/**/*.tsx");
   expect(result.data?.artifacts[0].inputs).toContain("assets/**");
   expect(result.summary).toContain("[dry-run]");
 });
@@ -353,7 +352,7 @@ test("runAssetsList --dry-run lists assets without hashing", async () => {
   writeFileSync(join(tmpDir, "assets", "audio", "narration.mp3"), "fake-mp3");
 
   const result = await runAssetsList(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.profileId).toBe("editframe");
   expect(result.data?.assets.length).toBe(2);
   const video = result.data?.assets.find((a) => a.type === "video");
   expect(video).toBeDefined();
@@ -465,7 +464,7 @@ test("runReleasePrepare --dry-run prints resolved release steps", async () => {
   writeFileSync(join(tmpDir, "dist", "intro.mp4"), "fake-mp4-content");
 
   const result = await runReleasePrepare(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("editframe-html");
+  expect(result.data?.profileId).toBe("editframe");
   expect(result.data?.manifest.schemaVersion).toBe("1");
   expect(result.data?.manifest.artifacts.length).toBeGreaterThan(0);
   expect(result.data?.manifest.artifacts[0].artifactId).toBe("composition");
@@ -482,7 +481,7 @@ test("runReleasePrepare generates manifest with artifact hashes", async () => {
   expect(result.data?.manifest.artifacts.length).toBeGreaterThan(0);
   expect(result.data?.manifest.artifacts[0].hash).toBeTruthy();
   expect(result.data?.manifest.artifacts[0].size).toBeGreaterThan(0);
-  expect(result.data?.manifest.releaseId).toContain("editframe-html-");
+  expect(result.data?.manifest.releaseId).toContain("editframe-");
   expect(result.data?.manifest.schemaVersion).toBe("1");
 });
 

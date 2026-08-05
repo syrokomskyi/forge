@@ -96,18 +96,14 @@ async function makeForgeYaml(dir: string, extra?: string): Promise<void> {
 // --- substituteTemplate tests ---
 
 test("substituteTemplate replaces {{terminology.artifact}} with 'composition'", () => {
-  const result = substituteTemplate(
-    "Each {{terminology.artifact}} is a workspace.",
-    { artifact: "composition" },
-  );
+  const result = substituteTemplate("Each {{terminology.artifact}} is a workspace.", {
+    artifact: "composition",
+  });
   expect(result).toBe("Each composition is a workspace.");
 });
 
 test("substituteTemplate replaces unknown key with key name itself", () => {
-  const result = substituteTemplate(
-    "The {{terminology.unknown}} is here.",
-    {},
-  );
+  const result = substituteTemplate("The {{terminology.unknown}} is here.", {});
   expect(result).toBe("The unknown is here.");
 });
 
@@ -156,9 +152,9 @@ test("selectNestedTemplate with agentsMdTemplate uses profile template", () => {
   const wsType: ProfileWorkspaceType = {
     id: "composition",
     detect: { glob: "*.html" },
-    agentsMdTemplate: "editframe-html-templates/composition-agents.md",
+    agentsMdTemplate: "editframe-templates/composition-agents.md",
   };
-  const profile = { id: "editframe-html" } as StackProfile;
+  const profile = { id: "editframe" } as StackProfile;
   const result = selectNestedTemplate(wsType, profile, {}, "FALLBACK");
   expect(result).toContain("Composition Workspace");
   expect(result).not.toBe("FALLBACK");
@@ -210,9 +206,9 @@ test("selectNestedTemplate applies terminology substitution", () => {
   const wsType: ProfileWorkspaceType = {
     id: "composition",
     detect: { glob: "*.html" },
-    agentsMdTemplate: "editframe-html-templates/composition-agents.md",
+    agentsMdTemplate: "editframe-templates/composition-agents.md",
   };
-  const profile = { id: "editframe-html" } as StackProfile;
+  const profile = { id: "editframe" } as StackProfile;
   // The composition-agents.md template doesn't have {{terminology.*}} placeholders,
   // but if it did, they would be substituted
   const result = selectNestedTemplate(wsType, profile, { artifact: "video" }, "FALLBACK");
