@@ -27,24 +27,17 @@ Generate brand video compositions from reusable templates. Brand videos typicall
 A brand video composition uses `@editframe/react` components with brand-specific assets:
 
 ```tsx
-import { TimelineRoot, Timegroup, Video, Image, Text } from "@editframe/react";
+import { Timegroup, Video, Image, Text } from "@editframe/react";
 
 export default function BrandIntro() {
   return (
-    <TimelineRoot>
-      <Timegroup duration="3s" mode="sequence">
-        <Image src="assets/logo.svg" duration="1s" fit="contain" />
-        <Text
-          text="Your Brand"
-          x="50%"
-          y="50%"
-          fontSize="64px"
-          color="#FF6B00"
-          duration="1s"
-        />
-        <Video src="assets/brand-bg.mp4" fit="cover" duration="1s" />
-      </Timegroup>
-    </TimelineRoot>
+    <Timegroup duration="3s" mode="sequence">
+      <Image src="assets/logo.svg" duration="1s" fit="contain" />
+      <Text duration="1s" style={{ color: "#FF6B00", fontSize: "64px" }}>
+        Your Brand
+      </Text>
+      <Video src="assets/brand-bg.mp4" fit="cover" duration="1s" />
+    </Timegroup>
   );
 }
 ```
@@ -66,7 +59,7 @@ Animate the logo in with a `Timegroup` using `mode="sequence"`:
 ```tsx
 <Timegroup duration="2s" mode="sequence">
   <Image src="assets/logo.svg" duration="0.5s" fit="contain" />
-  <Text text="Your Brand" fontSize="48px" color="#FF6B00" duration="1.5s" />
+  <Text duration="1.5s" style={{ color: "#FF6B00", fontSize: "48px" }}>Your Brand</Text>
 </Timegroup>
 ```
 
@@ -75,13 +68,11 @@ Animate the logo in with a `Timegroup` using `mode="sequence"`:
 Create separate compositions for intro and outro, then combine them in a parent `Timegroup`:
 
 ```tsx
-<TimelineRoot>
-  <Timegroup duration="15s" mode="sequence">
-    <BrandIntro />
-    <MainContent />
-    <BrandOutro />
-  </Timegroup>
-</TimelineRoot>
+<Timegroup duration="15s" mode="sequence">
+  <BrandIntro />
+  <MainContent />
+  <BrandOutro />
+</Timegroup>
 ```
 
 ### Brand color overlay

@@ -18,7 +18,9 @@ A read-only review of an Editframe React composition file. The skill checks time
 
 ## Scope
 
-This skill reviews `.tsx` composition files that use `@editframe/react` components (`TimelineRoot`, `Timegroup`, `Video`, `Audio`, `Text`, `Captions`). It is designed for projects using the `editframe` stack profile.
+This skill reviews `.tsx` composition files that use `@editframe/react` components (`Workbench`, `Configuration`, `Timegroup`, `Video`, `Audio`, `Text`, `Captions`). It is designed for projects using the `editframe` stack profile.
+
+**TimelineRoot check:** If `TimelineRoot` is used inside `Workbench`, report it as an error — it renders a `<div style="display: contents">` wrapper that breaks Workbench's DOM structure. The correct structure is `Workbench > Configuration > Timegroup`.
 
 ## Process
 

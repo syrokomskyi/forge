@@ -176,7 +176,7 @@ test("invariant engine checks VIDEO-01 filename pattern on .tsx files", async ()
   await mkdir(join(tempDir, "compositions", "my-video"), { recursive: true });
   await writeFile(
     join(tempDir, "compositions", "my-video", "composition.tsx"),
-    'import { TimelineRoot } from "@editframe/react";\nexport default function C() { return <TimelineRoot><Timegroup duration="10s" mode="contain"><Captions src="a.vtt" /></Timegroup></TimelineRoot>; }',
+    'import { Timegroup } from "@editframe/react";\nexport default function C() { return <Timegroup duration="10s" mode="contain"><Captions src="a.vtt" /></Timegroup>; }',
     "utf8",
   );
 
@@ -214,7 +214,7 @@ test("invariant engine flags non-kebab-case filenames", async () => {
   await mkdir(join(tempDir, "compositions", "bad"), { recursive: true });
   await writeFile(
     join(tempDir, "compositions", "bad", "MyVideo.tsx"),
-    'import { TimelineRoot } from "@editframe/react";\nexport default function C() { return <TimelineRoot><Timegroup duration="10s" mode="contain"><Captions src="a.vtt" /></Timegroup></TimelineRoot>; }',
+    'import { Timegroup } from "@editframe/react";\nexport default function C() { return <Timegroup duration="10s" mode="contain"><Captions src="a.vtt" /></Timegroup>; }',
     "utf8",
   );
 

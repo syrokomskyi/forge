@@ -1,17 +1,17 @@
 /*
   Editframe React composition template
   Copy this file to start a new composition. @editframe/react components:
-  - TimelineRoot: root container for the composition
-  - Timegroup: groups elements into a timed sequence
+  - Workbench: preview canvas with toolbar and timeline (requires resolution)
+  - Configuration: Editframe configuration wrapper
+  - Timegroup: groups elements into a timed sequence (use as root inside Workbench)
   - Video: video source with fit mode (contain, cover, fill)
   - Audio: audio source
-  - Text: text overlay with positioning
+  - Text: text overlay — pass text as children, style via style prop
   - Captions: accessibility captions for speech audio
   Run `editframe preview` to preview, `editframe render` to produce output.
 */
 import {
   Configuration,
-  TimelineRoot,
   Timegroup,
   Video,
   Text,
@@ -22,25 +22,29 @@ import {
 
 export default function Composition() {
   return (
-    <Configuration>
-      <Workbench resolution="1920x1080">
-        <TimelineRoot>
-          <Timegroup duration="10s">
-            <Video src="assets/background.mp4" fit="contain" duration="10s" />
-            <Text
-              text="Your text here"
-              x="50%"
-              y="50%"
-              fontSize="48px"
-              color="white"
-              textAlign="center"
-              duration="5s"
-            />
-            <Audio src="assets/narration.mp3" />
-            <Captions src="assets/captions.vtt" />
-          </Timegroup>
-        </TimelineRoot>
-      </Workbench>
-    </Configuration>
+    <Workbench resolution="1920x1080">
+      <Configuration>
+        <Timegroup
+          id="root"
+          duration="10s"
+          mode="contain"
+          style={{
+            width: "1920px",
+            height: "1080px",
+            background: "#000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Video src="assets/background.mp4" fit="contain" duration="10s" />
+          <Text duration="5s" style={{ color: "white", fontSize: "48px", textAlign: "center" }}>
+            Your text here
+          </Text>
+          <Audio src="assets/narration.mp3" />
+          <Captions src="assets/captions.vtt" />
+        </Timegroup>
+      </Configuration>
+    </Workbench>
   );
 }
