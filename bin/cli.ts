@@ -285,9 +285,14 @@ async function main(): Promise<void> {
   const dryRun = flags["dry-run"] === true;
 
   const input: ForgeCommandInput = { argv: rest, flags };
+  const resolvedForgeRoot = resolveForgeRootFromCli();
+  if (outputFormat === "pretty" && commandName === "forge.create") {
+    logger.info(`forge root: ${resolvedForgeRoot ?? "(not resolved)"}`);
+  }
+
   const context: ForgeRuntimeContext = {
     workspaceRoot,
-    forgeRoot: resolveForgeRootFromCli(),
+    forgeRoot: resolvedForgeRoot,
     logger,
     dryRun,
     outputFormat,
