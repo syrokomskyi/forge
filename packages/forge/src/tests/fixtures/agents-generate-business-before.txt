@@ -38,6 +38,7 @@
 | Name | Category | Invocation | Concerns |
 | --- | --- | --- | --- |
 | ef-composition-review | fo | user | read-only |
+| ef-onboard | fo | user | content-mutation |
 | ef-render-verify | fo | user | read-only |
 | fo-add-tests | fo | user | code-mutation |
 | fo-architecture | fo | user | document-only |
