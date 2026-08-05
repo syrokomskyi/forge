@@ -134,16 +134,24 @@ export async function runScaffoldProject(
       const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
       const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
       const details = [stderr, stdout].filter(Boolean).join("\n");
-      errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
-      if (outputFormat === "pretty") {
-        logger.error(`Install failed: ${cmd}`);
-        if (details) logger.error(details);
+      // pnpm v10 exits non-zero for ERR_PNPM_IGNORED_BUILDS even when install succeeded
+      if (details.includes("ERR_PNPM_IGNORED_BUILDS")) {
+        installLog.push(`${cmd} — ok (build scripts ignored)`);
+        if (outputFormat === "pretty") {
+          logger.success(`Finished: ${cmd} (build scripts ignored — run 'pnpm approve-builds' later)`);
+        }
+      } else {
+        errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
+        if (outputFormat === "pretty") {
+          logger.error(`Install failed: ${cmd}`);
+          if (details) logger.error(details);
+        }
+        return {
+          data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
+          exitCode: 1,
+          summary: `forge.scaffold: failed — install step "${cmd}" failed`,
+        };
       }
-      return {
-        data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
-        exitCode: 1,
-        summary: `forge.scaffold: failed — install step "${cmd}" failed`,
-      };
     }
   }
 
@@ -201,17 +209,25 @@ export async function runScaffoldProject(
         const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
         const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
         const details = [stderr, stdout].filter(Boolean).join("\n");
-        errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
-        if (outputFormat === "pretty") {
-          logger.error(`Install failed: ${cmd}`);
-          if (details) logger.error(details);
+        // pnpm v10 exits non-zero for ERR_PNPM_IGNORED_BUILDS even when install succeeded
+        if (details.includes("ERR_PNPM_IGNORED_BUILDS")) {
+          installLog.push(`${cmd} — ok (build scripts ignored)`);
+          if (outputFormat === "pretty") {
+            logger.success(`Finished: ${cmd} (build scripts ignored — run 'pnpm approve-builds' later)`);
+          }
+        } else {
+          errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
+          if (outputFormat === "pretty") {
+            logger.error(`Install failed: ${cmd}`);
+            if (details) logger.error(details);
+          }
+          return {
+            data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
+            nextSteps: [{ action: "Fix the errors above and re-run forge.scaffold", kind: "required" }],
+            exitCode: 1,
+            summary: `forge.scaffold: failed — install step "${cmd}" failed`,
+          };
         }
-        return {
-          data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
-          nextSteps: [{ action: "Fix the errors above and re-run forge.scaffold", kind: "required" }],
-          exitCode: 1,
-          summary: `forge.scaffold: failed — install step "${cmd}" failed`,
-        };
       }
     }
   }
