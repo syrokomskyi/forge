@@ -48,7 +48,7 @@ For each composition file:
 
 ### 5. Invariant check
 
-Run `forge doctor` to check all VIDEO-* invariants automatically. This covers filename conventions, scene fit modes, captions, and time model invariants. Review the output and include any violations in the report.
+Run `forge doctor` to check all profile invariants automatically. For the `editframe-html` profile, this covers VIDEO-01 through VIDEO-09 (filename conventions, scene fit modes, captions, and time model invariants). Review the output and include any violations in the report.
 
 ### 6. Manual best practices
 
