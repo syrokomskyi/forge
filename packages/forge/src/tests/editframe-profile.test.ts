@@ -245,9 +245,9 @@ test("bug 1: composition.tsx does not use TimelineRoot inside Workbench", () => 
     const tsxFile = files.find((f) => f.path === "composition.tsx");
     expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
     expect(tsxFile?.content).not.toContain("TimelineRoot");
-    expect(tsxFile?.content).toContain("<Workbench");
-    expect(tsxFile?.content).toContain("<Configuration>");
-    expect(tsxFile?.content).toContain("<Timegroup");
+    expect(tsxFile?.content).toContain("Workbench");
+    expect(tsxFile?.content).toContain("Configuration");
+    expect(tsxFile?.content).toContain("Timegroup");
   }
 });
 
@@ -277,11 +277,11 @@ test("bug 4: Text uses style prop for visual styling, not HTML attributes", () =
   for (const { label, files } of getReactTemplateFiles(profile)) {
     const tsxFile = files.find((f) => f.path === "composition.tsx");
     expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
-    expect(tsxFile?.content).not.toContain('fontSize="48px"');
+    expect(tsxFile?.content).not.toContain('fontSize="72px"');
     expect(tsxFile?.content).not.toContain('color="white"');
-    expect(tsxFile?.content).toContain(
-      'style={{ color: "white", fontSize: "48px", textAlign: "center" }}',
-    );
+    expect(tsxFile?.content).toContain('color: "white"');
+    expect(tsxFile?.content).toContain('fontSize: "72px"');
+    expect(tsxFile?.content).toContain('textAlign: "center"');
   }
 });
 
@@ -321,5 +321,50 @@ test("bonus: src/index.css exists with tailwindcss import", () => {
     const cssFile = files.find((f) => f.path === "src/index.css");
     expect(cssFile, `${label}: src/index.css should exist`).toBeDefined();
     expect(cssFile?.content).toContain('@import "tailwindcss"');
+  }
+});
+
+// --- Animation and replay fix regression tests ---
+
+test("composition uses --ef-progress CSS variable for animation", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).toContain("--ef-progress");
+    expect(tsxFile?.content).toContain("opacity");
+    expect(tsxFile?.content).toContain("transform");
+  }
+});
+
+test("composition includes replay fix via useEffect", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).toContain("useEffect");
+    expect(tsxFile?.content).toContain("fixReplay");
+    expect(tsxFile?.content).toContain("playback-attached");
+  }
+});
+
+test("Text duration matches Timegroup duration (both 10s)", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).toContain('duration="10s"');
+    expect(tsxFile?.content).not.toContain('duration="5s"');
+  }
+});
+
+test("composition uses as-any casts for TypeScript compatibility", () => {
+  const profile = loadStackProfile(PROFILE_PATH);
+  for (const { label, files } of getReactTemplateFiles(profile)) {
+    const tsxFile = files.find((f) => f.path === "composition.tsx");
+    expect(tsxFile, `${label}: composition.tsx should exist`).toBeDefined();
+    expect(tsxFile?.content).toContain("as any");
+    expect(tsxFile?.content).toContain("EFWorkbench");
+    expect(tsxFile?.content).toContain("EFText");
   }
 });

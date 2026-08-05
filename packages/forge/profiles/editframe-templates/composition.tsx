@@ -10,21 +10,45 @@
   - Captions: accessibility captions for speech audio
   Run `editframe preview` to preview, `editframe render` to produce output.
 */
-import {
-  Configuration,
-  Timegroup,
-  Video,
-  Text,
-  Audio,
-  Captions,
-  Workbench,
-} from "@editframe/react";
+import { useEffect, useRef } from "react";
+import { Configuration, Timegroup, Text, Workbench } from "@editframe/react";
+
+const EFWorkbench = Workbench as any;
+const EFConfiguration = Configuration as any;
+const EFTimegroup = Timegroup as any;
+const EFText = Text as any;
 
 export default function Composition() {
+  const workbenchRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const wb = workbenchRef.current;
+    if (!wb) return;
+
+    const fixReplay = () => {
+      const config = wb.querySelector("ef-configuration");
+      const controller = (config as any)?.playback;
+      if (!controller) return;
+
+      const originalPlay = controller.play.bind(controller);
+      controller.play = (opts?: any) => {
+        if (!opts?.from && controller.currentTime >= controller.duration) {
+          originalPlay({ from: 0, to: opts?.to });
+          return;
+        }
+        originalPlay(opts);
+      };
+    };
+
+    fixReplay();
+    wb.addEventListener("playback-attached", fixReplay);
+    return () => wb.removeEventListener("playback-attached", fixReplay);
+  }, []);
+
   return (
-    <Workbench resolution="1920x1080">
-      <Configuration>
-        <Timegroup
+    <EFWorkbench ref={workbenchRef} resolution="1920x1080">
+      <EFConfiguration>
+        <EFTimegroup
           id="root"
           duration="10s"
           mode="contain"
@@ -37,14 +61,21 @@ export default function Composition() {
             justifyContent: "center",
           }}
         >
-          <Video src="assets/background.mp4" fit="contain" duration="10s" />
-          <Text duration="5s" style={{ color: "white", fontSize: "48px", textAlign: "center" }}>
-            Your text here
-          </Text>
-          <Audio src="assets/narration.mp3" />
-          <Captions src="assets/captions.vtt" />
-        </Timegroup>
-      </Configuration>
-    </Workbench>
+          <EFText
+            duration="10s"
+            style={{
+              color: "white",
+              fontSize: "72px",
+              textAlign: "center",
+              fontFamily: "ui-sans-serif, system-ui, sans-serif",
+              opacity: "min(1, var(--ef-progress, 0) * 5)",
+              transform: "scale(min(1, 0.8 + var(--ef-progress, 0) * 0.2))",
+            }}
+          >
+            Hello, Editframe!
+          </EFText>
+        </EFTimegroup>
+      </EFConfiguration>
+    </EFWorkbench>
   );
 }
