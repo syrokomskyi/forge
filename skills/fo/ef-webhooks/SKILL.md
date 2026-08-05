@@ -71,7 +71,7 @@ Use `express.raw()`, not `express.json()`. Signature verification needs the exac
 
 `file.created`, `file.uploading`, `file.processing`, `file.ready`, `file.failed`, `file.updated`
 
-`data` includes `id`, `type` (`video`/`image`/`caption`), `status`, `filename`, `byte_size`, `md5`, `mime_type`, `width`, `height`, `expires_at`.
+`data` includes `id`, `type` (`video`/`image`/`caption`), `status`, `filename`, `byte_size`, `md5`, `mime_type`, `width`, `height`, `expires_at`. Editframe sends `file.updated` for a file status change that doesn't match one of the other file topics.
 
 ### Legacy topics
 
@@ -90,6 +90,6 @@ Use `express.raw()`, not `express.json()`. Signature verification needs the exac
 npx editframe webhook -t render.completed
 ```
 
-This sends a real test event to the URL configured on your API key. There is no `--webhookURL` flag — the target URL always comes from the key's dashboard configuration.
+This sends a real test event to the URL configured on your API key. There is no `--webhookURL` flag — the target URL always comes from the key's dashboard configuration. The dashboard's API key detail page has an equivalent "Test Webhook" button.
 
 For local development, tunnel your dev server (e.g. `ngrok http 3000`) and point the API key's Webhook URL at the tunnel URL.
