@@ -11,7 +11,9 @@ triggers:
   - "animate text"
   - "kinetic typography"
   - "transition between scenes"
+source: domain-knowledge
 ---
+
 <!-- skill-lint-disable SKILL-17 -->
 
 # Motion Design

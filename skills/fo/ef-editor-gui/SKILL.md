@@ -11,7 +11,9 @@ triggers:
   - "set up editor gui"
   - "add timeline controls"
   - "visual editing"
+source: https://editframe.com/skills/editor-gui.md
 ---
+
 <!-- skill-lint-disable SKILL-17 -->
 
 # Editor Toolkit
@@ -83,16 +85,16 @@ Each playback control (`ef-play`, `ef-pause`, `ef-toggle-play`, `ef-toggle-loop`
 
 ## Element reference
 
-| Element | Purpose |
-| --- | --- |
-| `ef-canvas` | Interactive composition canvas |
-| `ef-controls` | Proxy container for shared target |
-| `ef-preview` | Live composition preview |
-| `ef-scrubber` | Seekable timeline scrubber |
-| `ef-timeline` | Timeline container |
-| `ef-time-display` | Time display |
-| `ef-toggle-play` | Play/pause toggle |
-| `ef-transform-handles` | Element transform controls |
-| `ef-trim-handles` | Video trim controls |
-| `ef-tree` | Composition hierarchy tree |
-| `ef-workbench` | Full editor layout |
+| Element                | Purpose                           |
+| ---------------------- | --------------------------------- |
+| `ef-canvas`            | Interactive composition canvas    |
+| `ef-controls`          | Proxy container for shared target |
+| `ef-preview`           | Live composition preview          |
+| `ef-scrubber`          | Seekable timeline scrubber        |
+| `ef-timeline`          | Timeline container                |
+| `ef-time-display`      | Time display                      |
+| `ef-toggle-play`       | Play/pause toggle                 |
+| `ef-transform-handles` | Element transform controls        |
+| `ef-trim-handles`      | Video trim controls               |
+| `ef-tree`              | Composition hierarchy tree        |
+| `ef-workbench`         | Full editor layout                |
