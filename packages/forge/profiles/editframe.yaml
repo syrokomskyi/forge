@@ -344,7 +344,7 @@ workspace:
 
         console.log(`Cleaned ${toDelete.length} directories.`);
 install:
-  - pnpm add -D @editframe/cli @warpgogol/forge turbo prettier
+  - pnpm add -w -D @editframe/cli @warpgogol/forge turbo prettier
 firstWorkspace:
   path: compositions/my-first-video
   files:
