@@ -81,12 +81,12 @@ invariants:
       glob: "compositions/**/*.html"
       pattern: ef-captions
   - id: VIDEO-04
-    rule: Root ef-timegroup must declare duration or use mode="contain" or mode="fit"
+    rule: 'Root ef-timegroup must declare duration or use mode="contain" or mode="fit"'
     severity: error
     check:
       kind: file-contains
       glob: "compositions/**/*.html"
-      pattern: "ef-timegroup[^>]*(duration|mode=\"contain\"|mode=\"fit\")[^>]*>"
+      pattern: 'ef-timegroup[^>]*(duration|mode="contain"|mode="fit")[^>]*>'
   - id: VIDEO-05
     rule: All duration values must be valid CSS time strings (e.g. 5s, 500ms, 2.5s)
     severity: error
@@ -97,7 +97,7 @@ invariants:
       attribute: "duration"
       pattern: "^\\d+(\\.\\d+)?(s|ms)$"
   - id: VIDEO-06
-    rule: mode attribute must be one of: sequence, fixed, contain, fit
+    rule: "mode attribute must be one of: sequence, fixed, contain, fit"
     severity: error
     check:
       kind: html-attribute-pattern
