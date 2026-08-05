@@ -200,6 +200,7 @@ function runCheck(
         const fullPath = path.join(workspaceRoot, file);
         try {
           const content = fs.readFileSync(fullPath, "utf8");
+          elementRegex.lastIndex = 0;
           let match: RegExpExecArray | null;
           while ((match = elementRegex.exec(content)) !== null) {
             const elementSnippet = match[0];

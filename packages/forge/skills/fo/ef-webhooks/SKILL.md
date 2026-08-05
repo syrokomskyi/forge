@@ -11,7 +11,9 @@ triggers:
   - "render completion notification"
   - "file processing webhook"
   - "webhook signature verification"
+source: https://editframe.com/skills/webhooks.md
 ---
+
 <!-- skill-lint-disable SKILL-17 -->
 
 # Webhooks

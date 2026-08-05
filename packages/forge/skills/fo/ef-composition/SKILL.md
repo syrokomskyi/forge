@@ -11,7 +11,9 @@ triggers:
   - "build a video with editframe"
   - "create a composition"
   - "add a scene to my video"
+source: https://editframe.com/skills/composition.md
 ---
+
 <!-- skill-lint-disable SKILL-17 -->
 
 # Video Composition

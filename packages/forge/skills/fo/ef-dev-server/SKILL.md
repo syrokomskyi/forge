@@ -11,7 +11,9 @@ triggers:
   - "configure editframe preview"
   - "local asset serving"
   - "dev server not working"
+source: https://editframe.com/skills/dev-server.md
 ---
+
 <!-- skill-lint-disable SKILL-17 -->
 
 # Dev Server

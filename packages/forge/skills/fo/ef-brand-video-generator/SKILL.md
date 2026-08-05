@@ -11,7 +11,9 @@ triggers:
   - "create a logo animation"
   - "brand intro video"
   - "brand outro video"
+source: domain-knowledge
 ---
+
 <!-- skill-lint-disable SKILL-17 -->
 
 # Brand Video Generator
