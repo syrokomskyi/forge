@@ -13,7 +13,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `docs.archive` | `os/core/` |
+| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `docs.archive` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
@@ -104,9 +104,9 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 
 ## forge.yaml (RFC-0391)
 
-`forge.yaml` is the machine-readable project configuration file at the project root. It records project name, stack, package manager, and docs paths. `create` creates it; `doctor` checks for it; `agents.generate` reads it to produce `AGENTS.md`.
+`forge.yaml` is the machine-readable project configuration file at the project root. It records project name, stack, package manager, and docs paths. `create` creates it; `doctor` checks for it; `forge.agents.generate` reads it to produce `AGENTS.md`.
 
-- **MUST NOT** run `agents.generate` against this monorepo's root `AGENTS.md` — it is hand-written and carries no generated marker; the edit guard enforces this, do not bypass it.
+- **MUST NOT** run `forge.agents.generate` against this monorepo's root `AGENTS.md` — it is hand-written and carries no generated marker; the edit guard enforces this, do not bypass it.
 - **MUST NOT** re-add any `@warpgogol/*` import to `packages/forge` source — `doctor` autonomy guard will fail.
 - **MUST NOT** hand-edit a generated `AGENTS.md` in bootstrapped projects — edit `forge.yaml` and regenerate.
 
@@ -127,7 +127,7 @@ The `forge/stack-profile@1` schema includes six optional domain-neutral fields t
 - **`domain`** — string identifying the project domain (e.g. `software`, `video`, `book`, `music`, `game`, `illustration`). Used for profile detection and doctor output.
 - **`terminology`** — map of universal concept keys to domain-specific terms (e.g. `artifact: "composition"`). Open vocabulary; universal keys have built-in defaults exported as `TERMINOLOGY_DEFAULTS`. Missing keys fall back to the default term.
 - **`artifacts`** — array of artifact definitions (id, extensions, produce/validate commands, determinism properties). Used by `doctor` for domain-specific health checks in follow-up RFCs.
-- **`workspaceTypes`** — array of workspace type definitions (id, detection markers, associated skills, AGENTS.md template). Used by `agents.generate` for per-domain workspace detection in follow-up RFCs.
+- **`workspaceTypes`** — array of workspace type definitions (id, detection markers, associated skills, AGENTS.md template). Used by `forge.agents.generate` for per-domain workspace detection in follow-up RFCs.
 - **`invariants`** — array of domain-specific invariant definitions (id matching `^[A-Z]+-\d+$`, rule text, severity). Schema only — enforcement is deferred to follow-up RFCs.
 - **`register`** — string selecting the default behavioral register (`business` or `creative`). Used by `create` as a one-time default for new projects; existing `PREFERENCES.md` is never overwritten.
 
@@ -140,11 +140,11 @@ The following commands are domain-aware — they read domain fields from the sta
 - **`profile.validate`** — validates profile YAML files under `packages/forge/profiles/` against the `forge/stack-profile@1` schema (including RFC-0638 domain fields). Supports `--id <profile-id>` to validate a single profile. Returns exit 1 if any profile is invalid.
 - **`create`** — reads `domain`, `terminology`, `register`, and artifact-derived semantic bindings from the selected profile and writes them into `forge.yaml` (domain, terminology, bindings.commands) and `PREFERENCES.md` (register). When the profile has no domain fields, behavior is unchanged (software-domain fallback).
 - **`doctor`** — reports domain info (domain, source, register, terminology, invariant count) as a `domain-info` check. Enforces profile invariants via the invariant engine as a `domain-invariants` check (RFC-0675) — invariants with a `check` declaration are actively verified (`filename-pattern`, `file-contains`, `file-not-contains`, `attribute-pattern`); invariants without `check` remain advisory. The `attribute-pattern` check kind (RFC-0694) validates attribute values on elements matching a tag selector — requires `elements` (array) and `attribute` fields (schema-enforced via `.refine()`). Reports `fail` for error-severity violations, `warn` for warning-severity. The `--strict` flag elevates `warn` to `fail` for `domain-invariants` and `profile-validate` checks. `--json` includes `invariantViolations` array in the `domain-invariants` check. Runs `profile.validate` as an advisory `profile-validate` check (warn status on failure, not gating — shipped profiles are forge-internal). Nested AGENTS.md check runs for all domains — profile-driven workspace types replace hardcoded detection when present. Domain is resolved via a three-tier chain: `forge.yaml` `project.domain` → stack profile `domain` → default `software`.
-- **`agents.generate`** — loads `workspaceTypes[]` from the matching stack profile and passes them to `discoverWorkspaces` for profile-driven workspace type detection. When the profile has no `workspaceTypes`, falls back to hardcoded detection (astro.config → app, Dockerfile → service, else package).
+- **`forge.agents.generate`** — loads `workspaceTypes[]` from the matching stack profile and passes them to `discoverWorkspaces` for profile-driven workspace type detection. When the profile has no `workspaceTypes`, falls back to hardcoded detection (astro.config → app, Dockerfile → service, else package).
 
 ### Per-domain AGENTS.md templates (RFC-0643)
 
-`agents.generate` uses profile terminology and register to produce domain-appropriate AGENTS.md files. When no profile is loaded (or the profile has no domain fields), output is identical to the pre-RFC-0643 implementation — no regression for existing software-domain projects.
+`forge.agents.generate` uses profile terminology and register to produce domain-appropriate AGENTS.md files. When no profile is loaded (or the profile has no domain fields), output is identical to the pre-RFC-0643 implementation — no regression for existing software-domain projects.
 
 - **Root AGENTS.md templates**: Static prose (header, project section, paths section, conventions) is extracted to template files at `src/onboarding/templates/root-agents-business.md` and `root-agents-creative.md`. `selectRootTemplate(register)` returns the appropriate template. Dynamic sections (skills table, capabilities, behavioral layer) remain inline and are inserted at the `{{dynamicSections}}` marker.
 - **Nested AGENTS.md templates**: `selectNestedTemplate(workspaceType, profile, terminology, fallback)` reads `workspaceTypes[].agentsMdTemplate` from the profile. Template paths are relative to `packages/forge/profiles/`. Absolute paths and parent-directory traversal (`..`) are rejected with a silent fallback to the hardcoded template.
@@ -215,19 +215,19 @@ The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against
 
 ## Core behavioral layer (RFC-0548)
 
-`agents.generate` now includes a **Core behavioral layer** section in generated `AGENTS.md` files. This section is wrapped in `<!-- forge:begin behavioral-layer -->` / `<!-- forge:end behavioral-layer -->` markers and contains:
+`forge.agents.generate` now includes a **Core behavioral layer** section in generated `AGENTS.md` files. This section is wrapped in `<!-- forge:begin behavioral-layer -->` / `<!-- forge:end behavioral-layer -->` markers and contains:
 
 - **Intent-to-skill routing table** — generated from `triggers` fields in fo-skill frontmatter. Each row maps natural-language trigger phrases to the corresponding skill.
 - **Fixed policy text** for 20 core behavioral areas: auto-grilling, auto-session-save, auto-review, context awareness, creator-facing communication, adaptive learning, proactive guidance, live operator feedback, register parameter, pushback policy, external capabilities (MCP), safety net, invisible quality, first creation moment, creative health, sharing and feedback, cultural awareness, indirect teaching, ownership, and commit policy (RFC-0551).
 - **Conditional extended behavioral layer** (RFC-0549) — included only when the register is `creative` (read from `PREFERENCES.md` `register` field). Contains ten sections: personal connection, creative memory, emotional rhythm (questions not declarations), gentle accountability, creative partnership, visual thinking, audience empathy, creative companion (companion mode, `saveCompanionSessions` flag, pull-only inspiration feed), creative confidence (outcome-based praise, never refuse creative direction), and always-next-step (RFC-0551, supersedes the "at most one per session" anticipatory suggestion limit). Content is loaded from `src/onboarding/templates/behavioral-layer-extended.md`.
 
-`create` auto-runs `agents.generate` after `forge.init`, so newly created projects get the behavioral layer from day one. If generation fails, a warning is logged but the create command continues.
+`create` auto-runs `forge.agents.generate` after `forge.init`, so newly created projects get the behavioral layer from day one. If generation fails, a warning is logged but the create command continues.
 
 The `triggers` field in skill frontmatter is validated by SKILL-16: optional array of 1-5 natural-language strings (each 5-100 characters), only allowed on fo-category skills. Pack skills may not declare triggers.
 
 ## Nested AGENTS.md generation (RFC-0611)
 
-`agents.generate` also generates nested `AGENTS.md` files for workspace directories (directories containing `package.json`). Workspace type is auto-detected by content markers:
+`forge.agents.generate` also generates nested `AGENTS.md` files for workspace directories (directories containing `package.json`). Workspace type is auto-detected by content markers:
 
 - **app** — directory with `astro.config.*`
 - **service** — directory with `Dockerfile` or `service.config.yaml`
@@ -238,7 +238,7 @@ Workspace-type detection rules are defined in RFC-0611. Agents MUST NOT add new 
 
 The edit guard skips hand-written nested `AGENTS.md` files (no generated marker) and reports them in the `skipped` array. Generated files (with marker) are regenerated if content differs. `upgrade` also runs nested generation after skill sync. `doctor` checks for missing, stale (in-memory comparison), and hand-written improvement opportunities.
 
-`agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `doctor` for staleness detection.
+`forge.agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `doctor` for staleness detection.
 
 - **Doctor stale check MUST use the same rendering pipeline as `forge agents generate`.** The stale check in `checkNestedAgentsMd` (`src/onboarding/doctor.ts`) must call `readPackageInfo` → `buildNestedAgentsMd(ws, config, packageInfo)` → `selectNestedTemplate(wsType, profile, terminology, fallback)` — exactly matching `generateNestedAgentsMd` in `src/onboarding/nested-agents-generate.ts`. Any divergence (missing `packageInfo`, missing `selectNestedTemplate`, missing `resolveAllTerminology`) causes false-positive stale reports for all generated nested `AGENTS.md` files. When modifying either function, verify the other stays in sync.
 
