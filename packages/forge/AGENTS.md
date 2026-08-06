@@ -19,7 +19,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.trim`, etc. (8 commands). All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). | `os/compass/` |
 | `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate` | `os/werkstatt/` |
-| `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize` | `os/spec/` |
+| `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate` | `os/spec/` |
 | `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive` | `os/adr/` |
 | `forgePlanModule` | `plan.archive` | `os/plan/` |
 | `forgeAuditModule` | `audit.archive` | `os/audit/` |
@@ -30,6 +30,8 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 ## Archive convention
 
 When archiving terminal artifacts, prefer the `docs.archive` umbrella command over individual `rfc.archive`, `adr.archive`, `plan.archive`, `audit.archive`, `session.archive`, `mission.archive` commands. The umbrella command runs all six in sequence and prevents leaving audits/plans/sessions/missions unarchived when the operator's intent is to clean up all terminal artifacts. Use individual commands only when the operator explicitly asks for a single domain (e.g. "archive only RFCs").
+
+- **RFC-0711: `docs.archive` post-loop `spec.live.merge` step.** After archiving, `docs.archive` scans implemented RFCs with a `liveSpec` frontmatter field and calls `spec.live.merge` for each, creating or updating living feature specs under `docs/specs/live/<domain>.md`. Rejected RFCs with `liveSpec` are skipped. Merge failures are non-fatal — the archive step still completes. Use `--dry-run` to preview merges without writing.
 
 - **Post-rename cleanup for `fs.rename` on watched directories:** When an archive handler uses `fs.rename` to move a directory that an IDE or file watcher is tracking (e.g. mission workpiece with an open `.astro/` cache), the watcher may recreate stale cache at the source path after the rename completes. Always add a post-rename cleanup check using `trashPath` from `utils/fs-trash.ts`: `if (existsSync(sourcePath)) { await trashPath(sourcePath); }` after the `fs.rename` call. See `os/mission/handlers/archive.ts` `moveMissionDir` for the reference implementation.
 
@@ -287,11 +289,21 @@ When an RFC transitions to `implemented`, `rfc.validate` enforces command lifecy
 
 External specification packages are vendored as immutable snapshots under `docs/specs/<spec-id>/` with an integrity manifest and `forge-spec.yaml` projection.
 
-- `forgeSpecModule` (in `os/spec/`) registers `spec.validate`, `spec.status`, `spec.materialize`.
+- `forgeSpecModule` (in `os/spec/`) registers `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate`.
 - `spec.validate` enforces SPEC-01..07: integrity, schema, cycles, references, waves, duplicates, materializedAs.
 - `spec.materialize` scaffolds RFC files for front nodes with `specRef` traceability and writes `materializedAs` back to `forge-spec.yaml`.
 - `spec.status` projects per-node states, blockers, and progress.
 - Spec amendments (`docs/specs/<id>/amendments/amd-NNN-*.md`) are the only correction channel — snapshot files are never modified.
+
+### Living feature specs (RFC-0711)
+
+Living feature specs are mutable markdown documents under `docs/specs/live/<domain>.md` that reflect the current specification of a feature or module. Unlike vendored spec snapshots (DNA-55), living specs evolve through delta merges from archived RFCs.
+
+- `spec.live.merge --id <RFC-XXXX>` extracts headings from the RFC's `## Design` section and merges them into the corresponding living spec. All-or-nothing: aborts on any heading conflict without writing. Use `--dry-run` to preview.
+- `spec.live.list` lists all living specs with domain, title, lastMergedRfc, and history count.
+- `spec.live.show --domain <name>` reads and returns a single living spec.
+- `spec.live.validate` validates all living specs with rules V-LS-01..05 (frontmatter, domain/filename match, archived RFC references, history integrity, duplicate domains).
+- `docs.archive` automatically calls `spec.live.merge` for implemented RFCs with `liveSpec` frontmatter field after archiving. Rejected RFCs with `liveSpec` are skipped.
 
 ## NPM publish workflow
 
