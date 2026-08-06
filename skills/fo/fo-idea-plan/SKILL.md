@@ -70,7 +70,7 @@ If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruc
    rfc: accept RFC-XXXX <short title>
 
    Transition RFC-XXXX to accepted status for planning.
-```
+   ```
 
 5. Stage only the RFC file.
 
