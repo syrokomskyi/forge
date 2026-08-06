@@ -209,6 +209,22 @@ export async function validateSingleRfc(
     addViolation(rfcId, relFile, "V-01", `id "${rfcId}" does not match format RFC-XXXX`);
   }
 
+  // RFC-DIR-01: directory structure convention (RFC-0722)
+  // Warn when RFC files are found in subdirectories other than archive/ and verification/
+  const slashIdx = fileName.indexOf("/");
+  if (slashIdx > 0) {
+    const subDir = fileName.slice(0, slashIdx);
+    if (subDir !== "archive" && subDir !== "verification") {
+      addViolation(
+        rfcId,
+        relFile,
+        "RFC-DIR-01",
+        `${relFile} is in an unsanctioned subdirectory. Only archive/ and verification/ are allowed. Move the file to docs/rfcs/ root or write an ADR to formalize the subdirectory.`,
+        "warning",
+      );
+    }
+  }
+
   // V-02: id uniqueness
   const prevFile = seenIds.get(rfcId);
   if (prevFile) {
