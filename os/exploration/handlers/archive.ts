@@ -22,10 +22,7 @@ import {
   serializeExplorationNote,
   getExplorationsDir,
 } from "../frontmatter-io.ts";
-import {
-  EXPLORATION_SLUG_PATTERN,
-  type ExplorationArchiveResult,
-} from "../types.ts";
+import { EXPLORATION_SLUG_PATTERN, type ExplorationArchiveResult } from "../types.ts";
 
 function parseRelatedArray(value: unknown): string[] {
   if (Array.isArray(value)) {
@@ -106,6 +103,15 @@ export async function runExplorationArchive(
   }
 
   if (previousStatus === "archived") {
+    if (rfcId) {
+      const updatedFrontmatter: Record<string, unknown> = {
+        ...fm,
+        status: "archived",
+        related,
+      };
+      const updatedContent = serializeExplorationNote(updatedFrontmatter, result.parsed.body);
+      await fs.writeFile(filePath, updatedContent, "utf-8");
+    }
     if (outputFormat === "pretty") {
       logger.info(`Exploration note ${slug} is already archived (no-op).`);
     }
