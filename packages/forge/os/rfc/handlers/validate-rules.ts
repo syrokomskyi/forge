@@ -198,7 +198,7 @@ export async function validateSingleRfc(
   workspaceRoot: string,
   addViolation: AddViolationFn,
   seenFilenameNumbers?: Map<number, string>,
-): Promise<void> {
+): Promise<Marker[]> {
   const fm = parsed.frontmatter;
   const body = parsed.body;
   const relFile = path.join(RFC_DIR, fileName);
@@ -876,16 +876,16 @@ export async function validateSingleRfc(
   }
 
   // V-NC-01: NEEDS CLARIFICATION marker detection (RFC-0709)
-  {
-    const markers = collectMarkers(body, status, createdAt);
-    for (const marker of markers) {
-      addViolation(
-        rfcId,
-        relFile,
-        "V-NC-01",
-        `Unresolved NEEDS CLARIFICATION marker at line ${marker.line}: "${marker.text}"`,
-        marker.severity === "error" ? "error" : "warning",
-      );
-    }
+  const ncMarkers = collectMarkers(body, status, createdAt);
+  for (const marker of ncMarkers) {
+    addViolation(
+      rfcId,
+      relFile,
+      "V-NC-01",
+      `Unresolved NEEDS CLARIFICATION marker at line ${marker.line}: "${marker.text}"`,
+      marker.severity === "error" ? "error" : "warning",
+    );
   }
+
+  return ncMarkers;
 }
