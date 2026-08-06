@@ -1,6 +1,6 @@
 ---
 name: fo-idea
-description: Analyze a user's idea, decompose if too large, and route to fo-idea-create-rfc or fo-idea-create-adr. Use when the user describes a change and is unsure if it needs an RFC or ADR.
+description: Analyze a user's idea, decompose if too large, and route to fo-idea-create-rfc, fo-idea-create-adr, or direct implementation. Use when the user describes a change and is unsure if it needs an RFC, ADR, or no document.
 invocation: user
 category: fo
 concerns: document-only
@@ -9,10 +9,10 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggers: ["I have an idea for a change", "analyze this idea and route it", "decompose this feature idea"]
+triggers: ["I have an idea for a change", "analyze this idea and route it", "decompose this feature idea", "does this need an RFC", "should I write an ADR for this"]
 ---
 
-# Idea → RFC or ADR
+# Idea → RFC, ADR, or direct implementation
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 
@@ -89,22 +89,28 @@ If the task needs a series, proceed to step 4 (decompose).
 
 ### 3. Single document: classify and create
 
-#### 3a. Classify: RFC or ADR
+#### 3a. Classify: RFC, ADR, or direct implementation
 
 Use the following decision table:
 
-| Criterion | RFC | ADR | Examples |
-| --- | --- | --- | --- |
-| Adds, removes, or changes a Site OS command | yes | no | New `fonts.selfhost.validate` command; changing `content.surface.validate` behavior |
-| Modifies a DNA invariant or AGENTS.md rule | yes | no | Changing the cosmic naming contract; adding a new storage policy to AGENTS.md |
-| Establishes a cross-workspace package boundary or contract | yes | no | New shared package exported schema; new package interface; inter-package type contract |
-| Changes a currently accepted or implemented RFC | yes | no | Amending RFC-XXXX content surface; superseding RFC-XXXX |
-| Introduces a new policy or governance process | yes | no | RFC lifecycle process; feature visibility policy; verification evidence pipeline |
-| A convention, standard, or tooling choice applied across apps | no | yes | "Use Fontsource for all fonts"; "Self-host Playfair Display"; CSS methodology; lint rule choices |
-| Local to one package, one app, or one narrow convention | no | yes | Changing a biome's typography tokens; adding a font family to the self-host registry |
-| Does not touch commands, DNA, AGENTS.md, or cross-workspace contracts | no | yes | Choosing a library; picking a CSS token naming scheme; selecting an image format strategy |
+| Criterion | RFC | ADR | Direct | Examples |
+| --- | --- | --- | --- | --- |
+| Adds, removes, or changes a Site OS command | yes | no | no | New `fonts.selfhost.validate` command; changing `content.surface.validate` behavior |
+| Modifies a DNA invariant or AGENTS.md rule | yes | no | no | Changing the cosmic naming contract; adding a new storage policy to AGENTS.md |
+| Establishes a cross-workspace package boundary or contract | yes | no | no | New shared package exported schema; new package interface; inter-package type contract |
+| Changes a currently accepted or implemented RFC | yes | no | no | Amending RFC-XXXX content surface; superseding RFC-XXXX |
+| Introduces a new policy or governance process | yes | no | no | RFC lifecycle process; feature visibility policy; verification evidence pipeline |
+| Introduces new information architecture (new page sections, new content blocks, new UI structures visible to users) | yes | no | no | Adding a new section to the homepage; introducing a new block type on a page; projecting new fields into content before the backing implementation exists |
+| A convention, standard, or tooling choice applied across apps | no | yes | no | "Use Fontsource for all fonts"; "Self-host Playfair Display"; CSS methodology; lint rule choices |
+| Local to one package, one app, or one narrow convention | no | yes | no | Changing a biome's typography tokens; adding a font family to the self-host registry |
+| Does not touch commands, DNA, AGENTS.md, or cross-workspace contracts | no | yes | no | Choosing a library; picking a CSS token naming scheme; selecting an image format strategy |
+| Bug fix restoring intended behavior within existing contracts | no | no | yes | Fixing a broken import path; correcting a typo in a label; restoring a pipeline step that was accidentally bypassed |
+| Content data correction (fixing a fact, updating a status field, correcting a hash) | no | no | yes | Fixing a SHA-256 hash to match the real file; updating a consent status from `not_requested` to `requested` |
+| Cosmetic or formatting change with no semantic or structural impact | no | no | yes | Fixing indentation; reordering imports; renaming a local variable for readability |
 
-**If any RFC criterion is met → RFC.** Only if all ADR criteria are met and no RFC criterion applies → ADR.
+**If any RFC criterion is met → RFC.** If no RFC criterion applies and any ADR criterion is met → ADR. If no RFC or ADR criterion applies and a Direct criterion is met → direct implementation (no document needed).
+
+**Key insight:** Adding new user-visible structures to a site (new page sections, new content blocks, new homepage blocks, projecting not-yet-implemented fields into content) is an architectural change to the site's information architecture, not a data fix. It requires an RFC even when the change is "only content files". The test is: does this change what the site communicates or how it is structured? If yes → RFC. If it only corrects existing data within existing structures → direct.
 
 #### Common misclassification traps
 
@@ -120,15 +126,23 @@ These patterns **look like ADRs but are RFCs**:
 - **"Just adding one field to a schema"** — if the schema is a cross-workspace contract (e.g. a shared package exported types), changing it is an RFC even if the diff is small.
 - **"It's only a convention"** — if the convention is enforced by a new Site OS command or validator, it needs an RFC to define the command.
 - **"It's local to one package"** — if that package's change breaks an accepted RFC or changes a DNA invariant, it needs an RFC.
+- **"It's only content files, not code"** — adding new page sections, new content blocks, or projecting not-yet-implemented fields into content is an information-architecture change, not a data fix. It requires an RFC even when no `.ts` or `.astro` file is touched. The test is whether the change introduces new user-visible structures or semantics, not whether it touches code files.
+
+These patterns **look like they need a document but are direct implementation**:
+
+- **"Fixing content data"** — correcting a hash, updating a status field, or fixing a factual error in existing content is a data correction within existing structures, not an architectural change. Direct implementation.
+- **"Restoring broken behavior"** — a bug fix that restores the intended behavior within existing contracts is direct implementation, not an RFC. (See ADR-0008 for the precedent: "this is a bug fix restoring the intended behavior, not an architectural change.")
+- **"Cosmetic cleanup"** — formatting, indentation, import ordering, or local variable renaming with no semantic impact is direct implementation.
 
 If the classification is ambiguous (e.g. the operator's description is too vague), ask a clarifying question using `ask_user_question` with the recommended classification first.
 
-#### 3b. Invoke the creation skill inline
+#### 3b. Route to the appropriate action
 
-Once classified, invoke the matching skill **inline** — execute it fully without stopping or returning control to the user:
+Once classified, take the matching action **inline** — execute it fully without stopping or returning control to the user:
 
 - **RFC** → invoke `/fo-idea-create-rfc`. It will collect metadata, grill the concept, create the file, fill it, validate, and report.
 - **ADR** → invoke `/fo-idea-create-adr`. It will collect metadata, grill the concept, create the file, fill it, validate, and report. **On the accepted-decision fast path (step 1a)**, tell `fo-idea-create-adr` to skip grilling and use the operator's justification text directly.
+- **Direct implementation** → tell the operator that no RFC or ADR is needed for this change, explain why (which Direct criterion applies), and proceed to implement the change directly. Do not create a governance document. The operator may still request an ADR for traceability if they prefer — respect that choice.
 
 Do not duplicate the creation skill's work — just route to it and let it run.
 
@@ -137,7 +151,7 @@ Do not duplicate the creation skill's work — just route to it and let it run.
 After the creation skill completes, present its final report to the user in `aiLanguage`. Add a one-line prefix indicating which path was taken — translate the label to `aiLanguage`:
 
 ```
-<Classified as in aiLanguage>: RFC (cross-workspace command addition) / ADR (local package convention)
+<Classified as in aiLanguage>: RFC (cross-workspace command addition) / ADR (local package convention) / Direct implementation (data fix or bug restore within existing contracts)
 ```
 
 Followed by the creation skill's own report.
@@ -241,7 +255,7 @@ After all documents are created, present a single batch report in `aiLanguage`. 
 ## Constraints
 
 - **Document-only. This skill must never modify, create, or delete source code files.** It must not touch files in `apps/`, `packages/`, `services/`, `tools/`, `scripts/`, or any other source directory. It must not run `pnpm`-based builds, `pnpm test`, `astro check`, or any build/validation command other than `rfc.validate` / `adr.validate` (which run inside the delegated creation skills). The only files this skill may produce are RFC files in `docs/rfcs/` and ADR files in `docs/adrs/` — and even those are created by the delegated `fo-idea-create-rfc` / `fo-idea-create-adr` skills, not by this skill directly. If you feel the urge to "quickly fix something in the code while I'm here" — stop. That is not this skill's job.
-- **Classify before invoking.** Do not invoke both skills for one document — pick one based on the decision table.
+- **Classify before acting.** Do not invoke a creation skill or start implementation until the classification is determined using the decision table in step 3a. Pick one path (RFC, ADR, or direct) based on the table.
 - **When genuinely ambiguous, ask — do not default to RFC.** Conventions, tooling choices, library selections, and standards applied across apps are ADRs even when they touch shared packages. Defaulting to RFC for every cross-app decision clogs the RFC pipeline and wastes architecture review time on local technical choices. If the table and examples do not resolve the classification, ask the operator with `ask_user_question` presenting both options. Reserve RFC for decisions that genuinely change commands, DNA, AGENTS.md rules, cross-workspace contracts, or governance process.
 - **Do not skip the creation skill's grilling step — except on the accepted-decision fast path (step 1a).** When the operator has signaled an already-made decision with justification and the classification is ADR, grilling is skipped because the operator has already decided. In all other cases, grilling happens inside the invoked skill — this skill only routes.
 - **Do not create files directly.** This skill never writes RFC or ADR files — it delegates to `fo-idea-create-rfc` or `fo-idea-create-adr`.
