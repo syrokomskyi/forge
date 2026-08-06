@@ -304,11 +304,18 @@ export interface RfcValidationViolation {
   severity: "error" | "warning";
 }
 
+export interface Marker {
+  line: number;
+  text: string;
+  severity: "warn" | "error";
+}
+
 export interface RfcValidationResult {
   command: "rfc.validate";
   status: "pass" | "fail";
   count: number;
   violations: RfcValidationViolation[];
+  markers?: Marker[];
 } // ─── Command results ─────────────────────────────────────────────────────────
 
 export interface RfcCommandLifecycleDiagnosticData {

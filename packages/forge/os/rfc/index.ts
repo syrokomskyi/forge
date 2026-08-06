@@ -69,6 +69,7 @@ export type {
   RfcCreateResult,
   RfcValidationViolation,
   RfcValidationResult,
+  Marker,
   RfcCommandLifecycleViolation,
   RfcCommandLifecycleValidationResult,
   RfcCheckViolation,
