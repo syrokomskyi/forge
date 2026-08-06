@@ -1,12 +1,13 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Per-RFC validation rules (V-01..V-32) extracted from the validate handler for modularity.</purpose>
+<purpose>Per-RFC validation rules (V-01..V-32, RFC-DIR-01) extracted from the validate handler for modularity.</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior into this reusable package source file.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0303 Phase 3: extracted from validate.ts as part of the handler split.</item>
+  <item>RFC-0722: add RFC-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
 </CHANGE_SUMMARY>
 */
 
