@@ -24,7 +24,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import type { RfcValidationViolation, RfcValidationResult } from "../types.ts";
+import type { RfcValidationViolation, RfcValidationResult, Marker } from "../types.ts";
 import { RFC_DIR, RFC_KNOWN_KEYS } from "../types.ts";
 import { DNA_DOCS, AP_DOCS, loadInvariantIds } from "./shared.ts";
 import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
@@ -50,7 +50,7 @@ export async function runRfcValidate(
     }
     logger.info("No RFC files found to validate.");
     return {
-      data: { command: "rfc.validate", status: "pass", count: 0, violations: [] },
+      data: { command: "rfc.validate", status: "pass", count: 0, violations: [], markers: [] },
       summary: "No RFC files found to validate",
     };
   }
@@ -71,6 +71,7 @@ export async function runRfcValidate(
   const knownKeys = new Set<string>(RFC_KNOWN_KEYS);
 
   const violations: RfcValidationViolation[] = [];
+  const allMarkers: Marker[] = [];
 
   function addViolation(
     rfcId: string,
@@ -89,7 +90,7 @@ export async function runRfcValidate(
     const result = allParsedByFile.get(fileName);
     if (!result) continue;
 
-    await validateSingleRfc(
+    const markers = await validateSingleRfc(
       fileName,
       result.parsed,
       allParsed,
@@ -101,6 +102,7 @@ export async function runRfcValidate(
       addViolation,
       seenFilenameNumbers,
     );
+    allMarkers.push(...markers);
   }
 
   const lifecycle = await collectRfcCommandLifecycleViolations(
@@ -149,6 +151,7 @@ export async function runRfcValidate(
       status: resultStatus,
       count: filesToValidate.length,
       violations,
+      markers: allMarkers,
     },
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors
