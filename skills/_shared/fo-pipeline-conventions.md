@@ -47,6 +47,28 @@ The ladder is a pre-coding decision tool, not a post-hoc review checklist. It de
 
 The ecosystem is forward-only. No backward compatibility layers, no shims, no dual-paths. Legacy code paths are deleted, not maintained behind a flag. Deprecation means removal in the same change, not an indefinite grace period.
 
+## Removal discipline
+
+Before removing any code, field, schema, prop, config entry, or other project artifact, investigate why it was added. Removal is irreversible context loss — the artifact existed for a reason, and that reason may still be valid.
+
+### Investigation steps
+
+1. **Git history** — `git log -- <path>`, `git blame <path>`, `git log -p --follow -- <path>` to find when and why the artifact was introduced.
+2. **RFCs and ADRs** — search `docs/rfcs/` and `docs/adrs/` for references to the artifact. RFCs document intended behavior; ADRs record decisions.
+3. **Mission context** — if working in a mission workpiece, check `mission.yaml` and the mission brief for stated goals that required the artifact.
+4. **Cross-references** — grep for the artifact name across the codebase. Other modules, tests, or content may depend on it.
+5. **Semantic purpose** — does the artifact have a clear purpose (e.g. `cta` for navigation, `target` for linking, a validator for a specific contract)? Purposeful artifacts are intentional.
+
+### Decision rule
+
+- **Intentionally added** (found in git history, RFC, ADR, or has clear semantic purpose) → the fix is to **extend the schema/contract** to accommodate the artifact, not to remove the artifact. A validation error means the schema hasn't caught up with the intended model.
+- **Accidentally added** (no trace in history, no RFC/ADR, no semantic purpose, looks like a copy-paste error) → safe to remove.
+- **Unclear** → ask the operator before removing. State what you found and what you couldn't find.
+
+### Common trap
+
+A schema validation error (e.g. PAGE-PROPS-01 "must NOT have additional properties") is NOT evidence that the content is wrong. It is evidence that the schema doesn't include the content's intended field. The default response is to extend the schema, not to strip the content.
+
 ## Compass terminology
 
 Use Compass (not GRACE) in all new code, documentation, and log messages.

@@ -97,6 +97,7 @@ Beyond what the mechanical floor catches:
 - **No magic numbers or untyped data** — flag literal constants that should be named, enums, or config; flag strings standing in for domain concepts.
 - **Minimalism** — flag over-engineered abstractions, speculative generality, duplicated logic, or middle-man modules that can be simplified.
 - **Dead code** — flag unreachable branches, unused exports, commented-out code blocks.
+- **Unjustified removals** — flag any deletion (field, prop, function, config entry, schema property) where the diff does not show investigation of why the artifact was added. Read `_shared/fo-pipeline-conventions.md` §Removal discipline. A validation error is not justification for removal — it's justification for schema extension. Check `git log`, RFCs, and ADRs for the artifact's origin before accepting the deletion.
 - **Error handling** — flag swallowed errors, bare `catch` blocks without context, missing error types.
 - **Fowler code smells** — the following baseline (from _Refactoring_, ch.3) applies always, even when a repo documents nothing. Each smell is a labelled heuristic ("possible Feature Envy"), never a hard violation. A documented repo standard overrides the baseline; skip anything tooling already enforces.
   - **Mysterious Name** — a function, variable, or type whose name doesn't reveal what it does or holds. → rename it; if no honest name comes, the design's murky.

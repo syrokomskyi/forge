@@ -57,6 +57,8 @@ If no review is found, run `/fo-review` (or execute its process inline) on the a
 
 Use the review findings as the fix list. The verdict is **not** a stop signal — even an `Approved` review (legacy or lax criteria) may contain findings that must be fixed. Read every axis section and process every finding, regardless of what the verdict line says.
 
+**Before removing anything, read `_shared/fo-pipeline-conventions.md` §Removal discipline.** A fix that removes a field, prop, function, or config entry without investigating its origin is a contract violation. Validation errors often mean the schema hasn't caught up with the intended model — the fix is to extend the schema, not to strip the content.
+
 Process findings by axis severity:
 
 1. **Verdict Rejected** — the change has a fundamental flaw (DNA violation, backward compatibility layer, storage policy bypass). Fix all failures before anything else.
@@ -99,7 +101,7 @@ Otherwise, determine which workspaces were touched by the fixes in step 2 and ru
 
 ```sh
   pnpm --filter <app-name> exec astro check
-  ```
+```
 
 - **For each touched `packages/*` workspace:**
 
