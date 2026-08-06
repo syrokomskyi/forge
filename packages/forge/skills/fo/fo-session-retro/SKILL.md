@@ -126,12 +126,14 @@ rtk git status --porcelain
 for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk git -C "$d" status --porcelain; done
 ```
 
-**3b. Classify each dirty file as "ours" or "theirs":**
+**3b. Classify each dirty file as "ours" or "unattributed":**
 
-- A file is "ours" if EITHER:
+- A file is "ours" if ANY of:
   - You directly modified it via `edit`, `write_to_file`, `multi_edit`, or `edit_notebook` tools.
   - You indirectly modified it by running a command (`run_command`) that generates or updates it (e.g. codegen pipelines, build commands, etc.).
-- A file is "theirs" if it appears dirty but you have no record of touching it in this session. This means another parallel agent modified it. Do NOT commit, stash, or revert these files.
+  - It was produced by a session-end pipeline step in THIS session: session transcripts (`docs/sessions/*.md`), review reports (`docs/reviews/**/*.md`), or `docs.archive` moves.
+  - It was created by a skill you invoked in this session (e.g. `fo-review` creating a review report, `fo-doc-audit` editing AGENTS.md, `fo-idea-create-adr` creating an ADR).
+- A file is "unattributed" if it appears dirty but you have no record of touching it in this session. Do NOT assume it belongs to a parallel agent — it may be an orphan from a previous session that was not committed. The previous session-end protocol should have caught it, but if it didn't, this session must not propagate the problem further.
 
 **3c. Commit our changes:**
 
@@ -139,9 +141,12 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 - If there are "our" dirty files in a workpiece: `git -C missions/<missionId>/workpiece add <files>` and `git -C missions/<missionId>/workpiece commit -m "<descriptive message>"`.
 - Use descriptive commit messages that explain what the changes are, not just "session cleanup".
 
-**3d. Report remaining dirty files:**
+**3d. Handle unattributed dirty files (NON-NEGOTIABLE):**
 
-- If any dirty files remain after committing ours, report them to the operator: "The following files were modified by another agent and left untouched: <list>". Then proceed.
+- If any unattributed dirty files remain after committing ours, present them to the operator via `ask_user_question` (in `aiLanguage`) and ask whether to commit or leave each one untouched. Do NOT silently proceed — unattributed files are often orphans from previous sessions that must be resolved, not propagated.
+- For each unattributed file, the operator can choose:
+  - **Commit** — the agent stages and commits the file with a descriptive message.
+  - **Leave untouched** — the operator explicitly acknowledges the file should remain dirty (e.g. it belongs to a parallel agent still running).
 - If the tree is now clean (or was clean from the start), proceed silently.
 
 ### Step 4: RFC implementation verification (NON-NEGOTIABLE)
