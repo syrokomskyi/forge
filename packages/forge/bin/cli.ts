@@ -151,6 +151,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/compass/compass.module.ts").then((m) => m.forgeCompassModule),
     await import("../os/werkstatt/werkstatt.module.ts").then((m) => m.forgeWerkstattModule),
     await import("../os/session/session.module.ts").then((m) => m.forgeSessionModule),
+    await import("../os/exploration/exploration.module.ts").then((m) => m.forgeExplorationModule),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {

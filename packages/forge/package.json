@@ -108,6 +108,14 @@
     "./os/mission-module": {
       "types": "./os/mission/mission.module.ts",
       "default": "./os/mission/mission.module.ts"
+    },
+    "./os/exploration": {
+      "types": "./os/exploration/index.ts",
+      "default": "./os/exploration/index.ts"
+    },
+    "./os/exploration-module": {
+      "types": "./os/exploration/exploration.module.ts",
+      "default": "./os/exploration/exploration.module.ts"
     }
   },
   "files": [
@@ -247,6 +255,14 @@
       "./os/mission-module": {
         "types": "./dist/os/mission/mission.module.d.ts",
         "default": "./dist/os/mission/mission.module.js"
+      },
+      "./os/exploration": {
+        "types": "./dist/os/exploration/index.d.ts",
+        "default": "./dist/os/exploration/index.js"
+      },
+      "./os/exploration-module": {
+        "types": "./dist/os/exploration/exploration.module.d.ts",
+        "default": "./dist/os/exploration/exploration.module.js"
       }
     }
   }
