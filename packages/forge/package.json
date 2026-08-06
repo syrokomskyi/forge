@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/forge",
-  "version": "0.23.0",
+  "version": "0.24.0",
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
