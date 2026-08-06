@@ -70,7 +70,7 @@ If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruc
    rfc: accept RFC-XXXX <short title>
 
    Transition RFC-XXXX to accepted status for planning.
-   ```
+```
 
 5. Stage only the RFC file.
 
@@ -167,6 +167,16 @@ The grilling checks:
 - Could an agent following this plan get stuck or confused?
 
 Address every concern the grilling raises by revising the draft. Do not persist until the grilling is satisfied.
+
+### 5b. Summit suggestion
+
+If the RFC meets summit criteria (any of: `kind: architecture` AND `scope: workspace`, `satisfies[]` includes 2+ DNA invariants, introduces a new package/command/lifecycle, supersedes an implemented RFC), suggest using `fo-design-summit` before acceptance. Use `ask_user_question`:
+
+> "This RFC is complex (architecture, workspace scope, 2+ DNA invariants). Should I run a multi-persona design summit before acceptance?"
+
+Recommended option: "Run summit" — because complex RFCs benefit from multi-perspective review.
+
+If the operator declines, proceed to step 6. If the operator accepts, invoke `fo-design-summit` via the `skill` tool, wait for it to complete, then proceed to step 6.
 
 ### 6. Persist the plan
 
