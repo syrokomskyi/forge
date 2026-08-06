@@ -49,7 +49,7 @@ Ask the user for, or infer from context:
 - **owners** — default `architecture`; confirm before using a different owner.
 - **commands.proposed / changed / removed** — any new, modified, or removed Site OS commands.
 - **packagesImpacted / appsImpacted** — concrete workspace names.
-- **liveSpec** — for feature-level RFCs (not governance/policy), suggest `liveSpec: true` to auto-derive a living spec domain from `packagesImpacted[0]`, or `liveSpec: <domain>` for an explicit domain. This enables automatic delta-merge into `docs/specs/live/<domain>.md` when the RFC is implemented (RFC-0711).
+- **liveSpec** — for feature-level RFCs (not governance/policy), suggest `liveSpec: true` to auto-derive a living spec domain from `packagesImpacted[0]`, or `liveSpec: <domain>` for an explicit domain. This enables automatic delta-merge into `docs/specs/live/<domain>.md` when the RFC is implemented.
 - **satisfies** — for `architecture` or `contract` RFCs, at least one `DNA-NN` invariant from `ref(forge.yaml bindings.paths.invariantsFile)`.
 - **related** — relevant RFCs, DNA ids, anti-patterns, specs.
 - **reviewer** — if the caller specifies a reviewer identity, use it. If not, default to `human:andrii-syrokomskyi` (matching the default in `os/rfc/rfc-0000-template.md` inside `@warpgogol/forge`) **only when the skill is also responsible for moving the RFC out of draft**. For a pure draft scaffold, leave `reviewers: []`.

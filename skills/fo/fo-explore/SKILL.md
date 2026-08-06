@@ -1,6 +1,6 @@
 ---
 name: fo-explore
-description: Explore an idea in the codebase without creating an RFC or ADR. Produces a markdown exploration note in docs/explorations/. Use when the operator wants to weigh options before committing to a specification.
+description: Explore an idea in the codebase without creating an RFC or ADR. Produces a markdown exploration note in docs/explorations/. Use when weighing options before committing to a specification.
 invocation: user
 category: fo
 concerns: document-only
@@ -123,10 +123,10 @@ related: []
 
 ## File system responsibilities
 
-| Path | Role |
-| --- | --- |
+| Path                          | Role                                     |
+| ----------------------------- | ---------------------------------------- |
 | `docs/explorations/<slug>.md` | Exploration note (created by this skill) |
-| `docs/explorations/` | Directory for all exploration notes |
+| `docs/explorations/`          | Directory for all exploration notes      |
 
 ## Failure modes
 
@@ -142,4 +142,4 @@ related: []
 - **No source code changes.** This skill is `concern: document-only`. It may only create and edit `.md` files in `docs/explorations/`.
 - **No governance authority.** Exploration notes are not RFCs or ADRs. They do not define contracts, policies, or decisions. They are informational artifacts.
 - **No pipeline integration.** Exploration notes are not part of any build or validation pipeline. They are discoverable via `exploration.list` and by browsing `docs/explorations/`.
-- **DNA-54 compliance.** Use `ref(forge.yaml bindings.*)` references for paths and commands — no hardcoded project literals in skill instruction lines.
+- **Bindings compliance.** Use `ref(forge.yaml bindings.*)` references for paths and commands — no hardcoded project literals in skill instruction lines.
