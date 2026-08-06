@@ -181,6 +181,22 @@ async function validateSingleAdr(
     addViolation(adrId, relFile, "AV-01", `id "${adrId}" does not match format ADR-XXXX`);
   }
 
+  // ADR-DIR-01: directory structure convention (RFC-0722)
+  // Warn when ADR files are found in subdirectories other than archive/
+  const slashIdx = fileName.indexOf("/");
+  if (slashIdx > 0) {
+    const subDir = fileName.slice(0, slashIdx);
+    if (subDir !== "archive") {
+      addViolation(
+        adrId,
+        relFile,
+        "ADR-DIR-01",
+        `${relFile} is in an unsanctioned subdirectory. Only archive/ is allowed. Move the file to docs/adrs/ root or write an ADR to formalize the subdirectory.`,
+        "warning",
+      );
+    }
+  }
+
   const prevFile = seenIds.get(adrId);
   if (prevFile) {
     addViolation(adrId, relFile, "AV-02", `Duplicate id "${adrId}" — also in ${prevFile}`);
