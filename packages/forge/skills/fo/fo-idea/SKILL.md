@@ -142,7 +142,7 @@ Once classified, take the matching action **inline** — execute it fully withou
 
 - **RFC** → invoke `/fo-idea-create-rfc`. It will collect metadata, grill the concept, create the file, fill it, validate, and report.
 - **ADR** → invoke `/fo-idea-create-adr`. It will collect metadata, grill the concept, create the file, fill it, validate, and report. **On the accepted-decision fast path (step 1a)**, tell `fo-idea-create-adr` to skip grilling and use the operator's justification text directly.
-- **Direct implementation** → tell the operator that no RFC or ADR is needed for this change, explain why (which Direct criterion applies), and proceed to implement the change directly. Do not create a governance document. The operator may still request an ADR for traceability if they prefer — respect that choice.
+- **Direct implementation** → tell the operator that no RFC or ADR is needed for this change, explain why (which Direct criterion applies), then **climb the minimality ladder** (see `_shared/fo-pipeline-conventions.md` §Minimality ladder) to determine the minimum implementation approach before writing any code. Present the ladder rung you landed on and proceed to implement. Do not create a governance document. The operator may still request an ADR for traceability if they prefer — respect that choice.
 
 Do not duplicate the creation skill's work — just route to it and let it run.
 

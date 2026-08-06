@@ -144,6 +144,11 @@ If the invariants file is absent or the optional binding is unresolvable, state 
 
 #### Axis F — Pragmatism
 
+- **Minimality ladder**: the author climbed the minimality ladder (see `_shared/fo-pipeline-conventions.md` §Minimality ladder) before writing code. Flag cases where a lower rung was available but skipped:
+  - A new dependency was added for something stdlib or native platform features already provide (e.g. installing a date picker library when `<input type="date">` suffices).
+  - New code duplicates an existing utility, pattern, or function already in the codebase.
+  - A multi-line abstraction was written where a single line or existing API call would work.
+  - The code exists at all when the task didn't require it (YAGNI).
 - **Minimal command surface**: each new command earns its existence — no command that could be a flag on an existing command.
 - **Lean contracts**: TypeScript types are the minimum needed — no speculative generality, no unused optional fields.
 - **Existing patterns**: the diff checks whether an existing command, schema, or pattern can be extended before introducing a new one.
