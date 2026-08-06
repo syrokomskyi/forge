@@ -160,3 +160,73 @@ describe("AV-16: implementation commit drift detection", () => {
     }
   });
 });
+
+describe("ADR-DIR-01: directory structure convention (RFC-0722)", () => {
+  function createAdrInSubdir(
+    workspaceRoot: string,
+    subdir: string,
+    id: string,
+    status: string,
+    body: string,
+    extraFm: Record<string, unknown> = {},
+  ): void {
+    const adrDir = join(workspaceRoot, "docs", "adrs", subdir);
+    mkdirSync(adrDir, { recursive: true });
+    const slug = id.toLowerCase();
+    const fm = [
+      "---",
+      `id: ${id}`,
+      `title: "Test ADR"`,
+      `status: ${status}`,
+      `scope: package`,
+      `decider: human:test`,
+      `createdAt: 2026-01-01`,
+      `updatedAt: 2026-01-01`,
+      ...Object.entries(extraFm).map(([k, v]) => `${k}: ${v}`),
+      "---",
+      "",
+      body,
+    ].join("\n");
+    writeFileSync(join(adrDir, `${slug}-test.md`), fm);
+  }
+
+  test("warning when ADR file is in an unsanctioned subdirectory", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "adr-dir01-bad-"));
+    try {
+      createAdrInSubdir(dir, "draft", "ADR-9999", "accepted", ADR_BODY);
+      const violations = await runValidate(dir, "ADR-9999");
+      const dir01 = filterRule(violations, "ADR-DIR-01");
+      expect(dir01).toHaveLength(1);
+      expect(dir01[0]!.severity).toBe("warning");
+      expect(dir01[0]!.message).toContain("unsanctioned subdirectory");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no warning when ADR file is at root", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "adr-dir01-root-"));
+    try {
+      createAdrFile(dir, "ADR-9999", "accepted", ADR_BODY);
+      const violations = await runValidate(dir, "ADR-9999");
+      const dir01 = filterRule(violations, "ADR-DIR-01");
+      expect(dir01).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no warning when ADR file is in archive/ subdirectory", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "adr-dir01-archive-"));
+    try {
+      createAdrInSubdir(dir, "archive", "ADR-9999", "implemented", ADR_BODY, {
+        implementedAt: "2026-01-02",
+      });
+      const violations = await runValidate(dir, "ADR-9999");
+      const dir01 = filterRule(violations, "ADR-DIR-01");
+      expect(dir01).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

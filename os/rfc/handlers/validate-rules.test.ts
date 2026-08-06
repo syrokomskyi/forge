@@ -556,3 +556,79 @@ describe("V-NC-01: NEEDS CLARIFICATION marker detection (RFC-0709)", () => {
     expect(markers).toHaveLength(0);
   });
 });
+
+describe("RFC-DIR-01: directory structure convention (RFC-0722)", () => {
+  test("warning when RFC file is in an unsanctioned subdirectory", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY);
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "draft/rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    const dir01 = filterRule(violations, "RFC-DIR-01");
+    expect(dir01).toHaveLength(1);
+    expect(dir01[0]!.severity).toBe("warning");
+    expect(dir01[0]!.message).toContain("unsanctioned subdirectory");
+  });
+
+  test("no warning when RFC file is at root", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY);
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    const dir01 = filterRule(violations, "RFC-DIR-01");
+    expect(dir01).toHaveLength(0);
+  });
+
+  test("no warning when RFC file is in archive/ subdirectory", async () => {
+    const parsed = makeParsed("implemented", BASE_BODY);
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "archive/implemented/rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    const dir01 = filterRule(violations, "RFC-DIR-01");
+    expect(dir01).toHaveLength(0);
+  });
+
+  test("no warning when RFC file is in verification/ subdirectory", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY);
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "verification/rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    const dir01 = filterRule(violations, "RFC-DIR-01");
+    expect(dir01).toHaveLength(0);
+  });
+});
