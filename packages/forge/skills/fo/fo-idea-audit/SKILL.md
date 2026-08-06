@@ -125,6 +125,7 @@ This ecosystem is forward-only — no backward compatibility layers, no expand-t
 - **Implementation notes** reference the correct governance rules: RFC-XXXX (accepted→implemented transition), RFC-XXXX (if touching agent surface), RFC-XXXX (supersede escalation on invariant conflict), RFC-XXXX (verification evidence for probe-bearing RFCs).
 - **Anti-fabrication**: if the RFC's acceptance criteria include content authoring (prose, business records, claims), the criteria distinguish between code changes an agent can make and content that requires human authoring. The RFC must not claim content will be "auto-generated" when it requires human authoring.
 - **Storage policy**: if the RFC touches persistence, it does not introduce cookies (`document.cookie`, `Set-Cookie`). Client-side persistence is `localStorage` only; server-side is `unstorage`.
+- **NEEDS CLARIFICATION markers**: List all unresolved `NEEDS CLARIFICATION` markers with line numbers. If none are found, state "No unresolved markers." Markers in `draft` status are informational; markers in `reviewing`+ status are a blocking finding.
 
 #### Axis F — Pragmatism
 
