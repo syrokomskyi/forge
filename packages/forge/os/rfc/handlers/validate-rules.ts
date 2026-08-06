@@ -761,17 +761,18 @@ export async function validateSingleRfc(
     }
   }
 
-  // V-29: versionBump required for post-cutoff implemented RFCs (RFC-0478)
+  // V-29: versionBump required for post-cutoff accepted/implemented RFCs (RFC-0478)
   {
     const versionBump = fm["versionBump"];
     const isPostCutoff = createdAtStr >= RFC_VERSION_BUMP_CUTOFF;
+    const requiresVersionBump = status === "implemented" || status === "accepted";
 
-    if (isPostCutoff && status === "implemented" && versionBump === undefined) {
+    if (isPostCutoff && requiresVersionBump && versionBump === undefined) {
       addViolation(
         rfcId,
         relFile,
         "V-29",
-        `status is "implemented" and createdAt >= ${RFC_VERSION_BUMP_CUTOFF}, but versionBump is absent. Post-cutoff implemented RFCs must declare versionBump (RFC-0478).`,
+        `status is "${status}" and createdAt >= ${RFC_VERSION_BUMP_CUTOFF}, but versionBump is absent. Post-cutoff accepted/implemented RFCs must declare versionBump (RFC-0478).`,
       );
     }
 
