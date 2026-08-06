@@ -40,6 +40,11 @@ satisfies: []
 # Values: minor (Breaks-B, requires migrator), patch (safe), none (prose-only),
 # major (architectural, manually reserved). Default: patch.
 versionBump: patch
+# RFC-0711: Declares that this RFC contributes to a living feature spec
+# under docs/specs/live/<domain>.md. When true, domain is auto-derived from
+# packagesImpacted[0]. When a string, used as explicit domain override.
+# Absent or false means no living spec merge occurs.
+# liveSpec: true
 commands:
   proposed: []
   added: []
