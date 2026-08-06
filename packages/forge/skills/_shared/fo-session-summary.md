@@ -2,6 +2,12 @@
 
 Reference file for all `fo-*` skills. Every `fo-*` skill MUST end its session by presenting the closing block defined here. This is not optional — it is the mandatory final output before the skill stops.
 
+## Session-end protocol (BLOCKED GATE — NON-NEGOTIABLE)
+
+When the operator says any session-end trigger phrase (e.g. "Завершаем сессию", "End session", "Wrap up", "/session-end"), the agent MUST invoke `fo-session-retro` via the `skill` tool BEFORE producing any closing block or session-end output. The closing block defined below is produced by `fo-session-retro` as part of its report — the agent MUST NOT produce a closing block directly in response to a session-end trigger phrase. See `_shared/fo-pipeline-conventions.md` §Session-end trigger phrases for the full protocol.
+
+**Producing a closing block without first invoking `fo-session-retro` is a CONTRACT VIOLATION.**
+
 ## When to emit
 
 The closing block is emitted **once**, at the very end of the skill's execution — after all work is done, after all commits, after any batch summaries. It is the last thing the operator sees.

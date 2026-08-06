@@ -118,6 +118,14 @@ After completing implementation work, the operator may run a three-step session-
 
 Most sessions need only `fo-doc-audit`. `fo-session-retro` is valuable after debugging sessions, exploratory work, or when non-obvious behaviors were discovered. `fo-handoff` is needed when work is incomplete and another agent will continue.
 
+### Session-end trigger phrases (BLOCKED GATE — NON-NEGOTIABLE)
+
+When the operator says any session-end trigger phrase (e.g. "Завершаем сессию", "Завершаем эту сессию", "Заканчиваем сессию", "Завершить сессию", "End session", "Wrap up", "Session end", "/session-end"), the agent's response is **BLOCKED** — no closing summary, no ad-hoc "session complete" message, no closing block is permitted until `fo-session-retro` is invoked via the `skill` tool and completes.
+
+**The agent MUST NOT produce any session-end output (summary, closing block, "session complete" message) before `fo-session-retro` is invoked and its report is presented. Producing a closing summary without running `fo-session-retro` is a CONTRACT VIOLATION.**
+
+The `fo-session-retro` skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from `fo-session-retro`, not from the agent directly.
+
 ## Context checkpoint between batch items
 
 When the orchestrator skill processes multiple documents (>=2), perform a context checkpoint after completing one document and before starting the next:
