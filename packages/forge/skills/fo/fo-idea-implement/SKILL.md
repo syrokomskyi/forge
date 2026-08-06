@@ -79,9 +79,9 @@ Execute the plan's step sequence in order. For each step:
    implement: RFC-XXXX step N — <step title>
 
    <one-line description of what was done in this step>.
-   ```
+```
 
-   Stage only the files touched by this step. Do not stage unrelated changes — another agent may be working in a different session.
+Stage only the files touched by this step. Do not stage unrelated changes — another agent may be working in a different session.
 
 **Implementation principles:**
 
@@ -151,6 +151,7 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 3. **If a criterion is not met**, implement the missing work, commit it, and re-verify.
 4. **Annotate every `[x]` with inline evidence** — add `(evidence: <file-path:line>, <test-or-command>)` to each checked criterion. This is enforced by V-27.
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
+6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
 
 Do not proceed to step 3.7 until every acceptance criterion checkbox is checked with evidence.
 
@@ -168,6 +169,8 @@ If the RFC was created on or after 2026-07-07 and has acceptance probes:
 ref(forge.yaml bindings.commands.validateRfc) --verification.emit --id RFC-XXXX
 ```
 
+**Note:** If acceptance probes are commented out (`# acceptance:`) in the RFC frontmatter, `rfc.verification.emit` silently skips creating an evidence file (`filesModified: []`, zero errors). This is expected behavior — RFCs with commented-out probes get no evidence file, and `rfc.implement.stamp` still works without it.
+
 Commit the evidence file:
 
 ```txt
@@ -183,7 +186,7 @@ Stage `docs/rfcs/verification/rfc-xxxx.generated.json`.
 Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Direct edits to `status`, `implementedAt`, and `updatedAt` are prohibited for all actors.
 
 1. Ensure the working tree is clean (all implementation changes committed).
-2. Identify the implementation commit SHA — the commit that contains the core implementation work and references the RFC id in its message or changed files.
+2. Identify the implementation commit SHA — use the **first** `implement:` commit (the commit where implementation began), not the latest fix or documentation commit. Find it via `git log --oneline` and locate the first commit with an `implement:` prefix after the `plan:` or `rfc: accept` commit.
 3. Run the stamp command:
 
    ```sh
@@ -191,6 +194,8 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
    ```
 
    The command atomically validates all preconditions (accepted status, checked+evidenced criteria, clean tree, reachable RFC-referencing commit, passing probe evidence) and sets `status: implemented`, `implementedAt`, and `updatedAt` in one atomic write.
+
+   **Troubleshooting:** If the stamp fails with `Could not parse target RFC` (RFC-IMP-01), the RFC frontmatter has a YAML syntax error — not a missing file. Check for unquoted backtick values in `successSignals`, `nonGoals`, or other list items. YAML plain scalars starting with a backtick must be double-quoted.
 
 4. Commit the stamped RFC file:
 
@@ -314,7 +319,7 @@ If the ADR is already `accepted`, proceed directly.
 
 #### 4.3. Implement the decision
 
-Read the `## Decision` section and implement it in code. Follow the same principles as RFC implementation:
+Read the `## Decision` section and implement it in code. **For each decision point, verify whether the code already exists** — ADRs may declare fields or extensions that related RFCs did not fully implement. Do not assume associated RFCs covered everything; check each decision against the actual codebase and implement any gaps. Follow the same principles as RFC implementation:
 
 - Make autonomous, ecosystem-aligned decisions.
 - Use `edit`/`multi_edit` for changes to existing files, `write_to_file` for new files.
