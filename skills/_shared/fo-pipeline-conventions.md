@@ -27,6 +27,22 @@ Stage only the files this skill produces or modifies. Another agent may be worki
 - **RFC pipeline**: create → audit → enhance → plan → implement (includes review → fix)
 - **ADR pipeline**: create → implement (includes review → fix)
 
+## Minimality ladder
+
+Before writing implementation code, climb the minimality ladder. Stop at the first rung that holds — that is your implementation. The ladder runs after you understand the problem (read the code, trace the flow), not instead of it.
+
+1. **Does this need to exist?** → no: skip it (YAGNI)
+2. **Already in this codebase?** → reuse it, don't rewrite
+3. **Stdlib does it?** → use it
+4. **Native platform feature?** → use it (e.g. `<input type="date">` instead of a date picker library)
+5. **Installed dependency?** → use it
+6. **One line?** → one line
+7. **Only then**: write the minimum that works
+
+Lazy about the solution, never about reading. Lazy, not negligent: trust-boundary validation, data-loss handling, security, and accessibility are never on the chopping block — they are part of "the minimum that works."
+
+The ladder is a pre-coding decision tool, not a post-hoc review checklist. It determines the implementation approach before the first edit. During `fo-review`, the reviewer checks whether the author climbed the ladder — flagging cases where a library was installed for something stdlib/native/existing-dep already provides.
+
 ## Forward-only discipline
 
 The ecosystem is forward-only. No backward compatibility layers, no shims, no dual-paths. Legacy code paths are deleted, not maintained behind a flag. Deprecation means removal in the same change, not an indefinite grace period.
