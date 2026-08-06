@@ -17,7 +17,7 @@ import { execFile } from "node:child_process";
 import { parse as yamlParse } from "yaml";
 import { validateAcceptanceShape } from "../acceptance.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
-import type { RfcStatus, RfcKind, RfcScope, RfcValidationViolation } from "../types.ts";
+import type { RfcStatus, RfcKind, RfcScope, RfcValidationViolation, Marker } from "../types.ts";
 import {
   RFC_DIR,
   RFC_ID_PATTERN,
@@ -150,11 +150,43 @@ async function checkImplementationCommitDrift(
   return { found: matchingLines.length > 0, commitCount: matchingLines.length };
 }
 
+// ─── RFC-0709: V-NC-01 NEEDS CLARIFICATION marker detection ────────────────
+
+const NC_MARKER_CUTOFF = "2026-08-06";
+const NC_MARKER_PATTERN = /^>\s*NEEDS CLARIFICATION:\s*(.+)$/;
+
 /**
- * Validate a single parsed RFC file for V-01..V-31 frontmatter, section, and
- * referential integrity violations. Mutates the `seenIds` map for V-02
- * uniqueness tracking and `seenFilenameNumbers` for V-31 across the batch.
+ * Collect NEEDS CLARIFICATION markers from an RFC body.
+ * Skips lines inside fenced code blocks. Pure function — no I/O.
  */
+export function collectMarkers(body: string, status: string, createdAt: string): Marker[] {
+  if (createdAt < NC_MARKER_CUTOFF) return [];
+
+  const severity: Marker["severity"] = status === "draft" ? "warn" : "error";
+  const markers: Marker[] = [];
+  const lines = body.split("\n");
+  let inCodeBlock = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^```/.test(line.trim())) {
+      inCodeBlock = !inCodeBlock;
+      continue;
+    }
+    if (inCodeBlock) continue;
+    const match = line.match(NC_MARKER_PATTERN);
+    if (match) {
+      markers.push({
+        line: i + 1,
+        text: match[1]!.trim(),
+        severity,
+      });
+    }
+  }
+
+  return markers;
+}
+
 export async function validateSingleRfc(
   fileName: string,
   parsed: ParsedRfc,
@@ -839,6 +871,20 @@ export async function validateSingleRfc(
         "V-32",
         `${rfcId} has ${driftResult.commitCount} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Run rfc.implement.stamp to transition to implemented.`,
         "warning",
+      );
+    }
+  }
+
+  // V-NC-01: NEEDS CLARIFICATION marker detection (RFC-0709)
+  {
+    const markers = collectMarkers(body, status, createdAt);
+    for (const marker of markers) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-NC-01",
+        `Unresolved NEEDS CLARIFICATION marker at line ${marker.line}: "${marker.text}"`,
+        marker.severity === "error" ? "error" : "warning",
       );
     }
   }
