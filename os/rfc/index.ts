@@ -38,6 +38,7 @@ export { runRfcArchive } from "./handlers/archive.ts";
 export {
   evaluateAcceptanceCriteria,
   extractAcceptanceCriteriaSection,
+  collectMarkers,
   type AcceptanceCriteriaEvaluation,
 } from "./handlers/validate-rules.ts";
 export type {
