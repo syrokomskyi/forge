@@ -21,6 +21,7 @@
   <item>RFC-0679: register forge.assets.list, forge.assets.check commands.</item>
   <item>RFC-0680: register forge.release.prepare, forge.release.publish commands.</item>
   <item>ADR-0021: profile-driven video lifecycle — all lifecycle commands read behavior from profile YAML, zero domain-specific code in Forge source.</item>
+  <item>RFC-0711: docs.archive post-loop step calls spec.live.merge for implemented RFCs with liveSpec field; skips rejected RFCs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +32,7 @@ import type {
   ForgeNextStep,
   ForgeRuntimeContext,
 } from "../../src/types.ts";
+import path from "node:path";
 import {
   FORGE_SKILLS,
   discoverPackSkills,
@@ -664,6 +666,80 @@ export const forgeCoreModule: ForgeModule = {
           }
         }
 
+        // ── RFC-0711: post-loop spec.live.merge for implemented RFCs with liveSpec ──
+        const { listRfcFiles, readAndParseRfc } = await import("../rfc/frontmatter-io.ts");
+        const { RFC_DIR } = await import("../rfc/types.ts");
+        const { runSpecLiveMerge } = await import("../spec/live-spec-merge.ts");
+        const rfcDirPath = path.join(context.workspaceRoot, RFC_DIR);
+        const statusFilter = input.flags["status"] as string | undefined;
+        const allRfcFiles = await listRfcFiles(rfcDirPath);
+        const liveMergeResults: Array<{
+          id: string;
+          domain: string;
+          operation: string;
+          conflicts: number;
+        }> = [];
+        let liveMergeSkipped = 0;
+
+        for (const rfcFile of allRfcFiles) {
+          const parsed = await readAndParseRfc(rfcDirPath, rfcFile);
+          if (!parsed) continue;
+          const fm = parsed.parsed.frontmatter;
+          const rfcStatus = String(fm["status"] ?? "").trim();
+          const liveSpec = fm["liveSpec"];
+          const rfcId = String(fm["id"] ?? "");
+
+          if (!liveSpec || rfcStatus !== "implemented") {
+            if (liveSpec && rfcStatus === "rejected") {
+              liveMergeSkipped++;
+              if (outputFormat === "pretty") {
+                logger.info(`  spec.live.merge: skipping ${rfcId} (status: rejected)`);
+              }
+            }
+            continue;
+          }
+          if (statusFilter && rfcStatus !== statusFilter) continue;
+
+          try {
+            const mergeInput: ForgeCommandInput = {
+              argv: [],
+              flags: { id: rfcId, "dry-run": dryRun },
+            };
+            const mergeResult = await runSpecLiveMerge(mergeInput, context);
+            const mergeData = mergeResult.data as
+              { domain?: string; operation?: string; conflicts?: unknown[] } | undefined;
+            if (mergeData) {
+              liveMergeResults.push({
+                id: rfcId,
+                domain: String(mergeData.domain ?? ""),
+                operation: String(mergeData.operation ?? ""),
+                conflicts: Array.isArray(mergeData.conflicts) ? mergeData.conflicts.length : 0,
+              });
+            }
+          } catch (err) {
+            if (outputFormat === "pretty") {
+              logger.error(
+                `  spec.live.merge: failed for ${rfcId}: ${String((err as Error).message)}`,
+              );
+            }
+          }
+        }
+
+        if (liveMergeResults.length > 0 || liveMergeSkipped > 0) {
+          results["spec.live.merge"] = {
+            merged: liveMergeResults,
+            skipped: liveMergeSkipped,
+            dryRun,
+          };
+          if (outputFormat === "pretty") {
+            for (const r of liveMergeResults) {
+              logger.info(
+                `  spec.live.merge: ${r.id} → ${r.domain} (${r.operation})${r.conflicts > 0 ? ` [${r.conflicts} conflicts]` : ""}${dryRun ? " [dry-run]" : ""}`,
+              );
+            }
+          }
+        }
+
         if (outputFormat === "pretty") {
           if (dryRun) {
             logger.info(
@@ -684,6 +760,8 @@ export const forgeCoreModule: ForgeModule = {
             totalSkipped,
             results,
             dryRun,
+            liveSpecMerges: liveMergeResults.length,
+            liveSpecSkipped: liveMergeSkipped,
           },
           summary: dryRun
             ? `[dry-run] Would move ${totalMoved} file(s), skip ${totalSkipped}`
