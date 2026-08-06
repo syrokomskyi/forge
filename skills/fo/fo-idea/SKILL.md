@@ -39,6 +39,16 @@ Read the operator's description and identify:
 
 Default to document creation. Only route to implementation if the operator explicitly says "implement" or "don't create a document, just do it".
 
+### 1b. Explore suggestion
+
+If the operator's description is ambiguous, exploratory, or contains phrases like "what are the options", "let me think about", "explore", or "what if we", suggest using `fo-explore` before creating an RFC. Use `ask_user_question`:
+
+> "This sounds like an exploration rather than a settled decision. Should I explore the codebase first, or create an RFC/ADR draft directly?"
+>
+> Recommended option: "Explore first" — because exploration is low-commitment and the results inform a better RFC.
+
+If the operator chooses "Explore first", invoke `/fo-explore` inline. Do not proceed to classification or document creation in this invocation — `fo-explore` will produce an exploration note and suggest next steps, which may include creating an RFC or ADR in a separate invocation.
+
 ### 1a. Accepted-decision fast path
 
 When the operator signals that a decision is **already made** and provides justification, the skill must take a fast path. Recognition signals include:

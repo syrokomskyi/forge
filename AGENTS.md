@@ -7,7 +7,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
 - `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed.
 - `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/site-kernel`.
-- `skills/` — forge-managed skill definitions (36 fo skills + 5 shared + 3 meta = 44 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
+- `skills/` — forge-managed skill definitions (37 fo skills + 5 shared + 3 meta = 45 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
 ## OS modules
 
@@ -25,6 +25,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 | `forgeAuditModule` | `audit.archive` | `os/audit/` |
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list` | `os/session/` |
 | `forgeMissionModule` | `mission.archive` | `os/mission/` |
+| `forgeExplorationModule` | `exploration.list`, `exploration.show`, `exploration.archive` | `os/exploration/` |
 
 ## Archive convention
 
@@ -97,6 +98,8 @@ The `commands.changed` field in RFC frontmatter must only list **registered CLI 
 YAML plain scalar values that **start with a backtick** (`` ` ``) must be double-quoted. Backtick is a reserved character in YAML plain scalars — the parser fails with "Plain value cannot start with reserved character `" and `rfc.implement.stamp`reports "Could not parse target RFC" (RFC-IMP-01). This commonly affects`successSignals`, `nonGoals`, and other list items in RFC frontmatter that reference code identifiers in backticks. Always quote such strings: `` - "`doctor`reports domain information" `` instead of `` -`doctor` reports domain information ``.
 
 **Agent action:** After creating an RFC with `rfc.create`, scan the generated `successSignals` and `nonGoals` sections for unquoted backtick entries. Fix them immediately before committing. This prevents a recurring pattern where `ecosystem.manifest.generate` and `rfc.implement.stamp` fail on RFCs created with backtick-heavy frontmatter.
+
+**Diagnostic:** If `rfc.implement.stamp` fails with `Could not parse target RFC` (RFC-IMP-01), the RFC frontmatter has a YAML syntax error — not a missing file. Check for unquoted backtick values first.
 
 ## RFC command lifecycle validation (RFC-CMD-02)
 
@@ -351,3 +354,14 @@ Workflow files MUST live only in `.agents/workflows/`. Do NOT duplicate workflow
 ## Workflow files vs skill content
 
 IDE-specific workflow files (`.windsurf/workflows/`, `.devin/workflows/`) MUST NOT duplicate skill content. Skills (`packages/forge/skills/`) are the portable unit — they ship to every new project via `create`. Workflow files are IDE-specific triggers that reference skills by name; they should not contain the protocol itself. If a workflow file grows beyond a trigger phrase + skill reference, move the content into the skill's `SKILL.md`.
+
+## Kernel command handler pattern: pure function + thin handler
+
+When a kernel command's logic needs to be called from two contexts — (1) a pipeline step via `KernelRuntimeContext` and (2) directly from another package without kernel types — split into a pure function + thin kernel handler.
+
+- **Pure function**: `ensureThing(workspaceRoot: string, logger: { info: (msg: string) => void }): Promise<Result>` — no kernel types, callable from any package.
+- **Thin kernel handler**: `runThing(input: KernelCommandInput, context: KernelRuntimeContext): Promise<KernelCommandResult<Result>>` — calls the pure function, wraps result in `KernelCommandResult`, catches errors → `exitCode: 1`.
+
+This avoids the fragile alternative of calling a kernel handler with synthetic `input`/`context` from non-kernel code. The pure function is the reusable unit; the handler is the pipeline/CLI adapter.
+
+**Custom result types:** When a kernel command returns a custom data type (not `CheckResult`), you cannot use `failResult`/`passResult` from result helpers — they return `KernelCommandResult<CheckResult>`, not your type. Build the `KernelCommandResult` manually: `{ data: result, exitCode: 0, summary: "ok" }` for success, `{ data: { ...nulls }, exitCode: 1, summary: msg }` for error.
