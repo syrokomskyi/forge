@@ -25,9 +25,9 @@ Review the current session for discoveries that other agents would benefit from 
 - **After exploring a new area** — when conventions or patterns were learned that are not yet documented.
 - **Inline by other skills** — `fo-doc-audit` or session-end workflows may delegate here for the "what did you learn?" step.
 
-### Session-end trigger phrases
+### Session-end trigger phrases (BLOCKED GATE — NON-NEGOTIABLE)
 
-When the operator says any of the following, invoke this skill via the `skill` tool BEFORE producing a closing summary:
+When the operator says any of the following, the agent's response is **BLOCKED** — no closing summary, no ad-hoc "session complete" message, no closing block is permitted until this skill is invoked via the `skill` tool and completes:
 
 - "Завершаем эту сессию"
 - "Завершаем сессию"
@@ -38,7 +38,9 @@ When the operator says any of the following, invoke this skill via the `skill` t
 - "Session end"
 - "/session-end"
 
-Do NOT produce a closing summary first — this skill IS the closing protocol. The skill's report is the session-end output. Do not add a separate "session complete" message.
+**The agent MUST NOT produce any session-end output (summary, closing block, "session complete" message) before this skill is invoked and its report is presented. Producing a closing summary without running this skill is a CONTRACT VIOLATION.**
+
+This skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from this skill's report, not from the agent directly.
 
 ## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
 
