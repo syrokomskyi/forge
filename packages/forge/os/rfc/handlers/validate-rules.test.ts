@@ -1,5 +1,5 @@
 import { test, expect, describe } from "vitest";
-import { validateSingleRfc, type AddViolationFn } from "./validate-rules.ts";
+import { validateSingleRfc, collectMarkers, type AddViolationFn } from "./validate-rules.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
@@ -452,5 +452,107 @@ describe("V-16: status <-> implementedAt coupling (error, not warning)", () => {
     // V-16 for implementedAt should not fire; closedAt warnings may exist but are separate
     const implV16 = v16.filter((v) => v.message.includes("implementedAt"));
     expect(implV16).toHaveLength(0);
+  });
+});
+
+describe("V-NC-01: NEEDS CLARIFICATION marker detection (RFC-0709)", () => {
+  test("draft RFC with marker produces warning violation", async () => {
+    const body = BASE_BODY.replace(
+      "Test context.",
+      "> NEEDS CLARIFICATION: what is the exact scope?\n\nTest context.",
+    );
+    const parsed = makeParsed("draft", body, { createdAt: "2026-08-06" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(1);
+    expect(nc[0]!.severity).toBe("warning");
+    expect(nc[0]!.message).toContain("NEEDS CLARIFICATION");
+  });
+
+  test("accepted RFC with marker produces error violation", async () => {
+    const body = BASE_BODY.replace(
+      "Test context.",
+      "> NEEDS CLARIFICATION: what is the exact scope?\n\nTest context.",
+    );
+    const parsed = makeParsed("accepted", body, { createdAt: "2026-08-06" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(1);
+    expect(nc[0]!.severity).toBe("error");
+  });
+
+  test("RFC with marker inside code block produces no V-NC-01 violation", async () => {
+    const body = BASE_BODY.replace(
+      "Test context.",
+      "```\n> NEEDS CLARIFICATION: inside code block\n```\n\nTest context.",
+    );
+    const parsed = makeParsed("draft", body, { createdAt: "2026-08-06" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(0);
+  });
+
+  test("RFC with createdAt before cutoff is exempt", async () => {
+    const body = BASE_BODY.replace(
+      "Test context.",
+      "> NEEDS CLARIFICATION: old marker\n\nTest context.",
+    );
+    const parsed = makeParsed("draft", body, { createdAt: "2026-08-05" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(0);
+  });
+
+  test("RFC with no markers produces no V-NC-01 violations", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, { createdAt: "2026-08-06" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(0);
+  });
+
+  test("multiple markers produce multiple violations with correct line numbers", async () => {
+    const body = BASE_BODY.replace(
+      "Test context.",
+      "> NEEDS CLARIFICATION: first question\n\nSome text.\n\n> NEEDS CLARIFICATION: second question\n\nTest context.",
+    );
+    const parsed = makeParsed("draft", body, { createdAt: "2026-08-06" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(2);
+    expect(nc[0]!.message).toContain("first question");
+    expect(nc[1]!.message).toContain("second question");
+  });
+
+  test("lowercase 'needs clarification' is not matched (case-sensitive)", async () => {
+    const body = BASE_BODY.replace(
+      "Test context.",
+      "> needs clarification: lowercase marker\n\nTest context.",
+    );
+    const parsed = makeParsed("draft", body, { createdAt: "2026-08-06" });
+    const violations = await runValidate(parsed);
+    const nc = filterRule(violations, "V-NC-01");
+    expect(nc).toHaveLength(0);
+  });
+
+  test("collectMarkers pure function returns correct markers", () => {
+    const body = "Line 1\n> NEEDS CLARIFICATION: test marker\nLine 3";
+    const markers = collectMarkers(body, "draft", "2026-08-06");
+    expect(markers).toHaveLength(1);
+    expect(markers[0]!.line).toBe(2);
+    expect(markers[0]!.text).toBe("test marker");
+    expect(markers[0]!.severity).toBe("warn");
+  });
+
+  test("collectMarkers returns error severity for accepted status", () => {
+    const body = "> NEEDS CLARIFICATION: test marker";
+    const markers = collectMarkers(body, "accepted", "2026-08-06");
+    expect(markers).toHaveLength(1);
+    expect(markers[0]!.severity).toBe("error");
+  });
+
+  test("collectMarkers returns empty for pre-cutoff createdAt", () => {
+    const body = "> NEEDS CLARIFICATION: test marker";
+    const markers = collectMarkers(body, "draft", "2026-08-05");
+    expect(markers).toHaveLength(0);
   });
 });
