@@ -34,7 +34,7 @@ export interface ForgeReleasePublishResult {
 
 function getRequiredEnvVars(target: string): string[] {
   if (target === "r2") {
-    return ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY"];
+    return ["R2_AXIOM_ACCOUNT_ID", "R2_AXIOM_ACCESS_KEY_ID", "R2_AXIOM_SECRET_ACCESS_KEY"];
   }
   if (target === "s3") {
     return ["S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "S3_ENDPOINT"];
@@ -167,13 +167,13 @@ export async function runReleasePublish(
 
     const endpoint =
       target === "r2"
-        ? `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`
+        ? `https://${process.env.R2_AXIOM_ACCOUNT_ID}.r2.cloudflarestorage.com`
         : process.env.S3_ENDPOINT;
     const bucket = target === "r2" ? releaseConfig.r2?.bucket : process.env.S3_BUCKET;
     const accessKeyId =
-      target === "r2" ? process.env.R2_ACCESS_KEY_ID : process.env.S3_ACCESS_KEY_ID;
+      target === "r2" ? process.env.R2_AXIOM_ACCESS_KEY_ID : process.env.S3_ACCESS_KEY_ID;
     const secretAccessKey =
-      target === "r2" ? process.env.R2_SECRET_ACCESS_KEY : process.env.S3_SECRET_ACCESS_KEY;
+      target === "r2" ? process.env.R2_AXIOM_SECRET_ACCESS_KEY : process.env.S3_SECRET_ACCESS_KEY;
     const prefix = target === "r2" ? (releaseConfig.r2?.prefix ?? "") : "";
 
     const client = new S3Client({
