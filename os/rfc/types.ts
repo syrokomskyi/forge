@@ -230,6 +230,14 @@ export interface RfcFrontmatter {
    * by V-30.
    */
   breaksC?: boolean;
+
+  /**
+   * RFC-0711: Declares that this RFC contributes to a living feature spec
+   * under docs/specs/live/<domain>.md. When true, the domain is auto-derived
+   * from packagesImpacted[0]. When a string, used as an explicit domain override.
+   * Absent or false means no living spec merge occurs.
+   */
+  liveSpec?: boolean | string;
 } // ─── RFC-0268: acceptance probes ───────────────────────────────────────────
 
 /**
@@ -539,6 +547,7 @@ export const RFC_KNOWN_KEYS: readonly string[] = [
   "specRef",
   "versionBump",
   "breaksC",
+  "liveSpec",
 ] as const;
 
 /**
