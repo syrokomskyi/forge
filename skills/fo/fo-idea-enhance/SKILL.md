@@ -73,9 +73,9 @@ Read the RFC's `status` frontmatter:
   rfc: revert RFC-XXXX to draft for enhancement
 
   Transition RFC-XXXX from reviewing to draft before enhance.
-  ```
+```
 
-  Stage only the RFC file. Then proceed with enhancement.
+Stage only the RFC file. Then proceed with enhancement.
 
 **No RFC may begin enhancement in any status other than `draft`.** The transition to `draft` is mandatory and must be committed before proceeding to step 4. (Terminal and accepted statuses are already filtered out in step 1.5.)
 
@@ -86,6 +86,7 @@ Read every finding from the audit report. For each, classify it as one of:
 - **Direct fix** — the RFC text can be edited to address it: fill a placeholder section, add a missing edge case, fix a DNA reference, tighten a contract, add a failure mode, etc.
 - **New RFC** — the finding reveals a topic that is too large or too distinct for this RFC. Examples: a new package, a new DNA invariant, a new governance policy, a new external contract. Splitting it out keeps the RFC focused and follows the ecosystem's one-decision-per-RFC principle.
 - **Out of scope** — the finding is valid but belongs to a different RFC or a future effort. Add it to this RFC's `nonGoals` with a brief explanation and, if applicable, a `related` reference to where it will be addressed.
+- **NC (Needs Clarification)** — Unresolved `NEEDS CLARIFICATION` markers in the RFC body. Resolution: ask the operator the question, replace the marker line with the operator's answer in the RFC body. If the operator defers, the marker remains and the RFC cannot transition to `reviewing`.
 
 Record the classification for every finding — the summary in step 8 reports it.
 

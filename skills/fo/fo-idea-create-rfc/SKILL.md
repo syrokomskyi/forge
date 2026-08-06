@@ -90,6 +90,8 @@ Read the generated file and the full template (`os/rfc/rfc-0000-template.md` ins
 - **Acceptance criteria** — ≥3 checkable checkboxes mapped to implementation artifacts.
 - **Implementation notes for agents** — explicit MAY/MUST NOT rules, status-gate reminders, escalation triggers.
 
+When a section cannot be filled with confidence, insert `> NEEDS CLARIFICATION: <question>` instead of guessing. Do not leave sections empty or fill them with speculative content. Markers are resolved during the enhance step.
+
 ### 6. Validate and report
 
 Run:
