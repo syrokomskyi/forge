@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>ADR validation handler — frontmatter, section, referential integrity checks, and implementation commit drift detection (AV-16).</purpose>
+<purpose>ADR validation handler — frontmatter, section, referential integrity checks, implementation commit drift detection (AV-16), and directory structure convention (ADR-DIR-01).</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior.</item>
 </non-goals>
@@ -9,6 +9,7 @@
   <item>RFC-0366: implement fail-hard ADR validation for the new adrModule.</item>
   <item>Post-refactor hardening: allow ADRs to be superseded by existing RFC decisions.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
+  <item>RFC-0722: add ADR-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
 </CHANGE_SUMMARY>
 */
 
