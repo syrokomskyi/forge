@@ -434,21 +434,27 @@ Before stamping `implemented`, verify that the ADR is mentioned in the codebase 
 
 #### 4.10. Stamp implemented
 
-After all checks pass and documentation is updated, transition the ADR to `implemented`:
+After all checks pass and documentation is updated, transition the ADR to `implemented` using `adr.implement.stamp` (RFC-0727). Direct edits to ADR `status`, `implementedAt`, and `updatedAt` are prohibited — use the stamp command instead.
 
-1. Set `status: implemented` in the frontmatter.
-2. Set `implementedAt: <today's date>`.
-3. Set `updatedAt: <today's date>`.
-4. Commit:
+1. Identify the implementation commit SHA — use the first `implement:` commit for this ADR.
+2. Run the stamp command:
+
+   ```sh
+   ref(forge.yaml bindings.commands.adrImplementStamp) --id ADR-XXXX --implementation-commit <sha>
+   ```
+
+   The command atomically validates all preconditions (accepted/proposed status, commit reachability, file cleanliness, concurrent safety) and sets `status: implemented`, `implementedAt`, and `updatedAt` in one atomic write.
+
+3. Commit the stamped ADR file:
 
    ```txt
    adr: implement ADR-XXXX <short title>
 
-   Transition ADR-XXXX to implemented status. Decision is live in code,
-   scoped build passes.
+   Transition ADR-XXXX to implemented status via adr.implement.stamp.
+   Decision is live in code, scoped build passes.
    ```
 
-   Stage only the ADR file.
+   Stage only the ADR file. The implementation commit and the stamp commit MUST be separate.
 
 #### 4.10b. Implementation status gate (ADR)
 
@@ -456,7 +462,7 @@ Before reporting completion, verify the ADR has been transitioned to `implemente
 
 1. Read the ADR frontmatter — confirm `status: implemented` and `implementedAt` is set.
 2. Run `ref(forge.yaml bindings.commands.validateAdr) --id ADR-XXXX --json` — confirm zero errors.
-3. If status is not `implemented`, go back to step 4.10 (Stamp implemented) and set `status: implemented`, `implementedAt`, `updatedAt`.
+3. If status is not `implemented`, go back to step 4.10 (Stamp implemented) and run `adr.implement.stamp`.
 4. If `adr.validate` reports errors, fix them before proceeding.
 
 This gate is MANDATORY. Do not proceed to step 4.11 (report) until the ADR is `implemented`.

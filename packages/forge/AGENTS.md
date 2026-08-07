@@ -20,7 +20,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.trim`, etc. (8 commands). All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). | `os/compass/` |
 | `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate` | `os/werkstatt/` |
 | `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate` | `os/spec/` |
-| `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive` | `os/adr/` |
+| `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive`, `adr.implement.stamp` | `os/adr/` |
 | `forgePlanModule` | `plan.archive` | `os/plan/` |
 | `forgeAuditModule` | `audit.archive` | `os/audit/` |
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list` | `os/session/` |

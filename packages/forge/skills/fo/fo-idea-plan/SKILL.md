@@ -70,7 +70,7 @@ If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruc
    rfc: accept RFC-XXXX <short title>
 
    Transition RFC-XXXX to accepted status for planning.
-   ```
+```
 
 5. Stage only the RFC file.
 
@@ -143,7 +143,7 @@ Step ordering follows the contract-first pattern:
 5. **Validation** — run `rfc.validate`, `build:check`, acceptance probes.
 6. **Evidence** — run `rfc.verification.emit`, commit evidence file.
 7. **Review & Fix** — `fo-review` on all session code changes, `fo-fix` if findings (MANDATORY — do not omit from the plan).
-8. **Stamp implemented** — run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha>` to transition `accepted → implemented` (RFC). For ADRs, manually set `status: implemented` and `implementedAt` per `fo-idea-implement` step 4.10.
+8. **Stamp implemented** — run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha>` to transition `accepted → implemented` (RFC). For ADRs, run `adr.implement.stamp --id ADR-XXXX --implementation-commit <sha>` per `fo-idea-implement` step 4.10.
 
 Mark **human review points** on steps that:
 
