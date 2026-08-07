@@ -13,6 +13,7 @@ in subdirectories back to the root.
 <CHANGE_SUMMARY>
   <item>RFC-0367: implement adr.archive command for terminal-status file archiving.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
+  <item>RFC-0733: add pinned-files pre-check — skip pinned files with warning instead of moving them.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,6 +26,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { ADR_DIR } from "../types.ts";
+import { loadPinnedManifest, isPinned } from "../../core/handlers/pinned-check.ts";
 
 export const ADR_TERMINAL_STATUSES = ["implemented", "rejected", "superseded"] as const;
 
@@ -71,6 +73,14 @@ export async function runAdrArchive(
   const moved: ArchiveMove[] = [];
   const skipped: ArchiveSkip[] = [];
 
+  // RFC-0733: Load pinned manifest once per invocation
+  let pinnedManifest = null;
+  try {
+    pinnedManifest = await loadPinnedManifest(workspaceRoot);
+  } catch {
+    // Malformed manifest — skip pre-check
+  }
+
   for (const fileName of files) {
     const result = await readAndParseAdr(adrDirPath, fileName);
     if (!result) {
@@ -100,6 +110,14 @@ export async function runAdrArchive(
     }
 
     if (isTerminal && !isInArchive) {
+      // RFC-0733: Check if file is pinned before moving
+      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+        skipped.push({ id, file: relFile, reason: "pinned (protected by .forge/pinned.yaml)" });
+        if (outputFormat === "pretty") {
+          logger.warn(`  pinned: skipping ${relFile} (protected)`);
+        }
+        continue;
+      }
       const targetDir = path.join(adrDirPath, "archive", status);
       const targetPath = path.join(targetDir, basename);
       const targetRel = path.join(ADR_DIR, "archive", status, basename);
@@ -134,6 +152,14 @@ export async function runAdrArchive(
         direction: "into-archive",
       });
     } else if (!isTerminal && isInArchive) {
+      // RFC-0733: Check if file is pinned before moving
+      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+        skipped.push({ id, file: relFile, reason: "pinned (protected by .forge/pinned.yaml)" });
+        if (outputFormat === "pretty") {
+          logger.warn(`  pinned: skipping ${relFile} (protected)`);
+        }
+        continue;
+      }
       const targetPath = path.join(adrDirPath, basename);
       const targetRel = path.join(ADR_DIR, basename);
 
