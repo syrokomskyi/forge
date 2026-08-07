@@ -446,44 +446,32 @@ await forgeRfcModule.register(registry);
 | `os/` | ForgeModule registrations. `compass` and `werkstatt` dynamically import `@warpgogol/site-kernel-*` (graceful degradation in autonomous mode). |
 | `bin/` | CLI entrypoint (`forge` command). |
 | `skills/` | 44 skill definitions (36 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
-| `scripts/` | Publication hygiene check (`publish-check.mjs`) run by `prepublishOnly`. |
 | `profiles/` | Stack profiles for `scaffold`. |
 
 ## Publishing to npm
 
-This package is published to the npm registry as `@warpgogol/forge`. The steps below describe how to publish a new version.
+This package is published to the npm registry as `@warpgogol/forge`. Publishing is automated via GitHub Actions CI.
 
-### Prerequisites
+### How it works
 
-- An npm account with publish access to the `@warpgogol` organization.
-- Node.js and npm installed locally.
+1. The source lives in the [warpgogol/werkstatt](https://github.com/syrokomskyi/werkstatt) monorepo under `packages/forge/`.
+2. [`@warpgogol/repo-extract`](https://github.com/syrokomskyi/repo-extract) extracts the package into the standalone [syrokomskyi/forge](https://github.com/syrokomskyi/forge) repository, flattening it to repo root and stripping workspace dependencies.
+3. The generated GitHub Actions CI workflow (`.github/workflows/ci.yml`) runs on every push to `main`: lint → typecheck → build → test → `npm publish --provenance --access public`.
+4. The `NPM_TOKEN` secret must be set in the [repository settings](https://github.com/syrokomskyi/forge/settings/secrets/actions).
 
-### Creating an access token
+### Triggering a new release
 
-1. Log in to [npmjs.com](https://www.npmjs.com/).
-2. Go to **Access Tokens** (avatar → Access Tokens).
-3. Click **Generate New Token** → select **Classic Token** → type **Publish**.
-4. Copy the generated token — it is shown only once.
-
-### Publishing a new version
-
-Run the following commands from the `packages/forge` directory:
+From the werkstatt monorepo root:
 
 ```sh
-# 1. Authenticate with npm (interactive — prompts for username, password, OTP)
-npm login
+# 1. Bump the version in packages/forge/package.json
+# 2. Run the extraction (extracts + commits + pushes to github.com:syrokomskyi/forge.git)
+pnpm exec repo-extract --config packages/forge/extract.config.yaml --verbose
 
-# 2. Store the auth token for the registry (use the token from the previous step)
-npm config set //registry.npmjs.org/:_authToken=<TOKEN>
-
-# 3. Bump the patch version (updates package.json + creates a git commit + tag)
-npm version patch
-
-# 4. Publish the package publicly
-npm publish --access public
+# 3. CI picks up the push and publishes to npm automatically
 ```
 
-After publishing, verify the new version on [npmjs.com/package/@warpgogol/forge](https://www.npmjs.com/package/@warpgogol/forge).
+After CI completes, verify the new version on [npmjs.com/package/@warpgogol/forge](https://www.npmjs.com/package/@warpgogol/forge).
 
 ## License
 
