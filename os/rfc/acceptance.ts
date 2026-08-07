@@ -20,6 +20,7 @@ prose checklist.
 import { spawn } from "node:child_process";
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
+import { parse as yamlParse } from "yaml";
 import type {
   Diagnostic,
   ForgeCommandInput,
@@ -32,6 +33,17 @@ import { RFC_DIR } from "./types.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 
 const RUN_PROBE_ALLOWED_PREFIX = "site-kernel ";
+
+async function loadManifestCommandNames(workspaceRoot: string): Promise<Set<string>> {
+  const manifestPath = path.join(workspaceRoot, "docs", "command-manifest.generated.yaml");
+  try {
+    const raw = await readFile(manifestPath, "utf-8");
+    const manifest = yamlParse(raw) as { commands?: Array<{ name: string }> };
+    return new Set((manifest.commands ?? []).map((c) => c.name));
+  } catch {
+    return new Set();
+  }
+}
 const RUN_PROBE_TIMEOUT_MS = 120_000;
 
 export interface AcceptanceShapeIssue {
@@ -225,8 +237,14 @@ export async function runProbe(
       }
     }
     case "command-registered": {
-      const commands = commandRegistry?.listCommands() ?? [];
-      const ok = commands.some((c) => c.name === probe.name);
+      const registryNames = new Set((commandRegistry?.listCommands() ?? []).map((c) => c.name));
+      if (!registryNames.has(probe.name)) {
+        const manifestNames = await loadManifestCommandNames(workspaceRoot);
+        for (const name of manifestNames) {
+          registryNames.add(name);
+        }
+      }
+      const ok = registryNames.has(probe.name);
       return { probe, ok, detail: ok ? "registered" : "not registered" };
     }
     case "page": {
