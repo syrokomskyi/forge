@@ -13,7 +13,7 @@ Portable governance skills and command modules extracted from site-kernel (RFC-0
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `docs.archive` | `os/core/` |
+| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `pinned.validate`, `pinned.init`, `docs.archive` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
@@ -34,6 +34,17 @@ When archiving terminal artifacts, prefer the `docs.archive` umbrella command ov
 - **RFC-0711: `docs.archive` post-loop `spec.live.merge` step.** After archiving, `docs.archive` scans implemented RFCs with a `liveSpec` frontmatter field and calls `spec.live.merge` for each, creating or updating living feature specs under `docs/specs/live/<domain>.md`. Rejected RFCs with `liveSpec` are skipped. Merge failures are non-fatal — the archive step still completes. Use `--dry-run` to preview merges without writing.
 
 - **Post-rename cleanup for `fs.rename` on watched directories:** When an archive handler uses `fs.rename` to move a directory that an IDE or file watcher is tracking (e.g. mission workpiece with an open `.astro/` cache), the watcher may recreate stale cache at the source path after the rename completes. Always add a post-rename cleanup check using `trashPath` from `utils/fs-trash.ts`: `if (existsSync(sourcePath)) { await trashPath(sourcePath); }` after the `fs.rename` call. See `os/mission/handlers/archive.ts` `moveMissionDir` for the reference implementation.
+
+## Pinned-files protection (RFC-0733)
+
+The pinned-files protection system prevents accidental deletion, move, or modification of foundational files (templates, configs, structural directories). It is opt-in — protection is active only when `.forge/pinned.yaml` exists.
+
+- **`forge pinned.init`** creates `.forge/pinned.yaml` with default foundation entries, installs a pre-commit hook, adds `.forge/pinned-audit.log` to `.gitignore`, and optionally generates a CI workflow (`--ci`). Re-running merges defaults with existing entries — operator-removed default entries are re-added, but custom entries are never overwritten or removed.
+- **`forge pinned.validate`** checks the working tree against the manifest. In `staged` mode (default), it checks `git diff --cached`; in `ci` mode (`--mode ci`), it checks the last-commit diff. Violations for `delete` and `move` operations are always blocked; `modify` is blocked only for `freeze` mode entries (not `protect`).
+- **Override:** Use `--allow-pinned-override <path>` for an audited escape hatch. Each override is logged to `.forge/pinned-audit.log` (append-only, gitignored) with timestamp, path, mode, and reason.
+- **Manifest integrity:** `pinned.validate` compares the current manifest against the last-committed version. If entries have been removed, it reports `PINNED_MANIFEST_TAMPERED`.
+- **Archive pre-check:** All 6 archive handlers (`rfc.archive`, `adr.archive`, `plan.archive`, `audit.archive`, `session.archive`, `mission.archive`) load the pinned manifest once per invocation and skip pinned files/directories with a warning instead of moving them. When the manifest is missing, archive handlers behave as before (protection inactive).
+- **`.forge/` directory:** The `.forge/` directory is a forge-specific convention for project-local governance files. It sits alongside `forge.yaml` and contains `pinned.yaml` (manifest) and `pinned-audit.log` (override audit trail).
 
 ## Skills
 
