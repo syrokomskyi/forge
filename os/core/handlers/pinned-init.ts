@@ -22,10 +22,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
-import {
-  PINNED_MANIFEST_PATH,
-  loadPinnedManifest,
-} from "./pinned-check.ts";
+import { PINNED_MANIFEST_PATH, loadPinnedManifest } from "./pinned-check.ts";
 import type { PinnedEntry, PinnedManifest } from "./pinned-types.ts";
 
 const PRE_COMMIT_HOOK_MARKER = "# forge:pinned-check";
@@ -118,10 +115,7 @@ jobs:
  * - Re-adds missing default entries (forge expects them).
  * - Never overwrites or removes custom entries.
  */
-function mergeManifest(
-  existing: PinnedManifest | null,
-  defaults: PinnedEntry[],
-): PinnedManifest {
+function mergeManifest(existing: PinnedManifest | null, defaults: PinnedEntry[]): PinnedManifest {
   if (!existing) {
     return { pinned: [...defaults] };
   }
@@ -142,7 +136,9 @@ function mergeManifest(
  * Install or merge the pre-commit hook.
  * If a hook exists, appends the forge check with a marker for idempotent re-installation.
  */
-async function installPreCommitHook(repoRoot: string): Promise<"created" | "updated" | "unchanged"> {
+async function installPreCommitHook(
+  repoRoot: string,
+): Promise<"created" | "updated" | "unchanged"> {
   const hookPath = path.join(repoRoot, ".git", "hooks", "pre-commit");
 
   let existingContent: string;
@@ -201,6 +197,7 @@ async function addToGitignore(repoRoot: string): Promise<"created" | "updated" |
  */
 async function generateCiWorkflow(repoRoot: string): Promise<"created" | "unchanged"> {
   const workflowPath = path.join(repoRoot, ".github", "workflows", "pinned-check.yml");
+  await fs.mkdir(path.dirname(workflowPath), { recursive: true });
   await writeFileIfChanged(workflowPath, CI_WORKFLOW_TEMPLATE);
   return "created";
 }
