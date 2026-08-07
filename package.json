@@ -132,9 +132,8 @@
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
     "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "clean": "rm -rf dist",
-    "prepublishOnly": "pnpm run clean && pnpm run build && node scripts/publish-check.mjs && node scripts/strip-workspace-deps.mjs",
-    "postpublish": "git checkout -- ./package.json",
+    "lint": "pnpm exec eslint src --ext .ts",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest"
   },

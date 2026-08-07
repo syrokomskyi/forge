@@ -1,0 +1,30 @@
+# extract.config.yaml — repo-extract standalone package export for @warpgogol/forge
+# Extracts packages/forge from the werkstatt monorepo into a standalone public repo.
+
+projectDir: packages/forge
+destName: forge
+standalone: true
+
+workspacePrefixes:
+  - "@warpgogol/"
+stripScopes:
+  - "@warpgogol/"
+preservePackages:
+  - "@warpgogol/forge"
+packageManager: "pnpm"
+
+ignoreDirs:
+  - .turbo
+  - .agents
+  - node_modules
+
+excludePathSegments:
+  - .npmrc
+
+postProcess:
+  - action: delete
+    path: AGENTS.md
+
+git:
+  remote: git@github.com:syrokomskyi/forge.git
+  autoPush: true
