@@ -15,16 +15,12 @@ statuses, scopes, frontmatter shape, validation results, and list output.
   <item>RFC-0367: extend AdrStatus with reviewing and implemented; add implementedAt, closedAt, reviewers fields.</item>
   <item>Post-refactor hardening: document that an ADR may be superseded by a broader RFC.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
+  <item>RFC-0727: add AdrImplementStamp types for atomic ADR status transition.</item>
 </CHANGE_SUMMARY>
 */
 
 export type AdrStatus =
-  | "proposed"
-  | "reviewing"
-  | "accepted"
-  | "implemented"
-  | "superseded"
-  | "rejected";
+  "proposed" | "reviewing" | "accepted" | "implemented" | "superseded" | "rejected";
 
 export const ADR_STATUSES: readonly AdrStatus[] = [
   "proposed",
@@ -121,3 +117,25 @@ export const ADR_KNOWN_KEYS: readonly string[] = [
   "closedAt",
   "reviewers",
 ] as const;
+
+// ─── RFC-0727: adr.implement.stamp types ─────────────────────────────────────
+
+export type AdrImplementStampRule = "ADR-IMP-01" | "ADR-IMP-03" | "ADR-IMP-04" | "ADR-IMP-05";
+
+export interface AdrImplementStampData {
+  adrId: string;
+  implementationCommit: string;
+  stampedAt: string;
+}
+
+export interface AdrImplementStampViolation {
+  rule: AdrImplementStampRule;
+  message: string;
+}
+
+export interface AdrImplementStampResult {
+  command: "adr.implement.stamp";
+  status: "pass" | "fail";
+  data?: AdrImplementStampData;
+  violations: AdrImplementStampViolation[];
+}

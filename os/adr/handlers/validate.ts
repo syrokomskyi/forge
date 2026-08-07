@@ -399,7 +399,7 @@ async function validateSingleAdr(
             adrId,
             relFile,
             "AV-16",
-            `${adrId} has ${matchingLines.length} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Set status: implemented and implementedAt to complete.`,
+            `${adrId} has ${matchingLines.length} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Run: site-kernel run adr.implement.stamp --id ${adrId} --implementation-commit <sha> to transition to implemented.`,
             "warning",
           );
         }
