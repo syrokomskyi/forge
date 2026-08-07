@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0366: register adr.create, adr.validate, and adr.list commands.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/ as forgeAdrModule.</item>
+  <item>RFC-0727: register adr.implement.stamp command for atomic ADR status transition.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,7 @@ export const forgeAdrModule: ForgeModule = {
     const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");
     const { runAdrValidate } = await import("./handlers/validate.ts");
     const { runAdrArchive } = await import("./handlers/archive.ts");
+    const { runAdrImplementStamp } = await import("./handlers/implement-stamp.ts");
 
     registry.registerCommand({
       name: "adr.list",
@@ -120,6 +122,37 @@ export const forgeAdrModule: ForgeModule = {
         },
       },
       execute: runAdrArchive,
+    });
+
+    registry.registerCommand({
+      name: "adr.implement.stamp",
+      description:
+        "Atomically transition an ADR from accepted/proposed to implemented. " +
+        "Validates preconditions (status, implementation commit, file cleanliness, " +
+        "concurrent safety) and mutates frontmatter in one atomic write. " +
+        "Use --dry-run to preview without mutating.",
+      scope: "workspace",
+      mutatesState: true,
+      writes: ["docs/adrs/*.md"],
+      reads: ["docs/adrs/**/*.md"],
+      cacheable: false,
+      flags: {
+        id: {
+          kind: "string",
+          required: true,
+          description: "Target ADR id (e.g. ADR-0003).",
+        },
+        "implementation-commit": {
+          kind: "string",
+          required: true,
+          description: "SHA of the implementation commit.",
+        },
+        "dry-run": {
+          kind: "boolean",
+          description: "Preview without mutating the ADR file.",
+        },
+      },
+      execute: runAdrImplementStamp,
     });
   },
 };
