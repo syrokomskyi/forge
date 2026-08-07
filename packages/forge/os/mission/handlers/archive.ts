@@ -38,7 +38,7 @@ import {
   type MissionArchiveSkip,
   type MissionArchiveResult,
 } from "../types.ts";
-import { loadPinnedManifest, isPinned } from "../../core/handlers/pinned-check.ts";
+import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
 
 async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
@@ -191,7 +191,12 @@ export async function runMissionArchive(
     const sourceRel = `${MISSIONS_DIR}/${missionId}`;
 
     // RFC-0733: Check if mission directory is pinned before moving
-    if (pinnedManifest && isPinned(pinnedManifest, sourceRel)) {
+    // Gap fix: exempt intra-directory moves (dir stays within the same pinned parent)
+    if (
+      pinnedManifest &&
+      isPinned(pinnedManifest, sourceRel) &&
+      !isIntraDirMove(pinnedManifest, sourceRel, targetRel)
+    ) {
       skipped.push({
         missionId,
         dir: sourceRel,
@@ -262,7 +267,12 @@ export async function runMissionArchive(
         const sourceRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`;
 
         // RFC-0733: Check if mission directory is pinned before moving
-        if (pinnedManifest && isPinned(pinnedManifest, sourceRel)) {
+        // Gap fix: exempt intra-directory moves (dir stays within the same pinned parent)
+        if (
+          pinnedManifest &&
+          isPinned(pinnedManifest, sourceRel) &&
+          !isIntraDirMove(pinnedManifest, sourceRel, targetRel)
+        ) {
           skipped.push({
             missionId,
             dir: sourceRel,

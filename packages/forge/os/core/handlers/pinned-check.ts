@@ -12,6 +12,7 @@ per invocation — loadPinnedManifest is called once and the result is reused.</
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0733: initial pinned-check utility — loadPinnedManifest, isPinned, checkFilesForPinned.</item>
+  <item>Gap fix: add isIntraDirMove to exempt moves within the same pinned directory (e.g. rfc.archive moves docs/rfcs/x.md → docs/rfcs/archive/implemented/x.md).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -138,6 +139,38 @@ export function isPinned(manifest: PinnedManifest, relPath: string): PinnedEntry
   }
 
   return null;
+}
+
+/**
+ * Check if a move from sourceRel to destRel stays within the same pinned directory.
+ * This exempts intra-directory moves (e.g. rfc.archive moves
+ * docs/rfcs/rfc-0076.md → docs/rfcs/archive/implemented/rfc-0076.md)
+ * from the pinned pre-check, since the file hasn't left the protected directory.
+ *
+ * Only applies to directory-pinned entries (path ends with `/`).
+ * Returns true if the same pinned directory entry matches both source and dest.
+ */
+export function isIntraDirMove(
+  manifest: PinnedManifest,
+  sourceRel: string,
+  destRel: string,
+): boolean {
+  const normalizedSource = sourceRel.replace(/\\/g, "/");
+  const normalizedDest = destRel.replace(/\\/g, "/");
+
+  for (const entry of manifest.pinned) {
+    const normalizedEntryPath = entry.path.replace(/\\/g, "/");
+    if (normalizedEntryPath.endsWith("/")) {
+      if (
+        normalizedSource.startsWith(normalizedEntryPath) &&
+        normalizedDest.startsWith(normalizedEntryPath)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**

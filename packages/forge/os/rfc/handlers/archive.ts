@@ -25,7 +25,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { RFC_DIR } from "../types.ts";
-import { loadPinnedManifest, isPinned } from "../../core/handlers/pinned-check.ts";
+import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
 
 export const RFC_TERMINAL_STATUSES = ["implemented", "rejected", "superseded"] as const;
 
@@ -109,17 +109,23 @@ export async function runRfcArchive(
     }
 
     if (isTerminal && !isInArchive) {
+      const targetDir = path.join(rfcDirPath, "archive", status);
+      const targetPath = path.join(targetDir, basename);
+      const targetRel = path.join(RFC_DIR, "archive", status, basename);
+
       // RFC-0733: Check if file is pinned before moving
-      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+      // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
+      if (
+        pinnedManifest &&
+        isPinned(pinnedManifest, relFile) &&
+        !isIntraDirMove(pinnedManifest, relFile, targetRel)
+      ) {
         skipped.push({ id, file: relFile, reason: "pinned (protected by .forge/pinned.yaml)" });
         if (outputFormat === "pretty") {
           logger.warn(`  pinned: skipping ${relFile} (protected)`);
         }
         continue;
       }
-      const targetDir = path.join(rfcDirPath, "archive", status);
-      const targetPath = path.join(targetDir, basename);
-      const targetRel = path.join(RFC_DIR, "archive", status, basename);
 
       try {
         await fs.access(targetPath);
@@ -151,16 +157,22 @@ export async function runRfcArchive(
         direction: "into-archive",
       });
     } else if (!isTerminal && isInArchive) {
+      const targetPath = path.join(rfcDirPath, basename);
+      const targetRel = path.join(RFC_DIR, basename);
+
       // RFC-0733: Check if file is pinned before moving
-      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+      // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
+      if (
+        pinnedManifest &&
+        isPinned(pinnedManifest, relFile) &&
+        !isIntraDirMove(pinnedManifest, relFile, targetRel)
+      ) {
         skipped.push({ id, file: relFile, reason: "pinned (protected by .forge/pinned.yaml)" });
         if (outputFormat === "pretty") {
           logger.warn(`  pinned: skipping ${relFile} (protected)`);
         }
         continue;
       }
-      const targetPath = path.join(rfcDirPath, basename);
-      const targetRel = path.join(RFC_DIR, basename);
 
       try {
         await fs.access(targetPath);
