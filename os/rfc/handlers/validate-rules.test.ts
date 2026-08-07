@@ -557,6 +557,97 @@ describe("V-NC-01: NEEDS CLARIFICATION marker detection (RFC-0709)", () => {
   });
 });
 
+describe("V-29: versionBump required for post-cutoff accepted/implemented RFCs (RFC-0478, ADR-0029)", () => {
+  test("error when post-cutoff accepted RFC lacks versionBump", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, { createdAt: "2026-07-21" });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(1);
+    expect(v29[0]!.severity).toBe("error");
+    expect(v29[0]!.message).toContain("accepted");
+    expect(v29[0]!.message).toContain("versionBump");
+  });
+
+  test("error when post-cutoff implemented RFC lacks versionBump", async () => {
+    const body = BASE_BODY.replace(
+      "ACCEPTANCE_HERE",
+      "- [x] done (evidence: test.ts:1)\n- [x] another (evidence: test.ts:2)",
+    );
+    const parsed = makeParsed("implemented", body, {
+      createdAt: "2026-07-21",
+      implementedAt: "2026-07-22",
+    });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(1);
+    expect(v29[0]!.severity).toBe("error");
+    expect(v29[0]!.message).toContain("implemented");
+  });
+
+  test("no error when post-cutoff accepted RFC has versionBump", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, {
+      createdAt: "2026-07-21",
+      versionBump: "patch",
+    });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(0);
+  });
+
+  test("no error when post-cutoff implemented RFC has versionBump", async () => {
+    const body = BASE_BODY.replace(
+      "ACCEPTANCE_HERE",
+      "- [x] done (evidence: test.ts:1)\n- [x] another (evidence: test.ts:2)",
+    );
+    const parsed = makeParsed("implemented", body, {
+      createdAt: "2026-07-21",
+      implementedAt: "2026-07-22",
+      versionBump: "minor",
+    });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(0);
+  });
+
+  test("no error when pre-cutoff accepted RFC lacks versionBump", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, { createdAt: "2026-07-20" });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(0);
+  });
+
+  test("no error when draft RFC lacks versionBump (regardless of cutoff)", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, { createdAt: "2026-07-21" });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(0);
+  });
+
+  test("warning when versionBump is none but commands.added is non-empty", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, {
+      createdAt: "2026-07-21",
+      versionBump: "none",
+      commands: { added: ["some.command"], changed: [], removed: [] },
+    });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(1);
+    expect(v29[0]!.severity).toBe("warning");
+    expect(v29[0]!.message).toContain("none");
+  });
+
+  test("no warning when versionBump is none and no commands added/changed", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, {
+      createdAt: "2026-07-21",
+      versionBump: "none",
+      commands: { added: [], changed: [], removed: [] },
+    });
+    const violations = await runValidate(parsed);
+    const v29 = filterRule(violations, "V-29");
+    expect(v29).toHaveLength(0);
+  });
+});
+
 describe("RFC-DIR-01: directory structure convention (RFC-0722)", () => {
   test("warning when RFC file is in an unsanctioned subdirectory", async () => {
     const parsed = makeParsed("accepted", BASE_BODY);

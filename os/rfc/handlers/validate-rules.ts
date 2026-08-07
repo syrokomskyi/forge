@@ -778,7 +778,7 @@ export async function validateSingleRfc(
     }
   }
 
-  // V-29: versionBump required for post-cutoff accepted/implemented RFCs (RFC-0478)
+  // V-29: versionBump required for post-cutoff accepted/implemented RFCs (RFC-0478, ADR-0029)
   {
     const versionBump = fm["versionBump"];
     const isPostCutoff = createdAtStr >= RFC_VERSION_BUMP_CUTOFF;
