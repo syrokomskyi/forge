@@ -16,6 +16,7 @@ archive subdirectories back to missions/.
   <item>RFC-0573: implement mission.archive command.</item>
   <item>RFC-0573: extract moveMissionDir helper to eliminate Phase 1/2 duplication.</item>
   <item>Replace fs.rm with trashPath for post-rename cleanup (trash bin for LLM-initiated deletions).</item>
+  <item>RFC-0733: add pinned-files pre-check — skip pinned mission directories with warning instead of moving them.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -37,6 +38,7 @@ import {
   type MissionArchiveSkip,
   type MissionArchiveResult,
 } from "../types.ts";
+import { loadPinnedManifest, isPinned } from "../../core/handlers/pinned-check.ts";
 
 async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
@@ -120,6 +122,14 @@ export async function runMissionArchive(
   const moved: MissionArchiveMove[] = [];
   const skipped: MissionArchiveSkip[] = [];
 
+  // RFC-0733: Load pinned manifest once per invocation
+  let pinnedManifest = null;
+  try {
+    pinnedManifest = await loadPinnedManifest(workspaceRoot);
+  } catch {
+    // Malformed manifest — skip pre-check
+  }
+
   if (!existsSync(missionsPath)) {
     if (outputFormat === "pretty") {
       if (dryRun) {
@@ -180,6 +190,19 @@ export async function runMissionArchive(
     const targetRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${state}/${missionId}`;
     const sourceRel = `${MISSIONS_DIR}/${missionId}`;
 
+    // RFC-0733: Check if mission directory is pinned before moving
+    if (pinnedManifest && isPinned(pinnedManifest, sourceRel)) {
+      skipped.push({
+        missionId,
+        dir: sourceRel,
+        reason: "pinned (protected by .forge/pinned.yaml)",
+      });
+      if (outputFormat === "pretty") {
+        logger.warn(`  pinned: skipping ${sourceRel} (protected)`);
+      }
+      continue;
+    }
+
     const result = await moveMissionDir(
       missionDir,
       targetPath,
@@ -237,6 +260,19 @@ export async function runMissionArchive(
         const targetPath = path.join(missionsPath, missionId);
         const targetRel = `${MISSIONS_DIR}/${missionId}`;
         const sourceRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`;
+
+        // RFC-0733: Check if mission directory is pinned before moving
+        if (pinnedManifest && isPinned(pinnedManifest, sourceRel)) {
+          skipped.push({
+            missionId,
+            dir: sourceRel,
+            reason: "pinned (protected by .forge/pinned.yaml)",
+          });
+          if (outputFormat === "pretty") {
+            logger.warn(`  pinned: skipping ${sourceRel} (protected)`);
+          }
+          continue;
+        }
 
         const result = await moveMissionDir(
           archivedMissionDir,
