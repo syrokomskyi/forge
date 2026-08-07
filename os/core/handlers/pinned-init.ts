@@ -49,6 +49,16 @@ export const DEFAULT_PINNED_ENTRIES: PinnedEntry[] = [
     reason: "ADR template — required for adr.create",
   },
   {
+    path: "docs/audits/audit-0000-template.md",
+    mode: "freeze",
+    reason: "Audit template — required for audit creation",
+  },
+  {
+    path: "docs/plans/plan-0000-template.md",
+    mode: "freeze",
+    reason: "Plan template — required for plan creation",
+  },
+  {
     path: "docs/architecture-dna.md",
     mode: "freeze",
     reason: "Architecture DNA invariants — foundational governance document",
