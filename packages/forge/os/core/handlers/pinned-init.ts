@@ -98,6 +98,36 @@ export const DEFAULT_PINNED_ENTRIES: PinnedEntry[] = [
     mode: "protect",
     reason: "ADR directory — structural foundation",
   },
+  {
+    path: "docs/audits/",
+    mode: "protect",
+    reason: "Audit directory — structural foundation",
+  },
+  {
+    path: "docs/plans/",
+    mode: "protect",
+    reason: "Plan directory — structural foundation",
+  },
+  {
+    path: "docs/sessions/",
+    mode: "protect",
+    reason: "Session directory — structural foundation",
+  },
+  {
+    path: "docs/explorations/",
+    mode: "protect",
+    reason: "Exploration directory — structural foundation",
+  },
+  {
+    path: "docs/specs/",
+    mode: "protect",
+    reason: "Spec snapshots — immutable vendored content",
+  },
+  {
+    path: "missions/",
+    mode: "protect",
+    reason: "Missions directory — structural foundation",
+  },
 ];
 
 const PRE_COMMIT_HOOK_SCRIPT = `#!/bin/sh
