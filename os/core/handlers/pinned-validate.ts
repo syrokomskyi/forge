@@ -12,6 +12,7 @@ pinned files. Supports --allow-pinned-override for audited escape hatch,
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0733: initial pinned.validate handler with staged/ci modes, override, audit log, manifest integrity check.</item>
+  <item>Gap fix: read FORGE_PINNED_OVERRIDE env var for pre-commit hook override support.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,18 +85,19 @@ async function checkManifestIntegrity(
   manifest: PinnedManifest,
 ): Promise<PinnedViolation | null> {
   try {
-    const { stdout } = await execAsync(
-      `git show HEAD:${PINNED_MANIFEST_PATH}`,
-      { cwd: repoRoot, encoding: "utf8" },
-    );
+    const { stdout } = await execAsync(`git show HEAD:${PINNED_MANIFEST_PATH}`, {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
     // Parse the committed manifest to compare entry paths
     const { parse: parseYaml } = await import("yaml");
     const committedParsed = parseYaml(stdout) as Record<string, unknown> | null;
     if (!committedParsed || !Array.isArray(committedParsed["pinned"])) {
       return null;
     }
-    const committedEntries = (committedParsed["pinned"] as Array<Record<string, unknown>>)
-      .map((e) => String(e["path"] ?? ""));
+    const committedEntries = (committedParsed["pinned"] as Array<Record<string, unknown>>).map(
+      (e) => String(e["path"] ?? ""),
+    );
     const currentPaths = new Set(manifest.pinned.map((e) => e.path));
 
     for (const committedPath of committedEntries) {
@@ -141,12 +143,25 @@ export async function runPinnedValidate(
   const mode: PinnedValidateMode =
     (input.flags["mode"] as PinnedValidateMode | undefined) ?? "staged";
   const json = input.flags["json"] === true || outputFormat === "json";
-  const overrideRaw = input.flags["allow-pinned-override"];
-  const overrides: string[] = overrideRaw
-    ? Array.isArray(overrideRaw)
-      ? (overrideRaw as string[])
-      : [overrideRaw as string]
+  const flagRaw = input.flags["allow-pinned-override"];
+  const flagOverrides: string[] = flagRaw
+    ? Array.isArray(flagRaw)
+      ? (flagRaw as string[])
+      : [flagRaw as string]
     : [];
+
+  // Gap fix: also read FORGE_PINNED_OVERRIDE env var (comma-separated paths).
+  // This allows the pre-commit hook to support overrides without changing the hook script.
+  // Operator sets: FORGE_PINNED_OVERRIDE=docs/rfcs/rfc-0076.md git commit
+  const envOverride = process.env["FORGE_PINNED_OVERRIDE"];
+  const envOverrides: string[] = envOverride
+    ? envOverride
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+
+  const overrides: string[] = [...flagOverrides, ...envOverrides];
 
   // Load manifest
   let manifest: PinnedManifest | null;
@@ -188,16 +203,16 @@ export async function runPinnedValidate(
   let diffOutput: string;
   try {
     if (mode === "ci") {
-      const { stdout } = await execAsync(
-        "git diff --name-status HEAD~1 HEAD",
-        { cwd: workspaceRoot, encoding: "utf8" },
-      );
+      const { stdout } = await execAsync("git diff --name-status HEAD~1 HEAD", {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+      });
       diffOutput = stdout;
     } else {
-      const { stdout } = await execAsync(
-        "git diff --cached --name-status",
-        { cwd: workspaceRoot, encoding: "utf8" },
-      );
+      const { stdout } = await execAsync("git diff --cached --name-status", {
+        cwd: workspaceRoot,
+        encoding: "utf8",
+      });
       diffOutput = stdout;
     }
   } catch {
@@ -268,13 +283,9 @@ export async function runPinnedValidate(
         logger.success("pinned.validate: no violations");
       }
     } else {
-      logger.error(
-        `pinned.validate: ${remainingViolations.length} violation(s) found`,
-      );
+      logger.error(`pinned.validate: ${remainingViolations.length} violation(s) found`);
       for (const v of remainingViolations) {
-        logger.error(
-          `  ${v.operation}: ${v.path} (mode: ${v.mode}) — ${v.reason}`,
-        );
+        logger.error(`  ${v.operation}: ${v.path} (mode: ${v.mode}) — ${v.reason}`);
       }
     }
   }

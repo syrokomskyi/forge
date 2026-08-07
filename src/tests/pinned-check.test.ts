@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import {
   loadPinnedManifest,
   isPinned,
+  isIntraDirMove,
   checkFilesForPinned,
   PinnedManifestMalformedError,
 } from "../../os/core/handlers/pinned-check.ts";
@@ -137,5 +138,57 @@ describe("checkFilesForPinned", () => {
       { relPath: "README.md", operation: "modify" },
     ]);
     expect(violations).toHaveLength(0);
+  });
+});
+
+describe("isIntraDirMove", () => {
+  const manifest: PinnedManifest = {
+    pinned: [
+      { path: "docs/rfcs/rfc-0000-template.md", mode: "freeze", reason: "template" },
+      { path: "docs/rfcs/", mode: "protect", reason: "RFC directory" },
+      { path: "docs/adrs/", mode: "protect", reason: "ADR directory" },
+    ],
+  };
+
+  test("returns true when both source and dest are inside the same pinned dir", () => {
+    expect(
+      isIntraDirMove(
+        manifest,
+        "docs/rfcs/rfc-0076.md",
+        "docs/rfcs/archive/implemented/rfc-0076.md",
+      ),
+    ).toBe(true);
+  });
+
+  test("returns true for reverse move (archive → active)", () => {
+    expect(
+      isIntraDirMove(
+        manifest,
+        "docs/rfcs/archive/implemented/rfc-0076.md",
+        "docs/rfcs/rfc-0076.md",
+      ),
+    ).toBe(true);
+  });
+
+  test("returns false when dest is outside the pinned dir", () => {
+    expect(isIntraDirMove(manifest, "docs/rfcs/rfc-0076.md", "docs/other/rfc-0076.md")).toBe(false);
+  });
+
+  test("returns false when source is not in any pinned dir", () => {
+    expect(isIntraDirMove(manifest, "README.md", "docs/rfcs/README.md")).toBe(false);
+  });
+
+  test("returns false for file-pinned entries (not directory-pinned)", () => {
+    expect(
+      isIntraDirMove(
+        manifest,
+        "docs/rfcs/rfc-0000-template.md",
+        "docs/rfcs/archive/rfc-0000-template.md",
+      ),
+    ).toBe(true);
+  });
+
+  test("returns false when source and dest are in different pinned dirs", () => {
+    expect(isIntraDirMove(manifest, "docs/rfcs/rfc-0076.md", "docs/adrs/adr-0001.md")).toBe(false);
   });
 });

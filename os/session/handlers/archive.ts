@@ -35,7 +35,7 @@ import {
   type SessionArchiveMove,
   type SessionArchiveSkip,
 } from "../types.ts";
-import { loadPinnedManifest, isPinned } from "../../core/handlers/pinned-check.ts";
+import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
 
 const DEFAULT_MAX_AGE_DAYS = 7;
 
@@ -113,16 +113,22 @@ export async function runSessionArchive(
     const ageDays = computeAgeDays(sessionDate, now);
 
     if (ageDays > maxAgeDays) {
+      const targetPath = path.join(archiveDirPath, basename);
+      const targetRel = path.join(SESSION_DIR, SESSION_ARCHIVE_SUBDIR, basename);
+
       // RFC-0733: Check if file is pinned before moving
-      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+      // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
+      if (
+        pinnedManifest &&
+        isPinned(pinnedManifest, relFile) &&
+        !isIntraDirMove(pinnedManifest, relFile, targetRel)
+      ) {
         skipped.push({ id, file: relFile, reason: "pinned (protected by .forge/pinned.yaml)" });
         if (outputFormat === "pretty") {
           logger.warn(`  pinned: skipping ${relFile} (protected)`);
         }
         continue;
       }
-      const targetPath = path.join(archiveDirPath, basename);
-      const targetRel = path.join(SESSION_DIR, SESSION_ARCHIVE_SUBDIR, basename);
 
       try {
         await fs.access(targetPath);
@@ -193,16 +199,22 @@ export async function runSessionArchive(
     const ageDays = computeAgeDays(sessionDate, now);
 
     if (ageDays <= maxAgeDays) {
+      const targetPath = path.join(sessionDirPath, basename);
+      const targetRel = path.join(SESSION_DIR, basename);
+
       // RFC-0733: Check if file is pinned before moving
-      if (pinnedManifest && isPinned(pinnedManifest, archRelFile)) {
+      // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
+      if (
+        pinnedManifest &&
+        isPinned(pinnedManifest, archRelFile) &&
+        !isIntraDirMove(pinnedManifest, archRelFile, targetRel)
+      ) {
         skipped.push({ id, file: archRelFile, reason: "pinned (protected by .forge/pinned.yaml)" });
         if (outputFormat === "pretty") {
           logger.warn(`  pinned: skipping ${archRelFile} (protected)`);
         }
         continue;
       }
-      const targetPath = path.join(sessionDirPath, basename);
-      const targetRel = path.join(SESSION_DIR, basename);
 
       try {
         await fs.access(targetPath);

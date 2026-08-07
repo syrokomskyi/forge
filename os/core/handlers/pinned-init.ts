@@ -134,6 +134,7 @@ const PRE_COMMIT_HOOK_SCRIPT = `#!/bin/sh
 ${PRE_COMMIT_HOOK_MARKER}
 # Installed by forge pinned.init — do not remove this marker block.
 # Pinned-files protection: blocks commits that delete/move/modify pinned files.
+# To override: FORGE_PINNED_OVERRIDE=path1,path2 git commit
 forge pinned.validate || exit 1
 `;
 

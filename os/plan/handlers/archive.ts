@@ -28,7 +28,7 @@ import type {
 } from "../../../src/types.ts";
 import { PLAN_DIR } from "../types.ts";
 import type { PlanArchiveResult } from "../types.ts";
-import { loadPinnedManifest, isPinned } from "../../core/handlers/pinned-check.ts";
+import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
 
 const TERMINAL_STATUSES = ["implemented", "rejected", "superseded"] as const;
 
@@ -92,8 +92,17 @@ export async function runPlanArchive(
     }
 
     if (isTerminal && !isInArchive) {
+      const targetDir = path.join(planDirPath, "archive", rfcStatus);
+      const targetPath = path.join(targetDir, basename);
+      const targetRel = path.join(PLAN_DIR, "archive", rfcStatus, basename);
+
       // RFC-0733: Check if file is pinned before moving
-      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+      // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
+      if (
+        pinnedManifest &&
+        isPinned(pinnedManifest, relFile) &&
+        !isIntraDirMove(pinnedManifest, relFile, targetRel)
+      ) {
         skipped.push({
           id: rfcId,
           file: relFile,
@@ -104,9 +113,6 @@ export async function runPlanArchive(
         }
         continue;
       }
-      const targetDir = path.join(planDirPath, "archive", rfcStatus);
-      const targetPath = path.join(targetDir, basename);
-      const targetRel = path.join(PLAN_DIR, "archive", rfcStatus, basename);
 
       try {
         await fs.access(targetPath);
@@ -138,8 +144,16 @@ export async function runPlanArchive(
         direction: "into-archive",
       });
     } else if (!isTerminal && isInArchive) {
+      const targetPath = path.join(planDirPath, basename);
+      const targetRel = path.join(PLAN_DIR, basename);
+
       // RFC-0733: Check if file is pinned before moving
-      if (pinnedManifest && isPinned(pinnedManifest, relFile)) {
+      // Gap fix: exempt intra-directory moves (file stays within the same pinned dir)
+      if (
+        pinnedManifest &&
+        isPinned(pinnedManifest, relFile) &&
+        !isIntraDirMove(pinnedManifest, relFile, targetRel)
+      ) {
         skipped.push({
           id: rfcId,
           file: relFile,
@@ -150,8 +164,6 @@ export async function runPlanArchive(
         }
         continue;
       }
-      const targetPath = path.join(planDirPath, basename);
-      const targetRel = path.join(PLAN_DIR, basename);
 
       try {
         await fs.access(targetPath);
