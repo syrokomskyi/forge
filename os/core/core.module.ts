@@ -22,6 +22,7 @@
   <item>RFC-0680: register forge.release.prepare, forge.release.publish commands.</item>
   <item>ADR-0021: profile-driven video lifecycle — all lifecycle commands read behavior from profile YAML, zero domain-specific code in Forge source.</item>
   <item>RFC-0711: docs.archive post-loop step calls spec.live.merge for implemented RFCs with liveSpec field; skips rejected RFCs.</item>
+  <item>RFC-0733: register forge pinned.validate and forge pinned.init commands for pinned-files protection system.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +58,8 @@ export const forgeCoreModule: ForgeModule = {
     const { runDev } = await import("./handlers/dev.ts");
     const { runBuild } = await import("./handlers/build.ts");
     const { runValidate } = await import("./handlers/validate.ts");
+    const { runPinnedValidate } = await import("./handlers/pinned-validate.ts");
+    const { runPinnedInit } = await import("./handlers/pinned-init.ts");
 
     const scaffoldWrapper = async (
       input: ForgeCommandInput,
@@ -578,6 +581,64 @@ export const forgeCoreModule: ForgeModule = {
       ],
       cacheable: false,
       execute: runKnowledgeCompact,
+    });
+
+    // ── pinned.validate ─────────────────────────────────────────────────────
+    registry.registerCommand({
+      name: "pinned.validate",
+      description:
+        "Validate working tree against .forge/pinned.yaml manifest. " +
+        "Checks staged changes (default) or last commit (--mode ci) for " +
+        "delete/move/modify operations on pinned files. " +
+        "Use --allow-pinned-override <path> for audited escape hatch.",
+      scope: "workspace",
+      reads: [".forge/pinned.yaml", ".forge/pinned-audit.log"],
+      writes: [".forge/pinned-audit.log"],
+      cacheable: false,
+      flags: {
+        "allow-pinned-override": {
+          kind: "string[]",
+          description:
+            "Path(s) to exempt from pinned-files validation on this invocation. " +
+            "Each override is logged to .forge/pinned-audit.log.",
+        },
+        mode: {
+          kind: "string",
+          description:
+            "Validation mode: 'staged' (pre-commit, default) or 'ci' (last-commit diff).",
+        },
+        json: {
+          kind: "boolean",
+          description: "Output structured JSON result.",
+        },
+      },
+      execute: runPinnedValidate,
+    });
+
+    // ── pinned.init ─────────────────────────────────────────────────────────
+    registry.registerCommand({
+      name: "pinned.init",
+      description:
+        "Initialize .forge/pinned.yaml with default foundation entries, " +
+        "install pre-commit hook, and add audit log to .gitignore. " +
+        "Use --ci to also generate .github/workflows/pinned-check.yml.",
+      scope: "workspace",
+      mutatesState: true,
+      writes: [
+        ".forge/pinned.yaml",
+        ".git/hooks/pre-commit",
+        ".gitignore",
+        ".github/workflows/pinned-check.yml",
+      ],
+      reads: [".forge/pinned.yaml", ".git/hooks/pre-commit", ".gitignore"],
+      cacheable: false,
+      flags: {
+        ci: {
+          kind: "boolean",
+          description: "Also generate .github/workflows/pinned-check.yml CI workflow.",
+        },
+      },
+      execute: runPinnedInit,
     });
 
     // ── docs.archive ─────────────────────────────────────────────────────────
