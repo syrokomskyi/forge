@@ -159,6 +159,7 @@ export async function runRfcVerificationEmit(
   for (const fileName of allFiles) {
     const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
     if (!parsedFile) continue;
+    if ("error" in parsedFile) continue;
     const fm = parsedFile.parsed.frontmatter;
     const rfcId = String(fm["id"] ?? "");
 
