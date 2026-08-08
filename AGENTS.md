@@ -121,7 +121,7 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 
 ## RFC status transitions: rfc.implement.stamp is exclusive (V-16)
 
-`rfc.implement.stamp` is the **exclusive atomic path** for accepted → implemented transitions. It atomically sets `status: implemented`, `implementedAt`, and `updatedAt` together. **NEVER** manually edit RFC frontmatter to set `implementedAt` or change `status` to `implemented` — this bypasses the atomic guarantee and risks leaving `status` and `implementedAt` out of sync. V-16 enforces this as an error: `status: accepted/draft` with `implementedAt` set, or `status: implemented` with empty `implementedAt`, both fail `rfc.validate`. After implementing an RFC, run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha>` to stamp it.
+`rfc.implement.stamp` is the **exclusive atomic path** for accepted → implemented transitions. It atomically sets `status: implemented`, `implementedAt`, and `updatedAt` together. **NEVER** manually edit RFC frontmatter to set `implementedAt` or change `status` to `implemented` — this bypasses the atomic guarantee and risks leaving `status` and `implementedAt` out of sync. V-16 enforces this as an error: `status: accepted/draft` with `implementedAt` set, or `status: implemented` with empty `implementedAt`, both fail `rfc.validate`. After implementing an RFC, run `rfc.implement.stamp --id RFC-XXXX` to stamp it (auto-detects the implementation commit via `git log --grep` when `--implementation-commit` is omitted, RFC-0756; pass `--implementation-commit <sha>` to override).
 
 ## RFC acceptance criteria: evidence annotation (RFC-IMP-02)
 
