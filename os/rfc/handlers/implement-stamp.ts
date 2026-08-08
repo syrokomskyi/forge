@@ -13,6 +13,7 @@ verification evidence, and atomically mutates RFC frontmatter.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0476: initial implementation.</item>
+  <item>RFC-0756: auto-detect implementation commit when --implementation-commit is omitted.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -75,6 +76,46 @@ async function commitReachableFromHead(workspaceRoot: string, commitSha: string)
       },
     );
   });
+}
+
+async function autoDetectImplementationCommit(
+  workspaceRoot: string,
+  rfcId: string,
+): Promise<
+  { sha: string } | { multiple: Array<{ sha: string; message: string }> } | { none: true }
+> {
+  const hashes = await execGit(workspaceRoot, [
+    "log",
+    "--fixed-strings",
+    "--no-merges",
+    `--grep=${rfcId}`,
+    "--format=%H",
+  ]);
+
+  const hashList = hashes.split("\n").filter(Boolean);
+
+  if (hashList.length === 0) return { none: true };
+  if (hashList.length === 1) return { sha: hashList[0]! };
+
+  const details = await execGit(workspaceRoot, [
+    "log",
+    "--fixed-strings",
+    "--no-merges",
+    `--grep=${rfcId}`,
+    "--format=%h %s",
+  ]);
+
+  const candidates = details
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const spaceIdx = line.indexOf(" ");
+      const sha = spaceIdx >= 0 ? line.slice(0, spaceIdx) : line;
+      const message = spaceIdx >= 0 ? line.slice(spaceIdx + 1) : "";
+      return { sha, message };
+    });
+
+  return { multiple: candidates };
 }
 
 async function commitReferencesRfc(
@@ -193,16 +234,11 @@ export async function runRfcImplementStamp(
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
 
   const targetId = input.flags["id"] as string | undefined;
-  const implementationCommit = input.flags["implementation-commit"] as string | undefined;
+  let implementationCommit = input.flags["implementation-commit"] as string | undefined;
 
   // ── Flag validation ───────────────────────────────────────────────────────
   if (!targetId) {
     throw new Error("rfc.implement.stamp requires --id flag (e.g. --id RFC-0476).");
-  }
-  if (!implementationCommit) {
-    throw new Error(
-      "rfc.implement.stamp requires --implementation-commit flag (the SHA of the implementation commit).",
-    );
   }
 
   const violations: RfcImplementStampViolation[] = [];
@@ -264,6 +300,25 @@ export async function runRfcImplementStamp(
     });
   }
 
+  // ── RFC-0756: auto-detect implementation commit when --implementation-commit is omitted ──
+  if (!implementationCommit) {
+    const detected = await autoDetectImplementationCommit(workspaceRoot, targetId);
+    if ("sha" in detected) {
+      implementationCommit = detected.sha;
+    } else if ("none" in detected) {
+      violations.push({
+        rule: "RFC-IMP-03",
+        message: `No commit referencing ${targetId} found in git history. Pass --implementation-commit <SHA> explicitly.`,
+      });
+    } else {
+      const candidateList = detected.multiple.map((c) => `  ${c.sha} — ${c.message}`).join("\n");
+      violations.push({
+        rule: "RFC-IMP-03",
+        message: `Multiple commits reference ${targetId}:\n${candidateList}\nPass --implementation-commit <SHA> to specify which one.`,
+      });
+    }
+  }
+
   // ── RFC-IMP-04: RFC file must be clean (no uncommitted edits to the target RFC) ──
   // Only the RFC file being stamped is checked, not the entire working tree.
   // This allows multi-agent workflows where other agents may have uncommitted
@@ -278,19 +333,25 @@ export async function runRfcImplementStamp(
   }
 
   // ── RFC-IMP-03: implementation commit validation ──────────────────────────
-  const reachable = await commitReachableFromHead(workspaceRoot, implementationCommit);
-  if (!reachable) {
-    violations.push({
-      rule: "RFC-IMP-03",
-      message: `Implementation commit ${implementationCommit} is not reachable from HEAD. The commit must be an ancestor of the current HEAD.`,
-    });
-  } else {
-    const referencesRfc = await commitReferencesRfc(workspaceRoot, implementationCommit, targetId);
-    if (!referencesRfc) {
+  if (implementationCommit) {
+    const reachable = await commitReachableFromHead(workspaceRoot, implementationCommit);
+    if (!reachable) {
       violations.push({
         rule: "RFC-IMP-03",
-        message: `Implementation commit ${implementationCommit} does not reference ${targetId} in its message or changed files.`,
+        message: `Implementation commit ${implementationCommit} is not reachable from HEAD. The commit must be an ancestor of the current HEAD.`,
       });
+    } else {
+      const referencesRfc = await commitReferencesRfc(
+        workspaceRoot,
+        implementationCommit,
+        targetId,
+      );
+      if (!referencesRfc) {
+        violations.push({
+          rule: "RFC-IMP-03",
+          message: `Implementation commit ${implementationCommit} does not reference ${targetId} in its message or changed files.`,
+        });
+      }
     }
   }
 
@@ -354,7 +415,7 @@ export async function runRfcImplementStamp(
           status: "pass",
           data: {
             rfcId: targetId,
-            implementationCommit,
+            implementationCommit: implementationCommit!,
             stampedAt,
             criteriaChecked: criteriaEval.totalChecked,
             ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
@@ -392,7 +453,7 @@ export async function runRfcImplementStamp(
         status: "pass",
         data: {
           rfcId: targetId,
-          implementationCommit,
+          implementationCommit: implementationCommit!,
           stampedAt,
           criteriaChecked: criteriaEval.totalChecked,
           ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
