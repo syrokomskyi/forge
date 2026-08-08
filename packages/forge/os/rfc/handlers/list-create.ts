@@ -79,7 +79,7 @@ export async function runRfcList(
 
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result) continue;
+    if (!result || "error" in result) continue;
 
     const fm = result.parsed.frontmatter;
     const id = String(fm["id"] ?? "");

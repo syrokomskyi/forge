@@ -2,7 +2,7 @@ import { test, expect, describe } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
-import { listRfcFiles } from "./frontmatter-io.ts";
+import { listRfcFiles, readAndParseRfc, parseRfcFile } from "./frontmatter-io.ts";
 
 describe("listRfcFiles — recursive scanning (RFC-0491)", () => {
   test("scans archive/ subdirectories recursively", async () => {
@@ -57,5 +57,76 @@ describe("listRfcFiles — recursive scanning (RFC-0491)", () => {
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("readAndParseRfc — YAML parse error handling (RFC-0755)", () => {
+  test("returns error variant for malformed YAML frontmatter", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "rfc-parse-"));
+    try {
+      const malformedYaml =
+        "---\nid: RFC-0100\ntitle: Test\n  bad: indentation: here\n---\n# Body\n";
+      await fs.writeFile(path.join(tmpDir, "rfc-0100-bad.md"), malformedYaml);
+
+      const result = await readAndParseRfc(tmpDir, "rfc-0100-bad.md");
+
+      expect(result).toBeDefined();
+      expect(result && "error" in result).toBe(true);
+      if (result && "error" in result) {
+        expect(result.error).toContain("YAML parse error");
+        expect(result.fileName).toBe("rfc-0100-bad.md");
+      }
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns parsed variant for valid YAML frontmatter", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "rfc-parse-"));
+    try {
+      const validYaml = "---\nid: RFC-0100\ntitle: Test\nstatus: draft\n---\n# Body\n";
+      await fs.writeFile(path.join(tmpDir, "rfc-0100-ok.md"), validYaml);
+
+      const result = await readAndParseRfc(tmpDir, "rfc-0100-ok.md");
+
+      expect(result).toBeDefined();
+      expect(result && "parsed" in result).toBe(true);
+      if (result && "parsed" in result) {
+        expect(result.parsed.frontmatter["id"]).toBe("RFC-0100");
+        expect(result.parsed.body).toContain("# Body");
+      }
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("returns error variant for non-existent file", async () => {
+    const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "rfc-parse-"));
+    try {
+      const result = await readAndParseRfc(tmpDir, "nonexistent.md");
+      expect(result).toBeDefined();
+      expect(result && "error" in result).toBe(true);
+      if (result && "error" in result) {
+        expect(result.error).toContain("YAML parse error");
+      }
+    } finally {
+      await fs.rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("parseRfcFile — basic parsing", () => {
+  test("parses valid frontmatter and body", () => {
+    const source = "---\nid: RFC-0100\n---\n# RFC-0100\n\nBody text.\n";
+    const result = parseRfcFile(source);
+    expect(result.frontmatter["id"]).toBe("RFC-0100");
+    expect(result.body).toContain("Body text.");
+  });
+
+  test("returns empty frontmatter when no frontmatter block", () => {
+    const source = "# Just a title\n\nNo frontmatter here.\n";
+    const result = parseRfcFile(source);
+    expect(result.frontmatter).toEqual({});
+    expect(result.body).toBe(source);
   });
 });

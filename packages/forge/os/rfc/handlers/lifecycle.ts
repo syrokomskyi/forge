@@ -85,7 +85,7 @@ export async function collectRfcCommandLifecycleViolations(
   let checkedCount = 0;
   for (const fileName of files) {
     const result = preParsed?.get(fileName) ?? (await readAndParseRfc(rfcDirPath, fileName));
-    if (!result) continue;
+    if (!result || "error" in result) continue;
 
     checkedCount += 1;
     const fm = result.parsed.frontmatter;

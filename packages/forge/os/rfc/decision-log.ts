@@ -69,7 +69,7 @@ export async function collectDecisionLog(rfcDirPath: string): Promise<DecisionLo
 
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result) continue;
+    if (!result || "error" in result) continue;
     const fm = result.parsed.frontmatter;
     const body = result.parsed.body;
     const rfcId = String(fm["id"] ?? "");

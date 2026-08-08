@@ -19,6 +19,7 @@ export {
   getRfcStatusById,
   loadRfcStatusMap,
   type ParsedRfc,
+  type ReadAndParseRfcResult,
 } from "./frontmatter-io.ts";
 export {
   runRfcList,
@@ -39,6 +40,7 @@ export {
   evaluateAcceptanceCriteria,
   extractAcceptanceCriteriaSection,
   collectMarkers,
+  checkFrontmatterYamlParse,
   type AcceptanceCriteriaEvaluation,
 } from "./handlers/validate-rules.ts";
 export type {

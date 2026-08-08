@@ -99,7 +99,7 @@ export async function runRfcPipelineStatus(
 
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result) continue;
+    if (!result || "error" in result) continue;
     const fm = result.parsed.frontmatter;
     const id = String(fm["id"] ?? "");
     const title = String(fm["title"] ?? "");

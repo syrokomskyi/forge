@@ -42,7 +42,7 @@ export async function runRfcIndexGenerate(
   const entries: RfcIndexEntry[] = [];
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result) continue;
+    if (!result || "error" in result) continue;
     const fm = result.parsed.frontmatter;
     const arr = (k: string): string[] =>
       Array.isArray(fm[k]) ? (fm[k] as unknown[]).map(String) : [];
@@ -109,7 +109,10 @@ export async function runRfcGraph(
     throw new Error(`No RFC file found for id ${targetId} in ${RFC_DIR}/`);
   }
   const result = await readAndParseRfc(rfcDirPath, fileName);
-  const fm = result!.parsed.frontmatter;
+  if (!result || "error" in result) {
+    throw new Error(`Could not parse RFC ${targetId}: ${result?.error ?? "file not found"}`);
+  }
+  const fm = result.parsed.frontmatter;
   const arr = (k: string): string[] =>
     Array.isArray(fm[k]) ? (fm[k] as unknown[]).map(String) : [];
 

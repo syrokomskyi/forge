@@ -744,7 +744,7 @@ export const forgeCoreModule: ForgeModule = {
 
         for (const rfcFile of allRfcFiles) {
           const parsed = await readAndParseRfc(rfcDirPath, rfcFile);
-          if (!parsed) continue;
+          if (!parsed || "error" in parsed) continue;
           const fm = parsed.parsed.frontmatter;
           const rfcStatus = String(fm["status"] ?? "").trim();
           const liveSpec = fm["liveSpec"];

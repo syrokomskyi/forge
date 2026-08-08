@@ -107,6 +107,9 @@ export async function runRfcSupersedePropose(
   if (!targetParsed) {
     throw new Error(`Could not parse target RFC ${targetId}.`);
   }
+  if ("error" in targetParsed) {
+    throw new Error(`Could not parse target RFC ${targetId}: ${targetParsed.error}`);
+  }
   const targetFm = targetParsed.parsed.frontmatter;
   const targetStatus = String(targetFm["status"] ?? "");
   const targetTitle = String(targetFm["title"] ?? "");

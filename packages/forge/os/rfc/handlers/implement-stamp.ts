@@ -228,6 +228,13 @@ export async function runRfcImplementStamp(
     });
     return stampFailResult(violations, isDryRun, outputFormat, logger);
   }
+  if ("error" in targetParsed) {
+    violations.push({
+      rule: "RFC-IMP-01",
+      message: `Could not parse target RFC ${targetId}: ${targetParsed.error}`,
+    });
+    return stampFailResult(violations, isDryRun, outputFormat, logger);
+  }
 
   const fm = targetParsed.parsed.frontmatter;
   const body = targetParsed.parsed.body;

@@ -78,7 +78,7 @@ async function collectSatisfies(workspaceRoot: string): Promise<RfcSatisfiesEntr
   const entries: RfcSatisfiesEntry[] = [];
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result) continue;
+    if (!result || "error" in result) continue;
     const fm = result.parsed.frontmatter;
     const rfcId = String(fm["id"] ?? "");
     const status = String(fm["status"] ?? "");

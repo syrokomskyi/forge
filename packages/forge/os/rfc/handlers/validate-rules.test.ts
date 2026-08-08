@@ -1,5 +1,10 @@
 import { test, expect, describe } from "vitest";
-import { validateSingleRfc, collectMarkers, type AddViolationFn } from "./validate-rules.ts";
+import {
+  validateSingleRfc,
+  collectMarkers,
+  checkFrontmatterYamlParse,
+  type AddViolationFn,
+} from "./validate-rules.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
@@ -721,5 +726,39 @@ describe("RFC-DIR-01: directory structure convention (RFC-0722)", () => {
     );
     const dir01 = filterRule(violations, "RFC-DIR-01");
     expect(dir01).toHaveLength(0);
+  });
+});
+
+describe("V-RFC-33: frontmatter YAML parseability (RFC-0755)", () => {
+  test("produces violation when result has error variant", () => {
+    const { add, violations } = makeViolationsCollector();
+    const errorResult = {
+      fileName: "rfc-0100-bad.md",
+      error: "YAML parse error at line 3, column 5: bad indentation",
+    };
+    checkFrontmatterYamlParse("rfc-0100-bad.md", errorResult, add);
+    const v33 = filterRule(violations, "V-RFC-33");
+    expect(v33).toHaveLength(1);
+    expect(v33[0]!.message).toContain("rfc-0100-bad.md");
+    expect(v33[0]!.message).toContain("YAML parse error");
+    expect(v33[0]!.message).toContain("bad indentation");
+  });
+
+  test("produces no violation when result has parsed variant", () => {
+    const { add, violations } = makeViolationsCollector();
+    const parsedResult = {
+      fileName: "rfc-0100-ok.md",
+      parsed: { frontmatter: { id: "RFC-0100" }, body: "# RFC-0100\n" },
+    };
+    checkFrontmatterYamlParse("rfc-0100-ok.md", parsedResult, add);
+    const v33 = filterRule(violations, "V-RFC-33");
+    expect(v33).toHaveLength(0);
+  });
+
+  test("produces no violation when result is undefined", () => {
+    const { add, violations } = makeViolationsCollector();
+    checkFrontmatterYamlParse("rfc-0100-missing.md", undefined, add);
+    const v33 = filterRule(violations, "V-RFC-33");
+    expect(v33).toHaveLength(0);
   });
 });

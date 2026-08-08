@@ -82,7 +82,7 @@ export async function runRfcArchive(
 
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result) {
+    if (!result || "error" in result) {
       skipped.push({
         id: "UNKNOWN",
         file: path.join(RFC_DIR, fileName),

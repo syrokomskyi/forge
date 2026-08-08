@@ -49,7 +49,7 @@ export async function runSpecLiveValidate(
   const rfcFiles = await listRfcFiles(rfcDir);
   for (const file of rfcFiles) {
     const parsed = await readAndParseRfc(rfcDir, file);
-    if (parsed) {
+    if (parsed && 'parsed' in parsed) {
       const id = String(parsed.parsed.frontmatter["id"] ?? "").trim();
       const status = String(parsed.parsed.frontmatter["status"] ?? "").trim();
       if (id && (status === "implemented" || status === "rejected" || status === "superseded")) {

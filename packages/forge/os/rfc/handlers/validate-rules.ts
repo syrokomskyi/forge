@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Per-RFC validation rules (V-01..V-32, RFC-DIR-01) extracted from the validate handler for modularity.</purpose>
+<purpose>Per-RFC validation rules (V-01..V-33, RFC-DIR-01) extracted from the validate handler for modularity.</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior into this reusable package source file.</item>
 </non-goals>
@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0303 Phase 3: extracted from validate.ts as part of the handler split.</item>
   <item>RFC-0722: add RFC-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
+  <item>RFC-0755: add V-RFC-33 frontmatter YAML parseability check (checkFrontmatterYamlParse helper).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,6 +19,7 @@ import { execFile } from "node:child_process";
 import { parse as yamlParse } from "yaml";
 import { validateAcceptanceShape } from "../acceptance.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
+import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
 import type { RfcStatus, RfcKind, RfcScope, RfcValidationViolation, Marker } from "../types.ts";
 import {
   RFC_DIR,
@@ -906,4 +908,22 @@ export async function validateSingleRfc(
   }
 
   return ncMarkers;
+}
+
+// ─── V-RFC-33: frontmatter YAML parseability (RFC-0755) ────────────────────
+
+export function checkFrontmatterYamlParse(
+  fileName: string,
+  result: ReadAndParseRfcResult | undefined,
+  addViolation: AddViolationFn,
+): void {
+  if (result && "error" in result) {
+    const relFile = path.join(RFC_DIR, fileName);
+    addViolation(
+      "UNKNOWN",
+      relFile,
+      "V-RFC-33",
+      `RFC frontmatter YAML parse error in ${fileName}: ${result.error}`,
+    );
+  }
 }
