@@ -277,29 +277,37 @@ async function validateSingleAdr(
     }
   }
 
-  const supersededBy = fm["supersededBy"] as string | undefined;
-  if (supersededBy && /^ADR-\d{4}$/.test(supersededBy) && !allParsed.has(supersededBy)) {
-    addViolation(
-      adrId,
-      relFile,
-      "AV-09",
-      `supersededBy "${supersededBy}" does not match any existing ADR`,
-    );
-  } else if (supersededBy && /^RFC-\d{4}$/.test(supersededBy) && !knownRfcIds.has(supersededBy)) {
-    addViolation(
-      adrId,
-      relFile,
-      "AV-09",
-      `supersededBy "${supersededBy}" does not match any existing RFC`,
-    );
-  } else if (supersededBy && !/^(ADR|RFC)-\d{4}$/.test(supersededBy)) {
-    addViolation(
-      adrId,
-      relFile,
-      "AV-09",
-      `supersededBy "${supersededBy}" is not a recognized ADR/RFC id`,
-    );
+  const supersededByRaw = fm["supersededBy"];
+  const supersededByList: string[] = Array.isArray(supersededByRaw)
+    ? supersededByRaw.map((s) => String(s))
+    : supersededByRaw
+      ? [String(supersededByRaw)]
+      : [];
+  for (const supersededBy of supersededByList) {
+    if (/^ADR-\d{4}$/.test(supersededBy) && !allParsed.has(supersededBy)) {
+      addViolation(
+        adrId,
+        relFile,
+        "AV-09",
+        `supersededBy "${supersededBy}" does not match any existing ADR`,
+      );
+    } else if (/^RFC-\d{4}$/.test(supersededBy) && !knownRfcIds.has(supersededBy)) {
+      addViolation(
+        adrId,
+        relFile,
+        "AV-09",
+        `supersededBy "${supersededBy}" does not match any existing RFC`,
+      );
+    } else if (!/^(ADR|RFC)-\d{4}$/.test(supersededBy)) {
+      addViolation(
+        adrId,
+        relFile,
+        "AV-09",
+        `supersededBy "${supersededBy}" is not a recognized ADR/RFC id`,
+      );
+    }
   }
+  const supersededBy = supersededByList[0];
 
   if (status === "superseded" && !supersededBy) {
     addViolation(adrId, relFile, "AV-10", `status is "superseded" but supersededBy is empty`);
