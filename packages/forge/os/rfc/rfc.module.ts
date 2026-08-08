@@ -395,9 +395,10 @@ export const forgeRfcModule: ForgeModule = {
         },
         "implementation-commit": {
           kind: "string",
-          required: true,
+          required: false,
           description:
-            "SHA of the implementation commit (must be reachable from HEAD and reference the RFC id).",
+            "SHA of the implementation commit (must be reachable from HEAD and reference the RFC id). " +
+            "When omitted, the command auto-detects the commit via git log --grep=<RFC-ID> (RFC-0756).",
         },
         "dry-run": {
           kind: "boolean",
