@@ -28,7 +28,7 @@ import type { RfcValidationViolation, RfcValidationResult, Marker } from "../typ
 import { RFC_DIR, RFC_KNOWN_KEYS } from "../types.ts";
 import { DNA_DOCS, AP_DOCS, loadInvariantIds } from "./shared.ts";
 import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
-import { validateSingleRfc } from "./validate-rules.ts";
+import { validateSingleRfc, checkFrontmatterYamlParse } from "./validate-rules.ts";
 
 export async function runRfcValidate(
   input: ForgeCommandInput,
@@ -60,9 +60,13 @@ export async function runRfcValidate(
   for (const f of allFiles) {
     const result = await readAndParseRfc(rfcDirPath, f);
     if (result) {
+      if ("error" in result) {
+        checkFrontmatterYamlParse(f, result, addViolation);
+        continue;
+      }
       const id = String(result.parsed.frontmatter["id"] ?? "");
-      allParsed.set(id, result);
-      allParsedByFile.set(f, result);
+      allParsed.set(id, { fileName: f, parsed: result.parsed });
+      allParsedByFile.set(f, { fileName: f, parsed: result.parsed });
     }
   }
 

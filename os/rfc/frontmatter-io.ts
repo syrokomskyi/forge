@@ -13,6 +13,7 @@ circular import between the two.
   <item>RFC-0268: extracted from handlers.ts to break a circular import with acceptance.ts.</item>
   <item>Post-refactor hardening: added basename-based RFC id matching for archived RFC paths.</item>
   <item>RFC-0521: added getRfcStatusById and loadRfcStatusMap helpers for plan/audit archive commands.</item>
+  <item>RFC-0755: readAndParseRfc now returns { fileName, error } on YAML parse failure instead of undefined.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -68,16 +69,30 @@ export function rfcFileMatchesId(fileName: string, targetId: string): boolean {
   return path.basename(fileName).toLowerCase().startsWith(targetId.toLowerCase());
 }
 
+export type ReadAndParseRfcResult =
+  { fileName: string; parsed: ParsedRfc } | { fileName: string; error: string };
+
 export async function readAndParseRfc(
   rfcDirPath: string,
   fileName: string,
-): Promise<{ fileName: string; parsed: ParsedRfc } | undefined> {
+): Promise<ReadAndParseRfcResult | undefined> {
   try {
     const filePath = path.join(rfcDirPath, fileName);
     const content = await fs.readFile(filePath, "utf-8");
     return { fileName, parsed: parseRfcFile(content) };
-  } catch {
-    return undefined;
+  } catch (e) {
+    if (e instanceof Error) {
+      const linePos = (e as Error & { linePos?: Array<{ line: number; col: number }> }).linePos;
+      if (linePos?.length) {
+        const pos = linePos[0]!;
+        return {
+          fileName,
+          error: `YAML parse error at line ${pos.line}, column ${pos.col}: ${e.message}`,
+        };
+      }
+      return { fileName, error: `YAML parse error: ${e.message}` };
+    }
+    return { fileName, error: `YAML parse error: ${String(e)}` };
   }
 }
 
@@ -88,9 +103,9 @@ export async function getRfcStatusById(
   const files = await listRfcFiles(rfcDirPath);
   for (const fileName of files) {
     if (rfcFileMatchesId(fileName, rfcId)) {
-      const parsed = await readAndParseRfc(rfcDirPath, fileName);
-      if (parsed) {
-        const status = String(parsed.parsed.frontmatter["status"] ?? "").trim();
+      const result = await readAndParseRfc(rfcDirPath, fileName);
+      if (result && "parsed" in result) {
+        const status = String(result.parsed.frontmatter["status"] ?? "").trim();
         if (status) return status;
       }
     }
@@ -102,10 +117,10 @@ export async function loadRfcStatusMap(rfcDirPath: string): Promise<Map<string, 
   const files = await listRfcFiles(rfcDirPath);
   const statusMap = new Map<string, string>();
   for (const fileName of files) {
-    const parsed = await readAndParseRfc(rfcDirPath, fileName);
-    if (parsed) {
-      const id = String(parsed.parsed.frontmatter["id"] ?? "").trim();
-      const status = String(parsed.parsed.frontmatter["status"] ?? "").trim();
+    const result = await readAndParseRfc(rfcDirPath, fileName);
+    if (result && "parsed" in result) {
+      const id = String(result.parsed.frontmatter["id"] ?? "").trim();
+      const status = String(result.parsed.frontmatter["status"] ?? "").trim();
       if (id && status) {
         statusMap.set(id, status);
       }

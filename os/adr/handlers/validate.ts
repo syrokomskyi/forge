@@ -44,7 +44,7 @@ async function loadRfcIds(workspaceRoot: string): Promise<Set<string>> {
   const files = await listRfcFiles(rfcDirPath);
   for (const fileName of files) {
     const result = await readAndParseRfc(rfcDirPath, fileName);
-    const id = String(result?.parsed.frontmatter["id"] ?? "");
+    const id = result && "parsed" in result ? String(result.parsed.frontmatter["id"] ?? "") : "";
     if (id) rfcIds.add(id);
   }
   return rfcIds;
