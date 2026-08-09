@@ -10,14 +10,13 @@ path traversal rejection, details field, and regression.</purpose>
 */
 
 import { test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   runAgentsGenerate,
   substituteTemplate,
   selectRootTemplate,
-  type TemplateContext,
 } from "../onboarding/agents-generate.ts";
 import { selectNestedTemplate } from "../onboarding/nested-agents-templates.ts";
 import type { ForgeRuntimeContext } from "../types.ts";
@@ -33,7 +32,7 @@ const silentLogger = {
 };
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..");
-const WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
+const _WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {

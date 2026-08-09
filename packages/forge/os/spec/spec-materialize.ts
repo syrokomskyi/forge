@@ -16,7 +16,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { toKebabCase } from "../../src/utils/string-utils.ts";
-import { loadForgeConfig, resolveForgeRoot } from "../../src/config/forge-config.ts";
+import { loadForgeConfig } from "../../src/config/forge-config.ts";
 import { resolveRfcTemplate } from "../rfc/handlers/shared.ts";
 import type {
   ForgeCommandInput,

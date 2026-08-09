@@ -25,7 +25,7 @@ export const specDecisionSchema = z.object({
   promotedTo: z.string().optional(),
 });
 
-export interface SpecDecision extends z.infer<typeof specDecisionSchema> {}
+export type SpecDecision = z.infer<typeof specDecisionSchema>;
 
 // ---------------------------------------------------------------------------
 // Spec RFC node
@@ -40,7 +40,7 @@ export const specRfcNodeSchema = z.object({
   materializedAs: z.string().optional(),
 });
 
-export interface SpecRfcNode extends z.infer<typeof specRfcNodeSchema> {}
+export type SpecRfcNode = z.infer<typeof specRfcNodeSchema>;
 
 // ---------------------------------------------------------------------------
 // Spec wave
@@ -52,7 +52,7 @@ export const specWaveSchema = z.object({
   goal: z.string().min(1),
 });
 
-export interface SpecWave extends z.infer<typeof specWaveSchema> {}
+export type SpecWave = z.infer<typeof specWaveSchema>;
 
 // ---------------------------------------------------------------------------
 // Forge spec (forge/spec@1)
@@ -75,7 +75,7 @@ export const forgeSpecSchema = z.object({
   supersedes: z.string().optional(),
 });
 
-export interface ForgeSpec extends z.infer<typeof forgeSpecSchema> {}
+export type ForgeSpec = z.infer<typeof forgeSpecSchema>;
 
 // ---------------------------------------------------------------------------
 // Integrity manifest (forge/spec-integrity@1)
@@ -86,7 +86,7 @@ export const specIntegritySchema = z.object({
   files: z.record(z.string(), z.string()).default({}),
 });
 
-export interface SpecIntegrity extends z.infer<typeof specIntegritySchema> {}
+export type SpecIntegrity = z.infer<typeof specIntegritySchema>;
 
 // ---------------------------------------------------------------------------
 // Validation result types
@@ -140,7 +140,7 @@ export const specAmendmentSchema = z.object({
   discoveredBy: z.string().min(1),
 });
 
-export interface SpecAmendment extends z.infer<typeof specAmendmentSchema> {}
+export type SpecAmendment = z.infer<typeof specAmendmentSchema>;
 
 // ---------------------------------------------------------------------------
 // resolveAmendedNode — apply accepted amendments to a roadmap node

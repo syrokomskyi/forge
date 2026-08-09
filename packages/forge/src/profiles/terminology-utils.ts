@@ -11,7 +11,7 @@ from config + profile, used by both root and nested AGENTS.md generation.</purpo
 </CHANGE_SUMMARY>
 */
 
-import { UNIVERSAL_TERMINOLOGY_KEYS, TERMINOLOGY_DEFAULTS } from "./profile-schema.ts";
+import { UNIVERSAL_TERMINOLOGY_KEYS } from "./profile-schema.ts";
 import { resolveTerminology, type ForgeConfig } from "../config/forge-config.ts";
 import type { StackProfile } from "./stack-profile.ts";
 

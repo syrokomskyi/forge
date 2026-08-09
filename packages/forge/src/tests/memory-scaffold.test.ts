@@ -9,7 +9,7 @@
 
 import { test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, writeFile, readFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -41,7 +41,7 @@ test("scaffoldMemoryLayer creates MEMORY.md, daily/.gitkeep, and .gitignore bloc
   expect(existsSync(join(tempDir, ".agents", "memory", "MEMORY.md"))).toBe(true);
   expect(existsSync(join(tempDir, ".agents", "memory", "daily", ".gitkeep"))).toBe(true);
 
-  const gitignore = require("node:fs").readFileSync(join(tempDir, ".gitignore"), "utf8");
+  const gitignore = readFileSync(join(tempDir, ".gitignore"), "utf8");
   expect(gitignore).toContain(MEMORY_GITIGNORE_START);
   expect(gitignore).toContain(MEMORY_GITIGNORE_END);
   expect(gitignore).toContain(".agents/memory/daily/");

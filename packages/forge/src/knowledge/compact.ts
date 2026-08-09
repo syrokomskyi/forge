@@ -19,7 +19,6 @@ import { parse as parseYaml } from "yaml";
 import type { ParsedKnowledgeFile, KnowledgeEntry, KnowledgeEntryMeta } from "./schema.ts";
 import { parseKnowledgeFile } from "./parse.ts";
 import { serializeKnowledgeFile } from "./serialize.ts";
-import { writeFileAtomic } from "../utils/fs-atomic.ts";
 
 // ---------------------------------------------------------------------------
 // Types (RFC-0662)

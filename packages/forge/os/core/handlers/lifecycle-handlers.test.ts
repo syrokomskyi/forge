@@ -11,7 +11,7 @@
 </CHANGE_SUMMARY>
 */
 
-import { test, expect, vi, beforeEach, afterEach } from "vitest";
+import { test, expect, beforeEach, afterEach } from "vitest";
 import { join } from "node:path";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";

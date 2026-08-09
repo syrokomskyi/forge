@@ -19,7 +19,7 @@ import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
-import { GENERATED_MARKER, buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
+import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { RFC_DIR } from "./types.ts";

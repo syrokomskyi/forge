@@ -1,7 +1,7 @@
 import { test, expect, describe } from "vitest";
 import { writeFileAtomic, __setRenameImplForTests } from "../utils/fs-atomic.ts";
 import { join } from "node:path";
-import { mkdtemp, rm, readFile, stat } from "node:fs/promises";
+import { mkdtemp, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 
 async function makeTempDir(): Promise<string> {

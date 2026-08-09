@@ -81,7 +81,7 @@ export async function runScaffoldProject(
   } else {
     try {
       forgeRoot = resolveForgeRoot(workspaceRoot);
-    } catch (err) {
+    } catch {
       // In autonomous mode, forgeRoot may be the cwd itself
       forgeRoot = workspaceRoot;
     }

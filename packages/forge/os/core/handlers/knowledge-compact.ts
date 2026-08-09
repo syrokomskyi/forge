@@ -26,8 +26,6 @@ import {
   executeCompaction,
   resolveRetentionDays,
   resolveStaleDays,
-  DEFAULT_RETENTION_DAYS,
-  DEFAULT_STALE_DAYS,
   type CompactReport,
 } from "../../../src/knowledge/compact.ts";
 import { parseKnowledgeFile } from "../../../src/knowledge/parse.ts";

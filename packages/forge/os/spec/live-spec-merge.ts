@@ -23,7 +23,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import { writeFileIfChanged, buildGeneratedHeader } from "../../src/utils/index.ts";
-import { parseRfcFile, listRfcFiles, readAndParseRfc } from "../rfc/frontmatter-io.ts";
+import { parseRfcFile, listRfcFiles } from "../rfc/frontmatter-io.ts";
 import { RFC_DIR } from "../rfc/types.ts";
 import type {
   LivingSpec,
