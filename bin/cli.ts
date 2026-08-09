@@ -3,7 +3,7 @@
 <MODULE_CONTRACT>
 <purpose>CLI bin entrypoint for @warpgogol/forge — minimal command runner that
 registers forge modules and dispatches commands. Works autonomously without
-@warpgogol/site-kernel.</purpose>
+@warpgogol/werkstatt.</purpose>
 <non-goals>
   <item>Do not implement command logic — delegate to forge os/ modules and src/ handlers.</item>
   <item>Do not replicate the full kernel runtime — minimal dispatch only.</item>
