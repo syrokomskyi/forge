@@ -84,7 +84,10 @@ function tryParseJsonLines(rawContent: string): AtifParseResult | null {
         messages.push({
           role: (obj["role"] as AtifMessage["role"]) ?? "unknown",
           timestamp: typeof obj["timestamp"] === "string" ? (obj["timestamp"] as string) : null,
-          content: typeof obj["content"] === "string" ? (obj["content"] as string) : String(obj["content"] ?? ""),
+          content:
+            typeof obj["content"] === "string"
+              ? (obj["content"] as string)
+              : String(obj["content"] ?? ""),
         });
         anyParsed = true;
       } else {

@@ -44,11 +44,7 @@ export async function runAssetsCheck(
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
   const strict = input.flags["strict"] === true;
 
-  const resolved = resolveActiveProfile(
-    workspaceRoot,
-    context.forgeRoot,
-    profileIdOverride,
-  );
+  const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {
     return {
       data: {
@@ -58,11 +54,8 @@ export async function runAssetsCheck(
         allOk: false,
       },
       exitCode: 1,
-      summary:
-        "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
-      nextSteps: [
-        { action: "Set profile in forge.yaml or use --profile <id>", kind: "required" },
-      ],
+      summary: "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
+      nextSteps: [{ action: "Set profile in forge.yaml or use --profile <id>", kind: "required" }],
     };
   }
 
@@ -83,11 +76,7 @@ export async function runAssetsCheck(
 
   const assets = await scanAssets(workspaceRoot, profile.assets, { dryRun });
   const compositionExtensions = profile.artifacts?.flatMap((a) => a.extensions) ?? [];
-  const refMap = await extractReferences(
-    workspaceRoot,
-    profile.assets,
-    compositionExtensions,
-  );
+  const refMap = await extractReferences(workspaceRoot, profile.assets, compositionExtensions);
 
   const missing = findMissingAssets(refMap, assets);
   const orphaned = findOrphanedAssets(assets, refMap);

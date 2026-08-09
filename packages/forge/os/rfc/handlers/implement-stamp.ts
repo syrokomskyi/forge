@@ -28,11 +28,7 @@ import { listRfcFiles, readAndParseRfc, rfcFileMatchesId } from "../frontmatter-
 import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
 import { RFC_DIR, RFC_METADATA_CUTOFF } from "../types.ts";
-import type {
-  RfcStatus,
-  RfcImplementStampViolation,
-  RfcImplementStampResult,
-} from "../types.ts";
+import type { RfcStatus, RfcImplementStampViolation, RfcImplementStampResult } from "../types.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,

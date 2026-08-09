@@ -4,18 +4,18 @@ Compass headers are embedded in source file comments. The comment syntax varies 
 
 ## Mapping
 
-| Extension | Comment syntax | Example |
-| --- | --- | --- |
-| `.ts` | `/* ... */` block comment | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */` |
-| `.tsx` | `/* ... */` block comment | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */` |
-| `.astro` | `<!-- ... -->` HTML comment | `<!-- <MODULE_CONTRACT> ... </MODULE_CONTRACT> -->` |
-| `.js` | `/* ... */` block comment | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */` |
-| `.mjs` | `/* ... */` block comment | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */` |
-| `.css` | `/* ... */` block comment | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */` |
-| `.yaml` | `# ` line comment | `# <MODULE_CONTRACT>` (each line prefixed with `# `) |
-| `.yml` | `# ` line comment | `# <MODULE_CONTRACT>` (each line prefixed with `# `) |
-| `.json` | Not supported | JSON files cannot carry comments; skip Compass headers |
-| `.md` | `<!-- ... -->` HTML comment | `<!-- <MODULE_CONTRACT> ... </MODULE_CONTRACT> -->` |
+| Extension | Comment syntax              | Example                                                |
+| --------- | --------------------------- | ------------------------------------------------------ |
+| `.ts`     | `/* ... */` block comment   | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */`       |
+| `.tsx`    | `/* ... */` block comment   | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */`       |
+| `.astro`  | `<!-- ... -->` HTML comment | `<!-- <MODULE_CONTRACT> ... </MODULE_CONTRACT> -->`    |
+| `.js`     | `/* ... */` block comment   | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */`       |
+| `.mjs`    | `/* ... */` block comment   | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */`       |
+| `.css`    | `/* ... */` block comment   | `/* <MODULE_CONTRACT> ... </MODULE_CONTRACT> */`       |
+| `.yaml`   | `# ` line comment           | `# <MODULE_CONTRACT>` (each line prefixed with `# `)   |
+| `.yml`    | `# ` line comment           | `# <MODULE_CONTRACT>` (each line prefixed with `# `)   |
+| `.json`   | Not supported               | JSON files cannot carry comments; skip Compass headers |
+| `.md`     | `<!-- ... -->` HTML comment | `<!-- <MODULE_CONTRACT> ... </MODULE_CONTRACT> -->`    |
 
 ## Rules
 

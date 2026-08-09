@@ -34,19 +34,13 @@ export function parseExplorationFile(source: string): ParsedExplorationNote {
   };
 }
 
-export async function listExplorationFiles(
-  explorationsDirPath: string,
-): Promise<string[]> {
+export async function listExplorationFiles(explorationsDirPath: string): Promise<string[]> {
   const results: string[] = [];
 
   try {
     const entries = await fs.readdir(explorationsDirPath, { withFileTypes: true });
     for (const entry of entries) {
-      if (
-        entry.isFile() &&
-        entry.name.endsWith(".md") &&
-        entry.name !== "README.md"
-      ) {
+      if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "README.md") {
         results.push(entry.name);
       }
     }

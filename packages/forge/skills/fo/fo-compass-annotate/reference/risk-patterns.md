@@ -4,16 +4,16 @@ These patterns are scanned deterministically (no LLM) to flag files that handle 
 
 ## Patterns
 
-| Pattern | Regex | Risk level | Description |
-| --- | --- | --- | --- |
-| `sign` | `\b(sign|signing|signature)\b` | high | Cryptographic signing operations |
-| `crypto` | `\b(crypto|encrypt|decrypt|cipher|aes|rsa|hmac)\b` | high | Cryptographic operations |
-| `vault` | `\b(vault|secret|password|apiKey|api_key|token)\b` | high | Secret/credential handling |
-| `migrate` | `\b(migrate|migration|migrator)\b` | medium | Data migration logic |
-| `publish` | `\b(publish|deploy|release)\b` | medium | Publishing/deployment operations |
-| `delete` | `\b(delete|remove|destroy|purge)\b` | medium | Destructive operations |
-| `network` | `\b(fetch|http|request|axios|got)\b` | low | Network requests |
-| `fs-write` | `\b(writeFile|mkdir|rm |unlink|rename)\b` | low | Filesystem write operations |
+| Pattern    | Regex         | Risk level | Description   |
+| ---------- | ------------- | ---------- | ------------- |
+| `sign`     | `\b(sign      | signing    | signature)\b` | high      | Cryptographic signing operations |
+| `crypto`   | `\b(crypto    | encrypt    | decrypt       | cipher    | aes                              | rsa                    | hmac)\b`                    | high                       | Cryptographic operations |
+| `vault`    | `\b(vault     | secret     | password      | apiKey    | api_key                          | token)\b`              | high                        | Secret/credential handling |
+| `migrate`  | `\b(migrate   | migration  | migrator)\b`  | medium    | Data migration logic             |
+| `publish`  | `\b(publish   | deploy     | release)\b`   | medium    | Publishing/deployment operations |
+| `delete`   | `\b(delete    | remove     | destroy       | purge)\b` | medium                           | Destructive operations |
+| `network`  | `\b(fetch     | http       | request       | axios     | got)\b`                          | low                    | Network requests            |
+| `fs-write` | `\b(writeFile | mkdir      | rm            | unlink    | rename)\b`                       | low                    | Filesystem write operations |
 
 ## Rules
 

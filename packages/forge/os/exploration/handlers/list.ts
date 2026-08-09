@@ -21,11 +21,7 @@ import {
   readAndParseExplorationNote,
   getExplorationsDir,
 } from "../frontmatter-io.ts";
-import type {
-  ExplorationListEntry,
-  ExplorationListResult,
-  ExplorationStatus,
-} from "../types.ts";
+import type { ExplorationListEntry, ExplorationListResult, ExplorationStatus } from "../types.ts";
 
 export async function runExplorationList(
   input: ForgeCommandInput,

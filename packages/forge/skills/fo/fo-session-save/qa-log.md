@@ -8,4 +8,4 @@ Each entry: date, question, answer, context.
 
 ---
 
-*(no questions asked yet — initial creation)*
+_(no questions asked yet — initial creation)_

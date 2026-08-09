@@ -37,15 +37,9 @@ export async function runAssetsList(
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
   const typeFilter =
-    typeof input.flags["type"] === "string"
-      ? (input.flags["type"] as string)
-      : undefined;
+    typeof input.flags["type"] === "string" ? (input.flags["type"] as string) : undefined;
 
-  const resolved = resolveActiveProfile(
-    workspaceRoot,
-    context.forgeRoot,
-    profileIdOverride,
-  );
+  const resolved = resolveActiveProfile(workspaceRoot, context.forgeRoot, profileIdOverride);
   if (!resolved) {
     return {
       data: {
@@ -54,11 +48,8 @@ export async function runAssetsList(
         assets: [],
       },
       exitCode: 1,
-      summary:
-        "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
-      nextSteps: [
-        { action: "Set profile in forge.yaml or use --profile <id>", kind: "required" },
-      ],
+      summary: "No active profile found. Set `profile` in forge.yaml or use --profile <id>.",
+      nextSteps: [{ action: "Set profile in forge.yaml or use --profile <id>", kind: "required" }],
     };
   }
 
@@ -82,11 +73,7 @@ export async function runAssetsList(
   });
 
   const compositionExtensions = profile.artifacts?.flatMap((a) => a.extensions) ?? [];
-  const refMap = await extractReferences(
-    workspaceRoot,
-    profile.assets,
-    compositionExtensions,
-  );
+  const refMap = await extractReferences(workspaceRoot, profile.assets, compositionExtensions);
   const assetsWithRefs = mergeReferences(assets, refMap);
 
   if (dryRun) {

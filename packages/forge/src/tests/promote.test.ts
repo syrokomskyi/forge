@@ -1,9 +1,5 @@
 import { test, expect, describe } from "vitest";
-import {
-  normalizeTitle,
-  detectDuplicatePrinciples,
-  planPromotion,
-} from "../knowledge/promote.ts";
+import { normalizeTitle, detectDuplicatePrinciples, planPromotion } from "../knowledge/promote.ts";
 import type {
   ParsedKnowledgeFile,
   KnowledgeEntryMeta,

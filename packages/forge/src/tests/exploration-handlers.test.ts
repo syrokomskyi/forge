@@ -16,9 +16,7 @@ async function makeTempDir(): Promise<string> {
   return mkdtemp(join(tmpdir(), "forge-exploration-test-"));
 }
 
-function makeInput(
-  flags: Record<string, ForgeFlagValue> = {},
-): ForgeCommandInput {
+function makeInput(flags: Record<string, ForgeFlagValue> = {}): ForgeCommandInput {
   return { argv: [], flags };
 }
 
@@ -103,10 +101,7 @@ describe("exploration.list", () => {
   });
 
   test("filters by status", async () => {
-    const result = await runExplorationList(
-      makeInput({ status: "archived" }),
-      makeContext(dir),
-    );
+    const result = await runExplorationList(makeInput({ status: "archived" }), makeContext(dir));
     const data = result.data as ExplorationListResult;
 
     expect(data.count).toBe(1);
@@ -162,10 +157,7 @@ describe("exploration.show", () => {
   });
 
   test("returns exit code 1 when slug not found", async () => {
-    const result = await runExplorationShow(
-      makeInput({ id: "nonexistent" }),
-      makeContext(dir),
-    );
+    const result = await runExplorationShow(makeInput({ id: "nonexistent" }), makeContext(dir));
     const data = result.data as ExplorationShowResult;
 
     expect(data.status).toBe("error");
@@ -208,10 +200,7 @@ describe("exploration.archive", () => {
     expect(data.previousStatus).toBe("open");
     expect(data.newStatus).toBe("archived");
 
-    const content = await readFile(
-      join(dir, "docs/explorations/self-hosted-fonts.md"),
-      "utf-8",
-    );
+    const content = await readFile(join(dir, "docs/explorations/self-hosted-fonts.md"), "utf-8");
     expect(content).toContain("status: archived");
   });
 
@@ -224,18 +213,12 @@ describe("exploration.archive", () => {
 
     expect(data.related).toContain("RFC-0710");
 
-    const content = await readFile(
-      join(dir, "docs/explorations/self-hosted-fonts.md"),
-      "utf-8",
-    );
+    const content = await readFile(join(dir, "docs/explorations/self-hosted-fonts.md"), "utf-8");
     expect(content).toContain("RFC-0710");
   });
 
   test("is idempotent when already archived", async () => {
-    const result = await runExplorationArchive(
-      makeInput({ id: "old-idea" }),
-      makeContext(dir),
-    );
+    const result = await runExplorationArchive(makeInput({ id: "old-idea" }), makeContext(dir));
     const data = result.data as ExplorationArchiveResult;
 
     expect(data.status).toBe("ok");
@@ -245,10 +228,7 @@ describe("exploration.archive", () => {
   });
 
   test("returns exit code 1 when slug not found", async () => {
-    const result = await runExplorationArchive(
-      makeInput({ id: "nonexistent" }),
-      makeContext(dir),
-    );
+    const result = await runExplorationArchive(makeInput({ id: "nonexistent" }), makeContext(dir));
     const data = result.data as ExplorationArchiveResult;
 
     expect(data.status).toBe("error");

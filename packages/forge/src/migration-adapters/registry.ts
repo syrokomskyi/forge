@@ -16,10 +16,7 @@ import { nodeTypescriptPnpmAdapter } from "./node-typescript-pnpm/index.ts";
 import { phaserPnpmAdapter } from "./phaser-pnpm/index.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
 
-const BUILT_IN_ADAPTERS: MigrationAdapter[] = [
-  nodeTypescriptPnpmAdapter,
-  phaserPnpmAdapter,
-];
+const BUILT_IN_ADAPTERS: MigrationAdapter[] = [nodeTypescriptPnpmAdapter, phaserPnpmAdapter];
 
 export function getAdapters(config?: ForgeConfig): MigrationAdapter[] {
   const adapters = [...BUILT_IN_ADAPTERS];

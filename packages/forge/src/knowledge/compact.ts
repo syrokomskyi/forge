@@ -31,10 +31,7 @@ export interface CompactOptions {
 }
 
 export type CompactActionKind =
-  | "archive-expired"
-  | "archive-superseded"
-  | "archive-l0-retention"
-  | "mark-stale";
+  "archive-expired" | "archive-superseded" | "archive-l0-retention" | "mark-stale";
 
 export interface CompactAction {
   kind: CompactActionKind;
@@ -193,10 +190,7 @@ export function planCompaction(
 // executeCompaction — I/O execution
 // ---------------------------------------------------------------------------
 
-export function executeCompaction(
-  plans: CompactFilePlan[],
-  dryRun: boolean,
-): CompactReport {
+export function executeCompaction(plans: CompactFilePlan[], dryRun: boolean): CompactReport {
   const fileResults: CompactFileResult[] = [];
   const errors: string[] = [];
   let totalArchived = 0;
@@ -384,11 +378,7 @@ export function resolveRetentionDays(workspaceRoot: string): number {
     const bindings = config?.bindings as Record<string, unknown> | undefined;
     const knowledge = bindings?.knowledge as Record<string, unknown> | undefined;
     const retentionDays = knowledge?.retentionDays;
-    if (
-      typeof retentionDays === "number" &&
-      retentionDays > 0 &&
-      Number.isInteger(retentionDays)
-    ) {
+    if (typeof retentionDays === "number" && retentionDays > 0 && Number.isInteger(retentionDays)) {
       return retentionDays;
     }
     return DEFAULT_RETENTION_DAYS;
