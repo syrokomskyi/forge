@@ -14,7 +14,6 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { fileExists } from "../../../src/utils/fs.ts";
 
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
 import type {

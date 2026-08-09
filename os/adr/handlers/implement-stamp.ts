@@ -26,7 +26,6 @@ import { listAdrFiles, readAndParseAdr, adrFileMatchesId } from "../frontmatter-
 import { ADR_DIR } from "../types.ts";
 import type {
   AdrStatus,
-  AdrImplementStampData,
   AdrImplementStampViolation,
   AdrImplementStampResult,
 } from "../types.ts";

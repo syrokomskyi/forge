@@ -3,7 +3,6 @@ import {
   normalizeTitle,
   detectDuplicatePrinciples,
   planPromotion,
-  type DuplicatePair,
 } from "../knowledge/promote.ts";
 import type {
   ParsedKnowledgeFile,

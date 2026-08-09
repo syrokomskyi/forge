@@ -79,7 +79,7 @@ async function findBuiltArtifacts(
     if (!isGlob) {
       const fullPath = join(workspaceRoot, produceOutput);
       try {
-        const s = await stat(fullPath);
+        const _s = await stat(fullPath);
         return [fullPath];
       } catch {
         return [];

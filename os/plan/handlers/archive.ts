@@ -18,7 +18,7 @@ non-terminal files found in subdirectories back to the root.
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import { listPlanFiles, readAndParsePlan, extractRfcIdFromPlanFile } from "../frontmatter-io.ts";
+import { listPlanFiles, extractRfcIdFromPlanFile } from "../frontmatter-io.ts";
 import { loadRfcStatusMap } from "../../rfc/frontmatter-io.ts";
 import type { ArchiveMove, ArchiveSkip } from "../../rfc/handlers/archive.ts";
 import type {

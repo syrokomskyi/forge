@@ -73,7 +73,7 @@ export function isAuditDue(current: number, audited: number | null, threshold: n
   return current - audited >= threshold;
 }
 
-const LEDGER_ADVISORY = { ownerCommand: "compass.audit.record" };
+const _LEDGER_ADVISORY = { ownerCommand: "compass.audit.record" };
 
 function withLedgerAdvisory(ledger: Partial<CompassAuditLedger>): CompassAuditLedger {
   return {

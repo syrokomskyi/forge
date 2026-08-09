@@ -21,7 +21,6 @@ import {
   forgeBindingsSchema,
   resolveBinding,
   FORGE_CLI_BINDING_DEFAULTS,
-  PM_RUNNER_MAP,
   resolvePmRunner,
   applyCliBindingDefaults,
   type ForgeConfig,

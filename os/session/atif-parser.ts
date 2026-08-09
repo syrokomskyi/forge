@@ -112,7 +112,7 @@ function tryParseDelimited(rawContent: string): AtifParseResult | null {
     const messages: AtifMessage[] = [];
     let lastEnd = 0;
     let lastRole: AtifMessage["role"] = "unknown";
-    let lastTimestamp: string | null = null;
+    const lastTimestamp: string | null = null;
 
     for (let i = 0; i < matches.length; i++) {
       const match = matches[i]!;

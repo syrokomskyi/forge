@@ -124,7 +124,7 @@ export function parseKnowledgeFile(filePath: string): ParsedKnowledgeFile {
       // Look for fenced knowledge-entry block immediately after heading
       let meta: KnowledgeEntryMeta | null = null;
       let metaBlockStart = -1;
-      let metaBlockEnd = -1;
+      let _metaBlockEnd = -1;
 
       // Skip blank lines between heading and fence
       while (i < lines.length && lines[i].trim() === "") {
@@ -142,7 +142,7 @@ export function parseKnowledgeFile(filePath: string): ParsedKnowledgeFile {
             i++;
           }
           if (i < lines.length && lines[i].trim().startsWith("```")) {
-            metaBlockEnd = i + 1; // 1-based fence closing line
+            _metaBlockEnd = i + 1; // 1-based fence closing line
             i++;
 
             const yamlText = yamlLines.join("\n");

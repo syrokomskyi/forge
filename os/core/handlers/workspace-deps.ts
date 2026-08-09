@@ -34,9 +34,9 @@ export async function loadWorkspaceDeps(): Promise<WorkspaceDeps> {
   if (loadError) throw new Error(loadError);
 
   try {
-    // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
+    // @ts-expect-error — workspace dep, may not be installed when forge is used standalone from npm
     const shareMod = await import("@warpgogol/share/fs");
-    // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
+    // @ts-expect-error — workspace dep, may not be installed when forge is used standalone from npm
     const fpMod = await import("@warpgogol/fingerprint");
     cached = {
       collectFiles: shareMod.collectFiles as CollectFilesFn,

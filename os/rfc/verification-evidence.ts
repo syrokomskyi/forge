@@ -18,7 +18,7 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 
 import { execFile } from "node:child_process";
 import { readFile, mkdir } from "node:fs/promises";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { byteHash } from "../../src/utils/hash.ts";
 
@@ -27,7 +27,7 @@ import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
-import { RFC_DIR, RFC_METADATA_CUTOFF } from "./types.ts";
+import { RFC_DIR } from "./types.ts";
 import type {
   AcceptanceProbe,
   RfcStatus,

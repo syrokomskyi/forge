@@ -20,7 +20,7 @@ import { join } from "node:path";
 
 import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
-import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { RFC_DIR } from "./types.ts";
 import type {

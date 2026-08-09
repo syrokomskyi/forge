@@ -34,7 +34,7 @@ const WORKFLOW_DIR = ".agents/workflows";
 const WORKFLOW_AMEND_DIR = ".agents/workflows-amend";
 
 // RFC-0135/RFC-0136 commands (registered in site-kernel-onboarding / site-kernel-checks).
-const PENDING_AMEND_RFC_COMMANDS = new Set([
+const _PENDING_AMEND_RFC_COMMANDS = new Set([
   "amend.input.validate",
   "amend.atoms.merge",
   "amend.provenance.append",

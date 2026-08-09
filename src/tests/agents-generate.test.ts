@@ -26,7 +26,7 @@ const silentLogger = {
 };
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..");
-const WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
+const _WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {

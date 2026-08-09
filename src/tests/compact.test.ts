@@ -9,7 +9,6 @@ import {
   type CompactOptions,
 } from "../knowledge/compact.ts";
 import { parseKnowledgeFile } from "../knowledge/parse.ts";
-import { serializeKnowledgeFile } from "../knowledge/serialize.ts";
 import type {
   ParsedKnowledgeFile,
   KnowledgeLayer,

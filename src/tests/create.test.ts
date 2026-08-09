@@ -8,7 +8,7 @@
 */
 
 import { test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, readdir, writeFile, mkdir } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -25,7 +25,7 @@ const silentLogger = {
 };
 
 const FORGE_ROOT = join(import.meta.dirname, "..", "..");
-const WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
+const _WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {

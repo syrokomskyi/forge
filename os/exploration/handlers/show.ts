@@ -10,7 +10,6 @@
 </CHANGE_SUMMARY>
 */
 
-import path from "node:path";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,

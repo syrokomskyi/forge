@@ -30,7 +30,6 @@ import { toIsoDate } from "./shared.ts";
 import { RFC_DIR, RFC_METADATA_CUTOFF } from "../types.ts";
 import type {
   RfcStatus,
-  RfcImplementStampData,
   RfcImplementStampViolation,
   RfcImplementStampResult,
 } from "../types.ts";
@@ -62,7 +61,7 @@ async function isRfcFileClean(workspaceRoot: string, rfcRelPath: string): Promis
 }
 
 async function commitReachableFromHead(workspaceRoot: string, commitSha: string): Promise<boolean> {
-  const result = await execGit(workspaceRoot, ["merge-base", "--is-ancestor", commitSha, "HEAD"]);
+  const _result = await execGit(workspaceRoot, ["merge-base", "--is-ancestor", commitSha, "HEAD"]);
   // merge-base --is-ancestor exits 0 if ancestor, 1 if not, >1 on error
   // execGit returns "" on error (non-zero exit), trimmed stdout on success
   // So we need a different approach: check exit code directly

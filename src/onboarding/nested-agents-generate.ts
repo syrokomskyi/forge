@@ -21,7 +21,7 @@ runAgentsGenerate, runUpgrade, and runDoctor (staleness check via dryRun).</purp
 import fs from "node:fs";
 import path from "node:path";
 import { writeFileIfChanged } from "../utils/index.ts";
-import { discoverWorkspaces, type WorkspaceDir } from "./workspace-discovery.ts";
+import { discoverWorkspaces } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd, selectNestedTemplate, type PackageInfo } from "./nested-agents-templates.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";

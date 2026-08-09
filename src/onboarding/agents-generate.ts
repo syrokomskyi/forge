@@ -25,7 +25,7 @@ import { parse as parseYaml } from "yaml";
 import { loadForgeConfig, resolveBinding, resolveForgeRoot } from "../config/forge-config.ts";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
-import { GENERATED_MARKER, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
+import { buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
@@ -167,7 +167,7 @@ function generateBehavioralLayer(
     }
   }
 
-  let result = template
+  const result = template
     .replace(/\{\{triggersTable\}\}/g, triggersTable)
     .replace(/\{\{register\}\}/g, register)
     .replace(/\{\{extendedLayer\}\}/g, extendedLayer);

@@ -20,7 +20,7 @@ import { parse as yamlParse } from "yaml";
 import { validateAcceptanceShape } from "../acceptance.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
-import type { RfcStatus, RfcKind, RfcScope, RfcValidationViolation, Marker } from "../types.ts";
+import type { RfcStatus, RfcKind, RfcScope, Marker } from "../types.ts";
 import {
   RFC_DIR,
   RFC_ID_PATTERN,
@@ -28,7 +28,6 @@ import {
   RFC_KINDS,
   RFC_SCOPES,
   RFC_FULL_REQUIRED_SECTIONS,
-  RFC_KNOWN_KEYS,
   RFC_METADATA_CUTOFF,
   RFC_VERSION_BUMP_CUTOFF,
 } from "../types.ts";

@@ -22,7 +22,6 @@ import {
   extractReferences,
   findMissingAssets,
   findOrphanedAssets,
-  type AssetEntry,
 } from "./assets-helpers.ts";
 
 export interface AssetCheckResult {
