@@ -137,6 +137,7 @@ export { runScaffold } from "./onboarding/scaffold.ts";
 export { runDoctor } from "./onboarding/doctor.ts";
 export { runAgentsGenerate } from "./onboarding/agents-generate.ts";
 export { runScaffoldProject } from "./onboarding/scaffold-project.ts";
+export { scaffoldMemoryLayer, type MemoryScaffoldResult } from "./onboarding/memory-scaffold.ts";
 
 // Migration adapters (RFC-0546)
 export type {
