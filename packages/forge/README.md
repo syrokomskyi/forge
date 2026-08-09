@@ -443,7 +443,7 @@ await forgeRfcModule.register(registry);
 | Directory | Purpose |
 | --- | --- |
 | `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
-| `os/` | ForgeModule registrations. `compass` and `werkstatt` dynamically import `@warpgogol/site-kernel-*` (graceful degradation in autonomous mode). |
+| `os/` | ForgeModule registrations. `compass` and `werkstatt` are fully autonomous (RFC-0556) — all handlers inlined, no `@warpgogol/*` imports. |
 | `bin/` | CLI entrypoint (`forge` command). |
 | `skills/` | 44 skill definitions (36 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
 | `profiles/` | Stack profiles for `scaffold`. |

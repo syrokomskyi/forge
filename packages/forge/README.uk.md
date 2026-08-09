@@ -443,7 +443,7 @@ await forgeRfcModule.register(registry);
 | Директорія | Призначення |
 | --- | --- |
 | `src/` | Портативне ядро — типи, конфігурація, реєстр навичок, валідатори, онбординг. Нуль імпортів `@warpgogol/*`. |
-| `os/` | Реєстрації ForgeModule. `compass` та `werkstatt` динамічно імпортують `@warpgogol/site-kernel-*` (м'яка деградація в автономному режимі). |
+| `os/` | Реєстрації ForgeModule. `compass` та `werkstatt` повністю автономні (RFC-0556) — всі обробники вбудовані, без імпортів `@warpgogol/*`. |
 | `bin/` | Точка входу CLI (команда `forge`). |
 | `skills/` | 44 визначення навичок (36 fo + 5 спільних + 3 мета) з frontmatter SKILL.md. |
 | `scripts/` | Перевірка гігієни публікації (`publish-check.mjs`), запускається `prepublishOnly`. |
