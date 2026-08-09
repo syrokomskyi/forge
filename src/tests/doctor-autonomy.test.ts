@@ -67,7 +67,7 @@ test("doctor detects @warpgogol/* import specifiers", async () => {
   );
   await writeFile(
     join(tempDir, "packages", "forge", "src", "bad.ts"),
-    'import { foo } from "@warpgogol/site-kernel";\nexport const x = foo;',
+    'import { foo } from "@warpgogol/werkstatt/kernel";\nexport const x = foo;',
     "utf8",
   );
 
@@ -75,7 +75,7 @@ test("doctor detects @warpgogol/* import specifiers", async () => {
   const autonomyCheck = result.data?.checks.find((c) => c.name === "autonomy-guard");
   expect(autonomyCheck?.status).toBe("fail");
   expect(result.data?.forbiddenImports.length).toBe(1);
-  expect(result.data?.forbiddenImports[0]?.specifier).toBe("@warpgogol/site-kernel");
+  expect(result.data?.forbiddenImports[0]?.specifier).toBe("@warpgogol/werkstatt/kernel");
 });
 
 test("doctor ignores @warpgogol/* in comments", async () => {
@@ -87,7 +87,7 @@ test("doctor ignores @warpgogol/* in comments", async () => {
   );
   await writeFile(
     join(tempDir, "packages", "forge", "src", "clean.ts"),
-    "/* Do not import from @warpgogol/site-kernel */\nexport const x = 1;",
+    "/* Do not import from @warpgogol/werkstatt/kernel */\nexport const x = 1;",
     "utf8",
   );
 

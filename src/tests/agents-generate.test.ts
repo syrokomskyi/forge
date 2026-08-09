@@ -417,7 +417,7 @@ test("agents-generate nested separates workspace and external dependencies", asy
     JSON.stringify({
       name: "@test/my-pkg",
       dependencies: {
-        "@warpgogol/share": "workspace:*",
+        "@warpgogol/werkstatt-site/share": "workspace:*",
         zod: "^4.4.3",
       },
     }),
@@ -428,7 +428,7 @@ test("agents-generate nested separates workspace and external dependencies", asy
 
   const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
   expect(nested).toContain("**Workspace:**");
-  expect(nested).toContain("- `@warpgogol/share`");
+  expect(nested).toContain("- `@warpgogol/werkstatt-site/share`");
   expect(nested).toContain("**External:**");
   expect(nested).toContain("- `zod` `^4.4.3`");
 });
@@ -441,7 +441,7 @@ test("agents-generate nested for service workspace omits entry points", async ()
     JSON.stringify({
       name: "@test/my-svc",
       scripts: { "build:check": "tsc --noEmit", "run:once": "tsx src/run.ts" },
-      dependencies: { "@warpgogol/observability": "workspace:*" },
+      dependencies: { "@warpgogol/werkstatt-site/observability": "workspace:*" },
     }),
   );
   await writeFile(join(tempDir, "services", "my-svc", "Dockerfile"), "FROM node:20\n");

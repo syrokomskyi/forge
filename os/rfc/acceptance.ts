@@ -9,7 +9,7 @@ prose checklist.
 </purpose>
 <non-goals>
   <item>Do not run automatically inside rfc.validate — probes may run builds; on-demand only.</item>
-  <item>Do not allow arbitrary shell in `run` probes — the command string must start with "site-kernel ".</item>
+  <item>Do not allow arbitrary shell in `run` probes — the command string must start with "werkstatt ".</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -32,7 +32,7 @@ import type { AcceptanceProbe, ProbeResult, RfcAcceptanceRunResult } from "./typ
 import { RFC_DIR } from "./types.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 
-const RUN_PROBE_ALLOWED_PREFIX = "site-kernel ";
+const RUN_PROBE_ALLOWED_PREFIX = "werkstatt ";
 
 async function loadManifestCommandNames(workspaceRoot: string): Promise<Set<string>> {
   const manifestPath = path.join(workspaceRoot, "docs", "command-manifest.generated.yaml");
@@ -158,14 +158,7 @@ async function spawnSiteKernel(
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  const binPath = path.join(
-    workspaceRoot,
-    "packages",
-    "os",
-    "site-kernel",
-    "bin",
-    "site-kernel.mjs",
-  );
+  const binPath = path.join(workspaceRoot, "packages", "werkstatt", "bin", "werkstatt.mjs");
 
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [binPath, ...args], {

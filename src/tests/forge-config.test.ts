@@ -228,7 +228,7 @@ const configWithBindings: ForgeConfig = {
   bindings: {
     schema: "forge/bindings@1",
     commands: {
-      validateRfc: "pnpm exec site-kernel run rfc.validate --id {id} --json",
+      validateRfc: "pnpm exec werkstatt run rfc.validate --id {id} --json",
       validateAdr: null,
       implementStamp: null,
       typecheck: "pnpm --filter {workspace} run build:check",
@@ -266,7 +266,7 @@ test("forgeBindingsSchema rejects missing schema field", () => {
 
 test("resolveBinding returns a string for a valid key", () => {
   const result = resolveBinding(configWithBindings, "commands.validateRfc");
-  expect(result).toBe("pnpm exec site-kernel run rfc.validate --id {id} --json");
+  expect(result).toBe("pnpm exec werkstatt run rfc.validate --id {id} --json");
 });
 
 test("resolveBinding returns null for an explicitly null binding", () => {
@@ -295,7 +295,7 @@ test("resolveBinding returns null for an unknown key", () => {
 
 test("resolveBinding substitutes placeholders", () => {
   const result = resolveBinding(configWithBindings, "commands.validateRfc", { id: "RFC-0393" });
-  expect(result).toBe("pnpm exec site-kernel run rfc.validate --id RFC-0393 --json");
+  expect(result).toBe("pnpm exec werkstatt run rfc.validate --id RFC-0393 --json");
 });
 
 test("resolveBinding substitutes multiple placeholders", () => {
@@ -322,7 +322,7 @@ paths:
 bindings:
   schema: forge/bindings@1
   commands:
-    validateRfc: "pnpm exec site-kernel run rfc.validate --id {id} --json"
+    validateRfc: "pnpm exec werkstatt run rfc.validate --id {id} --json"
     validateAdr: null
     typecheck: "pnpm --filter {workspace} run build:check"
     test: "pnpm --filter {workspace} run test"
@@ -340,7 +340,7 @@ bindings:
   const config = loadForgeConfig(tempDir);
   expect(config.bindings).toBeDefined();
   expect(config.bindings?.commands.validateRfc).toBe(
-    "pnpm exec site-kernel run rfc.validate --id {id} --json",
+    "pnpm exec werkstatt run rfc.validate --id {id} --json",
   );
   expect(config.bindings?.paths.invariantsFile).toBe("docs/architecture-dna.md");
 });

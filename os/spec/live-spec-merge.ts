@@ -290,7 +290,7 @@ export async function runSpecLiveMerge(
     const header = buildGeneratedHeader({
       filePath: specFilePath,
       ownerCommand: "spec.live.merge",
-      commandPrefix: "pnpm exec site-kernel run",
+      commandPrefix: "pnpm exec werkstatt run",
     });
 
     const newSpec: LivingSpec = {

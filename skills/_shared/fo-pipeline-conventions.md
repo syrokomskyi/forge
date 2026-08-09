@@ -99,7 +99,7 @@ Every `run_command` call MUST use a 6-minute (360 000 ms) execution budget. This
 
 - The `run_command` tool has no built-in timeout parameter. `WaitMsBeforeAsync` is the only mechanism to regain control after a fixed duration.
 - Abandoning a still-running process is acceptable — the process may complete in the background, but the agent is unblocked and can retry or try an alternative.
-- This covers all command classes: `pnpm exec site-kernel run ...`, `pnpm --filter <pkg> run build:check`, `astro check`, `git`, `pnpm install`, etc.
+- This covers all command classes: `pnpm exec werkstatt run ...`, `pnpm --filter <pkg> run build:check`, `astro check`, `git`, `pnpm install`, etc.
 - Site-kernel commands already have internal `timeoutMs`, but the agent-side 6-min budget is a safety net for ALL commands, not just site-kernel.
 
 ## Binding resolution and degradation
@@ -140,8 +140,8 @@ Skills reference bindings by key, never by value. To resolve a binding:
 
 A skill needs to run `rfc.validate` for `RFC-XXXX`:
 
-1. Read `forge.yaml` → `bindings.commands.validateRfc` = `"pnpm exec site-kernel run rfc.validate {id} --json"`
-2. Substitute `{id}` → `"pnpm exec site-kernel run rfc.validate RFC-XXXX --json"`
+1. Read `forge.yaml` → `bindings.commands.validateRfc` = `"pnpm exec werkstatt run rfc.validate {id} --json"`
+2. Substitute `{id}` → `"pnpm exec werkstatt run rfc.validate RFC-XXXX --json"`
 3. Run the resolved command.
 
 If `bindings.commands.validateRfc` were `null`, the skill would skip the step and report: `Degraded: commands.validateRfc — not configured in forge.yaml`.

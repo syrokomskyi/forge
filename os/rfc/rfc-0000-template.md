@@ -56,7 +56,7 @@ packagesImpacted: []
 successSignals: []
 nonGoals: []
 # RFC-0268: OPTIONAL machine-checkable acceptance probes, executed on-demand
-# via `pnpm exec site-kernel run rfc.acceptance.run --id <this-rfc-id>` (never
+# via `pnpm exec werkstatt run rfc.acceptance.run --id <this-rfc-id>` (never
 # automatically inside build pipelines). Closed probe vocabulary — see
 # docs/rfcs/rfc-0268-make-rfc-acceptance-criteria-machine-checkable.md.
 # acceptance:
@@ -119,8 +119,8 @@ nonGoals: []
 <!-- Show the exact command(s) as a user would type them:
 
 ```sh
-pnpm exec site-kernel run domain.command --app main
-pnpm exec site-kernel run domain.command --all --json
+pnpm exec werkstatt run domain.command --app main
+pnpm exec werkstatt run domain.command --all --json
 ```
 
 Describe flags, arguments, and scope (app | workspace).

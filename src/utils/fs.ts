@@ -7,7 +7,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial inline of collectFiles, fileExists from @warpgogol/share/fs.</item>
+  <item>Initial inline of collectFiles, fileExists from @warpgogol/werkstatt-site/share/fs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +32,7 @@ export async function collectFiles(
   const results: string[] = [];
 
   // fs.walk.lint: allow — this is the canonical collectFiles implementation,
-  // inlined from @warpgogol/share/fs to keep @warpgogol/forge dependency-free (RFC-0303).
+  // inlined from @warpgogol/werkstatt-site/share/fs to keep @warpgogol/forge dependency-free (RFC-0303).
   async function walk(dir: string): Promise<void> {
     let entries;
     try {

@@ -230,7 +230,7 @@ export async function runPlanArchive(
       : `Moved ${moved.length} file(s), skipped ${skipped.length}`,
     nextSteps: [
       {
-        action: "Run: pnpm exec site-kernel run plan.list --json to verify archive status",
+        action: "Run: pnpm exec werkstatt run plan.list --json to verify archive status",
         kind: "optional",
       },
     ],

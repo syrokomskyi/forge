@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Werkstatt Zod schemas inlined from @warpgogol/ontology/operations for
+<purpose>Werkstatt Zod schemas inlined from @warpgogol/werkstatt-site/ontology/operations for
 full autonomous mode (RFC-0556). Provides werkstattLockSchema and
 werkstattOperationRecordSchema without a dependency on @warpgogol/ontology.</purpose>
 <non-goals>
@@ -10,7 +10,7 @@ werkstattOperationRecordSchema without a dependency on @warpgogol/ontology.</pur
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0362: initial Werkstatt schemas (WerkstattLock, WerkstattOperationRecord).</item>
-  <item>RFC-0556: inlined from @warpgogol/ontology/operations into forge for autonomous mode.</item>
+  <item>RFC-0556: inlined from @warpgogol/werkstatt-site/ontology/operations into forge for autonomous mode.</item>
 </CHANGE_SUMMARY>
 */
 
