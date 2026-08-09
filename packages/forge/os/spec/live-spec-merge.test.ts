@@ -71,7 +71,7 @@ Some context.
 ### CLI surface
 
 \`\`\`sh
-pnpm exec site-kernel run spec.live.merge --id RFC-9001
+pnpm exec werkstatt run spec.live.merge --id RFC-9001
 \`\`\`
 
 ### TypeScript contracts

@@ -1,12 +1,12 @@
 # @warpgogol/forge Agent Guide
 
-Portable governance skills and command modules extracted from site-kernel (RFC-0374).
+Portable governance skills and command modules extracted from the engine (RFC-0374) (RFC-0374).
 
 ## Architecture
 
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
 - `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed.
-- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/site-kernel`.
+- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/werkstatt`.
 - `skills/` — forge-managed skill definitions (38 fo skills + 5 shared + 3 meta = 46 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
 ## OS modules
@@ -81,7 +81,7 @@ skillPacks:
 
 ## Import rules
 
-- `src/` must NOT import from `@warpgogol/site-kernel` or any kernel package.
+- `src/` must NOT import from `@warpgogol/werkstatt` or any kernel package.
 - `os/compass/` and `os/werkstatt/` are fully autonomous (RFC-0556) — all handlers are inlined in `os/*/handlers/` and must NOT import from `@warpgogol/*` packages.
 - Other `os/` modules MAY dynamically import `@warpgogol/*` packages where kernel integration is needed.
 - Apps import forge modules from `@warpgogol/forge` (the package entrypoint re-exports all OS modules).
@@ -89,7 +89,7 @@ skillPacks:
 - **Compass shared flags:** New flags for compass commands MUST be added to the shared `compassScanFlags` object in `os/compass/compass.module.ts`, not to individual command definitions. The `compassScanFlags` object is spread into all compass commands that use `flags: { ...compassScanFlags }`, ensuring the flag is available consistently across the command family. Per-command flags that are unique to one command may be defined inline.
 - **CLI flags must be wired to behavior.** Every flag declared in a command registration MUST affect the command's output or behavior — not just be read and stored. A flag that is read but never used is dead code and a contract violation. When adding a flag, implement its behavioral effect in the same commit. Verify by searching for the flag variable name in the handler function body.
 - **Profile-driven workspace detection is domain-neutral.** `workspaceTypes` from a stack profile must replace hardcoded workspace detection for ALL domains, not just software. Do NOT gate `checkNestedAgentsMd` or `discoverWorkspaces` by `isSoftwareDomain` — that silently skips the check for non-software domains (video, creative, etc.). When `workspaceTypes` is present, it fully replaces hardcoded detection; when absent, hardcoded detection is the fallback for all domains.
-- **`command-registered` probes MUST fall back to command manifest.** The `command-registered` probe in `os/rfc/acceptance.ts` uses `commandRegistry?.listCommands()`, which only sees workspace-scoped commands (forge modules). App-scoped commands from `site-kernel-checks` are invisible to the workspace-level registry. Always include a `loadManifestCommandNames(workspaceRoot)` fallback, matching the pattern already used in `os/rfc/handlers/lifecycle.ts`. Without this, `rfc.acceptance.run` and `rfc.verification.emit` will falsely report app-scoped commands as "not registered".
+- **`command-registered` probes MUST fall back to command manifest.** The `command-registered` probe in `os/rfc/acceptance.ts` uses `commandRegistry?.listCommands()`, which only sees workspace-scoped commands (forge modules). App-scoped commands from `werkstatt-site/checks` are invisible to the workspace-level registry. Always include a `loadManifestCommandNames(workspaceRoot)` fallback, matching the pattern already used in `os/rfc/handlers/lifecycle.ts`. Without this, `rfc.acceptance.run` and `rfc.verification.emit` will falsely report app-scoped commands as "not registered".
 
 ## Editframe template rules
 
@@ -194,7 +194,7 @@ The `bindings` section in `forge.yaml` de-hardcodes project-specific values from
 - `forgeBindingsSchema` + `resolveBinding(config, key, placeholders?)` are exported from `@warpgogol/forge`.
 - `doctor` validates bindings: checks path existence, reports resolved/absent/invalid, and emits `defaultable-binding-null` notices for forge-CLI-backed bindings that are null (RFC-0540).
 - `create` writes forge-CLI-backed defaults for commands forge provides (`validateRfc`, `validateAdr`, `implementStamp`, `specValidate`) and null for stack-dependent commands (`typecheck`, `test`, `scopedBuild`). The package manager from `forge.yaml` determines the runner prefix (`pnpm exec`, `npx`, `yarn exec`, `bunx`).
-- `skill.validate` enforces SKILL-11: canonical skill bodies must not contain hardcoded `pnpm exec site-kernel run` or `docs/architecture-dna.md` in instruction lines (code blocks and `run:` directives). Supports `<!-- skill-lint-disable SKILL-11 -->` escape hatch.
+- `skill.validate` enforces SKILL-11: canonical skill bodies must not contain hardcoded `pnpm exec werkstatt run` or `docs/architecture-dna.md` in instruction lines (code blocks and `run:` directives). Supports `<!-- skill-lint-disable SKILL-11 -->` escape hatch.
 - `skill.validate` enforces SKILL-17: skill files must not contain specific platform RFC/ADR ids (`RFC-\d{4}`, `ADR-\d{4}`) or platform names ("Warpgogol", "Warpgogol", "WarpGogol"). Generic "RFC"/"ADR" terms, generic placeholder ids (`RFC-XXXX`), file paths (`adr-0000-template.md`), and binding key names (`validateRfc`) are allowed. The `@warpgogol/forge` npm package name is excluded from the platform name check. Supports `<!-- skill-lint-disable SKILL-17 -->` escape hatch.
 - `skill.validate` enforces SKILL-18: canonical forge skill bodies must not reference software-specific binding keys (`bindings.commands.typecheck`, `bindings.commands.scopedBuild`, `bindings.commands.test`) in instruction lines (code blocks and `run:` directives). Skills must reference semantic keys (`bindings.commands.validate`, `bindings.commands.produce`, `bindings.commands.verify`) instead. Supports `<!-- skill-lint-disable SKILL-18 -->` escape hatch. Applies to forge skills only, not pack skills.
 - Skills declare binding requirements in frontmatter: `bindings: { requires: [...], optional: [...] }`.
@@ -328,7 +328,7 @@ To publish a new version of `@warpgogol/forge` to NPM:
 
 The `prepublishOnly` script runs `clean → build → publish-check → strip-workspace-deps` automatically. **`strip-workspace-deps.mjs`** removes `@warpgogol/*` `workspace:*` dependencies from `package.json` before publish — these packages are not on npm and would make the published package uninstallable. The `postpublish` script restores the original `package.json` via `git checkout -- ./package.json`.
 
-**Do NOT use `npm publish`** — it fails during `prepublishOnly` because `tsc` cannot resolve workspace dependencies (`@warpgogol/share/fs`, `@warpgogol/fingerprint`) outside the pnpm workspace context. `pnpm publish` handles workspace dependencies correctly.
+**Do NOT use `npm publish`** — it fails during `prepublishOnly` because `tsc` cannot resolve workspace dependencies (`@warpgogol/werkstatt-site/share/fs`, `@warpgogol/werkstatt/fingerprint`) outside the pnpm workspace context. `pnpm publish` handles workspace dependencies correctly.
 
 **Workspace deps must use dynamic imports.** `@warpgogol/*` packages that are not published to npm MUST be imported via dynamic `import()` (see `os/core/handlers/workspace-deps.ts`), never static `import`. Static imports would fail at runtime when forge is installed standalone from npm. The `workspace-deps.ts` helper caches the dynamic import and throws a clear error message if the packages are missing.
 

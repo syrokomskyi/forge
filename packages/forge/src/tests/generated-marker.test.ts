@@ -128,9 +128,9 @@ describe("buildGeneratedHeader", () => {
     const header = buildGeneratedHeader({
       filePath: "src/generated.ts",
       ownerCommand: "foo.generate",
-      commandPrefix: "pnpm exec site-kernel run",
+      commandPrefix: "pnpm exec werkstatt run",
     });
-    expect(header).toContain("pnpm exec site-kernel run foo.generate");
+    expect(header).toContain("pnpm exec werkstatt run foo.generate");
   });
 
   test("includes templatePath in Edit instead line", () => {

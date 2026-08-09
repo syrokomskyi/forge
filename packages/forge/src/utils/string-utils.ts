@@ -7,7 +7,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial inline of toKebabCase from @warpgogol/share/string-utils.</item>
+  <item>Initial inline of toKebabCase from @warpgogol/werkstatt-site/share/string-utils.</item>
 </CHANGE_SUMMARY>
 */
 

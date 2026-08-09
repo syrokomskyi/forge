@@ -9,7 +9,7 @@ source (dependency inversion).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Moved from @warpgogol/site-kernel/generated-marker to forge as canonical source.</item>
-  <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec site-kernel run".</item>
+  <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec werkstatt run".</item>
 </CHANGE_SUMMARY>
 */
 
@@ -91,7 +91,7 @@ export interface GeneratedHeaderInput {
   site?: string;
   /**
    * Command prefix for the regenerate hint. Defaults to "forge" (autonomous mode).
-   * Site-kernel callers pass "pnpm exec site-kernel run" for Warpgogol context.
+   * Site-kernel callers pass "pnpm exec werkstatt run" for Warpgogol context.
    */
   commandPrefix?: string;
 }

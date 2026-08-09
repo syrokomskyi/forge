@@ -166,7 +166,7 @@ export async function runRfcIndexValidate(
     violations.push({
       rule: "RFC-IDX-01",
       message:
-        "docs/rfcs/index.yaml not found. Run `pnpm exec site-kernel run rfc.index.generate --write` to generate it.",
+        "docs/rfcs/index.yaml not found. Run `pnpm exec werkstatt run rfc.index.generate --write` to generate it.",
     });
     const result = { command: "rfc.index.validate", status: "fail", violations };
     if (outputFormat === "pretty") {
@@ -208,7 +208,7 @@ export async function runRfcIndexValidate(
   if (indexCount !== fileCount) {
     violations.push({
       rule: "RFC-IDX-03",
-      message: `Index entry count (${indexCount}) does not match RFC file count (${fileCount}). Run \`pnpm exec site-kernel run rfc.index.generate --write\` to refresh.`,
+      message: `Index entry count (${indexCount}) does not match RFC file count (${fileCount}). Run \`pnpm exec werkstatt run rfc.index.generate --write\` to refresh.`,
     });
   }
 

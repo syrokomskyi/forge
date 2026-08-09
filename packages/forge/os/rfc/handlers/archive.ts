@@ -235,7 +235,7 @@ export async function runRfcArchive(
       : `Moved ${moved.length} file(s), skipped ${skipped.length}`,
     nextSteps: [
       {
-        action: "Run: pnpm exec site-kernel run rfc.list --json to verify archive status",
+        action: "Run: pnpm exec werkstatt run rfc.list --json to verify archive status",
         kind: "optional",
       },
     ],

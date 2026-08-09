@@ -190,7 +190,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
     }
 
     // SKILL-10: read-only and document-only skills do not contain code execution instructions.
-    // NOTE: `exec` is excluded from the pattern because `pnpm exec site-kernel run …`
+    // NOTE: `exec` is excluded from the pattern because `pnpm exec werkstatt run …`
     // is the standard governance command invocation in this ecosystem, not a code
     // build/install. The pattern catches `pnpm run build`, `pnpm install`, `npm run
     // test`, `npx vitest run`, `tsc --noEmit` (via `tsc` + `run`), etc.
@@ -497,7 +497,7 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
 // ---------------------------------------------------------------------------
 
 const SKILL11_PATTERNS: RegExp[] = [
-  /pnpm\s+exec\s+site-kernel\s+run/gi,
+  /pnpm\s+exec\s+werkstatt\s+run/gi,
   /docs\/architecture-dna\.md/gi,
 ];
 

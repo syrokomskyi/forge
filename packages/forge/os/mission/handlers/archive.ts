@@ -332,7 +332,7 @@ export async function runMissionArchive(
       : `Moved ${moved.length} mission(s), skipped ${skipped.length}`,
     nextSteps: [
       {
-        action: "Run: pnpm exec site-kernel run mission.list --json to verify active missions",
+        action: "Run: pnpm exec werkstatt run mission.list --json to verify active missions",
         kind: "optional",
       },
     ],

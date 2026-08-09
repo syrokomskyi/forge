@@ -236,7 +236,7 @@ export async function runAdrArchive(
       : `Moved ${moved.length} file(s), skipped ${skipped.length}`,
     nextSteps: [
       {
-        action: "Run: pnpm exec site-kernel run adr.list --json to verify archive status",
+        action: "Run: pnpm exec werkstatt run adr.list --json to verify archive status",
         kind: "optional",
       },
     ],

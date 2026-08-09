@@ -818,7 +818,7 @@ export async function validateSingleRfc(
     const packagesImpacted = Array.isArray(fm["packagesImpacted"])
       ? (fm["packagesImpacted"] as unknown[]).map(String)
       : [];
-    const hasOntology = packagesImpacted.some((p) => p.includes("@warpgogol/ontology"));
+    const hasOntology = packagesImpacted.some((p) => p.includes("@warpgogol/werkstatt-site/ontology"));
 
     if (breaksC === true && !hasOntology) {
       addViolation(
