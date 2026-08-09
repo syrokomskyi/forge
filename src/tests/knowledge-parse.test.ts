@@ -121,7 +121,9 @@ Body.
     try {
       const parsed = parseKnowledgeFile(filePath);
       expect(parsed.parseIssues.length).toBeGreaterThan(0);
-      expect(parsed.parseIssues.some((i) => i.message.includes("confirmations is required"))).toBe(true);
+      expect(parsed.parseIssues.some((i) => i.message.includes("confirmations is required"))).toBe(
+        true,
+      );
     } finally {
       fs.rmSync(path.dirname(filePath), { recursive: true, force: true });
     }

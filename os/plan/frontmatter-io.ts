@@ -41,9 +41,7 @@ export async function listPlanFiles(planDirPath: string): Promise<string[]> {
     try {
       const entries = await fs.readdir(dirPath, { withFileTypes: true });
       for (const entry of entries) {
-        const relativePath = relativePrefix
-          ? `${relativePrefix}/${entry.name}`
-          : entry.name;
+        const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
         if (entry.isDirectory()) {
           await scanDir(path.join(dirPath, entry.name), relativePath);
         } else if (

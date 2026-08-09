@@ -15,15 +15,8 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import {
-  readAndParseExplorationNote,
-  getExplorationsDir,
-} from "../frontmatter-io.ts";
-import type {
-  ExplorationNote,
-  ExplorationShowResult,
-  ExplorationStatus,
-} from "../types.ts";
+import { readAndParseExplorationNote, getExplorationsDir } from "../frontmatter-io.ts";
+import type { ExplorationNote, ExplorationShowResult, ExplorationStatus } from "../types.ts";
 
 function parseRelatedArray(value: unknown): string[] {
   if (Array.isArray(value)) {

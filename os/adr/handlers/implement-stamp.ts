@@ -24,11 +24,7 @@ import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 
 import { listAdrFiles, readAndParseAdr, adrFileMatchesId } from "../frontmatter-io.ts";
 import { ADR_DIR } from "../types.ts";
-import type {
-  AdrStatus,
-  AdrImplementStampViolation,
-  AdrImplementStampResult,
-} from "../types.ts";
+import type { AdrStatus, AdrImplementStampViolation, AdrImplementStampResult } from "../types.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -54,10 +50,7 @@ async function isAdrFileClean(workspaceRoot: string, adrRelPath: string): Promis
   return status.length === 0;
 }
 
-async function commitReachableFromHead(
-  workspaceRoot: string,
-  commitSha: string,
-): Promise<boolean> {
+async function commitReachableFromHead(workspaceRoot: string, commitSha: string): Promise<boolean> {
   return new Promise((resolve) => {
     execFile(
       "git",
@@ -232,11 +225,7 @@ export async function runAdrImplementStamp(
       message: `Implementation commit ${implementationCommit} is not reachable from HEAD. The commit must be an ancestor of the current HEAD.`,
     });
   } else {
-    const referencesAdr = await commitReferencesAdr(
-      workspaceRoot,
-      implementationCommit,
-      targetId,
-    );
+    const referencesAdr = await commitReferencesAdr(workspaceRoot, implementationCommit, targetId);
     if (!referencesAdr) {
       violations.push({
         rule: "ADR-IMP-03",

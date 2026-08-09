@@ -267,15 +267,9 @@ describe("RFC-0639: resolveTerminology", () => {
         terminology: {},
       },
     };
-    expect(resolveTerminology(config, undefined, "artifact")).toBe(
-      TERMINOLOGY_DEFAULTS.artifact,
-    );
-    expect(resolveTerminology(config, undefined, "module")).toBe(
-      TERMINOLOGY_DEFAULTS.module,
-    );
-    expect(resolveTerminology(config, undefined, "operator")).toBe(
-      TERMINOLOGY_DEFAULTS.operator,
-    );
+    expect(resolveTerminology(config, undefined, "artifact")).toBe(TERMINOLOGY_DEFAULTS.artifact);
+    expect(resolveTerminology(config, undefined, "module")).toBe(TERMINOLOGY_DEFAULTS.module);
+    expect(resolveTerminology(config, undefined, "operator")).toBe(TERMINOLOGY_DEFAULTS.operator);
   });
 
   test("fallback: returns the key itself when not found in any tier", () => {

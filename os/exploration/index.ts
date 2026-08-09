@@ -22,8 +22,4 @@ export type {
   ExplorationShowResult,
   ExplorationArchiveResult,
 } from "./types.ts";
-export {
-  EXPLORATION_STATUSES,
-  EXPLORATION_DIR,
-  EXPLORATION_SLUG_PATTERN,
-} from "./types.ts";
+export { EXPLORATION_STATUSES, EXPLORATION_DIR, EXPLORATION_SLUG_PATTERN } from "./types.ts";

@@ -71,7 +71,8 @@ const CATEGORY_DEFS: CategoryDef[] = [
   {
     id: "config",
     label: "Configuration & secrets",
-    description: "Environment files, API keys, certificates, and local configuration needed for the project to run.",
+    description:
+      "Environment files, API keys, certificates, and local configuration needed for the project to run.",
     matchers: CONFIG_MATCHERS,
   },
   {
@@ -163,15 +164,11 @@ export function discoverIgnoredFiles(sourceDir: string): IgnoredFileCategory[] {
 
   if (hasGit) {
     try {
-      const output = execFileSync(
-        "git",
-        ["-C", sourceDir, "status", "--ignored", "--porcelain"],
-        {
-          encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
-          timeout: 30_000,
-        },
-      );
+      const output = execFileSync("git", ["-C", sourceDir, "status", "--ignored", "--porcelain"], {
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 30_000,
+      });
       ignoredPaths = output
         .split("\n")
         .filter((l) => l.startsWith("!! "))

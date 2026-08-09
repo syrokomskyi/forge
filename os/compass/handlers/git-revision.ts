@@ -23,7 +23,11 @@ import { resolve, join } from "node:path";
 const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_TIMEOUT_MS = 15_000;
 
-async function runGit(cwd: string, args: string[], timeoutMs: number = DEFAULT_GIT_TIMEOUT_MS): Promise<string> {
+async function runGit(
+  cwd: string,
+  args: string[],
+  timeoutMs: number = DEFAULT_GIT_TIMEOUT_MS,
+): Promise<string> {
   const { stdout } = await execFileAsync("git", args, {
     cwd,
     maxBuffer: 20 * 1024 * 1024,

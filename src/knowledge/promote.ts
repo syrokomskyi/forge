@@ -102,7 +102,8 @@ export function detectDuplicatePrinciples(
       const longer = a.normalizedTitle.length <= b.normalizedTitle.length ? b : a;
 
       if (shorter.normalizedTitle.length < MIN_CONTAINMENT_LENGTH) continue;
-      if (shorter.normalizedTitle.length < longer.normalizedTitle.length * MIN_CONTAINMENT_RATIO) continue;
+      if (shorter.normalizedTitle.length < longer.normalizedTitle.length * MIN_CONTAINMENT_RATIO)
+        continue;
 
       if (longer.normalizedTitle.includes(shorter.normalizedTitle)) {
         pairs.push({
@@ -124,10 +125,7 @@ export function planPromotion(
   nextSharedId: string,
   today: string,
 ): PromotionPlan {
-  const totalConfirmations = sources.reduce(
-    (sum, s) => sum + (s.entry.meta.confirmations ?? 0),
-    0,
-  );
+  const totalConfirmations = sources.reduce((sum, s) => sum + (s.entry.meta.confirmations ?? 0), 0);
 
   const promotedFrom = sources.map((s) => `${s.skill}/${s.entry.meta.id}`);
 
