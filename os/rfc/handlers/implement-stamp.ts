@@ -14,6 +14,7 @@ verification evidence, and atomically mutates RFC frontmatter.
 <CHANGE_SUMMARY>
   <item>RFC-0476: initial implementation.</item>
   <item>RFC-0756: auto-detect implementation commit when --implementation-commit is omitted.</item>
+  <item>RFC-0795: add RFC-IMP-07 dependsOn dependency gate — blocks stamping when any dependsOn entry is not implemented.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,7 +25,12 @@ import { join, dirname } from "node:path";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse } from "yaml";
 
-import { listRfcFiles, readAndParseRfc, rfcFileMatchesId } from "../frontmatter-io.ts";
+import {
+  listRfcFiles,
+  readAndParseRfc,
+  rfcFileMatchesId,
+  loadRfcStatusMap,
+} from "../frontmatter-io.ts";
 import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
 import { RFC_DIR, RFC_METADATA_CUTOFF } from "../types.ts";
@@ -293,6 +299,28 @@ export async function runRfcImplementStamp(
       rule: "RFC-IMP-02",
       message: `${criteriaEval.checkedWithoutEvidence.length} checked criteria lack inline (evidence: ...) annotation: ${criteriaEval.checkedWithoutEvidence.join("; ")}`,
     });
+  }
+
+  // ── RFC-IMP-07: dependsOn dependency gate (RFC-0795) ──────────────────────
+  const dependsOn = fm["dependsOn"];
+  if (Array.isArray(dependsOn) && dependsOn.length > 0) {
+    const statusMap = await loadRfcStatusMap(rfcDirPath);
+    for (const depRef of dependsOn) {
+      const depId = String(depRef);
+      if (!depId) continue;
+      const depStatus = statusMap.get(depId);
+      if (!depStatus) {
+        violations.push({
+          rule: "RFC-IMP-07",
+          message: `RFC ${targetId} depends on ${depId}, which does not exist in ${RFC_DIR}.`,
+        });
+      } else if (depStatus !== "implemented") {
+        violations.push({
+          rule: "RFC-IMP-07",
+          message: `RFC ${targetId} depends on ${depId}, which is not implemented (status: ${depStatus}). Implement ${depId} first.`,
+        });
+      }
+    }
   }
 
   // ── RFC-0756: auto-detect implementation commit when --implementation-commit is omitted ──
