@@ -39,15 +39,10 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
     const parsed = makeParsed("implemented", "2026-01-01", {
       added: ["nonexistent.command"],
     });
-    const preParsed = new Map([
-      [
-        "archive/implemented/rfc-9999-test.md",
-        { fileName: "archive/implemented/rfc-9999-test.md", parsed },
-      ],
-    ]);
+    const preParsed = new Map([["rfc-9999-test.md", { fileName: "rfc-9999-test.md", parsed }]]);
     const { violations } = await collectRfcCommandLifecycleViolations(
       testWorkspaceRoot,
-      ["archive/implemented/rfc-9999-test.md"],
+      ["rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
     );
@@ -59,15 +54,10 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
     const parsed = makeParsed("implemented", "2026-07-08", {
       added: ["nonexistent.command"],
     });
-    const preParsed = new Map([
-      [
-        "archive/implemented/rfc-9999-test.md",
-        { fileName: "archive/implemented/rfc-9999-test.md", parsed },
-      ],
-    ]);
+    const preParsed = new Map([["rfc-9999-test.md", { fileName: "rfc-9999-test.md", parsed }]]);
     const { violations } = await collectRfcCommandLifecycleViolations(
       testWorkspaceRoot,
-      ["archive/implemented/rfc-9999-test.md"],
+      ["rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
     );
@@ -79,15 +69,10 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
     const parsed = makeParsed("implemented", "2026-01-01", {
       changed: ["nonexistent.command"],
     });
-    const preParsed = new Map([
-      [
-        "archive/implemented/rfc-9999-test.md",
-        { fileName: "archive/implemented/rfc-9999-test.md", parsed },
-      ],
-    ]);
+    const preParsed = new Map([["rfc-9999-test.md", { fileName: "rfc-9999-test.md", parsed }]]);
     const { violations } = await collectRfcCommandLifecycleViolations(
       testWorkspaceRoot,
-      ["archive/implemented/rfc-9999-test.md"],
+      ["rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
     );
@@ -99,15 +84,10 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
     const parsed = makeParsed("implemented", "2026-07-08", {
       changed: ["nonexistent.command"],
     });
-    const preParsed = new Map([
-      [
-        "archive/implemented/rfc-9999-test.md",
-        { fileName: "archive/implemented/rfc-9999-test.md", parsed },
-      ],
-    ]);
+    const preParsed = new Map([["rfc-9999-test.md", { fileName: "rfc-9999-test.md", parsed }]]);
     const { violations } = await collectRfcCommandLifecycleViolations(
       testWorkspaceRoot,
-      ["archive/implemented/rfc-9999-test.md"],
+      ["rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
     );
@@ -119,15 +99,10 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
     const parsed = makeParsed("implemented", "2026-07-07", {
       added: ["nonexistent.command"],
     });
-    const preParsed = new Map([
-      [
-        "archive/implemented/rfc-9999-test.md",
-        { fileName: "archive/implemented/rfc-9999-test.md", parsed },
-      ],
-    ]);
+    const preParsed = new Map([["rfc-9999-test.md", { fileName: "rfc-9999-test.md", parsed }]]);
     const { violations } = await collectRfcCommandLifecycleViolations(
       testWorkspaceRoot,
-      ["archive/implemented/rfc-9999-test.md"],
+      ["rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
     );
@@ -139,15 +114,10 @@ describe("RFC-CMD-02/03 cutoff behavior", () => {
     const parsed = makeParsed("implemented", "2026-07-06", {
       added: ["nonexistent.command"],
     });
-    const preParsed = new Map([
-      [
-        "archive/implemented/rfc-9999-test.md",
-        { fileName: "archive/implemented/rfc-9999-test.md", parsed },
-      ],
-    ]);
+    const preParsed = new Map([["rfc-9999-test.md", { fileName: "rfc-9999-test.md", parsed }]]);
     const { violations } = await collectRfcCommandLifecycleViolations(
       testWorkspaceRoot,
-      ["archive/implemented/rfc-9999-test.md"],
+      ["rfc-9999-test.md"],
       preParsed,
       mockRegistry([]),
     );

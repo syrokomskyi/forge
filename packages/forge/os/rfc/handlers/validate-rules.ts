@@ -206,6 +206,7 @@ export async function validateSingleRfc(
   const body = parsed.body;
   const relFile = path.join(RFC_DIR, fileName);
   const rfcId = String(fm["id"] ?? "UNKNOWN");
+  const isArchived = fileName.startsWith("archive/");
 
   // V-01: id format
   if (!RFC_ID_PATTERN.test(rfcId)) {
@@ -379,8 +380,9 @@ export async function validateSingleRfc(
   }
 
   // V-11: supersededBy points to existing RFC
+  // Skip for archived RFCs — superseding RFCs may have been themselves archived/removed
   const supersededBy = fm["supersededBy"] as string | undefined;
-  if (supersededBy && !allParsed.has(supersededBy)) {
+  if (supersededBy && !allParsed.has(supersededBy) && !isArchived) {
     addViolation(
       rfcId,
       relFile,
@@ -421,13 +423,10 @@ export async function validateSingleRfc(
 
   for (const section of requiredSections) {
     if (!headings.includes(section)) {
-      addViolation(
-        rfcId,
-        relFile,
-        "V-13",
-        `Missing required section "## ${section}"`,
-        status === "draft" ? "warning" : "error",
-      );
+      const severity = status === "draft" ? "warning" : "error";
+      // Skip error-severity V-13 for archived RFCs — template requirements evolved after archival
+      if (severity === "error" && isArchived) continue;
+      addViolation(rfcId, relFile, "V-13", `Missing required section "## ${section}"`, severity);
     }
   }
 
@@ -452,7 +451,7 @@ export async function validateSingleRfc(
   // RFC-0476: both use the shared evaluateAcceptanceCriteria function.
   if (acceptanceMatch) {
     const criteriaEval = evaluateAcceptanceCriteria(body);
-    if (status === "implemented" && criteriaEval.totalUnchecked > 0) {
+    if (status === "implemented" && criteriaEval.totalUnchecked > 0 && !isArchived) {
       addViolation(
         rfcId,
         relFile,
@@ -813,7 +812,9 @@ export async function validateSingleRfc(
 
   // V-30: breaksC field consistency (RFC-0480)
   // If breaksC: true — @warpgogol/ontology must be in packagesImpacted.
-  // If breaksC absent/false but @warpgogol/ontology in packagesImpacted — warning.
+  // If breaksC absent/false but @warpgol/ontology in packagesImpacted — warning.
+  // Skip for archived RFCs — package names changed during ecosystem consolidation (RFC-0776):
+  // @warpgogol/ontology → @warpgogol/werkstatt-site/ontology
   {
     const breaksC = fm["breaksC"];
     const packagesImpacted = Array.isArray(fm["packagesImpacted"])
@@ -823,7 +824,7 @@ export async function validateSingleRfc(
       p.includes("@warpgogol/werkstatt-site/ontology"),
     );
 
-    if (breaksC === true && !hasOntology) {
+    if (breaksC === true && !hasOntology && !isArchived) {
       addViolation(
         rfcId,
         relFile,

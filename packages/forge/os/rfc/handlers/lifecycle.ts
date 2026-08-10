@@ -96,6 +96,12 @@ export async function collectRfcCommandLifecycleViolations(
     const removed = new Set(buckets.removed);
     const createdAt = String(fm["createdAt"] ?? "");
     const isPostCutoff = createdAt >= RFC_METADATA_CUTOFF;
+    const isArchived = fileName.startsWith("archive/");
+
+    // Skip command lifecycle checks for archived RFCs — commands were
+    // renamed/removed during ecosystem consolidation (RFC-0776) and archived
+    // RFCs are frozen historical records that cannot be updated.
+    if (isArchived) continue;
 
     for (const command of buckets.proposed) {
       if (
