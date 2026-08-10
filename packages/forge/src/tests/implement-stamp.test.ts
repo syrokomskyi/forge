@@ -106,6 +106,72 @@ None.
 Test notes.
 `;
 
+const RFC_BODY_WITH_DEPS = (
+  id: string,
+  status: string,
+  criteriaChecked: boolean,
+  dependsOn: string[],
+): string => `---
+id: ${id}
+title: "Test RFC"
+status: ${status}
+kind: policy
+scope: workspace
+owners:
+  - architecture
+reviewers:
+  - human:test
+createdAt: 2026-07-21
+updatedAt: 2026-07-21
+dependsOn:
+${dependsOn.map((d) => `  - ${d}`).join("\n")}
+---
+
+# ${id}: Test RFC
+
+## Context
+
+Test context.
+
+## Problem
+
+Test problem.
+
+## Decision
+
+Test decision.
+
+## Architectural fit
+
+Test fit.
+
+## Design
+
+Test design.
+
+## Rollout
+
+Test rollout.
+
+## Alternatives considered
+
+None.
+
+## Risks
+
+None.
+
+## Acceptance criteria
+
+- [${criteriaChecked ? "x" : " "}] First criterion (evidence: src/foo.ts:10, unit test)
+- [${criteriaChecked ? "x" : " "}] Second criterion (evidence: src/bar.ts:20, integration test)
+- [${criteriaChecked ? "x" : " "}] Third criterion (evidence: src/baz.ts:30, e2e test)
+
+## Implementation notes for agents
+
+Test notes.
+`;
+
 async function makeGitRepo(dir: string): Promise<void> {
   execFileSync("git", ["init"], { cwd: dir, timeout: 5000 });
   execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: dir, timeout: 5000 });
@@ -361,5 +427,79 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.status).toBe("pass");
     expect(result.data?.data?.implementationCommit).toBe(secondCommit);
     expect(result.data?.violations).toEqual([]);
+  });
+
+  // ── RFC-0795: RFC-IMP-07 dependsOn dependency gate tests ──────────────────
+
+  it("blocks stamping when a dependsOn RFC is not implemented (RFC-IMP-07)", async () => {
+    const depFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-dep.md");
+    await writeFile(depFile, RFC_BODY("RFC-0001", "accepted", true));
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0002-main.md");
+    await writeFile(rfcFile, RFC_BODY_WITH_DEPS("RFC-0002", "accepted", true, ["RFC-0001"]));
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.status).toBe("fail");
+    const imp07 = result.data?.violations.find((v) => v.rule === "RFC-IMP-07");
+    expect(imp07).toBeDefined();
+    expect(imp07?.message).toContain("RFC-0001");
+    expect(imp07?.message).toContain("not implemented");
+  });
+
+  it("blocks stamping when a dependsOn RFC does not exist (RFC-IMP-07)", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0002-main.md");
+    await writeFile(rfcFile, RFC_BODY_WITH_DEPS("RFC-0002", "accepted", true, ["RFC-9999"]));
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.status).toBe("fail");
+    const imp07 = result.data?.violations.find((v) => v.rule === "RFC-IMP-07");
+    expect(imp07).toBeDefined();
+    expect(imp07?.message).toContain("RFC-9999");
+    expect(imp07?.message).toContain("does not exist");
+  });
+
+  it("passes when all dependsOn RFCs are implemented (RFC-IMP-07)", async () => {
+    const depFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-dep.md");
+    await writeFile(depFile, RFC_BODY("RFC-0001", "implemented", true));
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0002-main.md");
+    await writeFile(rfcFile, RFC_BODY_WITH_DEPS("RFC-0002", "accepted", true, ["RFC-0001"]));
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    const imp07 = result.data?.violations.find((v) => v.rule === "RFC-IMP-07");
+    expect(imp07).toBeUndefined();
+  });
+
+  it("passes when dependsOn is absent (RFC-IMP-07)", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
+    await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0001", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    const imp07 = result.data?.violations.find((v) => v.rule === "RFC-IMP-07");
+    expect(imp07).toBeUndefined();
   });
 });
