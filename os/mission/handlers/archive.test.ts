@@ -212,4 +212,48 @@ describe("mission.archive", () => {
       await fs.rm(emptyDir, { recursive: true, force: true });
     }
   });
+
+  test("RFC-0796: stale symlink in missions/ root → trashed", async () => {
+    // Create an archived mission
+    const archiveMissionDir = path.join(missionsDir, "archive", "closed", "test-m012");
+    await fs.mkdir(archiveMissionDir, { recursive: true });
+    await fs.writeFile(
+      path.join(archiveMissionDir, "mission.yaml"),
+      "missionId: test-m012\nstate: closed\n",
+    );
+
+    // Create a stale symlink pointing to the archived mission
+    const symlinkPath = path.join(missionsDir, "test-m012");
+    await fs.symlink(archiveMissionDir, symlinkPath);
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    // Symlink should be trashed
+    expect(existsSync(symlinkPath)).toBe(false);
+    // Archived mission should still exist
+    expect(existsSync(archiveMissionDir)).toBe(true);
+    // Should be reported as skipped with stale symlink reason
+    expect(data.skipped.some((s) => s.reason === "stale symlink — trashed")).toBe(true);
+  });
+
+  test("RFC-0796: stale symlink in --dry-run → not trashed, reported", async () => {
+    const archiveMissionDir = path.join(missionsDir, "archive", "closed", "test-m013");
+    await fs.mkdir(archiveMissionDir, { recursive: true });
+    await fs.writeFile(
+      path.join(archiveMissionDir, "mission.yaml"),
+      "missionId: test-m013\nstate: closed\n",
+    );
+
+    const symlinkPath = path.join(missionsDir, "test-m013");
+    await fs.symlink(archiveMissionDir, symlinkPath);
+
+    const data = unwrap(
+      await runMissionArchive(makeInput({ "dry-run": true }), makeContext(tmpDir)),
+    );
+
+    // In dry-run, symlink should NOT be trashed
+    expect(existsSync(symlinkPath)).toBe(true);
+    // But should be reported as skipped
+    expect(data.skipped.some((s) => s.reason === "stale symlink — trashed")).toBe(true);
+  });
 });
