@@ -128,8 +128,8 @@ describe("generateHelp", () => {
     });
 
     const help = generateHelp(registry);
-    expect(help).toContain("forge.init");
-    expect(help).toContain("forge.doctor");
+    expect(help).toContain("init");
+    expect(help).toContain("doctor");
   });
 
   test("groups commands by listing them sorted alphabetically", () => {
@@ -154,8 +154,8 @@ describe("generateHelp", () => {
     });
 
     const help = generateHelp(registry);
-    const doctorIdx = help.indexOf("forge.doctor");
-    const initIdx = help.indexOf("forge.init");
+    const doctorIdx = help.indexOf("doctor");
+    const initIdx = help.indexOf("init");
     expect(doctorIdx).toBeGreaterThan(-1);
     expect(initIdx).toBeGreaterThan(-1);
     expect(doctorIdx).toBeLessThan(initIdx);

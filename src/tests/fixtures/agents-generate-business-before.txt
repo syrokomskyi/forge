@@ -49,7 +49,9 @@
 | fo-add-tests | fo | user | code-mutation |
 | fo-architecture | fo | user | document-only |
 | fo-compass-annotate | fo | user | content-mutation |
+| fo-design-summit | fo | user | document-only |
 | fo-doc-audit | fo | user | document-only |
+| fo-explore | fo | user | document-only |
 | fo-extract-dna | fo | user | document-only |
 | fo-fix | fo | user | code-mutation |
 | fo-handoff | fo | user | document-only |
