@@ -73,6 +73,7 @@ export async function runRfcList(
   const filterStatus = input.flags["status"] as string | undefined;
   const filterKind = input.flags["kind"] as string | undefined;
   const filterOwner = input.flags["owner"] as string | undefined;
+  const filterBatch = input.flags["batch"] as string | undefined;
 
   const files = await listRfcFiles(rfcDirPath);
   const entries: RfcListEntry[] = [];
@@ -91,6 +92,7 @@ export async function runRfcList(
     if (filterStatus && status !== filterStatus) continue;
     if (filterKind && kind !== filterKind) continue;
     if (filterOwner && !owners.includes(filterOwner)) continue;
+    if (filterBatch && String(fm["batch"] ?? "") !== filterBatch) continue;
 
     entries.push({
       id,
@@ -102,6 +104,8 @@ export async function runRfcList(
       createdAt: String(fm["createdAt"] ?? ""),
       updatedAt: String(fm["updatedAt"] ?? ""),
       file: path.join(RFC_DIR, fileName),
+      batch: fm["batch"] ? String(fm["batch"]) : undefined,
+      dependsOn: Array.isArray(fm["dependsOn"]) ? (fm["dependsOn"] as string[]) : undefined,
     });
   }
 

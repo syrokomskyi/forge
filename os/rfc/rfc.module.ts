@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0260: declare typed `flags` schemas for the whole rfc.* command family; unknown/malformed flags now fail with KERNEL-FLAG-01/02/03 instead of being silently ignored.</item>
   <item>Post-refactor hardening: expose `rfc.create --satisfies` for explicit DNA trace scaffolding.</item>
+  <item>RFC-0795: add `--batch` flag to `rfc.list` for filtering by batch slug.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +58,10 @@ export const forgeRfcModule: ForgeModule = {
           description: "Filter by RFC kind (e.g. architecture, contract, command).",
         },
         owner: { kind: "string", description: "Filter by an owner string." },
+        batch: {
+          kind: "string",
+          description: "Filter by batch slug (e.g. engine-consolidation).",
+        },
       },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcList,
