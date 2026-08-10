@@ -148,8 +148,31 @@ export async function runMissionArchive(
 
   // Phase 1: Scan missions/ for terminal-state missions to move into archive
   const rootEntries = await fs.readdir(missionsPath, { withFileTypes: true });
+
+  // Stale symlink cleanup: IDEs or file watchers may recreate symlinks to
+  // archived mission directories after mission.archive has moved them.
+  // These symlinks break pnpm workspace resolution and mission number derivation.
+  // Trash them before they can cause downstream issues.
+  for (const e of rootEntries) {
+    if (e.isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME) {
+      const symlinkPath = path.join(missionsPath, e.name);
+      const sourceRel = `${MISSIONS_DIR}/${e.name}`;
+      if (!dryRun) {
+        await trashPath(symlinkPath);
+      }
+      skipped.push({
+        missionId: e.name,
+        dir: sourceRel,
+        reason: "stale symlink — trashed",
+      });
+      if (outputFormat === "pretty") {
+        logger.warn(`  stale symlink: trashed ${sourceRel}`);
+      }
+    }
+  }
+
   const rootDirs = rootEntries
-    .filter((e) => e.isDirectory() && e.name !== ARCHIVE_DIR_NAME)
+    .filter((e) => e.isDirectory() && !e.isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME)
     .map((e) => e.name);
 
   for (const missionId of rootDirs) {
