@@ -16,6 +16,7 @@
   <item>RFC-0465: added specRef field to RfcFrontmatter interface and RFC_KNOWN_KEYS array for PBP spec traceability.</item>
   <item>RFC-0478: added versionBump field to RfcFrontmatter interface and RFC_KNOWN_KEYS array for platform versioning enforcement.</item>
   <item>RFC-0480: added breaksC field to RfcFrontmatter interface and RFC_KNOWN_KEYS array for Layer C protection.</item>
+  <item>RFC-0795: added dependsOn, batch fields to RfcFrontmatter and RFC_KNOWN_KEYS; added RFC-IMP-07 to RfcImplementStampRule; added batch/dependsOn to RfcListEntry.</item>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -238,6 +239,24 @@ export interface RfcFrontmatter {
    * Absent or false means no living spec merge occurs.
    */
   liveSpec?: boolean | string;
+
+  /**
+   * RFC-0795: IDs of RFCs that must be `implemented` before this RFC
+   * can be stamped `implemented` via `rfc.implement.stamp`.
+   * Direct dependencies only — not transitive.
+   * Each entry must match ^RFC-\d{4}$ and exist in docs/rfcs/.
+   * Validated by V-33 (referential integrity) and RFC-IMP-07 (stamp gate).
+   */
+  dependsOn?: string[];
+
+  /**
+   * RFC-0795: Kebab-case slug grouping RFCs designed as a coherent set.
+   * Example: "engine-consolidation", "pbp-locale-fixes".
+   * Must match /^[a-z0-9]+(-[a-z0-9]+)*$/.
+   * Optional — RFCs without a batch are standalone.
+   * Filterable via `rfc.list --batch <slug>`.
+   */
+  batch?: string;
 } // ─── RFC-0268: acceptance probes ───────────────────────────────────────────
 
 /**
@@ -360,6 +379,10 @@ export interface RfcListEntry {
   createdAt: string;
   updatedAt: string;
   file: string;
+  /** RFC-0795: batch slug if this RFC belongs to a coherent set. */
+  batch?: string;
+  /** RFC-0795: direct dependency RFC IDs that must be implemented first. */
+  dependsOn?: string[];
 }
 
 export interface RfcListResult {
@@ -486,7 +509,13 @@ export interface RfcImplementStampData {
 }
 
 export type RfcImplementStampRule =
-  "RFC-IMP-01" | "RFC-IMP-02" | "RFC-IMP-03" | "RFC-IMP-04" | "RFC-IMP-05" | "RFC-IMP-06";
+  | "RFC-IMP-01"
+  | "RFC-IMP-02"
+  | "RFC-IMP-03"
+  | "RFC-IMP-04"
+  | "RFC-IMP-05"
+  | "RFC-IMP-06"
+  | "RFC-IMP-07";
 
 export interface RfcImplementStampViolation {
   rule: RfcImplementStampRule;
@@ -548,6 +577,8 @@ export const RFC_KNOWN_KEYS: readonly string[] = [
   "versionBump",
   "breaksC",
   "liveSpec",
+  "dependsOn",
+  "batch",
 ] as const;
 
 /**
