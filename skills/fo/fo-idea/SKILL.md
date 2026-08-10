@@ -223,6 +223,8 @@ Process documents **sequentially in dependency order** — foundational document
 2. When the creation skill collects metadata, include the cross-references:
    - **`related`** — list all other documents in the series by their assigned id (once created) or by title (if not yet created).
    - **`amends`** — if a document in the series amends an existing accepted RFC, set the `amends` field.
+   - **`dependsOn`** — for each document, based on the decomposition plan's dependency edges, write `dependsOn: [RFC-XXXX]` listing the RFC IDs that must be `implemented` before this RFC can be stamped. Direct dependencies only — not transitive.
+   - **`batch`** — write a shared `batch: <kebab-case-slug>` for all documents in the series. The slug should be descriptive of the overall task (e.g. "pbp-locale-fixes", "engine-consolidation"). Must match `/^[a-z0-9]+(-[a-z0-9]+)*$/`.
 3. The creation skill will grill, create, fill, validate, and report — let it run fully.
 4. After each document is created, record its assigned id for use in subsequent documents' `related` fields.
 5. Do not pause between documents in the series — continue to the next immediately.

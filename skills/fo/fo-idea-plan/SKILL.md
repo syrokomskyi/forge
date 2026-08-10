@@ -230,6 +230,10 @@ If multiple RFCs were processed, present a single batch summary in `aiLanguage`.
 
 Do not output per-RFC summaries or "Moving to RFC-XXXX next" messages during the loop; they belong here, at the very end.
 
+## Session affinity (advisory)
+
+When an RFC was planned in this session, prefer implementing it in this session too. The session context contains edge cases and mental models not fully captured in the plan text. If starting a new session, re-read the plan file and the RFC body before implementing. This is a recommendation, not a machine-enforced constraint — sessions have no forge-internal identity.
+
 ## Constraints
 
 - **Commit only your own files.** Stage only the files this skill produces or modifies — the plan file and the RFC file (for status transitions). Do not stage unrelated changes. Another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
