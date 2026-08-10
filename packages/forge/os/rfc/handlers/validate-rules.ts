@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Per-RFC validation rules (V-01..V-33, RFC-DIR-01) extracted from the validate handler for modularity.</purpose>
+<purpose>Per-RFC validation rules (V-01..V-34, RFC-DIR-01) extracted from the validate handler for modularity.</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior into this reusable package source file.</item>
 </non-goals>
@@ -9,6 +9,7 @@
   <item>RFC-0303 Phase 3: extracted from validate.ts as part of the handler split.</item>
   <item>RFC-0722: add RFC-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
   <item>RFC-0755: add V-RFC-33 frontmatter YAML parseability check (checkFrontmatterYamlParse helper).</item>
+  <item>RFC-0795: add V-33 dependsOn referential integrity/self-dependency/rejected-dependency and V-34 batch slug format rules.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -818,7 +819,9 @@ export async function validateSingleRfc(
     const packagesImpacted = Array.isArray(fm["packagesImpacted"])
       ? (fm["packagesImpacted"] as unknown[]).map(String)
       : [];
-    const hasOntology = packagesImpacted.some((p) => p.includes("@warpgogol/werkstatt-site/ontology"));
+    const hasOntology = packagesImpacted.some((p) =>
+      p.includes("@warpgogol/werkstatt-site/ontology"),
+    );
 
     if (breaksC === true && !hasOntology) {
       addViolation(
@@ -889,6 +892,58 @@ export async function validateSingleRfc(
         relFile,
         "V-32",
         `${rfcId} has ${driftResult.commitCount} implement: commit(s) in git history since ${createdAt} but status is still "${status}". Run rfc.implement.stamp to transition to implemented.`,
+        "warning",
+      );
+    }
+  }
+
+  // V-33: dependsOn referential integrity, self-dependency, rejected-dependency deadlock (RFC-0795)
+  const dependsOn = fm["dependsOn"];
+  if (Array.isArray(dependsOn)) {
+    for (const depRef of dependsOn) {
+      const depStr = String(depRef);
+      if (!depStr) continue;
+      if (depStr === rfcId) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-33",
+          `dependsOn includes itself — an RFC cannot depend on itself`,
+          "warning",
+        );
+      } else if (!allParsed.has(depStr)) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-33",
+          `dependsOn "${depStr}" does not match any existing RFC`,
+          "warning",
+        );
+      } else {
+        const depStatus = String(allParsed.get(depStr)!.parsed.frontmatter["status"] ?? "");
+        if (depStatus === "rejected") {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-33",
+            `dependsOn "${depStr}" has status "rejected" — this dependency will never be satisfied. Remove the entry or supersede the rejected RFC.`,
+            "warning",
+          );
+        }
+      }
+    }
+  }
+
+  // V-34: batch slug format (RFC-0795)
+  const batchSlug = fm["batch"];
+  if (batchSlug !== undefined && batchSlug !== null) {
+    const batchStr = String(batchSlug);
+    if (batchStr && !/^[a-z0-9]+(-[a-z0-9]+)*$/.test(batchStr)) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-34",
+        `batch slug "${batchStr}" does not match kebab-case pattern /^[a-z0-9]+(-[a-z0-9]+)*$/`,
         "warning",
       );
     }
