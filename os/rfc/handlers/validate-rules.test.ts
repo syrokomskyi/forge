@@ -762,3 +762,130 @@ describe("V-RFC-33: frontmatter YAML parseability (RFC-0755)", () => {
     expect(v33).toHaveLength(0);
   });
 });
+
+describe("V-33: dependsOn referential integrity (RFC-0795)", () => {
+  async function runValidateWithDeps(
+    parsed: ParsedRfc,
+    allParsed: Map<string, { fileName: string; parsed: ParsedRfc }>,
+  ): Promise<{ rfcId: string; rule: string; message: string; severity: string }[]> {
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      allParsed,
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    return violations;
+  }
+
+  function makeAllParsed(
+    entries: [string, ParsedRfc][],
+  ): Map<string, { fileName: string; parsed: ParsedRfc }> {
+    const map = new Map<string, { fileName: string; parsed: ParsedRfc }>();
+    for (const [id, parsed] of entries) {
+      map.set(id, { fileName: `rfc-${id.toLowerCase()}-test.md`, parsed });
+    }
+    return map;
+  }
+
+  test("warning when dependsOn references non-existent RFC", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      dependsOn: ["RFC-8888"],
+    });
+    const violations = await runValidateWithDeps(parsed, new Map());
+    const v33 = filterRule(violations, "V-33");
+    expect(v33).toHaveLength(1);
+    expect(v33[0]!.message).toContain("does not match any existing RFC");
+    expect(v33[0]!.severity).toBe("warning");
+  });
+
+  test("warning when dependsOn includes itself (self-dependency)", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      dependsOn: ["RFC-9999"],
+    });
+    const allParsed = makeAllParsed([["RFC-9999", parsed]]);
+    const violations = await runValidateWithDeps(parsed, allParsed);
+    const v33 = filterRule(violations, "V-33");
+    expect(v33).toHaveLength(1);
+    expect(v33[0]!.message).toContain("cannot depend on itself");
+  });
+
+  test("warning when dependsOn references a rejected RFC", async () => {
+    const depParsed = makeParsed("rejected", BASE_BODY, { id: "RFC-8888" });
+    const parsed = makeParsed("draft", BASE_BODY, {
+      dependsOn: ["RFC-8888"],
+    });
+    const allParsed = makeAllParsed([
+      ["RFC-8888", depParsed],
+      ["RFC-9999", parsed],
+    ]);
+    const violations = await runValidateWithDeps(parsed, allParsed);
+    const v33 = filterRule(violations, "V-33");
+    expect(v33).toHaveLength(1);
+    expect(v33[0]!.message).toContain('"rejected"');
+  });
+
+  test("no violation when dependsOn references an existing non-rejected RFC", async () => {
+    const depParsed = makeParsed("implemented", BASE_BODY, { id: "RFC-8888" });
+    const parsed = makeParsed("draft", BASE_BODY, {
+      dependsOn: ["RFC-8888"],
+    });
+    const allParsed = makeAllParsed([
+      ["RFC-8888", depParsed],
+      ["RFC-9999", parsed],
+    ]);
+    const violations = await runValidateWithDeps(parsed, allParsed);
+    const v33 = filterRule(violations, "V-33");
+    expect(v33).toHaveLength(0);
+  });
+
+  test("no violation when dependsOn is absent", async () => {
+    const parsed = makeParsed("draft", BASE_BODY);
+    const violations = await runValidateWithDeps(parsed, new Map());
+    const v33 = filterRule(violations, "V-33");
+    expect(v33).toHaveLength(0);
+  });
+});
+
+describe("V-34: batch slug format (RFC-0795)", () => {
+  test("warning when batch slug has uppercase and spaces", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      batch: "Engine Consolidation",
+    });
+    const violations = await runValidate(parsed);
+    const v34 = filterRule(violations, "V-34");
+    expect(v34).toHaveLength(1);
+    expect(v34[0]!.message).toContain("kebab-case");
+    expect(v34[0]!.severity).toBe("warning");
+  });
+
+  test("no violation when batch slug is valid kebab-case", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      batch: "engine-consolidation",
+    });
+    const violations = await runValidate(parsed);
+    const v34 = filterRule(violations, "V-34");
+    expect(v34).toHaveLength(0);
+  });
+
+  test("no violation when batch is absent", async () => {
+    const parsed = makeParsed("draft", BASE_BODY);
+    const violations = await runValidate(parsed);
+    const v34 = filterRule(violations, "V-34");
+    expect(v34).toHaveLength(0);
+  });
+
+  test("warning when batch slug has underscores", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      batch: "engine_consolidation",
+    });
+    const violations = await runValidate(parsed);
+    const v34 = filterRule(violations, "V-34");
+    expect(v34).toHaveLength(1);
+  });
+});
