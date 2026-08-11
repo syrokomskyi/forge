@@ -79,6 +79,7 @@ workspace:
         .obsidian/workspace
         .obsidian/workspace.json
         .cache
+        operator-profile.md
     - path: forge.yaml
       content: |
         schema: forge/config@1
