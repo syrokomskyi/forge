@@ -1,0 +1,102 @@
+schema: forge/stack-profile@1
+id: obsidian-vault
+displayName: Obsidian Knowledge Base
+detect:
+  anyOf:
+    - .obsidian/app.json
+    - vault/**/*.md
+domain: knowledge-base
+register: creative
+terminology:
+  artifact: note
+  artifactPlural: notes
+  module: folder
+  source: markdown file
+  output: export
+  verify: link-check
+  operator: author
+scriptDir: scripts
+artifacts:
+  - id: note
+    extensions:
+      - .md
+    validate:
+      command: note.link.validate
+  - id: canvas
+    extensions:
+      - .canvas
+  - id: attachment
+    extensions:
+      - .png
+      - .jpg
+      - .jpeg
+      - .webp
+      - .svg
+      - .pdf
+      - .mp4
+      - .webm
+workspaceTypes:
+  - id: vault
+    detect:
+      glob: "**/*.md"
+      contains: "---"
+invariants:
+  - id: NOTE-01
+    rule: All [[wikilinks]] must resolve to an existing note file
+    severity: error
+    check:
+      kind: link-resolution
+      glob: "vault/**/*.md"
+  - id: NOTE-02
+    rule: Every note must have a title in frontmatter (title or first H1)
+    severity: warning
+    check:
+      kind: frontmatter-required
+      glob: "vault/**/*.md"
+      fields: [title]
+  - id: NOTE-03
+    rule: No executable code files in vault/ (scripts go to scripts/ per ADR-0043)
+    severity: error
+    check:
+      kind: path-exclusion
+      glob: "vault/**/*.{ts,mjs,js,py,sh}"
+  - id: NOTE-04
+    rule: Note filenames must use kebab-case (lowercase letters, digits, hyphens)
+    severity: warning
+    check:
+      kind: filename-pattern
+      glob: "vault/**/*.md"
+      pattern: "^[a-z0-9]+(-[a-z0-9]+)*\\.md$"
+workspace:
+  dirs:
+    - vault
+    - scripts
+    - .forge
+  files:
+    - path: .gitignore
+      content: |
+        node_modules
+        .obsidian/workspace
+        .obsidian/workspace.json
+        .cache
+    - path: forge.yaml
+      content: |
+        schema: forge/config@1
+        project:
+          name: __PROJECT_NAME__
+          stack:
+            - obsidian-vault
+          packageManager: pnpm
+        paths:
+          rfcsDir: docs/rfcs
+          adrsDir: docs/adrs
+    - path: package.json
+      content: |
+        {
+          "name": "__PROJECT_NAME__",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module"
+        }
+install:
+  - pnpm add -D @warpgogol/forge
