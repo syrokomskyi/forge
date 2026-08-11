@@ -57,6 +57,20 @@ export async function runRfcValidate(
 
   const allParsed: Map<string, { fileName: string; parsed: ParsedRfc }> = new Map();
   const allParsedByFile: Map<string, { fileName: string; parsed: ParsedRfc }> = new Map();
+
+  const violations: RfcValidationViolation[] = [];
+  const allMarkers: Marker[] = [];
+
+  function addViolation(
+    rfcId: string,
+    file: string,
+    rule: string,
+    message: string,
+    severity: "error" | "warning" = "error",
+  ): void {
+    violations.push({ rfcId, file, rule, message, severity });
+  }
+
   for (const f of allFiles) {
     const result = await readAndParseRfc(rfcDirPath, f);
     if (result) {
@@ -73,19 +87,6 @@ export async function runRfcValidate(
   const validDnaIds = await loadInvariantIds(workspaceRoot, DNA_DOCS, "DNA");
   const validApIds = await loadInvariantIds(workspaceRoot, AP_DOCS, "AP");
   const knownKeys = new Set<string>(RFC_KNOWN_KEYS);
-
-  const violations: RfcValidationViolation[] = [];
-  const allMarkers: Marker[] = [];
-
-  function addViolation(
-    rfcId: string,
-    file: string,
-    rule: string,
-    message: string,
-    severity: "error" | "warning" = "error",
-  ): void {
-    violations.push({ rfcId, file, rule, message, severity });
-  }
 
   const seenIds = new Map<string, string>();
   const seenFilenameNumbers = new Map<number, string>();
