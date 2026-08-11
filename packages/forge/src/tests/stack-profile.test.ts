@@ -174,3 +174,22 @@ test("all shipped profiles include operator-profile.md in .gitignore content", (
     expect(gitignoreFile?.content).toContain("operator-profile.md");
   }
 });
+
+test("stackProfileSchema accepts optional scriptDir field (ADR-0043)", () => {
+  const withScriptDir = { ...validProfile, scriptDir: "tools/scripts" };
+  const result = stackProfileSchema.safeParse(withScriptDir);
+  expect(result.success).toBe(true);
+  expect((result.data as StackProfile).scriptDir).toBe("tools/scripts");
+});
+
+test("stackProfileSchema accepts profile without scriptDir (defaults to scripts/)", () => {
+  const result = stackProfileSchema.safeParse(validProfile);
+  expect(result.success).toBe(true);
+  expect((result.data as StackProfile).scriptDir).toBeUndefined();
+});
+
+test("stackProfileSchema rejects empty scriptDir string", () => {
+  const bad = { ...validProfile, scriptDir: "" };
+  const result = stackProfileSchema.safeParse(bad);
+  expect(result.success).toBe(false);
+});

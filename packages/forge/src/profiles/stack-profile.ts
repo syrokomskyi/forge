@@ -12,6 +12,7 @@
   <item>RFC-0674: add devServer field to stackProfileSchema for lifecycle commands.</item>
   <item>RFC-0679: add assets field to stackProfileSchema for asset management commands.</item>
   <item>RFC-0680: add release field to stackProfileSchema for release lifecycle commands.</item>
+  <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -71,6 +72,8 @@ export const stackProfileSchema = z.object({
   prerequisites: stackProfileDomainFieldsSchema.shape.prerequisites,
   // Templates: multi-template profiles (e.g. React + HTML)
   templates: stackProfileDomainFieldsSchema.shape.templates,
+  // ADR-0043: Agent-generated script directory override
+  scriptDir: stackProfileDomainFieldsSchema.shape.scriptDir,
 });
 
 export interface ProfileFile {
