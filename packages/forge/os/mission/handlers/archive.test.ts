@@ -10,6 +10,12 @@ vi.mock("../../../src/utils/fs-trash.ts", () => ({
   trashPath: (targetPath: string) => fs.rm(targetPath, { recursive: true, force: true }),
 }));
 
+const execSyncMock = vi.fn<(cmd: string, opts?: Record<string, unknown>) => string | Buffer>();
+
+vi.mock("node:child_process", () => ({
+  execSync: (cmd: string, opts?: Record<string, unknown>) => execSyncMock(cmd, opts),
+}));
+
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {
     workspaceRoot,
@@ -308,5 +314,78 @@ describe("mission.archive", () => {
     // Service folders should still exist at source in dry-run
     expect(existsSync(path.join(workpieceDir, "node_modules"))).toBe(true);
     expect(existsSync(path.join(workpieceDir, "node_modules", "pkg.txt"))).toBe(true);
+  });
+
+  test("RFC-0804: pnpm install called after moves", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockReturnValue("");
+    await writeMissionManifest(missionsDir, "test-m017", "closed");
+
+    await runMissionArchive(makeInput(), makeContext(tmpDir));
+
+    const installCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("pnpm install"),
+    );
+    expect(installCall).toBeDefined();
+    expect(installCall![1]).toMatchObject({ cwd: tmpDir });
+  });
+
+  test("RFC-0804: lockfile committed when dirty after install", async () => {
+    execSyncMock.mockReset();
+    // pnpm install succeeds, git status shows dirty lockfile, git add/commit succeed
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("pnpm install")) return "";
+      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
+      return "";
+    });
+    await writeMissionManifest(missionsDir, "test-m018", "closed");
+
+    await runMissionArchive(makeInput(), makeContext(tmpDir));
+
+    const commitCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git commit"),
+    );
+    expect(commitCall).toBeDefined();
+    expect(commitCall![0]).toContain("refresh pnpm-lock.yaml after mission.archive");
+  });
+
+  test("RFC-0804: pnpm install failure is non-fatal", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("pnpm install")) throw new Error("ECONNREFUSED");
+      return "";
+    });
+    await writeMissionManifest(missionsDir, "test-m019", "closed");
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-m019");
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-m019"))).toBe(true);
+  });
+
+  test("RFC-0804: dry-run skips lockfile refresh", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockReturnValue("");
+    await writeMissionManifest(missionsDir, "test-m020", "closed");
+
+    await runMissionArchive(makeInput({ "dry-run": true }), makeContext(tmpDir));
+
+    const installCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("pnpm install"),
+    );
+    expect(installCall).toBeUndefined();
+  });
+
+  test("RFC-0804: no moves skips lockfile refresh", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockReturnValue("");
+
+    await runMissionArchive(makeInput(), makeContext(tmpDir));
+
+    const installCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("pnpm install"),
+    );
+    expect(installCall).toBeUndefined();
   });
 });
