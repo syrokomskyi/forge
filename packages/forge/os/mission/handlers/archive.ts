@@ -420,9 +420,9 @@ export async function runMissionArchive(
         );
         logger.info(`  Committed pnpm-lock.yaml refresh (${moved.length} missions archived)`);
       }
-    } catch (installErr) {
+    } catch (refreshErr) {
       logger.warn(
-        `  pnpm install failed after archive — lockfile may be stale. Run 'pnpm install' manually: ${installErr instanceof Error ? installErr.message : String(installErr)}`,
+        `  Lockfile refresh failed after archive — lockfile may be stale. Run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
       );
     }
   }
