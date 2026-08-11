@@ -26,6 +26,7 @@ Portable governance skills and command modules extracted from the engine (RFC-03
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list` | `os/session/` |
 | `forgeMissionModule` | `mission.archive` | `os/mission/` |
 | `forgeExplorationModule` | `exploration.list`, `exploration.show`, `exploration.archive` | `os/exploration/` |
+| `forgeNotesModule` | `note.link.validate`, `note.frontmatter.validate`, `note.orphan.detect` | `os/notes/` |
 
 ## Archive convention
 
