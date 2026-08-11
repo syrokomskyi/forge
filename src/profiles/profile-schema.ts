@@ -15,6 +15,7 @@
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
   <item>Add prerequisites field for profile-declared system dependency checks (e.g. FFmpeg).</item>
   <item>Add templates field for multi-template profiles (e.g. React + HTML).</item>
+  <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -302,6 +303,7 @@ export const stackProfileDomainFieldsSchema = z.object({
   release: profileReleaseSchema.optional(),
   prerequisites: z.array(profilePrerequisiteSchema).optional(),
   templates: z.array(profileTemplateSchema).optional(),
+  scriptDir: z.string().min(1).optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -316,4 +318,5 @@ export interface StackProfileDomainFields {
   release?: ProfileRelease;
   prerequisites?: ProfilePrerequisite[];
   templates?: ProfileTemplate[];
+  scriptDir?: string;
 }
