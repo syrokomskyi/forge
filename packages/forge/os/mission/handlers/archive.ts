@@ -24,6 +24,7 @@ archive subdirectories back to missions/.
 import fs from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
+import { execSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import type {
   ForgeCommandInput,
@@ -386,6 +387,43 @@ export async function runMissionArchive(
     }
     for (const m of moved) {
       logger.info(`  ${m.direction}: ${m.missionId} (${m.state}) ${m.from} → ${m.to}`);
+    }
+  }
+
+  // RFC-0804: Post-move lockfile refresh
+  if (!dryRun && moved.length > 0) {
+    try {
+      execSync("pnpm install", {
+        cwd: workspaceRoot,
+        stdio: ["pipe", "pipe", "pipe"],
+        timeout: 120_000,
+      });
+      const lockfileStatus = execSync("git status --porcelain pnpm-lock.yaml", {
+        cwd: workspaceRoot,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }).trim();
+      if (lockfileStatus) {
+        execSync("git add pnpm-lock.yaml", {
+          cwd: workspaceRoot,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        for (const m of moved) {
+          execSync(`git add -A ${JSON.stringify(m.from)} ${JSON.stringify(m.to)}`, {
+            cwd: workspaceRoot,
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+        }
+        execSync(
+          `git commit -m ${JSON.stringify(`chore: refresh pnpm-lock.yaml after mission.archive (${moved.length} moved)`)}`,
+          { cwd: workspaceRoot, stdio: ["pipe", "pipe", "pipe"] },
+        );
+        logger.info(`  Committed pnpm-lock.yaml refresh (${moved.length} missions archived)`);
+      }
+    } catch (installErr) {
+      logger.warn(
+        `  pnpm install failed after archive — lockfile may be stale. Run 'pnpm install' manually: ${installErr instanceof Error ? installErr.message : String(installErr)}`,
+      );
     }
   }
 
