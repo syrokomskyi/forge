@@ -10,11 +10,13 @@
   <item>RFC-0675: initial invariant enforcement engine with three check kinds.</item>
   <item>RFC-0691: add html-attribute-pattern check kind for HTML attribute value validation.</item>
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
+  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for obsidian-vault profile.</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import type { StackProfile } from "../profiles/stack-profile.ts";
 import type { ProfileInvariant } from "../profiles/profile-schema.ts";
 
@@ -114,13 +116,18 @@ function runCheck(
   const glob = check.glob;
   if (!glob) return [];
 
-  const pattern = check.pattern ?? check.negatedPattern;
-  if (!pattern) return [];
-
   const matchedFiles = filterByGlob(allFiles, glob);
-  const compiled = compilePattern(invariant, pattern);
-  if ("error" in compiled) return [compiled.error];
-  const regex = compiled;
+
+  const pattern = check.pattern ?? check.negatedPattern;
+  const needsPattern = check.kind === "filename-pattern" ||
+    check.kind === "file-contains" ||
+    check.kind === "file-not-contains" ||
+    check.kind === "attribute-pattern";
+  if (needsPattern && !pattern) return [];
+
+  const compiled = pattern ? compilePattern(invariant, pattern) : null;
+  if (compiled && "error" in compiled) return [compiled.error];
+  const regex = compiled && !("error" in compiled) ? compiled : null;
 
   const violations: InvariantViolation[] = [];
 
@@ -128,7 +135,7 @@ function runCheck(
     case "filename-pattern":
       for (const file of matchedFiles) {
         const filename = path.basename(file);
-        if (!regex.test(filename)) {
+        if (!regex!.test(filename)) {
           violations.push({
             invariantId: invariant.id,
             severity: invariant.severity,
@@ -144,7 +151,7 @@ function runCheck(
         const fullPath = path.join(workspaceRoot, file);
         try {
           const content = fs.readFileSync(fullPath, "utf8");
-          if (!regex.test(content)) {
+          if (!regex!.test(content)) {
             violations.push({
               invariantId: invariant.id,
               severity: invariant.severity,
@@ -163,7 +170,7 @@ function runCheck(
         const fullPath = path.join(workspaceRoot, file);
         try {
           const content = fs.readFileSync(fullPath, "utf8");
-          if (regex.test(content)) {
+          if (regex!.test(content)) {
             violations.push({
               invariantId: invariant.id,
               severity: invariant.severity,
@@ -208,7 +215,7 @@ function runCheck(
             const attrMatch = attrRegex.exec(elementSnippet);
             if (!attrMatch) continue;
             const attrValue = attrMatch[1] ?? attrMatch[2] ?? "";
-            if (!regex.test(attrValue)) {
+            if (!regex!.test(attrValue)) {
               violations.push({
                 invariantId: invariant.id,
                 severity: invariant.severity,
@@ -221,6 +228,123 @@ function runCheck(
         } catch {
           // skip unreadable files
         }
+      }
+      break;
+    }
+    case "link-resolution": {
+      const allMdFiles = allFiles.filter((f) => f.endsWith(".md"));
+      const noteMap = new Map<string, string>();
+      for (const mdFile of allMdFiles) {
+        const basename = path.basename(mdFile, ".md");
+        noteMap.set(basename, mdFile);
+        const fullPath = path.join(workspaceRoot, mdFile);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+          if (fmMatch) {
+            try {
+              const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
+              if (fm.aliases && Array.isArray(fm.aliases)) {
+                for (const alias of fm.aliases) {
+                  if (typeof alias === "string") noteMap.set(alias, mdFile);
+                }
+              }
+            } catch {
+              // skip malformed frontmatter
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+      const linkRegex = /\[\[([^\]]+?)\]\]/g;
+      for (const file of matchedFiles) {
+        const fullPath = path.join(workspaceRoot, file);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          const lines = content.split(/\r?\n/);
+          for (let i = 0; i < lines.length; i++) {
+            let match: RegExpExecArray | null;
+            linkRegex.lastIndex = 0;
+            while ((match = linkRegex.exec(lines[i])) !== null) {
+              const linkTarget = match[1].split("|")[0].split("#")[0].trim();
+              if (!linkTarget) continue;
+              if (!noteMap.has(linkTarget)) {
+                violations.push({
+                  invariantId: invariant.id,
+                  severity: invariant.severity,
+                  rule: invariant.rule,
+                  file,
+                  message: `Wikilink target '${linkTarget}' not found in vault`,
+                });
+              }
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+      break;
+    }
+    case "frontmatter-required": {
+      const fields = check.fields;
+      if (!fields || fields.length === 0) break;
+      for (const file of matchedFiles) {
+        const fullPath = path.join(workspaceRoot, file);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+          if (!fmMatch) {
+            violations.push({
+              invariantId: invariant.id,
+              severity: invariant.severity,
+              rule: invariant.rule,
+              file,
+              message: `File '${file}' has no frontmatter`,
+            });
+            break;
+          }
+          let fm: Record<string, unknown> = {};
+          try {
+            fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
+          } catch {
+            violations.push({
+              invariantId: invariant.id,
+              severity: invariant.severity,
+              rule: invariant.rule,
+              file,
+              message: `File '${file}' has malformed frontmatter`,
+            });
+            break;
+          }
+          for (const field of fields) {
+            if (!(field in fm) || fm[field] == null || fm[field] === "") {
+              const hasH1 = /^\s*#\s+\S/.test(content.slice(fmMatch[0].length));
+              if (field === "title" && hasH1) continue;
+              violations.push({
+                invariantId: invariant.id,
+                severity: invariant.severity,
+                rule: invariant.rule,
+                file,
+                message: `File '${file}' missing required field '${field}'`,
+              });
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
+      }
+      break;
+    }
+    case "path-exclusion": {
+      for (const file of matchedFiles) {
+        violations.push({
+          invariantId: invariant.id,
+          severity: invariant.severity,
+          rule: invariant.rule,
+          file,
+          message: `File '${file}' matches excluded pattern`,
+        });
       }
       break;
     }

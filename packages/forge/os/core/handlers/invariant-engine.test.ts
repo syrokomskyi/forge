@@ -9,6 +9,7 @@
   <item>RFC-0675: initial invariant engine unit tests.</item>
   <item>RFC-0691: add html-attribute-pattern check kind tests.</item>
   <item>RFC-0694: replace html-attribute-pattern tests with attribute-pattern (elements array) tests, add JSX syntax test.</item>
+  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kind tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -467,5 +468,214 @@ describe("invariant-engine", () => {
     expect(results[0].violations).toHaveLength(1);
     expect(results[0].violations[0].severity).toBe("warning");
     expect(results[0].violations[0].message).toContain("without elements or attribute");
+  });
+
+  it("link-resolution detects broken wikilinks", () => {
+    writeFile(
+      tempDir,
+      "vault/note-1.md",
+      "---\ntitle: Note 1\n---\nLink to [[note-2]] and [[missing-note]].",
+    );
+    writeFile(tempDir, "vault/note-2.md", "---\ntitle: Note 2\n---\nBack to [[note-1]].");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-01",
+          rule: "All wikilinks must resolve",
+          severity: "error",
+          check: {
+            kind: "link-resolution",
+            glob: "vault/**/*.md",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].invariantId).toBe("NOTE-01");
+    expect(results[0].violations[0].file).toBe("vault/note-1.md");
+    expect(results[0].violations[0].message).toContain("missing-note");
+  });
+
+  it("link-resolution passes when all links resolve", () => {
+    writeFile(tempDir, "vault/note-1.md", "---\ntitle: Note 1\n---\nLink to [[note-2]].");
+    writeFile(tempDir, "vault/note-2.md", "---\ntitle: Note 2\n---\nBack to [[note-1]].");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-01",
+          rule: "All wikilinks must resolve",
+          severity: "error",
+          check: {
+            kind: "link-resolution",
+            glob: "vault/**/*.md",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
+  });
+
+  it("link-resolution resolves aliases", () => {
+    writeFile(
+      tempDir,
+      "vault/note-1.md",
+      "---\ntitle: Note 1\naliases: [alias-1]\n---\nLink to [[alias-1]].",
+    );
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-01",
+          rule: "All wikilinks must resolve",
+          severity: "error",
+          check: {
+            kind: "link-resolution",
+            glob: "vault/**/*.md",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
+  });
+
+  it("frontmatter-required detects missing title field", () => {
+    writeFile(tempDir, "vault/note-1.md", "---\ntags: [a]\n---\nNo title here.");
+    writeFile(tempDir, "vault/note-2.md", "---\ntitle: Note 2\n---\nHas title.");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-02",
+          rule: "Every note must have a title",
+          severity: "warning",
+          check: {
+            kind: "frontmatter-required",
+            glob: "vault/**/*.md",
+            fields: ["title"],
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].invariantId).toBe("NOTE-02");
+    expect(results[0].violations[0].file).toBe("vault/note-1.md");
+    expect(results[0].violations[0].message).toContain("title");
+  });
+
+  it("frontmatter-required falls back to first H1 for title", () => {
+    writeFile(tempDir, "vault/note-1.md", "---\ntags: [a]\n---\n# My Title\nContent.");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-02",
+          rule: "Every note must have a title",
+          severity: "warning",
+          check: {
+            kind: "frontmatter-required",
+            glob: "vault/**/*.md",
+            fields: ["title"],
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
+  });
+
+  it("frontmatter-required flags files without frontmatter", () => {
+    writeFile(tempDir, "vault/note-1.md", "No frontmatter here.");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-02",
+          rule: "Every note must have a title",
+          severity: "warning",
+          check: {
+            kind: "frontmatter-required",
+            glob: "vault/**/*.md",
+            fields: ["title"],
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(1);
+    expect(results[0].violations[0].message).toContain("no frontmatter");
+  });
+
+  it("path-exclusion detects code files in vault", () => {
+    writeFile(tempDir, "vault/note.md", "---\ntitle: Note\n---\nContent.");
+    writeFile(tempDir, "vault/script.ts", "export const x = 1;");
+    writeFile(tempDir, "vault/helper.py", "print('hello')");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-03",
+          rule: "No executable code files in vault",
+          severity: "error",
+          check: {
+            kind: "path-exclusion",
+            glob: "vault/**/*.{ts,mjs,js,py,sh}",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(2);
+    const files = results[0].violations.map((v) => v.file).sort();
+    expect(files).toEqual(["vault/helper.py", "vault/script.ts"]);
+  });
+
+  it("path-exclusion passes when no code files exist", () => {
+    writeFile(tempDir, "vault/note.md", "---\ntitle: Note\n---\nContent.");
+
+    const profile: StackProfile = {
+      ...baseProfile,
+      invariants: [
+        {
+          id: "NOTE-03",
+          rule: "No executable code files in vault",
+          severity: "error",
+          check: {
+            kind: "path-exclusion",
+            glob: "vault/**/*.{ts,mjs,js,py,sh}",
+          },
+        },
+      ],
+    };
+
+    const results = checkInvariants(profile, tempDir);
+    expect(results).toHaveLength(1);
+    expect(results[0].violations).toHaveLength(0);
   });
 });
