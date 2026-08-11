@@ -9,7 +9,7 @@ archive subdirectories back to missions/.
 <non-goals>
   <item>Does not validate mission manifest schema — reads only the state field.</item>
   <item>Does not change mission.yaml — only moves directories on disk.</item>
-  <item>Does not import from @warpgogol/* packages — uses node:fs and yaml only.</item>
+  <item>Does not import from @warpgogol/* packages — uses node:fs, node:child_process, and yaml only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -17,6 +17,7 @@ archive subdirectories back to missions/.
   <item>RFC-0573: extract moveMissionDir helper to eliminate Phase 1/2 duplication.</item>
   <item>RFC-0801: add service-folder cleanup (node_modules, dist, .astro, .wrangler, .cache, .turbo) before archive move.</item>
   <item>RFC-0733: add pinned-files pre-check — skip pinned mission directories with warning instead of moving them.</item>
+  <item>RFC-0804: auto-refresh pnpm-lock.yaml after directory moves.</item>
 </CHANGE_SUMMARY>
 */
 
