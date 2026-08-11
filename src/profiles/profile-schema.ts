@@ -16,6 +16,7 @@
   <item>Add prerequisites field for profile-declared system dependency checks (e.g. FFmpeg).</item>
   <item>Add templates field for multi-template profiles (e.g. React + HTML).</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
+  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for obsidian-vault profile.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -123,12 +124,21 @@ export interface ProfileWorkspaceType {
 
 export const profileInvariantCheckSchema = z
   .object({
-    kind: z.enum(["filename-pattern", "file-contains", "file-not-contains", "attribute-pattern"]),
+    kind: z.enum([
+      "filename-pattern",
+      "file-contains",
+      "file-not-contains",
+      "attribute-pattern",
+      "link-resolution",
+      "frontmatter-required",
+      "path-exclusion",
+    ]),
     glob: z.string().optional(),
     pattern: z.string().optional(),
     negatedPattern: z.string().optional(),
     elements: z.array(z.string()).optional(),
     attribute: z.string().optional(),
+    fields: z.array(z.string()).optional(),
   })
   .refine(
     (v) =>
@@ -138,15 +148,26 @@ export const profileInvariantCheckSchema = z
       message:
         "elements (non-empty array), attribute, and pattern are required for kind: attribute-pattern",
     },
-  );
+  )
+  .refine((v) => v.kind !== "frontmatter-required" || (v.fields != null && v.fields.length > 0), {
+    message: "fields (non-empty array) is required for kind: frontmatter-required",
+  });
 
 export interface ProfileInvariantCheck {
-  kind: "filename-pattern" | "file-contains" | "file-not-contains" | "attribute-pattern";
+  kind:
+    | "filename-pattern"
+    | "file-contains"
+    | "file-not-contains"
+    | "attribute-pattern"
+    | "link-resolution"
+    | "frontmatter-required"
+    | "path-exclusion";
   glob?: string;
   pattern?: string;
   negatedPattern?: string;
   elements?: string[];
   attribute?: string;
+  fields?: string[];
 }
 
 export const profileInvariantSchema = z.object({
