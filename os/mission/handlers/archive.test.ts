@@ -256,4 +256,57 @@ describe("mission.archive", () => {
     // But should be reported as skipped
     expect(data.skipped.some((s) => s.reason === "stale symlink — trashed")).toBe(true);
   });
+
+  test("RFC-0801: service folders deleted before move", async () => {
+    await writeMissionManifest(missionsDir, "test-m014", "closed");
+    const missionDir = path.join(missionsDir, "test-m014");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(workpieceDir, { recursive: true });
+
+    // Create service folders with dummy content
+    for (const folder of ["node_modules", "dist", ".astro", ".wrangler", ".cache", ".turbo"]) {
+      const folderPath = path.join(workpieceDir, folder);
+      await fs.mkdir(folderPath, { recursive: true });
+      await fs.writeFile(path.join(folderPath, "dummy.txt"), `content of ${folder}\n`);
+    }
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-m014");
+
+    const archivedWorkpiece = path.join(missionsDir, "archive", "closed", "test-m014", "workpiece");
+    for (const folder of ["node_modules", "dist", ".astro", ".wrangler", ".cache", ".turbo"]) {
+      expect(existsSync(path.join(archivedWorkpiece, folder))).toBe(false);
+    }
+  });
+
+  test("RFC-0801: mission without workpiece — cleanup skipped gracefully", async () => {
+    await writeMissionManifest(missionsDir, "test-m015", "closed");
+    // No workpiece/ directory created — simulates aborted mission
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-m015");
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-m015"))).toBe(true);
+  });
+
+  test("RFC-0801: --dry-run does not delete service folders", async () => {
+    await writeMissionManifest(missionsDir, "test-m016", "closed");
+    const missionDir = path.join(missionsDir, "test-m016");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(workpieceDir, { recursive: true });
+    await fs.mkdir(path.join(workpieceDir, "node_modules"), { recursive: true });
+    await fs.writeFile(path.join(workpieceDir, "node_modules", "pkg.txt"), "content\n");
+
+    const data = unwrap(
+      await runMissionArchive(makeInput({ "dry-run": true }), makeContext(tmpDir)),
+    );
+
+    expect(data.dryRun).toBe(true);
+    // Service folders should still exist at source in dry-run
+    expect(existsSync(path.join(workpieceDir, "node_modules"))).toBe(true);
+    expect(existsSync(path.join(workpieceDir, "node_modules", "pkg.txt"))).toBe(true);
+  });
 });
