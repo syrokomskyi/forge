@@ -15,7 +15,7 @@ archive subdirectories back to missions/.
 <CHANGE_SUMMARY>
   <item>RFC-0573: implement mission.archive command.</item>
   <item>RFC-0573: extract moveMissionDir helper to eliminate Phase 1/2 duplication.</item>
-  <item>Replace fs.rm with trashPath for post-rename cleanup (trash bin for LLM-initiated deletions).</item>
+  <item>RFC-0801: add service-folder cleanup (node_modules, dist, .astro, .wrangler, .cache, .turbo) before archive move.</item>
   <item>RFC-0733: add pinned-files pre-check — skip pinned mission directories with warning instead of moving them.</item>
 </CHANGE_SUMMARY>
 */
@@ -39,6 +39,27 @@ import {
   type MissionArchiveResult,
 } from "../types.ts";
 import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
+
+const SERVICE_FOLDERS = [
+  "node_modules",
+  "dist",
+  ".astro",
+  ".wrangler",
+  ".cache",
+  ".turbo",
+] as const;
+
+async function cleanServiceFolders(workpieceDir: string): Promise<string[]> {
+  const removed: string[] = [];
+  for (const folder of SERVICE_FOLDERS) {
+    const target = path.join(workpieceDir, folder);
+    if (existsSync(target)) {
+      await fs.rm(target, { recursive: true, force: true });
+      removed.push(folder);
+    }
+  }
+  return removed;
+}
 
 async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
@@ -68,6 +89,7 @@ async function moveMissionDir(
   targetRel: string,
   direction: "into-archive" | "out-of-archive",
   dryRun: boolean,
+  logger?: { info: (msg: string) => void; warn: (msg: string) => void },
 ): Promise<MoveAttempt> {
   if (existsSync(targetPath)) {
     return { moved: null, skip: { missionId, dir: sourceRel, reason: "destination exists" } };
@@ -77,6 +99,28 @@ async function moveMissionDir(
     if (targetParentDir) {
       await fs.mkdir(targetParentDir, { recursive: true });
     }
+
+    // RFC-0801: Clean service folders from workpiece before move.
+    // node_modules/, dist/, .astro/, .wrangler/, .cache/, .turbo/ contain
+    // broken symlinks and stale build artifacts that waste disk space in archive.
+    // Aborted missions may not have a workpiece/ directory — skip gracefully.
+    const workpieceDir = path.join(sourcePath, "workpiece");
+    if (existsSync(workpieceDir)) {
+      try {
+        const removed = await cleanServiceFolders(workpieceDir);
+        if (removed.length > 0 && logger) {
+          logger.info(`    cleaned service folders: ${removed.join(", ")}`);
+        }
+      } catch (cleanupErr) {
+        // Non-fatal: log warning and continue with move
+        if (logger) {
+          logger.warn(
+            `  Warning: service folder cleanup failed for ${missionId}: ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        }
+      }
+    }
+
     try {
       await fs.rename(sourcePath, targetPath);
     } catch (err) {
@@ -241,6 +285,7 @@ export async function runMissionArchive(
       targetRel,
       "into-archive",
       dryRun,
+      logger,
     );
     if (result.skip) {
       skipped.push(result.skip);
@@ -317,6 +362,7 @@ export async function runMissionArchive(
           targetRel,
           "out-of-archive",
           dryRun,
+          logger,
         );
         if (result.skip) {
           skipped.push(result.skip);
