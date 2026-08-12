@@ -23,6 +23,7 @@
   <item>ADR-0021: profile-driven video lifecycle — all lifecycle commands read behavior from profile YAML, zero domain-specific code in Forge source.</item>
   <item>RFC-0711: docs.archive post-loop step calls spec.live.merge for implemented RFCs with liveSpec field; skips rejected RFCs.</item>
   <item>RFC-0733: register forge pinned.validate and forge pinned.init commands for pinned-files protection system.</item>
+  <item>Lockfile safety net: docs.archive post-loop refreshes pnpm-lock.yaml after mission workpiece moves.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -796,6 +797,41 @@ export const forgeCoreModule: ForgeModule = {
             for (const r of liveMergeResults) {
               logger.info(
                 `  spec.live.merge: ${r.id} → ${r.domain} (${r.operation})${r.conflicts > 0 ? ` [${r.conflicts} conflicts]` : ""}${dryRun ? " [dry-run]" : ""}`,
+              );
+            }
+          }
+        }
+
+        // Post-loop lockfile refresh — safety net for mission.archive's own refresh.
+        // If mission.archive moved workpieces but its pnpm install / git commit failed
+        // silently, the lockfile stays dirty. This catches it and stages the lockfile
+        // so the caller (or the next commit) includes it.
+        if (!dryRun && totalMoved > 0) {
+          try {
+            const { execSync } = await import("node:child_process");
+            const lockfileStatus = execSync("git status --porcelain pnpm-lock.yaml", {
+              cwd: context.workspaceRoot,
+              encoding: "utf-8",
+              stdio: ["pipe", "pipe", "pipe"],
+            }).trim();
+            if (lockfileStatus) {
+              execSync("pnpm install", {
+                cwd: context.workspaceRoot,
+                stdio: ["pipe", "pipe", "pipe"],
+                timeout: 120_000,
+              });
+              execSync("git add pnpm-lock.yaml", {
+                cwd: context.workspaceRoot,
+                stdio: ["pipe", "pipe", "pipe"],
+              });
+              if (outputFormat === "pretty") {
+                logger.info("  docs.archive: staged pnpm-lock.yaml refresh (safety net)");
+              }
+            }
+          } catch (refreshErr) {
+            if (outputFormat === "pretty") {
+              logger.warn(
+                `  docs.archive: lockfile safety-net refresh failed — run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
               );
             }
           }
