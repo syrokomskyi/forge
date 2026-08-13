@@ -30,12 +30,13 @@ Commit file changes after every standalone operator request that produces file c
 
 After every standalone operator request that produces file changes, perform the following:
 
-1. **Detect changed files.** Run `git status --short` in the monorepo root. If the working tree is clean (no modifications), skip — no commit.
-2. **Verify diff before staging.** Run `git diff` (not just `git diff --cached`) on every file the agent touched in this request. Confirm the changes are the agent's own work and not foreign changes from another session. If foreign changes are found, exclude them from staging.
+1. **Detect changed files in ALL trees.** Run `bash scripts/check-clean-trees.sh` from the repo root. This checks the werkstatt monorepo, all active mission workpieces, and all Sternsystem cache clones. If all trees are clean, skip — no commit. If any tree is dirty, proceed to commit each dirty tree.
+2. **Verify diff before staging.** Run `git diff` (not just `git diff --cached`) on every file the agent touched in this request, in each dirty tree. Confirm the changes are the agent's own work and not foreign changes from another session. If foreign changes are found, exclude them from staging.
 3. **Stage only agent-changed files.** Stage only the files the agent modified in this request. Never use `git add -A` or `git add .` — another agent or session may have unrelated changes in the working tree. Stage files by explicit path: `git add <path1> <path2> ...`.
 4. **Form commit message.** Write a conventional commit message (`fix:`, `feat:`, `refactor:`, `docs:`, `chore:`) based on the work performed in this request. The agent determines the type and description from the context of the request.
-5. **Commit in monorepo.** `git commit -m "<message>"` with the staged files.
-6. **Commit in mission workpiece (if applicable).** If the agent changed files in the active mission workpiece, commit there via the kernel's mission git commit command with the same message.
+5. **Commit in monorepo.** Use `pnpm exec werkstatt run ecosystem.commit --message="<message>"` (NOT raw `git commit`) per RFC-0821. Stage files with `git add <paths>` first, then run ecosystem.commit.
+6. **Commit in mission workpiece (if applicable).** If the agent changed files in the active mission workpiece, commit there via `pnpm exec werkstatt run mission.git.commit --mission=<missionId> --message="<message>"` per RFC-0821.
+7. **Verify clean trees.** After all commits, run `bash scripts/check-clean-trees.sh` again. If any tree is still dirty, report to the operator.
 
 ## What this skill does NOT do
 
@@ -50,6 +51,7 @@ The operator can skip the auto-commit for a specific request by saying "не к�
 
 ## Failure modes
 
-- **No changes**: skill detects clean working tree and skips — no error, no commit.
+- **No changes**: skill detects clean working tree (via check-clean-trees.sh) and skips — no error, no commit.
 - **Workpiece not found**: if no active mission workpiece exists, skip workpiece commit. Monorepo commit still proceeds.
 - **Workpiece commit fails**: if the workpiece commit fails (e.g. dirty tree from another agent), the skill does not block the monorepo commit. The agent reports the failure to the operator.
+- **Post-commit verification**: after committing, re-run `check-clean-trees.sh`. If trees are still dirty, the agent MUST report the remaining dirty files to the operator before sending its response.
