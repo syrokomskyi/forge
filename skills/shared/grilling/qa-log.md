@@ -107,3 +107,29 @@ status: active
 - **Context:** 2026-08-03 — grilling RFC-0663 plan (dogfood acceptance criterion)
 - **Question:** RFC requires "at least one real duplicate pair promoted end-to-end" but the current monorepo has very few L2 entries across skills. Real duplicates are unlikely. How to handle the dogfood criterion?
 - **Answer:** Conditional dogfood: run detection on the monorepo. If duplicates found, promote with operator approval. If none found, the detection pipeline running end-to-end (detection → doctor report → zero duplicates) serves as evidence. Promotion mechanics are verified by unit tests. Creating artificial test duplicates is not natural and would not test the real promotion path.
+
+### K-0054: Agent-run Node 24 bootstrap before repository cutover
+
+```knowledge-entry
+id: K-0054
+layer: L0
+created: 2026-08-14
+status: active
+```
+
+- **Context:** 2026-08-14 — RFC-0854 enhancement after the Node 24 ecosystem audit
+- **Question:** May the implementing agent install and activate Node 24 on the Ubuntu host before changing repository engine enforcement, even though Werkstatt itself must not auto-download or fall back to another runtime?
+- **Answer:** Yes. Runtime provisioning is an explicit step-zero environment bootstrap performed by the implementing agent before any repository mutation, not product fallback behavior. The agent re-verifies Node and pnpm under Node 24; if provisioning or verification fails, it stops without changing repository files.
+
+### K-0055: Forge uses a real major boundary for the Node 24-only contract
+
+```knowledge-entry
+id: K-0055
+layer: L0
+created: 2026-08-14
+status: active
+```
+
+- **Context:** 2026-08-14 — RFC-0854 enhancement after the Node 24 ecosystem audit
+- **Question:** Which independent Forge version represents removal of Node 20/22 support, and how is it separated from publication?
+- **Answer:** Bump `@warpgogol/forge` from `0.28.0` to `1.0.0`, set `forge.syncedVersion` to the same value, and require a standalone Node 24 tarball smoke test. Implementation records the version but does not publish; npm publication remains a separate explicit operator command.
