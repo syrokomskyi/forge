@@ -13,11 +13,13 @@ in subdirectories back to the root.
 <CHANGE_SUMMARY>
   <item>RFC-0367: implement rfc.archive command for terminal-status file archiving.</item>
   <item>RFC-0733: add pinned-files pre-check — skip pinned files with warning instead of moving them.</item>
+  <item>Gap fix: automatically rebuild docs/rfcs/index.yaml after moves to prevent stale index.</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
 import type {
   ForgeCommandInput,
@@ -25,6 +27,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { RFC_DIR } from "../types.ts";
+import { toIsoDate } from "./shared.ts";
 import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
 
 export const RFC_TERMINAL_STATUSES = ["implemented", "rejected", "superseded"] as const;
@@ -50,6 +53,7 @@ export interface RfcArchiveResult {
   moved: ArchiveMove[];
   skipped: ArchiveSkip[];
   dryRun: boolean;
+  indexRefreshed: boolean;
 }
 
 export async function runRfcArchive(
@@ -222,6 +226,58 @@ export async function runRfcArchive(
     }
   }
 
+  // Gap fix: rebuild docs/rfcs/index.yaml after moves to prevent stale index.
+  // Previously, rfc.archive moved files but left index.yaml out of date —
+  // archived RFCs disappeared from the index silently.
+  let indexRefreshed = false;
+  if (!dryRun && moved.length > 0) {
+    try {
+      const allFiles = await listRfcFiles(rfcDirPath);
+      const entries: Array<Record<string, unknown>> = [];
+      for (const fileName of allFiles) {
+        const result = await readAndParseRfc(rfcDirPath, fileName);
+        if (!result || "error" in result) continue;
+        const fm = result.parsed.frontmatter;
+        const arr = (k: string): string[] =>
+          Array.isArray(fm[k]) ? (fm[k] as unknown[]).map(String) : [];
+        entries.push({
+          id: String(fm["id"] ?? ""),
+          title: String(fm["title"] ?? ""),
+          status: String(fm["status"] ?? ""),
+          kind: String(fm["kind"] ?? ""),
+          createdAt: String(fm["createdAt"] ?? ""),
+          implementedAt: String(fm["implementedAt"] ?? ""),
+          closedAt: String(fm["closedAt"] ?? ""),
+          supersedes: arr("supersedes"),
+          supersededBy: String(fm["supersededBy"] ?? ""),
+          amends: arr("amends"),
+          amendedBy: arr("amendedBy"),
+          related: arr("related"),
+          file: path.join(RFC_DIR, fileName),
+        });
+      }
+      entries.sort((a, b) => String(a["id"]).localeCompare(String(b["id"])));
+      const outRel = path.join(RFC_DIR, "index.yaml");
+      const payload = {
+        command: "rfc.index.generate",
+        generatedAt: toIsoDate(new Date()),
+        count: entries.length,
+        entries,
+      };
+      await fs.writeFile(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`, "utf-8");
+      indexRefreshed = true;
+      if (outputFormat === "pretty") {
+        logger.info(`rfc.archive: refreshed ${outRel} (${entries.length} entries)`);
+      }
+    } catch (refreshErr) {
+      if (outputFormat === "pretty") {
+        logger.warn(
+          `rfc.archive: index refresh failed — run 'pnpm exec werkstatt run rfc.index.generate --write' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
+        );
+      }
+    }
+  }
+
   return {
     data: {
       command: "rfc.archive",
@@ -229,6 +285,7 @@ export async function runRfcArchive(
       moved,
       skipped,
       dryRun,
+      indexRefreshed,
     },
     summary: dryRun
       ? `[dry-run] Would move ${moved.length} file(s), skip ${skipped.length}`
