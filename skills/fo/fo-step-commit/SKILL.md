@@ -34,8 +34,8 @@ After every standalone operator request that produces file changes, perform the 
 2. **Verify diff before staging.** Run `git diff` (not just `git diff --cached`) on every file the agent touched in this request, in each dirty tree. Confirm the changes are the agent's own work and not foreign changes from another session. If foreign changes are found, exclude them from staging.
 3. **Stage only agent-changed files.** Stage only the files the agent modified in this request. Never use `git add -A` or `git add .` — another agent or session may have unrelated changes in the working tree. Stage files by explicit path: `git add <path1> <path2> ...`.
 4. **Form commit message.** Write a conventional commit message (`fix:`, `feat:`, `refactor:`, `docs:`, `chore:`) based on the work performed in this request. The agent determines the type and description from the context of the request.
-5. **Commit in monorepo.** Use `pnpm exec werkstatt run ecosystem.commit --message="<message>"` (NOT raw `git commit`) per RFC-0821. Stage files with `git add <paths>` first, then run ecosystem.commit.
-6. **Commit in mission workpiece (if applicable).** If the agent changed files in the active mission workpiece, commit there via `pnpm exec werkstatt run mission.git.commit --mission=<missionId> --message="<message>"` per RFC-0821.
+5. **Commit in monorepo.** Use `pnpm exec werkstatt run ecosystem.commit --message="<message>"` (NOT raw `git commit`) as required by the canonical commit-discipline contract. Stage files with `git add <paths>` first, then run ecosystem.commit.
+6. **Commit in mission workpiece (if applicable).** If the agent changed files in the active mission workpiece, commit there via `pnpm exec werkstatt run mission.git.commit --mission=<missionId> --message="<message>"` as required by the canonical commit-discipline contract.
 7. **Verify clean trees.** After all commits, run `bash scripts/check-clean-trees.sh` again. If any tree is still dirty, report to the operator.
 
 ## What this skill does NOT do
