@@ -1,6 +1,6 @@
 ---
 name: fo-idea
-description: Analyze a user's idea, decompose if too large, and route to fo-idea-create-rfc, fo-idea-create-adr, or direct implementation. Use when the user describes a change and is unsure if it needs an RFC, ADR, or no document.
+description: Classify an idea, split it when needed, and route it to an RFC, ADR, or direct implementation. Use when the required decision artifact is unclear.
 invocation: user
 category: fo
 concerns: document-only
@@ -131,7 +131,7 @@ These patterns **look like ADRs but are RFCs**:
 These patterns **look like they need a document but are direct implementation**:
 
 - **"Fixing content data"** — correcting a hash, updating a status field, or fixing a factual error in existing content is a data correction within existing structures, not an architectural change. Direct implementation.
-- **"Restoring broken behavior"** — a bug fix that restores the intended behavior within existing contracts is direct implementation, not an RFC. (See ADR-0008 for the precedent: "this is a bug fix restoring the intended behavior, not an architectural change.")
+- **"Restoring broken behavior"** — a bug fix that restores the intended behavior within existing contracts is direct implementation, not an architectural change.
 - **"Cosmetic cleanup"** — formatting, indentation, import ordering, or local variable renaming with no semantic impact is direct implementation.
 
 If the classification is ambiguous (e.g. the operator's description is too vague), ask a clarifying question using `ask_user_question` with the recommended classification first.

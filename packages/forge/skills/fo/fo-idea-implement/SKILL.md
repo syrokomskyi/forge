@@ -434,7 +434,7 @@ Before stamping `implemented`, verify that the ADR is mentioned in the codebase 
 
 #### 4.10. Stamp implemented
 
-After all checks pass and documentation is updated, transition the ADR to `implemented` using `adr.implement.stamp` (RFC-0727). Direct edits to ADR `status`, `implementedAt`, and `updatedAt` are prohibited — use the stamp command instead.
+After all checks pass and documentation is updated, transition the ADR to `implemented` using `adr.implement.stamp` as required by the ADR lifecycle contract. Direct edits to ADR `status`, `implementedAt`, and `updatedAt` are prohibited — use the stamp command instead.
 
 1. Identify the implementation commit SHA — use the first `implement:` commit for this ADR.
 2. Run the stamp command:
