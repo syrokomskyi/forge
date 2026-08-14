@@ -133,3 +133,16 @@ status: active
 - **Context:** 2026-08-14 — RFC-0854 enhancement after the Node 24 ecosystem audit
 - **Question:** Which independent Forge version represents removal of Node 20/22 support, and how is it separated from publication?
 - **Answer:** Bump `@warpgogol/forge` from `0.28.0` to `1.0.0`, set `forge.syncedVersion` to the same value, and require a standalone Node 24 tarball smoke test. Implementation records the version but does not publish; npm publication remains a separate explicit operator command.
+
+### K-0056: Stage the single-site Node 24 republish through Alt
+
+```knowledge-entry
+id: K-0056
+layer: L0
+created: 2026-08-14
+status: active
+```
+
+- **Context:** 2026-08-14 — RFC-0854 enhancement, current Sternsystem cutover
+- **Question:** May the replaceable single site republish directly to Main, or must it prove the Node 24 build/deploy path through Alt first?
+- **Answer:** Require `Alt deploy → Alt smoke pass → Main deploy → Main smoke pass`. Any non-pass stops the transition and blocks RFC completion; the single-site topology does not justify bypassing the available staging proof.
