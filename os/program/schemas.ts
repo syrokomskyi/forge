@@ -10,6 +10,7 @@ reject unknown fields (RFC-0856).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial program control-plane schemas.</item>
+  <item>RFC-0857: phase-aware lease schema (preparation | execution) and preparation report schema.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,6 +29,8 @@ export const programStateSchema = z.enum(["preparing", "executing", "blocked", "
 export const packetStateSchema = z.enum(["draft", "sealed", "active", "completed", "blocked"]);
 
 export const recoveryStatusSchema = z.enum(["verified", "not-applicable"]);
+
+export const programLeasePhaseSchema = z.enum(["preparation", "execution"]);
 
 // ---------------------------------------------------------------------------
 // Program manifest: forge/program@1
@@ -107,12 +110,42 @@ export const programPacketLeaseSchema = z
     schema: z.literal("forge/program-packet-lease@1"),
     program: z.string().min(1),
     packetId: z.string().min(1),
-    sealCommit: z.string().min(1),
-    executor: programActorSchema,
+    phase: programLeasePhaseSchema,
+    actor: programActorSchema,
+    baseCommit: z.string().min(1),
+    sealCommit: z.string().nullable(),
     tokenHash: z.string().regex(/^[0-9a-f]{64}$/, "Must be a SHA-256 hex digest"),
     startedAt: z.string().min(1),
     heartbeatAt: z.string().min(1),
     timeoutSeconds: z.number().int().positive(),
+  })
+  .strict();
+
+// ---------------------------------------------------------------------------
+// Program packet preparation: forge/program-packet-preparation@1 (RFC-0857)
+// ---------------------------------------------------------------------------
+
+export const preparationValidationSchema = z.object({
+  command: z.string().min(1),
+  status: z.literal("pass"),
+  evidenceDigest: z.string().min(1),
+});
+
+export const programPacketPreparationSchema = z
+  .object({
+    schema: z.literal("forge/program-packet-preparation@1"),
+    program: z.string().min(1),
+    packetId: z.string().min(1),
+    baseCommit: z.string().min(1),
+    preparationCommits: z.array(z.string().min(1)),
+    preparationHead: z.string().min(1),
+    changedFiles: z.array(z.string().min(1)),
+    governingDecision: z.string().min(1),
+    resolvedRfc: z.string().min(1),
+    materializationCommit: z.string().min(1),
+    validations: z.array(preparationValidationSchema),
+    cleanTrees: z.literal(true),
+    preparedBy: programActorSchema,
   })
   .strict();
 
@@ -176,7 +209,10 @@ export type ProgramPacketIndexEntry = z.infer<typeof programPacketIndexEntrySche
 export type ProgramPacket = z.infer<typeof programPacketSchema>;
 export type NormativeSource = z.infer<typeof normativeSourceSchema>;
 export type RequiredValidation = z.infer<typeof requiredValidationSchema>;
+export type ProgramLeasePhase = z.infer<typeof programLeasePhaseSchema>;
 export type ProgramPacketLease = z.infer<typeof programPacketLeaseSchema>;
+export type PreparationValidation = z.infer<typeof preparationValidationSchema>;
+export type ProgramPacketPreparation = z.infer<typeof programPacketPreparationSchema>;
 export type ProgramPacketCompletion = z.infer<typeof programPacketCompletionSchema>;
 export type CompletionValidation = z.infer<typeof completionValidationSchema>;
 export type RecoveryRecord = z.infer<typeof recoveryRecordSchema>;

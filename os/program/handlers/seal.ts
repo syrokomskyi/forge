@@ -10,6 +10,7 @@ to sealed, and records the seal in the program manifest (RFC-0856).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial seal command handler.</item>
+  <item>RFC-0857: reciprocal specRef/materializedAs mapping verification for spec-node packets (AC-7).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,7 +35,7 @@ import {
 } from "../discovery.ts";
 import { findActiveLeases, isLeaseStale } from "../lease.ts";
 import { validateSealTransition, type PacketViolation } from "../state.ts";
-import type { ProgramManifest, ProgramPacket } from "../schemas.ts";
+import type { ProgramManifest, ProgramPacket, ProgramPacketIndexEntry } from "../schemas.ts";
 
 export interface SealResultData {
   command: string;
@@ -115,11 +116,15 @@ export async function runSeal(
   // Verify normative source hashes
   const hashViolations = verifyNormativeSources(workspaceRoot, packet);
   if (hashViolations.length > 0) {
-    return sealFail(program, packetId, hashViolations.map((v) => ({
-      rule: "PROGRAM-PACKET-07",
-      path: v.path,
-      message: `normative source hash mismatch: expected ${v.expected}, got ${v.actual}`,
-    })));
+    return sealFail(
+      program,
+      packetId,
+      hashViolations.map((v) => ({
+        rule: "PROGRAM-PACKET-07",
+        path: v.path,
+        message: `normative source hash mismatch: expected ${v.expected}, got ${v.actual}`,
+      })),
+    );
   }
 
   // Git state
@@ -157,6 +162,14 @@ export async function runSeal(
 
   if (violations.length > 0) {
     return sealFail(program, packetId, violations);
+  }
+
+  // RFC-0857 AC-7: For spec-node packets, verify reciprocal specRef/materializedAs mapping
+  if (entry.decisionKind === "spec-node" && entry.resolvedRfc) {
+    const specViolation = verifySpecNodeMapping(workspaceRoot, entry);
+    if (specViolation) {
+      return sealFail(program, packetId, [specViolation]);
+    }
   }
 
   // --- Perform seal ---
@@ -231,4 +244,89 @@ function sealFail(
     exitCode: 1,
     summary: `program.packet.seal: ${packetId} failed with ${violations.length} violation(s)`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// RFC-0857 AC-7: Reciprocal specRef/materializedAs mapping verification
+// ---------------------------------------------------------------------------
+
+function verifySpecNodeMapping(
+  workspaceRoot: string,
+  entry: ProgramPacketIndexEntry,
+): PacketViolation | null {
+  const governingDecision = entry.governingDecision;
+  const slashIdx = governingDecision.indexOf("/");
+  if (slashIdx === -1) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `spec-node governingDecision "${governingDecision}" is not in <spec-id>/<node-id> format`,
+    };
+  }
+  const specId = governingDecision.slice(0, slashIdx);
+  const nodeId = governingDecision.slice(slashIdx + 1);
+
+  // Check forge-spec.yaml for materializedAs matching resolvedRfc
+  const specPath = path.join(workspaceRoot, "docs", "specs", specId, "forge-spec.yaml");
+  if (!fs.existsSync(specPath)) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `spec file not found: docs/specs/${specId}/forge-spec.yaml`,
+    };
+  }
+
+  const specRaw = fs.readFileSync(specPath, "utf8");
+  const specParsed = parseYaml(specRaw) as {
+    rfcs?: Array<{ id: string; materializedAs?: string }>;
+  };
+  const specNode = specParsed.rfcs?.find((r) => r.id === nodeId);
+  if (!specNode) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `spec node ${nodeId} not found in docs/specs/${specId}/forge-spec.yaml`,
+    };
+  }
+
+  if (specNode.materializedAs !== entry.resolvedRfc) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `materializedAs (${specNode.materializedAs ?? "null"}) does not match resolvedRfc (${entry.resolvedRfc}) for ${nodeId}`,
+    };
+  }
+
+  // Check RFC file for reciprocal specRef
+  const rfcPath = path.join(workspaceRoot, "docs", "rfcs", `${entry.resolvedRfc.toLowerCase()}.md`);
+  if (!fs.existsSync(rfcPath)) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `RFC file not found: docs/rfcs/${entry.resolvedRfc.toLowerCase()}.md`,
+    };
+  }
+
+  const rfcRaw = fs.readFileSync(rfcPath, "utf8");
+  const rfcFmMatch = rfcRaw.match(/^---\n([\s\S]*?)\n---/);
+  if (!rfcFmMatch) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `missing frontmatter in ${entry.resolvedRfc}`,
+    };
+  }
+
+  const rfcFm = parseYaml(rfcFmMatch[1]) as { specRef?: string; status?: string };
+  const expectedSpecRef = `${specId}/${nodeId}`;
+  if (rfcFm.specRef !== expectedSpecRef) {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `specRef (${rfcFm.specRef ?? "null"}) does not match expected ${expectedSpecRef} in ${entry.resolvedRfc}`,
+    };
+  }
+
+  // RFC must be accepted or implemented
+  if (rfcFm.status !== "accepted" && rfcFm.status !== "implemented") {
+    return {
+      rule: "PROGRAM-PACKET-12",
+      message: `${entry.resolvedRfc} status is "${rfcFm.status}", expected "accepted" or "implemented"`,
+    };
+  }
+
+  return null;
 }

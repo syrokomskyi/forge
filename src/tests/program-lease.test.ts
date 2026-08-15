@@ -38,8 +38,10 @@ function makeLease(overrides?: Partial<ProgramPacketLease>): ProgramPacketLease 
     schema: "forge/program-packet-lease@1",
     program: "RFC-0855",
     packetId: "010-test",
+    phase: "execution",
+    actor: "agent:bot1",
+    baseCommit: "abc123def456",
     sealCommit: "abc123def456",
-    executor: "agent:bot1",
     tokenHash: hashLeaseToken(generateLeaseToken()),
     startedAt: now,
     heartbeatAt: now,
@@ -91,7 +93,7 @@ describe("exclusive lease management", () => {
       const read = readLease(dir, "RFC-0855", "010-test");
       expect(read).not.toBeNull();
       expect(read!.packetId).toBe("010-test");
-      expect(read!.executor).toBe("agent:bot1");
+      expect(read!.actor).toBe("agent:bot1");
       expect(read!.tokenHash).toBe(lease.tokenHash);
     });
 
@@ -123,7 +125,7 @@ describe("exclusive lease management", () => {
 
     it("two leases for different packets coexist", () => {
       const l1 = makeLease({ packetId: "010-foo" });
-      const l2 = makeLease({ packetId: "020-bar", executor: "agent:bot2" });
+      const l2 = makeLease({ packetId: "020-bar", actor: "agent:bot2" });
       writeLease(dir, "RFC-0855", l1);
       writeLease(dir, "RFC-0855", l2);
 
