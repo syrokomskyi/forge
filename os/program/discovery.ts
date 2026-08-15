@@ -39,10 +39,7 @@ export interface ProgramLocation {
  * Discover a program by RFC id. Scans docs/plans/ for a program.yaml whose
  * `program` field matches the given RFC id.
  */
-export function discoverProgram(
-  workspaceRoot: string,
-  programRfc: string,
-): ProgramLocation | null {
+export function discoverProgram(workspaceRoot: string, programRfc: string): ProgramLocation | null {
   const plansDir = path.join(workspaceRoot, "docs", "plans");
   if (!fs.existsSync(plansDir)) return null;
 
@@ -80,9 +77,7 @@ export function discoverProgram(
  * Parse a packet .md file: extract YAML frontmatter and validate against
  * the forge/program-packet@1 schema.
  */
-export function parsePacketFile(
-  packetPath: string,
-): ProgramPacket {
+export function parsePacketFile(packetPath: string): ProgramPacket {
   const raw = fs.readFileSync(packetPath, "utf8");
   const match = raw.match(/^---\n([\s\S]*?)\n---/);
   if (!match) {
@@ -113,10 +108,7 @@ export function findPacketEntry(
 /**
  * Resolve the full path to a packet file.
  */
-export function resolvePacketPath(
-  programDir: string,
-  entry: ProgramPacketIndexEntry,
-): string {
+export function resolvePacketPath(programDir: string, entry: ProgramPacketIndexEntry): string {
   return path.join(programDir, entry.file);
 }
 
@@ -203,10 +195,11 @@ export function gitAncestorOf(
 ): boolean {
   const { execSync } = require("node:child_process") as typeof import("node:child_process");
   try {
-    const result = execSync(
-      `git merge-base --is-ancestor ${ancestor} ${descendant}`,
-      { cwd: workspaceRoot, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-    );
+    const result = execSync(`git merge-base --is-ancestor ${ancestor} ${descendant}`, {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     return true;
   } catch {
     return false;
@@ -220,10 +213,11 @@ export function gitChangedFilesBetween(
 ): string[] {
   const { execSync } = require("node:child_process") as typeof import("node:child_process");
   try {
-    const output = execSync(
-      `git diff --name-only ${base}..${head}`,
-      { cwd: workspaceRoot, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] },
-    ).trim();
+    const output = execSync(`git diff --name-only ${base}..${head}`, {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
     return output.length === 0 ? [] : output.split("\n");
   } catch {
     return [];
@@ -242,14 +236,31 @@ export function normalizePath(p: string): string {
 }
 
 /**
+ * Resolve ".." and "." segments in a path without touching the filesystem.
+ * Returns the lexical normalization (e.g. "a/b/../c" → "a/c").
+ */
+function resolveLexical(p: string): string {
+  const segments = p.split("/");
+  const result: string[] = [];
+  for (const seg of segments) {
+    if (seg === "..") {
+      result.pop();
+    } else if (seg !== "." && seg !== "") {
+      result.push(seg);
+    }
+  }
+  return result.join("/");
+}
+
+/**
  * Check if a path matches a glob pattern. Supports:
  * - `**` for recursive directory matching
  * - `*` for single-level wildcard
  * - exact prefix matching with trailing `/**`
  */
 export function pathMatchesGlob(filePath: string, pattern: string): boolean {
-  const normalized = normalizePath(filePath);
-  const glob = normalizePath(pattern);
+  const normalized = resolveLexical(normalizePath(filePath));
+  const glob = resolveLexical(normalizePath(pattern));
 
   // Exact match
   if (normalized === glob) return true;
@@ -274,7 +285,7 @@ export function pathMatchesGlob(filePath: string, pattern: string): boolean {
  * Check if a file path is within the allowed files list.
  */
 export function isPathAllowed(filePath: string, allowedFiles: string[]): boolean {
-  const normalized = normalizePath(filePath);
+  const normalized = resolveLexical(normalizePath(filePath));
   return allowedFiles.some((pattern) => pathMatchesGlob(normalized, pattern));
 }
 
@@ -282,6 +293,6 @@ export function isPathAllowed(filePath: string, allowedFiles: string[]): boolean
  * Check if a file path matches any forbidden pattern.
  */
 export function isPathForbidden(filePath: string, forbiddenFiles: string[]): boolean {
-  const normalized = normalizePath(filePath);
+  const normalized = resolveLexical(normalizePath(filePath));
   return forbiddenFiles.some((pattern) => pathMatchesGlob(normalized, pattern));
 }

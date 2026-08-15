@@ -31,6 +31,18 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeMissionModule` | `mission.archive` | `os/mission/` |
 | `forgeExplorationModule` | `exploration.list`, `exploration.show`, `exploration.archive` | `os/exploration/` |
 | `forgeNotesModule` | `note.link.validate`, `note.frontmatter.validate`, `note.orphan.detect` | `os/notes/` |
+| `forgeProgramModule` | `program.packet.validate`, `program.packet.seal`, `program.packet.lease`, `program.packet.complete` | `os/program/` |
+
+## Program packet control plane (RFC-0856)
+
+The program packet control plane governs sequential packet execution under `forge/program@1`. It validates boundaries; it does not execute implementation commands or commit on behalf of agents.
+
+- **Program Steward** and **Packet Executor** are distinct roles. A Steward seals packets, recovers stale leases, and validates completions. An Executor holds the lease and implements the packet. The same actor MUST NOT be both Steward and Executor for the same packet.
+- **Manual state edits are forbidden.** Packet state transitions (`draft` → `sealed` → `active` → `completed`) must go through the registered commands. Self-sealing (a packet's Executor calling `seal` or `complete` for their own packet) is rejected.
+- **Lease tokens are opaque and untracked.** Raw lease tokens exist only in memory and the command response. Only the SHA-256 hash is persisted in `.forge/program-leases/` (gitignored). Tokens never appear in tracked artifacts, logs, or completion reports.
+- **Normative source hashes are exact-byte.** `normativeSources` in a packet record SHA-256 digests of the exact file bytes at seal time. Reordered YAML or reformatted JSON that changes byte content will fail validation, even if the parsed structure is semantically identical.
+- **Bootstrap packet 000 is irreversible.** The `--bootstrap` flag on `program.packet.complete` is valid only for the first packet (no predecessor, program state `preparing`). It transitions the program to `executing`. There is no second bootstrap path.
+- **Path validation is traversal-safe.** `allowedFiles` and `forbiddenFiles` use lexical path normalization that resolves `..` segments before glob matching, preventing directory traversal escapes.
 
 ## Archive convention
 

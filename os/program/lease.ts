@@ -16,11 +16,7 @@ Raw tokens are never persisted to disk.</purpose>
 import fs from "node:fs";
 import path from "node:path";
 import { createHash, randomBytes } from "node:crypto";
-import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
-import {
-  programPacketLeaseSchema,
-  type ProgramPacketLease,
-} from "./schemas.ts";
+import { programPacketLeaseSchema, type ProgramPacketLease } from "./schemas.ts";
 
 // ---------------------------------------------------------------------------
 // Lease directory
@@ -71,9 +67,7 @@ export function readLease(
   const parsed = JSON.parse(raw) as Record<string, unknown>;
   const result = programPacketLeaseSchema.safeParse(parsed);
   if (!result.success) {
-    throw new Error(
-      `PROGRAM-PACKET-01: malformed lease at ${p}: ${result.error.message}`,
-    );
+    throw new Error(`PROGRAM-PACKET-01: malformed lease at ${p}: ${result.error.message}`);
   }
   return result.data;
 }
@@ -90,17 +84,13 @@ export function writeLease(
   fs.mkdirSync(dir, { recursive: true });
   const p = leasePath(workspaceRoot, program, lease.packetId);
   const content = JSON.stringify(lease, null, 2) + "\n";
-  writeFileAtomic(p, content);
+  fs.writeFileSync(p, content);
 }
 
 /**
  * Delete a lease file.
  */
-export function deleteLease(
-  workspaceRoot: string,
-  program: string,
-  packetId: string,
-): void {
+export function deleteLease(workspaceRoot: string, program: string, packetId: string): void {
   const p = leasePath(workspaceRoot, program, packetId);
   if (fs.existsSync(p)) {
     fs.unlinkSync(p);
