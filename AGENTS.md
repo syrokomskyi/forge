@@ -9,6 +9,10 @@ Portable governance skills and command modules extracted from the engine (RFC-03
 - `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/werkstatt`.
 - `skills/` — forge-managed skill definitions (38 fo skills + 5 shared + 3 meta = 46 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
+## RFC-0855 program control-plane boundary
+
+Packet 000 will add the portable `forge/program@1` control plane under `os/program/` as specified by accepted RFC-0856 and its committed implementation plan. Do not implement it, register commands, or alter packet state before packet 000 is sealed. The module validates and writes governance artifacts only: it never executes packet work, commits, materializes decisions without a preparation lease, deploys, or imports `@warpgogol/werkstatt`. Keep it cross-platform, deny unknown fields and unsafe paths, store only lease-token digests, and preserve packet 000 as the sole irreversible bootstrap.
+
 ## OS modules
 
 | Module | Commands | Source |
