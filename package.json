@@ -124,6 +124,10 @@
     "./os/notes-module": {
       "types": "./os/notes/notes.module.ts",
       "default": "./os/notes/notes.module.ts"
+    },
+    "./os/program": {
+      "types": "./os/program/program.module.ts",
+      "default": "./os/program/program.module.ts"
     }
   },
   "files": [
@@ -276,6 +280,10 @@
       "./os/notes-module": {
         "types": "./dist/os/notes/notes.module.d.ts",
         "default": "./dist/os/notes/notes.module.js"
+      },
+      "./os/program": {
+        "types": "./dist/os/program/program.module.d.ts",
+        "default": "./dist/os/program/program.module.js"
       }
     }
   }
