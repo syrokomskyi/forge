@@ -169,3 +169,4 @@ export { forgeAuditModule } from "../os/audit/audit.module.ts";
 export { forgeMissionModule } from "../os/mission/mission.module.ts";
 export { forgeExplorationModule } from "../os/exploration/exploration.module.ts";
 export { forgeNotesModule } from "../os/notes/notes.module.ts";
+export { forgeProgramModule } from "../os/program/program.module.ts";
