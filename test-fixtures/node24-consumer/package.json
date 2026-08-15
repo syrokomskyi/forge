@@ -1,0 +1,11 @@
+{
+  "name": "node24-consumer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Node 24 consumer fixture for tarball smoke testing @warpgogol/forge (RFC-0854).",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "dependencies": {}
+}

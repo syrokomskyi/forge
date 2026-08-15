@@ -51,7 +51,7 @@ release:
   manifestName: release-manifest.json
 prerequisites:
   - id: nodejs
-    name: Node.js 18+
+    name: Node.js 24+
     check: node --version
     installHint: "https://nodejs.org/en/download/"
     severity: error
@@ -296,7 +296,7 @@ workspace:
           "type": "module",
           "packageManager": "pnpm@11.10.0",
           "engines": {
-            "node": ">=22"
+            "node": ">=24 <25"
           },
           "scripts": {
             "clean": "node scripts/clean.mjs",

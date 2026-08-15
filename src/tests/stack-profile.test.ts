@@ -193,3 +193,22 @@ test("stackProfileSchema rejects empty scriptDir string", () => {
   const result = stackProfileSchema.safeParse(bad);
   expect(result.success).toBe(false);
 });
+
+test("RFC-0854: all shipped profiles with package.json template declare engines.node >=24 <25", () => {
+  const profiles = listStackProfiles(FORGE_ROOT);
+  for (const profile of profiles) {
+    const pkgFile = profile.workspace.files.find((f) => f.path === "package.json");
+    if (!pkgFile) continue;
+    if (!pkgFile.content.includes("engines")) continue;
+    expect(pkgFile.content, `profile ${profile.id} package.json`).toContain(">=24 <25");
+  }
+});
+
+test("RFC-0854: all shipped profiles with CI workflow declare node-version: 24", () => {
+  const profiles = listStackProfiles(FORGE_ROOT);
+  for (const profile of profiles) {
+    const ciFile = profile.workspace.files.find((f) => f.path === ".github/workflows/ci.yml");
+    if (!ciFile) continue;
+    expect(ciFile.content, `profile ${profile.id} CI workflow`).toContain('node-version: "24"');
+  }
+});
