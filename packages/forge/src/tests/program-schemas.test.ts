@@ -14,6 +14,7 @@ import {
   programPacketSchema,
   programPacketLeaseSchema,
   programPacketCompletionSchema,
+  programPacketPreparationSchema,
   recoveryRecordSchema,
 } from "../../os/program/schemas.ts";
 
@@ -208,13 +209,15 @@ describe("programPacketSchema", () => {
 });
 
 describe("programPacketLeaseSchema", () => {
-  it("accepts a valid lease", () => {
+  it("accepts a valid execution lease", () => {
     const lease = {
       schema: "forge/program-packet-lease@1",
       program: "RFC-0855",
       packetId: "000-test",
-      sealCommit: "abc123",
-      executor: "agent:bot1",
+      phase: "execution",
+      actor: "agent:bot1",
+      baseCommit: "abc123",
+      sealCommit: "def456",
       tokenHash: "b".repeat(64),
       startedAt: "2026-08-15T10:00:00Z",
       heartbeatAt: "2026-08-15T10:00:00Z",
@@ -225,14 +228,15 @@ describe("programPacketLeaseSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects same steward and executor pattern for actor", () => {
-    // The schema itself doesn't check steward vs executor, but it validates format
+  it("accepts a valid preparation lease with null sealCommit", () => {
     const lease = {
       schema: "forge/program-packet-lease@1",
       program: "RFC-0855",
-      packetId: "000-test",
-      sealCommit: "abc123",
-      executor: "invalid-format",
+      packetId: "140-test",
+      phase: "preparation",
+      actor: "human:alice",
+      baseCommit: "abc123",
+      sealCommit: null,
       tokenHash: "b".repeat(64),
       startedAt: "2026-08-15T10:00:00Z",
       heartbeatAt: "2026-08-15T10:00:00Z",
@@ -240,6 +244,115 @@ describe("programPacketLeaseSchema", () => {
     };
 
     const result = programPacketLeaseSchema.safeParse(lease);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects invalid phase", () => {
+    const lease = {
+      schema: "forge/program-packet-lease@1",
+      program: "RFC-0855",
+      packetId: "000-test",
+      phase: "invalid",
+      actor: "agent:bot1",
+      baseCommit: "abc123",
+      sealCommit: "def456",
+      tokenHash: "b".repeat(64),
+      startedAt: "2026-08-15T10:00:00Z",
+      heartbeatAt: "2026-08-15T10:00:00Z",
+      timeoutSeconds: 3600,
+    };
+
+    const result = programPacketLeaseSchema.safeParse(lease);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects invalid actor format", () => {
+    const lease = {
+      schema: "forge/program-packet-lease@1",
+      program: "RFC-0855",
+      packetId: "000-test",
+      phase: "execution",
+      actor: "invalid-format",
+      baseCommit: "abc123",
+      sealCommit: "def456",
+      tokenHash: "b".repeat(64),
+      startedAt: "2026-08-15T10:00:00Z",
+      heartbeatAt: "2026-08-15T10:00:00Z",
+      timeoutSeconds: 3600,
+    };
+
+    const result = programPacketLeaseSchema.safeParse(lease);
+    expect(result.success).toBe(false);
+  });
+});
+
+describe("programPacketPreparationSchema", () => {
+  it("accepts a valid preparation report", () => {
+    const prep = {
+      schema: "forge/program-packet-preparation@1",
+      program: "RFC-0855",
+      packetId: "140-resolved-certification-profile",
+      baseCommit: "abc123",
+      preparationCommits: ["def456"],
+      preparationHead: "def456",
+      changedFiles: [
+        "docs/rfcs/rfc-0865.md",
+        "docs/specs/werkstatt-release-certification/forge-spec.yaml",
+      ],
+      governingDecision: "werkstatt-release-certification/CERT-002",
+      resolvedRfc: "RFC-0865",
+      materializationCommit: "def456",
+      validations: [
+        { command: "rfc.validate --id RFC-0865", status: "pass", evidenceDigest: "sha256:abc" },
+      ],
+      cleanTrees: true,
+      preparedBy: "human:andrii-syrokomskyi",
+    };
+
+    const result = programPacketPreparationSchema.safeParse(prep);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects unknown fields", () => {
+    const prep = {
+      schema: "forge/program-packet-preparation@1",
+      program: "RFC-0855",
+      packetId: "140-test",
+      baseCommit: "abc123",
+      preparationCommits: ["def456"],
+      preparationHead: "def456",
+      changedFiles: [],
+      governingDecision: "werkstatt-release-certification/CERT-002",
+      resolvedRfc: "RFC-0865",
+      materializationCommit: "def456",
+      validations: [],
+      cleanTrees: true,
+      preparedBy: "human:alice",
+      extra: true,
+    };
+
+    const result = programPacketPreparationSchema.safeParse(prep);
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects cleanTrees: false", () => {
+    const prep = {
+      schema: "forge/program-packet-preparation@1",
+      program: "RFC-0855",
+      packetId: "140-test",
+      baseCommit: "abc123",
+      preparationCommits: ["def456"],
+      preparationHead: "def456",
+      changedFiles: [],
+      governingDecision: "werkstatt-release-certification/CERT-002",
+      resolvedRfc: "RFC-0865",
+      materializationCommit: "def456",
+      validations: [],
+      cleanTrees: false,
+      preparedBy: "human:alice",
+    };
+
+    const result = programPacketPreparationSchema.safeParse(prep);
     expect(result.success).toBe(false);
   });
 });

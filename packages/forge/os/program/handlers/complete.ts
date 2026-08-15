@@ -150,10 +150,11 @@ export async function runComplete(
   }
 
   // Check ancestry: implementation head must descend from seal commit
-  const ancestryValid = gitAncestorOf(workspaceRoot, lease.sealCommit, implementationHead);
+  const sealCommit = lease.sealCommit ?? lease.baseCommit;
+  const ancestryValid = gitAncestorOf(workspaceRoot, sealCommit, implementationHead);
 
   // Get changed files between seal and implementation head
-  const changedFiles = gitChangedFilesBetween(workspaceRoot, lease.sealCommit, implementationHead);
+  const changedFiles = gitChangedFilesBetween(workspaceRoot, sealCommit, implementationHead);
 
   // Validate transition
   const violations = validateCompleteTransition(manifest, entry, lease, {
@@ -179,8 +180,8 @@ export async function runComplete(
     schema: "forge/program-packet-completion@1",
     program,
     packetId,
-    baseCommit: entry.baseCommit ?? lease.sealCommit,
-    sealCommit: lease.sealCommit,
+    baseCommit: entry.baseCommit ?? lease.baseCommit,
+    sealCommit: lease.sealCommit ?? lease.baseCommit,
     implementationCommits: [implementationHead],
     implementationHead,
     changedFiles,

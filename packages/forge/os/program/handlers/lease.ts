@@ -103,6 +103,8 @@ async function leaseStart(
     ]);
   }
 
+  const phase = (input.flags.phase as string | undefined) ?? "execution";
+
   const { workspaceRoot } = context;
 
   // Discover program
@@ -155,7 +157,7 @@ async function leaseStart(
   const violations = validateLeaseStartTransition(manifest, entry, packet, {
     head,
     steward: packet.steward,
-    executor: executor as ProgramPacketLease["executor"],
+    actor: executor as ProgramPacketLease["actor"],
     hasActiveLease,
   });
 
@@ -172,8 +174,10 @@ async function leaseStart(
     schema: "forge/program-packet-lease@1",
     program,
     packetId,
-    sealCommit: entry.sealCommit ?? head,
-    executor: executor as ProgramPacketLease["executor"],
+    phase: phase as ProgramPacketLease["phase"],
+    actor: executor as ProgramPacketLease["actor"],
+    baseCommit: head,
+    sealCommit: entry.sealCommit ?? null,
     tokenHash,
     startedAt: now,
     heartbeatAt: now,

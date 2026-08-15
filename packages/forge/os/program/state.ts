@@ -9,6 +9,7 @@ Validates allowed transitions and produces violation records.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial state machine logic.</item>
+  <item>RFC-0857: spec-node resolvedRfc validation at seal boundary (PROGRAM-PACKET-12).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,9 +85,7 @@ export function validateSealTransition(
 
   // PROGRAM-PACKET-03: predecessor must be completed (unless bootstrap)
   if (entry.dependsOnPacket !== null) {
-    const predecessor = manifest.packets.find(
-      (p) => p.packetId === entry.dependsOnPacket,
-    );
+    const predecessor = manifest.packets.find((p) => p.packetId === entry.dependsOnPacket);
     if (!predecessor) {
       violations.push({
         rule: "PROGRAM-PACKET-03",
@@ -121,6 +120,16 @@ export function validateSealTransition(
     });
   }
 
+  // RFC-0857: spec-node packets require a resolved RFC that is accepted or implemented
+  if (entry.decisionKind === "spec-node") {
+    if (entry.resolvedRfc === null) {
+      violations.push({
+        rule: "PROGRAM-PACKET-12",
+        message: `spec-node packet ${entry.packetId} has resolvedRfc: null — materialize and accept the governing RFC before sealing`,
+      });
+    }
+  }
+
   return violations;
 }
 
@@ -134,17 +143,17 @@ export function validateLeaseStartTransition(
   options: {
     head: string;
     steward: ProgramActor;
-    executor: ProgramActor;
+    actor: ProgramActor;
     hasActiveLease: boolean;
   },
 ): PacketViolation[] {
   const violations: PacketViolation[] = [];
 
   // PROGRAM-PACKET-04: role collision
-  if (options.steward === options.executor) {
+  if (options.steward === options.actor) {
     violations.push({
       rule: "PROGRAM-PACKET-04",
-      message: `role collision: steward and executor are the same (${options.steward})`,
+      message: `role collision: steward and actor are the same (${options.steward})`,
     });
   }
 
@@ -195,11 +204,11 @@ export function validateCompleteTransition(
 ): PacketViolation[] {
   const violations: PacketViolation[] = [];
 
-  // PROGRAM-PACKET-04: steward must differ from executor
-  if (options.steward === lease.executor) {
+  // PROGRAM-PACKET-04: steward must differ from actor
+  if (options.steward === lease.actor) {
     violations.push({
       rule: "PROGRAM-PACKET-04",
-      message: "completion steward must differ from lease executor",
+      message: "completion steward must differ from lease actor",
     });
   }
 
