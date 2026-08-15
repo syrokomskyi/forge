@@ -16,6 +16,7 @@ against schemas, and computes normative source hashes.</purpose>
 import fs from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { execSync } from "node:child_process";
 import { parse as parseYaml } from "yaml";
 import {
   programManifestSchema,
@@ -161,7 +162,6 @@ export function verifyNormativeSources(
 // ---------------------------------------------------------------------------
 
 export function gitHead(workspaceRoot: string): string {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
   return execSync("git rev-parse HEAD", {
     cwd: workspaceRoot,
     encoding: "utf8",
@@ -170,7 +170,6 @@ export function gitHead(workspaceRoot: string): string {
 }
 
 export function gitBranch(workspaceRoot: string): string {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
   return execSync("git branch --show-current", {
     cwd: workspaceRoot,
     encoding: "utf8",
@@ -179,7 +178,6 @@ export function gitBranch(workspaceRoot: string): string {
 }
 
 export function gitIsClean(workspaceRoot: string): boolean {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
   const status = execSync("git status --porcelain", {
     cwd: workspaceRoot,
     encoding: "utf8",
@@ -193,7 +191,6 @@ export function gitAncestorOf(
   ancestor: string,
   descendant: string,
 ): boolean {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
   try {
     const result = execSync(`git merge-base --is-ancestor ${ancestor} ${descendant}`, {
       cwd: workspaceRoot,
@@ -211,7 +208,6 @@ export function gitChangedFilesBetween(
   base: string,
   head: string,
 ): string[] {
-  const { execSync } = require("node:child_process") as typeof import("node:child_process");
   try {
     const output = execSync(`git diff --name-only ${base}..${head}`, {
       cwd: workspaceRoot,
