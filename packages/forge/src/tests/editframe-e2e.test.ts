@@ -153,7 +153,7 @@ test("doctor checks prerequisites for editframe profile", async () => {
   await mkdir(join(tempDir, "packages", "forge", "profiles"), { recursive: true });
   await writeFile(
     join(tempDir, "packages", "forge", "profiles", "editframe.yaml"),
-    `schema: "forge/stack-profile@1"\nid: editframe\ndisplayName: Editframe Video\ndetect:\n  anyOf: ["editframe.config.*"]\ndomain: video\nworkspace:\n  dirs: ["compositions"]\n  files: []\ninstall: []\nprerequisites:\n  - id: nodejs\n    name: "Node.js 18+"\n    check: "node --version"\n    severity: error\n  - id: ffmpeg\n    name: "FFmpeg"\n    check: "ffmpeg -version"\n    severity: error\n`,
+    `schema: "forge/stack-profile@1"\nid: editframe\ndisplayName: Editframe Video\ndetect:\n  anyOf: ["editframe.config.*"]\ndomain: video\nworkspace:\n  dirs: ["compositions"]\n  files: []\ninstall: []\nprerequisites:\n  - id: nodejs\n    name: "Node.js 24+"\n    check: "node --version"\n    severity: error\n  - id: ffmpeg\n    name: "FFmpeg"\n    check: "ffmpeg -version"\n    severity: error\n`,
     "utf8",
   );
 

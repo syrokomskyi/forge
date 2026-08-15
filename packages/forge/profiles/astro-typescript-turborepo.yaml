@@ -150,7 +150,7 @@ workspace:
           "private": true,
           "type": "module",
           "engines": {
-            "node": ">=22"
+            "node": ">=24 <25"
           },
           "scripts": {
             "clean": "node scripts/clean.mjs",

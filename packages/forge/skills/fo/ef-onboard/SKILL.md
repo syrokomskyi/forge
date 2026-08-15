@@ -25,7 +25,7 @@ Guide the operator through creating a new Editframe video project within a Forge
 
 ### 1. Prerequisites check
 
-- **Node.js 18+**: Run `node --version`. If missing or below 18, direct the operator to `https://nodejs.org/en/download/` or install via the system package manager.
+- **Node.js 24+**: Run `node --version`. If missing or below 24, direct the operator to `https://nodejs.org/en/download/` or install via the system package manager.
 - **FFmpeg**: Run `ffmpeg -version`. If missing, direct the operator to `https://ffmpeg.org/download.html` or install via the system package manager (`apt install ffmpeg`, `brew install ffmpeg`).
 - If either prerequisite is missing and cannot be installed automatically, stop and ask the operator to install it manually.
 

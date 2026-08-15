@@ -27,7 +27,7 @@ If you've never programmed before, this section takes you from a completely empt
 
 You need two free programs:
 
-- **Node.js** (version 22 or newer) — lets your computer run JavaScript tools.
+- **Node.js** (version 24 or newer) — lets your computer run JavaScript tools.
 - **pnpm** — the package manager Forge uses to install dependencies. It's built into Node.js and just needs to be switched on.
 
 Both are free. You install Node.js first, then enable pnpm with a single command.
@@ -38,10 +38,10 @@ Both are free. You install Node.js first, then enable pnpm with a single command
 
 1. Open the **Terminal** app (press `Ctrl + Alt + T`, or search for "Terminal" in your applications).
 
-2. Download and install Node.js 22 (LTS) by pasting this command and pressing Enter:
+2. Download and install Node.js 24 (LTS) by pasting this command and pressing Enter:
 
    ```sh
-   curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs
+   curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash - && sudo apt-get install -y nodejs
    ```
 
    You'll be asked for your password — type it (you won't see the characters as you type, that's normal) and press Enter.
@@ -188,7 +188,7 @@ You should see version information, not an error.
 
 - **"command not found" after installing Node.js** — Close and reopen your terminal (Ubuntu) or PowerShell (Windows). The system needs to reload the list of available commands.
 - **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
-- **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 22+ using the steps above.
+- **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 24+ using the steps above.
 - **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
 - **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --name my-project --profile editframe` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
