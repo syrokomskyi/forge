@@ -1,0 +1,388 @@
+schema: forge/stack-profile@1
+id: godot-csharp
+displayName: Godot 4.x + C#
+detect:
+  anyOf:
+    - project.godot
+domain: game
+register: creative
+terminology:
+  artifact: game
+  artifactPlural: games
+  module: scene
+  source: scene/script file
+  output: build
+  verify: headless-check
+  operator: game-developer
+devServer:
+  command: godot --path . --editor
+  port: 6005
+artifacts:
+  - id: game
+    extensions:
+      - .tscn
+      - .cs
+      - .tres
+    produce:
+      command: dotnet build ./Game.csproj
+      output: bin/Debug
+    validate:
+      command: godot --path . --headless --quit
+    determinism:
+      hashable: true
+      inputs:
+        - Scenes/**/*.tscn
+        - Scripts/**/*.cs
+        - Resources/**/*.tres
+        - project.godot
+assets:
+  dir: Assets
+  types:
+    - id: image
+      extensions: [.png, .jpg, .jpeg, .webp, .svg, .tscn]
+      referencePattern: '"([^"]+\.(?:png|jpe?g|webp|svg))"'
+    - id: audio
+      extensions: [.wav, .mp3, .ogg]
+      referencePattern: '"([^"]+\.(?:wav|mp3|ogg))"'
+    - id: font
+      extensions: [.ttf, .otf, .woff, .woff2]
+      referencePattern: '"([^"]+\.(?:ttf|otf|woff2?))"'
+release:
+  target: local
+  outputDir: build
+  manifestName: build-manifest.json
+prerequisites:
+  - id: nodejs
+    name: Node.js 24+
+    check: node --version
+    installHint: "https://nodejs.org/en/download/"
+    severity: error
+  - id: dotnet
+    name: .NET SDK 8+
+    check: dotnet --version
+    installHint: "https://dotnet.microsoft.com/download"
+    severity: error
+  - id: godot
+    name: Godot 4.x (with .NET support)
+    check: godot --version
+    installHint: "https://godotengine.org/download"
+    severity: error
+workspaceTypes:
+  - id: game
+    detect:
+      glob: "project.godot"
+    skills:
+      - godot-feature
+      - godot-scene-review
+      - godot-debug
+invariants:
+  - id: GODOT-01
+    rule: Scene files (.tscn) must reside in Scenes/ and scripts (.cs) in Scripts/
+    severity: error
+    check:
+      kind: filename-pattern
+      glob: "**/*.tscn"
+      pattern: "^Scenes/"
+  - id: GODOT-02
+    rule: The .godot/ directory must not be committed to git
+    severity: error
+    check:
+      kind: gitignore-entry
+      pattern: ".godot/"
+  - id: GODOT-03
+    rule: No hardcoded API keys or secrets in C# source files
+    severity: error
+    check:
+      kind: secret-scan
+      glob: "**/*.cs"
+  - id: GODOT-04
+    rule: project.godot autoloads and input map changes require explicit confirmation
+    severity: warning
+    check:
+      kind: file-contains
+      glob: "project.godot"
+      pattern: ""
+workspace:
+  dirs:
+    - games
+    - packages
+    - services
+    - scripts
+  files:
+    - path: pnpm-workspace.yaml
+      content: |
+        packages:
+          - "games/*"
+          - "packages/*"
+          - "services/*"
+    - path: turbo.json
+      content: |
+        {
+          "$schema": "https://turbo.build/schema.json",
+          "tasks": {
+            "build": {
+              "dependsOn": ["^build"],
+              "outputs": ["dist/**", "bin/**", ".godot/**"]
+            },
+            "build:check": {
+              "dependsOn": ["^build:check"]
+            },
+            "test": {
+              "dependsOn": ["^build:check"]
+            }
+          }
+        }
+    - path: tsconfig.base.json
+      content: |
+        {
+          "compilerOptions": {
+            "target": "ESNext",
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "forceConsistentCasingInFileNames": true
+          }
+        }
+    - path: .gitignore
+      content: |
+        node_modules
+        dist
+        .turbo
+        .cache
+        operator-profile.md
+
+        # Godot
+        .godot/
+        bin/
+        obj/
+        *.user
+        *.csproj.user
+    - path: .github/workflows/ci.yml
+      content: |
+        name: CI
+
+        on:
+          pull_request:
+          push:
+            branches: [main]
+          workflow_dispatch:
+
+        concurrency:
+          group: ${{ github.workflow }}-${{ github.ref }}
+          cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+        permissions:
+          contents: read
+
+        jobs:
+          ci:
+            runs-on: ubuntu-latest
+            timeout-minutes: 20
+            name: Build, test, headless check
+            env:
+              TZ: UTC
+
+            steps:
+              - name: Checkout
+                uses: actions/checkout@v5
+
+              - name: Enable Corepack
+                run: corepack enable
+
+              - name: Setup Node.js
+                uses: actions/setup-node@v5
+                with:
+                  node-version: "24"
+                  cache: "pnpm"
+
+              - name: Setup .NET SDK
+                uses: actions/setup-dotnet@v4
+                with:
+                  dotnet-version: "8.0.x"
+
+              - name: Setup Godot
+                uses: lihop/setup-godot@v1
+                with:
+                  version: "4.3"
+                  mono: true
+
+              - name: Install dependencies
+                run: pnpm install --frozen-lockfile
+
+              - name: Format check
+                run: pnpm format:check
+
+              - name: Type check
+                run: pnpm build:check
+
+              - name: Build
+                run: pnpm build
+
+              - name: Test
+                run: pnpm test
+
+        # Windows CI (optional — uncomment if Windows checks are needed):
+        #
+        #   windows-ci:
+        #     runs-on: windows-latest
+        #     name: Build, test, headless check (Windows)
+        #     env:
+        #       GIT_CONFIG_COUNT: 1
+        #       GIT_CONFIG_KEY_0: core.longpaths
+        #       GIT_CONFIG_VALUE_0: "true"
+        #     steps:
+        #       - name: Checkout
+        #         uses: actions/checkout@v5
+        #       - name: Enable Corepack
+        #         run: corepack enable
+        #       - name: Setup Node.js
+        #         uses: actions/setup-node@v5
+        #         with:
+        #           node-version: "24"
+        #           cache: "pnpm"
+        #       - name: Setup .NET SDK
+        #         uses: actions/setup-dotnet@v4
+        #         with:
+        #           dotnet-version: "8.0.x"
+        #       - name: Setup Godot
+        #         uses: lihop/setup-godot@v1
+        #         with:
+        #           version: "4.3"
+        #           mono: true
+        #       - name: Install dependencies
+        #         run: pnpm install --frozen-lockfile
+        #       - name: Format check
+        #         run: pnpm format:check
+        #       - name: Type check
+        #         run: pnpm build:check
+        #       - name: Build
+        #         run: pnpm build
+        #       - name: Test
+        #         run: pnpm test
+        #
+        # The GIT_CONFIG_COUNT env block MUST be set before the checkout step
+        # so git can handle long file paths during clone on Windows.
+        # Do not add Windows to the matrix "just in case" — it requires
+        # separate path-length and platform-specific dependency verification.
+    - path: package.json
+      content: |
+        {
+          "name": "__PROJECT_NAME__",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "engines": {
+            "node": ">=24 <25"
+          },
+          "scripts": {
+            "clean": "node scripts/clean.mjs",
+            "format": "prettier --write .",
+            "format:check": "prettier --check .",
+            "build": "turbo run build",
+            "build:check": "turbo run build:check",
+            "test": "turbo run test",
+            "upgrade-packages": "pnpm -r up"
+          }
+        }
+    - path: scripts/clean.mjs
+      content: |
+        import { readdir, rm } from "node:fs/promises";
+        import { join } from "node:path";
+        import { fileURLToPath } from "node:url";
+
+        const TARGETS = new Set(["node_modules", ".turbo", "dist", ".godot", "bin", "obj", ".cache", ".wrangler"]);
+
+        const repoRoot = join(fileURLToPath(import.meta.url), "..", "..");
+
+        async function walk(dir, toDelete) {
+          const entries = await readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const name = entry.name;
+            const fullPath = join(dir, name);
+            if (TARGETS.has(name)) {
+              toDelete.push(fullPath);
+              continue;
+            }
+            await walk(fullPath, toDelete);
+          }
+        }
+
+        const toDelete = [];
+        await walk(repoRoot, toDelete);
+
+        if (toDelete.length === 0) {
+          console.log("Nothing to clean.");
+          process.exit(0);
+        }
+
+        await Promise.all(toDelete.map((p) => rm(p, { recursive: true, force: true })));
+
+        for (const p of toDelete) {
+          console.log("deleted", p.replace(repoRoot + "/", ""));
+        }
+
+        console.log(`Cleaned ${toDelete.length} directories.`);
+install:
+  - pnpm add -D typescript turbo @warpgogol/forge prettier
+firstWorkspace:
+  path: games/my-game
+  files:
+    - path: project.godot
+      content: |
+        ; Engine configuration file.
+        ; It's best edited using the editor UI and not directly,
+        ; since the parameters that go here are not all obvious.
+        config_version=5
+
+        [application]
+        config/name="my-game"
+        run/main_scene="res://Scenes/Main.tscn"
+        config/features=PackedStringArray("4.3", "C#", "Forward Plus")
+        config/icon="res://icon.svg"
+
+        [dotnet]
+        project/assembly_name="my-game"
+    - path: Game.csproj
+      content: |
+        <Project Sdk="Godot.NET.Sdk">
+          <PropertyGroup>
+            <TargetFramework>net8.0</TargetFramework>
+            <TargetFramework Condition="'$(OS)' == 'Windows_NT'">net8.0-windows</TargetFramework>
+            <EnableDynamicLoading>true</EnableDynamicLoading>
+            <LangVersion>latest</LangVersion>
+            <Nullable>enable</Nullable>
+          </PropertyGroup>
+        </Project>
+    - path: Scenes/Main.tscn
+      content: |
+        [gd_scene load_steps=1 format=3 uid="uid://main_scene"]
+
+        [ext_resource type="Script" path="res://Scripts/Main.cs" id="1"]
+        [ext_resource type="Script" path="res://Scripts/Main.cs" id="1_script"]
+
+        [node name="Main" type="Node2D"]
+        script = ExtResource("1_script")
+    - path: Scripts/Main.cs
+      content: |
+        using Godot;
+
+        public partial class Main : Node2D
+        {
+            public override void _Ready()
+            {
+                GD.Print("my-game ready");
+            }
+        }
+    - path: .gitignore
+      content: |
+        .godot/
+        bin/
+        obj/
+        *.user
+        *.csproj.user
+  install:
+    - dotnet new sln --name my-game
+    - dotnet sln add Game.csproj
