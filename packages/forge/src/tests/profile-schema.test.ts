@@ -157,12 +157,16 @@ test("artifacts with missing required extensions field fails", () => {
 
 test("all shipped profiles parse without changes", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
-  expect(profiles.length).toBe(5);
+  expect(profiles.length).toBe(6);
   for (const profile of profiles) {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);
     // Domain fields should be undefined for existing software-domain profiles
-    if (profile.id !== "editframe" && profile.id !== "obsidian-vault") {
+    if (
+      profile.id !== "editframe" &&
+      profile.id !== "obsidian-vault" &&
+      profile.id !== "godot-csharp"
+    ) {
       expect(profile.domain).toBeUndefined();
       expect(profile.register).toBeUndefined();
     }
