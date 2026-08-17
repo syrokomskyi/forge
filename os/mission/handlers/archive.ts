@@ -409,7 +409,12 @@ export async function runMissionArchive(
           stdio: ["pipe", "pipe", "pipe"],
         });
         for (const m of moved) {
-          execSync(`git add -A ${JSON.stringify(m.from)} ${JSON.stringify(m.to)}`, {
+          execSync(`git add -A ${JSON.stringify(m.to)}`, {
+            cwd: workspaceRoot,
+            stdio: ["pipe", "pipe", "pipe"],
+          });
+          if (existsSync(m.from)) continue;
+          execSync(`git rm -r --cached --ignore-unmatch ${JSON.stringify(m.from)}`, {
             cwd: workspaceRoot,
             stdio: ["pipe", "pipe", "pipe"],
           });
