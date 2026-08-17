@@ -11,6 +11,7 @@
   <item>RFC-0691: add html-attribute-pattern check kind for HTML attribute value validation.</item>
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
   <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for obsidian-vault profile.</item>
+  <item>Add gitignore-entry and secret-scan check kinds for godot-csharp profile.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -114,11 +115,38 @@ function runCheck(
   check: NonNullable<ProfileInvariant["check"]>,
 ): InvariantViolation[] {
   const glob = check.glob;
+  const pattern = check.pattern ?? check.negatedPattern;
+
+  if (check.kind === "gitignore-entry") {
+    const gitignorePath = path.join(workspaceRoot, ".gitignore");
+    try {
+      const content = fs.readFileSync(gitignorePath, "utf8");
+      const lines = content.split(/\r?\n/).map((l) => l.trim());
+      if (!lines.includes(pattern ?? "")) {
+        return [{
+          invariantId: invariant.id,
+          severity: invariant.severity,
+          rule: invariant.rule,
+          file: ".gitignore",
+          message: `.gitignore does not contain entry '${pattern}'`,
+        }];
+      }
+    } catch {
+      return [{
+        invariantId: invariant.id,
+        severity: invariant.severity,
+        rule: invariant.rule,
+        file: ".gitignore",
+        message: `.gitignore not found`,
+      }];
+    }
+    return [];
+  }
+
   if (!glob) return [];
 
   const matchedFiles = filterByGlob(allFiles, glob);
 
-  const pattern = check.pattern ?? check.negatedPattern;
   const needsPattern = check.kind === "filename-pattern" ||
     check.kind === "file-contains" ||
     check.kind === "file-not-contains" ||
@@ -345,6 +373,38 @@ function runCheck(
           file,
           message: `File '${file}' matches excluded pattern`,
         });
+      }
+      break;
+    }
+    case "secret-scan": {
+      const secretPatterns = [
+        /(?:api[_-]?key|apikey)["'\s]*[:=]["'\s]*["'`]([A-Za-z0-9_\-]{20,})["'`]/gi,
+        /(?:secret|token|password|passwd)["'\s]*[:=]["'\s]*["'`]([^"'`\s]{8,})["'`]/gi,
+        /-----BEGIN [A-Z]+ PRIVATE KEY-----/g,
+        /sk_[a-zA-Z0-9]{20,}/g,
+        /gh[pousr]_[A-Za-z0-9]{36,}/g,
+        /AKIA[0-9A-Z]{16}/g,
+      ];
+      for (const file of matchedFiles) {
+        const fullPath = path.join(workspaceRoot, file);
+        try {
+          const content = fs.readFileSync(fullPath, "utf8");
+          for (const secretPattern of secretPatterns) {
+            secretPattern.lastIndex = 0;
+            let match: RegExpExecArray | null;
+            while ((match = secretPattern.exec(content)) !== null) {
+              violations.push({
+                invariantId: invariant.id,
+                severity: invariant.severity,
+                rule: invariant.rule,
+                file,
+                message: `Potential secret detected: ${match[0].slice(0, 30)}...`,
+              });
+            }
+          }
+        } catch {
+          // skip unreadable files
+        }
       }
       break;
     }
