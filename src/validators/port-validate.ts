@@ -27,7 +27,7 @@ interface PortValidateResult {
 const FORBIDDEN_IMPORTS = [
   "@warpgogol/werkstatt/kernel",
   "@warpgogol/werkstatt-site/ui",
-  "@warpgogol/werkstatt-site/share/page",
+  "@warpgogol/werkstatt-shared/share/page",
 ];
 
 export function runPortValidate(

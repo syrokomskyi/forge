@@ -814,14 +814,14 @@ export async function validateSingleRfc(
   // If breaksC: true — @warpgogol/ontology must be in packagesImpacted.
   // If breaksC absent/false but @warpgol/ontology in packagesImpacted — warning.
   // Skip for archived RFCs — package names changed during ecosystem consolidation (RFC-0776):
-  // @warpgogol/ontology → @warpgogol/werkstatt-site/ontology
+  // @warpgogol/ontology → @warpgogol/werkstatt-shared/ontology
   {
     const breaksC = fm["breaksC"];
     const packagesImpacted = Array.isArray(fm["packagesImpacted"])
       ? (fm["packagesImpacted"] as unknown[]).map(String)
       : [];
     const hasOntology = packagesImpacted.some((p) =>
-      p.includes("@warpgogol/werkstatt-site/ontology"),
+      p.includes("@warpgogol/werkstatt-shared/ontology"),
     );
 
     if (breaksC === true && !hasOntology && !isArchived) {
