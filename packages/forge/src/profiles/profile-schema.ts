@@ -17,6 +17,7 @@
   <item>Add templates field for multi-template profiles (e.g. React + HTML).</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
   <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for obsidian-vault profile.</item>
+  <item>Add gitignore-entry and secret-scan check kinds for godot-csharp profile.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -132,6 +133,8 @@ export const profileInvariantCheckSchema = z
       "link-resolution",
       "frontmatter-required",
       "path-exclusion",
+      "gitignore-entry",
+      "secret-scan",
     ]),
     glob: z.string().optional(),
     pattern: z.string().optional(),
@@ -161,7 +164,9 @@ export interface ProfileInvariantCheck {
     | "attribute-pattern"
     | "link-resolution"
     | "frontmatter-required"
-    | "path-exclusion";
+    | "path-exclusion"
+    | "gitignore-entry"
+    | "secret-scan";
   glob?: string;
   pattern?: string;
   negatedPattern?: string;
