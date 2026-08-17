@@ -156,6 +156,10 @@
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
+  "optionalDependencies": {
+    "@warpgogol/werkstatt-shared": "*",
+    "@warpgogol/werkstatt": "*"
+  },
   "devDependencies": {
     "@types/node": "^24.0.0",
     "fast-check": "^4.9.0",
