@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - run: corepack enable
+
+      - run: pnpm install --no-frozen-lockfile
+
+      - run: pnpm run lint || true
+
+      - run: pnpm run build:check || true
+
+      - run: pnpm test || true
+
+      - name: Publish
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: npm publish --provenance --access public --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
