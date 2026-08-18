@@ -6,7 +6,7 @@ Portable governance engine for AI-assisted project development. Provides skills,
 
 ## What you can build with Forge
 
-Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
+Forge supports six kinds of projects. You pick one when you start — everything else is automatic.
 
 | Project type | What it is | Example ideas |
 | --- | --- | --- |
@@ -14,8 +14,50 @@ Forge supports four kinds of projects. You pick one when you start — everythin
 | **Browser game** | An interactive game that runs in a web browser — 2D, arcade, puzzle, adventure | Catch falling stars, tile-matching puzzle, platformer |
 | **Video** | A programmatic video composition — animated logo, intro, product showcase, motion design | Brand intro video, product demo, social media ad clip |
 | **Governance / library** | A code library or governance-only project — no website, no game, no video, just structure and documentation | npm package, internal toolkit, documentation hub |
+| **Godot game** | A desktop or mobile game built with Godot 4.x and C# — 2D, 3D, platformer, RPG | Top-down adventure, 3D platformer, puzzle game |
+| **Knowledge base** | A structured note repository with wikilinks, frontmatter, and Forge governance — Obsidian-compatible | Research notes, project documentation, worldbuilding wiki |
 
 Each project type gets its own scaffold: the right folder structure, the right dependencies, the right tools. You don't need to know what any of those are — Forge sets them up for you.
+
+---
+
+## Forge and the Werkstatt engine
+
+Forge is the **governance layer** — skills, RFC/ADR workflows, naming conventions, spec vendoring, and the CLI. It is framework-agnostic and has zero runtime dependencies (only `yaml` + `zod`).
+
+For full project lifecycle management — missions, releases, deployment, certification, quality checks, content codegen — Forge connects to the **Werkstatt engine** and **stack-specific plugins**. These are separate npm packages installed alongside Forge when you need runtime capabilities beyond governance.
+
+| Package | Purpose | Required for |
+| --- | --- | --- |
+| `@warpgogol/werkstatt` | Runtime engine — missions, releases, Leitstand deployment, certification, Bordbuch, artifact store | All project types with lifecycle management |
+| `@warpgogol/werkstatt-shared` | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
+| `@warpgogol/werkstatt-site` | Astro site plugin — build pipeline, content checks, codegen, deploy adapters | Website projects (`astro-typescript-turborepo`) |
+| `@warpgogol/werkstatt-game` | Phaser game plugin — game validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
+| `@warpgogol/werkstatt-godot` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
+| `@warpgogol/werkstatt-video` | Editframe video plugin — composition validation, render hooks | Video projects (`editframe`) |
+
+### When you need these packages
+
+- **Governance-only projects** (RFCs, ADRs, skills, documentation hubs) — Forge alone is sufficient.
+- **Websites, games, Godot projects, videos** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
+
+### Installing engine packages
+
+```sh
+# Website project
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-site
+
+# Browser game project
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-game
+
+# Godot game project
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot
+
+# Video project
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-video
+```
+
+> **Note for agents:** When scaffolding a new project with `forge create`, always install the engine and matching stack plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages (e.g. `pnpm exec werkstatt run rfc.validate`), and they will fail if the packages are not installed.
 
 ---
 
@@ -184,6 +226,20 @@ ffmpeg -version
 
 You should see version information, not an error.
 
+### Optional — Install Godot and .NET (only for Godot game projects)
+
+If you're planning to create **Godot game** projects (the `godot-csharp` profile), you need two additional tools:
+
+- **Godot 4.x** (with .NET support) — the game engine. Download it from [godotengine.org/download](https://godotengine.org/download). Make sure to choose the ".NET" version (not the standard version).
+- **.NET SDK 8+** — the C# runtime and build tools. Download it from [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download).
+
+Verify both are installed:
+
+```sh
+godot --version
+dotnet --version
+```
+
 ### Troubleshooting
 
 - **"command not found" after installing Node.js** — Close and reopen your terminal (Ubuntu) or PowerShell (Windows). The system needs to reload the list of available commands.
@@ -215,6 +271,8 @@ You need to run one command in the terminal to create your project. After that, 
    | Video (brand video, intro, motion design) | `--profile editframe`                  |
    | Website (landing page, blog, portfolio)   | `--profile astro-typescript-turborepo` |
    | Browser game (2D, arcade, puzzle)         | `--profile phaser-turborepo`           |
+   | Godot game (desktop, mobile, 2D/3D)       | `--profile godot-csharp`               |
+   | Knowledge base (Obsidian vault)           | `--profile obsidian-vault`             |
    | Library or governance-only project        | `--profile forge-shell`                |
 
 2. **Open the project folder in your AI IDE.** Open the folder that was created in step 1 in Windsurf or your preferred IDE.
@@ -287,7 +345,9 @@ forge create --name my-project
 # With a specific stack profile
 forge create --name my-site --profile astro-typescript-turborepo
 forge create --name my-game --profile phaser-turborepo
+forge create --name my-godot-game --profile godot-csharp
 forge create --name my-video --profile editframe
+forge create --name my-vault --profile obsidian-vault
 forge create --name my-library --profile forge-shell
 
 ```
@@ -340,6 +400,8 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | `astro-typescript-turborepo` | Website | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Websites, web apps, content-driven sites |
 | `phaser-turborepo` | Browser game | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
 | `editframe` | Video | Editframe React + Vite + TailwindCSS | `compositions/my-first-video` | Video compositions, brand videos, motion design |
+| `godot-csharp` | Godot game | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Desktop/mobile games, Godot-based interactive projects |
+| `obsidian-vault` | Knowledge base | Obsidian vault + Forge governance | `vault/` | Note-taking, knowledge management, documentation hubs |
 
 The `editframe` profile also supports an **HTML template** (instead of React) for users who prefer web components over JSX. Choose between the two during project setup.
 
@@ -348,7 +410,7 @@ The `editframe` profile also supports an **HTML template** (instead of React) fo
 forge profile.validate
 ```
 
-When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `editframe.config.*`, etc.).
+When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `editframe.config.*`, `project.godot`, `.obsidian/app.json`, etc.).
 
 ## Upgrade flow
 
