@@ -10,11 +10,10 @@ committed completion (RFC-0856 AC-6).</purpose>
 */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   generateLeaseToken,
   hashLeaseToken,
@@ -107,7 +106,7 @@ describe("exclusive lease management", () => {
       writeLease(dir, "RFC-0855", lease);
 
       const p = leasePath(dir, "RFC-0855", "010-test");
-      const fileContent = require("node:fs").readFileSync(p, "utf8");
+      const fileContent = readFileSync(p, "utf8");
       expect(fileContent).not.toContain(rawToken);
       expect(fileContent).toContain(lease.tokenHash);
     });

@@ -11,10 +11,7 @@ and execution phases.</purpose>
 */
 
 import { describe, it, expect } from "vitest";
-import {
-  validateSealTransition,
-  type PacketViolation,
-} from "../../os/program/state.ts";
+import { validateSealTransition } from "../../os/program/state.ts";
 import {
   programPacketLeaseSchema,
   programPacketPreparationSchema,
@@ -127,7 +124,10 @@ describe("RFC-0857: spec-node seal validation", () => {
   });
 
   it("does not apply PROGRAM-PACKET-12 to rfc-kind packets", () => {
-    const manifest = makeManifest([makePredecessorEntry(), makeEntry({ decisionKind: "rfc", resolvedRfc: "RFC-0856" })]);
+    const manifest = makeManifest([
+      makePredecessorEntry(),
+      makeEntry({ decisionKind: "rfc", resolvedRfc: "RFC-0856" }),
+    ]);
     const packet = makePacket();
     (packet as Partial<ProgramPacket>).decisionKind = "rfc";
     (packet as Partial<ProgramPacket>).resolvedRfc = "RFC-0856";
@@ -216,7 +216,9 @@ describe("RFC-0857: preparation report schema", () => {
       governingDecision: "werkstatt-release-certification/CERT-002",
       resolvedRfc: "RFC-0865",
       materializationCommit: "def456",
-      validations: [{ command: "rfc.validate --id RFC-0865", status: "pass", evidenceDigest: "sha256:abc" }],
+      validations: [
+        { command: "rfc.validate --id RFC-0865", status: "pass", evidenceDigest: "sha256:abc" },
+      ],
       cleanTrees: true,
       preparedBy: "human:steward",
     };
