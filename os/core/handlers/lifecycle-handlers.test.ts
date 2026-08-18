@@ -316,9 +316,9 @@ test("runDeterminismCheck cache hit skips double-build", async () => {
   mkdirSync(join(tmpDir, "dist"), { recursive: true });
   const cache = {
     entries: {
-      [`game:${inputHash}:dotnet build ./Game.csproj`]: {
+      [`game:${inputHash}:dotnet build`]: {
         inputHash,
-        produceCommand: "dotnet build ./Game.csproj",
+        produceCommand: "dotnet build",
         outputHash: "sha256:cached-hash",
         deterministic: true,
       },
