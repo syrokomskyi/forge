@@ -131,16 +131,12 @@ export async function runScaffoldProject(
           logger.success(`Finished: ${cmd} (build scripts ignored — run 'pnpm approve-builds' later)`);
         }
       } else {
-        errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
+        installLog.push(`${cmd} — FAILED: ${details || (err as Error).message}`);
         if (outputFormat === "pretty") {
-          logger.error(`Install failed: ${cmd}`);
-          if (details) logger.error(details);
+          logger.warn(`Install failed (non-fatal): ${cmd}`);
+          if (details) logger.warn(details);
+          logger.warn("Run this command manually after fixing the issue (e.g. configuring .npmrc).");
         }
-        return {
-          data: { command: "forge.scaffold", status: "fail", profile: profileId, created, installLog, errors },
-          exitCode: 1,
-          summary: `forge.scaffold: failed — install step "${cmd}" failed`,
-        };
       }
     }
   }
