@@ -1,10 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forge.create — single entry point for project scaffolding. Composes forge.scaffold + forge.init + package-manager post-processing into one command.</purpose>
+<purpose>forge.create — in-place project scaffolding. Composes forge.scaffold + forge.init + package-manager post-processing into one command. Scaffolds directly into the current directory (no subdirectory).</purpose>
 <non-goals>
   <item>Do not change forge.init or forge.scaffold contracts — forge.create delegates to them.</item>
   <item>Do not add interactive prompts — all configuration is via flags and positional args.</item>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
+  <item>Do not create subdirectories — --in-place is the only mode (RFC-0877).</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -15,6 +16,7 @@
   <item>RFC-0640: load profile domain fields and pass them to runInit for domain-aware bootstrapping.</item>
   <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
   <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
+  <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, allowlist-based conflict check.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -91,13 +93,40 @@ function loadProfileDomainFields(profileId: string, forgeRoot: string): InitDoma
   }
 }
 
+/**
+ * Convert a string to kebab-case.
+ * Handles camelCase, PascalCase, snake_case, spaces, and mixed separators.
+ */
+function toKebabCase(s: string): string {
+  return s
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/[_\s]+/g, "-")
+    .replace(/[^a-zA-Z0-9-]/g, "")
+    .toLowerCase()
+    .replace(/^-+|-+$/g, "");
+}
+
+/**
+ * Forge-specific paths that indicate an existing forge project.
+ * If any of these exist in the target directory, refuse to scaffold.
+ */
+const FORGE_CONFLICT_PATHS = [
+  "forge.yaml",
+  ".agents/",
+  "docs/",
+  "skills/",
+  "AGENTS.md",
+  ".forge/",
+];
+
 export async function runCreate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<CreateCommandResult>> {
   const { logger, outputFormat } = context;
-  const name = input.flags["name"] as string | undefined;
-  const profile = (input.flags["profile"] as string | undefined) ?? "forge-shell";
+  const inPlace = input.flags["in-place"] as boolean | undefined;
+  const nameOverride = input.flags["name"] as string | undefined;
+  const profile = input.flags["profile"] as string | undefined;
   const packageManager = (input.flags["package-manager"] as string | undefined) ?? "pnpm";
   const template = input.flags["template"] as string | undefined;
 
@@ -111,42 +140,48 @@ export async function runCreate(
     { action: "Fix the errors above and re-run forge.create", kind: "required" },
   ];
 
-  // 1. Validate name
-  if (!name) {
-    errors.push("Missing required flag: --name <name>");
-    if (outputFormat === "pretty") {
-      logger.error("Missing required flag: --name <name>");
-    }
-    return {
-      data: { command: "forge.create", status: "fail", projectDir: "", profile, filesCreated: [], errors },
-      nextSteps: failNextSteps,
-      exitCode: 1,
-      summary: "forge.create: failed — missing --name flag",
-    };
-  }
-
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) {
-    const msg = `Project name "${name}" is not kebab-case (expected ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$)`;
+  // 1. --in-place is required (RFC-0877)
+  if (!inPlace) {
+    const msg = "Missing required flag: --in-place";
     errors.push(msg);
     if (outputFormat === "pretty") {
       logger.error(msg);
     }
     return {
-      data: { command: "forge.create", status: "fail", projectDir: "", profile, filesCreated: [], errors },
+      data: { command: "forge.create", status: "fail", projectDir: "", profile: profile ?? "", filesCreated: [], errors },
       nextSteps: failNextSteps,
       exitCode: 1,
-      summary: `forge.create: failed — ${msg}`,
+      summary: "forge.create: failed — missing --in-place flag",
     };
   }
 
-  // 2. Resolve target directory
-  const targetDir = path.resolve(context.workspaceRoot, name);
+  // 2. --profile is required (RFC-0877)
+  if (!profile) {
+    const msg = "Missing required flag: --profile <profile-id>";
+    errors.push(msg);
+    if (outputFormat === "pretty") {
+      logger.error(msg);
+    }
+    return {
+      data: { command: "forge.create", status: "fail", projectDir: "", profile: "", filesCreated: [], errors },
+      nextSteps: failNextSteps,
+      exitCode: 1,
+      summary: "forge.create: failed — missing --profile flag",
+    };
+  }
 
-  // 3. Refuse if target exists and is non-empty
-  if (fs.existsSync(targetDir)) {
-    const entries = fs.readdirSync(targetDir);
-    if (entries.length > 0) {
-      const msg = `Directory "${name}" already exists and is not empty (contains: ${entries.slice(0, 5).join(", ")}${entries.length > 5 ? "…" : ""})`;
+  // 3. Resolve target directory — in-place mode uses workspaceRoot directly
+  const targetDir = path.resolve(context.workspaceRoot);
+
+  // 4. Derive project name from folder name if not provided
+  let name: string;
+  if (nameOverride) {
+    name = nameOverride;
+  } else {
+    const folderName = path.basename(targetDir);
+    name = toKebabCase(folderName);
+    if (!name) {
+      const msg = `Cannot derive project name from folder "${folderName}" — provide --name explicitly`;
       errors.push(msg);
       if (outputFormat === "pretty") {
         logger.error(msg);
@@ -160,10 +195,45 @@ export async function runCreate(
     }
   }
 
-  // 4. Create target directory
-  fs.mkdirSync(targetDir, { recursive: true });
+  // 5. Validate kebab-case
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(name)) {
+    const msg = `Project name "${name}" is not kebab-case (expected ^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$)`;
+    errors.push(msg);
+    if (outputFormat === "pretty") {
+      logger.error(msg);
+    }
+    return {
+      data: { command: "forge.create", status: "fail", projectDir: targetDir, profile, filesCreated: [], errors },
+      nextSteps: failNextSteps,
+      exitCode: 1,
+      summary: `forge.create: failed — ${msg}`,
+    };
+  }
 
-  // 4b. Resolve forge root from parent context (the new dir won't have forge installed)
+  // 6. Allowlist-based conflict check (RFC-0877)
+  // Refuse only forge-specific paths; tolerate everything else.
+  const conflicts: string[] = [];
+  for (const conflictPath of FORGE_CONFLICT_PATHS) {
+    const fullPath = path.join(targetDir, conflictPath);
+    if (fs.existsSync(fullPath)) {
+      conflicts.push(conflictPath);
+    }
+  }
+  if (conflicts.length > 0) {
+    const msg = `Directory already contains forge artifacts: ${conflicts.join(", ")}. Refusing to scaffold.`;
+    errors.push(msg);
+    if (outputFormat === "pretty") {
+      logger.error(msg);
+    }
+    return {
+      data: { command: "forge.create", status: "fail", projectDir: targetDir, profile, filesCreated: [], errors },
+      nextSteps: failNextSteps,
+      exitCode: 1,
+      summary: `forge.create: failed — ${msg}`,
+    };
+  }
+
+  // 7. Resolve forge root
   let forgeRoot: string;
   if (context.forgeRoot) {
     forgeRoot = context.forgeRoot;
@@ -178,7 +248,7 @@ export async function runCreate(
     logger.info(`Using forge root: ${forgeRoot}`);
   }
 
-  // 5. Build child context with workspaceRoot = targetDir and forgeRoot override
+  // 8. Build child context with workspaceRoot = targetDir and forgeRoot override
   const childContext: ForgeRuntimeContext = {
     ...context,
     workspaceRoot: targetDir,
