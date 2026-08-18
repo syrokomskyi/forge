@@ -171,5 +171,15 @@ function discoverForgeSkills(skillsRoot: string): ForgeSkillEntry[] {
   return result.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-const SKILLS_ROOT = path.resolve(import.meta.dirname, "..", "skills");
+function resolveSkillsRoot(): string {
+  const candidates = [
+    path.resolve(import.meta.dirname, "..", "skills"),
+    path.resolve(import.meta.dirname, "..", "..", "skills"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return candidates[0];
+}
+const SKILLS_ROOT = resolveSkillsRoot();
 export const FORGE_SKILLS: ForgeSkillEntry[] = discoverForgeSkills(SKILLS_ROOT);

@@ -30,7 +30,7 @@ export function renderIdeRecommendation(): string {
 }
 
 export function generateHelp(registry: CommandRegistry): string {
-  const commands = registry.listCommands();
+  const commands = registry.listCommands().filter((cmd) => !cmd.hidden);
   const header = `forge — autonomous project tooling
 
 Usage:

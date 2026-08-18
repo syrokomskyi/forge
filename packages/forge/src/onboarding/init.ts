@@ -299,7 +299,21 @@ export function runInit(
     { rel: config.paths.adrsDir, label: "docs/adrs/" },
     { rel: config.paths.plansDir, label: "docs/plans/" },
     { rel: config.paths.auditsDir, label: "docs/audits/" },
+    { rel: config.paths.sessionsDir, label: "docs/sessions/" },
   ];
+  // Also create directories declared in bindings.paths (reviewsDir, handoffsDir, sessionsDir)
+  if (config.bindings?.paths) {
+    const bindingPaths = [
+      { rel: config.bindings.paths.reviewsDir, label: "docs/reviews/" },
+      { rel: config.bindings.paths.handoffsDir, label: "docs/handoffs/" },
+      { rel: config.bindings.paths.sessionsDir, label: "docs/sessions/ (bindings)" },
+    ];
+    for (const { rel, label } of bindingPaths) {
+      if (rel && !dirsToCreate.some((d) => d.rel === rel)) {
+        dirsToCreate.push({ rel, label });
+      }
+    }
+  }
   for (const { rel, label } of dirsToCreate) {
     const dir = path.join(workspaceRoot, rel);
     if (fs.existsSync(dir)) {
