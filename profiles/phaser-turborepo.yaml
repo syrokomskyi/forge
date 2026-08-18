@@ -338,7 +338,7 @@ workspace:
         - Plugin: @warpgogol/werkstatt-game
         - Stack profile: phaser-turborepo
 install:
-  - pnpm add -D typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-game prettier
+  - pnpm add -wD typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-game prettier
 firstWorkspace:
   path: apps/my-game
   files:
