@@ -33,6 +33,14 @@ export function runPostSetup(
         stdio: "pipe",
       });
       execFileSync("git", ["init"], { cwd: targetDir, stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "forge@warpgogol.dev"], {
+        cwd: targetDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Forge Migration"], {
+        cwd: targetDir,
+        stdio: "pipe",
+      });
       const patches = fs
         .readdirSync(patchDir)
         .filter((f) => f.endsWith(".patch"))
