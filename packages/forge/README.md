@@ -101,23 +101,7 @@ pnpm --version
 
 You should see a version number like `10.x.x`.
 
-#### Step 3 — Install Forge globally
-
-Installing Forge globally means the `forge` command is available everywhere on your computer, not just inside one project:
-
-```sh
-pnpm add -g @warpgogol/forge
-```
-
-Verify:
-
-```sh
-forge --version
-```
-
-You should see a version number. Forge is now installed and ready.
-
-#### Step 4 — Install an AI-powered IDE
+#### Step 3 — Install an AI-powered IDE
 
 Forge works through conversation with an AI agent. You need an IDE that supports AI agents. We recommend **Windsurf** (tested with Forge):
 
@@ -159,23 +143,7 @@ pnpm --version
 
 You should see a version number like `10.x.x`.
 
-#### Step 3 — Install Forge globally
-
-Installing Forge globally means the `forge` command is available everywhere on your computer, not just inside one project:
-
-```sh
-pnpm add -g @warpgogol/forge
-```
-
-Verify:
-
-```sh
-forge --version
-```
-
-You should see a version number. Forge is now installed and ready.
-
-#### Step 4 — Install an AI-powered IDE
+#### Step 3 — Install an AI-powered IDE
 
 Forge works through conversation with an AI agent. You need an IDE that supports AI agents. We recommend **Windsurf** (tested with Forge):
 
@@ -202,10 +170,8 @@ dotnet --version
 ### Troubleshooting
 
 - **"command not found" after installing Node.js** — Close and reopen your terminal (Ubuntu) or PowerShell (Windows). The system needs to reload the list of available commands.
-- **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
 - **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 24+ using the steps above.
-- **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
-- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --in-place --profile phaser-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
 ---
 
@@ -222,7 +188,7 @@ You need to run one command in the terminal to create your project. After that, 
    ```sh
    mkdir my-game
    cd my-game
-   forge create --in-place --profile phaser-turborepo
+   pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo
    ```
 
    The project name is derived from the folder name (`my-game` in this example). You can override it with `--name`. This populates the current folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
@@ -268,7 +234,7 @@ If you already have a project somewhere else and want to move it into Forge:
    ```sh
    mkdir my-project
    cd my-project
-   forge create --in-place --profile forge-shell
+   pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
    ```
 
    Then open the folder in your AI IDE.
@@ -296,27 +262,23 @@ Just tell the AI agent. It can check the project's health, fix issues, and expla
 
 ```sh
 # Create a project folder, then scaffold Forge in-place
+# pnpm dlx downloads Forge temporarily — no global install needed
 mkdir my-project
 cd my-project
-forge create --in-place --profile forge-shell
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
 
 # With a specific stack profile
 mkdir my-game && cd my-game
-forge create --in-place --profile phaser-turborepo
+pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo
 
 mkdir my-godot-game && cd my-godot-game
-forge create --in-place --profile godot-csharp
+pnpm dlx @warpgogol/forge create --in-place --profile godot-csharp
 
 # Override the project name (derived from folder name by default)
-forge create --in-place --profile forge-shell --name my-custom-name
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell --name my-custom-name
 ```
 
-If Forge is not installed globally, use `pnpm dlx` instead:
-
-```sh
-mkdir my-project && cd my-project
-pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
-```
+After scaffolding, Forge is installed as a local devDependency. Use `pnpm exec forge` for all subsequent commands within the project:
 
 #### Bring an existing project into Forge
 
@@ -325,14 +287,14 @@ There is no CLI command for transplant — it is an interactive, AI-guided proce
 ```sh
 # 1. Create a new empty Forge project (in-place)
 mkdir my-project && cd my-project
-forge create --in-place --profile forge-shell
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
 
 # 2. Open the project in Windsurf (tested with forge) or your preferred IDE
 
 # 3. Run the /forge-bootstrap skill and choose "transplant" mode
 #    The skill will:
 #    - Ask for the path to your existing codebase
-#    - Detect the stack automatically (Astro, Phaser, Godot, etc.)
+#    - Detect the stack automatically (Phaser, Godot, etc.)
 #    - Migrate all files (including .env and git-ignored files)
 #    - Optionally transfer git history
 #    - Verify the build
@@ -342,13 +304,13 @@ forge create --in-place --profile forge-shell
 
 ```sh
 # Check project health
-forge doctor
+pnpm exec forge doctor
 
 # Validate RFCs
-forge rfc.validate
+pnpm exec forge rfc.validate
 
 # List available skills
-forge skill.list
+pnpm exec forge skill.list
 ```
 
 ## Stack profiles
@@ -363,7 +325,7 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 
 ```sh
 # List available profiles (after install)
-forge profile.validate
+pnpm exec forge profile.validate
 ```
 
 When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`phaser.config.*`, `project.godot`, etc.).
@@ -373,14 +335,14 @@ When you bring an existing project through the `/forge-bootstrap` transplant mod
 When a new version of `@warpgogol/forge` is published, consumers upgrade additively:
 
 ```sh
-# 1. Install the latest version
-pnpm add -g @warpgogol/forge@latest
+# 1. Update Forge to the latest version (local devDependency)
+pnpm update @warpgogol/forge
 
 # 2. Sync skills and binding defaults from the installed version
-forge upgrade
+pnpm exec forge upgrade
 
 # 3. Check project health
-forge doctor
+pnpm exec forge doctor
 ```
 
 `forge upgrade` is additive — it never overwrites operator-set bindings, never deletes files, and is idempotent. It updates `forge.syncedVersion` in `forge.yaml` to track the last synced version. Use `--dry-run` to preview changes.
@@ -400,12 +362,12 @@ forge doctor
 
 The typical forge project lifecycle:
 
-1. **Create** — `forge create --in-place --profile <profile>` scaffolds a new project in the current directory with forge.yaml, skills, and docs directories
+1. **Create** — `pnpm dlx @warpgogol/forge create --in-place --profile <profile>` scaffolds a new project in the current directory with forge.yaml, skills, and docs directories
 2. **IDE** — open the project in Windsurf (tested with forge) or your preferred IDE
 3. **Bootstrap** — run `/forge-bootstrap` to configure the project interactively. The skill supports two modes:
    - **Greenfield** — start a new project from scratch: pick a stack, fill in bindings, init git
    - **Transplant** — bring an existing codebase into Forge: detect the stack, migrate code (including git-ignored files like `.env`), optionally transfer git history, verify the build
-4. **Upgrade** — when a new `@warpgogol/forge` version is published, run `forge upgrade` to sync skills and binding defaults additively
+4. **Upgrade** — when a new `@warpgogol/forge` version is published, run `pnpm exec forge upgrade` to sync skills and binding defaults additively
 
 ## forge.yaml
 
