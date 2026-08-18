@@ -287,6 +287,14 @@ workspace:
             "build:check": "turbo run build:check",
             "test": "turbo run test",
             "upgrade-packages": "pnpm -r up"
+          },
+          "devDependencies": {
+            "typescript": "^5.7.0",
+            "turbo": "^2.3.0",
+            "prettier": "^3.4.0",
+            "@warpgogol/forge": "^2.0.0",
+            "@warpgogol/werkstatt": "^1.0.0",
+            "@warpgogol/werkstatt-godot": "^0.4.1"
           }
         }
     - path: scripts/clean.mjs
@@ -456,13 +464,21 @@ workspace:
         pnpm exec werkstatt run werkstatt.autonomy.validate
         ```
 
+        ## Running the game
+
+        ```sh
+        godot --path games/my-game
+        ```
+
+        You should see "Hello, my-game!" in the game window.
+
         ## Stack
 
         - Engine: @warpgogol/werkstatt
         - Plugin: @warpgogol/werkstatt-godot
         - Stack profile: godot-csharp
 install:
-  - pnpm add -D typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-godot prettier
+  - pnpm install
 firstWorkspace:
   path: games/my-game
   files:
@@ -494,13 +510,19 @@ firstWorkspace:
         </Project>
     - path: Scenes/Main.tscn
       content: |
-        [gd_scene load_steps=1 format=3 uid="uid://main_scene"]
+        [gd_scene load_steps=2 format=3 uid="uid://main_scene"]
 
-        [ext_resource type="Script" path="res://Scripts/Main.cs" id="1"]
         [ext_resource type="Script" path="res://Scripts/Main.cs" id="1_script"]
 
         [node name="Main" type="Node2D"]
         script = ExtResource("1_script")
+
+        [node name="HelloLabel" type="Label" parent="."]
+        offset_left = 200.0
+        offset_top = 200.0
+        offset_right = 600.0
+        offset_bottom = 300.0
+        text = "Hello, my-game!"
     - path: Scripts/Main.cs
       content: |
         using Godot;
@@ -519,6 +541,33 @@ firstWorkspace:
         obj/
         *.user
         *.csproj.user
+    - path: icon.svg
+      content: |
+        <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
+          <rect width="128" height="128" rx="16" fill="#478cbf"/>
+          <text x="64" y="80" font-family="Arial, sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">G</text>
+        </svg>
+    - path: .editorconfig
+      content: |
+        root = true
+
+        [*]
+        charset = utf-8
+        end_of_line = lf
+        insert_final_newline = true
+        trim_trailing_whitespace = true
+
+        [*.{cs,csproj}]
+        indent_style = tab
+        indent_size = 4
+
+        [*.{tscn,tres,godot,cfg}]
+        indent_style = tab
+        indent_size = 4
+
+        [*.{md,txt}]
+        trim_trailing_whitespace = false
   install:
     - dotnet new sln --name my-game
     - dotnet sln add Game.csproj
+    - dotnet restore
