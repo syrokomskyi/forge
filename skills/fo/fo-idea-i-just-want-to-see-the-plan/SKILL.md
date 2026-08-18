@@ -19,6 +19,8 @@ See `_shared/fo-pipeline-conventions.md` §Language policy.
 
 Thin wrapper around `fo-idea-i-just-want-to-see-the-result`. Invokes the orchestrator with `stopAfter: plan`, which runs steps 0–3 only (idea → audit → enhance → plan). Step 4 (implement, which includes review and fix) is not run.
 
+The orchestrator handles the pre-pipeline checkpoint per `_shared/fo-pipeline-conventions.md` §Pre-pipeline checkpoint — no separate checkpoint is needed in this wrapper.
+
 ## ADR documents
 
 ADRs skip audit, enhance, and plan. The orchestrator stops after step 0 (idea creation) with the message: "ADR does not require a plan. Run `/fo-idea-implement` to implement."

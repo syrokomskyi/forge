@@ -178,10 +178,10 @@ For each identified RFC, read the frontmatter `status` field from `docs/rfcs/rfc
 
   | Option | Description |
   | --- | --- |
-  | Complete now | The agent proceeds to finish the remaining `fo-idea-implement` steps (3.6–3.8: check acceptance criteria with evidence, stamp implemented). This may require running validators, fixing errors, and committing the stamp. |
+  | Complete now | The agent proceeds to finish the remaining `fo-idea-implement` steps (4.6–4.8: check acceptance criteria with evidence, stamp implemented). This may require running validators, fixing errors, and committing the stamp. |
   | Leave as-is | The operator explicitly acknowledges the RFC remains in its current non-terminal status with unchecked acceptance criteria. No further action is taken on the RFC. |
 
-  If the operator chooses "Complete now", execute `fo-idea-implement` steps 3.6–3.8 for that RFC before proceeding. If multiple RFCs are in this state, ask about each one (or present them as a batch with `allowMultiple: true`).
+  If the operator chooses "Complete now", execute `fo-idea-implement` steps 4.6–4.8 for that RFC before proceeding. If multiple RFCs are in this state, ask about each one (or present them as a batch with `allowMultiple: true`).
 
 **4d. Report:**
 

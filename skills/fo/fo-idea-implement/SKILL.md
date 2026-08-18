@@ -41,15 +41,19 @@ Determine the document type by:
 
 If the type cannot be determined, ask the user.
 
-### 3. RFC implementation flow
+### 3. Pre-pipeline checkpoint
 
-#### 3.1. Prerequisite checks (per RFC)
+Before starting implementation, perform a pre-pipeline checkpoint per `_shared/fo-pipeline-conventions.md` §Pre-pipeline checkpoint. If pre-existing session context exists (discussion, document creation, debugging, prior pipeline steps), emit the checkpoint block, release pre-existing context, and start implementation with a fresh read phase. If the session has no prior context (e.g. this skill was invoked at the start of a session), skip the checkpoint. If a pre-pipeline checkpoint was already emitted by a calling orchestrator (e.g. `fo-idea-i-just-want-to-see-the-result`), skip this step — the checkpoint was already done.
+
+### 4. RFC implementation flow
+
+#### 4.1. Prerequisite checks (per RFC)
 
 The pipeline is: create → audit → enhance → plan → implement. Audit, enhance, and a plan are **mandatory** — no RFC may proceed to implementation without all three being completed. The RFC must also be `accepted` — this skill does not transition `draft` to `accepted`; that is the responsibility of `fo-idea-plan`.
 
 Before running the implementation on each RFC, perform these checks **in order**. If any check fails, record the RFC as **skipped** in the batch summary with the reason, and immediately proceed to the next RFC in the batch. Do not stop the entire batch — skip and report.
 
-1. **Prefix check** — if the id starts with `ADR-`, this is not an RFC. Skip with message: `ADR-XXXX is an ADR, not an RFC. Use the ADR implementation flow (step 4 below) for ADR-XXXX.`
+1. **Prefix check** — if the id starts with `ADR-`, this is not an RFC. Skip with message: `ADR-XXXX is an ADR, not an RFC. Use the ADR implementation flow (step 5 below) for ADR-XXXX.`
 2. **RFC file exists** — look for `docs/rfcs/rfc-XXXX-*.md`. If no file is found, skip with message: `RFC-XXXX not found in docs/rfcs/. Run /fo-idea-create-rfc first.`
 3. **Terminal status check** — read the RFC's `status` frontmatter. If the status is `implemented`, skip with message: `RFC-XXXX is already implemented. Nothing to do.` If the status is `rejected` or `superseded`, skip with message: `RFC-XXXX is <status> (terminal). Terminal RFCs cannot be implemented. To change this decision, create a new RFC with supersedes: [RFC-XXXX] via /fo-idea-create-rfc.`
 4. **Audit check** — look for `docs/audits/audit-rfc-XXXX-*.md`. If no audit file exists, skip with message: `No audit report found for RFC-XXXX in docs/audits/. Run /fo-idea-audit RFC-XXXX first. The pipeline is: create → audit → enhance → plan → implement.`
@@ -57,15 +61,15 @@ Before running the implementation on each RFC, perform these checks **in order**
 6. **Accepted status check** — if the status is not `accepted` (e.g. `draft` or `reviewing`), skip with message: `RFC-XXXX is <status>, not accepted. Run /fo-idea-plan RFC-XXXX first — it will transition the RFC to accepted and create the plan. The pipeline is: create → audit → enhance → plan → implement.`
 7. **Plan check** — look for `docs/plans/plan-rfc-XXXX-*.md`. If no plan file exists, skip with message: `No plan file found for RFC-XXXX in docs/plans/. Run /fo-idea-plan RFC-XXXX first. The pipeline is: create → audit → enhance → plan → implement.`
 
-If all checks pass, proceed to step 3.2.
+If all checks pass, proceed to step 4.2.
 
-#### 3.2. Read the RFC and related context
+#### 4.2. Read the RFC and related context
 
 Read the RFC fully and all RFCs listed in its `amends[]`, `related[]`, and `supersedes[]`. Read the plan fully. Read the closest `AGENTS.md` for each impacted package. Read `ref(forge.yaml bindings.paths.invariantsFile)` entries for every DNA invariant in `satisfies[]`.
 
 If the plan or RFC has genuine ambiguities that would cause wrong implementation, ask the user **before starting implementation**. Use `ask_user_question` with a recommended option first. Once implementation begins, stop asking — make autonomous decisions.
 
-#### 3.3. Implement step by step
+#### 4.3. Implement step by step
 
 Execute the plan's step sequence in order. For each step:
 
@@ -96,7 +100,7 @@ Stage only the files touched by this step. Do not stage unrelated changes — an
 - **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology.** Use Compass (not GRACE) in all new code, documentation, and log messages.
 
-#### 3.4. Run heavy checks
+#### 4.4. Run heavy checks
 
 After **all** plan steps are complete, run the heavy validation suite in order:
 
@@ -122,9 +126,9 @@ Use the `packagesImpacted` and `appsImpacted` frontmatter lists to determine whi
 
 **Do not run a full root `root build` or `turbo run build`.** The success criterion is that all impacted workspaces pass their scoped checks, not that the entire ecosystem builds. See root AGENTS.md §Build verification discipline.
 
-#### 3.5. Fix errors
+#### 4.5. Fix errors
 
-If any check in step 3.4 fails, fix every error:
+If any check in step 4.4 fails, fix every error:
 
 1. Read the error output.
 2. Identify the root cause.
@@ -142,7 +146,7 @@ If any check in step 3.4 fails, fix every error:
 
 Continue until all impacted checks pass.
 
-#### 3.6. Check acceptance criteria
+#### 4.6. Check acceptance criteria
 
 Read the RFC's `## Acceptance criteria` section. For each checkbox:
 
@@ -153,9 +157,9 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
 6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
 
-Do not proceed to step 3.7 until every acceptance criterion checkbox is checked with evidence.
+Do not proceed to step 4.7 until every acceptance criterion checkbox is checked with evidence.
 
-#### 3.7. Run acceptance probes and emit evidence
+#### 4.7. Run acceptance probes and emit evidence
 
 If the RFC declares `acceptance:` probes in frontmatter:
 
@@ -181,7 +185,7 @@ Emit per-RFC verification evidence for RFC-XXXX implementation.
 
 Stage `docs/rfcs/verification/rfc-xxxx.generated.json`.
 
-#### 3.8. Stamp implemented
+#### 4.8. Stamp implemented
 
 Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Direct edits to `status`, `implementedAt`, and `updatedAt` are prohibited for all actors.
 
@@ -208,7 +212,7 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
 
    Stage only the RFC file. The implementation commit and the stamp commit MUST be separate.
 
-#### 3.8b. Regenerate command manifest (MANDATORY)
+#### 4.8b. Regenerate command manifest (MANDATORY)
 
 If the RFC added, changed, or removed commands (check `commands.added`, `commands.changed`, `commands.removed` in the RFC frontmatter), regenerate the command manifest so that `rfc.validate` does not report `RFC-CMD-02` (command listed but not registered):
 
@@ -228,26 +232,26 @@ If the RFC has no `commands.*` changes (e.g. it only changes schemas, docs, or i
 
 This step is MANDATORY for any RFC with `commands.added`, `commands.changed`, or `commands.removed`. A stale manifest causes `RFC-CMD-02` violations that block `rfc.validate` for all implemented RFCs.
 
-#### 3.9. Documentation audit (fo-doc-audit)
+#### 4.9. Documentation audit (fo-doc-audit)
 
 After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, architecture-dna.md, templates, generated artifacts, COMMANDS.md/PACKAGE_GRAPH.md), applies needed updates, and commits them separately. Wait for it to complete.
 
 If `fo-doc-audit` reports that no updates are needed, proceed to the next step.
 
-#### 3.10. Code review (fo-review)
+#### 4.10. Code review (fo-review)
 
 After the documentation audit, invoke `fo-review` via the `skill` tool. It performs a cross-session fitness check of the code diff against Forge standards (DNA, forward-only, Compass, agent clarity, pragmatism). The review covers all code changes made in this session since the first implementation commit.
 
 1. Determine the diff range: `git diff <merge-base-of-session>...HEAD` — where merge-base is the commit before the first `implement:` commit for this RFC.
 2. Invoke `fo-review` with the diff range. Wait for it to complete (persist + commit the review report in `docs/reviews/code/`).
-3. Read the review report. If the verdict is `approved` **and** the report contains zero findings across all axes, proceed to step 3.12.
-4. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 3.11 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding, including ones labelled "minor" or "cosmetic".
+3. Read the review report. If the verdict is `approved` **and** the report contains zero findings across all axes, proceed to step 4.12.
+4. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 4.11 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding, including ones labelled "minor" or "cosmetic".
 
 **This step is MANDATORY.** Do not skip it, even if the implementation seems clean. The review is the quality gate that catches DNA misalignment, forward-only violations, Compass drift, and agent clarity issues that implementation authors miss.
 
-#### 3.11. Fix review findings (fo-fix)
+#### 4.11. Fix review findings (fo-fix)
 
-If `fo-review` (step 3.10) reported **any** findings (even cosmetic ones on axes A/C/F/G), invoke `fo-fix` via the `skill` tool. It applies the review findings iteratively: fix → typecheck → commit → re-check.
+If `fo-review` (step 4.10) reported **any** findings (even cosmetic ones on axes A/C/F/G), invoke `fo-fix` via the `skill` tool. It applies the review findings iteratively: fix → typecheck → commit → re-check.
 
 1. Invoke `fo-fix` with the review report. Wait for it to complete.
 2. After `fo-fix` returns, re-run `fo-review` to confirm all findings are resolved.
@@ -256,18 +260,18 @@ If `fo-review` (step 3.10) reported **any** findings (even cosmetic ones on axes
 
 If `fo-review` reported truly zero findings (the report explicitly states "No issues." on every axis), skip this step. An `approved` verdict with any finding text on any axis does NOT qualify as zero findings.
 
-#### 3.11b. Implementation status gate (RFC)
+#### 4.11b. Implementation status gate (RFC)
 
 Before reporting completion, verify the RFC has been stamped as `implemented`:
 
 1. Read the RFC frontmatter — confirm `status: implemented` and `implementedAt` is set.
 2. Run `ref(forge.yaml bindings.commands.validateRfc) --id RFC-XXXX --json` — confirm zero errors.
-3. If status is not `implemented`, go back to step 3.8 (Stamp implemented) and run the stamp command.
+3. If status is not `implemented`, go back to step 4.8 (Stamp implemented) and run the stamp command.
 4. If `rfc.validate` reports errors, fix them before proceeding.
 
-This gate is MANDATORY. Do not proceed to step 3.12 (report) until the RFC is `implemented`.
+This gate is MANDATORY. Do not proceed to step 4.12 (report) until the RFC is `implemented`.
 
-#### 3.12. RFC report
+#### 4.12. RFC report
 
 After implementation is complete, report in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, file paths, skill names) stay untranslated.
 
@@ -284,11 +288,11 @@ After implementation is complete, report in `aiLanguage`. **Translate all labels
 ### Status: implemented (<date>)
 ```
 
-### 4. ADR implementation flow
+### 5. ADR implementation flow
 
 Execute this flow when the document is an ADR (prefix `ADR-`, or file in `docs/adrs/`).
 
-#### 4.1. Read the ADR
+#### 5.1. Read the ADR
 
 Read the ADR file. Extract:
 
@@ -298,7 +302,7 @@ Read the ADR file. Extract:
 - **Consequences** — what the decision implies for the codebase.
 - **Related** — any RFCs, ADRs, or DNA invariants referenced.
 
-#### 4.2. Transition to accepted (if needed)
+#### 5.2. Transition to accepted (if needed)
 
 If the ADR is `proposed` or `reviewing`, transition it to `accepted`:
 
@@ -317,7 +321,7 @@ If the ADR is `proposed` or `reviewing`, transition it to `accepted`:
 
 If the ADR is already `accepted`, proceed directly.
 
-#### 4.3. Implement the decision
+#### 5.3. Implement the decision
 
 Read the `## Decision` section and implement it in code. **For each decision point, verify whether the code already exists** — ADRs may declare fields or extensions that related RFCs did not fully implement. Do not assume associated RFCs covered everything; check each decision against the actual codebase and implement any gaps. Follow the same principles as RFC implementation:
 
@@ -335,7 +339,7 @@ Read the `## Decision` section and implement it in code. **For each decision poi
 
 - If a tool call fails with a recoverable error, recover autonomously: split content, use `edit`/`multi_edit`, decompose files, and retry immediately.
 
-#### 4.4. Run scoped build checks
+#### 5.4. Run scoped build checks
 
 After implementation is complete, run heavy checks for the impacted workspaces only:
 
@@ -359,7 +363,7 @@ After implementation is complete, run heavy checks for the impacted workspaces o
 
    **MUST NOT run a full root `root build` or `turbo run build`.** Only check the workspaces this ADR touches. See root AGENTS.md §Build verification discipline.
 
-#### 4.5. Fix errors
+#### 5.5. Fix errors
 
 If any check fails, fix every error:
 
@@ -377,26 +381,26 @@ If any check fails, fix every error:
 
 Continue until all impacted checks pass.
 
-#### 4.6. Documentation audit (fo-doc-audit)
+#### 5.6. Documentation audit (fo-doc-audit)
 
 After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces, applies needed updates, and commits them separately. Wait for it to complete.
 
 If `fo-doc-audit` reports that no updates are needed, proceed to the next step.
 
-#### 4.7. Code review (fo-review)
+#### 5.7. Code review (fo-review)
 
 After the documentation audit, invoke `fo-review` via the `skill` tool. It performs a cross-session fitness check of the code diff against Forge standards. The review covers all code changes made in this session.
 
 1. Determine the diff range: `git diff <merge-base-of-session>...HEAD`.
 2. Invoke `fo-review` with the diff range. Wait for it to complete (persist + commit the review report).
-3. Read the review report. If the verdict is `approved` **and** the report contains zero findings across all axes, proceed to step 4.9.
-4. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 4.8 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding.
+3. Read the review report. If the verdict is `approved` **and** the report contains zero findings across all axes, proceed to step 5.9.
+4. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 5.8 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding.
 
 **This step is MANDATORY.** Do not skip it.
 
-#### 4.8. Fix review findings (fo-fix)
+#### 5.8. Fix review findings (fo-fix)
 
-If `fo-review` (step 4.7) reported **any** findings (even cosmetic ones), invoke `fo-fix` via the `skill` tool.
+If `fo-review` (step 5.7) reported **any** findings (even cosmetic ones), invoke `fo-fix` via the `skill` tool.
 
 1. Invoke `fo-fix` with the review report. Wait for it to complete.
 2. After `fo-fix` returns, re-run `fo-review` to confirm all findings are resolved.
@@ -405,7 +409,7 @@ If `fo-review` (step 4.7) reported **any** findings (even cosmetic ones), invoke
 
 If `fo-review` reported truly zero findings (the report explicitly states "No issues." on every axis), skip this step. An `approved` verdict with any finding text on any axis does NOT qualify as zero findings.
 
-#### 4.9. ADR code-trace
+#### 5.9. ADR code-trace
 
 Before stamping `implemented`, verify that the ADR is mentioned in the codebase — this leaves a trace linking code back to the decision record, just as RFCs leave traces.
 
@@ -413,7 +417,7 @@ Before stamping `implemented`, verify that the ADR is mentioned in the codebase 
    - **COMPASS block comments** — `MODULE_CONTRACT`, `CHANGE_SUMMARY`, or other Compass scaffolding comments that reference the ADR id.
    - **Inline code mentions** — comments, docstrings, or annotations in source files that reference the ADR id.
 
-2. **If mentions are found** — the trace exists. Proceed to step 4.10.
+2. **If mentions are found** — the trace exists. Proceed to step 5.10.
 
 3. **If no mentions are found** — attempt to find the most relevant file(s) where the decision was implemented. If the file(s) can be identified:
    - Add a Compass block comment referencing the ADR id to the file's `MODULE_CONTRACT` or `CHANGE_SUMMARY` section. For example: `<item>ADR-XXXX: <brief note on what this ADR decided for this module.</item>`
@@ -426,13 +430,13 @@ Before stamping `implemented`, verify that the ADR is mentioned in the codebase 
      Add ADR-XXXX reference to <file> to link the decision to the code.
      ```
 
-   - Proceed to step 4.10.
+   - Proceed to step 5.10.
 
 4. **If the relevant file(s) cannot be identified** — ask the operator: `ADR-XXXX was implemented but no code mention was found. Please point to the file(s) where this ADR's decision was applied so I can add a trace reference.` After the operator provides the file(s), add the trace as described in step 3, commit, and proceed.
 
 **For already-implemented ADRs** (if this step is reached for an ADR that was already `implemented`): this check is informational — attempt to find the trace and add it if missing, but do not block on it.
 
-#### 4.10. Stamp implemented
+#### 5.10. Stamp implemented
 
 After all checks pass and documentation is updated, transition the ADR to `implemented` using `adr.implement.stamp` as required by the ADR lifecycle contract. Direct edits to ADR `status`, `implementedAt`, and `updatedAt` are prohibited — use the stamp command instead.
 
@@ -456,18 +460,18 @@ After all checks pass and documentation is updated, transition the ADR to `imple
 
    Stage only the ADR file. The implementation commit and the stamp commit MUST be separate.
 
-#### 4.10b. Implementation status gate (ADR)
+#### 5.10b. Implementation status gate (ADR)
 
 Before reporting completion, verify the ADR has been transitioned to `implemented`:
 
 1. Read the ADR frontmatter — confirm `status: implemented` and `implementedAt` is set.
 2. Run `ref(forge.yaml bindings.commands.validateAdr) --id ADR-XXXX --json` — confirm zero errors.
-3. If status is not `implemented`, go back to step 4.10 (Stamp implemented) and run `adr.implement.stamp`.
+3. If status is not `implemented`, go back to step 5.10 (Stamp implemented) and run `adr.implement.stamp`.
 4. If `adr.validate` reports errors, fix them before proceeding.
 
-This gate is MANDATORY. Do not proceed to step 4.11 (report) until the ADR is `implemented`.
+This gate is MANDATORY. Do not proceed to step 5.11 (report) until the ADR is `implemented`.
 
-#### 4.11. Report
+#### 5.11. Report
 
 After implementation is complete, report in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only.
 
@@ -482,7 +486,7 @@ After implementation is complete, report in `aiLanguage`. **Translate all labels
 ### Status: implemented (<date>)
 ```
 
-### 5. Batch summary
+### 6. Batch summary
 
 If multiple documents were processed, present a single batch summary at the very end in `aiLanguage`. **Translate all labels, headings, and column names to `aiLanguage`** — the template below is structural only.
 
@@ -518,5 +522,5 @@ When an RFC was planned in this session, prefer implementing it in this session 
 - **Do not weaken DNA invariants.** If implementation reveals an invariant conflict, escalate via `rfc.supersede.propose` instead of working around it.
 - **Compass scaffolding on new files.** Non-trivial new source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY`. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology, not GRACE.** Use Compass in all new code, docs, and log messages.
-- **Review and fix are MANDATORY.** After implementation and doc-audit, always run `fo-review` (step 3.10 / 4.7) and `fo-fix` (step 3.11 / 4.8) if **any** findings exist in the review report — including cosmetic or minor findings. Do not stamp `implemented` without a review report in `docs/reviews/code/`. An `approved` verdict does NOT mean "skip fix" — read every axis section and count every finding. This is the quality gate that catches DNA misalignment, forward-only violations, and Compass drift.
+- **Review and fix are MANDATORY.** After implementation and doc-audit, always run `fo-review` (step 4.10 / 5.7) and `fo-fix` (step 4.11 / 5.8) if **any** findings exist in the review report — including cosmetic or minor findings. Do not stamp `implemented` without a review report in `docs/reviews/code/`. An `approved` verdict does NOT mean "skip fix" — read every axis section and count every finding. This is the quality gate that catches DNA misalignment, forward-only violations, and Compass drift.
 - **No `draft → accepted` transition for RFCs.** This skill requires RFC `status: accepted` and does not transition RFCs. Use `/fo-idea-plan` for that transition.
