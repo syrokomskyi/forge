@@ -22,7 +22,7 @@ Before starting, read `PREFERENCES.md` at the repository root. If the file is mi
 
 ### Ingest mode
 
-Invoked as `/fo-spec-ingest <path-to-package>` when the operator has an external specification package (e.g. a consultant deliverable, an Obsidian vault export).
+Invoked as `/fo-spec-ingest <path-to-package>` when the operator has an external specification package (e.g. a consultant deliverable, a markdown vault export).
 
 ### Authoring mode
 

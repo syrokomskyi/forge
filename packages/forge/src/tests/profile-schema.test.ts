@@ -38,46 +38,46 @@ const baseProfile: StackProfile = {
 test("profile with all six domain fields parses successfully", () => {
   const profile = {
     ...baseProfile,
-    domain: "video",
+    domain: "game",
     register: "creative",
     terminology: {
-      artifact: "composition",
-      artifactPlural: "compositions",
+      artifact: "game",
+      artifactPlural: "games",
       module: "scene",
-      source: "composition file",
-      output: "render",
-      verify: "render-verify",
-      operator: "director",
+      source: "game file",
+      output: "build",
+      verify: "playtest",
+      operator: "developer",
     },
     artifacts: [
       {
-        id: "composition",
-        extensions: [".html", ".tsx"],
-        produce: { command: "ref(bindings.commands.produce)", output: "dist/renders/{name}.mp4" },
+        id: "game",
+        extensions: [".ts"],
+        produce: { command: "ref(bindings.commands.produce)", output: "dist/{name}.js" },
         validate: { command: "ref(bindings.commands.validate)" },
         determinism: {
           hashable: true,
-          inputs: ["composition files", "assets", "editframe version"],
+          inputs: ["game files", "assets", "vite version"],
         },
       },
     ],
     workspaceTypes: [
       {
-        id: "composition",
-        detect: { glob: "*.html", contains: "ef-timegroup" },
-        skills: ["ef-composition-review"],
-        agentsMdTemplate: "templates/composition-agents.md",
+        id: "game",
+        detect: { glob: "phaser.config.*" },
+        skills: ["fo-add-tests"],
+        agentsMdTemplate: "templates/game-agents.md",
       },
     ],
     invariants: [
-      { id: "VIDEO-01", rule: "Compositions use kebab-case filenames", severity: "error" },
-      { id: "VIDEO-02", rule: "Scene durations use contain mode by default", severity: "warning" },
+      { id: "GAME-01", rule: "Games use kebab-case filenames", severity: "error" },
+      { id: "GAME-02", rule: "Scenes use contain mode by default", severity: "warning" },
     ],
   };
   const result = stackProfileSchema.safeParse(profile);
   expect(result.success).toBe(true);
   if (result.success) {
-    expect(result.data.domain).toBe("video");
+    expect(result.data.domain).toBe("game");
     expect(result.data.register).toBe("creative");
     expect(result.data.artifacts).toHaveLength(1);
     expect(result.data.workspaceTypes).toHaveLength(1);
@@ -157,16 +157,12 @@ test("artifacts with missing required extensions field fails", () => {
 
 test("all shipped profiles parse without changes", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
-  expect(profiles.length).toBe(6);
+  expect(profiles.length).toBe(4);
   for (const profile of profiles) {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);
     // Domain fields should be undefined for existing software-domain profiles
-    if (
-      profile.id !== "editframe" &&
-      profile.id !== "obsidian-vault" &&
-      profile.id !== "godot-csharp"
-    ) {
+    if (profile.id !== "godot-csharp") {
       expect(profile.domain).toBeUndefined();
       expect(profile.register).toBeUndefined();
     }

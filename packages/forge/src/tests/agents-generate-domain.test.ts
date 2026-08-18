@@ -94,11 +94,11 @@ async function makeForgeYaml(dir: string, extra?: string): Promise<void> {
 
 // --- substituteTemplate tests ---
 
-test("substituteTemplate replaces {{terminology.artifact}} with 'composition'", () => {
+test("substituteTemplate replaces {{terminology.artifact}} with 'game'", () => {
   const result = substituteTemplate("Each {{terminology.artifact}} is a workspace.", {
-    artifact: "composition",
+    artifact: "game",
   });
-  expect(result).toBe("Each composition is a workspace.");
+  expect(result).toBe("Each game is a workspace.");
 });
 
 test("substituteTemplate replaces unknown key with key name itself", () => {
@@ -108,15 +108,15 @@ test("substituteTemplate replaces unknown key with key name itself", () => {
 
 test("substituteTemplate leaves content without placeholders unchanged", () => {
   const content = "No placeholders here.";
-  expect(substituteTemplate(content, { artifact: "composition" })).toBe(content);
+  expect(substituteTemplate(content, { artifact: "game" })).toBe(content);
 });
 
 test("substituteTemplate replaces multiple placeholders in one pass", () => {
   const result = substituteTemplate(
     "The {{terminology.operator}} creates {{terminology.artifactPlural}}.",
-    { operator: "director", artifactPlural: "compositions" },
+    { operator: "developer", artifactPlural: "games" },
   );
-  expect(result).toBe("The director creates compositions.");
+  expect(result).toBe("The developer creates games.");
 });
 
 // --- selectRootTemplate tests ---
@@ -147,18 +147,6 @@ test("creative template contains {{dynamicSections}} marker", () => {
 
 // --- selectNestedTemplate tests ---
 
-test("selectNestedTemplate with agentsMdTemplate uses profile template", () => {
-  const wsType: ProfileWorkspaceType = {
-    id: "composition",
-    detect: { glob: "*.html" },
-    agentsMdTemplate: "editframe-templates/composition-agents.md",
-  };
-  const profile = { id: "editframe" } as StackProfile;
-  const result = selectNestedTemplate(wsType, profile, {}, "FALLBACK");
-  expect(result).toContain("Composition Workspace");
-  expect(result).not.toBe("FALLBACK");
-});
-
 test("selectNestedTemplate without agentsMdTemplate uses fallback", () => {
   const wsType: ProfileWorkspaceType = {
     id: "package",
@@ -171,8 +159,8 @@ test("selectNestedTemplate without agentsMdTemplate uses fallback", () => {
 
 test("selectNestedTemplate without profile uses fallback", () => {
   const wsType: ProfileWorkspaceType = {
-    id: "composition",
-    detect: { glob: "*.html" },
+    id: "game",
+    detect: { glob: "*.ts" },
     agentsMdTemplate: "some-template.md",
   };
   const result = selectNestedTemplate(wsType, undefined, {}, "FALLBACK");
@@ -199,19 +187,6 @@ test("selectNestedTemplate rejects absolute path with fallback", () => {
   const profile = { id: "evil-profile" } as StackProfile;
   const result = selectNestedTemplate(wsType, profile, {}, "FALLBACK");
   expect(result).toBe("FALLBACK");
-});
-
-test("selectNestedTemplate applies terminology substitution", () => {
-  const wsType: ProfileWorkspaceType = {
-    id: "composition",
-    detect: { glob: "*.html" },
-    agentsMdTemplate: "editframe-templates/composition-agents.md",
-  };
-  const profile = { id: "editframe" } as StackProfile;
-  // The composition-agents.md template doesn't have {{terminology.*}} placeholders,
-  // but if it did, they would be substituted
-  const result = selectNestedTemplate(wsType, profile, { artifact: "video" }, "FALLBACK");
-  expect(result).toContain("Composition Workspace");
 });
 
 // --- Integration: --json output has details field ---

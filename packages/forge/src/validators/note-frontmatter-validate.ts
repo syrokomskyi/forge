@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Validate frontmatter consistency across an Obsidian vault — checks for required fields in YAML frontmatter.</purpose>
+<purpose>Validate frontmatter consistency across a markdown note vault — checks for required fields in YAML frontmatter.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement domain-specific logic beyond frontmatter validation.</item>

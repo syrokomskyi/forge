@@ -16,7 +16,7 @@
   <item>Add prerequisites field for profile-declared system dependency checks (e.g. FFmpeg).</item>
   <item>Add templates field for multi-template profiles (e.g. React + HTML).</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
-  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for obsidian-vault profile.</item>
+  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for note vault validation.</item>
   <item>Add gitignore-entry and secret-scan check kinds for godot-csharp profile.</item>
 </CHANGE_SUMMARY>
 */

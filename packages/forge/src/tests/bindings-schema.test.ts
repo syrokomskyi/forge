@@ -33,11 +33,11 @@ describe("RFC-0639: Semantic command keys", () => {
         scopedBuild: null,
         specValidate: null,
         sessionSave: null,
-        validate: "npx editframe check",
-        produce: "npx editframe render -o {output}",
-        verify: "npx editframe render --dry-run",
-        preview: "npx editframe preview",
-        lint: "npx editframe check --strict",
+        validate: "pnpm exec validator check",
+        produce: "pnpm exec builder build -o {output}",
+        verify: "pnpm exec builder build --dry-run",
+        preview: "pnpm exec preview serve",
+        lint: "pnpm exec validator check --strict",
       },
       paths: {
         invariantsFile: null,
@@ -50,8 +50,8 @@ describe("RFC-0639: Semantic command keys", () => {
     const result = forgeBindingsSchema.safeParse(bindings);
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.data.commands.validate).toBe("npx editframe check");
-      expect(result.data.commands.produce).toBe("npx editframe render -o {output}");
+      expect(result.data.commands.validate).toBe("pnpm exec validator check");
+      expect(result.data.commands.produce).toBe("pnpm exec builder build -o {output}");
     }
   });
 
