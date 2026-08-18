@@ -302,7 +302,7 @@ workspace:
             "prettier": "^3.4.0",
             "@warpgogol/forge": "^2.0.0",
             "@warpgogol/werkstatt": "^1.0.0",
-            "@warpgogol/werkstatt-godot": "^0.4.1"
+            "@warpgogol/werkstatt-godot": "^0.5.0"
           }
         }
     - path: scripts/clean.mjs
