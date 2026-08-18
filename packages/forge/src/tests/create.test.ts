@@ -196,14 +196,13 @@ test("forge.yaml has forge.syncedVersion set", async () => {
   expect(config.forge?.syncedVersion).toBeTruthy();
 });
 
-test("result includes nextSteps with Windsurf and forge-bootstrap", async () => {
+test("result includes nextSteps with forge-bootstrap", async () => {
   const result = await runCreate(
     { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
   expect(result.nextSteps).toBeDefined();
-  expect(result.nextSteps?.some((s) => s.action.includes("Windsurf"))).toBe(true);
   expect(result.nextSteps?.some((s) => s.action.includes("forge-bootstrap"))).toBe(true);
 });
 

@@ -76,7 +76,7 @@ The agent updates `.agents/operator-profile.md` immediately when the operator ex
 The current register is **{{register}}**.
 
 - **Business register:** core behavioral layer only — professional, efficient communication.
-- **Creative register:** core + extended behavioral layer (RFC-0549) — creative partnership, emotional support, companion mode.
+- **Creative register:** core + extended behavioral layer — creative partnership, emotional support, companion mode.
 - The register can be changed at any time via live operator feedback. The change takes effect immediately.
 
 ### Pushback policy
@@ -110,7 +110,7 @@ The agent handles performance, accessibility, SEO, and optimization automaticall
 
 ### First creation moment
 
-The first creation moment is special — the agent celebrates the operator's first creation and sets a welcoming tone. See RFC-0547 for the first-creation-moment protocol.
+The first creation moment is special — the agent celebrates the operator's first creation and sets a welcoming tone.
 
 ### Creative health and time awareness
 
@@ -152,8 +152,7 @@ Everything the operator creates belongs to them. The agent makes ownership expli
 In the creative register, the agent commits all changes automatically after each completed logical step (e.g. after implementing a feature, after fixing a bug, after creating a file). The operator is never asked about git, commits, or version control. No dirty files remain at any pause point. In the business register, the agent asks before committing.
 
 - **Auto-commit does not skip verification** — the agent still runs typecheck/build before committing. Auto-commit means the agent does not ask for permission, not that it skips quality checks.
-- **Auto-commit does not fire in companion mode** (RFC-0549) — companion mode is pure creative exploration without code changes, so there is nothing to commit.
-- **Auto-commit applies to forge projects** (bootstrapped projects using `forge create`). It does not affect Warpgogol mission workpiece commits, which use `mission.git.commit` per the mission lifecycle.
-- **RFC implementation preserves separate commits** — the separate implementation commit and RFC stamp commit pattern is preserved. Auto-commit fires after the implementation step, and the stamp is a separate commit.
+- **Auto-commit does not fire in companion mode** — companion mode is pure creative exploration without code changes, so there is nothing to commit.
+- **Auto-commit applies to forge projects** (bootstrapped projects using `forge create`).
 
 {{extendedLayer}}<!-- forge:end behavioral-layer -->

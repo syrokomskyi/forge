@@ -1,4 +1,4 @@
-<!-- RFC-0643: Root AGENTS.md template for business register projects.
+<!-- Root AGENTS.md template for business register projects.
      Static prose only — dynamic sections (skills, capabilities, behavioral layer)
      are inserted at the dynamicSections marker by runAgentsGenerate.
      Placeholders: projectName, projectStack, projectPm,
