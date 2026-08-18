@@ -507,7 +507,10 @@ firstWorkspace:
         project/assembly_name="my-game"
     - path: Game.csproj
       content: |
-        <Project Sdk="Godot.NET.Sdk">
+        <Project Sdk="Godot.NET.Sdk" />
+    - path: Directory.Build.props
+      content: |
+        <Project>
           <PropertyGroup>
             <TargetFramework>net8.0</TargetFramework>
             <TargetFramework Condition="'$(OS)' == 'Windows_NT'">net8.0-windows</TargetFramework>
@@ -516,6 +519,86 @@ firstWorkspace:
             <Nullable>enable</Nullable>
           </PropertyGroup>
         </Project>
+    - path: global.json
+      content: |
+        {
+          "sdk": {
+            "version": "8.0.100",
+            "rollForward": "latestFeature"
+          }
+        }
+    - path: Game.sln
+      content: |
+        Microsoft Visual Studio Solution File, Format Version 12.00
+        # Visual Studio Version 17
+        Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "my-game", "Game.csproj", "{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}"
+        EndProject
+        Global
+        	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+        		Debug|Any CPU = Debug|Any CPU
+        		Release|Any CPU = Release|Any CPU
+        	EndGlobalSection
+        	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+        		{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+        		{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+        		{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+        		{AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA}.Release|Any CPU.Build.0 = Release|Any CPU
+        	EndGlobalSection
+        EndGlobal
+    - path: export_presets.cfg
+      content: |
+        [preset.0]
+
+        name="Web"
+        platform="Web"
+        runnable=true
+        dedicated_server=false
+        custom_features=""
+        export_filter="all_resources"
+        include_filter=""
+        exclude_filter=""
+        export_path="bin/web/index.html"
+        encryption_include_filters=""
+        encryption_exclude_filters=""
+        encrypt_export=false
+
+        [preset.0.options]
+
+        html/export_icon=true
+        html/custom_html_shell=""
+        html/head_include=""
+    - path: omnisharp.json
+      content: |
+        {
+          "FormattingOptions": {
+            "UseTabs": true,
+            "TabSize": 4,
+            "IndentationSize": 4,
+            "NewLine": "\n"
+          },
+          "RoslynExtensionsOptions": {
+            "EnableAnalyzersSupport": true
+          }
+        }
+    - path: .vscode/settings.json
+      content: |
+        {
+          "files.associations": {
+            "*.tscn": "gdscript",
+            "*.tres": "gdscript",
+            "*.gd": "gdscript"
+          },
+          "search.exclude": {
+            "**/.godot": true,
+            "**/bin": true,
+            "**/obj": true
+          },
+          "files.watcherExclude": {
+            "**/.godot/**": true,
+            "**/bin/**": true,
+            "**/obj/**": true
+          }
+        }
     - path: Scenes/Main.tscn
       content: |
         [gd_scene load_steps=2 format=3 uid="uid://main_scene"]
@@ -576,6 +659,4 @@ firstWorkspace:
         [*.{md,txt}]
         trim_trailing_whitespace = false
   install:
-    - dotnet new sln --name my-game
-    - dotnet sln add Game.csproj
     - dotnet restore
