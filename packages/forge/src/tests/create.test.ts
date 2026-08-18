@@ -1,9 +1,10 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for forge.create command — composes scaffold + init + package-manager post-processing.</purpose>
+<purpose>Unit tests for forge.create command — in-place scaffolding via scaffold + init + package-manager post-processing.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0544: initial forge.create tests.</item>
+  <item>RFC-0877: rewrite tests for --in-place mode, add conflict-check and name-derivation tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,62 +48,102 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("forge create my-project creates dir with forge.yaml and docs dirs", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+test("forge create --in-place scaffolds in cwd with forge.yaml and docs dirs", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(0);
   expect(result.data?.status).toBe("pass");
 
-  const projectDir = join(tempDir, "my-project");
-  expect(existsSync(join(projectDir, "forge.yaml"))).toBe(true);
-  expect(existsSync(join(projectDir, "docs", "rfcs"))).toBe(true);
-  expect(existsSync(join(projectDir, "docs", "adrs"))).toBe(true);
-  expect(existsSync(join(projectDir, "PREFERENCES.md"))).toBe(true);
-  expect(existsSync(join(projectDir, "package.json"))).toBe(true);
-  expect(existsSync(join(projectDir, "scripts", "clean.mjs"))).toBe(true);
+  expect(existsSync(join(tempDir, "forge.yaml"))).toBe(true);
+  expect(existsSync(join(tempDir, "docs", "rfcs"))).toBe(true);
+  expect(existsSync(join(tempDir, "docs", "adrs"))).toBe(true);
+  expect(existsSync(join(tempDir, "PREFERENCES.md"))).toBe(true);
+  expect(existsSync(join(tempDir, "package.json"))).toBe(true);
+  expect(existsSync(join(tempDir, "scripts", "clean.mjs"))).toBe(true);
 }, 30000);
 
-test("forge create refuses non-empty target directory", async () => {
-  const targetDir = join(tempDir, "existing-project");
-  await mkdir(targetDir, { recursive: true });
-  await writeFile(join(targetDir, "some-file.txt"), "hello", "utf8");
+test("forge create --in-place refuses when forge artifacts already exist", async () => {
+  await writeFile(join(tempDir, "forge.yaml"), "existing: true", "utf8");
 
   const result = await runCreate(
-    { argv: [], flags: { name: "existing-project" } },
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
-  expect(result.data?.errors[0]).toContain("not empty");
+  expect(result.data?.errors[0]).toContain("forge artifacts");
 });
 
+test("forge create --in-place tolerates non-forge files in target directory", async () => {
+  await writeFile(join(tempDir, "some-file.txt"), "hello", "utf8");
+
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.status).toBe("pass");
+  expect(existsSync(join(tempDir, "forge.yaml"))).toBe(true);
+  expect(existsSync(join(tempDir, "some-file.txt"))).toBe(true);
+}, 30000);
+
 test("forge create fails on non-kebab-case name", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "MyProject" } }, makeContext(tempDir));
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "MyProject" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
   expect(result.data?.errors[0]).toContain("kebab-case");
 });
 
-test("forge create fails on missing name", async () => {
-  const result = await runCreate({ argv: [], flags: {} }, makeContext(tempDir));
+test("forge create fails on missing --in-place flag", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
-  expect(result.data?.errors[0]).toContain("Missing required");
+  expect(result.data?.errors[0]).toContain("--in-place");
 });
 
-test("forge create uses forge-shell profile by default", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+test("forge create fails on missing --profile flag", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, name: "my-project" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(1);
+  expect(result.data?.status).toBe("fail");
+  expect(result.data?.errors[0]).toContain("--profile");
+});
+
+test("forge create --in-place --profile forge-shell uses forge-shell profile", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(0);
   expect(result.data?.profile).toBe("forge-shell");
 });
 
 test("forge create --package-manager npm writes npm into forge.yaml with npx bindings", async () => {
   const result = await runCreate(
-    { argv: [], flags: { name: "my-project", "package-manager": "npm" } },
+    {
+      argv: [],
+      flags: {
+        "in-place": true,
+        profile: "forge-shell",
+        name: "my-project",
+        "package-manager": "npm",
+      },
+    },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
 
-  const config = loadForgeConfig(join(tempDir, "my-project"));
+  const config = loadForgeConfig(tempDir);
   expect(config.project.packageManager).toBe("npm");
   expect(config.bindings?.commands.validateRfc).toContain("npx");
   expect(config.bindings?.commands.validateRfc).toContain("forge rfc.validate");
@@ -110,20 +151,31 @@ test("forge create --package-manager npm writes npm into forge.yaml with npx bin
 
 test("forge create --package-manager pnpm writes pnpm into forge.yaml", async () => {
   const result = await runCreate(
-    { argv: [], flags: { name: "my-project", "package-manager": "pnpm" } },
+    {
+      argv: [],
+      flags: {
+        "in-place": true,
+        profile: "forge-shell",
+        name: "my-project",
+        "package-manager": "pnpm",
+      },
+    },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
 
-  const config = loadForgeConfig(join(tempDir, "my-project"));
+  const config = loadForgeConfig(tempDir);
   expect(config.project.packageManager).toBe("pnpm");
   expect(config.bindings?.commands.validateRfc).toContain("pnpm exec");
 });
 
 test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async () => {
-  await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+  await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
 
-  const config = loadForgeConfig(join(tempDir, "my-project"));
+  const config = loadForgeConfig(tempDir);
   expect(config.bindings?.commands.validateRfc).not.toBeNull();
   expect(config.bindings?.commands.validateAdr).not.toBeNull();
   expect(config.bindings?.commands.implementStamp).not.toBeNull();
@@ -135,14 +187,20 @@ test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async
 });
 
 test("forge.yaml has forge.syncedVersion set", async () => {
-  await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+  await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
 
-  const config = loadForgeConfig(join(tempDir, "my-project"));
+  const config = loadForgeConfig(tempDir);
   expect(config.forge?.syncedVersion).toBeTruthy();
 });
 
 test("result includes nextSteps with Windsurf and forge-bootstrap", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(0);
   expect(result.nextSteps).toBeDefined();
   expect(result.nextSteps?.some((s) => s.action.includes("Windsurf"))).toBe(true);
@@ -150,10 +208,13 @@ test("result includes nextSteps with Windsurf and forge-bootstrap", async () => 
 });
 
 test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(0);
 
-  const agentsMdPath = join(tempDir, "my-project", "AGENTS.md");
+  const agentsMdPath = join(tempDir, "AGENTS.md");
   expect(existsSync(agentsMdPath)).toBe(true);
 
   const { readFile: readFileAsync } = await import("node:fs/promises");
@@ -164,10 +225,13 @@ test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async 
 });
 
 test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance (RFC-0550)", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(0);
 
-  const nextStepsPath = join(tempDir, "my-project", "NEXT_STEPS.md");
+  const nextStepsPath = join(tempDir, "NEXT_STEPS.md");
   expect(existsSync(nextStepsPath)).toBe(true);
 
   const { readFile: readFileAsync } = await import("node:fs/promises");
@@ -179,17 +243,34 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
 });
 
 test("forge create root package.json has scripts and replaced project name", async () => {
-  const result = await runCreate({ argv: [], flags: { name: "my-project" } }, makeContext(tempDir));
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
   expect(result.exitCode).toBe(0);
 
   const { readFile: readFileAsync } = await import("node:fs/promises");
-  const pkgJson = JSON.parse(
-    await readFileAsync(join(tempDir, "my-project", "package.json"), "utf8"),
-  );
+  const pkgJson = JSON.parse(await readFileAsync(join(tempDir, "package.json"), "utf8"));
   expect(pkgJson.name).toBe("my-project");
   expect(pkgJson.scripts.clean).toBe("node scripts/clean.mjs");
   expect(pkgJson.scripts.format).toBe("prettier --write .");
   expect(pkgJson.scripts["format:check"]).toBe("prettier --check .");
   expect(pkgJson.scripts.test).toBe("vitest run --passWithNoTests");
   expect(pkgJson.scripts["upgrade-packages"]).toBe("pnpm up");
+}, 30000);
+
+test("forge create --in-place derives name from folder name when --name omitted", async () => {
+  const namedDir = join(tempDir, "my-derived-project");
+  await mkdir(namedDir, { recursive: true });
+
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell" } },
+    makeContext(namedDir),
+  );
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.status).toBe("pass");
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const pkgJson = JSON.parse(await readFileAsync(join(namedDir, "package.json"), "utf8"));
+  expect(pkgJson.name).toBe("my-derived-project");
 }, 30000);

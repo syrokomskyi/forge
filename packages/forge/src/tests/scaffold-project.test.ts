@@ -9,6 +9,7 @@
 
 import { test, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, readdir, mkdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runScaffoldProject } from "../onboarding/scaffold-project.ts";
@@ -47,16 +48,17 @@ afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
 });
 
-test("forge.scaffold refuses non-empty directory", async () => {
+test("forge.scaffold tolerates non-empty directory (RFC-0877 in-place mode)", async () => {
   await writeFile(join(tempDir, "some-file.txt"), "hello", "utf8");
   const result = await runScaffoldProject(
-    { argv: [], flags: { profile: "astro-typescript-turborepo", name: "my-site" } },
-    makeContext(tempDir),
+    { argv: [], flags: { profile: "forge-shell", name: "my-project" } },
+    { ...makeContext(tempDir), forgeRoot: FORGE_ROOT },
   );
-  expect(result.exitCode).toBe(1);
-  expect(result.data?.status).toBe("fail");
-  expect(result.data?.errors[0]).toContain("not empty");
-});
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.status).toBe("pass");
+  expect(existsSync(join(tempDir, "package.json"))).toBe(true);
+  expect(existsSync(join(tempDir, "some-file.txt"))).toBe(true);
+}, 30000);
 
 test("forge.scaffold fails on missing --profile", async () => {
   const result = await runScaffoldProject(
