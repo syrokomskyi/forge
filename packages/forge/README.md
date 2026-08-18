@@ -171,7 +171,7 @@ dotnet --version
 
 - **"command not found" after installing Node.js** — Close and reopen your terminal (Ubuntu) or PowerShell (Windows). The system needs to reload the list of available commands.
 - **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 24+ using the steps above.
-- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `pnpm dlx @warpgogol/forge@latest create --in-place --profile phaser-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
 ---
 
@@ -188,7 +188,7 @@ You need to run one command in the terminal to create your project. After that, 
    ```sh
    mkdir my-game
    cd my-game
-   pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo
+   pnpm dlx @warpgogol/forge@latest create --in-place --profile phaser-turborepo
    ```
 
    The project name is derived from the folder name (`my-game` in this example). You can override it with `--name`. This populates the current folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
@@ -234,7 +234,7 @@ If you already have a project somewhere else and want to move it into Forge:
    ```sh
    mkdir my-project
    cd my-project
-   pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
+   pnpm dlx @warpgogol/forge@latest create --in-place --profile forge-shell
    ```
 
    Then open the folder in your AI IDE.
@@ -265,17 +265,17 @@ Just tell the AI agent. It can check the project's health, fix issues, and expla
 # pnpm dlx downloads Forge temporarily — no global install needed
 mkdir my-project
 cd my-project
-pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
+pnpm dlx @warpgogol/forge@latest create --in-place --profile forge-shell
 
 # With a specific stack profile
 mkdir my-game && cd my-game
-pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile phaser-turborepo
 
 mkdir my-godot-game && cd my-godot-game
-pnpm dlx @warpgogol/forge create --in-place --profile godot-csharp
+pnpm dlx @warpgogol/forge@latest create --in-place --profile godot-csharp
 
 # Override the project name (derived from folder name by default)
-pnpm dlx @warpgogol/forge create --in-place --profile forge-shell --name my-custom-name
+pnpm dlx @warpgogol/forge@latest create --in-place --profile forge-shell --name my-custom-name
 ```
 
 After scaffolding, Forge is installed as a local devDependency. Use `pnpm exec forge` for all subsequent commands within the project:
@@ -287,7 +287,7 @@ There is no CLI command for transplant — it is an interactive, AI-guided proce
 ```sh
 # 1. Create a new empty Forge project (in-place)
 mkdir my-project && cd my-project
-pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
+pnpm dlx @warpgogol/forge@latest create --in-place --profile forge-shell
 
 # 2. Open the project in Windsurf (tested with forge) or your preferred IDE
 
@@ -362,7 +362,7 @@ pnpm exec forge doctor
 
 The typical forge project lifecycle:
 
-1. **Create** — `pnpm dlx @warpgogol/forge create --in-place --profile <profile>` scaffolds a new project in the current directory with forge.yaml, skills, and docs directories
+1. **Create** — `pnpm dlx @warpgogol/forge@latest create --in-place --profile <profile>` scaffolds a new project in the current directory with forge.yaml, skills, and docs directories
 2. **IDE** — open the project in Windsurf (tested with forge) or your preferred IDE
 3. **Bootstrap** — run `/forge-bootstrap` to configure the project interactively. The skill supports two modes:
    - **Greenfield** — start a new project from scratch: pick a stack, fill in bindings, init git

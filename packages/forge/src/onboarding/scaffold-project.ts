@@ -51,13 +51,12 @@ export async function runScaffoldProject(
   if (!profileId) {
     return fail("forge.scaffold", "", "Missing required flag: --profile", errors, outputFormat, logger);
   }
-  if (!projectName) {
-    return fail("forge.scaffold", profileId, "Missing required flag: --name", errors, outputFormat, logger);
-  }
+  // Derive project name from folder name if not provided (consistent with forge.create)
+  const effectiveProjectName = projectName ?? path.basename(workspaceRoot);
 
   // Validate kebab-case project name
-  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(projectName)) {
-    return fail("forge.scaffold", profileId, `Project name "${projectName}" is not kebab-case`, errors, outputFormat, logger);
+  if (!/^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/.test(effectiveProjectName)) {
+    return fail("forge.scaffold", profileId, `Project name "${effectiveProjectName}" is not kebab-case`, errors, outputFormat, logger);
   }
 
   // RFC-0877: The target directory must be empty (only .git/ tolerated).
@@ -101,21 +100,69 @@ export async function runScaffoldProject(
   for (const file of profile.workspace.files) {
     const filePath = path.join(workspaceRoot, file.path);
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    const content = file.content.replace(/__PROJECT_NAME__/g, projectName);
+    const content = file.content.replace(/__PROJECT_NAME__/g, effectiveProjectName);
     fs.writeFileSync(filePath, content, "utf8");
     created.push(file.path);
   }
 
-  // Create .npmrc before running install commands to avoid:
+  // Ensure .npmrc has ignore-workspace-root-check=true before running install commands to avoid:
   // - ERR_PNPM_ADDING_TO_ROOT (pnpm v10/v11 blocks `pnpm add` in workspace root without -w)
   // - ERR_PNPM_IGNORED_BUILDS (pnpm exits non-zero for ignored build scripts)
+  // Profiles may already include .npmrc in workspace.files — append the setting if missing.
   const npmrcPath = path.join(workspaceRoot, ".npmrc");
-  if (!fs.existsSync(npmrcPath) && profile.install.length > 0) {
-    fs.writeFileSync(npmrcPath, "ignore-workspace-root-check=true\n", "utf8");
-    created.push(".npmrc");
+  if (profile.install.length > 0) {
+    if (fs.existsSync(npmrcPath)) {
+      const existing = fs.readFileSync(npmrcPath, "utf8");
+      if (!existing.includes("ignore-workspace-root-check=true")) {
+        fs.appendFileSync(npmrcPath, "ignore-workspace-root-check=true\n", "utf8");
+      }
+    } else {
+      fs.writeFileSync(npmrcPath, "ignore-workspace-root-check=true\n", "utf8");
+      created.push(".npmrc");
+    }
   }
 
-  // Run install commands
+  // Create first workspace if defined (use template override if --template is provided)
+  let templateError: string | null = null;
+  const effectiveFirstWorkspace = (() => {
+    if (templateId && profile.templates) {
+      const template = profile.templates.find((t) => t.id === templateId);
+      if (template) return template.firstWorkspace;
+      templateError = `Unknown template "${templateId}". Available: ${profile.templates.map((t) => t.id).join(", ")}`;
+      return undefined;
+    }
+    // Use default template if no --template specified and templates exist
+    if (profile.templates && profile.templates.length > 0) {
+      const defaultTemplate = profile.templates.find((t) => t.default) ?? profile.templates[0];
+      return defaultTemplate.firstWorkspace;
+    }
+    return profile.firstWorkspace;
+  })();
+
+  if (templateError) {
+    return fail("forge.scaffold", profileId, templateError, errors, outputFormat, logger);
+  }
+
+  if (effectiveFirstWorkspace) {
+    const wsPath = effectiveFirstWorkspace.path.replace("my-site", effectiveProjectName).replace("my-game", effectiveProjectName);
+    const wsDir = path.join(workspaceRoot, wsPath);
+    fs.mkdirSync(wsDir, { recursive: true });
+    created.push(`${wsPath}/`);
+
+    for (const file of effectiveFirstWorkspace.files) {
+      const filePath = path.join(wsDir, file.path);
+      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      // Replace placeholder names (quoted and bare)
+      const content = file.content
+        .replace(/my-site/g, effectiveProjectName)
+        .replace(/my-game/g, effectiveProjectName);
+      fs.writeFileSync(filePath, content, "utf8");
+      created.push(`${wsPath}/${file.path}`);
+    }
+  }
+
+  // Run ALL install commands AFTER all files are created (atomicity: no partial state if install fails)
+  // Root workspace install commands
   if (outputFormat === "pretty" && profile.install.length > 0) {
     logger.info(`Installing ${profile.install.length} root workspace package(s)...`);
   }
@@ -150,45 +197,10 @@ export async function runScaffoldProject(
     }
   }
 
-  // Create first workspace if defined (use template override if --template is provided)
-  let templateError: string | null = null;
-  const effectiveFirstWorkspace = (() => {
-    if (templateId && profile.templates) {
-      const template = profile.templates.find((t) => t.id === templateId);
-      if (template) return template.firstWorkspace;
-      templateError = `Unknown template "${templateId}". Available: ${profile.templates.map((t) => t.id).join(", ")}`;
-      return undefined;
-    }
-    // Use default template if no --template specified and templates exist
-    if (profile.templates && profile.templates.length > 0) {
-      const defaultTemplate = profile.templates.find((t) => t.default) ?? profile.templates[0];
-      return defaultTemplate.firstWorkspace;
-    }
-    return profile.firstWorkspace;
-  })();
-
-  if (templateError) {
-    return fail("forge.scaffold", profileId, templateError, errors, outputFormat, logger);
-  }
-
+  // First workspace install commands
   if (effectiveFirstWorkspace) {
-    const wsPath = effectiveFirstWorkspace.path.replace("my-site", projectName).replace("my-game", projectName);
+    const wsPath = effectiveFirstWorkspace.path.replace("my-site", effectiveProjectName).replace("my-game", effectiveProjectName);
     const wsDir = path.join(workspaceRoot, wsPath);
-    fs.mkdirSync(wsDir, { recursive: true });
-    created.push(`${wsPath}/`);
-
-    for (const file of effectiveFirstWorkspace.files) {
-      const filePath = path.join(wsDir, file.path);
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      // Replace placeholder names (quoted and bare)
-      const content = file.content
-        .replace(/my-site/g, projectName)
-        .replace(/my-game/g, projectName);
-      fs.writeFileSync(filePath, content, "utf8");
-      created.push(`${wsPath}/${file.path}`);
-    }
-
-    // Run first workspace install commands
     if (outputFormat === "pretty" && effectiveFirstWorkspace.install.length > 0) {
       logger.info(`Installing first workspace packages in ${effectiveFirstWorkspace.path}...`);
     }

@@ -272,4 +272,4 @@ workspace:
         - Engine: @warpgogol/forge
         - Stack profile: forge-shell
 install:
-  - pnpm add -D @warpgogol/forge prettier vitest
+  - pnpm add -wD @warpgogol/forge prettier vitest
