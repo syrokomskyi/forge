@@ -171,8 +171,10 @@ export async function runScaffoldProject(
     for (const file of effectiveFirstWorkspace.files) {
       const filePath = path.join(wsDir, file.path);
       fs.mkdirSync(path.dirname(filePath), { recursive: true });
-      // Replace placeholder names
-      const content = file.content.replace(/"my-site"/g, `"${projectName}"`).replace(/"my-game"/g, `"${projectName}"`);
+      // Replace placeholder names (quoted and bare)
+      const content = file.content
+        .replace(/my-site/g, projectName)
+        .replace(/my-game/g, projectName);
       fs.writeFileSync(filePath, content, "utf8");
       created.push(`${wsPath}/${file.path}`);
     }

@@ -24,7 +24,7 @@ artifacts:
       - .cs
       - .tres
     produce:
-      command: dotnet build ./Game.csproj
+      command: dotnet build
       output: bin/Debug
     validate:
       command: godot --path . --headless --quit
@@ -158,6 +158,7 @@ workspace:
 
         # Godot
         .godot/
+        .godot-bin/
         bin/
         obj/
         *.user
@@ -305,6 +306,157 @@ workspace:
             "@warpgogol/werkstatt-godot": "^0.5.0"
           }
         }
+    - path: godot.version
+      content: |
+        # Exact Godot version for install-godot.sh (CI uses short form "4.3")
+        4.3.0
+    - path: scripts/install-godot.sh
+      content: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Download and install the Godot mono build specified in godot.version
+        # Usage: ./scripts/install-godot.sh [--force]
+
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+        VERSION="$(grep -v '^#' "$PROJECT_ROOT/godot.version" | tr -d '[:space:]')"
+        GODOT_DIR="$PROJECT_ROOT/.godot-bin"
+        GODOT_BIN="$GODOT_DIR/godot"
+
+        if [[ -x "$GODOT_BIN" ]] && [[ "$1" != "--force" ]]; then
+          echo "Godot $VERSION already installed at $GODOT_BIN"
+          echo "Use --force to reinstall."
+          exit 0
+        fi
+
+        OS="$(uname -s)"
+        ARCH="$(uname -m)"
+
+        case "$OS" in
+          Linux*)  PLATFORM="linux" ;;
+          Darwin*) PLATFORM="osx"   ;;
+          MINGW*|MSYS*|CYGWIN*) PLATFORM="win" ;;
+          *) echo "Unsupported OS: $OS"; exit 1 ;;
+        esac
+
+        case "$ARCH" in
+          x86_64|amd64) ARCH_SUFFIX="x86_64" ;;
+          arm64|aarch64) ARCH_SUFFIX="arm64" ;;
+          *) echo "Unsupported arch: $ARCH"; exit 1 ;;
+        esac
+
+        if [[ "$PLATFORM" == "osx" && "$ARCH_SUFFIX" == "x86_64" ]]; then
+          ARCH_SUFFIX="universal"
+        fi
+
+        if [[ "$PLATFORM" == "win" ]]; then
+          ZIP_NAME="Godot_v${VERSION}_mono_win64.zip"
+        elif [[ "$PLATFORM" == "osx" ]]; then
+          ZIP_NAME="Godot_v${VERSION}_mono_${PLATFORM}_${ARCH_SUFFIX}.zip"
+        else
+          ZIP_NAME="Godot_v${VERSION}_mono_${PLATFORM}_${ARCH_SUFFIX}.zip"
+        fi
+
+        URL="https://github.com/godotengine/godot/releases/download/v${VERSION}-stable/${ZIP_NAME}"
+
+        echo "Downloading Godot $VERSION (mono) from:"
+        echo "  $URL"
+
+        mkdir -p "$GODOT_DIR"
+        TMP_ZIP="$GODOT_DIR/$ZIP_NAME"
+
+        if command -v curl &>/dev/null; then
+          curl -fL --progress-bar -o "$TMP_ZIP" "$URL"
+        elif command -v wget &>/dev/null; then
+          wget -q --show-progress -O "$TMP_ZIP" "$URL"
+        else
+          echo "curl or wget required — please install one"; exit 1
+        fi
+
+        echo "Extracting..."
+        if command -v unzip &>/dev/null; then
+          unzip -o "$TMP_ZIP" -d "$GODOT_DIR"
+        else
+          echo "unzip not found — please install unzip"; exit 1
+        fi
+        rm -f "$TMP_ZIP"
+
+        # Find the godot binary in the extracted files
+        if [[ "$PLATFORM" == "osx" ]]; then
+          # macOS: .app bundle
+          APP_DIR="$GODOT_DIR/Godot.app"
+          if [[ -d "$APP_DIR" ]]; then
+            ln -sf "$APP_DIR/Contents/MacOS/Godot" "$GODOT_BIN"
+          else
+            # Some versions ship a unix executable
+            find "$GODOT_DIR" -type f -name "Godot*" -executable | head -1 | xargs -I{} ln -sf {} "$GODOT_BIN"
+          fi
+        elif [[ "$PLATFORM" == "win" ]]; then
+          find "$GODOT_DIR" -type f -name "Godot*.exe" | head -1 | xargs -I{} ln -sf {} "$GODOT_BIN"
+        else
+          find "$GODOT_DIR" -type f -name "Godot*" -executable | head -1 | xargs -I{} ln -sf {} "$GODOT_BIN"
+        fi
+
+        chmod +x "$GODOT_BIN" 2>/dev/null || true
+
+        if [[ -x "$GODOT_BIN" || -L "$GODOT_BIN" ]]; then
+          echo ""
+          echo "Godot $VERSION installed to $GODOT_BIN"
+          echo "Add to PATH: export PATH=\"$GODOT_DIR:$PATH\""
+        else
+          echo "Installation completed but binary not found. Check $GODOT_DIR"
+          exit 1
+        fi
+    - path: scripts/run.sh
+      content: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Build the C# project and launch Godot with the correct --path
+        # Usage: ./scripts/run.sh [--editor]
+
+        SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+        PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+        # Find the game workspace (first directory under apps/ with a project.godot)
+        GAME_DIR=""
+        for dir in "$PROJECT_ROOT"/apps/*/; do
+          if [[ -f "${dir}project.godot" ]]; then
+            GAME_DIR="${dir%/}"
+            break
+          fi
+        done
+
+        if [[ -z "$GAME_DIR" ]]; then
+          echo "No Godot project found under apps/*/"; exit 1
+        fi
+
+        echo "Game project: $GAME_DIR"
+
+        # Kill any running Godot instances (best-effort)
+        pkill -f "godot.*--path" 2>/dev/null || true
+
+        # Build C# project
+        echo "Building C# project..."
+        (cd "$GAME_DIR" && dotnet build)
+
+        # Find godot binary: prefer .godot-bin, then PATH
+        GODOT_BIN=""
+        if [[ -x "$PROJECT_ROOT/.godot-bin/godot" ]]; then
+          GODOT_BIN="$PROJECT_ROOT/.godot-bin/godot"
+        elif command -v godot &>/dev/null; then
+          GODOT_BIN="godot"
+        else
+          echo "Godot not found. Run ./scripts/install-godot.sh first."; exit 1
+        fi
+
+        echo "Launching Godot..."
+        if [[ "$1" == "--editor" ]]; then
+          exec "$GODOT_BIN" --path "$GAME_DIR" --editor
+        else
+          exec "$GODOT_BIN" --path "$GAME_DIR"
+        fi
     - path: scripts/clean.mjs
       content: |
         import { readdir, rm } from "node:fs/promises";
@@ -437,6 +589,8 @@ workspace:
             mode: protect
           - path: systems-cache/.gitkeep
             mode: protect
+          - path: godot.version
+            mode: protect
     - path: README.md
       content: |
         # __PROJECT_NAME__
@@ -449,6 +603,7 @@ workspace:
         - pnpm 10+
         - .NET SDK 8+
         - Godot 4.x (with .NET support)
+        - On Windows: Git Bash or WSL (for shell scripts)
 
         ## Setup
 
@@ -476,11 +631,33 @@ workspace:
 
         ## Running the game
 
+        ### Quick start
+
         ```sh
-        godot --path apps/my-game
+        # Install the correct Godot version (mono build)
+        ./scripts/install-godot.sh
+
+        # Build and run the game
+        ./scripts/run.sh
+        ```
+
+        Or open in the editor:
+
+        ```sh
+        ./scripts/run.sh --editor
         ```
 
         You should see "Hello, my-game!" in the game window.
+
+        ### Manual setup (if you already have Godot installed)
+
+        Ensure you have Godot 4.3 (mono) installed and on your PATH, then:
+
+        ```sh
+        cd apps/my-game
+        dotnet build
+        godot --path .
+        ```
 
         ## Stack
 
@@ -509,7 +686,11 @@ firstWorkspace:
         project/assembly_name="my-game"
     - path: Game.csproj
       content: |
-        <Project Sdk="Godot.NET.Sdk" />
+        <Project Sdk="Godot.NET.Sdk/4.3.0">
+          <PropertyGroup>
+            <AssemblyName>my-game</AssemblyName>
+          </PropertyGroup>
+        </Project>
     - path: Directory.Build.props
       content: |
         <Project>
