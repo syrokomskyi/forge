@@ -34,8 +34,10 @@ export async function loadWorkspaceDeps(): Promise<WorkspaceDeps> {
   if (loadError) throw new Error(loadError);
 
   try {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
     const shareMod = await import("@warpgogol/werkstatt-shared/share/fs");
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
     const fpMod = await import("@warpgogol/werkstatt/fingerprint");
     cached = {

@@ -192,7 +192,7 @@ export function gitAncestorOf(
   descendant: string,
 ): boolean {
   try {
-    const result = execSync(`git merge-base --is-ancestor ${ancestor} ${descendant}`, {
+    execSync(`git merge-base --is-ancestor ${ancestor} ${descendant}`, {
       cwd: workspaceRoot,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],

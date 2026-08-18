@@ -53,7 +53,7 @@ export async function runSeal(
   const program = input.flags.program as string | undefined;
   const packetId = input.flags.packet as string | undefined;
   const steward = input.flags.steward as string | undefined;
-  const idempotencyKey = input.flags["idempotency-key"] as string | undefined;
+  const _idempotencyKey = input.flags["idempotency-key"] as string | undefined;
 
   if (!program || !packetId || !steward) {
     return {

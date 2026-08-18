@@ -10,12 +10,7 @@ split ranges (RFC-0856 AC-7).</purpose>
 */
 
 import { describe, it, expect } from "vitest";
-import {
-  pathMatchesGlob,
-  isPathAllowed,
-  isPathForbidden,
-  normalizePath,
-} from "../../os/program/discovery.ts";
+import { pathMatchesGlob, isPathAllowed, isPathForbidden } from "../../os/program/discovery.ts";
 
 describe("path traversal safety", () => {
   it("rejects ../ in path against allowed glob", () => {

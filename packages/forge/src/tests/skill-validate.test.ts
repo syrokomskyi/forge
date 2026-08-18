@@ -1,6 +1,5 @@
 import { test, expect, describe } from "vitest";
 import { runSkillValidate } from "../validators/skill-validate.ts";
-import { FORGE_SKILLS } from "../registry.ts";
 import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";

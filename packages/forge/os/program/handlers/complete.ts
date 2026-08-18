@@ -35,7 +35,7 @@ import {
 } from "../discovery.ts";
 import { readLease, deleteLease, isLeaseStale, hashLeaseToken } from "../lease.ts";
 import { validateCompleteTransition, type PacketViolation } from "../state.ts";
-import type { ProgramManifest, ProgramPacketCompletion, RecoveryRecord } from "../schemas.ts";
+import type { ProgramManifest, ProgramPacketCompletion } from "../schemas.ts";
 
 export interface CompleteResultData {
   command: string;
@@ -55,7 +55,7 @@ export async function runComplete(
   const steward = input.flags.steward as string | undefined;
   const leaseToken = input.flags["lease-token"] as string | undefined;
   const implementationHead = input.flags["implementation-head"] as string | undefined;
-  const idempotencyKey = input.flags["idempotency-key"] as string | undefined;
+  const _idempotencyKey = input.flags["idempotency-key"] as string | undefined;
   const isBootstrap = input.flags.bootstrap === true;
 
   if (!program || !packetId || !steward) {
