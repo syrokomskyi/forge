@@ -164,6 +164,61 @@ When the operator says any session-end trigger phrase (e.g. "Завершаем 
 
 The `fo-session-retro` skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from `fo-session-retro`, not from the agent directly.
 
+## Pre-pipeline checkpoint
+
+When a pipeline skill (`fo-idea-i-just-want-to-see-the-result`, `fo-idea-i-just-want-to-see-the-plan`, `fo-idea-implement`) is invoked after substantial pre-existing session context — discussion, code exploration, document creation, debugging — the agent performs a pre-pipeline checkpoint to release that context before the pipeline starts. The pipeline is self-sufficient: it reads the RFC/ADR, plan, AGENTS.md, and DNA invariants fresh. Pre-existing session context is no longer actionable once the pipeline begins.
+
+### When to emit
+
+Emit the pre-pipeline checkpoint when **both** conditions are met:
+
+1. **Pre-existing context exists** — the session has accumulated context from prior work (discussion, file reads, search results, document creation, debugging). If the skill is invoked at the start of a session with no prior context, skip the checkpoint — there is nothing to release.
+2. **The skill runs a pipeline** — `fo-idea-i-just-want-to-see-the-result` (full or `stopAfter: plan`), `fo-idea-i-just-want-to-see-the-plan`, or `fo-idea-implement`. Skills that perform a single action (e.g. `fo-idea-audit`, `fo-idea-enhance`) do not need this checkpoint.
+
+**Double-checkpoint guard:** If a pre-pipeline checkpoint was already emitted by a calling orchestrator (e.g. `fo-idea-i-just-want-to-see-the-result` emitted one, then invoked `fo-idea-implement`), the called skill MUST skip its own checkpoint — the context was already released. Scan conversation output for an existing `checkpoint: pre-pipeline` block before emitting a new one.
+
+**Wrapper skills:** `fo-idea-i-just-want-to-see-the-plan` delegates to `fo-idea-i-just-want-to-see-the-result` and does not emit its own checkpoint — the orchestrator handles it.
+
+### How to emit
+
+1. **Emit pre-pipeline checkpoint block** — output a YAML-formatted block in conversation output with the following fields:
+
+```yaml
+---
+checkpoint: pre-pipeline
+documents:
+  - id: RFC-XXXX
+    type: RFC
+    status: accepted
+operatorConstraints:
+  - "explicit constraints from the operator not captured in the document"
+aiLanguage: uk
+sessionSummary: >
+  1-3 sentences capturing key decisions, edge cases, and mental models
+  from the pre-pipeline discussion that are not in the document text.
+---
+```
+
+2. **Preserve critical fields** — the following must survive the context release:
+   - `documents` — id, type, and status of each document to process (needed by the pipeline's step 0 detection)
+   - `operatorConstraints` — explicit constraints or preferences the operator stated in conversation that are not written into the RFC/ADR (e.g. "don't touch packages/foo", "use approach Y"). Empty if none.
+   - `aiLanguage` — the operator's AI language preference (to avoid re-reading `PREFERENCES.md`)
+   - `sessionSummary` — 1-3 freeform sentences capturing key decisions, edge cases, and mental models from the discussion. This mitigates the session-affinity risk: the `fo-idea-implement` skill warns that "session context contains edge cases and mental models not fully captured in the plan text." The summary preserves the most important ones.
+
+3. **Release pre-existing context** — explicitly treat all detailed context from before the checkpoint as no longer actionable: discussion text, codebase search results, file reads, edit operations, intermediate reasoning, debug output. Retain only the checkpoint block and `PREFERENCES.md` settings.
+
+4. **Fresh start** — begin the pipeline with a fresh read phase: re-read the RFC/ADR file and all related documents (amends, supersedes, related RFCs, DNA invariants, AGENTS.md sections).
+
+### What NOT to release
+
+- **`PREFERENCES.md` settings** — `aiLanguage`, `documentationLanguage`, and other preferences remain active.
+- **The checkpoint block itself** — it is the resume marker and the only link to pre-pipeline context.
+- **Operator constraints** — if the operator said "don't touch X" or "use approach Y" in conversation, these must be respected throughout the pipeline.
+
+### Resume behavior
+
+When resuming an interrupted session, scan conversation output for the last pre-pipeline checkpoint block. If found, extract `documents`, `operatorConstraints`, `aiLanguage`, and `sessionSummary` to restore the pre-pipeline context without re-reading the full conversation history. Then proceed with the pipeline's own resume logic (detecting completed steps via git log, file inspection, frontmatter status).
+
 ## Context checkpoint between batch items
 
 When the orchestrator skill processes multiple documents (>=2), perform a context checkpoint after completing one document and before starting the next:

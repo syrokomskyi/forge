@@ -50,7 +50,11 @@ Determine whether the operator provided a raw idea or a document id:
 
 Record the document id(s) and type(s) (RFC or ADR). If multiple documents were created in a series, process them in dependency order — the same order `fo-idea` created them.
 
-### 1. Run the pipeline
+### 1. Pre-pipeline checkpoint
+
+Before starting the pipeline, perform a pre-pipeline checkpoint per `_shared/fo-pipeline-conventions.md` §Pre-pipeline checkpoint. If pre-existing session context exists (discussion, document creation, debugging), emit the checkpoint block, release pre-existing context, and start the pipeline with a fresh read phase. If the session has no prior context, skip the checkpoint.
+
+### 2. Run the pipeline
 
 For each document, run the full pipeline inline. The pipeline differs for RFCs and ADRs.
 
@@ -120,7 +124,7 @@ Do not invoke `fo-review` or `fo-fix` separately — they are built into `fo-ide
 
 This fallback ensures review and fix are never skipped, even if `fo-idea-implement` failed to execute them internally.
 
-### 2. Report and stop
+### 3. Report and stop
 
 After the pipeline is complete (or if it was interrupted and resumed), present a single summary in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, ADR-XXXX, file paths) stay untranslated.
 
@@ -142,7 +146,7 @@ If multiple documents were processed, present one summary block per document.
 
 **Stop.** Do not invoke `/grilling` or any other skill after the pipeline is complete. The operator asked to "just see the result" — the result is the summary above.
 
-### 3. Resume if interrupted
+### 4. Resume if interrupted
 
 If the session was interrupted (agent stopped, context limit, crash, checkpoint summary) and the operator re-invokes this skill or continues the session:
 
