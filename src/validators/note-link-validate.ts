@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Validate wikilink integrity across an Obsidian vault — scans [[wikilinks]] and resolves each against the note graph.</purpose>
+<purpose>Validate wikilink integrity across a markdown note vault — scans [[wikilinks]] and resolves each against the note graph.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement domain-specific logic beyond wikilink resolution.</item>

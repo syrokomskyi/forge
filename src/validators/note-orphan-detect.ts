@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Detect orphan notes in an Obsidian vault — notes with zero inbound wikilinks.</purpose>
+<purpose>Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
   <item>Do not implement domain-specific logic beyond orphan detection.</item>

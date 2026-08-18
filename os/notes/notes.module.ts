@@ -22,9 +22,8 @@ export const forgeNotesModule: ForgeModule = {
   version: "0.1.0",
   async register(registry) {
     const { runNoteLinkValidate } = await import("../../src/validators/note-link-validate.ts");
-    const { runNoteFrontmatterValidate } = await import(
-      "../../src/validators/note-frontmatter-validate.ts"
-    );
+    const { runNoteFrontmatterValidate } =
+      await import("../../src/validators/note-frontmatter-validate.ts");
     const { runNoteOrphanDetect } = await import("../../src/validators/note-orphan-detect.ts");
 
     const noteLinkValidateWrapper = async (
@@ -51,7 +50,7 @@ export const forgeNotesModule: ForgeModule = {
     registry.registerCommand({
       name: "note.link.validate",
       description:
-        "Validate wikilink integrity across an Obsidian vault. Scans [[wikilinks]] and resolves each against the note graph.",
+        "Validate wikilink integrity across a markdown note vault. Scans [[wikilinks]] and resolves each against the note graph.",
       scope: "workspace",
       supportsAllSites: false,
       flags: {
@@ -72,7 +71,7 @@ export const forgeNotesModule: ForgeModule = {
     registry.registerCommand({
       name: "note.frontmatter.validate",
       description:
-        "Validate frontmatter consistency across an Obsidian vault. Checks for required fields in YAML frontmatter.",
+        "Validate frontmatter consistency across a markdown note vault. Checks for required fields in YAML frontmatter.",
       scope: "workspace",
       supportsAllSites: false,
       flags: {
@@ -93,7 +92,7 @@ export const forgeNotesModule: ForgeModule = {
     registry.registerCommand({
       name: "note.orphan.detect",
       description:
-        "Detect orphan notes in an Obsidian vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
+        "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
       scope: "workspace",
       supportsAllSites: false,
       flags: {

@@ -10,7 +10,7 @@
   <item>RFC-0675: initial invariant enforcement engine with three check kinds.</item>
   <item>RFC-0691: add html-attribute-pattern check kind for HTML attribute value validation.</item>
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
-  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for obsidian-vault profile.</item>
+  <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for note vault validation.</item>
   <item>Add gitignore-entry and secret-scan check kinds for godot-csharp profile.</item>
 </CHANGE_SUMMARY>
 */
