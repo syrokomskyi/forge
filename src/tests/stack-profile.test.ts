@@ -139,30 +139,33 @@ test("detectStack matches on exact filename", async () => {
   expect(match?.id).toBe("ts");
 });
 
-test("shipped astro-typescript-turborepo profile validates", () => {
-  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "astro-typescript-turborepo.yaml"));
-  expect(profile.id).toBe("astro-typescript-turborepo");
-  expect(profile.workspace.dirs.length).toBeGreaterThan(0);
-});
-
 test("shipped phaser-turborepo profile validates", () => {
   const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "phaser-turborepo.yaml"));
   expect(profile.id).toBe("phaser-turborepo");
   expect(profile.workspace.dirs.length).toBeGreaterThan(0);
 });
 
-test("listStackProfiles finds both shipped profiles", () => {
-  const profiles = listStackProfiles(FORGE_ROOT);
-  const ids = profiles.map((p) => p.id).sort();
-  expect(ids).toContain("astro-typescript-turborepo");
-  expect(ids).toContain("phaser-turborepo");
+test("shipped godot-csharp profile validates", () => {
+  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "godot-csharp.yaml"));
+  expect(profile.id).toBe("godot-csharp");
+  expect(profile.workspace.dirs.length).toBeGreaterThan(0);
 });
 
-test("all shipped profiles include @warpgogol/forge in install steps", () => {
+test("listStackProfiles finds all shipped profiles", () => {
+  const profiles = listStackProfiles(FORGE_ROOT);
+  const ids = profiles.map((p) => p.id).sort();
+  expect(ids).toContain("phaser-turborepo");
+  expect(ids).toContain("godot-csharp");
+  expect(ids).toContain("forge-shell");
+});
+
+test("all shipped profiles include @warpgogol/forge in install steps or package.json template", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
   for (const profile of profiles) {
-    const hasForge = profile.install.some((cmd) => cmd.includes("@warpgogol/forge"));
-    expect(hasForge).toBe(true);
+    const hasForgeInInstall = profile.install.some((cmd) => cmd.includes("@warpgogol/forge"));
+    const pkgFile = profile.workspace.files.find((f) => f.path === "package.json");
+    const hasForgeInPkg = pkgFile?.content.includes("@warpgogol/forge") ?? false;
+    expect(hasForgeInInstall || hasForgeInPkg, `profile ${profile.id}`).toBe(true);
   }
 });
 

@@ -6,11 +6,10 @@ Portable governance engine for AI-assisted project development. Provides skills,
 
 ## What you can build with Forge
 
-Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
+Forge supports three kinds of projects. You pick one when you start — everything else is automatic.
 
 | Project type | What it is | Example ideas |
 | --- | --- | --- |
-| **Website** | A public website or web app — pages, blog, portfolio, landing page, online store | Photography studio site, restaurant website, SaaS landing page |
 | **Browser game** | An interactive game that runs in a web browser — 2D, arcade, puzzle, adventure | Catch falling stars, tile-matching puzzle, platformer |
 | **Governance / library** | A code library or governance-only project — no website, no game, no video, just structure and documentation | npm package, internal toolkit, documentation hub |
 | **Godot game** | A desktop or mobile game built with Godot 4.x and C# — 2D, 3D, platformer, RPG | Top-down adventure, 3D platformer, puzzle game |
@@ -29,21 +28,17 @@ For full project lifecycle management — missions, releases, deployment, certif
 | --- | --- | --- |
 | `@warpgogol/werkstatt` | Runtime engine — missions, releases, Leitstand deployment, certification, Bordbuch, artifact store | All project types with lifecycle management |
 | `@warpgogol/werkstatt-shared` | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
-| `@warpgogol/werkstatt-site` | Astro site plugin — build pipeline, content checks, codegen, deploy adapters | Website projects (`astro-typescript-turborepo`) |
 | `@warpgogol/werkstatt-game` | Phaser game plugin — game validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
 | `@warpgogol/werkstatt-godot` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
 
 ### When you need these packages
 
 - **Governance-only projects** (RFCs, ADRs, skills, documentation hubs) — Forge alone is sufficient.
-- **Websites, games, Godot projects** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
+- **Games, Godot projects** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
 
 ### Installing engine packages
 
 ```sh
-# Website project
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-site
-
 # Browser game project
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-game
 
@@ -210,7 +205,7 @@ dotnet --version
 - **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
 - **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 24+ using the steps above.
 - **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
-- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --in-place --profile astro-typescript-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --in-place --profile phaser-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
 ---
 
@@ -225,25 +220,24 @@ You need to run one command in the terminal to create your project. After that, 
 1. **Create a project folder and scaffold Forge in-place.** Open a terminal (PowerShell on Windows, Terminal on Ubuntu) and run:
 
    ```sh
-   mkdir my-site
-   cd my-site
-   forge create --in-place --profile astro-typescript-turborepo
+   mkdir my-game
+   cd my-game
+   forge create --in-place --profile phaser-turborepo
    ```
 
-   The project name is derived from the folder name (`my-site` in this example). You can override it with `--name`. This populates the current folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
+   The project name is derived from the folder name (`my-game` in this example). You can override it with `--name`. This populates the current folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
 
-   | What you want to build                  | Profile flag                           |
-   | --------------------------------------- | -------------------------------------- |
-   | Website (landing page, blog, portfolio) | `--profile astro-typescript-turborepo` |
-   | Browser game (2D, arcade, puzzle)       | `--profile phaser-turborepo`           |
-   | Godot game (desktop, mobile, 2D/3D)     | `--profile godot-csharp`               |
-   | Library or governance-only project      | `--profile forge-shell`                |
+   | What you want to build              | Profile flag                 |
+   | ----------------------------------- | ---------------------------- |
+   | Browser game (2D, arcade, puzzle)   | `--profile phaser-turborepo` |
+   | Godot game (desktop, mobile, 2D/3D) | `--profile godot-csharp`     |
+   | Library or governance-only project  | `--profile forge-shell`      |
 
 2. **Open the project folder in your AI IDE.** Open the folder from step 1 in Windsurf or your preferred IDE.
 
 3. **Tell the AI agent what you want to build.** Just type it in the chat, in your own words. For example:
 
-   > I want to build a website for my photography studio.
+   > I want to build a Godot game where you catch falling stars.
 
    Or:
 
@@ -254,12 +248,12 @@ You need to run one command in the terminal to create your project. After that, 
    > I want to create a TypeScript library for calculating astrology charts.
 
    That's it. The AI agent will do everything else:
-   - Set up the project structure based on what you described (website, game, library, etc.)
+   - Set up the project structure based on what you described (game, library, etc.)
    - Configure language preferences and project settings
-   - Start a live preview so you can see your work (for websites and games)
+   - Start a live preview so you can see your work (for games)
    - Tell you the URL to open in your browser
 
-4. **Watch the preview.** For websites and games, the AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
+4. **Watch the preview.** For games, the AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
 
    For governance and library projects, there's no visual preview — the agent will set up the project structure and tell you when it's ready.
 
@@ -284,7 +278,7 @@ If you already have a project somewhere else and want to move it into Forge:
    > I want to bring my existing project into Forge. It's located at /path/to/my/project.
 
    The agent will:
-   - Detect what kind of project it is (website, game, library, etc.)
+   - Detect what kind of project it is (game, library, etc.)
    - Move all your files into the new Forge project — including hidden files like `.env`
    - Optionally bring your git history
    - Verify everything builds correctly
@@ -307,9 +301,6 @@ cd my-project
 forge create --in-place --profile forge-shell
 
 # With a specific stack profile
-mkdir my-site && cd my-site
-forge create --in-place --profile astro-typescript-turborepo
-
 mkdir my-game && cd my-game
 forge create --in-place --profile phaser-turborepo
 
@@ -367,7 +358,6 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | Profile | Project type | Description | First workspace | Use case |
 | --- | --- | --- | --- | --- |
 | `forge-shell` | Governance / library | Minimal Forge shell (default) | — | Governance-only projects, libraries, non-web projects |
-| `astro-typescript-turborepo` | Website | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Websites, web apps, content-driven sites |
 | `phaser-turborepo` | Browser game | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
 | `godot-csharp` | Godot game | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Desktop/mobile games, Godot-based interactive projects |
 
@@ -376,7 +366,7 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 forge profile.validate
 ```
 
-When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `project.godot`, etc.).
+When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`phaser.config.*`, `project.godot`, etc.).
 
 ## Upgrade flow
 

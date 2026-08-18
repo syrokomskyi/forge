@@ -227,8 +227,8 @@ test("runDev --dry-run does not spawn child process and prints resolved command"
 });
 
 test("runDev returns exit 1 when profile has no devServer", async () => {
-  // astro-typescript-turborepo profile has no devServer
-  const dir = makeTempWorkspace(`profile: astro-typescript-turborepo\n`);
+  // forge-shell profile has no devServer
+  const dir = makeTempWorkspace(`profile: forge-shell\n`);
   const result = await runDev(input({}), makeContext(dir));
   expect(result.exitCode).toBe(1);
   expect(result.summary).toContain("does not declare a devServer");
@@ -284,8 +284,8 @@ test("runDeterminismCheck returns exit 0 when profile has no hashable artifacts"
   // We can't easily do this without modifying forge profiles, so instead
   // test with a profile that has no artifacts at all — the handler returns
   // exit 1 for "no artifacts" and exit 0 for "no hashable artifacts".
-  // Since astro-typescript-turborepo has no artifacts, we test the no-artifacts path.
-  const dir = makeTempWorkspace(`profile: astro-typescript-turborepo\n`);
+  // Since forge-shell has no artifacts, we test the no-artifacts path.
+  const dir = makeTempWorkspace(`profile: forge-shell\n`);
   const result = await runDeterminismCheck(input({}), makeContext(dir));
   expect(result.exitCode).toBe(1);
   expect(result.summary).toContain("does not declare any artifacts");
@@ -375,7 +375,7 @@ test("runAssetsList returns exit 1 when no active profile found", async () => {
 });
 
 test("runAssetsList returns exit 0 when profile has no assets declaration", async () => {
-  const dir = makeTempWorkspace(`profile: astro-typescript-turborepo\n`);
+  const dir = makeTempWorkspace(`profile: forge-shell\n`);
   const result = await runAssetsList(input({}), makeContext(dir));
   expect(result.exitCode).toBe(0);
   expect(result.summary).toContain("does not declare assets");
@@ -472,7 +472,7 @@ test("runReleasePrepare generates manifest with artifact hashes", async () => {
 });
 
 test("runReleasePrepare returns exit 1 when no release config", async () => {
-  const dir = makeTempWorkspace(`profile: astro-typescript-turborepo\n`);
+  const dir = makeTempWorkspace(`profile: forge-shell\n`);
   const result = await runReleasePrepare(input({}), makeContext(dir));
   expect(result.exitCode).toBe(1);
   expect(result.summary).toContain("does not declare a release");

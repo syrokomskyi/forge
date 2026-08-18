@@ -258,7 +258,7 @@ export const forgeCoreModule: ForgeModule = {
         profile: {
           kind: "string",
           required: true,
-          description: "Stack profile id (e.g. astro-typescript-turborepo).",
+          description: "Stack profile id (e.g. phaser-turborepo).",
         },
         name: { kind: "string", required: true, description: "Project name (kebab-case)." },
         template: {
@@ -294,7 +294,7 @@ export const forgeCoreModule: ForgeModule = {
           kind: "string",
           required: true,
           description:
-            "Stack profile id. Required. Available: forge-shell, astro-typescript-turborepo, phaser-turborepo, godot-csharp.",
+            "Stack profile id. Required. Available: forge-shell, phaser-turborepo, godot-csharp.",
         },
         name: {
           kind: "string",
