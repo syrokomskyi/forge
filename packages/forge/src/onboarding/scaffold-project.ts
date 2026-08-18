@@ -60,9 +60,9 @@ export async function runScaffoldProject(
     return fail("forge.scaffold", profileId, `Project name "${projectName}" is not kebab-case`, errors, outputFormat, logger);
   }
 
-  // RFC-0877: Allow non-empty directories for in-place scaffolding.
-  // The conflict check is handled by forge.create (allowlist-based).
-  // forge.scaffold is called from forge.create which already verified no conflicts.
+  // RFC-0877: The target directory must be empty (only .git/ tolerated).
+  // The empty-directory check is handled by forge.create.
+  // forge.scaffold is called from forge.create which already verified the directory is empty.
 
   // Load profiles and find the requested one
   let forgeRoot: string;

@@ -148,7 +148,7 @@
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
     "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
-    "lint": "pnpm exec eslint src --ext .ts",
+    "lint": "pnpm exec eslint \"src/**/*.ts\" \"os/**/*.ts\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
@@ -166,8 +166,10 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
+    "eslint": "^10.8.0",
     "fast-check": "^4.9.0",
     "typescript": "^6.0.3",
+    "typescript-eslint": "8.65.0",
     "vitest": "^4.1.10"
   },
   "engines": {

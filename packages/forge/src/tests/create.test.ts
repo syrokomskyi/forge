@@ -4,7 +4,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0544: initial forge.create tests.</item>
-  <item>RFC-0877: rewrite tests for --in-place mode, add conflict-check and name-derivation tests.</item>
+  <item>RFC-0877: rewrite tests for --in-place mode, add strict empty-directory check and name-derivation tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -73,11 +73,24 @@ test("forge create --in-place refuses when forge artifacts already exist", async
   );
   expect(result.exitCode).toBe(1);
   expect(result.data?.status).toBe("fail");
-  expect(result.data?.errors[0]).toContain("forge artifacts");
+  expect(result.data?.errors[0]).toContain("not empty");
 });
 
-test("forge create --in-place tolerates non-forge files in target directory", async () => {
+test("forge create --in-place refuses when non-forge files exist in target directory", async () => {
   await writeFile(join(tempDir, "some-file.txt"), "hello", "utf8");
+
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(1);
+  expect(result.data?.status).toBe("fail");
+  expect(result.data?.errors[0]).toContain("not empty");
+  expect(result.data?.errors[0]).toContain("some-file.txt");
+});
+
+test("forge create --in-place tolerates only .git directory in target directory", async () => {
+  await mkdir(join(tempDir, ".git"), { recursive: true });
 
   const result = await runCreate(
     { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
@@ -86,7 +99,7 @@ test("forge create --in-place tolerates non-forge files in target directory", as
   expect(result.exitCode).toBe(0);
   expect(result.data?.status).toBe("pass");
   expect(existsSync(join(tempDir, "forge.yaml"))).toBe(true);
-  expect(existsSync(join(tempDir, "some-file.txt"))).toBe(true);
+  expect(existsSync(join(tempDir, ".git"))).toBe(true);
 }, 30000);
 
 test("forge create fails on non-kebab-case name", async () => {
@@ -126,7 +139,7 @@ test("forge create --in-place --profile forge-shell uses forge-shell profile", a
   );
   expect(result.exitCode).toBe(0);
   expect(result.data?.profile).toBe("forge-shell");
-});
+}, 30000);
 
 test("forge create --package-manager npm writes npm into forge.yaml with npx bindings", async () => {
   const result = await runCreate(
@@ -204,6 +217,7 @@ test("result includes nextSteps with forge-bootstrap", async () => {
   expect(result.exitCode).toBe(0);
   expect(result.nextSteps).toBeDefined();
   expect(result.nextSteps?.some((s) => s.action.includes("forge-bootstrap"))).toBe(true);
+  expect(result.nextSteps?.some((s) => s.kind === "required")).toBe(true);
 });
 
 test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async () => {
@@ -235,9 +249,9 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
 
   const { readFile: readFileAsync } = await import("node:fs/promises");
   const nextSteps = await readFileAsync(nextStepsPath, "utf8");
-  expect(nextSteps).toContain("Option A: Start creating");
-  expect(nextSteps).toContain("Option B: Bring your existing project");
-  expect(nextSteps).toContain("AI agent");
+  expect(nextSteps).toContain("required");
+  expect(nextSteps).toContain("forge-bootstrap");
+  expect(nextSteps).toContain("language");
   expect(result.data?.filesCreated).toContain("NEXT_STEPS.md");
 });
 

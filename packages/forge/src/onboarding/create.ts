@@ -16,7 +16,7 @@
   <item>RFC-0640: load profile domain fields and pass them to runInit for domain-aware bootstrapping.</item>
   <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
   <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
-  <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, allowlist-based conflict check.</item>
+  <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, strict empty-directory check (only .git/ tolerated).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -107,17 +107,10 @@ function toKebabCase(s: string): string {
 }
 
 /**
- * Forge-specific paths that indicate an existing forge project.
- * If any of these exist in the target directory, refuse to scaffold.
+ * Directories that are allowed in an otherwise empty target directory.
+ * Only these are tolerated when checking for emptiness.
  */
-const FORGE_CONFLICT_PATHS = [
-  "forge.yaml",
-  ".agents/",
-  "docs/",
-  "skills/",
-  "AGENTS.md",
-  ".forge/",
-];
+const ALLOWED_EXISTING_DIRS = new Set([".git"]);
 
 export async function runCreate(
   input: ForgeCommandInput,
@@ -133,7 +126,7 @@ export async function runCreate(
   const errors: string[] = [];
 
   const passNextSteps: ForgeNextStep[] = [
-    { action: "Run /forge-bootstrap to configure the project interactively", kind: "optional" },
+    { action: "Run /forge-bootstrap immediately to configure language, register, and stack bindings", kind: "required" },
   ];
   const failNextSteps: ForgeNextStep[] = [
     { action: "Fix the errors above and re-run forge.create", kind: "required" },
@@ -209,17 +202,18 @@ export async function runCreate(
     };
   }
 
-  // 6. Allowlist-based conflict check (RFC-0877)
-  // Refuse only forge-specific paths; tolerate everything else.
-  const conflicts: string[] = [];
-  for (const conflictPath of FORGE_CONFLICT_PATHS) {
-    const fullPath = path.join(targetDir, conflictPath);
-    if (fs.existsSync(fullPath)) {
-      conflicts.push(conflictPath);
-    }
+  // 6. Strict empty-directory check (RFC-0877)
+  // The target directory must be empty (only .git/ is tolerated).
+  // If any other files or directories exist, refuse to scaffold.
+  let dirEntries: string[];
+  try {
+    dirEntries = fs.readdirSync(targetDir);
+  } catch {
+    dirEntries = [];
   }
-  if (conflicts.length > 0) {
-    const msg = `Directory already contains forge artifacts: ${conflicts.join(", ")}. Refusing to scaffold.`;
+  const unexpectedEntries = dirEntries.filter((e) => !ALLOWED_EXISTING_DIRS.has(e));
+  if (unexpectedEntries.length > 0) {
+    const msg = `Directory is not empty. Found: ${unexpectedEntries.slice(0, 10).join(", ")}${unexpectedEntries.length > 10 ? ` (and ${unexpectedEntries.length - 10} more)` : ""}. The target directory must be empty. Refusing to scaffold.`;
     errors.push(msg);
     if (outputFormat === "pretty") {
       logger.error(msg);
@@ -374,25 +368,31 @@ export async function runCreate(
   const nextStepsPath = path.join(targetDir, "NEXT_STEPS.md");
   const nextStepsContent = `# Next Steps
 
-Your Forge project is ready. You have two options — just tell the AI agent what you want, and it will handle the rest.
+Your Forge project is ready. The next step is mandatory: run \`/forge-bootstrap\` to configure your project interactively.
 
-## Option A: Start creating
+## Step 1: Configure your project (required)
 
-Tell the AI agent what you want to build. Describe your idea in your own words — a website, a game, a blog, a tool — and the system will set everything up and start creating with you.
+Run \`/forge-bootstrap\` now. It will ask you:
 
-The agent will run \`/forge-bootstrap\` to configure your project interactively (language, stack bindings, git init).
+- Which language the AI should communicate with you in
+- Which language project documentation should be written in
+- Whether you prefer a business or creative working style
+- Your name and how you want to be addressed
+- Your stack configuration (or migrate an existing project)
 
-## Option B: Bring your existing project
+This step is required before any work begins — it sets up language preferences, communication style, and project bindings.
+
+## Step 2: Start creating
+
+After configuration, tell the AI agent what you want to build. Describe your idea in your own words — a website, a game, a blog, a tool — and the system will set everything up and start creating with you.
+
+## Alternative: Bring your existing project
 
 If you already have a project elsewhere and want to move it into Forge, tell the AI agent:
 
 > I want to bring my existing project into Forge.
 
 The system will guide you through the process — it detects your project type, migrates the code (including \`.env\` and git-ignored files), optionally transfers git history, and verifies the build.
-
----
-
-Whichever path you choose, you don't need to run any commands. Just describe what you want in natural language, and the AI agent takes care of it.
 `;
   fs.writeFileSync(nextStepsPath, nextStepsContent, "utf8");
 
