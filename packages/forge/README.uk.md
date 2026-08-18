@@ -6,7 +6,7 @@
 
 ## Що можна створити за допомогою Forge
 
-Forge підтримує чотири типи проєктів. Ви обираєте один на старті — все інше відбувається автоматично.
+Forge підтримує шість типів проєктів. Ви обираєте один на старті — все інше відбувається автоматично.
 
 | Тип проєкту | Що це | Приклади |
 | --- | --- | --- |
@@ -14,8 +14,50 @@ Forge підтримує чотири типи проєктів. Ви обира
 | **Браузерна гра** | Інтерактивна гра, що працює в браузері — 2D, аркада, головоломка, пригода | Лови зірки, головоломка з плитками, платформер |
 | **Відео** | Програмна відеокомпозиція — анімований логотип, інтро, презентація продукту, motion-дизайн | Брендове інтро, демо продукту, реклама для соцмереж |
 | **Управління / бібліотека** | Бібліотека коду або проєкт лише з управлінською структурою — без сайту, без гри, без відео, лише структура та документація | npm-пакет, внутрішній інструмент, центр документації |
+| **Гра Godot** | Десктопна або мобільна гра на Godot 4.x з C# — 2D, 3D, платформер, RPG | Пригода з виглядом зверху, 3D-платформер, головоломка |
+| **База знань** | Структурований репозиторій нотаток з вікіпосиланнями, frontmatter та управлінням Forge — сумісний з Obsidian | Дослідницькі нотатки, документація проєкту, вікі світобудування |
 
 Кожен тип проєкту отримує власний каркас: правильну структуру папок, правильні залежності, правильні інструменти. Вам не потрібно знати, що це таке — Forge налаштує все за вас.
+
+---
+
+## Forge та рушій Werkstatt
+
+Forge — це **шар управління**: навички, RFC/ADR робочі процеси, угоди про найменування, вендоринг специфікацій та CLI. Він незалежний від фреймворку та не має Runtime-залежностей (тільки `yaml` + `zod`).
+
+Для повного управління життєвим циклом проєкту — місії, релізи, розгортання, сертифікація, перевірки якості, генерація контенту — Forge підключається до **рушія Werkstatt** та **плагінів специфічних для стеку**. Це окремі npm-пакети, які встановлюються разом з Forge, коли потрібні можливості runtime понад управління.
+
+| Пакет | Призначення | Потрібен для |
+| --- | --- | --- |
+| `@warpgogol/werkstatt` | Рушій runtime — місії, релізи, розгортання Leitstand, сертифікація, Bordbuch, сховище артефактів | Усі типи проєктів з управлінням життєвим циклом |
+| `@warpgogol/werkstatt-shared` | Спільна інфраструктура — перевірки, інтеграція, онтологія, паспорт | Встановлюється автоматично з рушієм |
+| `@warpgogol/werkstatt-site` | Плагін Astro-сайту — конвеєр збірки, перевірки контенту, codegen, адаптери розгортання | Вебсайт-проєкти (`astro-typescript-turborepo`) |
+| `@warpgogol/werkstatt-game` | Плагін Phaser-гри — валідатори гри, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
+| `@warpgogol/werkstatt-godot` | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
+| `@warpgogol/werkstatt-video` | Плагін Editframe-відео — валідація композицій, хуки рендерингу | Відеопроєкти (`editframe`) |
+
+### Коли потрібні ці пакети
+
+- **Проєкти лише з управлінням** (RFC, ADR, навички, центри документації) — Forge сам по собі достатній.
+- **Вебсайти, ігри, проєкти Godot, відео** — встановіть `@warpgogol/werkstatt` (рушій) плюс відповідний плагін стеку. Навичка `forge-bootstrap` налаштовує прив'язки автоматично; самі пакети потрібно встановити як devDependencies.
+
+### Встановлення пакунків рушія
+
+```sh
+# Проєкт вебсайту
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-site
+
+# Проєкт браузерної гри
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-game
+
+# Проєкт гри Godot
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot
+
+# Відеопроєкт
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-video
+```
+
+> **Примітка для агентів:** Після створення проєкту командою `forge create` завжди встановлюйте рушій та відповідний плагін стеку. Прив'язки в `forge.yaml` посилаються на команди з цих пакунків (напр. `pnpm exec werkstatt run rfc.validate`), і вони не працюватимуть, якщо пакунки не встановлені.
 
 ---
 
@@ -184,6 +226,20 @@ ffmpeg -version
 
 Ви маєте побачити інформацію про версію, а не помилку.
 
+### Додатково — Встановлення Godot та .NET (лише для проєктів ігор Godot)
+
+Якщо ви плануєте створювати **ігри Godot** (профіль `godot-csharp`), вам потрібні два додаткові інструменти:
+
+- **Godot 4.x** (з підтримкою .NET) — ігровий рушій. Завантажте його з [godotengine.org/download](https://godotengine.org/download). Обов'язково оберіть версію ".NET" (не стандартну версію).
+- **.NET SDK 8+** — runtime C# та інструменти збірки. Завантажте з [dotnet.microsoft.com/download](https://dotnet.microsoft.com/download).
+
+Перевірте, що обидва встановлені:
+
+```sh
+godot --version
+dotnet --version
+```
+
 ### Усунення проблем
 
 - **«command not found» після встановлення Node.js** — Закрийте та знову відкрийте термінал (Ubuntu) або PowerShell (Windows). Системі потрібно перезавантажити список доступних команд.
@@ -215,6 +271,8 @@ ffmpeg -version
    | Відео (брендове відео, інтро, motion-дизайн) | `--profile editframe`                  |
    | Вебсайт (лендінг, блог, портфоліо)           | `--profile astro-typescript-turborepo` |
    | Браузерна гра (2D, аркада, головоломка)      | `--profile phaser-turborepo`           |
+   | Гра Godot (десктоп, мобільний, 2D/3D)        | `--profile godot-csharp`               |
+   | База знань (Obsidian vault)                  | `--profile obsidian-vault`             |
    | Бібліотека або проєкт лише з управлінням     | `--profile forge-shell`                |
 
 2. **Відкрийте папку проєкту в вашому IDE.** Відкрийте папку, створену на кроці 1, у Windsurf або вашому IDE.
@@ -287,7 +345,9 @@ forge create --name my-project
 # З конкретним профілем стеку
 forge create --name my-site --profile astro-typescript-turborepo
 forge create --name my-game --profile phaser-turborepo
+forge create --name my-godot-game --profile godot-csharp
 forge create --name my-video --profile editframe
+forge create --name my-vault --profile obsidian-vault
 forge create --name my-library --profile forge-shell
 
 ```
@@ -340,6 +400,8 @@ forge skill.list
 | `astro-typescript-turborepo` | Вебсайт | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Вебсайти, вебзастосунки, контентні сайти |
 | `phaser-turborepo` | Браузерна гра | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Браузерні ігри, інтерактивні досвіди |
 | `editframe` | Відео | Editframe React + Vite + TailwindCSS | `compositions/my-first-video` | Відеокомпозиції, брендові відео, motion-дизайн |
+| `godot-csharp` | Гра Godot | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Десктопні/мобільні ігри, інтерактивні проєкти на Godot |
+| `obsidian-vault` | База знань | Obsidian vault + управління Forge | `vault/` | Нотатки, управління знаннями, центри документації |
 
 Профіль `editframe` також підтримує **HTML-шаблон** (замість React) для користувачів, які віддають перевагу веб-компонентам замість JSX. Оберіть між ними під час налаштування проєкту.
 
@@ -348,7 +410,7 @@ forge skill.list
 forge profile.validate
 ```
 
-Коли ви переносите наявний проєкт через режим `/forge-bootstrap` transplant, Forge автоматично визначає відповідний профіль, перевіряючи файли-маркери (`astro.config.*`, `phaser.config.*`, `editframe.config.*` тощо).
+Коли ви переносите наявний проєкт через режим `/forge-bootstrap` transplant, Forge автоматично визначає відповідний профіль, перевіряючи файли-маркери (`astro.config.*`, `phaser.config.*`, `editframe.config.*`, `project.godot`, `.obsidian/app.json` тощо).
 
 ## Процес оновлення
 
