@@ -61,18 +61,9 @@ export async function runScaffoldProject(
     return fail("forge.scaffold", profileId, `Project name "${projectName}" is not kebab-case`, errors, outputFormat, logger);
   }
 
-  // Refuse non-empty directories
-  const entries = fs.readdirSync(workspaceRoot);
-  if (entries.length > 0) {
-    return fail(
-      "forge.scaffold",
-      profileId,
-      `Directory is not empty (contains: ${entries.slice(0, 5).join(", ")}${entries.length > 5 ? "…" : ""}). Refusing to scaffold.`,
-      errors,
-      outputFormat,
-      logger,
-    );
-  }
+  // RFC-0877: Allow non-empty directories for in-place scaffolding.
+  // The conflict check is handled by forge.create (allowlist-based).
+  // forge.scaffold is called from forge.create which already verified no conflicts.
 
   // Load profiles and find the requested one
   let forgeRoot: string;
