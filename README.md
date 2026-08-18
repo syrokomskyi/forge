@@ -210,7 +210,7 @@ dotnet --version
 - **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
 - **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 24+ using the steps above.
 - **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
-- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --name my-project --profile astro-typescript-turborepo` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --in-place --profile astro-typescript-turborepo` (or the appropriate profile) in a terminal first, then open the folder in your IDE. The `forge create` command populates the current folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
 ---
 
@@ -222,13 +222,15 @@ You need to run one command in the terminal to create your project. After that, 
 
 #### Start a new project from scratch
 
-1. **Create a Forge project.** Open a terminal (PowerShell on Windows, Terminal on Ubuntu) and run:
+1. **Create a project folder and scaffold Forge in-place.** Open a terminal (PowerShell on Windows, Terminal on Ubuntu) and run:
 
    ```sh
-   forge create --name my-site --profile astro-typescript-turborepo
+   mkdir my-site
+   cd my-site
+   forge create --in-place --profile astro-typescript-turborepo
    ```
 
-   Replace `my-site` with your project name (lowercase letters and hyphens). This creates a new folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
+   The project name is derived from the folder name (`my-site` in this example). You can override it with `--name`. This populates the current folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
 
    | What you want to build                  | Profile flag                           |
    | --------------------------------------- | -------------------------------------- |
@@ -237,7 +239,7 @@ You need to run one command in the terminal to create your project. After that, 
    | Godot game (desktop, mobile, 2D/3D)     | `--profile godot-csharp`               |
    | Library or governance-only project      | `--profile forge-shell`                |
 
-2. **Open the project folder in your AI IDE.** Open the folder that was created in step 1 in Windsurf or your preferred IDE.
+2. **Open the project folder in your AI IDE.** Open the folder from step 1 in Windsurf or your preferred IDE.
 
 3. **Tell the AI agent what you want to build.** Just type it in the chat, in your own words. For example:
 
@@ -267,13 +269,15 @@ You need to run one command in the terminal to create your project. After that, 
 
 If you already have a project somewhere else and want to move it into Forge:
 
-1. **Create a Forge project.** Open a terminal and run:
+1. **Create a Forge project.** Open a terminal, create a folder, and run:
 
    ```sh
-   forge create --name my-project
+   mkdir my-project
+   cd my-project
+   forge create --in-place --profile forge-shell
    ```
 
-   Then open the created folder in your AI IDE.
+   Then open the folder in your AI IDE.
 
 2. **Tell the AI agent:**
 
@@ -294,24 +298,33 @@ Just tell the AI agent. It can check the project's health, fix issues, and expla
 
 ### For developers — CLI commands
 
-#### Create a new project
+#### Create a new project (in-place)
 
 ```sh
-# Create a new project (scaffold + init + skills + AGENTS.md in one command)
-forge create --name my-project
+# Create a project folder, then scaffold Forge in-place
+mkdir my-project
+cd my-project
+forge create --in-place --profile forge-shell
 
 # With a specific stack profile
-forge create --name my-site --profile astro-typescript-turborepo
-forge create --name my-game --profile phaser-turborepo
-forge create --name my-godot-game --profile godot-csharp
-forge create --name my-library --profile forge-shell
+mkdir my-site && cd my-site
+forge create --in-place --profile astro-typescript-turborepo
 
+mkdir my-game && cd my-game
+forge create --in-place --profile phaser-turborepo
+
+mkdir my-godot-game && cd my-godot-game
+forge create --in-place --profile godot-csharp
+
+# Override the project name (derived from folder name by default)
+forge create --in-place --profile forge-shell --name my-custom-name
 ```
 
 If Forge is not installed globally, use `pnpm dlx` instead:
 
 ```sh
-pnpm dlx @warpgogol/forge create --name my-project
+mkdir my-project && cd my-project
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
 ```
 
 #### Bring an existing project into Forge
@@ -319,8 +332,9 @@ pnpm dlx @warpgogol/forge create --name my-project
 There is no CLI command for transplant — it is an interactive, AI-guided process:
 
 ```sh
-# 1. Create a new empty Forge project
-forge create --name my-project
+# 1. Create a new empty Forge project (in-place)
+mkdir my-project && cd my-project
+forge create --in-place --profile forge-shell
 
 # 2. Open the project in Windsurf (tested with forge) or your preferred IDE
 
@@ -396,7 +410,7 @@ forge doctor
 
 The typical forge project lifecycle:
 
-1. **Create** — `forge create` bootstraps a new project with forge.yaml, skills, and docs directories
+1. **Create** — `forge create --in-place --profile <profile>` scaffolds a new project in the current directory with forge.yaml, skills, and docs directories
 2. **IDE** — open the project in Windsurf (tested with forge) or your preferred IDE
 3. **Bootstrap** — run `/forge-bootstrap` to configure the project interactively. The skill supports two modes:
    - **Greenfield** — start a new project from scratch: pick a stack, fill in bindings, init git

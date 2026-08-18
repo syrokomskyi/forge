@@ -210,7 +210,7 @@ dotnet --version
 - **«EACCES permission denied» в Ubuntu під час глобального встановлення Forge** — Виконайте `sudo pnpm add -g @warpgogol/forge`.
 - **«corepack: command not found»** — Ваша версія Node.js занадто стара. Встановіть Node.js 24+ за кроками вище.
 - **Windsurf не бачить `forge`** — Закрийте та знову відкрийте Windsurf після встановлення Forge. IDE потрібно перезапустити, щоб підхопити нові глобальні команди.
-- **ШІ-агент не знає про Forge** — Ви відкрили порожню папку, але ШІ-агент не має контексту Forge. Спочатку виконайте `forge create --name my-project --profile astro-typescript-turborepo` (або відповідний профіль) у терміналі, потім відкрийте створену папку в вашому IDE. Команда `forge create` наповнює папку навичками, конфігурацією та `AGENTS.md` — без цього ШІ-агент не може виявити Forge.
+- **ШІ-агент не знає про Forge** — Ви відкрили порожню папку, але ШІ-агент не має контексту Forge. Спочатку виконайте `forge create --in-place --profile astro-typescript-turborepo` (або відповідний профіль) у терміналі, потім відкрийте папку в вашому IDE. Команда `forge create` наповнює поточну папку навичками, конфігурацією та `AGENTS.md` — без цього ШІ-агент не може виявити Forge.
 
 ---
 
@@ -222,13 +222,15 @@ dotnet --version
 
 #### Створення нового проєкту з нуля
 
-1. **Створіть проєкт Forge.** Відкрийте термінал (PowerShell на Windows, Термінал на Ubuntu) і виконайте:
+1. **Створіть папку проєкту та згенеруйте каркас Forge на місці.** Відкрийте термінал (PowerShell на Windows, Термінал на Ubuntu) і виконайте:
 
    ```sh
-   forge create --name my-site --profile astro-typescript-turborepo
+   mkdir my-site
+   cd my-site
+   forge create --in-place --profile astro-typescript-turborepo
    ```
 
-   Замініть `my-site` на назву вашого проєкту (малі літери та дефіси). Це створить нову папку з усьом, що потрібно Forge — навичками, конфігурацією та структурою проєкту. Для інших типів проєктів використовуйте інший `--profile`:
+   Назва проєкту визначається з назви папки (`my-site` у цьому прикладі). Ви можете перевизначити її прапорцем `--name`. Це наповнює поточну папку усьом, що потрібно Forge — навичками, конфігурацією та структурою проєкту. Для інших типів проєктів використовуйте інший `--profile`:
 
    | Що ви хочете створити                    | Прапорець профілю                      |
    | ---------------------------------------- | -------------------------------------- |
@@ -237,7 +239,7 @@ dotnet --version
    | Гра Godot (десктоп, мобільний, 2D/3D)    | `--profile godot-csharp`               |
    | Бібліотека або проєкт лише з управлінням | `--profile forge-shell`                |
 
-2. **Відкрийте папку проєкту в вашому IDE.** Відкрийте папку, створену на кроці 1, у Windsurf або вашому IDE.
+2. **Відкрийте папку проєкту в вашому IDE.** Відкрийте папку з кроку 1 у Windsurf або вашому IDE.
 
 3. **Скажіть ШІ-агенту, що ви хочете створити.** Просто напишіть це в чаті своїми словами. Наприклад:
 
@@ -267,13 +269,15 @@ dotnet --version
 
 Якщо ви вже маєте проєкт десь інше і хочете перенести його у Forge:
 
-1. **Створіть проєкт Forge.** Відкрийте термінал і виконайте:
+1. **Створіть проєкт Forge.** Відкрийте термінал, створіть папку і виконайте:
 
    ```sh
-   forge create --name my-project
+   mkdir my-project
+   cd my-project
+   forge create --in-place --profile forge-shell
    ```
 
-   Потім відкрийте створену папку в вашому IDE.
+   Потім відкрийте папку в вашому IDE.
 
 2. **Скажіть ШІ-агенту:**
 
@@ -294,24 +298,33 @@ dotnet --version
 
 ### Для розробників — CLI-команди
 
-#### Створення нового проєкту
+#### Створення нового проєкту (на місці)
 
 ```sh
-# Створити новий проєкт (каркас + ініціалізація + навички + AGENTS.md однією командою)
-forge create --name my-project
+# Створіть папку проєкту, потім згенеруйте каркас Forge на місці
+mkdir my-project
+cd my-project
+forge create --in-place --profile forge-shell
 
 # З конкретним профілем стеку
-forge create --name my-site --profile astro-typescript-turborepo
-forge create --name my-game --profile phaser-turborepo
-forge create --name my-godot-game --profile godot-csharp
-forge create --name my-library --profile forge-shell
+mkdir my-site && cd my-site
+forge create --in-place --profile astro-typescript-turborepo
 
+mkdir my-game && cd my-game
+forge create --in-place --profile phaser-turborepo
+
+mkdir my-godot-game && cd my-godot-game
+forge create --in-place --profile godot-csharp
+
+# Перевизначити назву проєкту (за замовчуванням визначається з назви папки)
+forge create --in-place --profile forge-shell --name my-custom-name
 ```
 
 Якщо Forge не встановлено глобально, використовуйте `pnpm dlx`:
 
 ```sh
-pnpm dlx @warpgogol/forge create --name my-project
+mkdir my-project && cd my-project
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
 ```
 
 #### Перенесення наявного проєкту у Forge
@@ -319,8 +332,9 @@ pnpm dlx @warpgogol/forge create --name my-project
 CLI-команди для перенесення немає — це інтерактивний процес під керівництвом ШІ:
 
 ```sh
-# 1. Створіть новий порожній проєкт Forge
-forge create --name my-project
+# 1. Створіть новий порожній проєкт Forge (на місці)
+mkdir my-project && cd my-project
+forge create --in-place --profile forge-shell
 
 # 2. Відкрийте проєкт у Windsurf (протестовано з Forge) або вашому IDE
 
@@ -396,7 +410,7 @@ forge doctor
 
 Типовий життєвий цикл проєкту Forge:
 
-1. **Створення** — `forge create` ініціалізує новий проєкт з forge.yaml, навичками та директоріями документації
+1. **Створення** — `forge create --in-place --profile <профіль>` генерує каркас нового проєкту в поточній директорії з forge.yaml, навичками та директоріями документації
 2. **IDE** — відкрийте проєкт у Windsurf (протестовано з Forge) або вашому IDE
 3. **Bootstrap** — запустіть `/forge-bootstrap` для інтерактивного налаштування проєкту. Навичка підтримує два режими:
    - **Greenfield** — створення нового проєкту з нуля: оберіть стек, заповніть прив'язки, ініціалізуйте git
