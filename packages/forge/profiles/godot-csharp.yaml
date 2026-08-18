@@ -162,6 +162,14 @@ workspace:
         obj/
         *.user
         *.csproj.user
+    - path: .vscode/extensions.json
+      content: |
+        {
+          "recommendations": [
+            "ms-dotnettools.csharp",
+            "geequla.godot-tools"
+          ]
+        }
     - path: .github/workflows/ci.yml
       content: |
         name: CI
