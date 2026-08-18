@@ -6,16 +6,14 @@ Portable governance engine for AI-assisted project development. Provides skills,
 
 ## What you can build with Forge
 
-Forge supports six kinds of projects. You pick one when you start — everything else is automatic.
+Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
 
 | Project type | What it is | Example ideas |
 | --- | --- | --- |
 | **Website** | A public website or web app — pages, blog, portfolio, landing page, online store | Photography studio site, restaurant website, SaaS landing page |
 | **Browser game** | An interactive game that runs in a web browser — 2D, arcade, puzzle, adventure | Catch falling stars, tile-matching puzzle, platformer |
-| **Video** | A programmatic video composition — animated logo, intro, product showcase, motion design | Brand intro video, product demo, social media ad clip |
 | **Governance / library** | A code library or governance-only project — no website, no game, no video, just structure and documentation | npm package, internal toolkit, documentation hub |
 | **Godot game** | A desktop or mobile game built with Godot 4.x and C# — 2D, 3D, platformer, RPG | Top-down adventure, 3D platformer, puzzle game |
-| **Knowledge base** | A structured note repository with wikilinks, frontmatter, and Forge governance — Obsidian-compatible | Research notes, project documentation, worldbuilding wiki |
 
 Each project type gets its own scaffold: the right folder structure, the right dependencies, the right tools. You don't need to know what any of those are — Forge sets them up for you.
 
@@ -34,12 +32,11 @@ For full project lifecycle management — missions, releases, deployment, certif
 | `@warpgogol/werkstatt-site` | Astro site plugin — build pipeline, content checks, codegen, deploy adapters | Website projects (`astro-typescript-turborepo`) |
 | `@warpgogol/werkstatt-game` | Phaser game plugin — game validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
 | `@warpgogol/werkstatt-godot` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
-| `@warpgogol/werkstatt-video` | Editframe video plugin — composition validation, render hooks | Video projects (`editframe`) |
 
 ### When you need these packages
 
 - **Governance-only projects** (RFCs, ADRs, skills, documentation hubs) — Forge alone is sufficient.
-- **Websites, games, Godot projects, videos** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
+- **Websites, games, Godot projects** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
 
 ### Installing engine packages
 
@@ -52,9 +49,6 @@ pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-game
 
 # Godot game project
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot
-
-# Video project
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-video
 ```
 
 > **Note for agents:** When scaffolding a new project with `forge create`, always install the engine and matching stack plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages (e.g. `pnpm exec werkstatt run rfc.validate`), and they will fail if the packages are not installed.
@@ -196,36 +190,6 @@ Forge works through conversation with an AI agent. You need an IDE that supports
 
 You can also use **Cursor** ([cursor.com](https://cursor.com)) or any IDE that supports AI agent skills.
 
-### Optional — Install FFmpeg (only for video projects)
-
-If you're planning to create **video** projects (the `editframe` profile), you need **FFmpeg** — a free tool for processing video and audio.
-
-**Ubuntu:**
-
-```sh
-sudo apt-get install -y ffmpeg
-ffmpeg -version
-```
-
-**Windows:**
-
-1. Go to [ffmpeg.org/download.html](https://ffmpeg.org/download.html) in your browser.
-2. Download a Windows build (look for "Windows builds" — the gyan.dev or BtbN builds are good choices).
-3. Extract the downloaded `.zip` file to a folder, e.g. `C:\ffmpeg`.
-4. Add FFmpeg to your system PATH:
-   - Open the Start menu, search for "Environment Variables", and click "Edit the system environment variables".
-   - Click **Environment Variables**.
-   - Under "System variables" (or "User variables"), find **Path**, select it, and click **Edit**.
-   - Click **New** and type `C:\ffmpeg\bin` (or wherever you extracted FFmpeg, in the `bin` subfolder).
-   - Click **OK** on all three windows.
-5. Close and reopen PowerShell, then verify:
-
-   ```sh
-   ffmpeg -version
-   ```
-
-You should see version information, not an error.
-
 ### Optional — Install Godot and .NET (only for Godot game projects)
 
 If you're planning to create **Godot game** projects (the `godot-csharp` profile), you need two additional tools:
@@ -246,7 +210,7 @@ dotnet --version
 - **"EACCES permission denied" on Ubuntu when installing Forge globally** — Run `sudo pnpm add -g @warpgogol/forge` instead.
 - **"corepack: command not found"** — Your Node.js version is too old. Install Node.js 24+ using the steps above.
 - **Windsurf can't find `forge`** — Close and reopen Windsurf after installing Forge. IDEs need to restart to pick up new global commands.
-- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --name my-project --profile editframe` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
+- **AI agent doesn't know about Forge** — You opened an empty folder, but the AI agent has no Forge context. Run `forge create --name my-project --profile astro-typescript-turborepo` (or the appropriate profile) in a terminal first, then open the created folder in your IDE. The `forge create` command populates the folder with skills, configuration, and `AGENTS.md` — without it, the AI agent can't discover Forge.
 
 ---
 
@@ -261,27 +225,21 @@ You need to run one command in the terminal to create your project. After that, 
 1. **Create a Forge project.** Open a terminal (PowerShell on Windows, Terminal on Ubuntu) and run:
 
    ```sh
-   forge create --name my-brand-video --profile editframe
+   forge create --name my-site --profile astro-typescript-turborepo
    ```
 
-   Replace `my-brand-video` with your project name (lowercase letters and hyphens). This creates a new folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
+   Replace `my-site` with your project name (lowercase letters and hyphens). This creates a new folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
 
-   | What you want to build                    | Profile flag                           |
-   | ----------------------------------------- | -------------------------------------- |
-   | Video (brand video, intro, motion design) | `--profile editframe`                  |
-   | Website (landing page, blog, portfolio)   | `--profile astro-typescript-turborepo` |
-   | Browser game (2D, arcade, puzzle)         | `--profile phaser-turborepo`           |
-   | Godot game (desktop, mobile, 2D/3D)       | `--profile godot-csharp`               |
-   | Knowledge base (Obsidian vault)           | `--profile obsidian-vault`             |
-   | Library or governance-only project        | `--profile forge-shell`                |
+   | What you want to build                  | Profile flag                           |
+   | --------------------------------------- | -------------------------------------- |
+   | Website (landing page, blog, portfolio) | `--profile astro-typescript-turborepo` |
+   | Browser game (2D, arcade, puzzle)       | `--profile phaser-turborepo`           |
+   | Godot game (desktop, mobile, 2D/3D)     | `--profile godot-csharp`               |
+   | Library or governance-only project      | `--profile forge-shell`                |
 
 2. **Open the project folder in your AI IDE.** Open the folder that was created in step 1 in Windsurf or your preferred IDE.
 
 3. **Tell the AI agent what you want to build.** Just type it in the chat, in your own words. For example:
-
-   > I want to create a brand video for my coffee shop. It should have an animated logo, a short intro, and a product showcase.
-
-   Or:
 
    > I want to build a website for my photography studio.
 
@@ -294,16 +252,16 @@ You need to run one command in the terminal to create your project. After that, 
    > I want to create a TypeScript library for calculating astrology charts.
 
    That's it. The AI agent will do everything else:
-   - Set up the project structure based on what you described (video, website, game, library, etc.)
+   - Set up the project structure based on what you described (website, game, library, etc.)
    - Configure language preferences and project settings
-   - Start a live preview so you can see your work (for websites, games, and videos)
+   - Start a live preview so you can see your work (for websites and games)
    - Tell you the URL to open in your browser
 
-4. **Watch the preview.** For websites, games, and videos, the AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
+4. **Watch the preview.** For websites and games, the AI agent will give you a localhost link. Click it — your project is already running. As you describe changes, the agent updates the project and the preview refreshes automatically.
 
    For governance and library projects, there's no visual preview — the agent will set up the project structure and tell you when it's ready.
 
-5. **Create together.** From here on, you just talk. Want a different color? Want to add a scene? Want to change the music? Want to add a new function to your library? Just say it. The agent handles all the technical work.
+5. **Create together.** From here on, you just talk. Want a different color? Want to add a scene? Want to add a new function to your library? Just say it. The agent handles all the technical work.
 
 #### Bring an existing project into Forge
 
@@ -322,7 +280,7 @@ If you already have a project somewhere else and want to move it into Forge:
    > I want to bring my existing project into Forge. It's located at /path/to/my/project.
 
    The agent will:
-   - Detect what kind of project it is (website, video, game, library, etc.)
+   - Detect what kind of project it is (website, game, library, etc.)
    - Move all your files into the new Forge project — including hidden files like `.env`
    - Optionally bring your git history
    - Verify everything builds correctly
@@ -346,8 +304,6 @@ forge create --name my-project
 forge create --name my-site --profile astro-typescript-turborepo
 forge create --name my-game --profile phaser-turborepo
 forge create --name my-godot-game --profile godot-csharp
-forge create --name my-video --profile editframe
-forge create --name my-vault --profile obsidian-vault
 forge create --name my-library --profile forge-shell
 
 ```
@@ -371,7 +327,7 @@ forge create --name my-project
 # 3. Run the /forge-bootstrap skill and choose "transplant" mode
 #    The skill will:
 #    - Ask for the path to your existing codebase
-#    - Detect the stack automatically (Astro, Phaser, Editframe, etc.)
+#    - Detect the stack automatically (Astro, Phaser, Godot, etc.)
 #    - Migrate all files (including .env and git-ignored files)
 #    - Optionally transfer git history
 #    - Verify the build
@@ -399,18 +355,14 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | `forge-shell` | Governance / library | Minimal Forge shell (default) | — | Governance-only projects, libraries, non-web projects |
 | `astro-typescript-turborepo` | Website | Astro + TypeScript + pnpm + Turborepo | `sites/my-site` | Websites, web apps, content-driven sites |
 | `phaser-turborepo` | Browser game | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
-| `editframe` | Video | Editframe React + Vite + TailwindCSS | `compositions/my-first-video` | Video compositions, brand videos, motion design |
 | `godot-csharp` | Godot game | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Desktop/mobile games, Godot-based interactive projects |
-| `obsidian-vault` | Knowledge base | Obsidian vault + Forge governance | `vault/` | Note-taking, knowledge management, documentation hubs |
-
-The `editframe` profile also supports an **HTML template** (instead of React) for users who prefer web components over JSX. Choose between the two during project setup.
 
 ```sh
 # List available profiles (after install)
 forge profile.validate
 ```
 
-When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `editframe.config.*`, `project.godot`, `.obsidian/app.json`, etc.).
+When you bring an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile automatically by checking for marker files (`astro.config.*`, `phaser.config.*`, `project.godot`, etc.).
 
 ## Upgrade flow
 
@@ -431,7 +383,7 @@ forge doctor
 
 ## What forge gives you
 
-- **44 skills** (fo-pipeline, grilling, preferences, skill authoring, Editframe video composition) — deployed to `.agents/skills/` by `forge create`
+- **44 skills** (fo-pipeline, grilling, preferences, skill authoring) — deployed to `.agents/skills/` by `forge create`
 - **RFC workflow** — create, validate, list, graph, archive, acceptance probes, decision logs, DNA trace
 - **ADR workflow** — lightweight architectural decision records
 - **Spec vendoring** — vendor external spec packages as immutable snapshots with integrity manifests
