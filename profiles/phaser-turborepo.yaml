@@ -7,7 +7,7 @@ detect:
     - package.json
 workspace:
   dirs:
-    - games
+    - apps
     - packages
     - services
     - scripts
@@ -18,7 +18,7 @@ workspace:
     - path: pnpm-workspace.yaml
       content: |
         packages:
-          - "games/*"
+          - "apps/*"
           - "packages/*"
           - "services/*"
     - path: turbo.json
@@ -340,7 +340,7 @@ workspace:
 install:
   - pnpm add -D typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-game prettier
 firstWorkspace:
-  path: games/my-game
+  path: apps/my-game
   files:
     - path: package.json
       content: |

@@ -104,7 +104,7 @@ invariants:
       pattern: ""
 workspace:
   dirs:
-    - games
+    - apps
     - packages
     - services
     - scripts
@@ -115,7 +115,7 @@ workspace:
     - path: pnpm-workspace.yaml
       content: |
         packages:
-          - "games/*"
+          - "apps/*"
           - "packages/*"
           - "services/*"
     - path: turbo.json
@@ -477,7 +477,7 @@ workspace:
         ## Running the game
 
         ```sh
-        godot --path games/my-game
+        godot --path apps/my-game
         ```
 
         You should see "Hello, my-game!" in the game window.
@@ -490,7 +490,7 @@ workspace:
 install:
   - pnpm install
 firstWorkspace:
-  path: games/my-game
+  path: apps/my-game
   files:
     - path: project.godot
       content: |

@@ -133,7 +133,6 @@ export async function runCreate(
   const errors: string[] = [];
 
   const passNextSteps: ForgeNextStep[] = [
-    { action: "Open the project in Windsurf", kind: "required" },
     { action: "Run /forge-bootstrap to configure the project interactively", kind: "optional" },
   ];
   const failNextSteps: ForgeNextStep[] = [
