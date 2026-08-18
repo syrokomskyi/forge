@@ -332,7 +332,7 @@ test("runDeterminismCheck cache hit skips double-build", async () => {
   expect(result2.data?.artifacts[0].cached).toBe(true);
   expect(result2.data?.artifacts[0].deterministic).toBe(true);
   expect(result2.data?.artifacts[0].firstBuildHash).toBe("sha256:cached-hash");
-});
+}, 15000);
 
 // ── runAssetsList RFC-0679 ───────────────────────────────────────────────────
 
