@@ -157,7 +157,7 @@ test("artifacts with missing required extensions field fails", () => {
 
 test("all shipped profiles parse without changes", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
-  expect(profiles.length).toBe(4);
+  expect(profiles.length).toBe(3);
   for (const profile of profiles) {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);
@@ -169,9 +169,9 @@ test("all shipped profiles parse without changes", () => {
   }
 });
 
-test("shipped astro-typescript-turborepo profile loads via loadStackProfile", () => {
-  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "astro-typescript-turborepo.yaml"));
-  expect(profile.id).toBe("astro-typescript-turborepo");
+test("shipped phaser-turborepo profile loads via loadStackProfile", () => {
+  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "phaser-turborepo.yaml"));
+  expect(profile.id).toBe("phaser-turborepo");
 });
 
 test("UNIVERSAL_TERMINOLOGY_KEYS contains the 7 documented keys", () => {

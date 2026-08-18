@@ -71,7 +71,7 @@ test("forge.scaffold fails on missing --profile", async () => {
 
 test("forge.scaffold fails on missing --name", async () => {
   const result = await runScaffoldProject(
-    { argv: [], flags: { profile: "astro-typescript-turborepo" } },
+    { argv: [], flags: { profile: "phaser-turborepo" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -80,7 +80,7 @@ test("forge.scaffold fails on missing --name", async () => {
 
 test("forge.scaffold fails on non-kebab-case name", async () => {
   const result = await runScaffoldProject(
-    { argv: [], flags: { profile: "astro-typescript-turborepo", name: "MySite" } },
+    { argv: [], flags: { profile: "phaser-turborepo", name: "MySite" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -112,15 +112,15 @@ test("forge.scaffold creates workspace files in empty dir (no install)", async (
 });
 
 test("forge.init --from detects stack from existing project", async () => {
-  // Create a fake project with astro.config.mjs
+  // Create a fake project with phaser.config.ts
   const fakeProject = join(tempDir, "fake-project");
   await mkdir(fakeProject, { recursive: true });
-  await writeFile(join(fakeProject, "astro.config.mjs"), "export default {}", "utf8");
+  await writeFile(join(fakeProject, "phaser.config.ts"), "export default {}", "utf8");
 
   const result = runInit({ flags: { from: fakeProject } }, { workspaceRoot: WORKSPACE_ROOT });
   expect(result.status).toBe("pass");
   expect(result.detection).toBeDefined();
-  expect(result.detection?.profile).toBe("astro-typescript-turborepo");
+  expect(result.detection?.profile).toBe("phaser-turborepo");
 });
 
 test("forge.init --from reports null when stack undetectable", async () => {

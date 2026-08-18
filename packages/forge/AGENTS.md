@@ -152,7 +152,7 @@ Stack profiles are YAML documents under `profiles/` describing a supported stack
 - **MUST NOT** scaffold into a non-empty directory — no `--force` flag.
 - **MUST NOT** add stack profiles for stacks forge cannot scaffold end-to-end.
 - **MUST** reference all template files in `profiles/<profile>-templates/` from the profile YAML (`workspaceTypes[].agentsMdTemplate` or `firstWorkspace.files`) or document them in the `agentsMdTemplate` file. Unreferenced template files are orphan artifacts that operators cannot discover.
-- Shipped profiles: `astro-typescript-turborepo`, `phaser-turborepo`, `godot-csharp`, `forge-shell` (minimal — default for `create`).
+- Shipped profiles: `phaser-turborepo`, `godot-csharp`, `forge-shell` (minimal — default for `create`).
 - **MUST** include a `.github/workflows/ci.yml` template in every stack profile's `workspace.files` list. The CI template MUST include `concurrency` (cancel superseded PR runs), `permissions: contents: read` at workflow level, `timeout-minutes` per job, `env: TZ: UTC` per job, `actions/checkout@v5`, and `actions/setup-node@v5` with Node 24. New projects inherit reliable CI from the scaffold — operators should not need to hand-write CI from scratch.
 
 ### Domain fields (RFC-0638)
