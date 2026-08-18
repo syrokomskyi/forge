@@ -428,6 +428,13 @@ export function resolveForgeRoot(workspaceRoot: string): string {
     return npmPath;
   }
 
+  if (
+    fs.existsSync(path.join(workspaceRoot, "profiles")) &&
+    fs.existsSync(path.join(workspaceRoot, "package.json"))
+  ) {
+    return workspaceRoot;
+  }
+
   throw new Error(
     `Could not resolve forge root. Checked:\n  ${monorepoPath}\n  ${npmPath}\nEnsure @warpgogol/forge is installed or packages/forge exists.`,
   );

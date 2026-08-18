@@ -35,8 +35,10 @@ function makeContext(workspaceRoot: string): ForgeRuntimeContext {
 
 // Resolve forge root from this test file's location
 const FORGE_ROOT = join(import.meta.dirname, "..", "..");
-// Workspace root is the monorepo root so resolveForgeRoot can find packages/forge
-const WORKSPACE_ROOT = join(FORGE_ROOT, "..", "..");
+// In monorepo: FORGE_ROOT = packages/forge, workspace = monorepo root
+// In extracted package: FORGE_ROOT = repo root, workspace = FORGE_ROOT
+const monorepoRoot = join(FORGE_ROOT, "..", "..");
+const WORKSPACE_ROOT = existsSync(join(monorepoRoot, "package.json")) ? monorepoRoot : FORGE_ROOT;
 
 let tempDir: string;
 
