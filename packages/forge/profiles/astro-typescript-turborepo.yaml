@@ -11,6 +11,9 @@ workspace:
     - packages
     - services
     - scripts
+    - tools
+    - missions
+    - systems-cache
   files:
     - path: pnpm-workspace.yaml
       content: |
@@ -201,6 +204,150 @@ workspace:
         }
 
         console.log(`Cleaned ${toDelete.length} directories.`);
+    - path: tools/kernel.config.ts
+      content: |
+        import { defineKernelConfig } from "@warpgogol/werkstatt/kernel/types";
+        import { werkstattSitePlugin } from "@warpgogol/werkstatt-site";
+
+        export default defineKernelConfig({
+          name: "__PROJECT_NAME__",
+          description: "__PROJECT_NAME__ workshop",
+          moduleLoaders: {
+            "forge-core": async () => (await import("@warpgogol/forge/os/core")).forgeCoreModule,
+            "forge-rfc": async () => (await import("@warpgogol/forge/os/rfc-module")).forgeRfcModule,
+            "forge-adr": async () => (await import("@warpgogol/forge/os/adr-module")).forgeAdrModule,
+            "forge-plan": async () => (await import("@warpgogol/forge/os/plan-module")).forgePlanModule,
+            "forge-audit": async () => (await import("@warpgogol/forge/os/audit-module")).forgeAuditModule,
+            "forge-compass": async () => (await import("@warpgogol/forge/os/compass")).forgeCompassModule,
+            "forge-naming": async () => (await import("@warpgogol/forge/os/naming-module")).forgeNamingModule,
+            "forge-workflow": async () => (await import("@warpgogol/forge/os/workflow-module")).forgeWorkflowModule,
+            "forge-session": async () => (await import("@warpgogol/forge/os/session-module")).forgeSessionModule,
+            "forge-mission": async () => (await import("@warpgogol/forge/os/mission-module")).forgeMissionModule,
+            "forge-spec": async () => (await import("@warpgogol/forge/os/spec-module")).forgeSpecModule,
+            "forge-exploration": async () => (await import("@warpgogol/forge/os/exploration")).forgeExplorationModule,
+            "forge-program": async () => (await import("@warpgogol/forge/os/program")).forgeProgramModule,
+            "forge-werkstatt": async () => (await import("@warpgogol/forge/os/werkstatt")).forgeWerkstattModule,
+            mission: async () => (await import("@warpgogol/werkstatt/mission-module")).createMissionModule(),
+            sternsystem: async () => (await import("@warpgogol/werkstatt/sternsystem-module")).createSternsystemModule(),
+            bordbuch: async () => (await import("@warpgogol/werkstatt/bordbuch-module")).createBordbuchModule(),
+            "artifact-store": async () => (await import("@warpgogol/werkstatt/artifact-store-module")).createArtifactStoreModule(),
+            release: async () => (await import("@warpgogol/werkstatt/release-module")).createReleaseModule(),
+            leitstand: async () => (await import("@warpgogol/werkstatt/leitstand-module")).createLeitstandModule(),
+            notausgang: async () => (await import("@warpgogol/werkstatt/notausgang-module")).createNotausgangModule(),
+            evidence: async () => (await import("@warpgogol/werkstatt/evidence-module")).createEvidenceModule(),
+            "werkstatt-plugin": async () => (await import("@warpgogol/werkstatt/os/werkstatt-plugin-module")).forgeWerkstattPluginModule,
+            "werkstatt-autonomy": async () => (await import("@warpgogol/werkstatt/os/werkstatt-autonomy-module")).werkstattAutonomyModule,
+            "__PROJECT_NAME__-plugin": async () => werkstattSitePlugin,
+          },
+        });
+    - path: .npmrc
+      content: |
+        # @warpgogol scoped registry — replace YOUR_NPM_TOKEN with a valid npm read token
+        @warpgogol:registry=https://registry.npmjs.org/
+        //registry.npmjs.org/:_authToken=YOUR_NPM_TOKEN
+    - path: eslint.config.js
+      content: |
+        export default [
+          {
+            rules: {},
+          },
+        ];
+    - path: .prettierrc.mjs
+      content: |
+        export default {
+          semi: true,
+          singleQuote: false,
+          trailingComma: "all",
+          printWidth: 100,
+          tabWidth: 2,
+        };
+    - path: .gitattributes
+      content: |
+        # Git LFS patterns for site stack media
+        *.mp4 filter=lfs diff=lfs merge=lfs -text
+        *.webm filter=lfs diff=lfs merge=lfs -text
+        *.png filter=lfs diff=lfs merge=lfs -text
+        *.jpg filter=lfs diff=lfs merge=lfs -text
+        *.jpeg filter=lfs diff=lfs merge=lfs -text
+        *.webp filter=lfs diff=lfs merge=lfs -text
+    - path: hooks/pre-commit
+      content: |
+        #!/bin/sh
+        # Platform-scope pre-commit guard
+        # Runs werkstatt autonomy and plugin validation before commits
+        echo "Pre-commit: running platform checks..."
+        pnpm exec werkstatt run werkstatt.autonomy.validate || exit 1
+        pnpm exec werkstatt run werkstatt.plugin.validate || exit 1
+    - path: systems-cache/.gitkeep
+      content: |
+        # Sternsystem cache directory (RFC-0790)
+        # Per-system config and state files live in systems-cache/<id>/
+    - path: missions/.gitkeep
+      content: ""
+    - path: .forge/pinned.yaml
+      content: |
+        # Pinned foundation files (DNA-62, RFC-0733)
+        # Protect mode: warns on delete/move. Freeze mode: blocks modify too.
+        entries:
+          - path: tools/kernel.config.ts
+            mode: protect
+          - path: forge.yaml
+            mode: protect
+          - path: pnpm-workspace.yaml
+            mode: protect
+          - path: turbo.json
+            mode: protect
+          - path: tsconfig.base.json
+            mode: protect
+          - path: systems-cache/.gitkeep
+            mode: protect
+    - path: README.md
+      content: |
+        # __PROJECT_NAME__
+
+        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-site plugin.
+
+        ## Prerequisites
+
+        - Node.js 24+
+        - pnpm 10+
+        - Git LFS
+
+        ## Setup
+
+        ### 1. Configure npm token
+
+        This workshop depends on private @warpgogol packages. Edit `.npmrc` and replace `YOUR_NPM_TOKEN` with a valid npm read token:
+
+        ```sh
+        sed -i 's/YOUR_NPM_TOKEN/your_actual_token/' .npmrc
+        ```
+
+        ### 2. Install dependencies
+
+        ```sh
+        pnpm install
+        ```
+
+        ### 3. Verify the workshop
+
+        ```sh
+        pnpm exec werkstatt run forge.doctor
+        pnpm exec werkstatt run werkstatt.plugin.validate
+        pnpm exec werkstatt run werkstatt.autonomy.validate
+        ```
+
+        ## Create your first project
+
+        ```sh
+        pnpm exec werkstatt run onboarding.scaffold --system my-first-project --title "My First Project"
+        ```
+
+        ## Stack
+
+        - Engine: @warpgogol/werkstatt
+        - Plugin: @warpgogol/werkstatt-site
+        - Stack profile: astro-typescript-turborepo
 install:
   - pnpm add -D typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-site prettier
 firstWorkspace:
