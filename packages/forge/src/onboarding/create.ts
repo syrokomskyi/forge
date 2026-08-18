@@ -255,7 +255,7 @@ export async function runCreate(
     forgeRoot,
   };
 
-  // 6. Run forge.scaffold inside target dir
+  // 9. Run forge.scaffold inside target dir
   const scaffoldInput: ForgeCommandInput = {
     argv: [],
     flags: { profile, name, ...(template ? { template } : {}) },
@@ -278,7 +278,7 @@ export async function runCreate(
     };
   }
 
-  // 7. Run forge.init inside target dir
+  // 10. Run forge.init inside target dir
   // RFC-0640: load profile domain fields and pass them to runInit
   const initDomainFields = loadProfileDomainFields(profile, forgeRoot);
   const initInput: ForgeCommandInput = {
@@ -296,7 +296,7 @@ export async function runCreate(
     }
   }
 
-  // 7.5. Scaffold memory layer (RFC-0664) — runs regardless of init success
+  // 10.5. Scaffold memory layer (RFC-0664) — runs regardless of init success
   const memoryScaffoldResult = scaffoldMemoryLayer(targetDir);
 
   if (initResult.status !== "pass") {
@@ -321,7 +321,7 @@ export async function runCreate(
     };
   }
 
-  // 8. Post-process forge.yaml if --package-manager differs from default
+  // 11. Post-process forge.yaml if --package-manager differs from default
   if (packageManager !== "pnpm") {
     const forgeYamlPath = path.join(targetDir, "forge.yaml");
     if (fs.existsSync(forgeYamlPath)) {
@@ -345,7 +345,7 @@ export async function runCreate(
     }
   }
 
-  // 9. Auto-run forge.agents.generate (RFC-0548)
+  // 12. Auto-run forge.agents.generate (RFC-0548)
   try {
     const agentsInput: ForgeCommandInput = {
       argv: [],
@@ -371,7 +371,7 @@ export async function runCreate(
     }
   }
 
-  // 10. Write NEXT_STEPS.md (RFC-0550)
+  // 13. Write NEXT_STEPS.md (RFC-0550)
   const nextStepsPath = path.join(targetDir, "NEXT_STEPS.md");
   const nextStepsContent = `# Next Steps
 
@@ -397,7 +397,7 @@ Whichever path you choose, you don't need to run any commands. Just describe wha
 `;
   fs.writeFileSync(nextStepsPath, nextStepsContent, "utf8");
 
-  // 11. Collect filesCreated
+  // 14. Collect filesCreated
   const filesCreated = [
     ...(scaffoldResult.data?.created ?? []),
     ...(initResult.created ?? []),
