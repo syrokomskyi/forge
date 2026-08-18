@@ -1,8 +1,7 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forge.scaffold — creates a working pnpm + Turborepo monorepo from a stack profile in an empty directory.</purpose>
+<purpose>forge.scaffold — creates a working pnpm + Turborepo monorepo from a stack profile in the current directory.</purpose>
 <non-goals>
-  <item>Do not scaffold into non-empty directories — refuse with exit 1.</item>
   <item>Do not add a --force flag — ever.</item>
   <item>Do not import from @warpgogol/* — this module is portable.</item>
 </non-goals>
