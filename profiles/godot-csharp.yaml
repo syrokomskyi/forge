@@ -326,7 +326,7 @@ workspace:
 
         console.log(`Cleaned ${toDelete.length} directories.`);
 install:
-  - pnpm add -D typescript turbo @warpgogol/forge prettier
+  - pnpm add -D typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-godot prettier
 firstWorkspace:
   path: games/my-game
   files:
