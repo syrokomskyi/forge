@@ -7,6 +7,10 @@
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
   "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
   "homepage": "https://warpgogol.com",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syrokomskyi/forge.git"
+  },
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "bin": {
