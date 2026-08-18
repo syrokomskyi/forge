@@ -92,6 +92,7 @@ class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
       timeoutMs: c.timeoutMs,
       expectedDurationMs: c.expectedDurationMs,
       longRunning: c.longRunning,
+      hidden: c.hidden,
       flags: c.flags,
       reads: c.reads,
       writes: c.writes,
@@ -235,11 +236,9 @@ function resolveCommandName(commandName: string, registry: ForgeCliRegistry): st
     }
     return commandName;
   }
-  if (!commandName.includes(".")) {
-    const qualified = "forge." + commandName;
-    if (registry.getCommand(qualified)) {
-      return qualified;
-    }
+  const qualified = "forge." + commandName;
+  if (registry.getCommand(qualified)) {
+    return qualified;
   }
   return undefined;
 }

@@ -106,6 +106,15 @@ export async function runScaffoldProject(
     created.push(file.path);
   }
 
+  // Create .npmrc before running install commands to avoid:
+  // - ERR_PNPM_ADDING_TO_ROOT (pnpm v10/v11 blocks `pnpm add` in workspace root without -w)
+  // - ERR_PNPM_IGNORED_BUILDS (pnpm exits non-zero for ignored build scripts)
+  const npmrcPath = path.join(workspaceRoot, ".npmrc");
+  if (!fs.existsSync(npmrcPath) && profile.install.length > 0) {
+    fs.writeFileSync(npmrcPath, "ignore-workspace-root-check=true\n", "utf8");
+    created.push(".npmrc");
+  }
+
   // Run install commands
   if (outputFormat === "pretty" && profile.install.length > 0) {
     logger.info(`Installing ${profile.install.length} root workspace package(s)...`);

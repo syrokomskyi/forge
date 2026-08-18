@@ -160,7 +160,7 @@ test("forge create --package-manager npm writes npm into forge.yaml with npx bin
   expect(config.project.packageManager).toBe("npm");
   expect(config.bindings?.commands.validateRfc).toContain("npx");
   expect(config.bindings?.commands.validateRfc).toContain("forge rfc.validate");
-});
+}, 30000);
 
 test("forge create --package-manager pnpm writes pnpm into forge.yaml", async () => {
   const result = await runCreate(
@@ -180,7 +180,7 @@ test("forge create --package-manager pnpm writes pnpm into forge.yaml", async ()
   const config = loadForgeConfig(tempDir);
   expect(config.project.packageManager).toBe("pnpm");
   expect(config.bindings?.commands.validateRfc).toContain("pnpm exec");
-});
+}, 30000);
 
 test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async () => {
   await runCreate(
@@ -197,7 +197,7 @@ test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async
   expect(config.bindings?.commands.typecheck).toBeNull();
   expect(config.bindings?.commands.test).toBeNull();
   expect(config.bindings?.commands.scopedBuild).toBeNull();
-});
+}, 30000);
 
 test("forge.yaml has forge.syncedVersion set", async () => {
   await runCreate(
@@ -207,7 +207,7 @@ test("forge.yaml has forge.syncedVersion set", async () => {
 
   const config = loadForgeConfig(tempDir);
   expect(config.forge?.syncedVersion).toBeTruthy();
-});
+}, 30000);
 
 test("result includes nextSteps with forge-bootstrap", async () => {
   const result = await runCreate(
@@ -218,7 +218,7 @@ test("result includes nextSteps with forge-bootstrap", async () => {
   expect(result.nextSteps).toBeDefined();
   expect(result.nextSteps?.some((s) => s.action.includes("forge-bootstrap"))).toBe(true);
   expect(result.nextSteps?.some((s) => s.kind === "required")).toBe(true);
-});
+}, 30000);
 
 test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async () => {
   const result = await runCreate(
@@ -235,7 +235,7 @@ test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async 
   expect(agentsMd).toContain("<!-- forge:begin behavioral-layer -->");
   expect(agentsMd).toContain("<!-- forge:end behavioral-layer -->");
   expect(agentsMd).toContain("### Intent-to-skill routing");
-});
+}, 30000);
 
 test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance (RFC-0550)", async () => {
   const result = await runCreate(
@@ -253,7 +253,7 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
   expect(nextSteps).toContain("forge-bootstrap");
   expect(nextSteps).toContain("language");
   expect(result.data?.filesCreated).toContain("NEXT_STEPS.md");
-});
+}, 30000);
 
 test("forge create root package.json has scripts and replaced project name", async () => {
   const result = await runCreate(

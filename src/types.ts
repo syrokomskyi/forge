@@ -71,6 +71,7 @@ export interface ForgeCommandMetadata {
   expectedDurationMs?: number;
   longRunning?: boolean;
   cacheable?: boolean;
+  hidden?: boolean;
   /**
    * RFC-0518: declarative gate metadata. Optional. Structurally compatible
    * with GateMetadata from @warpgogol/site-kernel. Does NOT affect execution.
@@ -108,6 +109,7 @@ export interface ForgeRegisteredCommandInfo extends ForgeCommandMetadata {
   flags?: Record<string, ForgeFlagSpec>;
   reads?: string[];
   writes?: string[];
+  hidden?: boolean;
 }
 
 export interface ForgeCommandDefinition<TData = unknown> extends ForgeCommandMetadata {

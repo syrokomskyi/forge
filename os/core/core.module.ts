@@ -314,6 +314,50 @@ export const forgeCoreModule: ForgeModule = {
       execute: createWrapper,
     });
 
+    // ── forge.init (hidden, for recovery after partial create failure) ────────
+    const { runInit } = await import("../../src/onboarding/init.ts");
+    const initWrapper = async (
+      input: ForgeCommandInput,
+      context: ForgeRuntimeContext,
+    ): Promise<ForgeCommandResult> => {
+      const result = runInit(
+        {
+          flags: input.flags as {
+            aiLanguage?: string;
+            documentationLanguage?: string;
+            from?: string;
+          },
+        },
+        context,
+      );
+      return {
+        data: result,
+        exitCode: result.status === "pass" ? 0 : 1,
+        summary:
+          result.status === "pass"
+            ? `[forge.init] OK — ${result.created.length} created, ${result.skipped.length} skipped`
+            : undefined,
+      };
+    };
+    registry.registerCommand({
+      name: "forge.init",
+      description:
+        "Deploy forge into a project: create forge.yaml, PREFERENCES.md, copy skills, create docs dirs. Hidden recovery command — normally called by forge.create.",
+      scope: "workspace",
+      supportsAllSites: false,
+      hidden: true,
+      flags: {
+        "ai-language": { kind: "string", description: "AI communication language (default: en)." },
+        "documentation-language": {
+          kind: "string",
+          description: "Documentation language (default: en).",
+        },
+        from: { kind: "string", description: "Detect stack from existing project path." },
+      },
+      cacheable: false,
+      execute: initWrapper,
+    });
+
     // ── forge.profile.validate (RFC-0640) ────────────────────────────────────
     const profileValidateWrapper = async (
       input: ForgeCommandInput,
@@ -648,6 +692,32 @@ export const forgeCoreModule: ForgeModule = {
         },
       },
       execute: runPinnedInit,
+    });
+
+    // ── forge.package.health ───────────────────────────────────────────────────
+    const { runPackageHealth } = await import("./handlers/package-health.ts");
+    registry.registerCommand({
+      name: "forge.package.health",
+      description:
+        "Validate all published packages (private: false) for standalone extraction readiness. " +
+        "Checks engines.node, embedded .github/workflows/ci.yml, extract.config.yaml, " +
+        "and devDependencies completeness (no hoisted tool deps). " +
+        "Exits non-zero on errors. Use --json for machine-readable output.",
+      scope: "workspace",
+      supportsAllSites: false,
+      reads: [
+        "packages/*/package.json",
+        "packages/*/.github/workflows/ci.yml",
+        "packages/*/extract.config.yaml",
+      ],
+      cacheable: false,
+      flags: {
+        json: {
+          kind: "boolean",
+          description: "Output structured JSON result.",
+        },
+      },
+      execute: runPackageHealth,
     });
 
     // ── docs.archive ─────────────────────────────────────────────────────────
