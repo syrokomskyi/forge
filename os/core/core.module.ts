@@ -24,7 +24,7 @@
   <item>RFC-0711: docs.archive post-loop step calls spec.live.merge for implemented RFCs with liveSpec field; skips rejected RFCs.</item>
   <item>RFC-0733: register forge pinned.validate and forge pinned.init commands for pinned-files protection system.</item>
   <item>Lockfile safety net: docs.archive post-loop refreshes pnpm-lock.yaml after mission workpiece moves.</item>
-  <item>RFC-0877: forge.create --in-place required, --profile required, --name optional (derived from folder), allowlist-based conflict check.</item>
+  <item>RFC-0877: forge.create --in-place required, --profile required, --name optional (derived from folder), strict empty-directory check (only .git/ tolerated).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -281,7 +281,7 @@ export const forgeCoreModule: ForgeModule = {
     registry.registerCommand({
       name: "forge.create",
       description:
-        "Create a forge project in-place: scaffold + init + binding defaults. Usage: forge create --in-place --profile <profile-id> [--name <name>] [--package-manager pnpm]",
+        "Create a forge project in-place: scaffold + init + binding defaults. The target directory must be empty (only .git/ tolerated). Usage: forge create --in-place --profile <profile-id> [--name <name>] [--package-manager pnpm]",
       scope: "workspace",
       supportsAllSites: false,
       flags: {
