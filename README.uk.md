@@ -101,23 +101,7 @@ pnpm --version
 
 Ви маєте побачити номер версії, наприклад `10.x.x`.
 
-#### Крок 3 — Глобальне встановлення Forge
-
-Глобальне встановлення означає, що команда `forge` доступна скрізь на вашому комп'ютері, а не лише в одному проєкті:
-
-```sh
-pnpm add -g @warpgogol/forge
-```
-
-Перевірте:
-
-```sh
-forge --version
-```
-
-Ви маєте побачити номер версії. Forge встановлено та готовий до роботи.
-
-#### Крок 4 — Встановлення IDE зі штучним інтелектом
+#### Крок 3 — Встановлення IDE зі штучним інтелектом
 
 Forge працює через розмову з ШІ-агентом. Вам потрібне IDE, що підтримує ШІ-агентів. Рекомендуємо **Windsurf** (протестовано з Forge):
 
@@ -159,23 +143,7 @@ pnpm --version
 
 Ви маєте побачити номер версії, наприклад `10.x.x`.
 
-#### Крок 3 — Глобальне встановлення Forge
-
-Глобальне встановлення означає, що команда `forge` доступна скрізь на вашому комп'ютері, а не лише в одному проєкті:
-
-```sh
-pnpm add -g @warpgogol/forge
-```
-
-Перевірте:
-
-```sh
-forge --version
-```
-
-Ви маєте побачити номер версії. Forge встановлено та готовий до роботи.
-
-#### Крок 4 — Встановлення IDE зі штучним інтелектом
+#### Крок 3 — Встановлення IDE зі штучним інтелектом
 
 Forge працює через розмову з ШІ-агентом. Вам потрібне IDE, що підтримує ШІ-агентів. Рекомендуємо **Windsurf** (протестовано з Forge):
 
@@ -202,10 +170,8 @@ dotnet --version
 ### Усунення проблем
 
 - **«command not found» після встановлення Node.js** — Закрийте та знову відкрийте термінал (Ubuntu) або PowerShell (Windows). Системі потрібно перезавантажити список доступних команд.
-- **«EACCES permission denied» в Ubuntu під час глобального встановлення Forge** — Виконайте `sudo pnpm add -g @warpgogol/forge`.
 - **«corepack: command not found»** — Ваша версія Node.js занадто стара. Встановіть Node.js 24+ за кроками вище.
-- **Windsurf не бачить `forge`** — Закрийте та знову відкрийте Windsurf після встановлення Forge. IDE потрібно перезапустити, щоб підхопити нові глобальні команди.
-- **ШІ-агент не знає про Forge** — Ви відкрили порожню папку, але ШІ-агент не має контексту Forge. Спочатку виконайте `forge create --in-place --profile phaser-turborepo` (або відповідний профіль) у терміналі, потім відкрийте папку в вашому IDE. Команда `forge create` наповнює поточну папку навичками, конфігурацією та `AGENTS.md` — без цього ШІ-агент не може виявити Forge.
+- **ШІ-агент не знає про Forge** — Ви відкрили порожню папку, але ШІ-агент не має контексту Forge. Спочатку виконайте `pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo` (або відповідний профіль) у терміналі, потім відкрийте папку в вашому IDE. Команда `forge create` наповнює поточну папку навичками, конфігурацією та `AGENTS.md` — без цього ШІ-агент не може виявити Forge.
 
 ---
 
@@ -222,7 +188,7 @@ dotnet --version
    ```sh
    mkdir my-game
    cd my-game
-   forge create --in-place --profile phaser-turborepo
+   pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo
    ```
 
    Назва проєкту визначається з назви папки (`my-game` у цьому прикладі). Ви можете перевизначити її прапорцем `--name`. Це наповнює поточну папку усьом, що потрібно Forge — навичками, конфігурацією та структурою проєкту. Для інших типів проєктів використовуйте інший `--profile`:
@@ -268,7 +234,7 @@ dotnet --version
    ```sh
    mkdir my-project
    cd my-project
-   forge create --in-place --profile forge-shell
+   pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
    ```
 
    Потім відкрийте папку в вашому IDE.
@@ -296,27 +262,23 @@ dotnet --version
 
 ```sh
 # Створіть папку проєкту, потім згенеруйте каркас Forge на місці
+# pnpm dlx завантажує Forge тимчасово — глобальне встановлення не потрібне
 mkdir my-project
 cd my-project
-forge create --in-place --profile forge-shell
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
 
 # З конкретним профілем стеку
 mkdir my-game && cd my-game
-forge create --in-place --profile phaser-turborepo
+pnpm dlx @warpgogol/forge create --in-place --profile phaser-turborepo
 
 mkdir my-godot-game && cd my-godot-game
-forge create --in-place --profile godot-csharp
+pnpm dlx @warpgogol/forge create --in-place --profile godot-csharp
 
 # Перевизначити назву проєкту (за замовчуванням визначається з назви папки)
-forge create --in-place --profile forge-shell --name my-custom-name
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell --name my-custom-name
 ```
 
-Якщо Forge не встановлено глобально, використовуйте `pnpm dlx`:
-
-```sh
-mkdir my-project && cd my-project
-pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
-```
+Після створення каркаса Forge встановлюється як локальна devDependency. Використовуйте `pnpm exec forge` для всіх наступних команд у проєкті:
 
 #### Перенесення наявного проєкту у Forge
 
@@ -325,14 +287,14 @@ CLI-команди для перенесення немає — це інтер�
 ```sh
 # 1. Створіть новий порожній проєкт Forge (на місці)
 mkdir my-project && cd my-project
-forge create --in-place --profile forge-shell
+pnpm dlx @warpgogol/forge create --in-place --profile forge-shell
 
 # 2. Відкрийте проєкт у Windsurf (протестовано з Forge) або вашому IDE
 
 # 3. Запустіть навичку /forge-bootstrap і оберіть режим "transplant"
 #    Навичка:
 #    - Запитає шлях до вашого наявного коду
-#    - Автоматично визначить стек (Astro, Phaser, Godot тощо)
+#    - Автоматично визначить стек (Phaser, Godot тощо)
 #    - Перенесе всі файли (включно з .env та git-ігнорованими)
 #    - За бажанням перенесе історію git
 #    - Перевірить збірку
@@ -342,13 +304,13 @@ forge create --in-place --profile forge-shell
 
 ```sh
 # Перевірити стан проєкту
-forge doctor
+pnpm exec forge doctor
 
 # Валідувати RFC
-forge rfc.validate
+pnpm exec forge rfc.validate
 
 # Список доступних навичок
-forge skill.list
+pnpm exec forge skill.list
 ```
 
 ## Профілі стеку
@@ -363,7 +325,7 @@ forge skill.list
 
 ```sh
 # Список доступних профілів (після встановлення)
-forge profile.validate
+pnpm exec forge profile.validate
 ```
 
 Коли ви переносите наявний проєкт через режим `/forge-bootstrap` transplant, Forge автоматично визначає відповідний профіль, перевіряючи файли-маркери (`phaser.config.*`, `project.godot` тощо).
@@ -373,14 +335,14 @@ forge profile.validate
 Коли публікується нова версія `@warpgogol/forge`, споживачі оновлюються адитивно:
 
 ```sh
-# 1. Встановити останню версію
-pnpm add -g @warpgogol/forge@latest
+# 1. Оновити Forge до останньої версії (локальна devDependency)
+pnpm update @warpgogol/forge
 
 # 2. Синхронізувати навички та стандартні прив'язки з встановленої версії
-forge upgrade
+pnpm exec forge upgrade
 
 # 3. Перевірити стан проєкту
-forge doctor
+pnpm exec forge doctor
 ```
 
 `forge upgrade` — адитивний: він ніколи не перезаписує прив'язки, встановлені оператором, ніколи не видаляє файли та є ідемпотентним. Він оновлює `forge.syncedVersion` у `forge.yaml`, щоб відстежувати останню синхронізовану версію. Використовуйте `--dry-run` для попереднього перегляду змін.
@@ -400,12 +362,12 @@ forge doctor
 
 Типовий життєвий цикл проєкту Forge:
 
-1. **Створення** — `forge create --in-place --profile <профіль>` генерує каркас нового проєкту в поточній директорії з forge.yaml, навичками та директоріями документації
+1. **Створення** — `pnpm dlx @warpgogol/forge create --in-place --profile <профіль>` генерує каркас нового проєкту в поточній директорії з forge.yaml, навичками та директоріями документації
 2. **IDE** — відкрийте проєкт у Windsurf (протестовано з Forge) або вашому IDE
 3. **Bootstrap** — запустіть `/forge-bootstrap` для інтерактивного налаштування проєкту. Навичка підтримує два режими:
    - **Greenfield** — створення нового проєкту з нуля: оберіть стек, заповніть прив'язки, ініціалізуйте git
    - **Transplant** — перенесення наявного коду у Forge: визначення стеку, міграція коду (включно з git-ігнорованими файлами на кшталт `.env`), за бажанням перенесення історії git, перевірка збірки
-4. **Оновлення** — коли публікується нова версія `@warpgogol/forge`, запустіть `forge upgrade` для адитивної синхронізації навичок та стандартних прив'язок
+4. **Оновлення** — коли публікується нова версія `@warpgogol/forge`, запустіть `pnpm exec forge upgrade` для адитивної синхронізації навичок та стандартних прив'язок
 
 ## forge.yaml
 

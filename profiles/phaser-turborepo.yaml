@@ -245,6 +245,8 @@ workspace:
         # @warpgogol scoped registry — replace YOUR_NPM_TOKEN with a valid npm read token
         @warpgogol:registry=https://registry.npmjs.org/
         //registry.npmjs.org/:_authToken=YOUR_NPM_TOKEN
+        # Auto-approve build scripts so operators aren't prompted during install
+        dangerously-allow-all-builds=true
     - path: eslint.config.js
       content: |
         export default [
