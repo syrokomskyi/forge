@@ -12,6 +12,16 @@ workspace:
     - missions
     - systems-cache
   files:
+    - path: .vscode/extensions.json
+      content: |
+        {
+          "recommendations": [
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode",
+            "github.vscode-github-actions",
+            "mechatroner.rainbow-csv"
+          ]
+        }
     - path: .gitignore
       content: |
         node_modules

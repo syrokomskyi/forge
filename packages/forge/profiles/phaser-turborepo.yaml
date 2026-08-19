@@ -15,6 +15,18 @@ workspace:
     - missions
     - systems-cache
   files:
+    - path: .vscode/extensions.json
+      content: |
+        {
+          "recommendations": [
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode",
+            "ms-vscode.js-debug",
+            "samuel-pordeus.vite",
+            "github.vscode-github-actions",
+            "mechatroner.rainbow-csv"
+          ]
+        }
     - path: pnpm-workspace.yaml
       content: |
         packages:

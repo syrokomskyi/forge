@@ -168,7 +168,55 @@ workspace:
         {
           "recommendations": [
             "ms-dotnettools.csharp",
-            "geequla.godot-tools"
+            "muhammad-sammy.csharp",
+            "geequla.godot-tools",
+            "github.vscode-github-actions",
+            "esbenp.prettier-vscode",
+            "mechatroner.rainbow-csv"
+          ]
+        }
+    - path: .vscode/tasks.json
+      content: |
+        {
+          "version": "2.0.0",
+          "tasks": [
+            {
+              "label": "build",
+              "command": "dotnet",
+              "type": "process",
+              "args": ["build", "${workspaceFolder}/apps/__PROJECT_NAME__/Game.csproj"],
+              "problemMatcher": "$mscompile",
+              "group": { "kind": "build", "isDefault": true }
+            }
+          ]
+        }
+    - path: .vscode/launch.json
+      content: |
+        {
+          "version": "0.2.0",
+          "configurations": [
+            {
+              "name": "Play",
+              "type": "coreclr",
+              "request": "launch",
+              "preLaunchTask": "build",
+              "program": "${workspaceFolder}/.godot-bin/godot",
+              "args": ["--path", "${workspaceFolder}/apps/__PROJECT_NAME__"],
+              "cwd": "${workspaceFolder}",
+              "console": "internalConsole",
+              "stopAtEntry": false
+            },
+            {
+              "name": "Play (PATH Godot)",
+              "type": "coreclr",
+              "request": "launch",
+              "preLaunchTask": "build",
+              "program": "godot",
+              "args": ["--path", "${workspaceFolder}/apps/__PROJECT_NAME__"],
+              "cwd": "${workspaceFolder}",
+              "console": "internalConsole",
+              "stopAtEntry": false
+            }
           ]
         }
     - path: .github/workflows/ci.yml
