@@ -109,7 +109,9 @@ export async function runSessionValidate(
     }
 
     // SES-01: Check types is a valid array
+    // typesArray is also used by SES-06 below — hoisted here to make the coupling explicit.
     const typesValue = fm["types"];
+    const typesArray = Array.isArray(typesValue) ? (typesValue as string[]) : [];
     if (Array.isArray(typesValue)) {
       for (const t of typesValue) {
         if (!SESSION_TYPES.includes(t as never)) {
@@ -166,7 +168,7 @@ export async function runSessionValidate(
     }
 
     // SES-06: Missing checkpoint fields in implementation/mission sessions
-    const typesArray = Array.isArray(typesValue) ? (typesValue as string[]) : [];
+    // typesArray is extracted by SES-01 above.
     const isImplOrMission = typesArray.includes("implementation") || typesArray.includes("mission");
     if (isImplOrMission) {
       const hasCheckpointFields =
