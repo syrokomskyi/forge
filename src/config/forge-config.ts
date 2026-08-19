@@ -361,7 +361,7 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
 // Loader
 // ---------------------------------------------------------------------------
 
-export function loadForgeConfig(workspaceRoot: string): ForgeConfig {
+export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: string): ForgeConfig {
   const configPath = path.join(workspaceRoot, "forge.yaml");
 
   if (!fs.existsSync(configPath)) {
@@ -395,7 +395,7 @@ export function loadForgeConfig(workspaceRoot: string): ForgeConfig {
   let loadedProfile: StackProfile | undefined;
   if (profileId) {
     try {
-      const forgeRoot = resolveForgeRoot(workspaceRoot);
+      const forgeRoot = forgeRootOverride ?? resolveForgeRoot(workspaceRoot);
       const profiles = listStackProfiles(forgeRoot);
       loadedProfile = profiles.find((p) => p.id === profileId);
     } catch {

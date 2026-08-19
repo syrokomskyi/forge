@@ -16,6 +16,7 @@
   <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
   <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
   <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
+  <item>Profile-driven root AGENTS.md template via rootAgentsMdTemplate field — profiles can now provide stack-specific root templates instead of generic business/creative templates.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -65,7 +66,28 @@ const CREATIVE_ROOT_TEMPLATE = path.join(import.meta.dirname, "templates", "root
 const BEHAVIORAL_LAYER_CORE_TEMPLATE = path.join(import.meta.dirname, "templates", "behavioral-layer-core.md");
 const BEHAVIORAL_LAYER_EXTENDED_TEMPLATE = path.join(import.meta.dirname, "templates", "behavioral-layer-extended.md");
 
-export function selectRootTemplate(register: BehavioralRegister): string {
+export function selectRootTemplate(
+  register: BehavioralRegister,
+  profile?: StackProfile,
+): string {
+  // Profile-driven root template (rootAgentsMdTemplate)
+  if (profile?.rootAgentsMdTemplate) {
+    const templateRel = profile.rootAgentsMdTemplate;
+    // Path traversal guard: reject absolute paths and ..
+    if (!path.isAbsolute(templateRel) && !templateRel.includes("..")) {
+      const forgeRoot = path.resolve(import.meta.dirname, "..", "..");
+      const profilesDir = path.join(forgeRoot, "profiles");
+      const templatePath = path.resolve(profilesDir, templateRel);
+      // Ensure resolved path is within profiles directory
+      if (templatePath.startsWith(profilesDir + path.sep) || templatePath === profilesDir) {
+        try {
+          return fs.readFileSync(templatePath, "utf8");
+        } catch {
+          // Template file not found — fall through to register-based template
+        }
+      }
+    }
+  }
   try {
     const templatePath = register === "creative" ? CREATIVE_ROOT_TEMPLATE : BUSINESS_ROOT_TEMPLATE;
     return fs.readFileSync(templatePath, "utf8");
@@ -194,7 +216,7 @@ export async function runAgentsGenerate(
 
   let config;
   try {
-    config = loadForgeConfig(workspaceRoot);
+    config = loadForgeConfig(workspaceRoot, context.forgeRoot);
   } catch (err) {
     const msg = (err as Error).message;
     if (outputFormat === "pretty") {
@@ -327,7 +349,8 @@ export async function runAgentsGenerate(
   dynamicLines.push("");
 
   // RFC-0643: Load root template, replace project placeholders, insert dynamic sections
-  const rootTemplate = selectRootTemplate(register);
+  const profile = config.profile as StackProfile | undefined;
+  const rootTemplate = selectRootTemplate(register, profile);
   const dynamicSections = dynamicLines.join("\n");
   let content = replaceProjectPlaceholders(rootTemplate, config, dynamicSections);
 
@@ -335,7 +358,6 @@ export async function runAgentsGenerate(
   content = header + "\n\n" + content;
 
   // RFC-0643: Apply terminology substitution on final assembled content
-  const profile = config.profile as StackProfile | undefined;
   const resolvedTerminology = resolveAllTerminology(config, profile);
   content = substituteTemplate(content, resolvedTerminology);
 
