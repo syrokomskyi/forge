@@ -3,7 +3,8 @@
 <purpose>
 session.validate handler — checks session frontmatter schema (SES-01),
 id-filename match (SES-02), RFC-id existence (SES-03), raw file hygiene
-(SES-04), and non-markdown file detection (SES-05).
+(SES-04), non-markdown file detection (SES-05), and missing checkpoint
+fields in implementation/mission sessions (SES-06, RFC-0884).
 </purpose>
 <non-goals>
   <item>Does not move or modify files — that is session.archive.</item>
@@ -12,6 +13,7 @@ id-filename match (SES-02), RFC-id existence (SES-03), raw file hygiene
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0537: implement session.validate command handler.</item>
+  <item>RFC-0884: add SES-06 warning for missing checkpoint fields in implementation/mission sessions.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -159,6 +161,27 @@ export async function runSessionValidate(
           file: relFile,
           message: `relatedRfcs references non-existent RFC "${rfcId}"`,
           severity: "error",
+        });
+      }
+    }
+
+    // SES-06: Missing checkpoint fields in implementation/mission sessions
+    const typesArray = Array.isArray(typesValue) ? (typesValue as string[]) : [];
+    const isImplOrMission = typesArray.includes("implementation") || typesArray.includes("mission");
+    if (isImplOrMission) {
+      const hasCheckpointFields =
+        "systemDelta" in fm ||
+        "diagrams" in fm ||
+        "evidence" in fm ||
+        "remainingIssues" in fm ||
+        "checkpoint" in fm;
+      if (!hasCheckpointFields) {
+        violations.push({
+          rule: SES_RULES.SES_06,
+          file: relFile,
+          message:
+            "Implementation/mission session missing checkpoint frontmatter fields (systemDelta, diagrams, evidence, remainingIssues, checkpoint). Agent should populate these during fo-session-save.",
+          severity: "warning",
         });
       }
     }

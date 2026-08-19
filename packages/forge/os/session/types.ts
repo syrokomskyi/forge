@@ -11,6 +11,7 @@ validation rule identifiers.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0537: initial session domain types, constants, and SES rule identifiers.</item>
+  <item>RFC-0884: add checkpoint interfaces, extend SessionFrontmatter with optional checkpoint fields, add SES-06 rule.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,6 +44,11 @@ export const SESSION_KNOWN_KEYS = [
   "commits",
   "files",
   "commands",
+  "systemDelta",
+  "diagrams",
+  "evidence",
+  "remainingIssues",
+  "checkpoint",
 ] as const;
 
 export const SESSION_REQUIRED_KEYS = ["id", "date", "types"] as const;
@@ -56,11 +62,40 @@ export const SES_RULES = {
   SES_03: "SES-03",
   SES_04: "SES-04",
   SES_05: "SES-05",
+  SES_06: "SES-06",
 } as const;
 
 export type SesRule = (typeof SES_RULES)[keyof typeof SES_RULES];
 
 // ── Session frontmatter (the .md file's YAML frontmatter) ──
+
+export interface SessionCheckpoint {
+  before: string;
+  change: string;
+  after: string;
+}
+
+export interface SessionDiagram {
+  type: "flowchart" | "sequenceDiagram" | "stateDiagram-v2" | "erDiagram" | "none";
+  scope: "current-system" | "session-delta";
+  caption: string;
+  mermaid: string;
+}
+
+export interface SessionEvidenceEntry {
+  claim: string;
+  source?: string;
+  test?: string;
+  command?: string;
+}
+
+export interface SessionSystemDelta {
+  changedContracts: string[];
+  changedSchemas: string[];
+  changedStateMachines: string[];
+  changedInvariants: string[];
+  changedPersistence: string[];
+}
 
 export interface SessionFrontmatter {
   id: string;
@@ -74,6 +109,11 @@ export interface SessionFrontmatter {
   commits: string[];
   files: string[];
   commands: string[];
+  systemDelta?: SessionSystemDelta;
+  diagrams?: SessionDiagram[];
+  evidence?: SessionEvidenceEntry[];
+  remainingIssues?: string[];
+  checkpoint?: SessionCheckpoint;
 }
 
 // ── session.save ──
