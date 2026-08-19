@@ -16,6 +16,7 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0664: added scaffoldMemoryLayer step to scaffold .agents/memory/ and .gitignore block.</item>
   <item>Added --update-npm flag: updates @warpgogol/forge from npm before syncing (skipped in monorepo).</item>
+  <item>Added npm latest-version check: warns when a newer @warpgogol/forge is available on npm.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -50,6 +51,8 @@ export interface UpgradeResult {
   memoryScaffold: { created: string[]; gitignoreUpdated: boolean; skipped: string[] };
   npmUpdated: boolean;
   npmUpdateSkipped: string | null;
+  latestNpmVersion: string | null;
+  npmVersionWarning: string | null;
   doctorReport: unknown;
 }
 
@@ -90,6 +93,44 @@ function readForgePackageVersion(forgeRoot: string): string {
   const pkgPath = path.join(forgeRoot, "package.json");
   const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { version?: string };
   return pkg.version ?? "0.0.0-unknown";
+}
+
+function checkLatestNpmVersion(
+  workspaceRoot: string,
+  installedVersion: string,
+  isMonorepo: boolean,
+): { latest: string | null; warning: string | null } {
+  if (isMonorepo) {
+    return { latest: null, warning: null };
+  }
+  try {
+    const latest = execSync("npm view @warpgogol/forge version", {
+      cwd: workspaceRoot,
+      stdio: "pipe",
+      timeout: 15_000,
+      encoding: "utf8",
+    }).trim();
+    if (!latest || !/^\d+\.\d+\.\d+/.test(latest)) {
+      return { latest: null, warning: null };
+    }
+    if (latest !== installedVersion) {
+      const pm = (() => {
+        try {
+          const config = loadForgeConfig(workspaceRoot);
+          return resolvePmInstall(config.project.packageManager);
+        } catch {
+          return "npm install";
+        }
+      })();
+      return {
+        latest,
+        warning: `Forge ${installedVersion} is installed, but ${latest} is available on npm. Run: ${pm} @warpgogol/forge@latest`,
+      };
+    }
+    return { latest, warning: null };
+  } catch {
+    return { latest: null, warning: null };
+  }
 }
 
 function syncForgeSkills(
@@ -289,6 +330,8 @@ export async function runUpgrade(
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: false,
         npmUpdateSkipped: null,
+        latestNpmVersion: null,
+        npmVersionWarning: null,
         doctorReport: null,
       },
       nextSteps: [{ action: "Run 'forge create' to create forge.yaml first", kind: "required" }],
@@ -332,6 +375,8 @@ export async function runUpgrade(
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: false,
         npmUpdateSkipped: null,
+        latestNpmVersion: null,
+        npmVersionWarning: null,
         doctorReport: null,
       },
       nextSteps: [
@@ -340,6 +385,12 @@ export async function runUpgrade(
       exitCode: 1,
       summary: `[forge.upgrade] FAIL — ${(err as Error).message}`,
     };
+  }
+
+  // Step 1.5: Check npm for newer version (non-fatal)
+  const npmCheck = checkLatestNpmVersion(workspaceRoot, toVersion, isMonorepoForge(workspaceRoot));
+  if (npmCheck.warning && context.outputFormat === "pretty") {
+    context.logger.warn(`⚠ ${npmCheck.warning}`);
   }
 
   // Step 2: Load config and check syncedVersion
@@ -360,6 +411,8 @@ export async function runUpgrade(
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: false,
         npmUpdateSkipped: null,
+        latestNpmVersion: npmCheck.latest,
+        npmVersionWarning: npmCheck.warning,
         doctorReport: null,
       },
       nextSteps: [
@@ -374,7 +427,6 @@ export async function runUpgrade(
 
   if (fromVersion === toVersion) {
     // Noop — versions match
-    const nextSteps: ForgeNextStep[] = [];
     return {
       data: {
         command: "forge.upgrade",
@@ -388,11 +440,17 @@ export async function runUpgrade(
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: npmUpdated,
         npmUpdateSkipped: npmUpdateSkipped,
+        latestNpmVersion: npmCheck.latest,
+        npmVersionWarning: npmCheck.warning,
         doctorReport: null,
       },
-      nextSteps,
+      nextSteps: npmCheck.warning
+        ? [{ action: npmCheck.warning, kind: "optional" }]
+        : [],
       exitCode: 0,
-      summary: `[forge.upgrade] Already up to date (v${toVersion})`,
+      summary: npmCheck.warning
+        ? `[forge.upgrade] Already up to date (v${toVersion}) — ⚠ ${npmCheck.warning}`
+        : `[forge.upgrade] Already up to date (v${toVersion})`,
     };
   }
 
@@ -485,12 +543,16 @@ export async function runUpgrade(
       memoryScaffold,
       npmUpdated,
       npmUpdateSkipped,
+      latestNpmVersion: npmCheck.latest,
+      npmVersionWarning: npmCheck.warning,
       doctorReport,
     },
     nextSteps,
     exitCode: 0,
     summary: isDryRun
       ? `[dry-run] forge.upgrade: would sync ${skillsUpdated.length} skill(s), add ${bindingsAdded.length} binding(s), update syncedVersion to ${toVersion}`
-      : `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion}`,
+      : npmCheck.warning
+        ? `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion} — ⚠ ${npmCheck.warning}`
+        : `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion}`,
   };
 }
