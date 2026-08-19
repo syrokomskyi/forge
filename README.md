@@ -28,7 +28,7 @@ For full project lifecycle management — missions, releases, deployment, certif
 | --- | --- | --- |
 | `@warpgogol/werkstatt` | Runtime engine — missions, releases, Leitstand deployment, certification, Bordbuch, artifact store | All project types with lifecycle management |
 | `@warpgogol/werkstatt-shared` | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
-| `@warpgogol/werkstatt-game` | Phaser game plugin — game validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
+| `@warpgogol/werkstatt-phaser` | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
 | `@warpgogol/werkstatt-godot` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
 
 ### When you need these packages
@@ -40,7 +40,7 @@ For full project lifecycle management — missions, releases, deployment, certif
 
 ```sh
 # Browser game project
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-game
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser
 
 # Godot game project
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot

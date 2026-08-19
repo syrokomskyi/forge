@@ -219,7 +219,7 @@ workspace:
     - path: tools/kernel.config.ts
       content: |
         import { defineKernelConfig } from "@warpgogol/werkstatt/kernel/types";
-        import { werkstattGamePlugin } from "@warpgogol/werkstatt-game";
+        import { werkstattPhaserPlugin } from "@warpgogol/werkstatt-phaser";
 
         export default defineKernelConfig({
           name: "__PROJECT_NAME__",
@@ -249,7 +249,7 @@ workspace:
             evidence: async () => (await import("@warpgogol/werkstatt/evidence-module")).createEvidenceModule(),
             "werkstatt-plugin": async () => (await import("@warpgogol/werkstatt/os/werkstatt-plugin-module")).forgeWerkstattPluginModule,
             "werkstatt-autonomy": async () => (await import("@warpgogol/werkstatt/os/werkstatt-autonomy-module")).werkstattAutonomyModule,
-            "__PROJECT_NAME__-plugin": async () => werkstattGamePlugin,
+            "__PROJECT_NAME__-plugin": async () => werkstattPhaserPlugin,
           },
         });
     - path: .npmrc
@@ -313,7 +313,7 @@ workspace:
       content: |
         # __PROJECT_NAME__
 
-        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-game plugin.
+        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-phaser plugin.
 
         ## Prerequisites
 
@@ -347,10 +347,10 @@ workspace:
         ## Stack
 
         - Engine: @warpgogol/werkstatt
-        - Plugin: @warpgogol/werkstatt-game
+        - Plugin: @warpgogol/werkstatt-phaser
         - Stack profile: phaser-turborepo
 install:
-  - pnpm add -wD typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-game prettier
+  - pnpm add -wD typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-phaser prettier
 firstWorkspace:
   path: apps/my-game
   files:

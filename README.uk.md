@@ -28,7 +28,7 @@ Forge — це **шар управління**: навички, RFC/ADR робо
 | --- | --- | --- |
 | `@warpgogol/werkstatt` | Рушій runtime — місії, релізи, розгортання Leitstand, сертифікація, Bordbuch, сховище артефактів | Усі типи проєктів з управлінням життєвим циклом |
 | `@warpgogol/werkstatt-shared` | Спільна інфраструктура — перевірки, інтеграція, онтологія, паспорт | Встановлюється автоматично з рушієм |
-| `@warpgogol/werkstatt-game` | Плагін Phaser-гри — валідатори гри, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
+| `@warpgogol/werkstatt-phaser` | Плагін Phaser-гри — валідатори phaser, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
 | `@warpgogol/werkstatt-godot` | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
 
 ### Коли потрібні ці пакети
@@ -40,7 +40,7 @@ Forge — це **шар управління**: навички, RFC/ADR робо
 
 ```sh
 # Проєкт браузерної гри
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-game
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser
 
 # Проєкт гри Godot
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot
