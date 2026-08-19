@@ -145,6 +145,46 @@ test("creative template contains {{dynamicSections}} marker", () => {
   expect(content).toContain("{{dynamicSections}}");
 });
 
+test("selectRootTemplate with profile rootAgentsMdTemplate loads profile template", () => {
+  const profile = {
+    id: "godot-csharp",
+    rootAgentsMdTemplate: "root-agents-godot.md",
+  } as StackProfile;
+  const content = selectRootTemplate("creative", profile);
+  expect(content).toContain("Godot 4.x with .NET / C#");
+  expect(content).toContain("{{dynamicSections}}");
+});
+
+test("selectRootTemplate with missing rootAgentsMdTemplate falls back to register template", () => {
+  const profile = {
+    id: "test-profile",
+    rootAgentsMdTemplate: "nonexistent-template.md",
+  } as StackProfile;
+  const content = selectRootTemplate("business", profile);
+  expect(content).toContain("{{projectName}}");
+  expect(content).toContain("{{rfcsDir}}");
+});
+
+test("selectRootTemplate rejects path traversal in rootAgentsMdTemplate", () => {
+  const profile = {
+    id: "evil-profile",
+    rootAgentsMdTemplate: "../../../etc/passwd",
+  } as StackProfile;
+  const content = selectRootTemplate("business", profile);
+  expect(content).toContain("{{projectName}}");
+  expect(content).not.toContain("root:");
+});
+
+test("selectRootTemplate rejects absolute path in rootAgentsMdTemplate", () => {
+  const profile = {
+    id: "evil-profile",
+    rootAgentsMdTemplate: "/etc/passwd",
+  } as StackProfile;
+  const content = selectRootTemplate("business", profile);
+  expect(content).toContain("{{projectName}}");
+  expect(content).not.toContain("root:");
+});
+
 // --- selectNestedTemplate tests ---
 
 test("selectNestedTemplate without agentsMdTemplate uses fallback", () => {
@@ -259,4 +299,19 @@ test("agents-generate with creative register uses creative template", async () =
   // Details should show creative register
   const rootDetail = result.data?.details?.find((d) => d.path === "AGENTS.md");
   expect(rootDetail?.register).toBe("creative");
+});
+
+test("agents-generate with godot-csharp profile generates Godot-specific AGENTS.md", async () => {
+  await makeForgeYaml(tempDir, "profile: godot-csharp");
+  const ctx = makeContext(tempDir);
+  ctx.dryRun = true;
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, ctx);
+  expect(result.exitCode).toBe(0);
+  const content = result.data?.renderedFiles?.["AGENTS.md"];
+  expect(content).toBeDefined();
+  expect(content).toContain("Godot 4.x with .NET / C#");
+  expect(content).toContain("dotnet build");
+  expect(content).toContain("Scenes and Resources");
+  expect(content).toContain("Definition of Done");
 });

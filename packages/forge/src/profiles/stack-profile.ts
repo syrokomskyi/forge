@@ -74,6 +74,8 @@ export const stackProfileSchema = z.object({
   templates: stackProfileDomainFieldsSchema.shape.templates,
   // ADR-0043: Agent-generated script directory override
   scriptDir: stackProfileDomainFieldsSchema.shape.scriptDir,
+  // Profile-driven root AGENTS.md template
+  rootAgentsMdTemplate: stackProfileDomainFieldsSchema.shape.rootAgentsMdTemplate,
 });
 
 export interface ProfileFile {

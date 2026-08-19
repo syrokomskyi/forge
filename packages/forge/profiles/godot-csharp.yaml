@@ -17,6 +17,7 @@ terminology:
 devServer:
   command: godot --path . --editor
   port: 6005
+rootAgentsMdTemplate: root-agents-godot.md
 artifacts:
   - id: game
     extensions:

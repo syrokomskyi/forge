@@ -330,6 +330,7 @@ export const stackProfileDomainFieldsSchema = z.object({
   prerequisites: z.array(profilePrerequisiteSchema).optional(),
   templates: z.array(profileTemplateSchema).optional(),
   scriptDir: z.string().min(1).optional(),
+  rootAgentsMdTemplate: z.string().optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -345,4 +346,5 @@ export interface StackProfileDomainFields {
   prerequisites?: ProfilePrerequisite[];
   templates?: ProfileTemplate[];
   scriptDir?: string;
+  rootAgentsMdTemplate?: string;
 }
