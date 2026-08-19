@@ -58,7 +58,7 @@ prerequisites:
     installHint: "https://nodejs.org/en/download/"
     severity: error
   - id: dotnet
-    name: .NET SDK 8+
+    name: .NET SDK 10+
     check: dotnet --version
     installHint: "https://dotnet.microsoft.com/download"
     severity: error
@@ -270,12 +270,12 @@ workspace:
               - name: Setup .NET SDK
                 uses: actions/setup-dotnet@v4
                 with:
-                  dotnet-version: "8.0.x"
+                  dotnet-version: "10.0.x"
 
               - name: Setup Godot
                 uses: lihop/setup-godot@v1
                 with:
-                  version: "4.3"
+                  version: "4.7"
                   mono: true
 
               - name: Install dependencies
@@ -315,11 +315,11 @@ workspace:
         #       - name: Setup .NET SDK
         #         uses: actions/setup-dotnet@v4
         #         with:
-        #           dotnet-version: "8.0.x"
+        #           dotnet-version: "10.0.x"
         #       - name: Setup Godot
         #         uses: lihop/setup-godot@v1
         #         with:
-        #           version: "4.3"
+        #           version: "4.7"
         #           mono: true
         #       - name: Install dependencies
         #         run: pnpm install --frozen-lockfile
@@ -366,8 +366,8 @@ workspace:
         }
     - path: godot.version
       content: |
-        # Exact Godot version for install-godot.sh (CI uses short form "4.3")
-        4.3.0
+        # Exact Godot version for install-godot.sh and CI
+        4.7.2
     - path: scripts/install-godot.sh
       content: |
         #!/usr/bin/env bash
@@ -409,14 +409,14 @@ workspace:
         fi
 
         if [[ "$PLATFORM" == "win" ]]; then
-          ZIP_NAME="Godot_v${VERSION}_mono_win64.zip"
+          ZIP_NAME="Godot_v${VERSION}-stable_mono_win64.zip"
         elif [[ "$PLATFORM" == "osx" ]]; then
-          ZIP_NAME="Godot_v${VERSION}_mono_${PLATFORM}_${ARCH_SUFFIX}.zip"
+          ZIP_NAME="Godot_v${VERSION}-stable_mono_${PLATFORM}_${ARCH_SUFFIX}.zip"
         else
-          ZIP_NAME="Godot_v${VERSION}_mono_${PLATFORM}_${ARCH_SUFFIX}.zip"
+          ZIP_NAME="Godot_v${VERSION}-stable_mono_${PLATFORM}_${ARCH_SUFFIX}.zip"
         fi
 
-        URL="https://github.com/godotengine/godot/releases/download/v${VERSION}-stable/${ZIP_NAME}"
+        URL="https://github.com/godotengine/godot/releases/download/${VERSION}-stable/${ZIP_NAME}"
 
         echo "Downloading Godot $VERSION (mono) from:"
         echo "  $URL"
@@ -714,7 +714,7 @@ workspace:
 
         - Node.js 24+
         - pnpm 10+
-        - .NET SDK 8+
+        - .NET SDK 10+
         - Godot 4.x (with .NET support)
         - On Windows: Git Bash or WSL (for shell scripts)
 
@@ -812,14 +812,14 @@ firstWorkspace:
         [application]
         config/name="my-game"
         run/main_scene="res://Scenes/Main.tscn"
-        config/features=PackedStringArray("4.3", "C#", "Forward Plus")
+        config/features=PackedStringArray("4.7", "C#", "Forward Plus")
         config/icon="res://icon.svg"
 
         [dotnet]
         project/assembly_name="my-game"
     - path: Game.csproj
       content: |
-        <Project Sdk="Godot.NET.Sdk/4.3.0">
+        <Project Sdk="Godot.NET.Sdk/4.7.2">
           <PropertyGroup>
             <AssemblyName>my-game</AssemblyName>
           </PropertyGroup>
@@ -828,8 +828,8 @@ firstWorkspace:
       content: |
         <Project>
           <PropertyGroup>
-            <TargetFramework>net8.0</TargetFramework>
-            <TargetFramework Condition="'$(OS)' == 'Windows_NT'">net8.0-windows</TargetFramework>
+            <TargetFramework>net10.0</TargetFramework>
+            <TargetFramework Condition="'$(OS)' == 'Windows_NT'">net10.0-windows</TargetFramework>
             <EnableDynamicLoading>true</EnableDynamicLoading>
             <LangVersion>latest</LangVersion>
             <Nullable>enable</Nullable>
@@ -839,7 +839,7 @@ firstWorkspace:
       content: |
         {
           "sdk": {
-            "version": "8.0.100",
+            "version": "10.0.400",
             "rollForward": "latestFeature"
           }
         }
