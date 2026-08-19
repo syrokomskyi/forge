@@ -33,6 +33,11 @@ Include:
 - **Suggested skills** — which skills the next agent should invoke and why.
 - **References to existing artifacts** — specs, plans, ADRs, issues, commits, diffs. Reference them by path or URL instead of duplicating content.
 - **Current state** — what the codebase looks like now, what's uncommitted, what's in progress.
+- **System State Transition (RFC-0884)** — three prose subsections:
+  - **Before** — state N before the session (what the system looked like before changes)
+  - **Change** — what was done (the key changes made during the session)
+  - **After** — state N+1 after the session (what the system looks like now)
+- **Resulting Architecture (RFC-0884)** — optional Mermaid diagram of the system state AFTER changes, following the diagram selection rules from `_shared/fo-session-summary.md`. If no diagram is warranted, state: "No diagram: this session did not change system structure."
 - **Next steps** — concrete, actionable items the next agent should pick up.
 - **Memory layer pointer** — tell the next agent to read `.agents/memory/MEMORY.md` and recent `.agents/memory/daily/` files for project context.
 

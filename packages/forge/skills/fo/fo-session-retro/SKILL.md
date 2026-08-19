@@ -435,6 +435,12 @@ If any operator insights were routed to `.agents/operator-profile.md`, offer the
 
 Present a concise summary in `aiLanguage`. **ALL labels, headings, column names, and prose MUST be translated to `aiLanguage`** — the template below is structural only. Only identifiers (file paths, skill names, RFC/ADR ids, commit hashes) stay untranslated. This is non-negotiable: an English summary when `aiLanguage` is `ru` is a violation of this skill's language contract.
 
+**Engineering Checkpoint (RFC-0884):** The closing block follows the Engineering Checkpoint protocol defined in `_shared/fo-session-summary.md`. The agent MUST:
+
+1. **Select mode** — analyze the session's changes. If the session changed architecture, runtime flow, state machines, persistence models, or public contracts, use **full mode** (6 sections). Otherwise, use **lightweight mode** (3 sections).
+2. **Diagram selection** (full mode only) — apply the diagram selection rules table from `_shared/fo-session-summary.md` to determine if a Mermaid diagram is warranted. If no structural change warrants a diagram, explicitly state "No diagram: this session did not change system structure..."
+3. **Quality test self-check** — after composing the checkpoint, ask: "Can another engineer understand the resulting system state from this checkpoint alone, without reading the full session transcript?" If no, improve the checkpoint before presenting it.
+
 ```
 ## <Session Retro Summary in aiLanguage>
 
@@ -454,6 +460,8 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ### <Direct edits>: <count>
 ### <Commit>: <hash | none — no direct edits>
 ```
+
+After the summary table, emit the **Engineering Checkpoint closing block** following the format in `_shared/fo-session-summary.md` (full or lightweight mode). This closing block IS the session-end output — it replaces any ad-hoc summary.
 
 ## Relationship to other session-end skills
 
