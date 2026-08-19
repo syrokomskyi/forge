@@ -177,6 +177,14 @@ dotnet --version
 
 ## Quick start
 
+### No-terminal start
+
+Create a new folder, open it in your IDE, and paste this to your AI agent:
+
+```
+Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my project. I want to build: [describe your project]
+```
+
 ### For creative operators — one command, then just talk
 
 You need to run one command in the terminal to create your project. After that, everything works through conversation with an AI agent — no more commands.

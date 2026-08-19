@@ -196,7 +196,17 @@ workspace:
           "version": "0.2.0",
           "configurations": [
             {
-              "name": "Play",
+              "name": "Play (Node)",
+              "type": "node",
+              "request": "launch",
+              "preLaunchTask": "build",
+              "runtimeExecutable": "node",
+              "runtimeArgs": ["${workspaceFolder}/scripts/run-godot.mjs"],
+              "cwd": "${workspaceFolder}",
+              "console": "integratedTerminal"
+            },
+            {
+              "name": "Play (C# Dev Kit)",
               "type": "coreclr",
               "request": "launch",
               "preLaunchTask": "build",
@@ -207,7 +217,7 @@ workspace:
               "stopAtEntry": false
             },
             {
-              "name": "Play (PATH Godot)",
+              "name": "Play (C# Dev Kit, PATH Godot)",
               "type": "coreclr",
               "request": "launch",
               "preLaunchTask": "build",
@@ -456,6 +466,61 @@ workspace:
           echo "Installation completed but binary not found. Check $GODOT_DIR"
           exit 1
         fi
+    - path: scripts/run-godot.mjs
+      content: |
+        #!/usr/bin/env node
+        // Launch Godot from any IDE — works in Windsurf, Cursor, VS Code without extensions.
+        // Usage: node scripts/run-godot.mjs [--editor]
+
+        import { existsSync, readdirSync, statSync } from "node:fs";
+        import { join, dirname, resolve } from "node:path";
+        import { spawnSync } from "node:child_process";
+        import { fileURLToPath } from "node:url";
+
+        const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+        const args = process.argv.slice(2);
+        const editor = args.includes("--editor");
+
+        // Find the game workspace (first directory under apps/ with a project.godot)
+        let gameDir = null;
+        const appsDir = join(projectRoot, "apps");
+        if (existsSync(appsDir)) {
+          for (const entry of readdirSync(appsDir)) {
+            const dir = join(appsDir, entry);
+            if (statSync(dir).isDirectory() && existsSync(join(dir, "project.godot"))) {
+              gameDir = dir;
+              break;
+            }
+          }
+        }
+        if (!gameDir) {
+          console.error("No Godot project found under apps/*/");
+          process.exit(1);
+        }
+        console.log(`Game project: ${gameDir}`);
+
+        // Build C# project
+        console.log("Building C# project...");
+        const buildResult = spawnSync("dotnet", ["build"], { cwd: gameDir, stdio: "inherit" });
+        if (buildResult.status !== 0) {
+          console.error("dotnet build failed");
+          process.exit(buildResult.status ?? 1);
+        }
+
+        // Find godot binary: prefer .godot-bin, then PATH
+        const localGodot = join(projectRoot, ".godot-bin", "godot");
+        const godotBin = existsSync(localGodot) ? localGodot : "godot";
+        if (godotBin === "godot" && spawnSync("godot", ["--version"], { stdio: "ignore" }).status !== 0) {
+          console.error("Godot not found. Run ./scripts/install-godot.sh first.");
+          process.exit(1);
+        }
+
+        // Launch Godot
+        console.log("Launching Godot...");
+        const godotArgs = ["--path", gameDir];
+        if (editor) godotArgs.push("--editor");
+        const result = spawnSync(godotBin, godotArgs, { stdio: "inherit" });
+        process.exit(result.status ?? 1);
     - path: scripts/run.sh
       content: |
         #!/usr/bin/env bash
