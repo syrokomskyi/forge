@@ -46,6 +46,14 @@ Enhance saved session transcripts with semantic annotations, summaries, and qual
 
 6. **Update the session file:**
    - Update frontmatter: `summary`, `decisions`, refined `types`, corrected metadata.
+   - **Checkpoint fields (RFC-0884):** When the session produced substantial engineering work, populate the optional checkpoint frontmatter fields:
+     - `checkpoint` — object with `before`, `change`, `after` (each 1-2 sentences describing state N, what was done, state N+1)
+     - `systemDelta` — object with arrays: `changedContracts`, `changedSchemas`, `changedStateMachines`, `changedInvariants`, `changedPersistence`
+     - `diagrams` — array of objects: `type` (flowchart/sequenceDiagram/stateDiagram-v2/erDiagram/none), `scope` (current-system/session-delta), `caption`, `mermaid` (Mermaid syntax or empty string)
+     - `evidence` — array of objects: `claim`, `source` (file:line), `test` (test file:line), `command` (command + result)
+     - `remainingIssues` — array of strings: known limitations, unverified assumptions, open questions
+   - These fields are **optional** — only populate when the session produced substantial engineering work. For lightweight sessions (typo fixes, small refactors), skip them.
+   - The `session.save` deterministic command does NOT populate these — they are agent-populated via this skill or manual editing.
    - Append a `## Session notes` section with structured annotations.
 
 7. **Update knowledge files** with any new insights:
