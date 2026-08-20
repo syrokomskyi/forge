@@ -11,6 +11,8 @@ stripScopes:
   - "@warpgogol/"
 preservePackages:
   - "@warpgogol/forge"
+  - "@warpgogol/werkstatt"
+  - "@warpgogol/werkstatt-shared"
 packageManager: "pnpm"
 
 ci:
