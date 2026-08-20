@@ -140,6 +140,7 @@
     "skills/",
     "profiles/",
     "src/",
+    "src/onboarding/templates/",
     "os/",
     "AGENTS.md",
     "README.md",
