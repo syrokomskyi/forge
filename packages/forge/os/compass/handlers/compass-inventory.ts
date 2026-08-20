@@ -210,7 +210,7 @@ async function collectSourceFiles(
       continue;
     }
 
-    if (entry.isFile() && hasRelevantExtension(absolutePath)) {
+    if (entry.isFile() && hasRelevantExtension(absolutePath, extraExtensions)) {
       files.push(absolutePath);
     }
   }
@@ -514,7 +514,10 @@ export async function createCompassInventoryEntries(
   scanRoot?: string,
 ): Promise<CompassInventoryEntry[]> {
   const roots = scanRoot ? [scanRoot] : resolveScanRoots(workspaceRoot, input);
-  const files = (await Promise.all(roots.map((root) => collectSourceFiles(root)))).flat();
+  const extraExtensions = loadCompassExtensionsFromForgeYaml(workspaceRoot);
+  const files = (
+    await Promise.all(roots.map((root) => collectSourceFiles(root, extraExtensions)))
+  ).flat();
   const entries: CompassInventoryEntry[] = [];
 
   for (const filePath of files.sort()) {

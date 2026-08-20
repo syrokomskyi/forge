@@ -287,3 +287,33 @@ test("forge create --in-place derives name from folder name when --name omitted"
   const pkgJson = JSON.parse(await readFileAsync(join(namedDir, "package.json"), "utf8"));
   expect(pkgJson.name).toBe("my-derived-project");
 }, 30000);
+
+test("forge create --profile godot-csharp writes compass.fileExtensions into forge.yaml", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "godot-csharp", name: "my-game" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const forgeYaml = await readFileAsync(join(tempDir, "forge.yaml"), "utf8");
+  expect(forgeYaml).toContain("compass:");
+  expect(forgeYaml).toContain("fileExtensions:");
+  expect(forgeYaml).toContain(".cs");
+  expect(forgeYaml).toContain(".tscn");
+  expect(forgeYaml).toContain(".tres");
+  expect(forgeYaml).toContain(".gd");
+}, 30000);
+
+test("forge create --profile phaser-turborepo writes compass.fileExtensions into forge.yaml", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "phaser-turborepo", name: "my-phaser-game" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const forgeYaml = await readFileAsync(join(tempDir, "forge.yaml"), "utf8");
+  expect(forgeYaml).toContain("compass:");
+  expect(forgeYaml).toContain("fileExtensions:");
+}, 30000);
