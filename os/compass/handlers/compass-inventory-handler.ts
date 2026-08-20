@@ -23,7 +23,6 @@ import { createCompassInventoryEntries, type CompassInventoryEntry } from "./com
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type {
-  Diagnostic,
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
