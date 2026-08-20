@@ -18,9 +18,31 @@ for Compass source-file inventory.</purpose>
 */
 
 import { readdir, readFile } from "node:fs/promises";
+import { readFileSync, existsSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { parse as parseYaml } from "yaml";
 import type { ForgeCommandInput } from "../../../src/types.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
+
+function loadCompassExtensionsFromForgeYaml(workspaceRoot: string): Set<string> {
+  const forgeYamlPath = join(workspaceRoot, "forge.yaml");
+  if (!existsSync(forgeYamlPath)) {
+    return new Set();
+  }
+  try {
+    const raw = readFileSync(forgeYamlPath, "utf8");
+    const parsed = parseYaml(raw) as Record<string, unknown> | null;
+    const bindings = parsed?.bindings as Record<string, unknown> | undefined;
+    const compass = bindings?.compass as Record<string, unknown> | undefined;
+    const extensions = compass?.fileExtensions;
+    if (Array.isArray(extensions)) {
+      return new Set(extensions.filter((e: unknown) => typeof e === "string"));
+    }
+  } catch {
+    // forge.yaml not parseable or missing compass section — fall back to hardcoded set
+  }
+  return new Set();
+}
 
 const SOURCE_EXTENSIONS = new Set([
   ".ts",
@@ -126,16 +148,26 @@ function shouldIgnoreDirectory(name: string): boolean {
   return false;
 }
 
-function hasRelevantExtension(filePath: string): boolean {
+function hasRelevantExtension(filePath: string, extraExtensions?: Set<string>): boolean {
   for (const extension of SOURCE_EXTENSIONS) {
     if (filePath.endsWith(extension)) {
       return true;
     }
   }
+  if (extraExtensions) {
+    for (const extension of extraExtensions) {
+      if (filePath.endsWith(extension)) {
+        return true;
+      }
+    }
+  }
   return false;
 }
 
-async function collectSourceFiles(targetPath: string): Promise<string[]> {
+async function collectSourceFiles(
+  targetPath: string,
+  extraExtensions?: Set<string>,
+): Promise<string[]> {
   let stat;
   try {
     const { stat: fsStat } = await import("node:fs/promises");
@@ -145,7 +177,7 @@ async function collectSourceFiles(targetPath: string): Promise<string[]> {
   }
 
   if (stat.isFile()) {
-    return hasRelevantExtension(targetPath) ? [targetPath] : [];
+    return hasRelevantExtension(targetPath, extraExtensions) ? [targetPath] : [];
   }
 
   let entries;
@@ -174,7 +206,7 @@ async function collectSourceFiles(targetPath: string): Promise<string[]> {
         continue;
       }
 
-      files.push(...(await collectSourceFiles(absolutePath)));
+      files.push(...(await collectSourceFiles(absolutePath, extraExtensions)));
       continue;
     }
 

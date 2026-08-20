@@ -55,12 +55,22 @@ function extractItems(block: string): string[] {
   return items;
 }
 
-function rebuildChangeSummaryBlock(items: string[]): string {
+function getLineCommentPrefix(filePath: string): string | null {
+  if (filePath.endsWith(".gd")) return "# ";
+  if (filePath.endsWith(".tscn") || filePath.endsWith(".tres")) return "; ";
+  return null;
+}
+
+function rebuildChangeSummaryBlock(items: string[], filePath: string): string {
+  const prefix = getLineCommentPrefix(filePath);
   const lines = ["<CHANGE_SUMMARY>"];
   for (const item of items) {
     lines.push(`  <item>${item}</item>`);
   }
   lines.push("</CHANGE_SUMMARY>");
+  if (prefix) {
+    return lines.map((line, i) => (i === 0 ? line : prefix + line)).join("\n");
+  }
   return lines.join("\n");
 }
 
@@ -238,7 +248,7 @@ export async function runCompassSummaryTrim(
       finalItems.push(TRIM_FALLBACK_ITEM);
     }
 
-    const newBlock = rebuildChangeSummaryBlock(finalItems);
+    const newBlock = rebuildChangeSummaryBlock(finalItems, entry.path);
     const transformed = replaceChangeSummaryBlock(source, newBlock);
 
     if (transformed === source) {
