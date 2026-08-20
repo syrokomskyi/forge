@@ -293,6 +293,9 @@ workspace:
         #!/bin/sh
         # Platform-scope pre-commit guard
         # Runs werkstatt autonomy and plugin validation before commits
+        # Note: compass.validate reads all source files and may add a few seconds
+        # to commit time for large projects. Remove the line below if this is
+        # too slow during iterative development.
         echo "Pre-commit: running platform checks..."
         pnpm exec werkstatt run werkstatt.autonomy.validate || exit 1
         pnpm exec werkstatt run werkstatt.plugin.validate || exit 1

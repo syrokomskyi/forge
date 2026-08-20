@@ -22,12 +22,65 @@ import { createCompassInventoryEntries, type CompassInventoryEntry } from "./com
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type {
+  Diagnostic,
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
 const INVENTORY_OUTPUT_PATH = "docs/compass-inventory.xml";
+
+function getExpectedCommentSyntax(filePath: string): "block" | "hash" | "semicolon" | null {
+  if (filePath.endsWith(".gd")) return "hash";
+  if (filePath.endsWith(".tscn") || filePath.endsWith(".tres")) return "semicolon";
+  if (
+    filePath.endsWith(".ts") ||
+    filePath.endsWith(".tsx") ||
+    filePath.endsWith(".js") ||
+    filePath.endsWith(".mjs") ||
+    filePath.endsWith(".mts") ||
+    filePath.endsWith(".css") ||
+    filePath.endsWith(".cs")
+  )
+    return "block";
+  return null;
+}
+
+function checkCommentSyntax(source: string, filePath: string): string | null {
+  const syntax = getExpectedCommentSyntax(filePath);
+  if (!syntax) return null;
+
+  const hasModuleContract = source.includes("<MODULE_CONTRACT>");
+  if (!hasModuleContract) return null;
+
+  if (syntax === "block") {
+    const blockStart = source.indexOf("/*");
+    const blockEnd = source.lastIndexOf("*/");
+    const tagPos = source.indexOf("<MODULE_CONTRACT>");
+    if (blockStart === -1 || blockEnd === -1 || blockStart > tagPos || tagPos > blockEnd) {
+      return "MODULE_CONTRACT must be inside a /* ... */ block comment for this file type";
+    }
+  } else if (syntax === "hash") {
+    const lines = source.split(/\r?\n/);
+    for (const line of lines) {
+      if (line.includes("<MODULE_CONTRACT>")) {
+        if (!line.trimStart().startsWith("# ")) {
+          return "MODULE_CONTRACT lines must be prefixed with '# ' for .gd files";
+        }
+      }
+    }
+  } else if (syntax === "semicolon") {
+    const lines = source.split(/\r?\n/);
+    for (const line of lines) {
+      if (line.includes("<MODULE_CONTRACT>")) {
+        if (!line.trimStart().startsWith("; ")) {
+          return "MODULE_CONTRACT lines must be prefixed with '; ' for .tscn/.tres files";
+        }
+      }
+    }
+  }
+  return null;
+}
 
 interface CompassInventorySummary {
   scannedFiles: number;
@@ -273,6 +326,18 @@ export async function runCompassValidation(
         file: entry.path,
         message: `Unfilled ${compassTodoLabel} sentinel in Compass block`,
         fix: `fix: replace the ${compassTodoLabel} sentinel with a real value`,
+      });
+    }
+
+    const syntaxError = checkCommentSyntax(source, entry.path);
+    if (syntaxError) {
+      context.logger.error(`[compass.validate] COMPASS-SYNTAX-01: ${entry.path}: ${syntaxError}`);
+      diagnostics.push({
+        ruleId: "COMPASS-SYNTAX-01",
+        severity: "error",
+        file: entry.path,
+        message: syntaxError,
+        fix: "fix: use the correct comment syntax for this file type (see comment-styles.md)",
       });
     }
   }
