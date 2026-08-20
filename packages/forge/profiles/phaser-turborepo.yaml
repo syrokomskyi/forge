@@ -219,7 +219,7 @@ workspace:
     - path: tools/kernel.config.ts
       content: |
         import { defineKernelConfig } from "@warpgogol/werkstatt/kernel/types";
-        import { werkstattPhaserPlugin } from "@warpgogol/werkstatt-phaser";
+        import { werkstattPhaserPlugin } from "@warpgogol/werkstatt-phaser-game";
 
         export default defineKernelConfig({
           name: "__PROJECT_NAME__",
@@ -313,7 +313,7 @@ workspace:
       content: |
         # __PROJECT_NAME__
 
-        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-phaser plugin.
+        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-phaser-game plugin.
 
         ## Prerequisites
 
@@ -347,10 +347,10 @@ workspace:
         ## Stack
 
         - Engine: @warpgogol/werkstatt
-        - Plugin: @warpgogol/werkstatt-phaser
+        - Plugin: @warpgogol/werkstatt-phaser-game
         - Stack profile: phaser-turborepo
 install:
-  - pnpm add -wD typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-phaser prettier
+  - pnpm add -wD typescript turbo @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-shared @warpgogol/werkstatt-phaser-game prettier
 firstWorkspace:
   path: apps/my-game
   files:

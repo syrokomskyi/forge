@@ -28,8 +28,8 @@ Forge — це **шар управління**: навички, RFC/ADR робо
 | --- | --- | --- |
 | `@warpgogol/werkstatt` | Рушій runtime — місії, релізи, розгортання Leitstand, сертифікація, Bordbuch, сховище артефактів | Усі типи проєктів з управлінням життєвим циклом |
 | `@warpgogol/werkstatt-shared` | Спільна інфраструктура — перевірки, інтеграція, онтологія, паспорт | Встановлюється автоматично з рушієм |
-| `@warpgogol/werkstatt-phaser` | Плагін Phaser-гри — валідатори phaser, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
-| `@warpgogol/werkstatt-godot` | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
+| `@warpgogol/werkstatt-phaser-game` | Плагін Phaser-гри — валідатори phaser, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
+| `@warpgogol/werkstatt-godot-game` | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
 
 ### Коли потрібні ці пакети
 
@@ -40,10 +40,10 @@ Forge — це **шар управління**: навички, RFC/ADR робо
 
 ```sh
 # Проєкт браузерної гри
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser-game
 
 # Проєкт гри Godot
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot-game
 ```
 
 > **Примітка для агентів:** Після створення проєкту командою `forge create` завжди встановлюйте рушій та відповідний плагін стеку. Прив'язки в `forge.yaml` посилаються на команди з цих пакунків (напр. `pnpm exec werkstatt run rfc.validate`), і вони не працюватимуть, якщо пакунки не встановлені.
