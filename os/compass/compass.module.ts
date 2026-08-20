@@ -52,7 +52,11 @@ export const forgeCompassModule: ForgeModule = {
       scope: "workspace",
       supportsAllSites: true,
       flags: { ...compassScanFlags },
-      reads: ["packages/**/*.{ts,tsx,md}", "apps/**/*.{ts,tsx,md}", "services/**/*.{ts,tsx,md}"],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
       execute: runCompassInventory,
     });
     registry.registerCommand({
@@ -63,9 +67,9 @@ export const forgeCompassModule: ForgeModule = {
       supportsAllSites: true,
       flags: { ...compassScanFlags },
       reads: [
-        "packages/**/*.{ts,tsx,md}",
-        "apps/**/*.{ts,tsx,md}",
-        "services/**/*.{ts,tsx,md}",
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "docs/source-markup.xml",
       ],
       execute: runCompassValidation,
@@ -77,7 +81,11 @@ export const forgeCompassModule: ForgeModule = {
       scope: "workspace",
       supportsAllSites: true,
       flags: { ...compassScanFlags },
-      reads: ["packages/**/*.{ts,tsx,md}", "apps/**/*.{ts,tsx,md}", "services/**/*.{ts,tsx,md}"],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
       execute: runCompassChangeSummaryValidate,
     });
     registry.registerCommand({
@@ -88,11 +96,15 @@ export const forgeCompassModule: ForgeModule = {
       mutatesState: true,
       supportsAllSites: true,
       writes: [
-        "apps/**/*.{astro,ts,tsx,md}",
-        "packages/**/*.{astro,ts,tsx,md}",
-        "services/**/*.{ts,tsx,md}",
+        "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
-      reads: ["packages/**/*.{ts,tsx,md}", "apps/**/*.{ts,tsx,md}", "services/**/*.{ts,tsx,md}"],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
       cacheable: false,
       flags: { ...compassScanFlags },
       execute: runCompassSummaryTrim,
@@ -111,9 +123,9 @@ export const forgeCompassModule: ForgeModule = {
         },
       },
       reads: [
-        "packages/**/*.{ts,tsx,md}",
-        "apps/**/*.{ts,tsx,md}",
-        "services/**/*.{ts,tsx,md}",
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "docs/compass-audit-ledger.generated.yaml",
       ],
       execute: runCompassAuditPlan,
@@ -147,7 +159,11 @@ export const forgeCompassModule: ForgeModule = {
       mutatesState: true,
       supportsAllSites: true,
       writes: ["docs/compass-audit-ledger.generated.yaml"],
-      reads: ["packages/**/*.{ts,tsx,md}", "apps/**/*.{ts,tsx,md}", "services/**/*.{ts,tsx,md}"],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
       cacheable: false,
       flags: { ...compassScanFlags },
       execute: runCompassAuditBaseline,
@@ -166,9 +182,9 @@ export const forgeCompassModule: ForgeModule = {
         },
       },
       reads: [
-        "packages/**/*.{ts,tsx,md}",
-        "apps/**/*.{ts,tsx,md}",
-        "services/**/*.{ts,tsx,md}",
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "docs/compass-audit-ledger.generated.yaml",
       ],
       execute: runCompassAuditValidate,

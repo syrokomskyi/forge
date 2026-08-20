@@ -22,7 +22,20 @@ import { join, relative, resolve } from "node:path";
 import type { ForgeCommandInput } from "../../../src/types.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
 
-const SOURCE_EXTENSIONS = new Set([".ts", ".tsx", ".astro", ".js", ".jsx", ".mjs", ".mts", ".css"]);
+const SOURCE_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".astro",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".mts",
+  ".css",
+  ".cs",
+  ".tscn",
+  ".tres",
+  ".gd",
+]);
 const IGNORED_DIRECTORY_NAMES = new Set([
   ".git",
   ".turbo",

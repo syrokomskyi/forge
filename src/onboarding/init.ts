@@ -52,6 +52,10 @@ export interface InitDomainFields {
   terminology?: Record<string, string>;
   semanticBindings?: Record<string, string | null>;
   profileId?: string;
+  compass?: {
+    fileExtensions?: string[];
+    testPatterns?: string[];
+  };
 }
 
 export function runInit(
@@ -149,6 +153,12 @@ export function runInit(
           (config.bindings.commands as Record<string, string | null>)[key] = value;
         }
       }
+    }
+    if (domainFields?.compass && config.bindings) {
+      config.bindings.compass = {
+        ...(config.bindings.compass ?? {}),
+        ...domainFields.compass,
+      };
     }
     const yamlContent = stringifyYaml(config);
     fs.writeFileSync(forgeYamlPath, yamlContent, "utf8");
