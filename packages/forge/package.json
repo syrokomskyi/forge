@@ -139,8 +139,8 @@
     "bin/cli.js",
     "skills/",
     "profiles/",
-    "src/onboarding/templates/",
-    "os/rfc/rfc-0000-template.md",
+    "src/",
+    "os/",
     "AGENTS.md",
     "README.md",
     "LICENSE"
