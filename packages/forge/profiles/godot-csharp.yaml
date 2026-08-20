@@ -6,6 +6,16 @@ detect:
     - project.godot
 domain: game
 register: creative
+compass:
+  fileExtensions:
+    - .cs
+    - .tscn
+    - .tres
+    - .gd
+    - .ts
+    - .tsx
+    - .js
+    - .mjs
 terminology:
   artifact: game
   artifactPlural: games
@@ -293,6 +303,9 @@ workspace:
 
               - name: Test
                 run: pnpm test
+
+              - name: Compass header validation
+                run: pnpm exec werkstatt run compass.validate
 
         # Windows CI (optional — uncomment if Windows checks are needed):
         #
@@ -680,6 +693,7 @@ workspace:
         echo "Pre-commit: running platform checks..."
         pnpm exec werkstatt run werkstatt.autonomy.validate || exit 1
         pnpm exec werkstatt run werkstatt.plugin.validate || exit 1
+        pnpm exec werkstatt run compass.validate || exit 1
     - path: systems-cache/.gitkeep
       content: |
         # Sternsystem cache directory (RFC-0790)

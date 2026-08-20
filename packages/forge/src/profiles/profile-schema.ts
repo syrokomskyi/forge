@@ -331,6 +331,12 @@ export const stackProfileDomainFieldsSchema = z.object({
   templates: z.array(profileTemplateSchema).optional(),
   scriptDir: z.string().min(1).optional(),
   rootAgentsMdTemplate: z.string().optional(),
+  compass: z
+    .object({
+      fileExtensions: z.array(z.string()).optional(),
+      testPatterns: z.array(z.string()).optional(),
+    })
+    .optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -347,4 +353,8 @@ export interface StackProfileDomainFields {
   templates?: ProfileTemplate[];
   scriptDir?: string;
   rootAgentsMdTemplate?: string;
+  compass?: {
+    fileExtensions?: string[];
+    testPatterns?: string[];
+  };
 }

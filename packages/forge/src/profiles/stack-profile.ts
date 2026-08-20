@@ -76,6 +76,8 @@ export const stackProfileSchema = z.object({
   scriptDir: stackProfileDomainFieldsSchema.shape.scriptDir,
   // Profile-driven root AGENTS.md template
   rootAgentsMdTemplate: stackProfileDomainFieldsSchema.shape.rootAgentsMdTemplate,
+  // Profile-driven Compass file extensions
+  compass: stackProfileDomainFieldsSchema.shape.compass,
 });
 
 export interface ProfileFile {

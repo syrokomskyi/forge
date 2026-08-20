@@ -87,6 +87,9 @@ function loadProfileDomainFields(profileId: string, forgeRoot: string): InitDoma
         fields.semanticBindings = semanticBindings;
       }
     }
+    if (profile.compass) {
+      fields.compass = profile.compass;
+    }
     return fields;
   } catch {
     return {};

@@ -5,6 +5,13 @@ detect:
   anyOf:
     - phaser.config.*
     - package.json
+compass:
+  fileExtensions:
+    - .ts
+    - .tsx
+    - .js
+    - .mjs
+    - .css
 workspace:
   dirs:
     - apps
@@ -122,6 +129,9 @@ workspace:
 
               - name: Test
                 run: pnpm test
+
+              - name: Compass header validation
+                run: pnpm exec werkstatt run compass.validate
 
         # Windows CI (optional — uncomment if Windows checks are needed):
         #
@@ -286,6 +296,7 @@ workspace:
         echo "Pre-commit: running platform checks..."
         pnpm exec werkstatt run werkstatt.autonomy.validate || exit 1
         pnpm exec werkstatt run werkstatt.plugin.validate || exit 1
+        pnpm exec werkstatt run compass.validate || exit 1
     - path: systems-cache/.gitkeep
       content: |
         # Sternsystem cache directory (RFC-0790)
