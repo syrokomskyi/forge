@@ -33,7 +33,7 @@ The ecosystem has seven documentation surfaces. Each has a different audience an
 | **README** | root, `packages/*/README.md`, `services/*/README.md` | Humans (developers, operators) | Public API, CLI surface, usage pattern, or installation flow change |
 | **Compass XML** | `docs/requirements.xml`, `docs/technology.xml`, `docs/development-plan.xml`, `docs/knowledge-graph.xml`, `docs/verification-plan.xml`, `docs/source-markup.xml` | AI agents (machine-readable semantic layer) | Repository-wide requirements, shared package contracts, app-package relationships, verification policy |
 | **architecture-dna.md** | `ref(forge.yaml bindings.paths.invariantsFile)` | AI agents + humans | New DNA invariant, invariant amendment, or invariant retirement |
-| **Templates** | `packages/os/site-kernel-onboarding/src/templates/`, `packages/os/site-kernel-codegen/src/templates/` | Future apps/packages (scaffold time) | Change to what a new app or package should look like at creation time |
+| **Templates** | `packages/werkstatt-site/src/onboarding/templates/`, `packages/werkstatt-site/src/codegen/templates/` | Future apps/packages (scaffold time) | Change to what a new app or package should look like at creation time |
 | **Generated artifacts** | `docs/ecosystem.generated.json`, `docs/command-manifest.generated.yaml`, `fleet/*.generated.yaml`, `*.generated.css` | AI agents (read-only projection) | **Never edit directly** — update the generator or registry, then regenerate |
 | **COMMANDS / PACKAGE_GRAPH** | `docs/COMMANDS.md`, `docs/PACKAGE_GRAPH.md` | Humans + AI agents | New command, removed command, package graph change |
 
@@ -52,7 +52,7 @@ Capture the full list of changed files and categorize them:
 - **Code** — `.ts`, `.js`, `.mjs`, `.astro`, `.css`, `.json`, `.yaml`, etc.
 - **Content** — `src/content/**/*.md`, `src/content/**/*.yaml`.
 - **Docs** — `docs/**/*.md`, `docs/**/*.xml`, `AGENTS.md`, `README.md`.
-- **Templates** — files under `packages/os/site-kernel-*/src/templates/`.
+- **Templates** — files under `packages/werkstatt-site/src/onboarding/templates/` and `packages/werkstatt-site/src/codegen/templates/`.
 - **Generated** — `*.generated.*`, `fleet/*.generated.*`.
 
 ### 2. Run impact analysis
@@ -115,7 +115,7 @@ If yes, update `ref(forge.yaml bindings.paths.invariantsFile)`. If a new invaria
 - Did a **boilerplate file, script, or config** pattern change that onboarding/codegen templates should reflect?
 - Did a **new convention** get introduced that future apps/packages must follow from creation?
 
-If yes, update the **template** files in `packages/os/site-kernel-onboarding/src/templates/` and `packages/os/site-kernel-codegen/src/templates/`. **Never edit generated output in existing apps** — fix the template, then regenerate if needed.
+If yes, update the **template** files in `packages/werkstatt-site/src/onboarding/templates/` and `packages/werkstatt-site/src/codegen/templates/`. **Never edit generated output in existing apps** — fix the template, then regenerate if needed.
 
 #### 2f. Generated artifacts
 
@@ -150,8 +150,8 @@ Present the impact analysis as a concise table before applying any changes. This
 | Surface | Needs update? | Reason |
 | --- | --- | --- |
 | AGENTS.md (root) | Yes | New command lifecycle rule |
-| AGENTS.md (packages/os/site-kernel) | Yes | New cache module registered |
-| README (packages/os/site-kernel) | No | No public API change |
+| AGENTS.md (packages/werkstatt-site) | Yes | New cache module registered |
+| README (packages/werkstatt-site) | No | No public API change |
 | Compass XML (docs/verification-plan.xml) | Yes | New check pipeline stage |
 | architecture-dna.md | No | No DNA invariant change |
 | Templates | No | No scaffold-time change |
@@ -215,7 +215,7 @@ docs: sync documentation for <feature/RFC>
 - AGENTS.md (root): <what changed>
 - docs/verification-plan.xml: <what changed>
 - docs/COMMANDS.md: <what changed>
-- packages/os/site-kernel/README.md: <what changed>
+- packages/werkstatt-site/README.md: <what changed>
 ```
 
 Stage only the documentation files touched by this step. Do not stage unrelated changes — another agent may be working in a different session; `git add -A` or `git add .` is forbidden.

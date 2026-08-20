@@ -233,7 +233,7 @@ Present the findings in this structure in `aiLanguage`. **Translate all labels, 
 
 ### 7. Persist the review
 
-Derive the `<module-folder>` from the reviewed files: take the package path with the most changed files and convert it to lowercase kebab-case (for example, `packages/growth` → `packages-growth`, `packages/os/site-kernel-checks` → `packages-os-site-kernel-checks`). For cross-workspace diffs, use the package with the largest number of changed files; list all reviewed files in the `filesReviewed` frontmatter field.
+Derive the `<module-folder>` from the reviewed files: take the package path with the most changed files and convert it to lowercase kebab-case (for example, `packages/growth` → `packages-growth`, `packages/werkstatt-site` → `packages-werkstatt-site`). For cross-workspace diffs, use the package with the largest number of changed files; list all reviewed files in the `filesReviewed` frontmatter field.
 
 Write the report to:
 

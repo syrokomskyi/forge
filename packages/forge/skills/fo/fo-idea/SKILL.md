@@ -117,7 +117,7 @@ Use the following decision table:
 These patterns **look like RFCs but are ADRs**:
 
 - **"Applied to all apps" ≠ "cross-workspace contract"** — a convention like "use Fontsource for fonts" or "self-host all web fonts" applies everywhere but does not create a package boundary, inter-package type contract, or new command. It is an ADR with `scope: workspace`.
-- **"Changes a shared package" ≠ "establishes a package boundary"** — extending `packages/os/site-kernel-checks/src/fonts.ts` with a new font family modifies shared code, but the decision is about which fonts to use, not about the package's interface or contract. ADR.
+- **"Changes a shared package" ≠ "establishes a package boundary"** — extending `packages/werkstatt-site/src/domain/ui/fonts.ts` with a new font family modifies shared code, but the decision is about which fonts to use, not about the package's interface or contract. ADR.
 - **"Might be mentioned in AGENTS.md" ≠ "modifies a DNA invariant"** — a decision might be documented in AGENTS.md for visibility, but unless it changes a DNA-NN invariant or a governance rule, it is an ADR.
 - **"Has cross-app impact" ≠ "cross-workspace contract"** — adding a font to the shared registry affects all apps' builds, but the decision itself is a tooling/standard choice, not a contract between packages.
 
