@@ -13,6 +13,7 @@ Provides runCompassInventory (XML report generation) and runCompassValidation
   <item>RFC-0348: v2 two-block contract — XML output updated, compass.validate emits COMPASS-* diagnostics, summary uses standard-required-files.</item>
   <item>RFC-0350: added COMPASS-TODO-01 diagnostic for unfilled Compass TODO sentinels.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
+  <item>Game extensions: added COMPASS-SYNTAX-01 diagnostic validating comment syntax per file type (.gd needs # prefix, .tscn/.tres need ; prefix, .ts/.cs need block comment).</item>
 </CHANGE_SUMMARY>
 */
 
