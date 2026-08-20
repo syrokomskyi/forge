@@ -178,16 +178,16 @@ test("compareSemver is antisymmetric: compare(a, b) == -compare(b, a)", () => {
 
 | Function | Package | Property | Pattern |
 | --- | --- | --- | --- |
-| `normalizeText` | `@warpgogol/share` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
-| `normalizeHtml` | `@warpgogol/share` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
-| `normalizeMarkdown` | `@warpgogol/share` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
-| `normalizeJson` | `@warpgogol/share` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
-| `compareSemver` | `@warpgogol/site-kernel-handoff` | `a < b and b < c implies a < c` | Transitivity |
-| `compareSemver` | `@warpgogol/site-kernel-handoff` | `compare(a, b) == -compare(b, a)` | Antisymmetry |
-| `parseSemver` / `formatSemver` | `@warpgogol/site-kernel-handoff` | `parse(format(parsed)) == parsed` | Round-trip |
-| `substituteRefsDeep` | `@warpgogol/share` | Input is not mutated after call | Immutability |
-| `markdownTwinRelPath` | `@warpgogol/share` | `twinUrlPath(twinRelPath(x))` is consistent for valid paths | Round-trip |
-| `deepMergeEntryData` | `@warpgogol/share` | Merge is associative for nested objects (not arrays) | Associativity |
-| `citySlug` | `@warpgogol/geo` | Output only contains lowercase alphanumeric and hyphens | Invariance |
-| `redactUrl` | `@warpgogol/observability` | Output never contains a query string | Invariance |
-| `validateAgainstCapabilitySchema` | `@warpgogol/agent-gate` | Non-object input always fails validation | Invariance |
+| `normalizeText` | `@warpgogol/werkstatt-shared` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
+| `normalizeHtml` | `@warpgogol/werkstatt-shared` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
+| `normalizeMarkdown` | `@warpgogol/werkstatt-shared` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
+| `normalizeJson` | `@warpgogol/werkstatt-shared` | `normalize(normalize(x)) == normalize(x)` | Idempotency |
+| `compareSemver` | `@warpgogol/werkstatt` | `a < b and b < c implies a < c` | Transitivity |
+| `compareSemver` | `@warpgogol/werkstatt` | `compare(a, b) == -compare(b, a)` | Antisymmetry |
+| `parseSemver` / `formatSemver` | `@warpgogol/werkstatt` | `parse(format(parsed)) == parsed` | Round-trip |
+| `substituteRefsDeep` | `@warpgogol/werkstatt-shared` | Input is not mutated after call | Immutability |
+| `markdownTwinRelPath` | `@warpgogol/werkstatt-shared` | `twinUrlPath(twinRelPath(x))` is consistent for valid paths | Round-trip |
+| `deepMergeEntryData` | `@warpgogol/werkstatt-shared` | Merge is associative for nested objects (not arrays) | Associativity |
+| `citySlug` | `@warpgogol/werkstatt-site` | Output only contains lowercase alphanumeric and hyphens | Invariance |
+| `redactUrl` | `@warpgogol/werkstatt-shared` | Output never contains a query string | Invariance |
+| `validateAgainstCapabilitySchema` | `@warpgogol/werkstatt` | Non-object input always fails validation | Invariance |

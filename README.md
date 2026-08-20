@@ -6,13 +6,14 @@ Portable governance engine for AI-assisted project development. Provides skills,
 
 ## What you can build with Forge
 
-Forge supports three kinds of projects. You pick one when you start — everything else is automatic.
+Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
 
 | Project type | What it is | Example ideas |
 | --- | --- | --- |
 | **Browser game** | An interactive game that runs in a web browser — 2D, arcade, puzzle, adventure | Catch falling stars, tile-matching puzzle, platformer |
 | **Governance / library** | A code library or governance-only project — no website, no game, no video, just structure and documentation | npm package, internal toolkit, documentation hub |
 | **Godot game** | A desktop or mobile game built with Godot 4.x and C# — 2D, 3D, platformer, RPG | Top-down adventure, 3D platformer, puzzle game |
+| **Knowledge system** | An evidence-backed knowledge base — structured datasets where claims are backed by registered source provenance | Game knowledge base, domain ontology, curated reference dataset |
 
 Each project type gets its own scaffold: the right folder structure, the right dependencies, the right tools. You don't need to know what any of those are — Forge sets them up for you.
 
@@ -30,11 +31,12 @@ For full project lifecycle management — missions, releases, deployment, certif
 | `@warpgogol/werkstatt-shared` | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
 | `@warpgogol/werkstatt-phaser-game` | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
 | `@warpgogol/werkstatt-godot-game` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
+| `@warpgogol/werkstatt-knowledge` | Knowledge plugin — source binding, canonical verification, extraction, materialization, release checks | Knowledge system projects (`knowledge-typescript-turborepo`) |
 
 ### When you need these packages
 
 - **Governance-only projects** (RFCs, ADRs, skills, documentation hubs) — Forge alone is sufficient.
-- **Games, Godot projects** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
+- **Games, Godot projects, Knowledge systems** — install `@warpgogol/werkstatt` (the engine) plus the matching stack plugin. The `forge-bootstrap` skill configures bindings automatically; the packages themselves must be installed as devDependencies.
 
 ### Installing engine packages
 
@@ -44,6 +46,9 @@ pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser-game
 
 # Godot game project
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot-game
+
+# Knowledge system project
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-knowledge
 ```
 
 > **Note for agents:** When scaffolding a new project with `forge create`, always install the engine and matching stack plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages (e.g. `pnpm exec werkstatt run rfc.validate`), and they will fail if the packages are not installed.
@@ -201,11 +206,12 @@ You need to run one command in the terminal to create your project. After that, 
 
    The project name is derived from the folder name (`my-game` in this example). You can override it with `--name`. This populates the current folder with everything Forge needs — skills, configuration, and project structure. For other project types, use a different `--profile`:
 
-   | What you want to build              | Profile flag                 |
-   | ----------------------------------- | ---------------------------- |
-   | Browser game (2D, arcade, puzzle)   | `--profile phaser-turborepo` |
-   | Godot game (desktop, mobile, 2D/3D) | `--profile godot-csharp`     |
-   | Library or governance-only project  | `--profile forge-shell`      |
+   | What you want to build              | Profile flag                               |
+   | ----------------------------------- | ------------------------------------------ |
+   | Browser game (2D, arcade, puzzle)   | `--profile phaser-turborepo`               |
+   | Godot game (desktop, mobile, 2D/3D) | `--profile godot-csharp`                   |
+   | Knowledge system (evidence-backed)  | `--profile knowledge-typescript-turborepo` |
+   | Library or governance-only project  | `--profile forge-shell`                    |
 
 2. **Open the project folder in your AI IDE.** Open the folder from step 1 in Windsurf or your preferred IDE.
 
@@ -282,6 +288,9 @@ pnpm dlx @warpgogol/forge@latest create --in-place --profile phaser-turborepo
 mkdir my-godot-game && cd my-godot-game
 pnpm dlx @warpgogol/forge@latest create --in-place --profile godot-csharp
 
+mkdir my-knowledge-base && cd my-knowledge-base
+pnpm dlx @warpgogol/forge@latest create --in-place --profile knowledge-typescript-turborepo
+
 # Override the project name (derived from folder name by default)
 pnpm dlx @warpgogol/forge@latest create --in-place --profile forge-shell --name my-custom-name
 ```
@@ -330,6 +339,7 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | `forge-shell` | Governance / library | Minimal Forge shell (default) | — | Governance-only projects, libraries, non-web projects |
 | `phaser-turborepo` | Browser game | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
 | `godot-csharp` | Godot game | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Desktop/mobile games, Godot-based interactive projects |
+| `knowledge-typescript-turborepo` | Knowledge system | TypeScript + pnpm + Turborepo | `knowledge/my-kb` | Evidence-backed knowledge bases, structured datasets with source provenance |
 
 ```sh
 # List available profiles (after install)
@@ -357,7 +367,7 @@ pnpm exec forge doctor
 
 ## What forge gives you
 
-- **44 skills** (fo-pipeline, grilling, preferences, skill authoring) — deployed to `.agents/skills/` by `forge create`
+- **37 skills** (fo-pipeline, grilling, preferences, skill authoring) — deployed to `.agents/skills/` by `forge create`
 - **RFC workflow** — create, validate, list, graph, archive, acceptance probes, decision logs, DNA trace
 - **ADR workflow** — lightweight architectural decision records
 - **Spec vendoring** — vendor external spec packages as immutable snapshots with integrity manifests
@@ -433,7 +443,7 @@ await forgeRfcModule.register(registry);
 | `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
 | `os/` | ForgeModule registrations. `compass` and `werkstatt` are fully autonomous (RFC-0556) — all handlers inlined, no `@warpgogol/*` imports. |
 | `bin/` | CLI entrypoint (`forge` command). |
-| `skills/` | 44 skill definitions (36 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
+| `skills/` | 37 skill definitions (29 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
 | `profiles/` | Stack profiles for `scaffold`. |
 
 ## Publishing to npm

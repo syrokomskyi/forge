@@ -197,7 +197,7 @@ None. All acceptance criteria met.
 
 **Сводка**
 
-Ревью кода завершено: вердикт needs-revision, 3 замечания (Axis B: DNA-23 нарушение, Axis D: legacy путь, Axis E: нет Compass-разметки). Отчёт сохранён в docs/reviews/code/packages-os-site-kernel-checks/.
+Ревью кода завершено: вердикт needs-revision, 3 замечания (Axis B: DNA-23 нарушение, Axis D: legacy путь, Axis E: нет Compass-разметки). Отчёт сохранён в docs/reviews/code/packages-werkstatt-site/.
 
 **Проверка**
 
