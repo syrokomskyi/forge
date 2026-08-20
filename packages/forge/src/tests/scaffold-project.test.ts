@@ -74,7 +74,7 @@ test("forge.scaffold fails on missing --profile", async () => {
 test("forge.scaffold derives name from folder when --name omitted", async () => {
   const result = await runScaffoldProject(
     { argv: [], flags: { profile: "phaser-turborepo" } },
-    makeContext(tempDir),
+    { ...makeContext(tempDir), forgeRoot: FORGE_ROOT },
   );
   // Name is now derived from the folder name (consistent with forge.create)
   // The temp dir name may not be kebab-case, so we accept either:
@@ -90,7 +90,7 @@ test("forge.scaffold derives name from folder when --name omitted", async () => 
 test("forge.scaffold fails on non-kebab-case name", async () => {
   const result = await runScaffoldProject(
     { argv: [], flags: { profile: "phaser-turborepo", name: "MySite" } },
-    makeContext(tempDir),
+    { ...makeContext(tempDir), forgeRoot: FORGE_ROOT },
   );
   expect(result.exitCode).toBe(1);
   expect(result.data?.errors[0]).toContain("kebab-case");
