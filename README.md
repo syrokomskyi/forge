@@ -28,8 +28,8 @@ For full project lifecycle management — missions, releases, deployment, certif
 | --- | --- | --- |
 | `@warpgogol/werkstatt` | Runtime engine — missions, releases, Leitstand deployment, certification, Bordbuch, artifact store | All project types with lifecycle management |
 | `@warpgogol/werkstatt-shared` | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
-| `@warpgogol/werkstatt-phaser` | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
-| `@warpgogol/werkstatt-godot` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
+| `@warpgogol/werkstatt-phaser-game` | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
+| `@warpgogol/werkstatt-godot-game` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
 
 ### When you need these packages
 
@@ -40,10 +40,10 @@ For full project lifecycle management — missions, releases, deployment, certif
 
 ```sh
 # Browser game project
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-phaser-game
 
 # Godot game project
-pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot-game
 ```
 
 > **Note for agents:** When scaffolding a new project with `forge create`, always install the engine and matching stack plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages (e.g. `pnpm exec werkstatt run rfc.validate`), and they will fail if the packages are not installed.

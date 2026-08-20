@@ -362,7 +362,7 @@ workspace:
             "prettier": "^3.4.0",
             "@warpgogol/forge": "^2.2.0",
             "@warpgogol/werkstatt": "^1.2.0",
-            "@warpgogol/werkstatt-godot": "^0.6.0"
+            "@warpgogol/werkstatt-godot-game": "^0.6.0"
           }
         }
     - path: godot.version
@@ -613,7 +613,7 @@ workspace:
     - path: tools/kernel.config.ts
       content: |
         import { defineKernelConfig } from "@warpgogol/werkstatt/kernel/types";
-        import { werkstattGodotPlugin } from "@warpgogol/werkstatt-godot";
+        import { werkstattGodotPlugin } from "@warpgogol/werkstatt-godot-game";
 
         export default defineKernelConfig({
           name: "__PROJECT_NAME__",
@@ -709,7 +709,7 @@ workspace:
       content: |
         # __PROJECT_NAME__
 
-        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-godot plugin.
+        A Warpgogol workshop powered by the Werkstatt engine and the @warpgogol/werkstatt-godot-game plugin.
 
         ## Prerequisites
 
@@ -776,7 +776,7 @@ workspace:
         ## Stack
 
         - Engine: @warpgogol/werkstatt
-        - Plugin: @warpgogol/werkstatt-godot
+        - Plugin: @warpgogol/werkstatt-godot-game
         - Stack profile: godot-csharp
 install:
   - pnpm install
