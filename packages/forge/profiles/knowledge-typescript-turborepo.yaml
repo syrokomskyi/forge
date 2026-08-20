@@ -75,6 +75,7 @@ workspace:
         .generated/
         .turbo/
         .cache/
+        operator-profile.md
     - path: knowledge/manifest.yaml
       content: |
         # Knowledge manifest — canonical dataset identity
@@ -102,6 +103,8 @@ workspace:
 plugin:
   id: werkstatt-knowledge
   package: "@warpgogol/werkstatt-knowledge"
+install:
+  - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-knowledge prettier
 agents:
   root: |
     # Knowledge Base Workshop
