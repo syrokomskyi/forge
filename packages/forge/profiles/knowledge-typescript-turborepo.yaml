@@ -1,0 +1,110 @@
+schema: forge/stack-profile@1
+id: knowledge-typescript-turborepo
+displayName: Knowledge Base + Turborepo
+detect:
+  anyOf:
+    - knowledge/manifest.yaml
+    - knowledge.config.yaml
+workspace:
+  dirs:
+    - apps
+    - packages
+    - knowledge
+    - staging
+    - laboratory
+    - projections
+    - docs
+    - tools
+    - missions
+    - systems-cache
+  files:
+    - path: .vscode/extensions.json
+      content: |
+        {
+          "recommendations": [
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode",
+            "github.vscode-github-actions",
+            "mechatroner.rainbow-csv",
+            "redhat.vscode-yaml"
+          ]
+        }
+    - path: pnpm-workspace.yaml
+      content: |
+        packages:
+          - "apps/*"
+          - "packages/*"
+    - path: turbo.json
+      content: |
+        {
+          "$schema": "https://turbo.build/schema.json",
+          "tasks": {
+            "build": {
+              "dependsOn": ["^build"],
+              "outputs": ["dist/**", ".generated/**"]
+            },
+            "build:check": {
+              "dependsOn": ["^build:check"]
+            },
+            "test": {
+              "dependsOn": ["^build:check"]
+            }
+          }
+        }
+    - path: tsconfig.base.json
+      content: |
+        {
+          "compilerOptions": {
+            "target": "ESNext",
+            "module": "ESNext",
+            "moduleResolution": "bundler",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "forceConsistentCasingInFileNames": true,
+            "resolveJsonModule": true,
+            "declaration": true,
+            "declarationMap": true,
+            "sourceMap": true
+          }
+        }
+    - path: .gitignore
+      content: |
+        node_modules/
+        dist/
+        .generated/
+        .turbo/
+        .cache/
+    - path: knowledge/manifest.yaml
+      content: |
+        # Knowledge manifest — canonical dataset identity
+        id: ""
+        name: ""
+        modelVersion: "1.0.0"
+        description: ""
+        license: ""
+    - path: knowledge/ontology/schema-registry.yaml
+      content: |
+        # Ontology schema registry
+        # Register canonical record schemas here
+        schemas: []
+    - path: knowledge.config.yaml
+      content: |
+        # Knowledge operational configuration
+        source:
+          rootPattern: "../<kb-id>-source"
+        extractors: []
+        projections:
+          - name: web
+            path: apps/web
+          - name: mcp
+            path: apps/mcp
+plugin:
+  id: werkstatt-knowledge
+  package: "@warpgogol/werkstatt-knowledge"
+agents:
+  root: |
+    # Knowledge Base Workshop
+
+    This workshop uses the **werkstatt-knowledge** plugin (`werkstatt/plugin@1`).
+    See `packages/werkstatt-knowledge/AGENTS.md` for plugin-specific rules.
