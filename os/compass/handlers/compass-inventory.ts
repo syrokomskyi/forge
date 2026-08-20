@@ -14,6 +14,7 @@ for Compass source-file inventory.</purpose>
   <item>Post-refactor hardening: exclude src/templates generation inputs from authored Compass requirements.</item>
   <item>Post-refactor hardening: detect nested packages/os workspaces before deriving Compass layer and workspace name.</item>
   <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
+  <item>Game extensions: added .cs, .tscn, .tres, .gd to SOURCE_EXTENSIONS; createCompassInventoryEntries now reads forge.yaml compass.fileExtensions at runtime and merges with hardcoded set.</item>
 </CHANGE_SUMMARY>
 */
 
