@@ -24,13 +24,16 @@ function readPackageFiles(): string[] {
 
 test("package.json files array includes src/onboarding/templates/", () => {
   const files = readPackageFiles();
-  expect(files).toContain("src/onboarding/templates/");
+  const hasTemplates = files.some(
+    (f) => f === "src/onboarding/templates/" || f === "src/onboarding/templates/*" || f === "src/",
+  );
+  expect(hasTemplates).toBe(true);
 });
 
 test("all template files in src/onboarding/templates/ are covered by files array", () => {
   const files = readPackageFiles();
   const hasTemplatesGlob = files.some(
-    (f) => f === "src/onboarding/templates/" || f === "src/onboarding/templates/*",
+    (f) => f === "src/onboarding/templates/" || f === "src/onboarding/templates/*" || f === "src/",
   );
   expect(hasTemplatesGlob).toBe(true);
 });
