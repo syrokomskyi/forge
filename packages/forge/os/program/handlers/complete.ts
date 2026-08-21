@@ -237,6 +237,12 @@ export async function runComplete(
     },
     exitCode: 0,
     summary: `program.packet.complete: ${packetId} completed at ${head.slice(0, 8)}`,
+    nextSteps: [
+      {
+        action: `Seal the next packet: pnpm exec forge run program.packet.seal --packet <next-packet-id>`,
+        kind: "optional",
+      },
+    ],
   };
 }
 

@@ -301,6 +301,12 @@ export async function runAdrImplementStamp(
       },
       exitCode: 0,
       summary: `adr.implement.stamp: ${targetId} stamped as implemented`,
+      nextSteps: [
+        {
+          action: `Commit the stamp: pnpm exec forge run ecosystem.commit`,
+          kind: "optional",
+        },
+      ],
     };
   } finally {
     await releaseAdrLock(lockPath);

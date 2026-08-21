@@ -386,5 +386,11 @@ export async function runSpecMaterialize(
     },
     exitCode: 0,
     summary: `spec.materialize: created ${created.length} RFC(s) from spec '${specId}'`,
+    nextSteps: [
+      {
+        action: `Validate the created RFCs: pnpm exec forge run rfc.validate`,
+        kind: "optional",
+      },
+    ],
   };
 }
