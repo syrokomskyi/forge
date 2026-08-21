@@ -113,5 +113,11 @@ export async function runSpecLiveShow(
     data: result,
     exitCode: 0,
     summary: `spec.live.show: ${domain}`,
+    nextSteps: [
+      {
+        action: `Validate the living spec: pnpm exec forge run spec.live.validate`,
+        kind: "optional",
+      },
+    ],
   };
 }

@@ -224,6 +224,12 @@ export async function runSeal(
     },
     exitCode: 0,
     summary: `program.packet.seal: ${packetId} sealed on ${branch}@${head.slice(0, 8)}`,
+    nextSteps: [
+      {
+        action: `Start the lease: pnpm exec forge run program.packet.lease --packet ${packetId} --action start --executor <executor>`,
+        kind: "optional",
+      },
+    ],
   };
 }
 
@@ -243,6 +249,12 @@ function sealFail(
     },
     exitCode: 1,
     summary: `program.packet.seal: ${packetId} failed with ${violations.length} violation(s)`,
+    nextSteps: [
+      {
+        action: `Fix the ${violations.length} violation(s) above, then re-run: pnpm exec forge run program.packet.seal --packet ${packetId}`,
+        kind: "required",
+      },
+    ],
   };
 }
 

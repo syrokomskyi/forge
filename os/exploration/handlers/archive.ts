@@ -155,5 +155,11 @@ export async function runExplorationArchive(
       related,
     },
     summary: `Archived exploration note: ${slug} (${previousStatus} → archived)`,
+    nextSteps: [
+      {
+        action: `Commit the archive: pnpm exec forge run ecosystem.commit`,
+        kind: "optional",
+      },
+    ],
   };
 }

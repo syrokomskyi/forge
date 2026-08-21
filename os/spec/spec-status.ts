@@ -280,5 +280,11 @@ export async function runSpecStatus(
     },
     exitCode: 0,
     summary: `spec.status: ${results.length} spec(s)`,
+    nextSteps: [
+      {
+        action: `Validate specs: pnpm exec forge run spec.validate`,
+        kind: "optional",
+      },
+    ],
   };
 }

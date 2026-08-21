@@ -73,5 +73,14 @@ export async function runExplorationList(
       explorations: entries,
     },
     summary: `${entries.length} exploration note(s) found`,
+    nextSteps:
+      entries.length === 0
+        ? [
+            {
+              action: `Create an exploration note: pnpm exec forge run exploration.show --id <slug>`,
+              kind: "optional",
+            },
+          ]
+        : undefined,
   };
 }

@@ -199,6 +199,12 @@ async function leaseStart(
     },
     exitCode: 0,
     summary: `program.packet.lease: ${packetId} lease started for ${executor}`,
+    nextSteps: [
+      {
+        action: `Implement the packet, then complete: pnpm exec forge run program.packet.complete --packet ${packetId}`,
+        kind: "optional",
+      },
+    ],
   };
 }
 

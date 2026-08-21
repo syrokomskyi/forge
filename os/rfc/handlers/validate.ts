@@ -162,5 +162,13 @@ export async function runRfcValidate(
     summary: hasErrors
       ? `${violations.filter((v) => v.severity === "error").length} error(s) found`
       : `All ${filesToValidate.length} RFC(s) passed validation`,
+    nextSteps: hasErrors
+      ? [
+          {
+            action: `Fix the ${violations.filter((v) => v.severity === "error").length} error(s) above, then re-run: pnpm exec forge run rfc.validate`,
+            kind: "required",
+          },
+        ]
+      : undefined,
   };
 }

@@ -203,6 +203,15 @@ export async function runWorkflowList(
     data: { command: "workflow.list", workflows: entries },
     exitCode: 0,
     summary: `workflow.list: ${entries.length} workflow file(s) found`,
+    nextSteps:
+      entries.length === 0
+        ? [
+            {
+              action: `Create a workflow file in .devin/workflows/ or .windsurf/workflows/`,
+              kind: "optional",
+            },
+          ]
+        : undefined,
   };
 }
 

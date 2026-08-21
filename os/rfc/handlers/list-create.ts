@@ -131,6 +131,15 @@ export async function runRfcList(
       entries,
     },
     summary: `${entries.length} RFC(s) found`,
+    nextSteps:
+      entries.length === 0
+        ? [
+            {
+              action: `Create a new RFC: pnpm exec forge run rfc.create --title "..."`,
+              kind: "optional",
+            },
+          ]
+        : undefined,
   };
 }
 
@@ -253,6 +262,12 @@ export async function runRfcCreate(
       consultedDecisions,
     },
     summary: `Created ${nextId}: ${title}`,
+    nextSteps: [
+      {
+        action: `Validate the RFC: pnpm exec forge run rfc.validate --file ${relativeFile}`,
+        kind: "optional",
+      },
+    ],
   };
 }
 
@@ -292,5 +307,11 @@ export async function runRfcNextId(
       scannedFiles: files.length,
     },
     summary: `Next RFC number: ${nextId}`,
+    nextSteps: [
+      {
+        action: `Create the RFC: pnpm exec forge run rfc.create --title "..."`,
+        kind: "optional",
+      },
+    ],
   };
 }
