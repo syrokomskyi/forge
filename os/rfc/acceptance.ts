@@ -340,5 +340,14 @@ export async function runRfcAcceptanceRun(
     data: { command: "rfc.acceptance.run", status, diagnostics, results },
     exitCode: failedCount > 0 ? 1 : 0,
     summary: `rfc.acceptance.run: ${results.length} RFC(s), ${failedCount} failed probe(s)`,
+    nextSteps:
+      failedCount > 0
+        ? [
+            {
+              action: `Fix the ${failedCount} failed acceptance probe(s) above, then re-run: pnpm exec forge run rfc.acceptance.run`,
+              kind: "required",
+            },
+          ]
+        : undefined,
   };
 }

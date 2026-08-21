@@ -323,7 +323,7 @@ export async function runSpecLiveMerge(
       );
     }
 
-    return { data: result, exitCode: 0, summary: `spec.live.merge: created ${domain} from ${rfcId}` };
+    return { data: result, exitCode: 0, summary: `spec.live.merge: created ${domain} from ${rfcId}`, nextSteps: [{ action: `Validate the living spec: pnpm exec forge run spec.live.validate`, kind: "optional" }] };
   }
 
   for (const heading of rfcHeadings) {
@@ -409,5 +409,5 @@ export async function runSpecLiveMerge(
     );
   }
 
-  return { data: result, exitCode: 0, summary: `spec.live.merge: modified ${domain} from ${rfcId}` };
+  return { data: result, exitCode: 0, summary: `spec.live.merge: modified ${domain} from ${rfcId}`, nextSteps: [{ action: `Validate the living spec: pnpm exec forge run spec.live.validate`, kind: "optional" }] };
 }

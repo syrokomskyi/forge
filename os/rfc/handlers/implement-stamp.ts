@@ -485,6 +485,12 @@ export async function runRfcImplementStamp(
       },
       exitCode: 0,
       summary: `rfc.implement.stamp: ${targetId} stamped as implemented`,
+      nextSteps: [
+        {
+          action: `Commit the stamp: pnpm exec forge run ecosystem.commit`,
+          kind: "optional",
+        },
+      ],
     };
   } finally {
     await releaseRfcLock(lockPath);
