@@ -4,6 +4,20 @@
 
 Portable governance engine for AI-assisted project development. Provides skills, RFC/ADR workflows, naming conventions, spec vendoring, and a CLI — all framework-agnostic and dependency-free (only `yaml` + `zod`).
 
+---
+
+## Start right now
+
+Create a new folder, open it in your AI IDE (Windsurf, Cursor, or any IDE that supports AI agents), and paste this:
+
+```
+Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my project. I want to build: [describe your project]
+```
+
+Replace `[describe your project]` with your idea — a game, a library, a knowledge base, anything. The AI agent installs Forge, scaffolds the project, and sets up a live preview. From there on, you just talk: describe what you want, and the agent builds it. No programming, no terminal, no commands.
+
+---
+
 ## What you can build with Forge
 
 Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
@@ -181,14 +195,6 @@ dotnet --version
 ---
 
 ## Quick start
-
-### No-terminal start
-
-Create a new folder, open it in your IDE, and paste this to your AI agent:
-
-```
-Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my project. I want to build: [describe your project]
-```
 
 ### For creative operators — one command, then just talk
 

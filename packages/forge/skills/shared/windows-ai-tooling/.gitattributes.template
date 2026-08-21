@@ -1,0 +1,49 @@
+# Auto detect text files and perform LF normalization
+* text=auto eol=lf
+
+# Source code
+*.ts text eol=lf
+*.tsx text eol=lf
+*.astro text eol=lf
+*.css text eol=lf
+*.scss text eol=lf
+*.json text eol=lf
+*.jsonc text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.mjs text eol=lf
+*.cjs text eol=lf
+*.js text eol=lf
+*.jsx text eol=lf
+*.sh text eol=lf
+*.ps1 text eol=lf
+
+# Add project-specific source extensions here:
+# *.go text eol=lf
+# *.rs text eol=lf
+# *.java text eol=lf
+# *.kt text eol=lf
+# *.cs text eol=lf
+# *.py text eol=lf
+# *.rb text eol=lf
+# *.php text eol=lf
+
+# Ensure Windows batch files still have CRLF (if any)
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Binary files (do not modify)
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.svg binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.mp4 binary
+*.webm binary
+*.webp binary

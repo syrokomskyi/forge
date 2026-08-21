@@ -1,0 +1,42 @@
+## Windows agent tooling
+
+This project is developed on Windows 10/11. AI agents editing this project must follow the command allow-list below instead of assuming a POSIX environment.
+
+### Tooling tiers
+
+| Tier | Delivery | Examples | How agents use them |
+| --- | --- | --- | --- |
+| **Native Windows** | winget or built-in | `git`, `node`, `npm`, `pnpm`, `python`, `pip`, `jq`, `curl`, `docker`, `wsl` | Directly in PowerShell/CMD. |
+| **Git Bash POSIX coreutils** | Shipped with `Git.Git` | `bash`, `grep`, `sed`, `awk`, `find`, `tar`, `ls`, `xargs` | Through `bash -c "..."`. Paths remain Windows-style. |
+| **WSL2 Ubuntu** | `wsl --install -d Ubuntu` | GNU coreutils, `apt` packages | Via `wsl <command>` or `wsl bash -c "..."`. Convert Windows paths with `wslpath` first. |
+
+### Verified installation commands
+
+```powershell
+winget install -e --id Git.Git
+winget install -e --id OpenJS.NodeJS.LTS
+winget install -e --id Python.Python.3
+winget install -e --id jqlang.jq
+winget install -e --id cURL.cURL
+winget install -e --id Docker.DockerDesktop
+wsl --install -d Ubuntu
+```
+
+### Agent command rules
+
+- **MAY** use `wsl <command>` when the tool is listed as WSL-only.
+- **MAY** use `bash -c "..."` when running inside Git Bash.
+- **MUST** convert Windows paths to WSL paths with `wslpath` before passing them to `wsl` commands.
+- **MUST NOT** assume `grep`, `find`, `sed`, `awk`, `jq`, `curl` exist in PowerShell unless installed natively and verified with `Get-Command`.
+- **MUST NOT** modify `.gitattributes` without explicit approval; the line-ending contract is load-bearing.
+- **SHOULD** prefer exact winget IDs (`-e --id`) when installing tools on Windows.
+
+### Path translation
+
+```powershell
+# PowerShell → WSL
+wsl bash -c "cat $(wslpath 'C:\Users\user\file.txt')"
+
+# PowerShell → Git Bash (paths stay Windows-style)
+bash -c "grep pattern C:/Users/user/file.txt"
+```
