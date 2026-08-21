@@ -186,6 +186,15 @@ export async function runCompassAuditPlan(
     data: { threshold, dueCount: items.length, items },
     exitCode: 0,
     summary: `[compass.audit.plan] ${items.length} files due for audit (threshold=${threshold})`,
+    nextSteps:
+      items.length > 0
+        ? [
+            {
+              action: `Record an audit: pnpm exec forge run compass.audit.record --file <path> --verdict <verdict> --revision <rev>`,
+              kind: "optional",
+            },
+          ]
+        : undefined,
   };
 }
 
@@ -251,6 +260,12 @@ export async function runCompassAuditRecord(
     data: { path: filePath, action: "recorded" },
     exitCode: 0,
     summary: `[compass.audit.record] ${filePath}: ${verdict} at revision ${revision}`,
+    nextSteps: [
+      {
+        action: `Validate audits: pnpm exec forge run compass.audit.validate`,
+        kind: "optional",
+      },
+    ],
   };
 }
 
@@ -378,5 +393,14 @@ export async function runCompassAuditValidate(
     data: { strict, dueCount, diagnostics },
     exitCode: hasErrors ? 1 : 0,
     summary: dueCount > 0 ? undefined : `[compass.audit.validate] OK (0 files overdue)`,
+    nextSteps:
+      dueCount > 0
+        ? [
+            {
+              action: `Fix the ${dueCount} overdue file(s) above, then re-run: pnpm exec forge run compass.audit.validate`,
+              kind: "required",
+            },
+          ]
+        : undefined,
   };
 }

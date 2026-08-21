@@ -168,6 +168,15 @@ export async function runWerkstattLockRecover(
     return {
       data: { recovered, failed },
       summary: `[werkstatt.lock.recover] ${recovered.length} artifact${recovered.length === 1 ? "" : "s"} recovered, ${failed.length} failure${failed.length === 1 ? "" : "s"}`,
+      nextSteps:
+        failed.length > 0
+          ? [
+              {
+                action: `Investigate the ${failed.length} failed recovery item(s) above and retry manually`,
+                kind: "required",
+              },
+            ]
+          : undefined,
     };
   } finally {
     await releaseLock(workspaceRoot, "werkstatt-recovery");

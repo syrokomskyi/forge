@@ -69,5 +69,14 @@ export async function runWerkstattLockStatus(
       staleCount,
     },
     summary: `[werkstatt.lock.status] ${locks.length} lock${locks.length === 1 ? "" : "s"}, ${staleCount} stale`,
+    nextSteps:
+      staleCount > 0
+        ? [
+            {
+              action: `Recover stale locks: pnpm exec forge run werkstatt.lock.recover`,
+              kind: "optional",
+            },
+          ]
+        : undefined,
   };
 }
