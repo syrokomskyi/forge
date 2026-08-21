@@ -230,6 +230,8 @@ If multiple RFCs were processed, present a single batch summary in `aiLanguage`.
 
 Do not output per-RFC summaries or "Moving to RFC-XXXX next" messages during the loop; they belong here, at the very end.
 
+After presenting the summary, follow the pipeline continuation protocol per `_shared/fo-pipeline-conventions.md` §Pipeline continuation — proactively suggest the next step (`fo-idea-implement`) and offer to proceed via `ask_user_question`. Do not automatically run the next skill — ask the operator first.
+
 ## Session affinity (advisory)
 
 When an RFC was planned in this session, prefer implementing it in this session too. The session context contains edge cases and mental models not fully captured in the plan text. If starting a new session, re-read the plan file and the RFC body before implementing. This is a recommendation, not a machine-enforced constraint — sessions have no forge-internal identity.

@@ -204,9 +204,9 @@ Integrate audit findings into RFC-XXXX (<title>). <count> direct fixes,
 
 Stage only the RFC files and audit files touched by this enhancement — do not stage unrelated changes.
 
-### 11. Stop
+### 11. Stop and suggest next step
 
-Do not run `/fo-idea-plan` — that is a separate skill for accepted RFCs. If the user asks to plan implementation, suggest running `/fo-idea-plan` after the RFC is accepted. If the user asks to implement, suggest running `/fo-idea-implement` — it requires a plan file and will stop if one is missing. The full pipeline is: create → audit → enhance → plan → implement.
+Follow the pipeline continuation protocol per `_shared/fo-pipeline-conventions.md` §Pipeline continuation — proactively suggest the next step (`fo-idea-plan`) and offer to proceed via `ask_user_question`. Do not automatically run the next skill — ask the operator first. The full pipeline is: create → audit → enhance → plan → implement.
 
 ## Constraints
 

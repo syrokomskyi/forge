@@ -276,6 +276,45 @@ When a pipeline step fails and cannot be auto-fixed within 2 attempts (per §Com
 
 The error checkpoint doubles as a resume marker: when resuming an interrupted session, scan for the last error checkpoint. If found, resume from the failed step using the partialState and resumePoint fields.
 
+## Pipeline continuation
+
+When a pipeline step completes (audit, enhance, plan), the agent MUST proactively suggest the next step and offer to proceed. This is NOT automatic chaining — the agent asks the operator first. This applies when the operator is manually driving the pipeline step by step.
+
+### After audit completes
+
+The audit report is persisted and committed. The agent MUST:
+
+1. Present the audit summary.
+2. State: "The next pipeline step is `fo-idea-enhance` — it applies the audit findings to the RFC."
+3. Ask: "Proceed to enhance?" using `ask_user_question` with "Yes, enhance" as the recommended option.
+4. If the operator says yes, invoke `fo-idea-enhance` via the `skill` tool.
+
+### After enhance completes
+
+The enhanced RFC is committed. The agent MUST:
+
+1. Present the enhancement summary.
+2. State: "The next pipeline step is `fo-idea-plan` — it transitions the RFC to accepted and creates the implementation plan."
+3. Ask: "Proceed to plan?" using `ask_user_question` with "Yes, plan" as the recommended option.
+4. If the operator says yes, invoke `fo-idea-plan` via the `skill` tool.
+
+### After plan completes
+
+The plan is committed. The agent MUST:
+
+1. Present the plan summary.
+2. State: "The next pipeline step is `fo-idea-implement` — it executes the plan and stamps the RFC as implemented."
+3. Ask: "Proceed to implement?" using `ask_user_question` with "Yes, implement" as the recommended option.
+4. If the operator says yes, invoke `fo-idea-implement` via the `skill` tool.
+
+### Exception: orchestrator skills
+
+When the pipeline is driven by `fo-idea-i-just-want-to-see-the-result` or `fo-idea-i-just-want-to-see-the-plan`, the orchestrator handles chaining automatically. The continuation suggestion is NOT emitted — the orchestrator's "no pauses between pipeline steps" rule applies.
+
+### Exception: operator declines
+
+If the operator declines the continuation suggestion, the agent stops. The operator can invoke the next step manually later. Do not re-ask.
+
 ## Batch plan preview
 
 When the orchestrator skill processes multiple documents (>=2), emit a batch plan preview before starting the first document. The preview is a table showing: processing order, document id, type, complexity estimate, dependencies, and notes.

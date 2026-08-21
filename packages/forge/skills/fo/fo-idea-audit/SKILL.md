@@ -236,9 +236,9 @@ Semantic audit of RFC-XXXX (<title>). Verdict: <approved | needs-revision | reje
 
 Stage only the audit file — do not stage unrelated changes. Another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
 
-### 8. Stop
+### 8. Stop and suggest next step
 
-Do not modify the RFC or any other file. Do not run `/fo-idea-plan` or `/fo-idea-implement` — those are separate skills with different purposes. Present the report and stop. If the user asks to fix the findings, suggest running `/fo-idea-enhance` — it reads the persisted audit and applies the fixes. The full pipeline is: create → audit → enhance → plan → implement.
+Do not modify the RFC or any other file. Present the report. Then follow the pipeline continuation protocol per `_shared/fo-pipeline-conventions.md` §Pipeline continuation — proactively suggest the next step (`fo-idea-enhance`) and offer to proceed via `ask_user_question`. Do not automatically run the next skill — ask the operator first. The full pipeline is: create → audit → enhance → plan → implement.
 
 ## Constraints
 
