@@ -103,5 +103,11 @@ export async function runExplorationShow(
       note,
     },
     summary: `Exploration note: ${note.id}`,
+    nextSteps: [
+      {
+        action: `Archive the note when done: pnpm exec forge run exploration.archive --id ${note.id}`,
+        kind: "optional",
+      },
+    ],
   };
 }

@@ -74,5 +74,13 @@ export async function runSpecLiveList(
     data: result,
     exitCode: 0,
     summary: `spec.live.list: ${entries.length} living spec(s)`,
+    nextSteps: entries.length > 0
+      ? [
+          {
+            action: `Validate living specs: pnpm exec forge run spec.live.validate`,
+            kind: "optional",
+          },
+        ]
+      : undefined,
   };
 }

@@ -234,5 +234,13 @@ export async function runRfcCheck(
     summary: hasErrors
       ? `${violations.length} artifact violation(s) found across ${checkedRfcs} RFC(s)`
       : `All ${checkedRfcs} RFC(s) passed artifact check`,
+    nextSteps: hasErrors
+      ? [
+          {
+            action: `Fix the ${violations.length} artifact violation(s) above, then re-run: pnpm exec forge run rfc.check`,
+            kind: "required",
+          },
+        ]
+      : undefined,
   };
 }

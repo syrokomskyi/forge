@@ -396,6 +396,12 @@ async function bootstrapComplete(
     },
     exitCode: 0,
     summary: `program.packet.complete: ${packetId} bootstrap completed — program now executing`,
+    nextSteps: [
+      {
+        action: `Seal the first execution packet: pnpm exec forge run program.packet.seal --packet <first-packet-id>`,
+        kind: "optional",
+      },
+    ],
   };
 }
 
@@ -421,5 +427,11 @@ function completeFail(
     },
     exitCode: 1,
     summary: `program.packet.complete: ${packetId} failed with ${violations.length} violation(s)`,
+    nextSteps: [
+      {
+        action: `Fix the ${violations.length} violation(s) above, then re-run: pnpm exec forge run program.packet.complete --packet ${packetId}`,
+        kind: "required",
+      },
+    ],
   };
 }

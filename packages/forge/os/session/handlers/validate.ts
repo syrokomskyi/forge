@@ -246,5 +246,13 @@ export async function runSessionValidate(
     summary: hasErrors
       ? `${violations.filter((v) => v.severity === "error").length} error(s) found`
       : `All ${filesToValidate.length} session file(s) passed validation`,
+    nextSteps: hasErrors
+      ? [
+          {
+            action: `Fix the ${violations.filter((v) => v.severity === "error").length} error(s) above, then re-run: pnpm exec forge run session.validate`,
+            kind: "required",
+          },
+        ]
+      : undefined,
   };
 }

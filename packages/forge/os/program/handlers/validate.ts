@@ -209,5 +209,11 @@ function failResult(
     },
     exitCode: 1,
     summary: `program.packet.validate: ${packetId} failed with ${violations.length} violation(s)`,
+    nextSteps: [
+      {
+        action: `Fix the ${violations.length} violation(s) above, then re-run: pnpm exec forge run program.packet.validate --packet ${packetId}`,
+        kind: "required",
+      },
+    ],
   };
 }
