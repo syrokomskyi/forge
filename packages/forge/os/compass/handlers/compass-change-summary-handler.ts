@@ -278,5 +278,11 @@ export async function runCompassSummaryTrim(
     },
     exitCode: 0,
     summary: `[compass.summary.trim] files=${results.length}, removed=${results.reduce((sum, r) => sum + r.removed.length, 0)}`,
+    nextSteps: [
+      {
+        action: `Commit the trimmed headers: pnpm exec forge run ecosystem.commit`,
+        kind: "optional",
+      },
+    ],
   };
 }

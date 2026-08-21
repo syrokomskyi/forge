@@ -222,6 +222,12 @@ export async function runCompassInventory(
     return {
       data: { entries: entries.length, outputPath: INVENTORY_OUTPUT_PATH, summary },
       summary: `[compass.inventory] previewed ${INVENTORY_OUTPUT_PATH}`,
+      nextSteps: [
+        {
+          action: `Write the inventory: pnpm exec forge run compass.inventory`,
+          kind: "optional",
+        },
+      ],
     };
   }
 
@@ -232,6 +238,19 @@ export async function runCompassInventory(
   return {
     data: { entries: entries.length, outputPath, summary },
     summary: `[compass.inventory] ${context.dryRun ? "previewed" : "wrote"} ${INVENTORY_OUTPUT_PATH}`,
+    nextSteps: context.dryRun
+      ? [
+          {
+            action: `Write for real: pnpm exec forge run compass.inventory`,
+            kind: "optional",
+          },
+        ]
+      : [
+          {
+            action: `Validate compass headers: pnpm exec forge run compass.validate`,
+            kind: "optional",
+          },
+        ],
   };
 }
 
