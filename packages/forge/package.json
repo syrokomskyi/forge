@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/forge",
-  "version": "2.9.7",
+  "version": "2.9.6",
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
@@ -172,8 +172,8 @@
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
-    "@warpgogol/werkstatt-shared": "*",
     "@warpgogol/werkstatt": "*",
+    "@warpgogol/werkstatt-shared": "*",
     "eslint": "^10.8.0",
     "fast-check": "^4.9.0",
     "typescript": "^6.0.3",
