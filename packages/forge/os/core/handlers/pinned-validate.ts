@@ -283,7 +283,9 @@ export async function runPinnedValidate(
         logger.success("pinned.validate: no violations");
       }
     } else {
-      logger.error(`pinned.validate: ${remainingViolations.length} violation(s) found`);
+      logger.error(
+        `pinned.validate: ${remainingViolations.length} violation${remainingViolations.length === 1 ? "" : "s"} found`,
+      );
       for (const v of remainingViolations) {
         logger.error(`  ${v.operation}: ${v.path} (mode: ${v.mode}) — ${v.reason}`);
       }
@@ -296,6 +298,6 @@ export async function runPinnedValidate(
     summary:
       status === "pass"
         ? `No violations${appliedOverrides.length > 0 ? ` (${appliedOverrides.length} override(s) applied)` : ""}`
-        : `${remainingViolations.length} violation(s) found`,
+        : `${remainingViolations.length} violation${remainingViolations.length === 1 ? "" : "s"} found`,
   };
 }

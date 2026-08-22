@@ -434,6 +434,6 @@ function leaseFail(
       violations,
     },
     exitCode: 1,
-    summary: `program.packet.lease: ${packetId} ${action} failed with ${violations.length} violation(s)`,
+    summary: `program.packet.lease: ${packetId} ${action} failed with ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
   };
 }

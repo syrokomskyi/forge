@@ -227,10 +227,14 @@ export async function runSessionValidate(
       }
       const errorCount = violations.filter((v) => v.severity === "error").length;
       const warnCount = violations.filter((v) => v.severity === "warning").length;
+      const parts: string[] = [];
+      if (errorCount > 0) parts.push(`${errorCount} error${errorCount === 1 ? "" : "s"}`);
+      if (warnCount > 0) parts.push(`${warnCount} warning${warnCount === 1 ? "" : "s"}`);
+      const counts = parts.join(", ");
       if (errorCount > 0) {
-        logger.error(`${errorCount} error(s), ${warnCount} warning(s)`);
+        logger.error(counts);
       } else {
-        logger.warn(`${warnCount} warning(s), 0 errors — passed`);
+        logger.warn(`${counts} — passed`);
       }
     }
   }
@@ -244,12 +248,12 @@ export async function runSessionValidate(
     },
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors
-      ? `${violations.filter((v) => v.severity === "error").length} error(s) found`
+      ? `${violations.filter((v) => v.severity === "error").length} error${violations.filter((v) => v.severity === "error").length === 1 ? "" : "s"} found`
       : `All ${filesToValidate.length} session file(s) passed validation`,
     nextSteps: hasErrors
       ? [
           {
-            action: `Fix the ${violations.filter((v) => v.severity === "error").length} error(s) above, then re-run: pnpm exec forge run session.validate`,
+            action: `Fix the ${violations.filter((v) => v.severity === "error").length} error${violations.filter((v) => v.severity === "error").length === 1 ? "" : "s"} above, then re-run: pnpm exec forge run session.validate`,
             kind: "required",
           },
         ]

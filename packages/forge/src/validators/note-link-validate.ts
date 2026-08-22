@@ -139,7 +139,7 @@ export function runNoteLinkValidate(
     exitCode: violations.length > 0 ? 1 : 0,
     summary:
       violations.length > 0
-        ? `note.link.validate: ${violations.length} violation(s) found`
+        ? `note.link.validate: ${violations.length} violation${violations.length === 1 ? "" : "s"} found`
         : "note.link.validate: OK — 0 violations",
   };
 }

@@ -248,10 +248,10 @@ function sealFail(
       violations,
     },
     exitCode: 1,
-    summary: `program.packet.seal: ${packetId} failed with ${violations.length} violation(s)`,
+    summary: `program.packet.seal: ${packetId} failed with ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
     nextSteps: [
       {
-        action: `Fix the ${violations.length} violation(s) above, then re-run: pnpm exec forge run program.packet.seal --packet ${packetId}`,
+        action: `Fix the ${violations.length} violation${violations.length === 1 ? "" : "s"} above, then re-run: pnpm exec forge run program.packet.seal --packet ${packetId}`,
         kind: "required",
       },
     ],

@@ -175,7 +175,7 @@ export async function runRfcIndexValidate(
     return {
       data: result,
       exitCode: 1,
-      summary: "1 error(s) found",
+      summary: "1 error found",
     };
   }
 
@@ -196,7 +196,7 @@ export async function runRfcIndexValidate(
     return {
       data: result,
       exitCode: 1,
-      summary: "1 error(s) found",
+      summary: "1 error found",
     };
   }
 
@@ -221,7 +221,7 @@ export async function runRfcIndexValidate(
       for (const v of violations) {
         logger.error(`[${v.rule}] ${v.message}`);
       }
-      logger.error(`${violations.length} error(s) found`);
+      logger.error(`${violations.length} error${violations.length === 1 ? "" : "s"} found`);
     } else {
       logger.success(`Index valid — ${indexCount} entries match ${fileCount} RFC files.`);
     }
@@ -231,7 +231,7 @@ export async function runRfcIndexValidate(
     data: result,
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors
-      ? `${violations.length} error(s) found`
+      ? `${violations.length} error${violations.length === 1 ? "" : "s"} found`
       : `Index valid — ${indexCount} entries match ${fileCount} RFC files`,
   };
 }

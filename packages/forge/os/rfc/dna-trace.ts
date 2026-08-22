@@ -233,7 +233,7 @@ export async function runRfcDnaTraceValidate(
       diagnostics,
     },
     exitCode: hasErrors ? 1 : 0,
-    summary: `rfc.dna.trace.validate: ${registryIds.size} DNA invariants, ${tracedDnaCount} traced, ${diagnostics.filter((d) => d.severity === "error").length} error(s)`,
+    summary: `rfc.dna.trace.validate: ${registryIds.size} DNA invariants, ${tracedDnaCount} traced, ${diagnostics.filter((d) => d.severity === "error").length} error${diagnostics.filter((d) => d.severity === "error").length === 1 ? "" : "s"}`,
   };
 }
 

@@ -151,7 +151,7 @@ export async function runSpecLiveValidate(
 
   if (outputFormat === "pretty") {
     if (hasFailures) {
-      logger.error(`spec.live.validate: ${violations.length} violation(s) across ${specsChecked} spec(s)`);
+      logger.error(`spec.live.validate: ${violations.length} violation${violations.length === 1 ? "" : "s"} across ${specsChecked} spec(s)`);
       for (const v of violations) {
         logger.error(`  ${v.rule}: ${v.message}`);
       }
@@ -164,7 +164,7 @@ export async function runSpecLiveValidate(
     data: result,
     exitCode: hasFailures ? 1 : 0,
     summary: hasFailures
-      ? `spec.live.validate: ${violations.length} violation(s)`
+      ? `spec.live.validate: ${violations.length} violation${violations.length === 1 ? "" : "s"}`
       : `spec.live.validate: ${specsChecked} spec(s) — pass`,
   };
 }

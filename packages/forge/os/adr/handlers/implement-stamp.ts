@@ -332,6 +332,6 @@ function stampFailResult(
       violations,
     },
     exitCode: 1,
-    summary: `${prefix}adr.implement.stamp: ${violations.length} violation(s)`,
+    summary: `${prefix}adr.implement.stamp: ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
   };
 }

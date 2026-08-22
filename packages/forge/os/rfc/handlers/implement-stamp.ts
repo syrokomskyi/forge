@@ -516,6 +516,6 @@ function stampFailResult(
       violations,
     },
     exitCode: 1,
-    summary: `${prefix}rfc.implement.stamp: ${violations.length} violation(s)`,
+    summary: `${prefix}rfc.implement.stamp: ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
   };
 }

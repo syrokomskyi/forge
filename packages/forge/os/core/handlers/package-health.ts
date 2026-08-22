@@ -199,12 +199,16 @@ export async function runPackageHealth(
           `forge.package.health: all ${packagesChecked} published package(s) healthy.`,
         );
       } else if (passed) {
-        logger.success(
-          `forge.package.health: ${packagesChecked} package(s) checked, ${warnings.length} warning(s).`,
+        logger.warn(
+          `forge.package.health: ${packagesChecked} package(s) checked, ${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`,
         );
       } else {
+        const parts: string[] = [];
+        parts.push(`${errors.length} error${errors.length === 1 ? "" : "s"}`);
+        if (warnings.length > 0)
+          parts.push(`${warnings.length} warning${warnings.length === 1 ? "" : "s"}`);
         logger.error(
-          `forge.package.health: ${errors.length} error(s), ${warnings.length} warning(s) across ${packagesChecked} package(s).`,
+          `forge.package.health: ${parts.join(", ")} across ${packagesChecked} package(s).`,
         );
       }
     }
@@ -220,9 +224,9 @@ export async function runPackageHealth(
     exitCode: passed ? 0 : 1,
     summary: passed
       ? warnings.length > 0
-        ? `All ${packagesChecked} package(s) passed with ${warnings.length} warning(s).`
+        ? `All ${packagesChecked} package(s) passed with ${warnings.length} warning${warnings.length === 1 ? "" : "s"}.`
         : `All ${packagesChecked} package(s) healthy.`
-      : `${errors.length} error(s) found across ${packagesChecked} package(s).`,
+      : `${errors.length} error${errors.length === 1 ? "" : "s"} found across ${packagesChecked} package(s).`,
     nextSteps: errors.map((e) => ({
       action: e.fixHint ?? e.message,
       kind: "required" as const,
