@@ -91,7 +91,7 @@ function deriveDomain(frontmatter: Record<string, unknown>): string | null {
     const packagesImpacted = frontmatter["packagesImpacted"];
     if (Array.isArray(packagesImpacted) && packagesImpacted.length > 0) {
       const firstPkg = String(packagesImpacted[0]);
-      return firstPkg.replace(/^packages\//, "");
+      return firstPkg.replace(/^packages\//, "").replace(/^@[^/]+\//, "");
     }
     return null;
   }
