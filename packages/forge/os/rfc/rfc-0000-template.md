@@ -8,10 +8,9 @@ kind: architecture
 scope: workspace
 owners:
   - architecture
-# Set by the deciding human together with the status change (RFC-0335).
+# Set by the deciding human together with the status change.
 # Draft scaffolds must keep this empty; do not prefill a default identity.
-# Format: human:<handle> (agent:<id> reserved — see RFC-0335).
-# Default reviewer when none is specified by the operator: human:andrii-syrokomskyi
+# Format: human:<handle>
 reviewers: []
 createdAt: YYYY-MM-DD
 updatedAt: YYYY-MM-DD
@@ -26,8 +25,6 @@ related:
   # - DNA-1
   # - AP-3
   # - RFC-0005
-  # - PAGE-MANDATORY-ARTIFACTS
-  # - COMPONENT-THREE-WAY-MIRROR
 # RFC-0331: DNA invariants this RFC implements, protects, or extends.
 # Required for architecture/contract RFCs created on or after 2026-07-07.
 # Entries must match ^DNA-\d+$ and exist in docs/architecture-dna.md.
@@ -55,17 +52,16 @@ appsImpacted: []
 packagesImpacted: []
 successSignals: []
 nonGoals: []
-# RFC-0268: OPTIONAL machine-checkable acceptance probes, executed on-demand
-# via `pnpm exec werkstatt run rfc.acceptance.run --id <this-rfc-id>` (never
-# automatically inside build pipelines). Closed probe vocabulary — see
-# docs/rfcs/rfc-0268-make-rfc-acceptance-criteria-machine-checkable.md.
+# OPTIONAL machine-checkable acceptance probes, executed on-demand
+# via `pnpm exec forge rfc.acceptance.run --id <this-rfc-id>` (never
+# automatically inside build pipelines).
 # acceptance:
 #   - probe: run
-#     command: "site-kernel run some.command.validate --app warpgogol-com"
+#     command: "pnpm exec forge some.command.validate"
 #     expect:
 #       exitCode: 0
 #   - probe: file-exists
-#     path: "packages/share/src/some-new-module.ts"
+#     path: "packages/my-package/src/some-new-module.ts"
 #   - probe: command-registered
 #     name: "some.new.command"
 #   - probe: file-contains
@@ -119,8 +115,8 @@ nonGoals: []
 <!-- Show the exact command(s) as a user would type them:
 
 ```sh
-pnpm exec werkstatt run domain.command --app main
-pnpm exec werkstatt run domain.command --all --json
+pnpm exec forge domain.command
+pnpm exec forge domain.command --json
 ```
 
 Describe flags, arguments, and scope (app | workspace).
@@ -150,7 +146,7 @@ interface ExampleResult {
 
 | Path | Role |
 |---|---|
-| `src/pages/[lang]/**/*.astro` | Scanned for violations |
+| `src/**/*.ts` | Scanned for violations |
 | `docs/rfcs/index.json` | Updated by rfc.index.generate |
 -->
 
@@ -163,7 +159,7 @@ interface ExampleResult {
   "command": "domain.command",
   "status": "fail",
   "violations": [
-    { "file": "src/pages/de/legal.astro", "rule": "missing-schema", "message": "..." }
+    { "file": "src/some-file.ts", "rule": "missing-schema", "message": "..." }
   ]
 }
 ```
@@ -216,12 +212,12 @@ interface ExampleResult {
 
 - Agents MAY implement code changes ONLY when this RFC has status: accepted (or implemented).
 - Agents MAY transition this RFC from `accepted` to `implemented` per RFC-0224 preconditions; reference this RFC ID in commits.
-- For RFCs created on or after 2026-07-07 with acceptance probes: before stamping `implemented`, run
-  `site-kernel run rfc.verification.emit --id <this-rfc-id>` and commit the evidence file
-  in the same commit (RFC-0330 amended transition precondition).
+- For RFCs with acceptance probes: before stamping `implemented`, run
+  `pnpm exec forge rfc.verification.emit --id <this-rfc-id>` and commit the evidence file
+  in the same commit.
 - Agents MUST NOT weaken or remove enforcement rules established by this RFC
   without a new RFC that supersedes it.
 - If implementation reveals an invariant conflict, run
-  `site-kernel run rfc.supersede.propose --id <this-rfc-id> --reason "..." --invariant "DNA-N"`
-  instead of working around it (RFC-0334).
+  `pnpm exec forge rfc.supersede.propose --id <this-rfc-id> --reason "..." --invariant "DNA-N"`
+  instead of working around it.
 -->

@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forge.init — deploys forge into a project: creates forge.yaml, PREFERENCES.md, copies skills to .agents/skills/, creates docs directories, copies RFC template. Config-driven via resolveForgeRoot and loadForgeConfig.</purpose>
+<purpose>forge.init — deploys forge into a project: creates forge.yaml, PREFERENCES.md, copies skills to .agents/skills/, creates docs directories, copies RFC and ADR templates. Config-driven via resolveForgeRoot and loadForgeConfig.</purpose>
 <non-goals>
   <item>Do not overwrite existing forge.yaml, PREFERENCES.md, or kernel.config.ts — skip with warning.</item>
   <item>Do not generate AGENTS.md — that is forge.agents.generate's responsibility.</item>
@@ -331,6 +331,35 @@ export function runInit(
     } else {
       fs.mkdirSync(dir, { recursive: true });
       created.push(`${label}`);
+    }
+  }
+
+  // 5. Copy neutral RFC and ADR templates into the project's docs directories.
+  // Templates are copied from the forge package so new projects can create
+  // RFCs and ADRs without falling back to the forge package's internal copy.
+  // Existing templates are never overwritten.
+  const templatesToCopy = [
+    {
+      src: path.join(forgeRoot, "os", "rfc", "rfc-0000-template.md"),
+      destRel: `${config.paths.rfcsDir}/rfc-0000-template.md`,
+      label: "docs/rfcs/rfc-0000-template.md",
+    },
+    {
+      src: path.join(forgeRoot, "os", "adr", "adr-0000-template.md"),
+      destRel: `${config.paths.adrsDir}/adr-0000-template.md`,
+      label: "docs/adrs/adr-0000-template.md",
+    },
+  ];
+  for (const { src, destRel, label } of templatesToCopy) {
+    const destPath = path.join(workspaceRoot, destRel);
+    if (fs.existsSync(destPath)) {
+      skipped.push(`${label} (already exists)`);
+    } else if (fs.existsSync(src)) {
+      fs.mkdirSync(path.dirname(destPath), { recursive: true });
+      fs.writeFileSync(destPath, fs.readFileSync(src, "utf8"), "utf8");
+      created.push(label);
+    } else {
+      errors.push(`Template source not found: ${src}`);
     }
   }
 

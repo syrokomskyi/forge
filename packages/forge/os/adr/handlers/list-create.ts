@@ -12,8 +12,11 @@
 */
 
 import fs from "node:fs/promises";
+import { existsSync } from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
+import { resolveForgeRoot } from "../../../src/config/forge-config.ts";
 import { listAdrFiles, readAndParseAdr } from "../frontmatter-io.ts";
 import type {
   ForgeCommandInput,
@@ -27,7 +30,13 @@ import type {
   AdrStatus,
   AdrScope,
 } from "../types.ts";
-import { ADR_DIR, ADR_TEMPLATE_FILE, ADR_SCOPES, ADR_STATUSES } from "../types.ts";
+import {
+  ADR_DIR,
+  ADR_TEMPLATE_FILE,
+  ADR_TEMPLATE_FALLBACK_FILE,
+  ADR_SCOPES,
+  ADR_STATUSES,
+} from "../types.ts";
 
 function toIsoDate(d: Date): string {
   return d.toISOString().slice(0, 10);
@@ -137,14 +146,13 @@ export async function runAdrCreate(
   const nextSlug = `adr-${paddedNum}`;
   const nextId = `ADR-${paddedNum}`;
 
-  const templateRelPath = ADR_TEMPLATE_FILE;
-  const templatePath = path.join(workspaceRoot, templateRelPath);
+  const templatePath = resolveAdrTemplate(workspaceRoot);
   let templateContent: string;
   try {
     templateContent = await fs.readFile(templatePath, "utf-8");
   } catch {
     throw new Error(
-      `ADR template not found at ${templateRelPath}. Ensure docs/adrs/ contains the template.`,
+      `ADR template not found at ${templatePath}. Ensure docs/adrs/ contains the template.`,
     );
   }
 
@@ -204,4 +212,40 @@ export async function runAdrCreate(
     },
     summary: `Created ${nextId}: ${title}`,
   };
+}
+
+// ---------------------------------------------------------------------------
+// ADR template resolver — finds adr-0000-template.md from project docs/adrs/
+// first (canonical location), then falls back to the forge package copy
+// (npm consumers without a project-level template).
+// ---------------------------------------------------------------------------
+
+function resolveAdrTemplate(workspaceRoot: string): string {
+  // 1. Try project-level docs/adrs/adr-0000-template.md (canonical)
+  const projectPath = path.join(workspaceRoot, ADR_TEMPLATE_FILE);
+  if (existsSync(projectPath)) return projectPath;
+
+  // 2. Try forge root (monorepo or npm-installed) — fallback copy
+  try {
+    const forgeRoot = resolveForgeRoot(workspaceRoot);
+    const p = path.join(forgeRoot, ADR_TEMPLATE_FALLBACK_FILE);
+    if (existsSync(p)) return p;
+  } catch {
+    // forge root not resolvable — fall through to module-relative search
+  }
+
+  // 3. Fallback: walk up from this module's location to find os/adr/adr-0000-template.md
+  const here = path.dirname(fileURLToPath(import.meta.url));
+  let dir = here;
+  for (let i = 0; i < 10; i++) {
+    const candidate = path.join(dir, "os", "adr", "adr-0000-template.md");
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+
+  throw new Error(
+    `ADR template not found. Tried ${ADR_TEMPLATE_FILE} relative to ${workspaceRoot}, forge root, and module-relative search from ${here}.`,
+  );
 }

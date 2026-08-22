@@ -308,7 +308,7 @@ If the ADR is `proposed` or `reviewing`, transition it to `accepted`:
 
 1. Set `status: accepted` in the frontmatter.
 2. Set `updatedAt: <today's date>`.
-3. If `reviewers` is empty, read the default reviewer(s) from the `reviewers` field comment in `docs/adrs/adr-0000-template.md` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
+3. If `reviewers` is empty, read the default reviewer(s) from the `reviewers` field comment in `docs/adrs/adr-0000-template.md`. Set all listed default reviewers.
 4. Commit:
 
    ```txt

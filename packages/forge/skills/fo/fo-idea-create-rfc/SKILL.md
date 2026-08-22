@@ -52,7 +52,7 @@ Ask the user for, or infer from context:
 - **liveSpec** — for feature-level RFCs (not governance/policy), suggest `liveSpec: true` to auto-derive a living spec domain from `packagesImpacted[0]`, or `liveSpec: <domain>` for an explicit domain. This enables automatic delta-merge into `docs/specs/live/<domain>.md` when the RFC is implemented.
 - **satisfies** — for `architecture` or `contract` RFCs, at least one `DNA-NN` invariant from `ref(forge.yaml bindings.paths.invariantsFile)`.
 - **related** — relevant RFCs, DNA ids, anti-patterns, specs.
-- **reviewer** — if the caller specifies a reviewer identity, use it. If not, default to `human:andrii-syrokomskyi` (matching the default in `os/rfc/rfc-0000-template.md` inside `@warpgogol/forge`) **only when the skill is also responsible for moving the RFC out of draft**. For a pure draft scaffold, leave `reviewers: []`.
+- **reviewer** — if the caller specifies a reviewer identity, use it. If not, read the default reviewer(s) from the `reviewers` field comment in `docs/rfcs/rfc-0000-template.md` **only when the skill is also responsible for moving the RFC out of draft**. For a pure draft scaffold, leave `reviewers: []`.
 
 ### 3. Grill the concept
 
@@ -78,7 +78,7 @@ ref(forge.yaml bindings.commands.validateRfc) --create --title="<title>" --kind=
 
 ### 5. Fill every section
 
-Read the generated file and the full template (`os/rfc/rfc-0000-template.md` inside `@warpgogol/forge`) as a guide. Replace placeholder text in every required section:
+Read the generated file and the full template (`docs/rfcs/rfc-0000-template.md`) as a guide. Replace placeholder text in every required section:
 
 - **Context** — the concrete situation, not a generic preamble.
 - **Problem** — the exact risk or gap this RFC closes.
@@ -129,7 +129,7 @@ Stage only the RFC file — do not stage unrelated changes. Another agent may be
 - Use the **full** RFC template for every RFC. Lightweight local decisions now use ADRs instead.
 - Do not change `status` past `draft`.
 - Do not add self-authorizing language such as "implementation may start before acceptance."
-- Do not default `reviewers` on drafts unless the skill is explicitly performing a status transition and the caller has not supplied a reviewer — in that case use `human:andrii-syrokomskyi`.
+- Do not default `reviewers` on drafts unless the skill is explicitly performing a status transition and the caller has not supplied a reviewer — in that case read the default reviewer(s) from the `reviewers` field comment in `docs/rfcs/rfc-0000-template.md`.
 - Keep `rfc.validate` clean before presenting the draft.
 - **Commit the RFC draft.** The RFC file must be committed after creation and validation — never left in the working tree.
 - **Never manually determine the RFC number.** Always use `rfc.create` (step 4) to assign the number. The RFC number space includes archived RFCs under `docs/rfcs/archive/` — a top-level-only scan of `docs/rfcs/` misses them and produces duplicate IDs. `rfc.create` scans the full tree recursively and picks the correct next number.
