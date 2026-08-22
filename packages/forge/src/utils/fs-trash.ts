@@ -16,9 +16,9 @@ Windows.</purpose>
 */
 
 import { existsSync } from "node:fs";
-import trash from "trash";
 
 export async function trashPath(targetPath: string): Promise<void> {
   if (!existsSync(targetPath)) return;
+  const { default: trash } = await import("trash");
   await trash(targetPath, { glob: false });
 }
