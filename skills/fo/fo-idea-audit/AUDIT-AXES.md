@@ -7,7 +7,7 @@ Load this file when running step 4 of `fo-idea-audit`. For each axis, check ever
 Beyond V-13 (required sections exist) and V-14 (≥3 acceptance items), check that each section contains real content, not template placeholders or empty HTML comments:
 
 - **Decision** is a single decision in present tense ("The kernel gains…"), not a wishlist or "we should".
-- **CLI surface** shows exact `pnpm exec werkstatt run …` invocations with flags and scope.
+- **CLI surface** shows exact project CLI invocations with flags and scope.
 - **TypeScript contracts** are minimal type signatures, not full implementations.
 - **File system responsibilities** table names concrete paths the RFC touches.
 - **Output format** documents the `--json` shape.

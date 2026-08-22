@@ -54,7 +54,7 @@ If any item is false, use `fo-idea-create-rfc` instead and stop.
 - **title** (required) — short imperative sentence.
 - **scope** — `package`, `app`, or `workspace`. Default `package`.
 - **decider** — default `architecture`. The named decider is the only role that may move the ADR out of `proposed`.
-- **reviewers** — default empty. When the operator has not specified a reviewer, read the default reviewer(s) from the `reviewers` field comment in `docs/adrs/adr-0000-template.md` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
+- **reviewers** — default empty. When the operator has not specified a reviewer, read the default reviewer(s) from the `reviewers` field comment in `docs/adrs/adr-0000-template.md`. Set all listed default reviewers.
 - **related** — any RFCs, ADRs, DNA invariants, or specs this decision relates to.
 
 ### 4. Grill the concept (skip if invoked with an accepted decision)

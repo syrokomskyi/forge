@@ -18,7 +18,7 @@ If the ADR is `proposed` or `reviewing`, transition it to `accepted`:
 
 1. Set `status: accepted` in the frontmatter.
 2. Set `updatedAt: <today's date>`.
-3. If `reviewers` is empty, read the default reviewer(s) from the `reviewers` field comment in `docs/adrs/adr-0000-template.md` (currently `human:andrii-syrokomskyi`). Set all listed default reviewers.
+3. If `reviewers` is empty, read the default reviewer(s) from the `reviewers` field comment in `docs/adrs/adr-0000-template.md`. Set all listed default reviewers.
 4. Commit:
 
    ```txt
@@ -56,7 +56,7 @@ After implementation is complete, run heavy checks for the impacted workspaces o
 1. ADR validation:
 
    ```sh
-   pnpm exec werkstatt run adr.validate <adr-id> --json
+   ref(forge.yaml bindings.commands.validateAdr)
    ```
 
 2. Determine impacted packages/apps from the ADR's `scope` and the files touched during implementation. Build only those workspaces:

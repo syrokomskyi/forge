@@ -92,6 +92,7 @@ export interface AdrCreateResult {
 
 export const ADR_DIR = "docs/adrs";
 export const ADR_TEMPLATE_FILE = "docs/adrs/adr-0000-template.md";
+export const ADR_TEMPLATE_FALLBACK_FILE = "os/adr/adr-0000-template.md";
 export const ADR_ID_PATTERN = /^ADR-\d{4}$/;
 
 export const ADR_REQUIRED_SECTIONS = [
