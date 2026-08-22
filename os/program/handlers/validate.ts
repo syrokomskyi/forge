@@ -186,7 +186,7 @@ export async function runValidate(
     summary:
       status === "pass"
         ? `program.packet.validate: ${packetId} passed (${phase})`
-        : `program.packet.validate: ${packetId} failed with ${violations.length} violation(s)`,
+        : `program.packet.validate: ${packetId} failed with ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
   };
 }
 
@@ -208,10 +208,10 @@ function failResult(
       violations,
     },
     exitCode: 1,
-    summary: `program.packet.validate: ${packetId} failed with ${violations.length} violation(s)`,
+    summary: `program.packet.validate: ${packetId} failed with ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
     nextSteps: [
       {
-        action: `Fix the ${violations.length} violation(s) above, then re-run: pnpm exec forge run program.packet.validate --packet ${packetId}`,
+        action: `Fix the ${violations.length} violation${violations.length === 1 ? "" : "s"} above, then re-run: pnpm exec forge run program.packet.validate --packet ${packetId}`,
         kind: "required",
       },
     ],

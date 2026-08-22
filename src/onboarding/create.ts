@@ -297,7 +297,7 @@ export async function runCreate(
 
   if (initResult.status !== "pass") {
     if (outputFormat === "pretty") {
-      logger.error(`Init failed with ${initResult.errors.length} error(s):`);
+      logger.error(`Init failed with ${initResult.errors.length} error${initResult.errors.length === 1 ? "" : "s"}:`);
       for (const err of initResult.errors.slice(0, 5)) {
         logger.error(`  ${err}`);
       }

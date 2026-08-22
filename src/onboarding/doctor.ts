@@ -1136,7 +1136,7 @@ export async function runDoctor(
 
     const parts: string[] = [];
     if (allViolations.length > 0) {
-      parts.push(`${allViolations.length} violation(s)`);
+      parts.push(`${allViolations.length} violation${allViolations.length === 1 ? "" : "s"}`);
       for (const v of allViolations.slice(0, 3)) {
         parts.push(`${v.invariantId}: ${v.file} — ${v.message}`);
       }

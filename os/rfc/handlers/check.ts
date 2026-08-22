@@ -219,7 +219,7 @@ export async function runRfcCheck(
       for (const v of violations) {
         logger.error(`[${v.kind}] ${v.rfcId}: ${v.message}`);
       }
-      logger.error(`${violations.length} violation(s) found`);
+      logger.error(`${violations.length} violation${violations.length === 1 ? "" : "s"} found`);
     }
   }
 
@@ -232,12 +232,12 @@ export async function runRfcCheck(
     },
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors
-      ? `${violations.length} artifact violation(s) found across ${checkedRfcs} RFC(s)`
+      ? `${violations.length} artifact violation${violations.length === 1 ? "" : "s"} found across ${checkedRfcs} RFC(s)`
       : `All ${checkedRfcs} RFC(s) passed artifact check`,
     nextSteps: hasErrors
       ? [
           {
-            action: `Fix the ${violations.length} artifact violation(s) above, then re-run: pnpm exec forge run rfc.check`,
+            action: `Fix the ${violations.length} artifact violation${violations.length === 1 ? "" : "s"} above, then re-run: pnpm exec forge run rfc.check`,
             kind: "required",
           },
         ]

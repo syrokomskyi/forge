@@ -307,7 +307,7 @@ export async function runWorkflowLint(
     exitCode: violations.length > 0 ? 1 : 0,
     summary:
       violations.length > 0
-        ? `workflow.lint: ${violations.length} violation(s)`
+        ? `workflow.lint: ${violations.length} violation${violations.length === 1 ? "" : "s"}`
         : `workflow.lint: ${workflows.length} workflow file(s) valid`,
   };
 }

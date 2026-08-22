@@ -490,7 +490,7 @@ export async function runSpecValidate(
         if (result.violations.length === 0) {
           logger.success(`spec.validate: ${result.id} — pass`);
         } else {
-          logger.error(`spec.validate: ${result.id} — ${result.violations.length} violation(s)`);
+          logger.error(`spec.validate: ${result.id} — ${result.violations.length} violation${result.violations.length === 1 ? "" : "s"}`);
           for (const v of result.violations) {
             logger.error(`  ${v.rule}: ${v.message}`);
           }

@@ -136,7 +136,7 @@ export function runNoteFrontmatterValidate(
     exitCode: violations.length > 0 ? 1 : 0,
     summary:
       violations.length > 0
-        ? `note.frontmatter.validate: ${violations.length} violation(s) found`
+        ? `note.frontmatter.validate: ${violations.length} violation${violations.length === 1 ? "" : "s"} found`
         : "note.frontmatter.validate: OK — 0 violations",
   };
 }

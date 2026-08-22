@@ -243,7 +243,7 @@ export async function runRfcCommandLifecycleValidate(
     },
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors
-      ? `${violations.filter((v) => v.severity === "error").length} command lifecycle error(s) found`
+      ? `${violations.filter((v) => v.severity === "error").length} command lifecycle error${violations.filter((v) => v.severity === "error").length === 1 ? "" : "s"} found`
       : `All ${checkedCount} RFC(s) passed command lifecycle validation`,
   };
 }

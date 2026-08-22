@@ -111,7 +111,7 @@ export async function runProfileValidate(
     for (const p of profileResults) {
       const icon = p.valid ? "✓" : "✖";
       const fn = p.valid ? logger.success : logger.error;
-      fn(`${icon} ${p.id}: ${p.valid ? "valid" : `${p.errors.length} error(s)`}`);
+      fn(`${icon} ${p.id}: ${p.valid ? "valid" : `${p.errors.length} error${p.errors.length === 1 ? "" : "s"}`}`);
       for (const err of p.errors) {
         logger.error(`  - ${err}`);
       }
