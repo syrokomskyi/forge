@@ -41,11 +41,11 @@ Forge — це **шар управління**: навички, RFC/ADR робо
 
 | Пакет | Призначення | Потрібен для |
 | --- | --- | --- |
-| `@warpgogol/werkstatt` | Рушій runtime — місії, релізи, розгортання Leitstand, сертифікація, Bordbuch, сховище артефактів | Усі типи проєктів з управлінням життєвим циклом |
-| `@warpgogol/werkstatt-shared` | Спільна інфраструктура — перевірки, інтеграція, онтологія, паспорт | Встановлюється автоматично з рушієм |
-| `@warpgogol/werkstatt-phaser-game` | Плагін Phaser-гри — валідатори phaser, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
-| `@warpgogol/werkstatt-godot-game` | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
-| `@warpgogol/werkstatt-knowledge` | Плагін системи знань — прив'язка джерел, канонічна верифікація, екстракція, матеріалізація, перевірки релізу | Проєкти систем знань (`knowledge-typescript-turborepo`) |
+| [`@warpgogol/werkstatt`](https://github.com/syrokomskyi/werkstatt) | Рушій runtime — місії, релізи, розгортання Leitstand, сертифікація, Bordbuch, сховище артефактів | Усі типи проєктів з управлінням життєвим циклом |
+| [`@warpgogol/werkstatt-shared`](https://github.com/syrokomskyi/werkstatt-shared) | Спільна інфраструктура — перевірки, інтеграція, онтологія, паспорт | Встановлюється автоматично з рушієм |
+| [`@warpgogol/werkstatt-phaser-game`](https://github.com/syrokomskyi/werkstatt-phaser-game) | Плагін Phaser-гри — валідатори phaser, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
+| [`@warpgogol/werkstatt-godot-game`](https://github.com/syrokomskyi/werkstatt-godot-game) | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
+| [`@warpgogol/werkstatt-knowledge`](https://github.com/syrokomskyi/werkstatt-knowledge) | Плагін системи знань — прив'язка джерел, канонічна верифікація, екстракція, матеріалізація, перевірки релізу | Проєкти систем знань (`knowledge-typescript-turborepo`) |
 
 ### Коли потрібні ці пакети
 
