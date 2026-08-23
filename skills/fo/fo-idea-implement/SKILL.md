@@ -100,6 +100,26 @@ Stage only the files touched by this step. Do not stage unrelated changes — an
 - **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology.** Use Compass (not GRACE) in all new code, documentation, and log messages.
 
+#### 4.3b. Write tests
+
+After implementing each plan step that produces or modifies code, write tests for the new behavior. Tests are written for **agents**, not humans — see `fo-add-tests` for the full process and decision tree.
+
+**Principles:**
+
+- **Test through public interfaces.** Tests verify behavior, not implementation details.
+- **Agent-readable failures.** When a test fails, the error message should tell an agent reading the console output what to fix and where — but only when the fix is not obvious from the assertion itself. If `expect(result).toBe(42)` fails with `received 41`, the fix is obvious. If a complex invariant fails, add a failure message: `expect(result, "Pipeline must skip already-validated entries — check the dedup guard in <function>")`).toEqual(expected)`.
+- **Per-function classification.** Pure functions with verifiable properties get PBT (`*.pbt.test.ts`); everything else gets example-based tests (`*.test.ts`). See `fo-add-tests` §Process step 2.
+- **Do not weaken or delete existing tests** without explicit operator direction.
+- **Run tests after writing them:** `ref(forge.yaml bindings.commands.test) --filter <package>` or `pnpm --filter <package> test`.
+
+Commit tests alongside the implementation they cover, or as a separate commit if the step was large:
+
+```txt
+test: RFC-XXXX step N — cover <module>
+
+Add unit and PBT coverage for <what was implemented in this step>.
+```
+
 #### 4.4. Run heavy checks
 
 After **all** plan steps are complete, run the heavy validation suite in order:
@@ -232,6 +252,26 @@ If the RFC has no `commands.*` changes (e.g. it only changes schemas, docs, or i
 
 This step is MANDATORY for any RFC with `commands.added`, `commands.changed`, or `commands.removed`. A stale manifest causes `RFC-CMD-02` violations that block `rfc.validate` for all implemented RFCs.
 
+#### 4.8c. Regenerate agent files (AGENTS.md)
+
+If the implementation changed contracts, conventions, commands, pipelines, package boundaries, or workflows that agents rely on, regenerate `AGENTS.md` so the generated instructions stay in sync with code:
+
+```sh
+ref(forge.yaml bindings.commands.agentsGenerate)
+```
+
+This regenerates root and nested `AGENTS.md` files from `forge.yaml` and stack profile data. The generated files carry a `<!-- forge:generated -->` marker — hand-written `AGENTS.md` files are never overwritten.
+
+Commit regenerated agent files:
+
+```txt
+docs: regenerate AGENTS.md for RFC-XXXX
+
+Update generated agent instructions after RFC-XXXX implementation changes.
+```
+
+Stage only the regenerated `AGENTS.md` files. If no agent-facing contracts changed (e.g. internal logic refactor with no new commands or conventions), skip this step.
+
 #### 4.9. Documentation audit (fo-doc-audit)
 
 After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, architecture-dna.md, templates, generated artifacts, COMMANDS.md/PACKAGE_GRAPH.md), applies needed updates, and commits them separately. Wait for it to complete.
@@ -339,6 +379,26 @@ Read the `## Decision` section and implement it in code. **For each decision poi
 
 - If a tool call fails with a recoverable error, recover autonomously: split content, use `edit`/`multi_edit`, decompose files, and retry immediately.
 
+#### 5.3b. Write tests
+
+After implementing the decision, write tests for the new behavior. Tests are written for **agents**, not humans — see `fo-add-tests` for the full process and decision tree.
+
+**Principles:**
+
+- **Test through public interfaces.** Tests verify behavior, not implementation details.
+- **Agent-readable failures.** When a test fails, the error message should tell an agent reading the console output what to fix and where — but only when the fix is not obvious from the assertion itself. If `expect(result).toBe(42)` fails with `received 41`, the fix is obvious. If a complex invariant fails, add a failure message: `expect(result, "Pipeline must skip already-validated entries — check the dedup guard in <function>")`).toEqual(expected)`.
+- **Per-function classification.** Pure functions with verifiable properties get PBT (`*.pbt.test.ts`); everything else gets example-based tests (`*.test.ts`). See `fo-add-tests` §Process step 2.
+- **Do not weaken or delete existing tests** without explicit operator direction.
+- **Run tests after writing them:** `ref(forge.yaml bindings.commands.test) --filter <package>` or `pnpm --filter <package> test`.
+
+Commit tests alongside the implementation they cover:
+
+```txt
+test: ADR-XXXX — cover <module>
+
+Add unit and PBT coverage for <what was implemented>.
+```
+
 #### 5.4. Run scoped build checks
 
 After implementation is complete, run heavy checks for the impacted workspaces only:
@@ -386,6 +446,26 @@ Continue until all impacted checks pass.
 After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces, applies needed updates, and commits them separately. Wait for it to complete.
 
 If `fo-doc-audit` reports that no updates are needed, proceed to the next step.
+
+#### 5.6b. Regenerate agent files (AGENTS.md)
+
+If the implementation changed contracts, conventions, commands, pipelines, package boundaries, or workflows that agents rely on, regenerate `AGENTS.md` so the generated instructions stay in sync with code:
+
+```sh
+ref(forge.yaml bindings.commands.agentsGenerate)
+```
+
+This regenerates root and nested `AGENTS.md` files from `forge.yaml` and stack profile data. The generated files carry a `<!-- forge:generated -->` marker — hand-written `AGENTS.md` files are never overwritten.
+
+Commit regenerated agent files:
+
+```txt
+docs: regenerate AGENTS.md for ADR-XXXX
+
+Update generated agent instructions after ADR-XXXX implementation changes.
+```
+
+Stage only the regenerated `AGENTS.md` files. If no agent-facing contracts changed, skip this step.
 
 #### 5.7. Code review (fo-review)
 

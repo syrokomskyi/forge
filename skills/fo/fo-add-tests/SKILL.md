@@ -15,6 +15,60 @@ Before starting, read `PREFERENCES.md` at the repository root. If the file is mi
 
 Write tests for code that was produced in the current session, or for a file/module the operator points at. The skill decides per-function whether to write example-based tests, property based tests (PBT), or both — following the RFC-XXXX decision tree and the TDD discipline absorbed from the former `tdd` skill.
 
+## Tests are written for agents, not humans
+
+The primary reader of test output is an **AI agent** looking at a console — not a human reading a test file. This changes how tests should be written:
+
+### Agent-readable failure messages
+
+When a test fails, the agent reading the console output needs to know **what to fix and where**. Vitest's default output shows the assertion, the expected value, and the received value. For simple assertions this is enough — `expect(result).toBe(42)` failing with `received 41` makes the fix obvious.
+
+For **non-obvious failures** — complex invariants, multi-step pipelines, domain-specific rules — add a failure message that tells the agent what went wrong and where to look:
+
+```ts
+// Good: obvious failure — no message needed
+expect(normalized).toBe("hello world");
+
+// Good: non-obvious failure — message guides the agent
+expect(
+  result.deduplicatedCount,
+  "Pipeline must skip already-validated entries. If count > 0, check the dedup guard in validateEntry() — entries with a matching hash in the seen-set should be skipped, not re-processed.",
+).toBe(0);
+
+// Good: invariant failure — message explains the contract
+expect(
+  manifest.entries.length,
+  "Every published Nachweis must produce exactly one manifest entry. Missing entries indicate nachweis-publish.ts skipped a record — check the bordbuch filter.",
+).toBe(publishedCount);
+```
+
+### When to add a message
+
+- **Obvious from the assertion** (simple equality, type check, presence check) → no message needed. The assertion itself is the documentation.
+- **Non-obvious invariant** (multi-step pipeline, domain rule, cross-module contract) → add a message explaining what the invariant is and where to look if it fails.
+- **PBT property** → the comment above the property already explains the algebraic property. No additional failure message needed unless the property name is unclear.
+
+### What makes a good failure message
+
+A good failure message answers two questions for the agent:
+
+1. **What is the invariant?** — state the contract in plain language.
+2. **Where to look** — name the function, file, or logic branch that is likely wrong.
+
+Bad: `"test failed"` — tells the agent nothing. Bad: `"count should be zero"` — restates the assertion, adds no information. Good: `"Pipeline must skip already-validated entries — check the dedup guard in validateEntry()"` — states the invariant and points to the likely fix location.
+
+### Test naming
+
+Test names are specifications — they describe behavior, not implementation. An agent scanning test names should understand what the system does without reading the test body.
+
+```ts
+// Bad — describes implementation
+test("calls validateEntry with correct args", () => { ... });
+
+// Good — describes behavior
+test("pipeline skips entries that were already validated in a previous run", () => { ... });
+```
+
 ## Preconditions
 
 - The code to test must exist in the workspace — either produced earlier in this session, or at a path the operator provides.
