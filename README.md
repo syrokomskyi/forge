@@ -41,11 +41,11 @@ For full project lifecycle management — missions, releases, deployment, certif
 
 | Package | Purpose | Required for |
 | --- | --- | --- |
-| `@warpgogol/werkstatt` | Runtime engine — missions, releases, Leitstand deployment, certification, Bordbuch, artifact store | All project types with lifecycle management |
-| `@warpgogol/werkstatt-shared` | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
-| `@warpgogol/werkstatt-phaser-game` | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
-| `@warpgogol/werkstatt-godot-game` | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
-| `@warpgogol/werkstatt-knowledge` | Knowledge plugin — source binding, canonical verification, extraction, materialization, release checks | Knowledge system projects (`knowledge-typescript-turborepo`) |
+| [`@warpgogol/werkstatt`](https://github.com/syrokomskyi/werkstatt) | Runtime engine — missions, releases, Leitstand deployment, certification, Bordbuch, artifact store | All project types with lifecycle management |
+| [`@warpgogol/werkstatt-shared`](https://github.com/syrokomskyi/werkstatt-shared) | Shared infrastructure — checks, integration, ontology, passport | Installed automatically with the engine |
+| [`@warpgogol/werkstatt-phaser-game`](https://github.com/syrokomskyi/werkstatt-phaser-game) | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
+| [`@warpgogol/werkstatt-godot-game`](https://github.com/syrokomskyi/werkstatt-godot-game) | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
+| [`@warpgogol/werkstatt-knowledge`](https://github.com/syrokomskyi/werkstatt-knowledge) | Knowledge plugin — source binding, canonical verification, extraction, materialization, release checks | Knowledge system projects (`knowledge-typescript-turborepo`) |
 
 ### When you need these packages
 
