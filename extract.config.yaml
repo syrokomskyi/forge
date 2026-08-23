@@ -20,6 +20,7 @@ ci:
   provider: github-actions
   publish: true
   nodeVersion: 24
+  provenance: true
 
 ignoreDirs:
   - .turbo
