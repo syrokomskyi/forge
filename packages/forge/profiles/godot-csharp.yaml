@@ -81,7 +81,7 @@ prerequisites:
 workspaceTypes:
   - id: game
     detect:
-      glob: "project.godot"
+      glob: project.godot
     skills:
       - godot-feature
       - godot-scene-review
@@ -93,13 +93,13 @@ invariants:
     check:
       kind: filename-pattern
       glob: "**/*.tscn"
-      pattern: "^Scenes/"
+      pattern: ^Scenes/
   - id: GODOT-02
     rule: The .godot/ directory must not be committed to git
     severity: error
     check:
       kind: gitignore-entry
-      pattern: ".godot/"
+      pattern: .godot/
   - id: GODOT-03
     rule: No hardcoded API keys or secrets in C# source files
     severity: error
@@ -111,7 +111,7 @@ invariants:
     severity: warning
     check:
       kind: file-contains
-      glob: "project.godot"
+      glob: project.godot
       pattern: ""
 workspace:
   dirs:

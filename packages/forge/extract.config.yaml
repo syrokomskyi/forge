@@ -15,7 +15,7 @@ preservePackages:
 stubPackages:
   - "@warpgogol/werkstatt-engine"
   - "@warpgogol/werkstatt-shared"
-packageManager: "pnpm"
+packageManager: pnpm
 
 ci:
   provider: github-actions
