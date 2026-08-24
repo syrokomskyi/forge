@@ -15,6 +15,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeNamingModule: ForgeModule = {
   name: "forge-naming",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runNamingConventionLint } = await import("./naming-convention.ts");
     registry.registerCommand({

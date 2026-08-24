@@ -16,6 +16,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeProgramModule: ForgeModule = {
   name: "forge-program",
   version: "0.1.0",
+  runtime: "autonomous",
 
   async register(registry) {
     const { runValidate } = await import("./handlers/validate.ts");

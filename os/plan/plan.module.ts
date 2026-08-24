@@ -15,6 +15,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgePlanModule: ForgeModule = {
   name: "forge-plan",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runPlanArchive } = await import("./handlers/archive.ts");
 

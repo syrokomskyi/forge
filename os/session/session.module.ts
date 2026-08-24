@@ -15,6 +15,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeSessionModule: ForgeModule = {
   name: "forge-session",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runSessionSave } = await import("./handlers/save.ts");
     const { runSessionArchive } = await import("./handlers/archive.ts");

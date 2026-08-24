@@ -48,6 +48,7 @@ import { loadForgeConfig } from "../../src/config/forge-config.ts";
 export const forgeCoreModule: ForgeModule = {
   name: "forge-core",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runScaffold } = await import("../../src/onboarding/scaffold.ts");
     const { runSkillValidate } = await import("../../src/validators/skill-validate.ts");

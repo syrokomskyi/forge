@@ -28,7 +28,7 @@ export interface ForgeModuleRegistry {
 export interface ForgeModule {
   name: string;
   version: string;
-  runtime?: "autonomous" | "werkstatt-adapter";
+  runtime: "autonomous" | "werkstatt-adapter";
   register(registry: ForgeModuleRegistry): void | Promise<void>;
 }
 

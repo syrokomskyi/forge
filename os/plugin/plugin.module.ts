@@ -232,6 +232,7 @@ function runPluginDiscover(
 export const forgePluginModule: ForgeModule = {
   name: "forge-plugin",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     registry.registerCommand({
       name: "forge.plugin.validate",

@@ -19,6 +19,7 @@ import { runWerkstattOperationValidate } from "./handlers/werkstatt-operation-va
 export const forgeWerkstattModule: ForgeModule = {
   name: "forge-werkstatt",
   version: "0.1.0",
+  runtime: "werkstatt-adapter",
   async register(registry) {
     registry.registerCommand({
       name: "werkstatt.lock.status",
