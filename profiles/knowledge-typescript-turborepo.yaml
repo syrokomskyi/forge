@@ -104,7 +104,7 @@ plugin:
   id: werkstatt-knowledge
   package: "@warpgogol/werkstatt-knowledge"
 install:
-  - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt @warpgogol/werkstatt-knowledge prettier
+  - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt-engine @warpgogol/werkstatt-knowledge prettier
 agents:
   root: |
     # Knowledge Base Workshop

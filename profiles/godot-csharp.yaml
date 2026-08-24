@@ -374,7 +374,7 @@ workspace:
             "turbo": "^2.3.0",
             "prettier": "^3.4.0",
             "@warpgogol/forge": "^2.2.0",
-            "@warpgogol/werkstatt": "^1.2.0",
+            "@warpgogol/werkstatt-engine": "^1.2.0",
             "@warpgogol/werkstatt-godot-game": "^0.6.0"
           }
         }
@@ -625,7 +625,7 @@ workspace:
         console.log(`Cleaned ${toDelete.length} directories.`);
     - path: tools/kernel.config.ts
       content: |
-        import { defineKernelConfig } from "@warpgogol/werkstatt/kernel/types";
+        import { defineKernelConfig } from "@warpgogol/werkstatt-engine/kernel/types";
         import { werkstattGodotPlugin } from "@warpgogol/werkstatt-godot-game";
 
         export default defineKernelConfig({
@@ -646,16 +646,16 @@ workspace:
             "forge-exploration": async () => (await import("@warpgogol/forge/os/exploration")).forgeExplorationModule,
             "forge-program": async () => (await import("@warpgogol/forge/os/program")).forgeProgramModule,
             "forge-werkstatt": async () => (await import("@warpgogol/forge/os/werkstatt")).forgeWerkstattModule,
-            mission: async () => (await import("@warpgogol/werkstatt/mission-module")).createMissionModule(),
-            sternsystem: async () => (await import("@warpgogol/werkstatt/sternsystem-module")).createSternsystemModule(),
-            bordbuch: async () => (await import("@warpgogol/werkstatt/bordbuch-module")).createBordbuchModule(),
-            "artifact-store": async () => (await import("@warpgogol/werkstatt/artifact-store-module")).createArtifactStoreModule(),
-            release: async () => (await import("@warpgogol/werkstatt/release-module")).createReleaseModule(),
-            leitstand: async () => (await import("@warpgogol/werkstatt/leitstand-module")).createLeitstandModule(),
-            notausgang: async () => (await import("@warpgogol/werkstatt/notausgang-module")).createNotausgangModule(),
-            evidence: async () => (await import("@warpgogol/werkstatt/evidence-module")).createEvidenceModule(),
-            "werkstatt-plugin": async () => (await import("@warpgogol/werkstatt/os/werkstatt-plugin-module")).forgeWerkstattPluginModule,
-            "werkstatt-autonomy": async () => (await import("@warpgogol/werkstatt/os/werkstatt-autonomy-module")).werkstattAutonomyModule,
+            mission: async () => (await import("@warpgogol/werkstatt-engine/mission-module")).createMissionModule(),
+            sternsystem: async () => (await import("@warpgogol/werkstatt-engine/sternsystem-module")).createSternsystemModule(),
+            bordbuch: async () => (await import("@warpgogol/werkstatt-engine/bordbuch-module")).createBordbuchModule(),
+            "artifact-store": async () => (await import("@warpgogol/werkstatt-engine/artifact-store-module")).createArtifactStoreModule(),
+            release: async () => (await import("@warpgogol/werkstatt-engine/release-module")).createReleaseModule(),
+            leitstand: async () => (await import("@warpgogol/werkstatt-engine/leitstand-module")).createLeitstandModule(),
+            notausgang: async () => (await import("@warpgogol/werkstatt-engine/notausgang-module")).createNotausgangModule(),
+            evidence: async () => (await import("@warpgogol/werkstatt-engine/evidence-module")).createEvidenceModule(),
+            "werkstatt-plugin": async () => (await import("@warpgogol/werkstatt-engine/os/werkstatt-plugin-module")).forgeWerkstattPluginModule,
+            "werkstatt-autonomy": async () => (await import("@warpgogol/werkstatt-engine/os/werkstatt-autonomy-module")).werkstattAutonomyModule,
             "__PROJECT_NAME__-plugin": async () => werkstattGodotPlugin,
           },
         });
@@ -792,7 +792,7 @@ workspace:
 
         ## Stack
 
-        - Engine: @warpgogol/werkstatt
+        - Engine: @warpgogol/werkstatt-engine
         - Plugin: @warpgogol/werkstatt-godot-game
         - Stack profile: godot-csharp
 install:
