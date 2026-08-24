@@ -12,8 +12,9 @@ stripScopes:
   - "@warpgogol/"
 preservePackages:
   - "@warpgogol/forge"
-  - "@warpgogol/werkstatt-shared"
+stubPackages:
   - "@warpgogol/werkstatt-engine"
+  - "@warpgogol/werkstatt-shared"
 packageManager: "pnpm"
 
 ci:
@@ -36,9 +37,6 @@ postProcess:
     path: AGENTS.md
   - action: delete
     path: pnpm-lock.yaml
-  - action: copy
-    from: packages/forge/pnpm-workspace.override.yaml
-    to: pnpm-workspace.yaml
 
 git:
   remote: git@github.com:syrokomskyi/forge.git
