@@ -5,7 +5,7 @@ Portable governance skills and command modules extracted from the engine (RFC-03
 ## Architecture
 
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
-- `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed.
+- `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed. RFC-0940: all `os/*.module.ts` files declare a required `runtime` field (`"autonomous"` or `"werkstatt-adapter"`). Only `os/werkstatt/` may import `@warpgogol/werkstatt` — all other `os/` directories are autonomous. `@warpgogol/werkstatt-shared` is exempt (shared infrastructure). `forge.autonomy.validate` enforces FORGE-AUTONOMY-01. Type-only imports (`import type`) are exempt.
 - `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/werkstatt`.
 - `skills/` — forge-managed skill definitions (29 fo skills + 5 shared + 3 meta = 37 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
@@ -17,7 +17,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `pinned.validate`, `pinned.init`, `package.health`, `docs.archive` | `os/core/` |
+| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `pinned.validate`, `pinned.init`, `package.health`, `docs.archive`, `forge.autonomy.validate` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
