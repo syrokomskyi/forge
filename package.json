@@ -5,15 +5,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
-  "keywords": [
-    "rfc",
-    "adr",
-    "governance",
-    "skills",
-    "ai-agent",
-    "documentation",
-    "framework"
-  ],
+  "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
   "homepage": "https://warpgogol.com",
   "repository": {
     "type": "git",
@@ -179,7 +171,7 @@
     "@types/node": "^24.0.0",
     "@types/picomatch": "^4.0.2",
     "@warpgogol/werkstatt-engine": "*",
-    "@warpgogol/werkstatt-shared": "^0.8.6",
+    "@warpgogol/werkstatt-shared": "*",
     "eslint": "^10.8.0",
     "fast-check": "^4.9.0",
     "typescript": "^6.0.3",
