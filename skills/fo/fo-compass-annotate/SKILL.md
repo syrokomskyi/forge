@@ -123,6 +123,7 @@ Output a summary:
 ## Completion criteria
 
 - All discovered files have `MODULE_CONTRACT` and `CHANGE_SUMMARY` blocks.
+- Pack-declared Compass contract blocks (RFC-0943, if any are declared in `forge.plugin.yaml` `extensionPoints.compass.contract`) are present in matching files.
 - `compass.validate` passes with zero errors.
 - No `TODO(compass)` sentinels remain (if `--cleanup` was used).
 - All changes are committed with message `compass: update headers for changed files`.

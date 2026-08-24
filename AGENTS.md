@@ -34,6 +34,16 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeProgramModule` | `program.packet.validate`, `program.packet.seal`, `program.packet.lease`, `program.packet.complete` | `os/program/` |
 | `forgePluginModule` | `forge.plugin.validate`, `forge.plugin.discover` | `os/plugin/` |
 
+## Compass contract extension points (RFC-0943)
+
+Skill packs MAY declare additional Compass contract blocks beyond the built-in `MODULE_CONTRACT` and `CHANGE_SUMMARY` via `forge.plugin.yaml` `extensionPoints.compass.contract.blocks[]`. Each block spec is declarative data:
+
+- `blockId` — kebab-case identifier (e.g. `api-contract`). The marker in source files is the uppercased, underscore-separated form (e.g. `<API_CONTRACT>`).
+- `requiredFor` — glob patterns matching files that must carry this block (e.g. `["packages/my-pack/**/*.ts"]`).
+- `requiredTags` — optional array of `{ name, minWords? }` tags that must appear inside the block.
+
+`compass.validate` loads block specs from all declared skill packs via `loadContractRegistry` and emits `COMPASS-PLUGIN-01` (missing block), `COMPASS-PLUGIN-02` (missing required tag), and `COMPASS-PLUGIN-03` (tag below minWords) diagnostics. Duplicate `blockId` across packs is rejected with `COMPASS-PLUGIN-DUP-01`. The `FORBIDDEN_PATTERNS` negative list stays hardcoded in `compass-inventory.ts` and is not extensible by packs.
+
 ## Program packet control plane (RFC-0856)
 
 The program packet control plane governs sequential packet execution under `forge/program@1`. It validates boundaries; it does not execute implementation commands or commit on behalf of agents.
