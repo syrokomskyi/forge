@@ -17,6 +17,7 @@
   <item>RFC-0524: added optional knowledge?: string[] field for cumulative knowledge system. Added knowledge arrays to fo-site-scan and grilling.</item>
   <item>RFC-0538: added fo-compass-annotate skill (22nd fo skill) — full-lifecycle Compass header management replacing removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add kernel commands.</item>
   <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to warpgogol-skills as wg- pack skills).</item>
+  <item>RFC-0941: discoverPackSkills now requires forge.plugin.yaml manifest at each pack root — throws on missing or invalid manifest (fail-fast).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +25,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { ForgeConfig } from "./config/forge-config.ts";
+import { forgePluginManifestSchema } from "./plugin/ForgePluginManifest.ts";
 
 /**
  * Every entry MUST be portable — it runs in any forge-bootstrapped project
@@ -68,6 +70,40 @@ export function discoverPackSkills(workspaceRoot: string, config: ForgeConfig): 
   for (const pack of config.skillPacks) {
     const packDir = path.resolve(workspaceRoot, pack.dir);
     if (!fs.existsSync(packDir)) continue;
+
+    const manifestPath = path.join(packDir, "forge.plugin.yaml");
+    if (!fs.existsSync(manifestPath)) {
+      throw new Error(
+        `forge.plugin.yaml not found at ${packDir} for pack prefix "${pack.prefix}". ` +
+          "Run `forge init` to create manifests for declared skill packs (RFC-0941).",
+      );
+    }
+
+    let manifestRaw: string;
+    try {
+      manifestRaw = fs.readFileSync(manifestPath, "utf-8");
+    } catch (err) {
+      throw new Error(
+        `Failed to read forge.plugin.yaml at ${manifestPath}: ${(err as Error).message}`,
+      );
+    }
+
+    let manifestParsed: unknown;
+    try {
+      manifestParsed = parseYaml(manifestRaw);
+    } catch (err) {
+      throw new Error(
+        `forge.plugin.yaml at ${manifestPath} is not valid YAML: ${(err as Error).message}`,
+      );
+    }
+
+    const manifestResult = forgePluginManifestSchema.safeParse(manifestParsed);
+    if (!manifestResult.success) {
+      const issues = manifestResult.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ");
+      throw new Error(`forge.plugin.yaml at ${manifestPath} failed schema validation: ${issues}`);
+    }
 
     const entries = fs.readdirSync(packDir, { withFileTypes: true });
     for (const entry of entries) {

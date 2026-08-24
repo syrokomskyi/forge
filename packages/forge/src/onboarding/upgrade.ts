@@ -213,7 +213,12 @@ function syncPackSkills(
   const updated: string[] = [];
   const skipped: SkippedSkill[] = [];
   const agentsSkillsDir = path.join(workspaceRoot, skillsDir);
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — skip pack skill sync
+  }
   const forgeSkillNames = new Set(FORGE_SKILLS.map((s) => s.name));
 
   for (const skill of packSkills) {

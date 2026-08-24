@@ -256,7 +256,12 @@ async function checkStaleKnowledgeFiles(
   }
 
   // RFC-0539: Check pack skill knowledge files
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — skip pack skill checks
+  }
   for (const skill of packSkills) {
     if (!skill.knowledge || skill.knowledge.length === 0) continue;
 
@@ -327,7 +332,12 @@ function checkLegacyKnowledgeSections(
   }
 
   // Check pack skills
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — skip pack skill checks
+  }
   for (const skill of packSkills) {
     if (!skill.knowledge || skill.knowledge.length === 0) continue;
     const skillDir = join(workspaceRoot, skill.dir, dirname(skill.path));
@@ -416,7 +426,12 @@ function checkKnowledgeBudgets(
     }
   }
 
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — skip pack skill checks
+  }
   for (const skill of packSkills) {
     if (!skill.knowledge || skill.knowledge.length === 0) continue;
     const skillDir = join(workspaceRoot, skill.dir, dirname(skill.path));
@@ -503,7 +518,12 @@ function collectL2Files(
     }
   }
 
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — skip pack skill checks
+  }
   for (const skill of packSkills) {
     if (!skill.knowledge || skill.knowledge.length === 0) continue;
     const skillDir = join(workspaceRoot, skill.dir, dirname(skill.path));
@@ -700,7 +720,12 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
   }
 
   // Check for stale/missing pack skill copies
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — skip pack skill checks
+  }
   const agentsSkillsDir = join(workspaceRoot, config.paths.skillsDir);
 
   for (const skill of packSkills) {
