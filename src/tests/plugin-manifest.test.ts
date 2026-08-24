@@ -1,7 +1,7 @@
 import { test, expect, describe } from "vitest";
 import { forgePluginManifestSchema } from "../plugin/ForgePluginManifest.ts";
 
-describe("forgePluginManifestSchema (RFC-0941)", () => {
+describe("forgePluginManifestSchema (RFC-0941, RFC-0943)", () => {
   test("accepts valid manifest with id and version", () => {
     const result = forgePluginManifestSchema.safeParse({
       id: "wg",
@@ -76,7 +76,7 @@ describe("forgePluginManifestSchema (RFC-0941)", () => {
     const result = forgePluginManifestSchema.safeParse({
       id: "wg",
       version: "1.0.0",
-      extensionPoints: [],
+      unexpectedField: true,
     });
     expect(result.success).toBe(false);
   });
@@ -91,6 +91,136 @@ describe("forgePluginManifestSchema (RFC-0941)", () => {
 
   test("rejects empty object", () => {
     const result = forgePluginManifestSchema.safeParse({});
+    expect(result.success).toBe(false);
+  });
+
+  // RFC-0943: extensionPoints.compass.contract
+
+  test("accepts manifest with extensionPoints.compass.contract", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        compass: {
+          contract: {
+            blocks: [
+              {
+                blockId: "api-contract",
+                requiredFor: ["packages/my-pack/**/*.ts"],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("accepts manifest with extensionPoints.compass.contract and requiredTags", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        compass: {
+          contract: {
+            blocks: [
+              {
+                blockId: "api-contract",
+                requiredFor: ["packages/my-pack/**/*.ts"],
+                requiredTags: [{ name: "endpoints", minWords: 5 }],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("accepts manifest with empty extensionPoints.compass.contract.blocks", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        compass: {
+          contract: {
+            blocks: [],
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  test("rejects extensionPoints.compass.contract with non-kebab-case blockId", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        compass: {
+          contract: {
+            blocks: [
+              {
+                blockId: "API_Contract",
+                requiredFor: ["packages/**/*.ts"],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects extensionPoints.compass.contract with empty requiredFor", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        compass: {
+          contract: {
+            blocks: [
+              {
+                blockId: "api-contract",
+                requiredFor: [],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects extensionPoints.compass.contract with negative minWords", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        compass: {
+          contract: {
+            blocks: [
+              {
+                blockId: "api-contract",
+                requiredFor: ["packages/**/*.ts"],
+                requiredTags: [{ name: "endpoints", minWords: -1 }],
+              },
+            ],
+          },
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  test("rejects extensionPoints with unknown extension point key", () => {
+    const result = forgePluginManifestSchema.safeParse({
+      id: "wg",
+      version: "1.0.0",
+      extensionPoints: {
+        unknown: { foo: "bar" },
+      },
+    });
     expect(result.success).toBe(false);
   });
 });

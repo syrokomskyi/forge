@@ -23,7 +23,7 @@ const compassContractBlockSpecSchema = z.object({
   blockId: z
     .string()
     .regex(KEBAB_CASE_REGEX, "blockId must be kebab-case (lowercase letters, digits, hyphens)"),
-  requiredFor: z.array(z.string().min(1)),
+  requiredFor: z.array(z.string().min(1)).min(1),
   requiredTags: z
     .array(
       z.object({
@@ -38,13 +38,16 @@ const compassContractExtensionPointSchema = z.object({
   blocks: z.array(compassContractBlockSpecSchema),
 });
 
-const extensionPointsSchema = z.object({
-  compass: z
-    .object({
-      contract: compassContractExtensionPointSchema.optional(),
-    })
-    .optional(),
-});
+const extensionPointsSchema = z
+  .object({
+    compass: z
+      .object({
+        contract: compassContractExtensionPointSchema.optional(),
+      })
+      .strict()
+      .optional(),
+  })
+  .strict();
 
 export const forgePluginManifestSchema = z
   .object({

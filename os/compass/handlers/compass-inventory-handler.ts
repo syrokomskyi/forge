@@ -31,6 +31,10 @@ import {
   findApplicablePackSpecs,
 } from "../../../src/compass/contract-registry.ts";
 import type {
+  CompassContractBlockSpec,
+  CompassContractRegistryEntry,
+} from "../../../src/compass/types.ts";
+import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
@@ -376,8 +380,16 @@ export async function runCompassValidation(
     }
   }
 
-  const config = loadForgeConfig(context.workspaceRoot, context.forgeRoot);
-  const registry = loadContractRegistry(context.workspaceRoot, config);
+  let registry: {
+    builtIn: CompassContractBlockSpec[];
+    pack: CompassContractRegistryEntry[];
+  } = { builtIn: [], pack: [] };
+  try {
+    const config = loadForgeConfig(context.workspaceRoot, context.forgeRoot);
+    registry = loadContractRegistry(context.workspaceRoot, config);
+  } catch {
+    // No forge.yaml or invalid config — skip pack-declared blocks
+  }
   if (registry.pack.length > 0) {
     for (const entry of entries) {
       if (entry.authoringStatus !== "authored" || entry.requiredScaffolding === "none") {
