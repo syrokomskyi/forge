@@ -36,6 +36,9 @@ postProcess:
     path: AGENTS.md
   - action: delete
     path: pnpm-lock.yaml
+  - action: copy
+    from: packages/forge/pnpm-workspace.override.yaml
+    to: pnpm-workspace.yaml
 
 git:
   remote: git@github.com:syrokomskyi/forge.git
