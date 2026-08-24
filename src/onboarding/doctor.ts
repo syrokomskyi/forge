@@ -22,13 +22,15 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0663: added knowledge-duplicates check (cross-skill L2 duplicate detection) and shared-knowledge-file check (schema/id uniqueness for the shared layer).</item>
   <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
   <item>RFC-0704: added independent-version-packages check — validates that paths in independentVersionPackages exist and contain package.json.</item>
+  <item>RFC-0941: added pack-manifests advisory check — validates forge.plugin.yaml existence and schema for each declared skill pack.</item>
 </CHANGE_SUMMARY>
 */
 
 import { readFile, readdir, stat } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { join, relative, dirname } from "node:path";
+import { readFileSync, existsSync } from "node:fs";
+import { join, relative, dirname, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { forgePluginManifestSchema } from "../plugin/ForgePluginManifest.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -757,6 +759,57 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
 }
 
 // ---------------------------------------------------------------------------
+// Pack manifest diagnostics (RFC-0941)
+// ---------------------------------------------------------------------------
+
+async function checkPackManifests(workspaceRoot: string): Promise<DoctorCheck> {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return {
+      name: "pack-manifests",
+      status: "pass",
+      message: "forge.yaml not loadable — pack manifest check skipped",
+    };
+  }
+
+  if (!config.skillPacks || config.skillPacks.length === 0) {
+    return { name: "pack-manifests", status: "pass", message: "No skill packs declared" };
+  }
+
+  const issues: string[] = [];
+  for (const pack of config.skillPacks) {
+    const packDir = resolve(workspaceRoot, pack.dir);
+    const manifestPath = join(packDir, "forge.plugin.yaml");
+    if (!existsSync(manifestPath)) {
+      issues.push(`pack '${pack.prefix}': forge.plugin.yaml missing at ${pack.dir}`);
+      continue;
+    }
+    try {
+      const raw = readFileSync(manifestPath, "utf-8");
+      const parsed = parseYaml(raw) as unknown;
+      const result = forgePluginManifestSchema.safeParse(parsed);
+      if (!result.success) {
+        const errs = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+        issues.push(`pack '${pack.prefix}': invalid manifest — ${errs}`);
+      }
+    } catch (err) {
+      issues.push(`pack '${pack.prefix}': failed to read manifest — ${(err as Error).message}`);
+    }
+  }
+
+  return {
+    name: "pack-manifests",
+    status: issues.length === 0 ? "pass" : "warn",
+    message:
+      issues.length === 0
+        ? `${config.skillPacks.length} pack manifest(s) valid`
+        : `${issues.length} issue(s): ${issues.join(", ")}`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Nested AGENTS.md diagnostics (RFC-0611)
 // ---------------------------------------------------------------------------
 
@@ -1249,6 +1302,10 @@ export async function runDoctor(
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
   checks.push(packCheck);
+
+  // RFC-0941: Check pack manifests — forge.plugin.yaml existence and validity
+  const packManifestCheck = await checkPackManifests(workspaceRoot);
+  checks.push(packManifestCheck);
 
   // RFC-0704: Check independent version packages — paths must exist and contain package.json
   const independentCheck = await checkIndependentVersionPackages(workspaceRoot);
