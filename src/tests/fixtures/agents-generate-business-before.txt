@@ -129,6 +129,15 @@ Session save mechanism:
 
 The agent SHOULD auto-run `fo-review` after implementing a significant change. Review results are presented in creator language — only actionable issues are highlighted.
 
+### Auto-testing
+
+The agent SHOULD write tests for new code it produces. Tests are written for **agents**, not humans — when a test fails, the error message should tell an agent reading the console output what to fix and where, but only when the fix is not obvious from the assertion itself.
+
+- **Significant changes** (new features, new functions, bug fixes) → write tests.
+- **Minor edits** (typo fix, small CSS change, renaming a variable) → no new tests required.
+- Use `fo-add-tests` for the full process and decision tree (example-based vs PBT).
+- Do not weaken or delete existing tests without explicit operator direction.
+
 ### Context awareness
 
 Before starting significant work, the agent SHOULD read recent ADRs, RFCs, and session transcripts (last 5-10 documents) to understand prior decisions and avoid conflicts. Minor edits do not require context reading.

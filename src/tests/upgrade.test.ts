@@ -253,6 +253,11 @@ test("RFC-0552: forge.upgrade returns skippedSkills field and syncs non-conflict
     "---\nname: wg-custom\n---\n# wg-custom (should be synced)\n",
     "utf8",
   );
+  await writeFile(
+    join(tempDir, "packages", "wg-skills", "skills", "forge.plugin.yaml"),
+    "id: wg-skills\nversion: 1.0.0\n",
+    "utf8",
+  );
 
   // Write forge.yaml with skillPacks config and null syncedVersion
   const yaml = `schema: forge/config@1
