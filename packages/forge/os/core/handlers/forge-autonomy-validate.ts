@@ -40,14 +40,18 @@ export interface ForgeAutonomyValidateResult {
   status: "pass" | "fail";
   violations: ForgeAutonomyViolation[];
   scannedFiles: number;
-  modules: Record<string, { runtime: string; violations: number }>;
+  modules: Record<string, { runtime: "autonomous" | "werkstatt-adapter"; violations: number }>;
 }
 
-function isTypeOnlyImportLine(line: string, specifier: string): boolean {
-  const idx = line.indexOf(specifier);
-  if (idx === -1) return false;
-  const before = line.slice(0, idx);
-  return /\bimport\s+type\b/.test(before);
+function isTypeOnlyImport(content: string, specifier: string): boolean {
+  const specifierIdx = content.indexOf(specifier);
+  if (specifierIdx === -1) return false;
+
+  const importStart = content.lastIndexOf("import", specifierIdx);
+  if (importStart === -1) return false;
+
+  const importLine = content.slice(importStart, specifierIdx);
+  return /\bimport\s+type\b/.test(importLine);
 }
 
 export async function runForgeAutonomyValidate(
@@ -69,11 +73,7 @@ export async function runForgeAutonomyValidate(
 
     const fullPath = join(workspaceRoot, v.file);
     const content = await readFile(fullPath, "utf8").catch(() => "");
-    const lines = content.split("\n");
-    const hasRuntimeImport = lines.some(
-      (line: string) => line.includes(v.specifier) && !isTypeOnlyImportLine(line, v.specifier),
-    );
-    if (hasRuntimeImport) {
+    if (!isTypeOnlyImport(content, v.specifier)) {
       violations.push({
         ruleId: "FORGE-AUTONOMY-01",
         file: v.file,
@@ -82,7 +82,10 @@ export async function runForgeAutonomyValidate(
     }
   }
 
-  const modules: Record<string, { runtime: string; violations: number }> = {};
+  const modules: Record<
+    string,
+    { runtime: "autonomous" | "werkstatt-adapter"; violations: number }
+  > = {};
   for (const v of violations) {
     const parts = v.file.split("/");
     const modKey = parts.slice(0, 4).join("/");
