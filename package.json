@@ -5,15 +5,7 @@
   "type": "module",
   "license": "Apache-2.0",
   "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
-  "keywords": [
-    "rfc",
-    "adr",
-    "governance",
-    "skills",
-    "ai-agent",
-    "documentation",
-    "framework"
-  ],
+  "keywords": ["rfc", "adr", "governance", "skills", "ai-agent", "documentation", "framework"],
   "homepage": "https://warpgogol.com",
   "repository": {
     "type": "git",
@@ -147,8 +139,7 @@
     }
   },
   "files": [
-    "dist/",
-    "bin/cli.js",
+    "bin/",
     "skills/",
     "profiles/",
     "src/",
@@ -165,8 +156,7 @@
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
-    "test:tarball:node24": "node test-fixtures/node24-consumer/smoke.mjs",
-    "prepublishOnly": "pnpm exec tsc -p tsconfig.json"
+    "test:tarball:node24": "node test-fixtures/node24-consumer/smoke.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.700.0",
@@ -190,130 +180,6 @@
     "node": ">=24 <25"
   },
   "publishConfig": {
-    "access": "public",
-    "main": "./dist/src/index.js",
-    "types": "./dist/src/index.d.ts",
-    "exports": {
-      ".": {
-        "types": "./dist/src/index.d.ts",
-        "default": "./dist/src/index.js"
-      },
-      "./types": {
-        "types": "./dist/src/types.d.ts",
-        "default": "./dist/src/types.js"
-      },
-      "./utils": {
-        "types": "./dist/src/utils/index.d.ts",
-        "default": "./dist/src/utils/index.js"
-      },
-      "./config": {
-        "types": "./dist/src/config/forge-config.d.ts",
-        "default": "./dist/src/config/forge-config.js"
-      },
-      "./os/core": {
-        "types": "./dist/os/core/core.module.d.ts",
-        "default": "./dist/os/core/core.module.js"
-      },
-      "./os/compass": {
-        "types": "./dist/os/compass/index.d.ts",
-        "default": "./dist/os/compass/index.js"
-      },
-      "./os/naming": {
-        "types": "./dist/os/naming/index.d.ts",
-        "default": "./dist/os/naming/index.js"
-      },
-      "./os/naming-module": {
-        "types": "./dist/os/naming/naming.module.d.ts",
-        "default": "./dist/os/naming/naming.module.js"
-      },
-      "./os/rfc": {
-        "types": "./dist/os/rfc/index.d.ts",
-        "default": "./dist/os/rfc/index.js"
-      },
-      "./os/rfc-module": {
-        "types": "./dist/os/rfc/rfc.module.d.ts",
-        "default": "./dist/os/rfc/rfc.module.js"
-      },
-      "./os/werkstatt": {
-        "types": "./dist/os/werkstatt/index.d.ts",
-        "default": "./dist/os/werkstatt/index.js"
-      },
-      "./os/workflow": {
-        "types": "./dist/os/workflow/index.d.ts",
-        "default": "./dist/os/workflow/index.js"
-      },
-      "./os/workflow-module": {
-        "types": "./dist/os/workflow/workflow.module.d.ts",
-        "default": "./dist/os/workflow/workflow.module.js"
-      },
-      "./os/spec-module": {
-        "types": "./dist/os/spec/spec.module.d.ts",
-        "default": "./dist/os/spec/spec.module.js"
-      },
-      "./os/adr": {
-        "types": "./dist/os/adr/index.d.ts",
-        "default": "./dist/os/adr/index.js"
-      },
-      "./os/adr-module": {
-        "types": "./dist/os/adr/adr.module.d.ts",
-        "default": "./dist/os/adr/adr.module.js"
-      },
-      "./os/plan": {
-        "types": "./dist/os/plan/index.d.ts",
-        "default": "./dist/os/plan/index.js"
-      },
-      "./os/plan-module": {
-        "types": "./dist/os/plan/plan.module.d.ts",
-        "default": "./dist/os/plan/plan.module.js"
-      },
-      "./os/audit": {
-        "types": "./dist/os/audit/index.d.ts",
-        "default": "./dist/os/audit/index.js"
-      },
-      "./os/audit-module": {
-        "types": "./dist/os/audit/audit.module.d.ts",
-        "default": "./dist/os/audit/audit.module.js"
-      },
-      "./os/session": {
-        "types": "./dist/os/session/index.d.ts",
-        "default": "./dist/os/session/index.js"
-      },
-      "./os/session-module": {
-        "types": "./dist/os/session/session.module.d.ts",
-        "default": "./dist/os/session/session.module.js"
-      },
-      "./os/mission": {
-        "types": "./dist/os/mission/index.d.ts",
-        "default": "./dist/os/mission/index.js"
-      },
-      "./os/mission-module": {
-        "types": "./dist/os/mission/mission.module.d.ts",
-        "default": "./dist/os/mission/mission.module.js"
-      },
-      "./os/exploration": {
-        "types": "./dist/os/exploration/index.d.ts",
-        "default": "./dist/os/exploration/index.js"
-      },
-      "./os/exploration-module": {
-        "types": "./dist/os/exploration/exploration.module.d.ts",
-        "default": "./dist/os/exploration/exploration.module.js"
-      },
-      "./os/notes": {
-        "types": "./dist/os/notes/index.d.ts",
-        "default": "./dist/os/notes/index.js"
-      },
-      "./os/notes-module": {
-        "types": "./dist/os/notes/notes.module.d.ts",
-        "default": "./dist/os/notes/notes.module.js"
-      },
-      "./os/program": {
-        "types": "./dist/os/program/program.module.d.ts",
-        "default": "./dist/os/program/program.module.js"
-      },
-      "./os/plugin": {
-        "types": "./dist/os/plugin/plugin.module.d.ts",
-        "default": "./dist/os/plugin/plugin.module.js"
-      }
-    }
+    "access": "public"
   }
 }
