@@ -20,6 +20,7 @@
   <item>RFC-0640: accept optional domain fields from profile (register, domain, terminology, semanticBindings) and write them into PREFERENCES.md and forge.yaml.</item>
   <item>RFC-0643: accept optional profileId and write it to forge.yaml as the `profile` field.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
+  <item>RFC-0941: create forge.plugin.yaml manifests for skill packs that lack them before calling discoverPackSkills.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -244,11 +245,24 @@ export function runInit(
   // RFC-0539: Copy declared pack skills to .agents/skills/<name>/ for IDE discovery
   // RFC-0552: Detect Forge-vs-pack skill name conflicts, skip pack skills that conflict
   const forgeSkillNames = new Set(FORGE_SKILLS.map((s) => s.name));
+  // RFC-0941: Create forge.plugin.yaml for packs that lack manifests
+  if (config.skillPacks) {
+    for (const pack of config.skillPacks) {
+      const packDir = path.resolve(workspaceRoot, pack.dir);
+      if (!fs.existsSync(packDir)) continue;
+      const manifestPath = path.join(packDir, "forge.plugin.yaml");
+      if (!fs.existsSync(manifestPath)) {
+        const manifest = { id: pack.prefix, version: "1.0.0" };
+        fs.writeFileSync(manifestPath, stringifyYaml(manifest), "utf8");
+        created.push(path.relative(workspaceRoot, manifestPath));
+      }
+    }
+  }
   let packSkills: ReturnType<typeof discoverPackSkills> = [];
   try {
     packSkills = discoverPackSkills(workspaceRoot, config);
   } catch {
-    // Manifest missing or invalid — Step 4b creates manifests before this call
+    // Manifest creation should prevent this, but catch defensively
   }
   for (const skill of packSkills) {
     const srcPath = path.join(workspaceRoot, skill.dir, skill.path);
