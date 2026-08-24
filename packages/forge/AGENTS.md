@@ -44,6 +44,11 @@ Skill packs MAY declare additional Compass contract blocks beyond the built-in `
 
 `compass.validate` loads block specs from all declared skill packs via `loadContractRegistry` and emits `COMPASS-PLUGIN-01` (missing block), `COMPASS-PLUGIN-02` (missing required tag), and `COMPASS-PLUGIN-03` (tag below minWords) diagnostics. Duplicate `blockId` across packs is rejected with `COMPASS-PLUGIN-DUP-01`. The `FORBIDDEN_PATTERNS` negative list stays hardcoded in `compass-inventory.ts` and is not extensible by packs.
 
+## Commit and config loading rules
+
+- **Verify `ecosystem.commit` output.** `ecosystem.commit` commits whatever is in the git index (staged files). If another agent staged files before your call, those files will be included in your commit instead of your own. After every `ecosystem.commit`, run `git show --stat HEAD` to verify the correct files were committed. If wrong files were committed, the missing files remain untracked/unstaged and must be committed separately.
+- **Wrap `loadForgeConfig` in try/catch in handlers that run in test workspaces.** `loadForgeConfig` throws when `forge.yaml` does not exist at the workspace root. Handlers that may be called from test workspaces without a `forge.yaml` (e.g. `runCompassValidation`) must guard the call with try/catch and skip pack-dependent logic when config is unavailable.
+
 ## Program packet control plane (RFC-0856)
 
 The program packet control plane governs sequential packet execution under `forge/program@1`. It validates boundaries; it does not execute implementation commands or commit on behalf of agents.
