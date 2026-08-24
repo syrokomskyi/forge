@@ -23,7 +23,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
-import { loadWorkspaceDeps } from "./workspace-deps.ts";
+import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type { ProfileRelease } from "../../../src/profiles/profile-schema.ts";
 

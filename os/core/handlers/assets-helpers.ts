@@ -13,7 +13,7 @@
 
 import { readFile, stat } from "node:fs/promises";
 import { join, relative, extname } from "node:path";
-import { loadWorkspaceDeps } from "./workspace-deps.ts";
+import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
 import type { ProfileAsset, ProfileAssetType } from "../../../src/profiles/profile-schema.ts";
 
 export interface AssetEntry {

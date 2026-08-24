@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>ForgeModule interfaces — structurally compatible with KernelModule from @warpgogol/site-kernel. Forge does NOT import from site-kernel.</purpose>
+<purpose>ForgeModule interfaces — structurally compatible with KernelModule from @warpgogol/site-kernel. Forge does NOT import from site-kernel. The optional runtime field (RFC-0940) declares whether a module is autonomous or a werkstatt adapter.</purpose>
 <non-goals>
   <item>Do not import from @warpgogol/site-kernel — forge must be installable without it.</item>
   <item>Do not add project-specific fields to ForgeModule — keep it minimal and portable.</item>
@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial ForgeModule, ForgeModuleRegistry, ForgeCommandDefinition, ForgePipelineStep interfaces.</item>
   <item>Forge autonomy refactor: ForgeCommandDefinition and ForgeCommandResult now reference canonical types from types.ts.</item>
+  <item>RFC-0940: add optional runtime field to ForgeModule for autonomy declaration.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +28,7 @@ export interface ForgeModuleRegistry {
 export interface ForgeModule {
   name: string;
   version: string;
+  runtime?: "autonomous" | "werkstatt-adapter";
   register(registry: ForgeModuleRegistry): void | Promise<void>;
 }
 
