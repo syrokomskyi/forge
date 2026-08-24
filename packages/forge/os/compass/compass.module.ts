@@ -45,6 +45,7 @@ const compassScanFlags = {
 export const forgeCompassModule: ForgeModule = {
   name: "forge-compass",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     registry.registerCommand({
       name: "compass.inventory",

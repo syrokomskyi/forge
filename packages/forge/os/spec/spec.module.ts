@@ -17,6 +17,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeSpecModule: ForgeModule = {
   name: "forge-spec",
   version: "0.2.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runSpecValidate } = await import("./spec-validate.ts");
     const { runSpecStatus } = await import("./spec-status.ts");

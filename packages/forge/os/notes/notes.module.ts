@@ -20,6 +20,7 @@ import type {
 export const forgeNotesModule: ForgeModule = {
   name: "forge-notes",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runNoteLinkValidate } = await import("../../src/validators/note-link-validate.ts");
     const { runNoteFrontmatterValidate } =

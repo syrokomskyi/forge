@@ -15,6 +15,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeAuditModule: ForgeModule = {
   name: "forge-audit",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runAuditArchive } = await import("./handlers/archive.ts");
 

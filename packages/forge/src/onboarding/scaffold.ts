@@ -111,6 +111,7 @@ import type { ForgeModule, ForgeCommandDefinition } from "../../src/forge-module
 export const forge${capitalize(name)}Module: ForgeModule = {
   name: "forge-${name}",
   version: "0.1.0",
+  runtime: "autonomous",
   register(registry) {
     registry.registerCommand({
       name: "${name}",

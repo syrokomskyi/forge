@@ -17,6 +17,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeAdrModule: ForgeModule = {
   name: "forge-adr",
   version: "0.1.0",
+  runtime: "autonomous",
 
   async register(registry) {
     const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");

@@ -15,6 +15,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export const forgeExplorationModule: ForgeModule = {
   name: "forge-exploration",
   version: "0.1.0",
+  runtime: "autonomous",
   async register(registry) {
     const { runExplorationList } = await import("./handlers/list.ts");
     const { runExplorationShow } = await import("./handlers/show.ts");
