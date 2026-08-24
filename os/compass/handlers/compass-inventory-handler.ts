@@ -3,10 +3,12 @@
 <purpose>Compass inventory and validation command handlers. Moved from
 @warpgogol/site-kernel-checks to @warpgogol/forge for full autonomous mode (RFC-0556).
 Provides runCompassInventory (XML report generation) and runCompassValidation
-(compliance diagnostics with COMPASS-* rules).</purpose>
+(compliance diagnostics with COMPASS-* rules). RFC-0943: validates pack-declared
+contract block specs alongside built-in MODULE_CONTRACT and CHANGE_SUMMARY checks.</purpose>
 <non-goals>
   <item>Do not handle raw file parsing or content analysis.</item>
   <item>Do not manage configuration or orchestration of external services.</item>
+  <item>Do not execute pack-provided validate() functions — pack block specs are declarative data interpreted here.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -14,6 +16,7 @@ Provides runCompassInventory (XML report generation) and runCompassValidation
   <item>RFC-0350: added COMPASS-TODO-01 diagnostic for unfilled Compass TODO sentinels.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added COMPASS-SYNTAX-01 diagnostic validating comment syntax per file type (.gd needs # prefix, .tscn/.tres need ; prefix, .ts/.cs need block comment).</item>
+  <item>RFC-0943: added COMPASS-PLUGIN-01/02/03 diagnostics for pack-declared contract block specs from forge.plugin.yaml extensionPoints.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,11 +25,22 @@ import { readFile } from "node:fs/promises";
 import { createCompassInventoryEntries, type CompassInventoryEntry } from "./compass-inventory.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
+import { loadForgeConfig } from "../../../src/config/forge-config.ts";
+import {
+  loadContractRegistry,
+  findApplicablePackSpecs,
+} from "../../../src/compass/contract-registry.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+
+function extractBlockContentForPlugin(source: string, tagName: string): string | null {
+  const escapedTag = tagName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = source.match(new RegExp(`<${escapedTag}>[\\s\\S]*?<\/${escapedTag}>`));
+  return match?.[0] ?? null;
+}
 
 const INVENTORY_OUTPUT_PATH = "docs/compass-inventory.xml";
 
@@ -287,6 +301,7 @@ export async function runCompassValidation(
     file: string;
     message: string;
     fix: string;
+    pack?: string;
   }> = [];
 
   for (const failure of failures) {
@@ -358,6 +373,85 @@ export async function runCompassValidation(
         message: syntaxError,
         fix: "fix: use the correct comment syntax for this file type (see comment-styles.md)",
       });
+    }
+  }
+
+  const config = loadForgeConfig(context.workspaceRoot, context.forgeRoot);
+  const registry = loadContractRegistry(context.workspaceRoot, config);
+  if (registry.pack.length > 0) {
+    for (const entry of entries) {
+      if (entry.authoringStatus !== "authored" || entry.requiredScaffolding === "none") {
+        continue;
+      }
+
+      const applicableSpecs = findApplicablePackSpecs(registry, entry.path);
+      if (applicableSpecs.length === 0) continue;
+
+      const absPath = resolve(context.workspaceRoot, entry.path);
+      const source = await readFile(absPath, "utf8");
+
+      for (const spec of applicableSpecs) {
+        const blockMarker = `<${spec.blockId.toUpperCase().replace(/-/g, "_")}>`;
+        if (!source.includes(blockMarker)) {
+          context.logger.error(
+            `[compass.validate] COMPASS-PLUGIN-01: ${entry.path}: missing ${spec.blockId} block (declared by pack ${spec.packId})`,
+          );
+          diagnostics.push({
+            ruleId: "COMPASS-PLUGIN-01",
+            severity: "error",
+            file: entry.path,
+            message: `missing ${spec.blockId} block (declared by pack ${spec.packId})`,
+            fix: `fix: add a ${blockMarker} block to this file`,
+            pack: spec.packId,
+          });
+          continue;
+        }
+
+        if (spec.requiredTags && spec.requiredTags.length > 0) {
+          const blockContent = extractBlockContentForPlugin(
+            source,
+            spec.blockId.toUpperCase().replace(/-/g, "_"),
+          );
+          for (const tag of spec.requiredTags) {
+            const tagMarker = `<${tag.name}>`;
+            if (!blockContent || !blockContent.includes(tagMarker)) {
+              context.logger.error(
+                `[compass.validate] COMPASS-PLUGIN-02: ${entry.path}: missing <${tag.name}> tag in ${spec.blockId} block (declared by pack ${spec.packId})`,
+              );
+              diagnostics.push({
+                ruleId: "COMPASS-PLUGIN-02",
+                severity: "error",
+                file: entry.path,
+                message: `missing <${tag.name}> tag in ${spec.blockId} block (declared by pack ${spec.packId})`,
+                fix: `fix: add a <${tag.name}> tag inside the ${blockMarker} block`,
+                pack: spec.packId,
+              });
+              continue;
+            }
+
+            if (tag.minWords) {
+              const tagContent = extractBlockContentForPlugin(blockContent, tag.name);
+              if (tagContent) {
+                const text = tagContent.replace(/<[^>]+>/g, " ");
+                const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
+                if (wordCount < tag.minWords) {
+                  context.logger.error(
+                    `[compass.validate] COMPASS-PLUGIN-03: ${entry.path}: <${tag.name}> in ${spec.blockId} has ${wordCount} words (minimum ${tag.minWords}, declared by pack ${spec.packId})`,
+                  );
+                  diagnostics.push({
+                    ruleId: "COMPASS-PLUGIN-03",
+                    severity: "error",
+                    file: entry.path,
+                    message: `<${tag.name}> in ${spec.blockId} has ${wordCount} words (minimum ${tag.minWords}, declared by pack ${spec.packId})`,
+                    fix: `fix: write at least ${tag.minWords} words in the <${tag.name}> tag`,
+                    pack: spec.packId,
+                  });
+                }
+              }
+            }
+          }
+        }
+      }
     }
   }
 
