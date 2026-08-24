@@ -115,6 +115,18 @@ describe("forge.autonomy.validate", () => {
     expect(result.data?.violations).toHaveLength(0);
   });
 
+  test("passes for multi-line import type with specifier on different line", async () => {
+    writeFileSync(
+      join(workspace, "packages", "forge", "os", "core", "handlers", "multiline-type.ts"),
+      `import type {\n  KernelModule,\n  KernelPipelineStep,\n} from "@warpgogol/werkstatt/kernel";\n`,
+    );
+
+    const result = await runForgeAutonomyValidate({ argv: [], flags: {} }, makeContext(workspace));
+
+    expect(result.data?.status).toBe("pass");
+    expect(result.data?.violations).toHaveLength(0);
+  });
+
   test("does not scan test files", async () => {
     writeFileSync(
       join(workspace, "packages", "forge", "os", "core", "handlers", "bad.test.ts"),
