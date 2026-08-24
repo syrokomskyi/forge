@@ -244,7 +244,12 @@ export function runInit(
   // RFC-0539: Copy declared pack skills to .agents/skills/<name>/ for IDE discovery
   // RFC-0552: Detect Forge-vs-pack skill name conflicts, skip pack skills that conflict
   const forgeSkillNames = new Set(FORGE_SKILLS.map((s) => s.name));
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  let packSkills: ReturnType<typeof discoverPackSkills> = [];
+  try {
+    packSkills = discoverPackSkills(workspaceRoot, config);
+  } catch {
+    // Manifest missing or invalid — Step 4b creates manifests before this call
+  }
   for (const skill of packSkills) {
     const srcPath = path.join(workspaceRoot, skill.dir, skill.path);
     const skillName = skill.name;

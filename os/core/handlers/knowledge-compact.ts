@@ -76,7 +76,12 @@ function discoverSkillKnowledgeFiles(
 
   // Collect pack skills if --all or if --skill matches a pack skill
   if (all || (skillName && !result.some((r) => r.skill === skillName))) {
-    const packSkills = discoverPackSkills(workspaceRoot, config);
+    let packSkills: ReturnType<typeof discoverPackSkills> = [];
+    try {
+      packSkills = discoverPackSkills(workspaceRoot, config);
+    } catch {
+      // Manifest missing or invalid — skip pack skills
+    }
     for (const skill of packSkills) {
       if (skillName && skill.name !== skillName) continue;
       if (!skill.knowledge || skill.knowledge.length === 0) continue;
