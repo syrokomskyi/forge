@@ -32,6 +32,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeExplorationModule` | `exploration.list`, `exploration.show`, `exploration.archive` | `os/exploration/` |
 | `forgeNotesModule` | `note.link.validate`, `note.frontmatter.validate`, `note.orphan.detect` | `os/notes/` |
 | `forgeProgramModule` | `program.packet.validate`, `program.packet.seal`, `program.packet.lease`, `program.packet.complete` | `os/program/` |
+| `forgePluginModule` | `forge.plugin.validate`, `forge.plugin.discover` | `os/plugin/` |
 
 ## Program packet control plane (RFC-0856)
 
