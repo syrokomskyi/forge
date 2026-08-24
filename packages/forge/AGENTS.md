@@ -5,13 +5,13 @@ Portable governance skills and command modules extracted from the engine (RFC-03
 ## Architecture
 
 - `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
-- `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed. RFC-0940: all `os/*.module.ts` files declare a required `runtime` field (`"autonomous"` or `"werkstatt-adapter"`). Only `os/werkstatt/` may import `@warpgogol/werkstatt` — all other `os/` directories are autonomous. `@warpgogol/werkstatt-shared` is exempt (shared infrastructure). `forge.autonomy.validate` enforces FORGE-AUTONOMY-01. Type-only imports (`import type`) are exempt.
-- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/werkstatt`.
+- `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed. RFC-0940: all `os/*.module.ts` files declare a required `runtime` field (`"autonomous"` or `"werkstatt-adapter"`). Only `os/werkstatt/` may import `@warpgogol/werkstatt-engine` — all other `os/` directories are autonomous. `@warpgogol/werkstatt-shared` is exempt (shared infrastructure). `forge.autonomy.validate` enforces FORGE-AUTONOMY-01. Type-only imports (`import type`) are exempt.
+- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/werkstatt-engine`.
 - `skills/` — forge-managed skill definitions (29 fo skills + 5 shared + 3 meta = 37 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config.
 
 ## RFC-0855 program control-plane boundary
 
-Packet 000 will add the portable `forge/program@1` control plane under `os/program/` as specified by accepted RFC-0856 and its committed implementation plan. Do not implement it, register commands, or alter packet state before packet 000 is sealed. The module validates and writes governance artifacts only: it never executes packet work, commits, materializes decisions without a preparation lease, deploys, or imports `@warpgogol/werkstatt`. Keep it cross-platform, deny unknown fields and unsafe paths, store only lease-token digests, and preserve packet 000 as the sole irreversible bootstrap.
+Packet 000 will add the portable `forge/program@1` control plane under `os/program/` as specified by accepted RFC-0856 and its committed implementation plan. Do not implement it, register commands, or alter packet state before packet 000 is sealed. The module validates and writes governance artifacts only: it never executes packet work, commits, materializes decisions without a preparation lease, deploys, or imports `@warpgogol/werkstatt-engine`. Keep it cross-platform, deny unknown fields and unsafe paths, store only lease-token digests, and preserve packet 000 as the sole irreversible bootstrap.
 
 ## OS modules
 
@@ -115,7 +115,7 @@ skillPacks:
 
 ## Import rules
 
-- `src/` must NOT import from `@warpgogol/werkstatt` or any kernel package.
+- `src/` must NOT import from `@warpgogol/werkstatt-engine` or any kernel package.
 - `os/compass/` and `os/werkstatt/` are fully autonomous (RFC-0556) — all handlers are inlined in `os/*/handlers/` and must NOT import from `@warpgogol/*` packages.
 - Other `os/` modules MAY dynamically import `@warpgogol/*` packages where kernel integration is needed.
 - Apps import forge modules from `@warpgogol/forge` (the package entrypoint re-exports all OS modules).
@@ -352,7 +352,7 @@ To publish a new version of `@warpgogol/forge` to NPM:
 
 The `prepublishOnly` script runs `clean → build → publish-check → strip-workspace-deps` automatically. **`strip-workspace-deps.mjs`** removes `@warpgogol/*` `workspace:*` dependencies from `package.json` before publish — these packages are not on npm and would make the published package uninstallable. The `postpublish` script restores the original `package.json` via `git checkout -- ./package.json`.
 
-**Do NOT use `npm publish`** — it fails during `prepublishOnly` because `tsc` cannot resolve workspace dependencies (`@warpgogol/werkstatt-site/share/fs`, `@warpgogol/werkstatt/fingerprint`) outside the pnpm workspace context. `pnpm publish` handles workspace dependencies correctly.
+**Do NOT use `npm publish`** — it fails during `prepublishOnly` because `tsc` cannot resolve workspace dependencies (`@warpgogol/werkstatt-site/share/fs`, `@warpgogol/werkstatt-engine/fingerprint`) outside the pnpm workspace context. `pnpm publish` handles workspace dependencies correctly.
 
 **Workspace deps must use dynamic imports.** `@warpgogol/*` packages that are not published to npm MUST be imported via dynamic `import()` (see `os/core/handlers/workspace-deps.ts`), never static `import`. Static imports would fail at runtime when forge is installed standalone from npm. The `workspace-deps.ts` helper caches the dynamic import and throws a clear error message if the packages are missing.
 
