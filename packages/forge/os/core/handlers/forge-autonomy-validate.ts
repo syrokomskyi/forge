@@ -1,13 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>forge.autonomy.validate — scans packages/forge/os/** for forbidden
-@warpgogol/werkstatt imports outside os/werkstatt/. Enforces FORGE-AUTONOMY-01
+@warpgogol/werkstatt-engine imports outside os/werkstatt/. Enforces FORGE-AUTONOMY-01
 (RFC-0940, DNA-64). @warpgogol/werkstatt-shared is exempt (shared infrastructure).
 Type-only imports (import type) are exempt.</purpose>
 <keywords>autonomy, guard, RFC-0940, DNA-64, forge, import boundary</keywords>
 <non-goals>
   <item>Does not scan test files — .test.ts and .spec.ts are always excluded.</item>
-  <item>Does not scan os/werkstatt/ — the adapter directory may import @warpgogol/werkstatt.</item>
+  <item>Does not scan os/werkstatt/ — the adapter directory may import @warpgogol/werkstatt-engine.</item>
   <item>Does not flag @warpgogol/werkstatt-shared — shared infrastructure, not the engine.</item>
   <item>Does not flag import type statements — type-only imports are erased at compile time.</item>
 </non-goals>
@@ -26,7 +26,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
-const FORBIDDEN_PACKAGE = "@warpgogol/werkstatt";
+const FORBIDDEN_PACKAGE = "@warpgogol/werkstatt-engine";
 const ADAPTER_DIR_PREFIX = "packages/forge/os/werkstatt/";
 
 export interface ForgeAutonomyViolation {

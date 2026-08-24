@@ -22,10 +22,10 @@ interface PortValidateResult {
 
 // RFC-0556: removed @warpgogol/site-kernel-checks and @warpgogol/site-kernel-handoff
 // from this list — os/compass and os/werkstatt no longer import them (handlers inlined).
-// RFC-0776: @warpgogol/site-kernel replaced by @warpgogol/werkstatt/kernel.
-// @warpgogol/werkstatt/kernel remains forbidden for src/ portability.
+// RFC-0776: @warpgogol/site-kernel replaced by @warpgogol/werkstatt-engine/kernel.
+// @warpgogol/werkstatt-engine/kernel remains forbidden for src/ portability.
 const FORBIDDEN_IMPORTS = [
-  "@warpgogol/werkstatt/kernel",
+  "@warpgogol/werkstatt-engine/kernel",
   "@warpgogol/werkstatt-site/ui",
   "@warpgogol/werkstatt-shared/share/page",
 ];

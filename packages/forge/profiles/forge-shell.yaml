@@ -165,7 +165,7 @@ workspace:
         console.log(`Cleaned ${toDelete.length} directories.`)
     - path: tools/kernel.config.ts
       content: |
-        import { defineKernelConfig } from "@warpgogol/werkstatt/kernel/types";
+        import { defineKernelConfig } from "@warpgogol/werkstatt-engine/kernel/types";
 
         export default defineKernelConfig({
           name: "__PROJECT_NAME__",
