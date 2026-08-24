@@ -155,11 +155,21 @@ export {
   detectAdapters,
 } from "./migration-adapters/index.ts";
 
-// Plugin manifest (RFC-0941)
+// Plugin manifest (RFC-0941, RFC-0943)
 export {
   forgePluginManifestSchema,
   type ForgePluginManifest,
 } from "./plugin/ForgePluginManifest.ts";
+
+// Compass contract types (RFC-0943)
+export type {
+  CompassContractBlockSpec,
+  CompassContractRequiredTag,
+  CompassContractExtensionPoint,
+  CompassContractRegistry,
+  CompassContractRegistryEntry,
+  CompassContractValidationDiagnostic,
+} from "./compass/types.ts";
 
 // OS modules
 export { forgeCoreModule } from "../os/core/core.module.ts";
