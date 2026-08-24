@@ -30,6 +30,10 @@ jobs:
 
       - run: pnpm test || true
 
+      - name: Build
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: pnpm run build
+
       - name: Publish
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
         run: |
