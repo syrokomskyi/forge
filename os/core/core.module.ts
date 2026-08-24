@@ -25,6 +25,7 @@
   <item>RFC-0733: register forge pinned.validate and forge pinned.init commands for pinned-files protection system.</item>
   <item>Lockfile safety net: docs.archive post-loop refreshes pnpm-lock.yaml after mission workpiece moves.</item>
   <item>RFC-0877: forge.create --in-place required, --profile required, --name optional (derived from folder), strict empty-directory check (only .git/ tolerated).</item>
+  <item>RFC-0940: register forge.autonomy.validate command enforcing FORGE-AUTONOMY-01 (no @warpgogol/werkstatt imports outside os/werkstatt/).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -718,6 +719,22 @@ export const forgeCoreModule: ForgeModule = {
         },
       },
       execute: runPackageHealth,
+    });
+
+    // ── forge.autonomy.validate (RFC-0940) ─────────────────────────────────────
+    const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
+    registry.registerCommand({
+      name: "forge.autonomy.validate",
+      description:
+        "Scan packages/forge/os/** for forbidden @warpgogol/werkstatt imports outside os/werkstatt/. " +
+        "Enforces FORGE-AUTONOMY-01 (RFC-0940, DNA-64). @warpgogol/werkstatt-shared is exempt. " +
+        "Type-only imports (import type) are exempt.",
+      scope: "workspace",
+      supportsAllSites: false,
+      reads: ["packages/forge/os/**/*.ts"],
+      cacheable: false,
+      flags: {},
+      execute: runForgeAutonomyValidate,
     });
 
     // ── docs.archive ─────────────────────────────────────────────────────────
