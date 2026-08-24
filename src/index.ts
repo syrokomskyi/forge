@@ -155,6 +155,12 @@ export {
   detectAdapters,
 } from "./migration-adapters/index.ts";
 
+// Plugin manifest (RFC-0941)
+export {
+  forgePluginManifestSchema,
+  type ForgePluginManifest,
+} from "./plugin/ForgePluginManifest.ts";
+
 // OS modules
 export { forgeCoreModule } from "../os/core/core.module.ts";
 export { forgeRfcModule } from "../os/rfc/rfc.module.ts";
