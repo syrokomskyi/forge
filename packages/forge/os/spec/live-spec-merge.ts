@@ -162,6 +162,13 @@ function escapeRegex(str: string): string {
   return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+function namespaceHeadings(content: string, rfcId: string): string {
+  return content.replace(/^(#{3,})\s+(.+)$/gm, (_match, hashes: string, text: string) => {
+    if (/\(RFC-\d{4}\)$/.test(text)) return `${hashes} ${text}`;
+    return `${hashes} ${text} (${rfcId})`;
+  });
+}
+
 function findRfcFile(rfcDir: string, rfcId: string): Promise<string | null> {
   return (async () => {
     const files = await listRfcFiles(rfcDir);
@@ -252,8 +259,8 @@ export async function runSpecLiveMerge(
     };
   }
 
-  const designSection = extractDesignSection(parsed.body);
-  if (!designSection) {
+  const rawDesignSection = extractDesignSection(parsed.body);
+  if (!rawDesignSection) {
     return {
       data: {
         command: "spec.live.merge",
@@ -268,6 +275,7 @@ export async function runSpecLiveMerge(
     };
   }
 
+  const designSection = namespaceHeadings(rawDesignSection, rfcId);
   const rfcHeadings = parseHeadings(designSection);
   const liveSpecsDir = path.join(workspaceRoot, LIVE_SPECS_DIR);
   const specFilePath = path.join(liveSpecsDir, `${domain}.md`);
@@ -329,21 +337,24 @@ export async function runSpecLiveMerge(
   for (const heading of rfcHeadings) {
     const existing = findHeadingInSpec(existingSpec, heading.text);
     if (existing) {
-      let lastRfc: string | undefined;
-      for (let i = existingSpec.history.length - 1; i >= 0; i--) {
-        const entry = existingSpec.history[i]!;
-        if (entry.operation !== "removed") {
-          lastRfc = entry.rfc;
-          break;
+      const isNamespaced = /\(RFC-\d{4}\)$/.test(heading.text);
+      if (!isNamespaced) {
+        let lastRfc: string | undefined;
+        for (let i = existingSpec.history.length - 1; i >= 0; i--) {
+          const entry = existingSpec.history[i]!;
+          if (entry.operation !== "removed") {
+            lastRfc = entry.rfc;
+            break;
+          }
         }
-      }
-      if (lastRfc && lastRfc !== rfcId) {
-        conflicts.push({
-          heading: heading.text,
-          existingRfc: lastRfc,
-          newRfc: rfcId,
-          resolution: "pending",
-        });
+        if (lastRfc && lastRfc !== rfcId) {
+          conflicts.push({
+            heading: heading.text,
+            existingRfc: lastRfc,
+            newRfc: rfcId,
+            resolution: "pending",
+          });
+        }
       }
       operations.push({ type: "modified", heading: heading.text, rfc: rfcId });
     } else {
