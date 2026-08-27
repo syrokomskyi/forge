@@ -1,0 +1,222 @@
+schema: forge/stack-profile@1
+id: typescript-turborepo
+displayName: TypeScript TurboRepo
+detect:
+  anyOf:
+    - typescript-turborepo.marker
+workspace:
+  dirs:
+    - docs
+    - scripts
+    - tools
+    - packages
+  files:
+    - path: .vscode/extensions.json
+      content: |
+        {
+          "recommendations": [
+            "dbaeumer.vscode-eslint",
+            "esbenp.prettier-vscode",
+            "github.vscode-github-actions",
+            "mechatroner.rainbow-csv"
+          ]
+        }
+    - path: .gitignore
+      content: |
+        node_modules
+        dist
+        .turbo
+        .cache
+        operator-profile.md
+    - path: package.json
+      content: |
+        {
+          "name": "__PROJECT_NAME__",
+          "version": "0.1.0",
+          "private": true,
+          "type": "module",
+          "engines": {
+            "node": ">=24 <25"
+          },
+          "scripts": {
+            "clean": "node scripts/clean.mjs",
+            "format": "prettier --write .",
+            "format:check": "prettier --check .",
+            "test": "vitest run --passWithNoTests",
+            "upgrade-packages": "pnpm up"
+          }
+        }
+    - path: pnpm-workspace.yaml
+      content: |
+        packages:
+          - packages/*
+    - path: scripts/clean.mjs
+      content: |
+        import { readdir, rm } from "node:fs/promises";
+        import { join } from "node:path";
+        import { fileURLToPath } from "node:url";
+
+        const TARGETS = new Set(["node_modules", ".turbo", "dist", ".cache"]);
+
+        const repoRoot = join(fileURLToPath(import.meta.url), "..", "..");
+
+        async function walk(dir, toDelete) {
+          const entries = await readdir(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (!entry.isDirectory()) continue;
+            const name = entry.name;
+            const fullPath = join(dir, name);
+            if (TARGETS.has(name)) {
+              toDelete.push(fullPath);
+              continue;
+            }
+            await walk(fullPath, toDelete);
+          }
+        }
+
+        const toDelete = [];
+        await walk(repoRoot, toDelete);
+
+        if (toDelete.length === 0) {
+          console.log("Nothing to clean.");
+          process.exit(0);
+        }
+
+        await Promise.all(toDelete.map((p) => rm(p, { recursive: true, force: true })));
+
+        for (const p of toDelete) {
+          console.log("deleted", p.replace(repoRoot + "/", ""));
+        }
+
+        console.log(`Cleaned ${toDelete.length} directories.`)
+    - path: turbo.json
+      content: |
+        {
+          "$schema": "https://turbo.build/schema.json",
+          "tasks": {
+            "build:check": {},
+            "test": {},
+            "lint": {}
+          }
+        }
+    - path: tsconfig.base.json
+      content: |
+        {
+          "compilerOptions": {
+            "target": "ES2022",
+            "module": "preserve",
+            "moduleResolution": "Bundler",
+            "strict": true,
+            "esModuleInterop": true,
+            "skipLibCheck": true,
+            "isolatedModules": true,
+            "forceConsistentCasingInFileNames": true,
+            "resolveJsonModule": true,
+            "noEmit": true,
+            "allowImportingTsExtensions": true,
+            "declaration": true,
+            "rewriteRelativeImportExtensions": true,
+            "types": ["node"]
+          }
+        }
+    - path: .npmrc
+      content: |
+        # @warpgogol scoped registry — replace YOUR_NPM_TOKEN with a valid npm read token
+        @warpgogol:registry=https://registry.npmjs.org/
+        //registry.npmjs.org/:_authToken=YOUR_NPM_TOKEN
+        dangerously-allow-all-builds=true
+    - path: eslint.config.js
+      content: |
+        export default [
+          {
+            rules: {},
+          },
+        ];
+    - path: .prettierrc.mjs
+      content: |
+        export default {
+          "semi": true,
+          "singleQuote": false,
+          "trailingComma": "all",
+          "printWidth": 100,
+          "tabWidth": 2
+        };
+    - path: .gitattributes
+      content: |
+        # No LFS patterns for this stack
+    - path: tools/kernel.config.ts
+      content: |
+        import { defineKernelConfig } from "@warpgogol/werkstatt-engine/kernel/types";
+
+        export default defineKernelConfig({
+          name: "__PROJECT_NAME__",
+          description: "__PROJECT_NAME__ TypeScript TurboRepo workshop",
+          moduleLoaders: {
+            "forge-core": async () => (await import("@warpgogol/forge/os/core")).forgeCoreModule,
+            "forge-rfc": async () => (await import("@warpgogol/forge/os/rfc-module")).forgeRfcModule,
+            "forge-adr": async () => (await import("@warpgogol/forge/os/adr-module")).forgeAdrModule,
+            "forge-plan": async () => (await import("@warpgogol/forge/os/plan-module")).forgePlanModule,
+            "forge-audit": async () => (await import("@warpgogol/forge/os/audit-module")).forgeAuditModule,
+            "forge-compass": async () => (await import("@warpgogol/forge/os/compass")).forgeCompassModule,
+            "forge-naming": async () => (await import("@warpgogol/forge/os/naming-module")).forgeNamingModule,
+            "forge-workflow": async () => (await import("@warpgogol/forge/os/workflow-module")).forgeWorkflowModule,
+            "forge-session": async () => (await import("@warpgogol/forge/os/session-module")).forgeSessionModule,
+            "forge-mission": async () => (await import("@warpgogol/forge/os/mission-module")).forgeMissionModule,
+            "forge-spec": async () => (await import("@warpgogol/forge/os/spec-module")).forgeSpecModule,
+            "forge-exploration": async () => (await import("@warpgogol/forge/os/exploration")).forgeExplorationModule,
+            "forge-program": async () => (await import("@warpgogol/forge/os/program")).forgeProgramModule,
+            "forge-werkstatt": async () => (await import("@warpgogol/forge/os/werkstatt")).forgeWerkstattModule,
+            "typescript-checks": async () => (await import("@warpgogol/werkstatt-typescript/checks/module")).createTypescriptCheckModule(),
+          },
+        });
+    - path: .forge/pinned.yaml
+      content: |
+        # Pinned foundation files (DNA-62, RFC-0733)
+        entries:
+          - path: tools/kernel.config.ts
+            mode: protect
+          - path: forge.yaml
+            mode: protect
+          - path: pnpm-workspace.yaml
+            mode: protect
+          - path: turbo.json
+            mode: protect
+          - path: tsconfig.base.json
+            mode: protect
+    - path: README.md
+      content: |
+        # __PROJECT_NAME__
+
+        A TypeScript TurboRepo workshop powered by the Werkstatt engine.
+
+        ## Prerequisites
+
+        - Node.js 24+
+        - pnpm 10+
+
+        ## Setup
+
+        ### 1. Configure npm token
+
+        Edit `.npmrc` and replace `YOUR_NPM_TOKEN` with a valid npm read token.
+
+        ### 2. Install dependencies
+
+        ```sh
+        pnpm install
+        ```
+
+        ### 3. Verify the workshop
+
+        ```sh
+        pnpm exec forge run forge.doctor
+        pnpm exec forge run forge.validate
+        ```
+
+        ## Stack
+
+        - Engine: @warpgogol/forge
+        - Plugin: @warpgogol/werkstatt-typescript
+        - Stack profile: typescript-turborepo
+install:
+  - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt-typescript @warpgogol/werkstatt-engine @warpgogol/werkstatt-shared prettier vitest typescript

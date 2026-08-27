@@ -1,0 +1,60 @@
+{
+  "name": "@warpgogol/werkstatt-typescript",
+  "version": "1.0.0",
+  "private": false,
+  "type": "module",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "description": "Werkstatt TypeScript plugin — generic TypeScript TurboRepo stack with best-practice validators.",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/syrokomskyi/werkstatt-typescript.git"
+  },
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./paths": {
+      "types": "./src/paths/typescript-paths.ts",
+      "default": "./src/paths/typescript-paths.ts"
+    },
+    "./invariants": {
+      "types": "./src/invariants/typescript-invariants.ts",
+      "default": "./src/invariants/typescript-invariants.ts"
+    },
+    "./checks/module": {
+      "types": "./src/checks/module.ts",
+      "default": "./src/checks/module.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "lint": "pnpm exec eslint \"src/**/*.ts\"",
+    "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "build": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "dependencies": {
+    "@warpgogol/forge": "workspace:*",
+    "@warpgogol/werkstatt-engine": "workspace:*",
+    "@warpgogol/werkstatt-shared": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "eslint": "^10.9.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "8.68.0",
+    "vitest": "^4.1.11"
+  }
+}
