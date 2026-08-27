@@ -157,6 +157,50 @@ nonGoals: []
 Content.
 `;
 
+const SAMPLE_RFC_9004 = `---
+id: RFC-9004
+title: "Second RFC with same headings"
+status: implemented
+kind: architecture
+scope: workspace
+owners:
+  - architecture
+reviewers:
+  - human:test
+createdAt: 2026-08-06
+updatedAt: 2026-08-06
+implementedAt: 2026-08-06
+versionBump: patch
+liveSpec: true
+packagesImpacted:
+  - packages/forge
+commands:
+  proposed: []
+  added: []
+  changed: []
+  removed: []
+appsImpacted: []
+successSignals: []
+nonGoals: []
+---
+
+# RFC-9004: Second RFC with same headings
+
+## Design
+
+### CLI surface
+
+Different CLI content from RFC-9004.
+
+### TypeScript contracts
+
+Different types from RFC-9004.
+
+## Rollout
+
+Some rollout.
+`;
+
 async function setupWorkspace(): Promise<string> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "spec-live-test-"));
   const rfcDir = path.join(tmpDir, "docs/rfcs");
@@ -164,6 +208,7 @@ async function setupWorkspace(): Promise<string> {
   await fs.writeFile(path.join(rfcDir, "rfc-9001-test-rfc-for-living-specs.md"), SAMPLE_RFC);
   await fs.writeFile(path.join(rfcDir, "rfc-9002-test-rfc-without-livespec.md"), SAMPLE_RFC_NO_LIVE_SPEC);
   await fs.writeFile(path.join(rfcDir, "rfc-9003-rejected-rfc-with-livespec.md"), SAMPLE_RFC_REJECTED);
+  await fs.writeFile(path.join(rfcDir, "rfc-9004-second-rfc-with-same-headings.md"), SAMPLE_RFC_9004);
   return tmpDir;
 }
 
@@ -257,5 +302,36 @@ describe("spec.live.merge", () => {
 
     expect(result.exitCode).toBe(1);
     expect(result.summary).toContain("not found");
+  });
+
+  it("namespaces headings by RFC ID and allows multiple RFCs with same heading names", async () => {
+    // First merge creates the spec with RFC-9001 headings
+    const input1: ForgeCommandInput = { argv: [], flags: { id: "RFC-9001" } };
+    await runSpecLiveMerge(input1, makeContext(tmpDir));
+
+    // Second merge with RFC-9004 (same heading names) should NOT conflict
+    const input2: ForgeCommandInput = { argv: [], flags: { id: "RFC-9004" } };
+    const result = await runSpecLiveMerge(input2, makeContext(tmpDir));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.conflicts.length).toBe(0);
+    expect(result.data?.deltas.length).toBeGreaterThan(0);
+
+    const specFile = path.join(tmpDir, "docs/specs/live/forge.md");
+    const content = await fs.readFile(specFile, "utf-8");
+    expect(content).toContain("CLI surface (RFC-9001)");
+    expect(content).toContain("CLI surface (RFC-9004)");
+  });
+
+  it("re-merges namespaced headings without conflicts on subsequent docs.archive runs", async () => {
+    // Initial merges
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, makeContext(tmpDir));
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9004" } }, makeContext(tmpDir));
+
+    // Re-merge RFC-9001 (simulates docs.archive re-running all merges)
+    const result = await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, makeContext(tmpDir));
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.conflicts.length).toBe(0);
   });
 });
