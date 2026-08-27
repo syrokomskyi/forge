@@ -296,7 +296,7 @@ export const forgeCoreModule: ForgeModule = {
           kind: "string",
           required: true,
           description:
-            "Stack profile id. Required. Available: forge-shell, phaser-turborepo, godot-csharp.",
+            "Stack profile id. Required. Available: forge-shell, phaser-turborepo, godot-csharp, knowledge-typescript-turborepo, typescript-turborepo.",
         },
         name: {
           kind: "string",

@@ -3,7 +3,7 @@ id: typescript-turborepo
 displayName: TypeScript TurboRepo
 detect:
   anyOf:
-    - typescript-turborepo.marker
+    - tsconfig.base.json
 workspace:
   dirs:
     - docs
