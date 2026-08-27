@@ -1,15 +1,16 @@
 /*
 <MODULE_CONTRACT>
 <purpose>spec.live.merge handler — extracts deltas from an RFC's ## Design section,
-classifies them as ADDED/MODIFIED/REMOVED, applies to a living spec, handles conflicts
-with all-or-nothing semantics, and writes atomically (RFC-0711).</purpose>
+classifies them as ADDED/MODIFIED/REMOVED, applies to a living spec with RFC-namespaced
+headings, and writes atomically (RFC-0711).</purpose>
 <non-goals>
   <item>Do not handle docs.archive integration — that is in core.module.ts.</item>
   <item>Do not validate living specs — that is spec.live.validate.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0711: initial spec.live.merge handler with delta extraction, classification, conflict detection, and atomic writes.</item>
+  <item>RFC-0711: initial spec.live.merge handler with delta extraction, classification, and atomic writes.</item>
+  <item>RFC-0957: namespace headings by RFC ID, remove conflict detection (structurally impossible with namespacing).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,7 +30,6 @@ import type {
   LivingSpec,
   LivingSpecHistoryEntry,
   DeltaOperation,
-  DeltaConflict,
   SpecLiveMergeResult,
 } from "./live-spec-types.ts";
 
@@ -287,7 +287,6 @@ export async function runSpecLiveMerge(
   }
 
   const operations: DeltaOperation[] = [];
-  const conflicts: DeltaConflict[] = [];
   const today = new Date().toISOString().slice(0, 10);
 
   if (!existingSpec) {
@@ -337,55 +336,10 @@ export async function runSpecLiveMerge(
   for (const heading of rfcHeadings) {
     const existing = findHeadingInSpec(existingSpec, heading.text);
     if (existing) {
-      const isNamespaced = /\(RFC-\d{4}\)$/.test(heading.text);
-      if (!isNamespaced) {
-        let lastRfc: string | undefined;
-        for (let i = existingSpec.history.length - 1; i >= 0; i--) {
-          const entry = existingSpec.history[i]!;
-          if (entry.operation !== "removed") {
-            lastRfc = entry.rfc;
-            break;
-          }
-        }
-        if (lastRfc && lastRfc !== rfcId) {
-          conflicts.push({
-            heading: heading.text,
-            existingRfc: lastRfc,
-            newRfc: rfcId,
-            resolution: "pending",
-          });
-        }
-      }
       operations.push({ type: "modified", heading: heading.text, rfc: rfcId });
     } else {
       operations.push({ type: "added", heading: heading.text, rfc: rfcId });
     }
-  }
-
-  if (conflicts.length > 0) {
-    const result: SpecLiveMergeResult = {
-      command: "spec.live.merge",
-      domain,
-      operation: "modified",
-      deltas: operations,
-      conflicts,
-      dryRun,
-    };
-
-    if (outputFormat === "pretty") {
-      logger.error(
-        `spec.live.merge: ${conflicts.length} conflict(s) detected — merge aborted (all-or-nothing)`,
-      );
-      for (const c of conflicts) {
-        logger.error(`  conflict: heading "${c.heading}" last modified by ${c.existingRfc}, now ${c.newRfc}`);
-      }
-    }
-
-    return {
-      data: result,
-      exitCode: 1,
-      summary: `spec.live.merge: ${conflicts.length} conflict(s) — merge aborted`,
-    };
   }
 
   const updatedBody = applyDeltasToSpecBody(existingSpec.body, rfcHeadings, operations);
