@@ -1,0 +1,44 @@
+# extract.config.yaml — repo-extract standalone package export for @warpgogol/werkstatt-typescript
+# Extracts packages/werkstatt-typescript from the werkstatt monorepo into a standalone public repo.
+# RFC-0889: TypeScript TurboRepo stack plugin with best-practice validators.
+
+projectDir: packages/werkstatt-typescript
+destName: werkstatt-typescript
+standalone: true
+versionBump: patch
+
+workspacePrefixes:
+  - "@warpgogol/"
+stripScopes:
+  - "@warpgogol/"
+preservePackages:
+  - "@warpgogol/werkstatt-typescript"
+  - "@warpgogol/werkstatt-engine"
+  - "@warpgogol/werkstatt-shared"
+  - "@warpgogol/forge"
+packageManager: pnpm
+
+ci:
+  provider: github-actions
+  publish: true
+  nodeVersion: 24
+  provenance: true
+
+ignoreDirs:
+  - .turbo
+  - .agents
+  - node_modules
+  - tmp-*
+
+excludePathSegments:
+  - pnpm-lock.yaml
+
+postProcess:
+  - action: delete
+    path: AGENTS.md
+  - action: delete
+    path: pnpm-lock.yaml
+
+git:
+  remote: git@github.com:syrokomskyi/werkstatt-typescript.git
+  autoPush: true
