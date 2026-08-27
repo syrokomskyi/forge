@@ -157,7 +157,7 @@ test("artifacts with missing required extensions field fails", () => {
 
 test("all shipped profiles parse without changes", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
-  expect(profiles.length).toBe(4);
+  expect(profiles.length).toBe(5);
   for (const profile of profiles) {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);

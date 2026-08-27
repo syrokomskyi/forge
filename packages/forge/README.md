@@ -46,6 +46,7 @@ For full project lifecycle management — missions, releases, deployment, certif
 | [`@warpgogol/werkstatt-phaser-game`](https://github.com/syrokomskyi/werkstatt-phaser-game) | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
 | [`@warpgogol/werkstatt-godot-game`](https://github.com/syrokomskyi/werkstatt-godot-game) | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
 | [`@warpgogol/werkstatt-knowledge`](https://github.com/syrokomskyi/werkstatt-knowledge) | Knowledge plugin — source binding, canonical verification, extraction, materialization, release checks | Knowledge system projects (`knowledge-typescript-turborepo`) |
+| [`@warpgogol/werkstatt-typescript`](https://github.com/syrokomskyi/werkstatt) | TypeScript plugin — tsconfig, import boundaries, phantom deps, package exports, strict mode, barrel validators | TypeScript TurboRepo projects (`typescript-turborepo`) |
 
 ### When you need these packages
 
@@ -63,6 +64,11 @@ pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot-game
 
 # Knowledge system project
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-knowledge
+```
+
+```sh
+# TypeScript TurboRepo project
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-typescript
 ```
 
 > **Note for agents:** When scaffolding a new project with `forge create`, always install the engine and matching stack plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages (e.g. `pnpm exec werkstatt run rfc.validate`), and they will fail if the packages are not installed.
@@ -217,6 +223,7 @@ You need to run one command in the terminal to create your project. After that, 
    | Browser game (2D, arcade, puzzle)   | `--profile phaser-turborepo`               |
    | Godot game (desktop, mobile, 2D/3D) | `--profile godot-csharp`                   |
    | Knowledge system (evidence-backed)  | `--profile knowledge-typescript-turborepo` |
+   | TypeScript library (monorepo)       | `--profile typescript-turborepo`           |
    | Library or governance-only project  | `--profile forge-shell`                    |
 
 2. **Open the project folder in your AI IDE.** Open the folder from step 1 in Windsurf or your preferred IDE.
@@ -297,6 +304,9 @@ pnpm dlx @warpgogol/forge@latest create --in-place --profile godot-csharp
 mkdir my-knowledge-base && cd my-knowledge-base
 pnpm dlx @warpgogol/forge@latest create --in-place --profile knowledge-typescript-turborepo
 
+mkdir my-ts-project && cd my-ts-project
+pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
+
 # Override the project name (derived from folder name by default)
 pnpm dlx @warpgogol/forge@latest create --in-place --profile forge-shell --name my-custom-name
 ```
@@ -346,6 +356,7 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | `phaser-turborepo` | Browser game | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Browser games, interactive experiences |
 | `godot-csharp` | Godot game | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Desktop/mobile games, Godot-based interactive projects |
 | `knowledge-typescript-turborepo` | Knowledge system | TypeScript + pnpm + Turborepo | `knowledge/my-kb` | Evidence-backed knowledge bases, structured datasets with source provenance |
+| `typescript-turborepo` | TypeScript library | TypeScript + pnpm + Turborepo | — | Generic TypeScript TurboRepo monorepo with best-practice validators |
 
 ```sh
 # List available profiles (after install)
