@@ -190,6 +190,8 @@ export const forgeCoreModule: ForgeModule = {
     });
     registry.registerCommand({
       name: "forge.skill.validate",
+      contract: "forge",
+      rules: [],
       description:
         "Validate all forge skills against frontmatter contract and invariants SKILL-01..SKILL-20.",
       scope: "workspace",
@@ -209,6 +211,8 @@ export const forgeCoreModule: ForgeModule = {
     });
     registry.registerCommand({
       name: "forge.port.validate",
+      contract: "forge",
+      rules: [],
       description: "Validate a single ported skill or command for compliance with forge contracts.",
       scope: "workspace",
       supportsAllSites: false,
@@ -374,6 +378,8 @@ export const forgeCoreModule: ForgeModule = {
     };
     registry.registerCommand({
       name: "forge.profile.validate",
+      contract: "forge",
+      rules: [],
       description:
         "Validate profile YAML files under packages/forge/profiles/ against the stack-profile schema (RFC-0640).",
       scope: "workspace",
@@ -437,6 +443,8 @@ export const forgeCoreModule: ForgeModule = {
     // ── forge.validate (RFC-0674, RFC-0677) ───────────────────────────────────
     registry.registerCommand({
       name: "forge.validate",
+      contract: "forge",
+      rules: [],
       description:
         "Execute validate commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands. Use --artifact to validate a single artifact.",
       scope: "workspace",
@@ -464,6 +472,8 @@ export const forgeCoreModule: ForgeModule = {
     const { runDeterminismCheck } = await import("./handlers/determinism-check.ts");
     registry.registerCommand({
       name: "forge.determinism.check",
+      contract: "forge",
+      rules: [],
       description:
         "Verify artifact determinism by building twice and comparing output hashes. Reads determinism.inputs glob patterns from the active stack profile. Use --dry-run to print resolved inputs, --artifact to check a single artifact.",
       scope: "workspace",
@@ -519,6 +529,8 @@ export const forgeCoreModule: ForgeModule = {
     const { runAssetsCheck } = await import("./handlers/assets-check.ts");
     registry.registerCommand({
       name: "forge.assets.check",
+      contract: "forge",
+      rules: [],
       description:
         "Check for missing, orphaned, and unreferenced assets. Use --strict to fail on orphaned assets, --dry-run to skip hashing.",
       scope: "workspace",
@@ -641,6 +653,8 @@ export const forgeCoreModule: ForgeModule = {
     // ── pinned.validate ─────────────────────────────────────────────────────
     registry.registerCommand({
       name: "pinned.validate",
+      contract: "pinned",
+      rules: [],
       description:
         "Validate working tree against .forge/pinned.yaml manifest. " +
         "Checks staged changes (default) or last commit (--mode ci) for " +
@@ -726,6 +740,8 @@ export const forgeCoreModule: ForgeModule = {
     const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
     registry.registerCommand({
       name: "forge.autonomy.validate",
+      contract: "forge",
+      rules: [],
       description:
         "Scan packages/forge/os/** for forbidden @warpgogol/werkstatt-engine imports outside os/werkstatt/. " +
         "Enforces FORGE-AUTONOMY-01 (RFC-0940, DNA-64). @warpgogol/werkstatt-shared is exempt. " +

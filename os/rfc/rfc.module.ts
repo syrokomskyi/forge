@@ -114,6 +114,8 @@ export const forgeRfcModule: ForgeModule = {
     // ── rfc.validate ─────────────────────────────────────────────────────────
     registry.registerCommand({
       name: "rfc.validate",
+      contract: "rfc",
+      rules: [],
       description:
         "Validate RFC frontmatter schema, required markdown sections, " +
         "referential integrity (supersedes/supersededBy), date consistency, " +
@@ -130,6 +132,8 @@ export const forgeRfcModule: ForgeModule = {
     // ── rfc.command-lifecycle.validate ───────────────────────────────────────
     registry.registerCommand({
       name: "rfc.command-lifecycle.validate",
+      contract: "rfc",
+      rules: [],
       description:
         "Validate RFC commands.proposed/added/changed/removed lifecycle metadata " +
         "against live registered commands. Emits RFC-CMD-* diagnostics.",
@@ -145,6 +149,8 @@ export const forgeRfcModule: ForgeModule = {
     // ── rfc.check ────────────────────────────────────────────────────────────
     registry.registerCommand({
       name: "rfc.check",
+      contract: "rfc",
+      rules: [],
       description:
         "Validate that artifacts declared by accepted/implemented RFCs exist on disk. " +
         "Checks files from 'File system responsibilities' tables and feature flag references. " +
@@ -184,6 +190,8 @@ export const forgeRfcModule: ForgeModule = {
     // ── rfc.index.validate ───────────────────────────────────────────────────
     registry.registerCommand({
       name: "rfc.index.validate",
+      contract: "rfc",
+      rules: [],
       description:
         "Validate that docs/rfcs/index.yaml exists, is parseable, and its entry count " +
         "matches the number of RFC files on disk. Reports RFC-IDX-01 (missing), " +
@@ -254,6 +262,8 @@ export const forgeRfcModule: ForgeModule = {
     // ── rfc.dna.trace.validate ───────────────────────────────────────────────
     registry.registerCommand({
       name: "rfc.dna.trace.validate",
+      contract: "rfc",
+      rules: [],
       description:
         "RFC-0331: validate the bidirectional DNA-trace matrix — which RFCs satisfy each DNA " +
         "invariant and which invariants each RFC claims to satisfy. Reports DNA-TRACE-01 " +

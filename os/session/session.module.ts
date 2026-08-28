@@ -80,6 +80,8 @@ export const forgeSessionModule: ForgeModule = {
 
     registry.registerCommand({
       name: "session.validate",
+      contract: "session",
+      rules: [],
       description:
         "Validate session frontmatter schema (SES-01), id-filename match (SES-02), " +
         "RFC-id existence (SES-03), raw file hygiene (SES-04), and non-markdown " +

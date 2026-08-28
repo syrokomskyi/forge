@@ -51,6 +51,8 @@ export const forgeWerkstattModule: ForgeModule = {
     });
     registry.registerCommand({
       name: "werkstatt.operation.validate",
+      contract: "werkstatt",
+      rules: [],
       description:
         "Validate that mutating Werkstatt commands use shared lock/idempotency/atomic-write helpers (RFC-0362).",
       scope: "workspace",

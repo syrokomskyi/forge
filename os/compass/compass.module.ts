@@ -62,6 +62,8 @@ export const forgeCompassModule: ForgeModule = {
     });
     registry.registerCommand({
       name: "compass.validate",
+      contract: "compass",
+      rules: [],
       description:
         "Validate authored source files against current Compass scaffolding requirements.",
       scope: "workspace",
@@ -77,6 +79,8 @@ export const forgeCompassModule: ForgeModule = {
     });
     registry.registerCommand({
       name: "compass.changesummary.validate",
+      contract: "compass",
+      rules: [],
       description:
         "Validate CHANGE_SUMMARY blocks for boilerplate items and over-cap unprotected items (RFC-0349).",
       scope: "workspace",
@@ -171,6 +175,8 @@ export const forgeCompassModule: ForgeModule = {
     });
     registry.registerCommand({
       name: "compass.audit.validate",
+      contract: "compass",
+      rules: [],
       description:
         "Validate that no authored file is audit-overdue per the revision threshold (RFC-0352). Warns by default, fails with --strict.",
       scope: "workspace",

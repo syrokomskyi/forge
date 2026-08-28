@@ -50,6 +50,8 @@ export const forgeNotesModule: ForgeModule = {
 
     registry.registerCommand({
       name: "note.link.validate",
+      contract: "note",
+      rules: [],
       description:
         "Validate wikilink integrity across a markdown note vault. Scans [[wikilinks]] and resolves each against the note graph.",
       scope: "workspace",
@@ -71,6 +73,8 @@ export const forgeNotesModule: ForgeModule = {
 
     registry.registerCommand({
       name: "note.frontmatter.validate",
+      contract: "note",
+      rules: [],
       description:
         "Validate frontmatter consistency across a markdown note vault. Checks for required fields in YAML frontmatter.",
       scope: "workspace",

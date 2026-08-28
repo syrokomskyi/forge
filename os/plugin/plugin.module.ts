@@ -236,6 +236,8 @@ export const forgePluginModule: ForgeModule = {
   async register(registry) {
     registry.registerCommand({
       name: "forge.plugin.validate",
+      contract: "forge",
+      rules: [],
       description:
         "Validate forge.plugin.yaml manifests for all declared skill packs (RFC-0941). Checks manifest schema (id: kebab-case, version: semver) and reports missing or invalid manifests.",
       scope: "workspace",

@@ -87,6 +87,8 @@ export const forgeAdrModule: ForgeModule = {
 
     registry.registerCommand({
       name: "adr.validate",
+      contract: "adr",
+      rules: [],
       description:
         "Validate ADR frontmatter schema, required markdown sections, " +
         "referential integrity (supersedes/supersededBy), and id/filename consistency. " +
