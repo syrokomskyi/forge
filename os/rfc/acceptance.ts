@@ -158,7 +158,7 @@ async function spawnSiteKernel(
     .trim()
     .split(/\s+/)
     .filter(Boolean);
-  const binPath = path.join(workspaceRoot, "packages", "werkstatt", "bin", "werkstatt.mjs");
+  const binPath = path.join(workspaceRoot, "packages", "werkstatt-engine", "bin", "werkstatt.mjs");
 
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [binPath, ...args], {
