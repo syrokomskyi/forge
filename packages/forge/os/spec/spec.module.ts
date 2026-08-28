@@ -29,6 +29,8 @@ export const forgeSpecModule: ForgeModule = {
 
     registry.registerCommand({
       name: "spec.validate",
+      contract: "spec",
+      rules: [],
       description:
         "Validate vendored spec packages under docs/specs/. " +
         "Checks integrity (SHA-256), schema, dependency graph (acyclic), " +
@@ -123,6 +125,8 @@ export const forgeSpecModule: ForgeModule = {
 
     registry.registerCommand({
       name: "spec.live.validate",
+      contract: "spec",
+      rules: [],
       description:
         "Validate all living feature specs in docs/specs/live/. " +
         "Checks V-LS-01 (frontmatter), V-LS-02 (domain/filename match), " +

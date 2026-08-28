@@ -195,6 +195,8 @@ export async function runPhantomDepsValidate(
 export function createPhantomDepsValidateCommand(): KernelCommandDefinition<PhantomDepsValidateData> {
   return {
     name: "ts.phantom.deps.validate",
+    contract: "ts",
+    rules: [],
     description:
       "Detect phantom dependencies: imports not declared in package.json dependencies, devDependencies, or peerDependencies (TS-003).",
     scope: "workspace",

@@ -183,6 +183,8 @@ export async function runTsconfigValidate(
 export function createTsconfigValidateCommand(): KernelCommandDefinition<TsconfigValidateData> {
   return {
     name: "ts.tsconfig.validate",
+    contract: "ts",
+    rules: [],
     description:
       "Validate tsconfig.base.json and per-package tsconfig.json consistency: strict mode, moduleResolution, target (TS-001).",
     scope: "workspace",

@@ -26,6 +26,8 @@ export const forgeProgramModule: ForgeModule = {
 
     registry.registerCommand({
       name: "program.packet.validate",
+      contract: "program",
+      rules: [],
       description:
         "Validate a program packet against schema, source hashes, branch/head, " +
         "and state machine rules. Read-only. " +

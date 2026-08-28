@@ -166,6 +166,8 @@ export async function runStrictModeValidate(
 export function createStrictModeValidateCommand(): KernelCommandDefinition<StrictModeValidateData> {
   return {
     name: "ts.strict.mode.validate",
+    contract: "ts",
+    rules: [],
     description:
       "Validate strict-mode conventions: unescaped any, missing return types on exported functions, unjustified @ts-ignore (TS-005).",
     scope: "workspace",

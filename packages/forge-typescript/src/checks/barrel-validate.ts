@@ -141,6 +141,8 @@ export async function runBarrelValidate(
 export function createBarrelValidateCommand(): KernelCommandDefinition<BarrelValidateData> {
   return {
     name: "ts.barrel.validate",
+    contract: "ts",
+    rules: [],
     description:
       "Validate barrel exports (index.ts) do not re-export Node-only modules without subpath exports (TS-006).",
     scope: "workspace",

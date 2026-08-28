@@ -22,6 +22,8 @@ export const forgeWorkflowModule: ForgeModule = {
       await import("./handlers.ts");
     registry.registerCommand({
       name: "workflow.lint",
+      contract: "workflow",
+      rules: [],
       description:
         "Validate .agents/workflows AND .agents/workflows-amend markdown frontmatter, command references, " +
         "and per-chain phase links (RFC-0075 + RFC-0136).",

@@ -143,6 +143,8 @@ export async function runImportBoundariesValidate(
 export function createImportBoundariesValidateCommand(): KernelCommandDefinition<ImportBoundariesValidateData> {
   return {
     name: "ts.import.boundaries.validate",
+    contract: "ts",
+    rules: [],
     description:
       "Validate import boundaries: no packages-to-apps or packages-to-missions imports (TS-002).",
     scope: "workspace",

@@ -67,6 +67,10 @@ export interface ForgeCommandMetadata {
   mutatesState?: boolean;
   requiresNetwork?: boolean;
   supportsAllSites?: boolean;
+  /** RFC-0963: validation contract this command belongs to (e.g. "content", "seo"). */
+  contract?: string;
+  /** RFC-0963: rule IDs this validator can emit. Empty for non-emitting validators. */
+  rules?: string[];
   timeoutMs?: number;
   expectedDurationMs?: number;
   longRunning?: boolean;

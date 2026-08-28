@@ -129,6 +129,8 @@ export async function runPackageExportsValidate(
 export function createPackageExportsValidateCommand(): KernelCommandDefinition<PackageExportsValidateData> {
   return {
     name: "ts.package.exports.validate",
+    contract: "ts",
+    rules: [],
     description: "Validate package.json exports entries point to existing files (TS-004).",
     scope: "workspace",
     cacheable: true,

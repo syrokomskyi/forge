@@ -20,6 +20,8 @@ export const forgeNamingModule: ForgeModule = {
     const { runNamingConventionLint } = await import("./naming-convention.ts");
     registry.registerCommand({
       name: "naming.convention.lint",
+      contract: "naming",
+      rules: [],
       description:
         "Validate all filenames use kebab-case (no underscores) across registered workspace roots.",
       scope: "workspace",
