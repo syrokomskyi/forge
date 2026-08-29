@@ -66,11 +66,19 @@ Before any operator interaction, silently check whether the installed `@warpgogo
 
 Read `PREFERENCES.md` at the project root. `forge create` writes a placeholder with `aiLanguage: en` and `documentationLanguage: en`.
 
-Ask the operator:
+Ask the operator two questions, one at a time:
 
-> In which language should the AI communicate with you? (e.g. en, ru, uk, de, es) In which language should project documentation be written? (RFCs, ADRs, READMEs)
+**Question 1 — AI communication language:**
+
+> In which language should the AI communicate with you? (e.g. en, ru, uk, de, es)
 
 Accept free-form answers like "Russian", "русский", "uk" or "English". Prefer IETF BCP 47 language tags when the operator provides them.
+
+**Question 2 — Documentation language:**
+
+> In which language should project documentation be written? (RFCs, ADRs, READMEs) Press Enter to use English (default).
+
+Accept free-form answers like "Russian", "русский", "uk" or "English". If the operator presses Enter or says "default" / "English", use `en`. Prefer IETF BCP 47 language tags when the operator provides them.
 
 Write or merge the values into `PREFERENCES.md`. **All subsequent communication in this skill session uses the operator's chosen `aiLanguage`.**
 
