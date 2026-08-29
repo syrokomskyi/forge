@@ -20,7 +20,7 @@ Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my 
 
 ## Що можна створити за допомогою Forge
 
-Forge підтримує чотири типи проєктів. Ви обираєте один на старті — все інше відбувається автоматично.
+Forge підтримує п'ять типів проєктів. Ви обираєте один на старті — все інше відбувається автоматично.
 
 | Тип проєкту | Що це | Приклади |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ Forge підтримує чотири типи проєктів. Ви обира
 | **Управління / бібліотека** | Бібліотека коду або проєкт лише з управлінською структурою — без сайту, без гри, без відео, лише структура та документація | npm-пакет, внутрішній інструмент, центр документації |
 | **Гра Godot** | Десктопна або мобільна гра на Godot 4.x з C# — 2D, 3D, платформер, RPG | Пригода з виглядом зверху, 3D-платформер, головоломка |
 | **Система знань** | База знань з підтримкою доказів — структуровані набори даних, де твердження підтверджені зареєстрованими джерелами | База знань гри, доменна онтологія, куратований довідковий набір даних |
+| **Бібліотека TypeScript** | Універсальний TypeScript монорепозиторій з валідаторами найкращих практик — tsconfig, межі імпортів, фантомні залежності, експорти пакетів, strict mode, безпека barrel-експортів | Внутрішній інструмент, спільна бібліотека, TypeScript монорепозиторій |
 
 Кожен тип проєкту отримує власний каркас: правильну структуру папок, правильні залежності, правильні інструменти. Вам не потрібно знати, що це таке — Forge налаштує все за вас.
 
@@ -46,6 +47,7 @@ Forge — це **шар управління**: навички, RFC/ADR робо
 | [`@warpgogol/werkstatt-phaser-game`](https://github.com/syrokomskyi/werkstatt-phaser-game) | Плагін Phaser-гри — валідатори phaser, збірка Vite, адаптери розгортання | Проєкти браузерних ігор (`phaser-turborepo`) |
 | [`@warpgogol/werkstatt-godot-game`](https://github.com/syrokomskyi/werkstatt-godot-game) | Плагін Godot — валідатори сцен, збірка dotnet, розгортання itch.io, навички Godot | Проєкти ігор Godot (`godot-csharp`) |
 | [`@warpgogol/werkstatt-knowledge`](https://github.com/syrokomskyi/werkstatt-knowledge) | Плагін системи знань — прив'язка джерел, канонічна верифікація, екстракція, матеріалізація, перевірки релізу | Проєкти систем знань (`knowledge-typescript-turborepo`) |
+| [`@warpgogol/werkstatt-typescript`](https://github.com/syrokomskyi/werkstatt-typescript) | Плагін TypeScript — tsconfig, межі імпортів, фантомні залежності, експорти пакетів, strict mode, barrel-валідатори | Проєкти TypeScript TurboRepo (`typescript-turborepo`) |
 
 ### Коли потрібні ці пакети
 
@@ -63,6 +65,9 @@ pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-godot-game
 
 # Проєкт системи знань
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-knowledge
+
+# Проєкт TypeScript TurboRepo
+pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-typescript
 ```
 
 > **Примітка для агентів:** Після створення проєкту командою `forge create` завжди встановлюйте рушій та відповідний плагін стеку. Прив'язки в `forge.yaml` посилаються на команди з цих пакунків (напр. `pnpm exec werkstatt run rfc.validate`), і вони не працюватимуть, якщо пакунки не встановлені.
@@ -343,6 +348,7 @@ pnpm exec forge skill.list
 | `phaser-turborepo` | Браузерна гра | Phaser + TypeScript + pnpm + Turborepo | `games/my-game` | Браузерні ігри, інтерактивні досвіди |
 | `godot-csharp` | Гра Godot | Godot 4.x + C# + pnpm + Turborepo | `games/my-game` | Десктопні/мобільні ігри, інтерактивні проєкти на Godot |
 | `knowledge-typescript-turborepo` | Система знань | TypeScript + pnpm + Turborepo | `knowledge/my-kb` | Бази знань з підтримкою доказів, структуровані набори даних з джерельною простежуваністю |
+| `typescript-turborepo` | Бібліотека TypeScript | TypeScript + pnpm + Turborepo | — | Універсальний TypeScript TurboRepo монорепозиторій з валідаторами найкращих практик |
 
 ```sh
 # Список доступних профілів (після встановлення)
