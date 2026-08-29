@@ -492,6 +492,21 @@ describe("mission.archive", () => {
     expect(data.skipped[0].reason).toContain("manually inspect");
   });
 
+  test("RFC-0982: --clean-orphans trashes empty remnant dir (no workpiece, no mission.yaml)", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-08");
+    await fs.mkdir(missionDir, { recursive: true });
+    // No mission.yaml, no workpiece — empty remnant, state would be null
+
+    const data = unwrap(
+      await runMissionArchive(makeInput({ "clean-orphans": true }), makeContext(tmpDir)),
+    );
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-r982-08");
+    expect(data.moved[0].direction).toBe("trashed-orphan");
+    expect(existsSync(missionDir)).toBe(false);
+  });
+
   test("RFC-0982: skip reason 'use --clean-orphans' for empty remnant dir", async () => {
     const missionDir = path.join(missionsDir, "test-r982-07");
     await fs.mkdir(missionDir, { recursive: true });

@@ -64,6 +64,11 @@ async function cleanServiceFolders(workpieceDir: string): Promise<string[]> {
   return removed;
 }
 
+// RFC-0982: Shared cache-entry predicate — prevents filter logic divergence.
+function isCacheEntry(name: string): boolean {
+  return name.startsWith(".") || name === "node_modules" || name === "dist";
+}
+
 async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
   try {
@@ -84,9 +89,7 @@ async function readMissionState(missionDir: string): Promise<string | null> {
   const workpieceDir = path.join(missionDir, "workpiece");
   if (existsSync(workpieceDir)) {
     const entries = await fs.readdir(workpieceDir);
-    const nonCacheEntries = entries.filter(
-      (e) => !e.startsWith(".") && e !== "node_modules" && e !== "dist",
-    );
+    const nonCacheEntries = entries.filter((e) => !isCacheEntry(e));
     if (nonCacheEntries.length === 0) {
       return "closed";
     }
@@ -96,7 +99,7 @@ async function readMissionState(missionDir: string): Promise<string | null> {
 }
 
 // RFC-0982: Check if a mission directory is an orphaned remnant — no mission.yaml
-// and workpiece/ contains only cache entries.
+// and workpiece/ contains only cache entries (or no workpiece at all).
 async function isOrphanedRemnant(missionDir: string): Promise<boolean> {
   const manifestPath = path.join(missionDir, "mission.yaml");
   if (existsSync(manifestPath)) return false;
@@ -105,9 +108,7 @@ async function isOrphanedRemnant(missionDir: string): Promise<boolean> {
   if (!existsSync(workpieceDir)) return true;
 
   const entries = await fs.readdir(workpieceDir);
-  const nonCacheEntries = entries.filter(
-    (e) => !e.startsWith(".") && e !== "node_modules" && e !== "dist",
-  );
+  const nonCacheEntries = entries.filter((e) => !isCacheEntry(e));
   return nonCacheEntries.length === 0;
 }
 
@@ -117,10 +118,7 @@ async function hasNonCacheContent(missionDir: string): Promise<boolean> {
   const entries = await fs.readdir(missionDir, { withFileTypes: true });
   for (const entry of entries) {
     if (entry.name === "workpiece") continue;
-    if (
-      entry.isDirectory() &&
-      (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist")
-    ) {
+    if (entry.isDirectory() && isCacheEntry(entry.name)) {
       continue;
     }
     // Any file or non-cache directory at mission root is content
@@ -131,9 +129,7 @@ async function hasNonCacheContent(missionDir: string): Promise<boolean> {
   const workpieceDir = path.join(missionDir, "workpiece");
   if (existsSync(workpieceDir)) {
     const wpEntries = await fs.readdir(workpieceDir);
-    const nonCacheEntries = wpEntries.filter(
-      (e) => !e.startsWith(".") && e !== "node_modules" && e !== "dist",
-    );
+    const nonCacheEntries = wpEntries.filter((e) => !isCacheEntry(e));
     if (nonCacheEntries.length > 0) return true;
   }
 
@@ -288,6 +284,25 @@ export async function runMissionArchive(
 
   for (const missionId of rootDirs) {
     const missionDir = path.join(missionsPath, missionId);
+    const sourceRel = `${MISSIONS_DIR}/${missionId}`;
+
+    // RFC-0982: --clean-orphans — trash orphaned remnant directories before state
+    // detection. This catches dirs where mission.yaml is missing and only cache
+    // entries remain, regardless of whether readMissionState returns "closed" or null.
+    if (cleanOrphans && (await isOrphanedRemnant(missionDir))) {
+      if (!dryRun) {
+        await trashPath(missionDir);
+      }
+      moved.push({
+        missionId,
+        state: "closed",
+        from: sourceRel,
+        to: "(trashed)",
+        direction: "trashed-orphan",
+      });
+      continue;
+    }
+
     const state = await readMissionState(missionDir);
 
     if (state === null) {
@@ -318,23 +333,6 @@ export async function runMissionArchive(
         missionId,
         dir: `${MISSIONS_DIR}/${missionId}`,
         reason: `state ${state} does not match --status ${statusFilter}`,
-      });
-      continue;
-    }
-
-    const sourceRel = `${MISSIONS_DIR}/${missionId}`;
-
-    // RFC-0982: --clean-orphans — trash orphaned remnant directories instead of archiving
-    if (cleanOrphans && state === "closed" && (await isOrphanedRemnant(missionDir))) {
-      if (!dryRun) {
-        await trashPath(missionDir);
-      }
-      moved.push({
-        missionId,
-        state: "closed",
-        from: sourceRel,
-        to: "(trashed)",
-        direction: "trashed-orphan",
       });
       continue;
     }
