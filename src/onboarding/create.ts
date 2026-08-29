@@ -17,11 +17,13 @@
   <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
   <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
   <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, strict empty-directory check (only .git/ tolerated).</item>
+  <item>Initialize git repo with --initial-branch=main if .git does not exist (hard guard for main branch default).</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import { stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";
 import { runInit, type InitResult, type InitDomainFields } from "./init.ts";
@@ -227,6 +229,23 @@ export async function runCreate(
       exitCode: 1,
       summary: `forge.create: failed — ${msg}`,
     };
+  }
+
+  // 6.5. Initialize git repo with main branch (if not already initialized)
+  // This is a hard guard — forge.create programmatically ensures main branch,
+  // so greenfield projects don't depend on the agent running git init correctly.
+  const gitDir = path.join(targetDir, ".git");
+  if (!fs.existsSync(gitDir)) {
+    try {
+      execFileSync("git", ["init", "--initial-branch=main"], { cwd: targetDir, stdio: "pipe" });
+      if (outputFormat === "pretty") {
+        logger.info("Initialized git repository with main branch");
+      }
+    } catch {
+      if (outputFormat === "pretty") {
+        logger.warn("Failed to initialize git repository — run 'git init --initial-branch=main' manually");
+      }
+    }
   }
 
   // 7. Resolve forge root
