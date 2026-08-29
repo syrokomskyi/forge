@@ -95,6 +95,51 @@ async function readMissionState(missionDir: string): Promise<string | null> {
   return null;
 }
 
+// RFC-0982: Check if a mission directory is an orphaned remnant — no mission.yaml
+// and workpiece/ contains only cache entries.
+async function isOrphanedRemnant(missionDir: string): Promise<boolean> {
+  const manifestPath = path.join(missionDir, "mission.yaml");
+  if (existsSync(manifestPath)) return false;
+
+  const workpieceDir = path.join(missionDir, "workpiece");
+  if (!existsSync(workpieceDir)) return true;
+
+  const entries = await fs.readdir(workpieceDir);
+  const nonCacheEntries = entries.filter(
+    (e) => !e.startsWith(".") && e !== "node_modules" && e !== "dist",
+  );
+  return nonCacheEntries.length === 0;
+}
+
+// RFC-0982: Check if a mission directory has non-cache content (source files,
+// configs, etc.) that warrants manual inspection rather than auto-cleanup.
+async function hasNonCacheContent(missionDir: string): Promise<boolean> {
+  const entries = await fs.readdir(missionDir, { withFileTypes: true });
+  for (const entry of entries) {
+    if (entry.name === "workpiece") continue;
+    if (
+      entry.isDirectory() &&
+      (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist")
+    ) {
+      continue;
+    }
+    // Any file or non-cache directory at mission root is content
+    return true;
+  }
+
+  // Check workpiece/ for non-cache content
+  const workpieceDir = path.join(missionDir, "workpiece");
+  if (existsSync(workpieceDir)) {
+    const wpEntries = await fs.readdir(workpieceDir);
+    const nonCacheEntries = wpEntries.filter(
+      (e) => !e.startsWith(".") && e !== "node_modules" && e !== "dist",
+    );
+    if (nonCacheEntries.length > 0) return true;
+  }
+
+  return false;
+}
+
 interface MoveAttempt {
   moved: MissionArchiveMove | null;
   skip: MissionArchiveSkip | null;
@@ -177,6 +222,7 @@ export async function runMissionArchive(
 
   const dryRun = context.dryRun || input.flags["dry-run"] === true;
   const statusFilter = input.flags["status"] as string | undefined;
+  const cleanOrphans = input.flags["clean-orphans"] === true;
 
   if (statusFilter && !MISSION_TERMINAL_STATUSES.includes(statusFilter as never)) {
     throw new Error(
@@ -245,10 +291,13 @@ export async function runMissionArchive(
     const state = await readMissionState(missionDir);
 
     if (state === null) {
+      const hasContent = await hasNonCacheContent(missionDir);
       skipped.push({
         missionId,
         dir: `${MISSIONS_DIR}/${missionId}`,
-        reason: "unreadable manifest",
+        reason: hasContent
+          ? "unreadable manifest — manually inspect or add mission.yaml"
+          : "empty remnant — use --clean-orphans to remove",
       });
       continue;
     }
@@ -273,10 +322,26 @@ export async function runMissionArchive(
       continue;
     }
 
+    const sourceRel = `${MISSIONS_DIR}/${missionId}`;
+
+    // RFC-0982: --clean-orphans — trash orphaned remnant directories instead of archiving
+    if (cleanOrphans && state === "closed" && (await isOrphanedRemnant(missionDir))) {
+      if (!dryRun) {
+        await trashPath(missionDir);
+      }
+      moved.push({
+        missionId,
+        state: "closed",
+        from: sourceRel,
+        to: "(trashed)",
+        direction: "trashed-orphan",
+      });
+      continue;
+    }
+
     const targetDir = path.join(missionsPath, ARCHIVE_DIR_NAME, state);
     const targetPath = path.join(targetDir, missionId);
     const targetRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${state}/${missionId}`;
-    const sourceRel = `${MISSIONS_DIR}/${missionId}`;
 
     // RFC-0733: Check if mission directory is pinned before moving
     // Gap fix: exempt intra-directory moves (dir stays within the same pinned parent)

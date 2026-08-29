@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0573: initial forgeMissionModule registering mission.archive command.</item>
+  <item>RFC-0982: add --clean-orphans flag for trashing orphaned remnant directories.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,6 +42,11 @@ export const forgeMissionModule: ForgeModule = {
         status: {
           kind: "string",
           description: "Filter to a single terminal status (closed, aborted).",
+        },
+        "clean-orphans": {
+          kind: "boolean",
+          description:
+            "Trash orphaned directories (no mission.yaml, only cache files) instead of archiving them.",
         },
       },
       execute: runMissionArchive,
