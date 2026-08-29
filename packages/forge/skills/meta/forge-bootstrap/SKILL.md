@@ -136,7 +136,7 @@ Ask the operator:
 1. **Stack** — ask what stack the project uses (TypeScript, Python, Rust, etc.). Write into `forge.yaml` `project.stack`.
 2. **Package manager** — confirm or override `project.packageManager` in `forge.yaml`.
 3. **Stack bindings** — fill `commands.typecheck`, `commands.test`, `commands.scopedBuild` in `forge.yaml`. Ask the operator for the exact commands (e.g. `tsc --noEmit`, `vitest`, `turbo run build`).
-4. **Git init** — check if `.git` exists in the project root. If not, run `git init` and make an initial commit with all project files. If `.git` already exists, proceed.
+4. **Git init** — `forge.create` already initializes git with `--initial-branch=main` programmatically. Verify `.git` exists in the project root. If it does, proceed. If not (e.g. `forge.create` failed to init git), run `git init --initial-branch=main` manually. Make an initial commit with all project files on the `main` branch.
 
 #### Transplant (adapter-driven migration)
 
@@ -168,11 +168,11 @@ The transplant mode performs real code migration via a migration-adapter registr
 
    If yes: the skill uses `git format-patch` (export all commits from source) + `git am` (apply them in the new project) to preserve history without copying the `.git` directory. If the source has many commits, warn that this may take a moment.
 
-   If no: the skill runs `git init` in the new project (clean repository, no history from source).
+   If no: the skill runs `git init --initial-branch=main` in the new project (clean repository, no history from source).
 
-   If git history transfer fails (complex history, submodules, replace objects): warn and continue with a clean `git init`.
+   If git history transfer fails (complex history, submodules, replace objects): warn and continue with a clean `git init --initial-branch=main`.
 
-   If the source project has no `.git` directory: skip the git history question and run `git init` directly.
+   If the source project has no `.git` directory: skip the git history question and run `git init --initial-branch=main` directly.
 
 6. **Post-setup** — call `postSetup()`. The adapter initializes git (clean init or format-patch + git am based on operator's choice), updates `pnpm-workspace.yaml` (adds `apps/<appName>`), `turbo.json` (adds workspace to pipeline), runs the install command derived from `ref(forge.yaml project.packageManager)`. The skill captures bin-link ENOENT warnings from the install output — these are cosmetic and indicate that `dist/` does not exist yet (the project has not been built). If the install itself fails (exit code != 0), report the dependency resolution error in human language (in `aiLanguage`), skip build verification, and continue to the welcoming report. The operator can fix and re-run onboarding.
 
@@ -434,8 +434,8 @@ A short description after every onboarding, read from `forge-about.md`. The skil
 - `doctor` is unavailable → skill skips auto-doctor and notes it in the report; operator can ask the agent to run it later.
 - Auto-ADR creation fails → skill reports the error silently (in agent logs, not to operator), leaves the ADR file in place for the agent to fix, and continues to the welcoming report. The operator is never told about the ADR.
 - Project analysis finds nothing recommendable (transplant) → skill skips recommendations and proceeds to the welcoming report with a direct invitation to start creating.
-- Git history transfer fails → skill warns and continues with clean `git init`.
-- Source project has no `.git` → skill skips the git history question and runs `git init` directly.
+- Git history transfer fails → skill warns and continues with clean `git init --initial-branch=main`.
+- Source project has no `.git` → skill skips the git history question and runs `git init --initial-branch=main` directly.
 - Post-setup `pnpm install` fails → skill reports the error; the operator can fix and re-run `pnpm install` manually.
 - Migration interrupted mid-copy (process crash, agent termination) → `migrate()` is idempotent: re-running skips files that already exist at the target with matching content. The operator can also delete `apps/<appName>/` and re-run for a clean migration.
 - Concurrent execution (two agents running `forge-bootstrap` transplant on the same forge project simultaneously) → the skill does not lock `apps/<appName>/`; concurrent writes may conflict. The operator should not run two transplant operations on the same project in parallel.

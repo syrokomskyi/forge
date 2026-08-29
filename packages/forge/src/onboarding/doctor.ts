@@ -23,6 +23,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
   <item>RFC-0704: added independent-version-packages check — validates that paths in independentVersionPackages exist and contain package.json.</item>
   <item>RFC-0941: added pack-manifests advisory check — validates forge.plugin.yaml existence and schema for each declared skill pack.</item>
+  <item>Added git-branch check — warns when current branch is 'master' instead of 'main'.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -1075,6 +1076,39 @@ function checkMemoryLayer(workspaceRoot: string): DoctorCheck {
 }
 
 // ---------------------------------------------------------------------------
+// Git branch check — warn if current branch is 'master' instead of 'main'
+// ---------------------------------------------------------------------------
+
+function checkGitBranch(workspaceRoot: string): DoctorCheck {
+  const gitDir = join(workspaceRoot, ".git");
+  if (!existsSync(gitDir)) {
+    return { name: "git-branch", status: "pass", message: "No git repository — git branch check skipped" };
+  }
+
+  try {
+    const branch = execSync("git branch --show-current", { cwd: workspaceRoot, stdio: "pipe", timeout: 5000 })
+      .toString()
+      .trim();
+
+    if (branch === "master") {
+      return {
+        name: "git-branch",
+        status: "warn",
+        message: "Current branch is 'master' — rename to 'main' with: git branch -m main",
+      };
+    }
+
+    return {
+      name: "git-branch",
+      status: "pass",
+      message: `Current branch: ${branch}`,
+    };
+  } catch {
+    return { name: "git-branch", status: "pass", message: "Unable to determine git branch — check skipped" };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Prerequisite checks (profile-declared system dependencies)
 // ---------------------------------------------------------------------------
 
@@ -1176,6 +1210,9 @@ export async function runDoctor(
       ? "docs/adrs/ directory found"
       : "docs/adrs/ directory not found — run 'forge create' to create ADR directory",
   });
+
+  // Check git branch is 'main' (not 'master')
+  checks.push(checkGitBranch(workspaceRoot));
 
   // Check @warpgogol/* forbidden imports (autonomy guard)
   let forgeRoot: string;

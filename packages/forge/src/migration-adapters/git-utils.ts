@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0547: extract shared postSetup git logic from duplicated adapter implementations.</item>
   <item>Replace fs.rmSync with trashSync for patch directory cleanup (trash bin for LLM-initiated deletions).</item>
+  <item>Use --initial-branch=main for all git init calls so new repos default to main instead of master.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +33,7 @@ export function runPostSetup(
       execFileSync("git", ["-C", sourceDir, "format-patch", "--all", "-o", patchDir], {
         stdio: "pipe",
       });
-      execFileSync("git", ["init"], { cwd: targetDir, stdio: "pipe" });
+      execFileSync("git", ["init", "--initial-branch=main"], { cwd: targetDir, stdio: "pipe" });
       execFileSync("git", ["config", "user.email", "forge@warpgogol.dev"], {
         cwd: targetDir,
         stdio: "pipe",
@@ -60,12 +61,12 @@ export function runPostSetup(
         `forge: git history transfer failed, falling back to clean git init: ${err instanceof Error ? err.message : String(err)}`,
       );
       if (!fs.existsSync(gitDir)) {
-        execFileSync("git", ["init"], { cwd: targetDir, stdio: "pipe" });
+        execFileSync("git", ["init", "--initial-branch=main"], { cwd: targetDir, stdio: "pipe" });
       }
     }
   } else {
     if (!fs.existsSync(gitDir)) {
-      execFileSync("git", ["init"], { cwd: targetDir, stdio: "pipe" });
+      execFileSync("git", ["init", "--initial-branch=main"], { cwd: targetDir, stdio: "pipe" });
     }
   }
 }

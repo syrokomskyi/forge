@@ -293,6 +293,27 @@ test("migrate excludes .git directory from copy", async () => {
   expect(existsSync(join(appDir, ".git"))).toBe(false);
 });
 
+test("postSetup creates main branch (not master) when gitHistory is false", async () => {
+  const sourceDir = join(tempDir, "source-main");
+  const targetDir = join(tempDir, "target-main");
+
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(targetDir, { recursive: true });
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test-app" }));
+  await writeFile(join(sourceDir, "tsconfig.json"), "{}");
+  await writeFile(join(sourceDir, "pnpm-lock.yaml"), "");
+
+  const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
+  nodeTypescriptPnpmAdapter.postSetup(sourceDir, targetDir, analysis);
+
+  expect(existsSync(join(targetDir, ".git"))).toBe(true);
+  const { execSync } = await import("node:child_process");
+  const branch = execSync("git branch --show-current", { cwd: targetDir, stdio: "pipe" })
+    .toString()
+    .trim();
+  expect(branch).toBe("main");
+});
+
 test("postSetup runs git init when analysis.gitHistory is false", async () => {
   const sourceDir = join(tempDir, "source");
   const targetDir = join(tempDir, "target");
