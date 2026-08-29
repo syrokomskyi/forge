@@ -147,16 +147,16 @@ describe("mission.archive", () => {
     expect(data.skipped.some((s) => s.reason === "destination exists")).toBe(true);
   });
 
-  test("unreadable manifest → skipped with 'unreadable manifest' reason", async () => {
+  test("unreadable manifest with empty dir → skipped with 'empty remnant' reason", async () => {
     const missionDir = path.join(missionsDir, "test-m008");
     await fs.mkdir(missionDir, { recursive: true });
-    // No mission.yaml — unreadable
+    // No mission.yaml, no workpiece — empty remnant
 
     const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
 
     expect(data.moved).toHaveLength(0);
     expect(data.skipped).toHaveLength(1);
-    expect(data.skipped[0].reason).toBe("unreadable manifest");
+    expect(data.skipped[0].reason).toBe("empty remnant — use --clean-orphans to remove");
   });
 
   test("open mission in archive/ → moved back to missions/ (bidirectional)", async () => {
@@ -387,5 +387,120 @@ describe("mission.archive", () => {
       (c) => typeof c[0] === "string" && c[0].startsWith("pnpm install"),
     );
     expect(installCall).toBeUndefined();
+  });
+
+  // RFC-0982: Fallback state detection and --clean-orphans tests
+
+  test("RFC-0982: orphaned workpiece with only .astro/ cache → state detected as closed, archived", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-01");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(path.join(workpieceDir, ".astro"), { recursive: true });
+    await fs.writeFile(path.join(workpieceDir, ".astro", "cache.txt"), "cache\n");
+    // No mission.yaml — orphaned remnant
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-r982-01");
+    expect(data.moved[0].state).toBe("closed");
+    expect(data.moved[0].direction).toBe("into-archive");
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-r982-01"))).toBe(true);
+  });
+
+  test("RFC-0982: .closed marker fallback → state detected as closed", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-02");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(workpieceDir, { recursive: true });
+    await fs.writeFile(path.join(workpieceDir, ".closed"), "2026-08-29T12:00:00Z\n");
+    // Also add a source file so it's not cache-only
+    await fs.writeFile(path.join(workpieceDir, "src.ts"), "// source\n");
+    // No mission.yaml — but .closed marker present
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-r982-02");
+    expect(data.moved[0].state).toBe("closed");
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-r982-02"))).toBe(true);
+  });
+
+  test("RFC-0982: --clean-orphans trashes orphaned remnant dir", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-03");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(path.join(workpieceDir, ".astro"), { recursive: true });
+    await fs.writeFile(path.join(workpieceDir, ".astro", "cache.txt"), "cache\n");
+    // No mission.yaml — orphaned remnant with only cache
+
+    const data = unwrap(
+      await runMissionArchive(makeInput({ "clean-orphans": true }), makeContext(tmpDir)),
+    );
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].missionId).toBe("test-r982-03");
+    expect(data.moved[0].direction).toBe("trashed-orphan");
+    expect(data.moved[0].to).toBe("(trashed)");
+    expect(existsSync(missionDir)).toBe(false);
+  });
+
+  test("RFC-0982: --clean-orphans --dry-run → reported but not trashed", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-04");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(path.join(workpieceDir, ".astro"), { recursive: true });
+    await fs.writeFile(path.join(workpieceDir, ".astro", "cache.txt"), "cache\n");
+
+    const data = unwrap(
+      await runMissionArchive(
+        makeInput({ "clean-orphans": true, "dry-run": true }),
+        makeContext(tmpDir),
+      ),
+    );
+
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].direction).toBe("trashed-orphan");
+    expect(data.dryRun).toBe(true);
+    // Dir should still exist in dry-run
+    expect(existsSync(missionDir)).toBe(true);
+  });
+
+  test("RFC-0982: --clean-orphans skips non-orphaned dir with mission.yaml", async () => {
+    await writeMissionManifest(missionsDir, "test-r982-05", "closed");
+    const workpieceDir = path.join(missionsDir, "test-r982-05", "workpiece");
+    await fs.mkdir(path.join(workpieceDir, ".astro"), { recursive: true });
+
+    const data = unwrap(
+      await runMissionArchive(makeInput({ "clean-orphans": true }), makeContext(tmpDir)),
+    );
+
+    // Should be archived normally, not trashed
+    expect(data.moved).toHaveLength(1);
+    expect(data.moved[0].direction).toBe("into-archive");
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-r982-05"))).toBe(true);
+  });
+
+  test("RFC-0982: skip reason 'manually inspect' for dir with non-cache content but no mission.yaml", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-06");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(workpieceDir, { recursive: true });
+    // Source file in workpiece — non-cache content, no .closed marker
+    await fs.writeFile(path.join(workpieceDir, "src.ts"), "// source code\n");
+    // No mission.yaml
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(0);
+    expect(data.skipped).toHaveLength(1);
+    expect(data.skipped[0].reason).toContain("manually inspect");
+  });
+
+  test("RFC-0982: skip reason 'use --clean-orphans' for empty remnant dir", async () => {
+    const missionDir = path.join(missionsDir, "test-r982-07");
+    await fs.mkdir(missionDir, { recursive: true });
+    // No mission.yaml, no workpiece, no content — empty remnant
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(0);
+    expect(data.skipped).toHaveLength(1);
+    expect(data.skipped[0].reason).toContain("use --clean-orphans");
   });
 });
