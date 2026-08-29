@@ -20,7 +20,7 @@ Replace `[describe your project]` with your idea — a game, a library, a knowle
 
 ## What you can build with Forge
 
-Forge supports four kinds of projects. You pick one when you start — everything else is automatic.
+Forge supports five kinds of projects. You pick one when you start — everything else is automatic.
 
 | Project type | What it is | Example ideas |
 | --- | --- | --- |
@@ -28,6 +28,7 @@ Forge supports four kinds of projects. You pick one when you start — everythin
 | **Governance / library** | A code library or governance-only project — no website, no game, no video, just structure and documentation | npm package, internal toolkit, documentation hub |
 | **Godot game** | A desktop or mobile game built with Godot 4.x and C# — 2D, 3D, platformer, RPG | Top-down adventure, 3D platformer, puzzle game |
 | **Knowledge system** | An evidence-backed knowledge base — structured datasets where claims are backed by registered source provenance | Game knowledge base, domain ontology, curated reference dataset |
+| **TypeScript library** | A generic TypeScript monorepo with best-practice validators — tsconfig, import boundaries, phantom deps, package exports, strict mode, barrel safety | Internal toolkit, shared library, TypeScript monorepo |
 
 Each project type gets its own scaffold: the right folder structure, the right dependencies, the right tools. You don't need to know what any of those are — Forge sets them up for you.
 
@@ -46,7 +47,7 @@ For full project lifecycle management — missions, releases, deployment, certif
 | [`@warpgogol/werkstatt-phaser-game`](https://github.com/syrokomskyi/werkstatt-phaser-game) | Phaser game plugin — phaser validators, Vite build, deploy adapters | Browser game projects (`phaser-turborepo`) |
 | [`@warpgogol/werkstatt-godot-game`](https://github.com/syrokomskyi/werkstatt-godot-game) | Godot plugin — scene validators, dotnet build, itch.io deploy, Godot skills | Godot game projects (`godot-csharp`) |
 | [`@warpgogol/werkstatt-knowledge`](https://github.com/syrokomskyi/werkstatt-knowledge) | Knowledge plugin — source binding, canonical verification, extraction, materialization, release checks | Knowledge system projects (`knowledge-typescript-turborepo`) |
-| [`@warpgogol/werkstatt-typescript`](https://github.com/syrokomskyi/werkstatt) | TypeScript plugin — tsconfig, import boundaries, phantom deps, package exports, strict mode, barrel validators | TypeScript TurboRepo projects (`typescript-turborepo`) |
+| [`@warpgogol/werkstatt-typescript`](https://github.com/syrokomskyi/werkstatt-typescript) | TypeScript plugin — tsconfig, import boundaries, phantom deps, package exports, strict mode, barrel validators | TypeScript TurboRepo projects (`typescript-turborepo`) |
 
 ### When you need these packages
 
