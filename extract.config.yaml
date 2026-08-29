@@ -4,7 +4,7 @@
 projectDir: packages/forge
 destName: forge
 standalone: true
-versionBump: minor
+versionBump: patch
 
 workspacePrefixes:
   - "@warpgogol/"

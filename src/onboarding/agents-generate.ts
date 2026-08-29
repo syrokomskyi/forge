@@ -266,6 +266,7 @@ export async function runAgentsGenerate(
     filePath: "AGENTS.md",
     ownerCommand: "forge.agents.generate",
     commandPrefix: "forge",
+    editable: true,
   });
 
   // RFC-0643: determine register from PREFERENCES.md or profile

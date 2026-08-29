@@ -15,6 +15,7 @@ export { writeFileAtomic, type WriteFileAtomicOptions } from "./fs-atomic.ts";
 export { writeFileIfChanged } from "./fs-idempotent.ts";
 export {
   GENERATED_MARKER,
+  EDITABLE_GENERATED_MARKER,
   hasGeneratedMarker,
   stripGeneratedMarker,
   buildGeneratedHeader,

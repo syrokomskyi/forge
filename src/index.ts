@@ -43,6 +43,7 @@ export {
   writeFileAtomic,
   type WriteFileAtomicOptions,
   GENERATED_MARKER,
+  EDITABLE_GENERATED_MARKER,
   hasGeneratedMarker,
   stripGeneratedMarker,
   buildGeneratedHeader,
