@@ -1,6 +1,7 @@
 import { test, expect, describe } from "vitest";
 import {
   GENERATED_MARKER,
+  EDITABLE_GENERATED_MARKER,
   hasGeneratedMarker,
   stripGeneratedMarker,
   buildGeneratedHeader,
@@ -140,6 +141,19 @@ describe("buildGeneratedHeader", () => {
       templatePath: "templates/foo.ts",
     });
     expect(header).toContain("Edit instead: templates/foo.ts");
+  });
+
+  test("editable mode uses permissive marker and advisory", () => {
+    const header = buildGeneratedHeader({
+      filePath: "AGENTS.md",
+      ownerCommand: "forge.agents.generate",
+      editable: true,
+    });
+    expect(header).toContain(EDITABLE_GENERATED_MARKER);
+    expect(header).not.toContain(GENERATED_MARKER);
+    expect(header).not.toContain("DO NOT EDIT");
+    expect(header).toContain("Safe to edit");
+    expect(header).toContain("editable");
   });
 });
 
