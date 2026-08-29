@@ -18,6 +18,7 @@ archive subdirectories back to missions/.
   <item>RFC-0801: add service-folder cleanup (node_modules, dist, .astro, .wrangler, .cache, .turbo) before archive move.</item>
   <item>RFC-0733: add pinned-files pre-check — skip pinned mission directories with warning instead of moving them.</item>
   <item>RFC-0804: auto-refresh pnpm-lock.yaml after directory moves.</item>
+  <item>RFC-0982: fallback state detection for orphaned workpiece dirs (no mission.yaml) via .closed marker and cache-only heuristic; --clean-orphans flag; improved skip reasons.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -70,10 +71,28 @@ async function readMissionState(missionDir: string): Promise<string | null> {
     const parsed = parseYaml(raw) as Record<string, unknown>;
     const state = parsed?.state;
     if (typeof state === "string") return state.trim();
-    return null;
   } catch {
-    return null;
+    // Fall through to secondary checks
   }
+
+  // RFC-0982: Secondary — check for workpiece/.closed marker
+  const closedMarker = path.join(missionDir, "workpiece", ".closed");
+  if (existsSync(closedMarker)) return "closed";
+
+  // RFC-0982: Tertiary — if workpiece/ exists and contains only cache entries,
+  // treat as closed (post-close remnant pattern)
+  const workpieceDir = path.join(missionDir, "workpiece");
+  if (existsSync(workpieceDir)) {
+    const entries = await fs.readdir(workpieceDir);
+    const nonCacheEntries = entries.filter(
+      (e) => !e.startsWith(".") && e !== "node_modules" && e !== "dist",
+    );
+    if (nonCacheEntries.length === 0) {
+      return "closed";
+    }
+  }
+
+  return null;
 }
 
 interface MoveAttempt {
