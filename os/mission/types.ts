@@ -10,6 +10,7 @@ manifest state extraction, and archive result shapes.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0573: initial mission archive types.</item>
+  <item>RFC-0982: add "trashed-orphan" to MissionArchiveMove.direction.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,7 +24,7 @@ export interface MissionArchiveMove {
   state: string;
   from: string;
   to: string;
-  direction: "into-archive" | "out-of-archive";
+  direction: "into-archive" | "out-of-archive" | "trashed-orphan";
 }
 
 export interface MissionArchiveSkip {
