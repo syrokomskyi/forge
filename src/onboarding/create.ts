@@ -397,7 +397,7 @@ Your Forge project is ready. The next step is mandatory: run \`/forge-bootstrap\
 Run \`/forge-bootstrap\` now. It will ask you:
 
 - Which language the AI should communicate with you in
-- Which language project documentation should be written in
+- Which language project documentation should be written in (defaults to English)
 - Whether you prefer a business or creative working style
 - Your name and how you want to be addressed
 - Your stack configuration (or migrate an existing project)

@@ -16,6 +16,18 @@ Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my 
 
 Replace `[describe your project]` with your idea — a game, a library, a knowledge base, anything. The AI agent installs Forge, scaffolds the project, and sets up a live preview. From there on, you just talk: describe what you want, and the agent builds it. No programming, no terminal, no commands.
 
+### After the prompt completes — the Bootstrap skill
+
+Once the AI agent has installed Forge and scaffolded your project, it will run the `/forge-bootstrap` skill. This is a required step that configures your project interactively:
+
+- The language the AI uses to communicate with you
+- The language for project documentation (RFCs, ADRs, READMEs) — defaults to English
+- Your preferred working style — business or creative
+- Your name and how you want to be addressed
+- Your stack configuration (or migration of an existing project)
+
+The skill asks a few simple questions in the chat, then sets everything up. After it completes, you're ready to create — just tell the AI agent what you want to build.
+
 ---
 
 ## What you can build with Forge
