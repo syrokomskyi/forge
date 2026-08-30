@@ -447,6 +447,99 @@ Forge provides the tools — `forge doctor`, `forge rfc.validate`, `forge skill.
 
 ---
 
+## Skill packs
+
+Skill packs let you create project-local skills under your own prefix, separate from Forge's portable `fo-` skills. This is useful when your project has domain-specific workflows that don't belong in Forge's portable skill set.
+
+### Declaring a pack
+
+Add a `skillPacks` entry to `forge.yaml`:
+
+```yaml
+skillPacks:
+  - prefix: wg
+    dir: packages/my-skills/skills
+```
+
+- `prefix` — short identifier used as a skill name prefix (e.g. `wg-deploy`, `wg-content-check`). Cannot be `fo` (reserved for Forge).
+- `dir` — directory containing your pack skills. Each skill is a subdirectory with a `SKILL.md` file.
+
+### Pack manifest (`forge.plugin.yaml`)
+
+Each pack directory must contain a `forge.plugin.yaml` manifest:
+
+```yaml
+id: my-pack
+version: 1.0.0
+```
+
+- `id` — kebab-case identifier for the pack.
+- `version` — semver version string.
+
+`forge init` auto-creates this manifest if it's missing. You can also create it manually.
+
+### Skill structure
+
+Skills follow the same structure as Forge skills:
+
+```
+packages/my-skills/skills/
+  forge.plugin.yaml          # pack manifest
+  wg-deploy/
+    SKILL.md                 # skill definition with frontmatter
+  wg-content-check/
+    SKILL.md
+```
+
+Each `SKILL.md` has standardized frontmatter (name, description, category, concerns, dependsOn) — the same format as Forge's `fo-` skills.
+
+### Validation commands
+
+```sh
+# Validate all pack manifests
+pnpm exec forge plugin.validate
+
+# List discovered packs
+pnpm exec forge plugin.discover
+
+# Validate individual skills (including pack skills)
+pnpm exec forge skill.validate
+
+# List all skills (pack skills annotated with pack:<prefix>)
+pnpm exec forge skill.list
+```
+
+### Extension points (Compass contract blocks)
+
+Packs can declare custom Compass contract blocks — source-file markers that `compass.validate` enforces. This lets your pack define its own `<MY_CONTRACT>` blocks with required tags:
+
+```yaml
+id: my-pack
+version: 1.0.0
+extensionPoints:
+  compass:
+    contract:
+      blocks:
+        - blockId: api-contract
+          requiredFor:
+            - "packages/my-pack/**/*.ts"
+          requiredTags:
+            - name: purpose
+              minWords: 3
+```
+
+`compass.validate` will emit `COMPASS-PLUGIN-01` (missing block), `COMPASS-PLUGIN-02` (missing required tag), and `COMPASS-PLUGIN-03` (tag below minWords) for files matching `requiredFor` that don't carry the block.
+
+### Rules
+
+- Pack skill names must start with the pack prefix (e.g. `wg-deploy` for prefix `wg`).
+- Pack skills cannot use the `fo-` prefix (reserved for Forge).
+- Pack skills cannot reference platform RFC/ADR ids or platform names.
+- Pack skills may depend on Forge skills, but Forge skills may not depend on pack skills (preserves portability).
+- If a pack skill name conflicts with a Forge skill name, the pack skill is skipped during sync.
+
+---
+
 ## Stack profiles
 
 A stack profile defines the project scaffold: directory structure, dependencies, CI config, and first workspace. Choose a profile with `--profile` when creating a new project.
