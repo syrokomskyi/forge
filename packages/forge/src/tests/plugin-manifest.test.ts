@@ -1,5 +1,5 @@
 import { test, expect, describe } from "vitest";
-import { forgePluginManifestSchema } from "../plugin/ForgePluginManifest.ts";
+import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
 
 describe("forgePluginManifestSchema (RFC-0941, RFC-0943)", () => {
   test("accepts valid manifest with id and version", () => {

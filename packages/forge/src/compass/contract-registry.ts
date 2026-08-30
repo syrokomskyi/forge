@@ -17,7 +17,7 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import picomatch from "picomatch";
 import type { ForgeConfig } from "../config/forge-config.ts";
-import { forgePluginManifestSchema } from "../plugin/ForgePluginManifest.ts";
+import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
 import type {
   CompassContractBlockSpec,
   CompassContractRegistry,
@@ -27,15 +27,32 @@ import type {
 const BUILT_IN_SPECS: CompassContractBlockSpec[] = [
   {
     blockId: "module-contract",
-    requiredFor: ["packages/**/*.ts", "packages/**/*.tsx", "packages/**/*.astro", "packages/**/*.js", "packages/**/*.mjs", "services/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx", "apps/**/*.astro"],
-    requiredTags: [
-      { name: "purpose", minWords: 10 },
-      { name: "non-goals" },
+    requiredFor: [
+      "packages/**/*.ts",
+      "packages/**/*.tsx",
+      "packages/**/*.astro",
+      "packages/**/*.js",
+      "packages/**/*.mjs",
+      "services/**/*.ts",
+      "apps/**/*.ts",
+      "apps/**/*.tsx",
+      "apps/**/*.astro",
     ],
+    requiredTags: [{ name: "purpose", minWords: 10 }, { name: "non-goals" }],
   },
   {
     blockId: "change-summary",
-    requiredFor: ["packages/**/*.ts", "packages/**/*.tsx", "packages/**/*.astro", "packages/**/*.js", "packages/**/*.mjs", "services/**/*.ts", "apps/**/*.ts", "apps/**/*.tsx", "apps/**/*.astro"],
+    requiredFor: [
+      "packages/**/*.ts",
+      "packages/**/*.tsx",
+      "packages/**/*.astro",
+      "packages/**/*.js",
+      "packages/**/*.mjs",
+      "services/**/*.ts",
+      "apps/**/*.ts",
+      "apps/**/*.tsx",
+      "apps/**/*.astro",
+    ],
     requiredTags: [],
   },
 ];

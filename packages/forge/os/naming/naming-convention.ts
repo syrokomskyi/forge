@@ -63,6 +63,12 @@ const NAMING_CONVENTION_IGNORED_TOP_LEVEL = new Set([
   ".windsurf",
   ".cache",
   "tmp",
+  ".adr-locks",
+  ".rfc-locks",
+  ".devin",
+  ".forge",
+  "patches",
+  "storage",
 ]);
 
 // Tool-mandated filenames exempt from kebab-case (Docker, Caddy use these exact names).
@@ -93,6 +99,9 @@ const NAMING_CONVENTION_EXEMPT_KEYWORDS = ["config", "module"] as const;
 // Set of directory paths that are exempt from naming convention (generated files)
 const NAMING_CONVENTION_EXEMPT_DIRS = new Set([
   "components/icons/gen", // Generated icon components — naming controlled by generator
+  "docs/performance", // Tool-generated screenshots and Lighthouse reports with timestamps
+  "docs/specs", // Imported specification documents with their own naming convention
+  "docs/rfcs/archive", // Archived RFCs — historical artifacts, cannot be renamed
 ]);
 
 /**

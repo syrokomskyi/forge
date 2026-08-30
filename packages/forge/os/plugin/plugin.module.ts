@@ -21,7 +21,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import { loadForgeConfig } from "../../src/config/forge-config.ts";
-import { forgePluginManifestSchema } from "../../src/plugin/ForgePluginManifest.ts";
+import { forgePluginManifestSchema } from "../../src/plugin/forge-plugin-manifest.ts";
 
 export interface PluginValidateResult {
   command: "forge.plugin.validate";
