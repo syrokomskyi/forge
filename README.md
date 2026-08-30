@@ -359,6 +359,94 @@ pnpm exec forge rfc.validate
 pnpm exec forge skill.list
 ```
 
+---
+
+## Working with your AI agent
+
+Forge works with any AI agent — Windsurf, Cursor, Claude Code, Codex CLI, or any IDE that supports agent skills. The setup is the same; only the conversation matters. Here are the patterns that make the biggest difference.
+
+### Start with questions, not commands
+
+The single most effective habit: before asking the agent to write code, ask it about the codebase. The agent can read files, search git history, and run Forge CLI commands — let it explore first.
+
+Good questions to start a session:
+
+- "How is this project structured?"
+- "What skills are available and what do they do?"
+- "Walk me through the RFC workflow in this project."
+- "What did we change this week?" (the agent reads git log)
+- "Why does this function have 15 parameters? Check git history."
+
+This works for onboarding too — new team members can get up to speed by asking the agent questions instead of reading code manually. The agent reads everything locally; nothing is uploaded or trained on.
+
+### AGENTS.md — your project's persistent memory
+
+Forge generates `AGENTS.md` files at the project root and in each workspace directory. The agent reads them automatically at the start of every session — think of them as instructions that survive between conversations.
+
+**What to put in AGENTS.md:**
+
+- Build and test commands (`pnpm test`, `pnpm run build:check`)
+- Code style conventions ("use 2 spaces, not tabs")
+- Architecture decisions ("the game package owns all scene logic")
+- "Do X, not Y" rules ("use `resolveImage()` for all image props, never raw `src`")
+- Common mistakes to avoid
+
+**When the agent makes a mistake**, tell it to update AGENTS.md so it doesn't repeat the error. Over time, AGENTS.md accumulates the team's hard-won knowledge.
+
+Forge generates AGENTS.md from `forge.yaml` via `forge.agents.generate`. Hand-written AGENTS.md files (without the generated marker) are preserved. Generated ones are regenerated when you run `forge upgrade` or `forge.agents.generate` — so put your custom rules in `forge.yaml` or in a hand-written AGENTS.md, not in a generated one.
+
+### Describe results, not steps
+
+The agent is an autonomous worker, not a typewriter. Tell it what you want, not how to do it.
+
+**Bad** (over-specified):
+
+> Open src/game/player.ts, add a function called calculateScore that takes a number array, sum it, return the result. Then open src/game/player.test.ts and add a test.
+
+**Good** (result-oriented):
+
+> Add a scoring system that calculates total points from collected items.
+
+For complex work, ask the agent to plan first:
+
+> I want to add a multiplayer mode. Make a plan first, show it to me, and wait for my approval before implementing.
+
+Forge's `/fo-idea` skill formalizes this: idea → audit → plan → implement → review. You can invoke it explicitly, or the agent will follow the pattern when the task is complex enough.
+
+### Let the agent explore
+
+Don't over-explain. The agent knows how to read files, search code, check git history, and run commands. Instead of pointing it to specific files, describe what you want to understand or change:
+
+**Instead of:** "Look in the src/game folder for player.ts and check if it has a move function."
+
+**Say:** "How does player movement work?"
+
+The agent will find the relevant files, trace the call chain, and explain it back to you. If it needs more context, it will ask.
+
+### Parallel work
+
+You can run multiple agent sessions simultaneously — in separate IDE windows, terminal tabs, or git worktrees. Each session works independently.
+
+This is useful for:
+
+- Writing an RFC in one session while implementing a different feature in another
+- Exploring two design approaches in parallel before committing to one
+- Running a long validation in one session while continuing work in another
+
+If you use the Werkstatt engine, its mission system keeps work isolated — each mission has its own workpiece directory, so parallel sessions don't conflict.
+
+### Let the agent verify its own work
+
+Give the agent criteria for "done" and let it check itself:
+
+- "Run the tests after you're done."
+- "Validate the RFC before committing."
+- "Check project health with `forge doctor`."
+
+Forge provides the tools — `forge doctor`, `forge rfc.validate`, `forge skill.list`, test runners. Tell the agent to use them. The agent can run commands, read the output, and fix issues without your intervention.
+
+---
+
 ## Stack profiles
 
 A stack profile defines the project scaffold: directory structure, dependencies, CI config, and first workspace. Choose a profile with `--profile` when creating a new project.
