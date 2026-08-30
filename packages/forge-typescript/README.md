@@ -1,5 +1,7 @@
 # @warpgogol/werkstatt-typescript
 
+[Українська](README.uk.md) | English
+
 Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript-turborepo"`.
 
 ---
@@ -79,11 +81,11 @@ pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborep
 
 ## Path conventions
 
-| Path | Value |
-| --- | --- |
-| Content directory | `src` |
-| Distribution directory | `dist` |
-| Entry points | `src/index.ts` |
+| Path                   | Value          |
+| ---------------------- | -------------- |
+| Content directory      | `src`          |
+| Distribution directory | `dist`         |
+| Entry points           | `src/index.ts` |
 
 ---
 
