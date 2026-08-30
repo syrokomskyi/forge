@@ -31,7 +31,7 @@ import { readFile, readdir, stat } from "node:fs/promises";
 import { readFileSync, existsSync } from "node:fs";
 import { join, relative, dirname, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
-import { forgePluginManifestSchema } from "../plugin/ForgePluginManifest.ts";
+import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,

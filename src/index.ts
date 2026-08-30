@@ -160,7 +160,7 @@ export {
 export {
   forgePluginManifestSchema,
   type ForgePluginManifest,
-} from "./plugin/ForgePluginManifest.ts";
+} from "./plugin/forge-plugin-manifest.ts";
 
 // Compass contract types (RFC-0943)
 export type {
