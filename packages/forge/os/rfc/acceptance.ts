@@ -14,6 +14,7 @@ prose checklist.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0268: initial implementation.</item>
+  <item>RFC-0998: added test and json-schema probe kinds — spawnVitest helper, Ajv validation, shape validation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,7 @@ import { spawn } from "node:child_process";
 import { stat, readFile } from "node:fs/promises";
 import path from "node:path";
 import { parse as yamlParse } from "yaml";
+import { Ajv } from "ajv";
 import type {
   Diagnostic,
   ForgeCommandInput,
@@ -144,10 +146,40 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
         }
         break;
       }
+      case "test": {
+        const file = (entry as Record<string, unknown>)["file"];
+        if (typeof file !== "string") {
+          issues.push({ index, message: 'probe "test" requires a string "file"' });
+        }
+        const testName = (entry as Record<string, unknown>)["testName"];
+        if (testName !== undefined && typeof testName !== "string") {
+          issues.push({ index, message: 'probe "test" testName must be a string if present' });
+        }
+        const expect = (entry as Record<string, unknown>)["expect"];
+        if (
+          !expect ||
+          typeof expect !== "object" ||
+          typeof (expect as Record<string, unknown>)["exitCode"] !== "number"
+        ) {
+          issues.push({ index, message: 'probe "test" requires expect: { exitCode: <number> }' });
+        }
+        break;
+      }
+      case "json-schema": {
+        const artifact = (entry as Record<string, unknown>)["artifact"];
+        if (typeof artifact !== "string") {
+          issues.push({ index, message: 'probe "json-schema" requires a string "artifact"' });
+        }
+        const schemaInline = (entry as Record<string, unknown>)["schemaInline"];
+        if (!schemaInline || typeof schemaInline !== "object") {
+          issues.push({ index, message: 'probe "json-schema" requires an object "schemaInline"' });
+        }
+        break;
+      }
       default:
         issues.push({
           index,
-          message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page`,
+          message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page, test, json-schema`,
         });
     }
   });
@@ -168,6 +200,45 @@ async function spawnSiteKernel(
 
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [binPath, ...args], {
+      cwd: workspaceRoot,
+      stdio: "ignore",
+    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      resolve({ exitCode: null, timedOut: true });
+    }, RUN_PROBE_TIMEOUT_MS);
+    timer.unref?.();
+
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode: code, timedOut: false });
+    });
+    child.on("error", () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve({ exitCode: null, timedOut: false });
+    });
+  });
+}
+
+async function spawnVitest(
+  workspaceRoot: string,
+  file: string,
+  testName?: string,
+): Promise<{ exitCode: number | null; timedOut: boolean }> {
+  const args = ["exec", "vitest", "run", file];
+  if (testName) {
+    args.push("-t", testName);
+  }
+
+  return new Promise((resolve) => {
+    const child = spawn("pnpm", args, {
       cwd: workspaceRoot,
       stdio: "ignore",
     });
@@ -252,6 +323,48 @@ export async function runProbe(
         ok: true,
         detail: "page probe skipped — run qa.independent.run against a built dist",
       };
+    }
+    case "test": {
+      const { exitCode, timedOut } = await spawnVitest(workspaceRoot, probe.file, probe.testName);
+      if (timedOut) {
+        return { probe, ok: false, detail: `timed out after ${RUN_PROBE_TIMEOUT_MS}ms` };
+      }
+      const ok = exitCode === probe.expect.exitCode;
+      return { probe, ok, detail: `exitCode=${exitCode} (expected ${probe.expect.exitCode})` };
+    }
+    case "json-schema": {
+      const artifactPath = path.join(workspaceRoot, probe.artifact);
+      let raw: string;
+      try {
+        raw = await readFile(artifactPath, "utf8");
+      } catch {
+        return { probe, ok: false, detail: "artifact file not found" };
+      }
+      let parsed: unknown;
+      const ext = path.extname(probe.artifact).toLowerCase();
+      try {
+        if (ext === ".yaml" || ext === ".yml") {
+          parsed = yamlParse(raw);
+        } else {
+          parsed = JSON.parse(raw);
+        }
+      } catch {
+        return { probe, ok: false, detail: "artifact file could not be parsed" };
+      }
+      try {
+        const ajv = new Ajv({ allErrors: false });
+        const validate = ajv.compile(probe.schemaInline);
+        const valid = validate(parsed);
+        if (valid) {
+          return { probe, ok: true, detail: "schema valid" };
+        }
+        const firstError = validate.errors?.[0];
+        const errorPath = firstError?.instancePath || "(root)";
+        const errorMessage = firstError?.message || "validation failed";
+        return { probe, ok: false, detail: `Ajv error at ${errorPath}: ${errorMessage}` };
+      } catch {
+        return { probe, ok: false, detail: "schema compilation failed" };
+      }
     }
   }
 }

@@ -17,6 +17,7 @@
   <item>RFC-0478: added versionBump field to RfcFrontmatter interface and RFC_KNOWN_KEYS array for platform versioning enforcement.</item>
   <item>RFC-0480: added breaksC field to RfcFrontmatter interface and RFC_KNOWN_KEYS array for Layer C protection.</item>
   <item>RFC-0795: added dependsOn, batch fields to RfcFrontmatter and RFC_KNOWN_KEYS; added RFC-IMP-07 to RfcImplementStampRule; added batch/dependsOn to RfcListEntry.</item>
+  <item>RFC-0998: added TestProbe and JsonSchemaProbe to AcceptanceProbe union for test and json-schema acceptance probe kinds.</item>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -279,6 +280,21 @@ export type AcceptanceProbe =
       selector?: string;
       textPattern?: string;
       allowConsoleErrors?: boolean;
+      criterion?: string;
+    }
+  // RFC-0998: run a specific vitest file or test name and check exit code.
+  | {
+      probe: "test";
+      file: string;
+      testName?: string;
+      expect: { exitCode: number };
+      criterion?: string;
+    }
+  // RFC-0998: validate a JSON/YAML artifact against an inline JSON Schema using Ajv.
+  | {
+      probe: "json-schema";
+      artifact: string;
+      schemaInline: Record<string, unknown>;
       criterion?: string;
     };
 
