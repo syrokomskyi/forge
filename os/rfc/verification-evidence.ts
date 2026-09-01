@@ -13,6 +13,7 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0330: initial implementation.</item>
+  <item>RFC-0999: exported captureGitContext, getKernelVersion, byteHashHex, VERIFICATION_DIR for reuse by verification-refresh.ts.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -42,7 +43,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 
-const VERIFICATION_DIR = join(RFC_DIR, "verification");
+export const VERIFICATION_DIR = join(RFC_DIR, "verification");
 const HASH_PREFIX = "sha" + "256:";
 
 function execGit(workspaceRoot: string, args: string[]): Promise<string> {
@@ -57,7 +58,7 @@ function execGit(workspaceRoot: string, args: string[]): Promise<string> {
   });
 }
 
-async function captureGitContext(
+export async function captureGitContext(
   workspaceRoot: string,
 ): Promise<{ commit: string; workingTreeDirty: boolean }> {
   const [commitOutput, statusOutput] = await Promise.all([
@@ -70,7 +71,7 @@ async function captureGitContext(
   };
 }
 
-async function getKernelVersion(workspaceRoot: string): Promise<string> {
+export async function getKernelVersion(workspaceRoot: string): Promise<string> {
   try {
     const pkgPath = join(workspaceRoot, "packages", "os", "site-kernel", "package.json");
     const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
@@ -80,7 +81,7 @@ async function getKernelVersion(workspaceRoot: string): Promise<string> {
   }
 }
 
-function byteHashHex(content: string): string {
+export function byteHashHex(content: string): string {
   return byteHash(content).slice(HASH_PREFIX.length);
 }
 

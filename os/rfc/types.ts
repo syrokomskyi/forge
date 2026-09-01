@@ -18,6 +18,7 @@
   <item>RFC-0480: added breaksC field to RfcFrontmatter interface and RFC_KNOWN_KEYS array for Layer C protection.</item>
   <item>RFC-0795: added dependsOn, batch fields to RfcFrontmatter and RFC_KNOWN_KEYS; added RFC-IMP-07 to RfcImplementStampRule; added batch/dependsOn to RfcListEntry.</item>
   <item>RFC-0998: added TestProbe and JsonSchemaProbe to AcceptanceProbe union for test and json-schema acceptance probe kinds.</item>
+  <item>RFC-0999: added lastRefreshedAt to VerificationEvidence; added RfcVerificationRefreshResult interface.</item>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -323,6 +324,7 @@ export interface VerificationEvidence {
   title: string;
   rfcStatus: RfcStatus;
   emittedAt: string;
+  lastRefreshedAt?: string;
   commit: string;
   workingTreeDirty: boolean;
   kernelVersion: string;
@@ -339,6 +341,21 @@ export interface RfcVerificationEmitResult {
   emitted: Array<{ rfcId: string; file: string; overall: "pass" | "fail" }>;
   skipped: Array<{ rfcId: string; reason: "no-probes" }>;
   diagnostics: Diagnostic[];
+}
+
+export interface RfcVerificationRefreshResult {
+  command: "rfc.verification.refresh";
+  status: "pass" | "fail";
+  refreshed: Array<{
+    rfcId: string;
+    file: string;
+    overall: "pass" | "fail";
+    probesTotal: number;
+    probesFailed: number;
+  }>;
+  skipped: Array<{ rfcId: string; reason: "no evidence envelope" | "not implemented" }>;
+  diagnostics: Diagnostic[];
+  summary: { total: number; passed: number; failed: number; skipped: number };
 } // ─── Validation ──────────────────────────────────────────────────────────────
 export interface RfcValidationViolation {
   rfcId: string;
