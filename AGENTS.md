@@ -159,7 +159,7 @@ RFC-0997 binds acceptance probes to criteria via the `criterion: "AC-N"` field a
 
 - **V-35**: every probe SHALL declare `criterion` referencing an existing `AC-N` id. Missing, malformed, or dangling `criterion` is a blocking error.
 - **V-36**: every top-level checklist line (`- [ ]` / `- [x]`) in `## Acceptance criteria` SHALL start with a unique `AC-N:` identifier. Duplicate or missing identifiers are blocking errors.
-- **V-37**: checked criteria evidence SHALL resolve — `probe:AC-N` must reference a criterion with at least one bound probe; `test:<path>` and `<path>:<line>` must reference an existing file.
+- **V-37**: checked criteria evidence SHALL resolve — `probe:AC-N` must reference a criterion with at least one bound probe; `test:<path>` and `<path>:<line>` must reference an existing file. **Evidence annotations MUST NOT contain em-dashes (—) or nested quotes** — the V-37 parser breaks on `test: path — "description"` and reports the file as non-existent. Use simple `(evidence: test: packages/forge/src/tests/file.test.ts)` without em-dashes or nested quotes. Discovered during RFC-0998.
 - **RFC-IMP-08**: `rfc.implement.stamp` blocks stamping for post-cutoff RFCs of kind `architecture`, `contract`, or `command` that declare zero acceptance probes. Policy and deprecation kinds are exempt.
 - **Coverage report**: `rfc.validate --json` and `rfc.acceptance.run` emit a non-blocking `coverage` block per post-cutoff RFC with `totalCriteria`, `probeBackedCriteria`, `coverageRatio`, `uncoveredCriteria`, `unboundProbes`.
 
