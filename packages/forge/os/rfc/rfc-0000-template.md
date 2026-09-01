@@ -196,14 +196,14 @@ interface ExampleResult {
 
 ## Acceptance criteria
 
-- [ ] TypeScript types and interfaces defined in the relevant package
-- [ ] CLI command registered with correct name and scope
-- [ ] `--json` output format documented and stable
-- [ ] Integrated into appropriate pipeline (`build.check` or standalone)
-- [ ] Existing apps pass without changes (or migration path is documented)
-- [ ] `AGENTS.md` updated where agent behavior rules changed
-- [ ] Relevant Architecture DNA or spec docs link to this RFC
-- [ ] `rfc.validate` passes on this file before merging
+<!-- Authoring standard: see packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md (RFC-0996).
+     Each criterion is a falsifiable claim about an observable artifact, written in EARS form with a stable AC-N: identifier.
+     Required mix: behavior, contract, negative, sync. 3–10 items. One claim = one checking mechanism. -->
+
+- [ ] AC-1: WHEN `<command> --json` is invoked, THE command SHALL return a JSON object matching the documented output schema (evidence: probe:AC-1 or test: <path>)
+- [ ] AC-2: THE `<command>` SHALL be registered in the kernel module with the correct name and scope (evidence: file: <module-path>)
+- [ ] AC-3: IF `<command>` receives invalid input, THEN THE command SHALL report a blocking error and exit non-zero (evidence: test: <path/to/test>)
+- [ ] AC-4: THE relevant `AGENTS.md` SHALL reference this RFC where agent behavior rules changed (evidence: file: <path:line>)
 
 ## Implementation notes for agents
 
