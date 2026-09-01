@@ -35,8 +35,10 @@ import {
   ADR_REQUIRED_SECTIONS,
   ADR_SCOPES,
   ADR_STATUSES,
+  ADR_ACCEPTANCE_CRITERIA_CUTOFF,
 } from "../types.ts";
 import { RFC_DIR } from "../../rfc/types.ts";
+import { evaluateAcceptanceCriteria } from "../../rfc/handlers/validate-rules.ts";
 
 async function loadRfcIds(workspaceRoot: string): Promise<Set<string>> {
   const rfcIds = new Set<string>();
@@ -424,6 +426,28 @@ async function validateSingleAdr(
           );
         }
       }
+    }
+  }
+
+  // AV-17: acceptance criteria completeness for implemented post-cutoff ADRs (RFC-0996)
+  if (status === "implemented" && createdAt >= ADR_ACCEPTANCE_CRITERIA_CUTOFF) {
+    const evaluation = evaluateAcceptanceCriteria(body);
+    if (evaluation.totalUnchecked > 0) {
+      addViolation(
+        adrId,
+        relFile,
+        "AV-17",
+        `${adrId} has ${evaluation.totalUnchecked} unchecked acceptance criteria in "## Acceptance criteria" section but status is "implemented".`,
+      );
+    }
+    for (const line of evaluation.checkedWithoutEvidence) {
+      const snippet = line.length > 80 ? line.slice(0, 77) + "..." : line;
+      addViolation(
+        adrId,
+        relFile,
+        "AV-17",
+        `${adrId} has checked criterion without (evidence: ...) annotation: "${snippet}".`,
+      );
     }
   }
 }
