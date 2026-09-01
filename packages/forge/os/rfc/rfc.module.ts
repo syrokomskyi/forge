@@ -34,6 +34,7 @@ export const forgeRfcModule: ForgeModule = {
     } = await import("./handlers.ts");
     const { runRfcAcceptanceRun } = await import("./acceptance.ts");
     const { runRfcVerificationEmit } = await import("./verification-evidence.ts");
+    const { runRfcVerificationRefresh } = await import("./verification-refresh.ts");
     const { runRfcDnaTraceValidate, runRfcDnaTraceGenerate } = await import("./dna-trace.ts");
     const { runRfcDecisionLogGenerate } = await import("./decision-log.ts");
     const { runRfcSupersedePropose } = await import("./handlers/supersede-propose.ts");
@@ -257,6 +258,33 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcVerificationEmit,
+    });
+
+    // ── rfc.verification.refresh ────────────────────────────────────────────
+    registry.registerCommand({
+      name: "rfc.verification.refresh",
+      description:
+        "RFC-0999: re-run acceptance probes for implemented RFC(s) and update verification " +
+        "evidence envelopes in-place. Preserves emittedAt, adds lastRefreshedAt, replaces " +
+        "probes[] with fresh results. Requires --id <rfc-id> or --all. Use --dry-run to " +
+        "run probes without writing envelope files.",
+      scope: "workspace",
+      mutatesState: true,
+      writes: ["docs/rfcs/verification/*.generated.yaml"],
+      reads: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
+      cacheable: false,
+      flags: {
+        id: { kind: "string", description: "Target a single RFC by id (e.g. rfc-0330)." },
+        all: {
+          kind: "boolean",
+          description: "Refresh all implemented RFCs with existing evidence envelopes.",
+        },
+        "dry-run": {
+          kind: "boolean",
+          description: "Run probes and report results without writing envelope files.",
+        },
+      },
+      execute: runRfcVerificationRefresh,
     });
 
     // ── rfc.dna.trace.validate ───────────────────────────────────────────────
