@@ -24,10 +24,16 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import type { RfcValidationViolation, RfcValidationResult, Marker } from "../types.ts";
-import { RFC_DIR, RFC_KNOWN_KEYS } from "../types.ts";
+import type {
+  RfcValidationViolation,
+  RfcValidationResult,
+  Marker,
+  ProbeCoverageReport,
+} from "../types.ts";
+import { RFC_DIR, RFC_KNOWN_KEYS, RFC_PROBE_BINDING_CUTOFF } from "../types.ts";
 import { DNA_DOCS, AP_DOCS, loadInvariantIds } from "./shared.ts";
 import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
+import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./validate-rules.ts";
 import { validateSingleRfc, checkFrontmatterYamlParse } from "./validate-rules.ts";
 
 export async function runRfcValidate(
@@ -60,6 +66,7 @@ export async function runRfcValidate(
 
   const violations: RfcValidationViolation[] = [];
   const allMarkers: Marker[] = [];
+  const coverage: Array<{ rfcId: string; report: ProbeCoverageReport }> = [];
 
   function addViolation(
     rfcId: string,
@@ -108,6 +115,16 @@ export async function runRfcValidate(
       seenFilenameNumbers,
     );
     allMarkers.push(...markers);
+
+    const fm = result.parsed.frontmatter;
+    const rfcId = String(fm["id"] ?? "");
+    const createdAt = String(fm["createdAt"] ?? "");
+    const isArchived = fileName.startsWith("archive/");
+    if (createdAt >= RFC_PROBE_BINDING_CUTOFF && !isArchived) {
+      const criteriaEval = evaluateAcceptanceCriteria(result.parsed.body);
+      const report = computeProbeCoverage(criteriaEval.criterionIds, fm["acceptance"]);
+      coverage.push({ rfcId, report });
+    }
   }
 
   const lifecycle = await collectRfcCommandLifecycleViolations(
@@ -161,6 +178,7 @@ export async function runRfcValidate(
       count: filesToValidate.length,
       violations,
       markers: allMarkers,
+      coverage: coverage.length > 0 ? coverage : undefined,
     },
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors

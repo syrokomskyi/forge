@@ -10,11 +10,12 @@
   <item>RFC-0722: add RFC-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
   <item>RFC-0755: add V-RFC-33 frontmatter YAML parseability check (checkFrontmatterYamlParse helper).</item>
   <item>RFC-0795: add V-33 dependsOn referential integrity/self-dependency/rejected-dependency and V-34 batch slug format rules.</item>
+  <item>RFC-0997: add V-35 probe→criterion referential integrity, V-36 criterion identifier discipline, V-37 evidence mechanism validity, and computeProbeCoverage for non-blocking coverage reports.</item>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 
 import { parse as yamlParse } from "yaml";
@@ -31,7 +32,9 @@ import {
   RFC_FULL_REQUIRED_SECTIONS,
   RFC_METADATA_CUTOFF,
   RFC_VERSION_BUMP_CUTOFF,
+  RFC_PROBE_BINDING_CUTOFF,
 } from "../types.ts";
+import type { ProbeCoverageReport, AcceptanceProbe } from "../types.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
 
 const DNA_DOC = DNA_DOCS[0]!;
@@ -63,6 +66,9 @@ export interface AcceptanceCriteriaEvaluation {
   totalUnchecked: number;
   uncheckedLines: string[];
   checkedWithoutEvidence: string[];
+  criterionIds: string[];
+  duplicateCriterionIds: string[];
+  linesWithoutId: string[];
 }
 
 /**
@@ -87,6 +93,9 @@ export function evaluateAcceptanceCriteria(body: string): AcceptanceCriteriaEval
       totalUnchecked: 0,
       uncheckedLines: [],
       checkedWithoutEvidence: [],
+      criterionIds: [],
+      duplicateCriterionIds: [],
+      linesWithoutId: [],
     };
   }
 
@@ -104,11 +113,74 @@ export function evaluateAcceptanceCriteria(body: string): AcceptanceCriteriaEval
     }
   }
 
+  const checklistLines = section.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
+  const criterionIds: string[] = [];
+  const seenIds = new Set<string>();
+  const duplicateCriterionIds: string[] = [];
+  const linesWithoutId: string[] = [];
+  for (const line of checklistLines) {
+    const match = line.match(/^\s*- \[[ x]\]\s*AC-(\d+):/);
+    if (match) {
+      const id = `AC-${match[1]}`;
+      if (seenIds.has(id)) {
+        duplicateCriterionIds.push(id);
+      } else {
+        seenIds.add(id);
+        criterionIds.push(id);
+      }
+    } else {
+      linesWithoutId.push(line.trim());
+    }
+  }
+
   return {
     totalChecked: checkedLines.length,
     totalUnchecked,
     uncheckedLines,
     checkedWithoutEvidence,
+    criterionIds,
+    duplicateCriterionIds,
+    linesWithoutId,
+  };
+}
+
+// ─── RFC-0997: probe-criterion binding and coverage ────────────────────────
+
+/**
+ * Compute a non-blocking probe coverage report for an RFC.
+ * Pure function — no I/O, no side effects.
+ */
+export function computeProbeCoverage(
+  criterionIds: string[],
+  acceptance: unknown,
+): ProbeCoverageReport {
+  const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+  const probeBackedCriteria = new Set<string>();
+  const unboundProbes: string[] = [];
+
+  for (const probe of probes) {
+    const criterion = (probe as Record<string, unknown>)["criterion"];
+    if (typeof criterion === "string" && /^AC-\d+$/.test(criterion)) {
+      if (criterionIds.includes(criterion)) {
+        probeBackedCriteria.add(criterion);
+      } else {
+        unboundProbes.push(criterion);
+      }
+    } else {
+      unboundProbes.push(String(criterion ?? "(missing)"));
+    }
+  }
+
+  const uncoveredCriteria = criterionIds.filter((id) => !probeBackedCriteria.has(id));
+  const totalCriteria = criterionIds.length;
+  const probeBackedCount = probeBackedCriteria.size;
+
+  return {
+    totalCriteria,
+    probeBackedCriteria: probeBackedCount,
+    coverageRatio: totalCriteria > 0 ? probeBackedCount / totalCriteria : 0,
+    unboundProbes,
+    uncoveredCriteria,
   };
 }
 
@@ -467,6 +539,116 @@ export async function validateSingleRfc(
         "V-27",
         `checked acceptance criterion lacks inline (evidence: ...) annotation: "${line}"`,
       );
+    }
+
+    // V-35/V-36/V-37: probe-criterion binding rules (RFC-0997, post-cutoff only)
+    const isPostCutoff = createdAt >= RFC_PROBE_BINDING_CUTOFF && !isArchived;
+    if (isPostCutoff) {
+      const acceptance = fm["acceptance"];
+      const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+
+      // V-35: every probe SHALL declare criterion referencing an existing AC-N id
+      for (let i = 0; i < probes.length; i++) {
+        const probe = probes[i]!;
+        const criterion = (probe as Record<string, unknown>)["criterion"];
+        if (criterion === undefined || criterion === null) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-35",
+            `acceptance probe ${i} ("${probe.probe}") lacks required "criterion" field (post-cutoff RFCs must bind probes to AC-N criteria per RFC-0997)`,
+          );
+        } else if (typeof criterion !== "string" || !/^AC-\d+$/.test(criterion)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-35",
+            `acceptance probe ${i} ("${probe.probe}") has criterion "${String(criterion)}" which does not match format "AC-N"`,
+          );
+        } else if (!criteriaEval.criterionIds.includes(criterion)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-35",
+            `acceptance probe ${i} ("${probe.probe}") declares criterion "${criterion}" which does not exist in acceptance criteria`,
+          );
+        }
+      }
+
+      // V-36: every top-level checklist line SHALL start with a unique AC-N: identifier
+      for (const line of criteriaEval.linesWithoutId) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-36",
+          `acceptance criterion checklist line lacks "AC-N:" identifier: "${line}"`,
+        );
+      }
+      for (const dupId of criteriaEval.duplicateCriterionIds) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-36",
+          `duplicate acceptance criterion identifier "${dupId}" — each AC-N must be unique`,
+        );
+      }
+
+      // V-37: checked criteria evidence SHALL resolve
+      const checkedLines = acceptanceMatch[1]!
+        .split("\n")
+        .filter((line: string) => /^- \[x\]/.test(line));
+      for (const line of checkedLines) {
+        const evidenceMatch = line.match(/\(evidence:\s*(.+?)\)/);
+        if (!evidenceMatch) continue;
+        const evidence = evidenceMatch[1]!.trim();
+
+        if (evidence.startsWith("probe:")) {
+          const refId = evidence.slice("probe:".length).trim();
+          const hasProbe = probes.some(
+            (p) => String((p as Record<string, unknown>)["criterion"] ?? "") === refId,
+          );
+          if (!criteriaEval.criterionIds.includes(refId)) {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-37",
+              `evidence "probe:${refId}" references a criterion that does not exist in acceptance criteria`,
+            );
+          } else if (!hasProbe) {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-37",
+              `evidence "probe:${refId}" references a criterion with no bound probe`,
+            );
+          }
+        } else if (evidence.startsWith("test:")) {
+          const testPath = evidence.slice("test:".length).trim();
+          try {
+            await stat(path.join(workspaceRoot, testPath));
+          } catch {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-37",
+              `evidence "test:${testPath}" references a file that does not exist`,
+            );
+          }
+        } else if (/^[^:]+:\d+$/.test(evidence)) {
+          const lastColon = evidence.lastIndexOf(":");
+          const filePath = evidence.slice(0, lastColon).trim();
+          try {
+            await stat(path.join(workspaceRoot, filePath));
+          } catch {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-37",
+              `evidence "${evidence}" references a file that does not exist`,
+            );
+          }
+        }
+      }
     }
   }
 

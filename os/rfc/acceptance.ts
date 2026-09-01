@@ -28,9 +28,15 @@ import type {
   ForgeRuntimeContext,
   CommandRegistry,
 } from "../../src/types.ts";
-import type { AcceptanceProbe, ProbeResult, RfcAcceptanceRunResult } from "./types.ts";
-import { RFC_DIR } from "./types.ts";
+import type {
+  AcceptanceProbe,
+  ProbeResult,
+  RfcAcceptanceRunResult,
+  ProbeCoverageReport,
+} from "./types.ts";
+import { RFC_DIR, RFC_PROBE_BINDING_CUTOFF } from "./types.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
+import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./handlers/validate-rules.ts";
 
 const RUN_PROBE_ALLOWED_PREFIX = "werkstatt ";
 
@@ -330,7 +336,17 @@ export async function runRfcAcceptanceRun(
         message: `${pageProbeCount} page probe(s) skipped — run \`qa.independent.run --site <app>\` against a built dist.`,
       });
     }
-    results.push({ rfcId, probeResults });
+
+    let rfcCoverage: ProbeCoverageReport | undefined;
+    const createdAt = String(fm["createdAt"] ?? "");
+    const isArchived = fileName.startsWith("archive/");
+    if (createdAt >= RFC_PROBE_BINDING_CUTOFF && !isArchived) {
+      const parsedBody = parsedFile.parsed.body;
+      const criteriaEval = evaluateAcceptanceCriteria(parsedBody);
+      rfcCoverage = computeProbeCoverage(criteriaEval.criterionIds, acceptance);
+    }
+
+    results.push({ rfcId, probeResults, coverage: rfcCoverage });
   }
 
   const failedCount = diagnostics.filter((d) => d.severity === "error").length;
