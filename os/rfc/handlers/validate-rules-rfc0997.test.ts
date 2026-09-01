@@ -209,9 +209,7 @@ describe("computeProbeCoverage (RFC-0997)", () => {
 
   test("probe without criterion field is unbound", () => {
     const ids = ["AC-1"];
-    const acceptance = [
-      { probe: "file-exists", path: "a.ts" },
-    ];
+    const acceptance = [{ probe: "file-exists", path: "a.ts" }];
     const report = computeProbeCoverage(ids, acceptance);
     expect(report.unboundProbes).toEqual(["(missing)"]);
     expect(report.probeBackedCriteria).toBe(0);
@@ -379,5 +377,18 @@ describe("V-37: evidence mechanism validity (RFC-0997)", () => {
     const violations = await runValidate(parsed);
     const v37 = filterRule(violations, "V-37");
     expect(v37).toHaveLength(0);
+  });
+});
+
+// ─── V-37: null-safety guard (no acceptance section) ───────────────────────
+
+describe("V-37: null-safety when no acceptance criteria section (RFC-0997)", () => {
+  test("post-cutoff RFC with no acceptance section does not crash", async () => {
+    const body = BASE_BODY.replace("## Acceptance criteria\n\nACCEPTANCE_HERE\n", "");
+    const parsed = makeParsed("accepted", body, {
+      acceptance: [{ probe: "file-exists", path: "a.ts", criterion: "AC-1" }],
+    });
+    const violations = await runValidate(parsed);
+    expect(violations).toBeDefined();
   });
 });
