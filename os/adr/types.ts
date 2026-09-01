@@ -11,10 +11,11 @@ statuses, scopes, frontmatter shape, validation results, and list output.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0366: implement fail-hard ADR validation for the new adrModule.</item>
-  <item>Post-refactor hardening: allow ADRs to be superseded by existing RFC decisions.</item>
+  <item>RFC-0366: introduce ADR types and constants mirroring the RFC domain contract.</item>
+  <item>RFC-0367: extend AdrStatus with reviewing and implemented; add implementedAt, closedAt, reviewers fields.</item>
+  <item>Post-refactor hardening: document that an ADR may be superseded by a broader RFC.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
-  <item>RFC-0722: add ADR-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
+  <item>RFC-0727: add AdrImplementStamp types for atomic ADR status transition.</item>
   <item>RFC-0996: add AV-17 acceptance criteria completeness check for implemented post-cutoff ADRs.</item>
 </CHANGE_SUMMARY>
 */
