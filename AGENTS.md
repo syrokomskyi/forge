@@ -153,6 +153,16 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 
 `rfc.implement.stamp` enforces RFC-IMP-02: every checked acceptance criterion (`- [x]`) MUST have an inline `(evidence: ...)` annotation. Parenthetical references without the `evidence:` keyword (e.g. `(promote.ts, 13 tests)`) do NOT satisfy the rule — the stamp fails with "checked criteria lack inline (evidence: ...) annotation". Always format as: `- [x] <criterion text> (evidence: <file paths, commands, or test counts>)`. Commit the annotated criteria before running `rfc.implement.stamp`.
 
+## RFC acceptance probes: criterion binding and coverage (RFC-0997)
+
+RFC-0997 binds acceptance probes to criteria via the `criterion: "AC-N"` field and adds three validation rules for post-cutoff RFCs (createdAt >= `2026-09-01`):
+
+- **V-35**: every probe SHALL declare `criterion` referencing an existing `AC-N` id. Missing, malformed, or dangling `criterion` is a blocking error.
+- **V-36**: every top-level checklist line (`- [ ]` / `- [x]`) in `## Acceptance criteria` SHALL start with a unique `AC-N:` identifier. Duplicate or missing identifiers are blocking errors.
+- **V-37**: checked criteria evidence SHALL resolve — `probe:AC-N` must reference a criterion with at least one bound probe; `test:<path>` and `<path>:<line>` must reference an existing file.
+- **RFC-IMP-08**: `rfc.implement.stamp` blocks stamping for post-cutoff RFCs of kind `architecture`, `contract`, or `command` that declare zero acceptance probes. Policy and deprecation kinds are exempt.
+- **Coverage report**: `rfc.validate --json` and `rfc.acceptance.run` emit a non-blocking `coverage` block per post-cutoff RFC with `totalCriteria`, `probeBackedCriteria`, `coverageRatio`, `uncoveredCriteria`, `unboundProbes`.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
