@@ -173,7 +173,7 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 1. **Verify the criterion is met semantically** — check the code does what the criterion says, run the relevant command, or inspect the artifact. Mechanical existence (command registered, test passes) is NOT sufficient. The criterion must describe observable behavior that the RFC defines, not just that a command exists.
 2. **Check for stubs** — if the code contains TODO, stub, not-implemented, or placeholder logic in the path the criterion covers, the criterion is NOT met. Implement the real logic before marking it.
 3. **If a criterion is not met**, implement the missing work, commit it, and re-verify.
-4. **Annotate every `[x]` with inline evidence** — add `(evidence: <file-path:line>, <test-or-command>)` to each checked criterion. This is enforced by V-27.
+4. **Annotate every `[x]` with inline evidence** — add `(evidence: ...)` to each checked criterion, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by V-27 (RFC-0996 evidence discipline).
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
 6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
 

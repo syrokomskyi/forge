@@ -88,7 +88,7 @@ Read the generated file and the full template (`docs/rfcs/rfc-0000-template.md`)
 - **Rollout** — implementation order, generated-file refresh, migration path for existing apps.
 - **Alternatives considered** — at least one real alternative with a rejection reason.
 - **Risks** — including agent-misinterpretation risk and false-positive rates for validators.
-- **Acceptance criteria** — ≥3 checkable checkboxes mapped to implementation artifacts.
+- **Acceptance criteria** — EARS-form criteria with stable `AC-N:` identifiers, following the authoring standard in `packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md` (RFC-0996). Required mix: at least one behavior, one contract, one negative, and one sync criterion. 3–10 items. Each criterion is a falsifiable claim about an observable artifact, not an effort claim. One claim = one checking mechanism.
 - **Implementation notes for agents** — explicit MAY/MUST NOT rules, status-gate reminders, escalation triggers.
 
 When a section cannot be filled with confidence, insert `> NEEDS CLARIFICATION: <question>` instead of guessing. Do not leave sections empty or fill them with speculative content. Markers are resolved during the enhance step.
