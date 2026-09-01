@@ -44,3 +44,11 @@ Forces and trade-offs that led to the decision: alternatives considered, constra
 ## Evolution
 
 How the decision may change: thresholds that trigger revisiting it, metrics to watch, and — for post-hoc ADRs — references to commits or PRs that implemented it.
+
+## Acceptance criteria
+
+<!-- Optional. If present, each criterion is a falsifiable claim about an observable artifact,
+     written in EARS form with a stable AC-N: identifier. See packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md (RFC-0996).
+     When this section exists and the ADR is implemented, adr.validate enforces AV-17: all items must be checked with (evidence: ...). -->
+
+- [ ] AC-1: THE <artifact> SHALL <observable property> (evidence: file: <path:line>)
