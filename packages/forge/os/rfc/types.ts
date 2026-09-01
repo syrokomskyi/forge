@@ -265,10 +265,10 @@ export interface RfcFrontmatter {
  * arbitrary shell, keeping the probe surface auditable and platform-independent.
  */
 export type AcceptanceProbe =
-  | { probe: "run"; command: string; expect: { exitCode: number } }
-  | { probe: "file-exists"; path: string }
-  | { probe: "file-contains"; path: string; pattern: string }
-  | { probe: "command-registered"; name: string }
+  | { probe: "run"; command: string; expect: { exitCode: number }; criterion?: string }
+  | { probe: "file-exists"; path: string; criterion?: string }
+  | { probe: "file-contains"; path: string; pattern: string; criterion?: string }
+  | { probe: "command-registered"; name: string; criterion?: string }
   // RFC-0333: black-box expectation against the rendered site. Executed
   // ONLY by qa.independent.run (needs a built dist); rfc.acceptance.run
   // reports it as skipped.
@@ -279,6 +279,7 @@ export type AcceptanceProbe =
       selector?: string;
       textPattern?: string;
       allowConsoleErrors?: boolean;
+      criterion?: string;
     };
 
 export interface ProbeResult {
@@ -292,7 +293,7 @@ export interface RfcAcceptanceRunResult {
   command: "rfc.acceptance.run";
   status: "pass" | "fail";
   diagnostics: Diagnostic[];
-  results: Array<{ rfcId: string; probeResults: ProbeResult[] }>;
+  results: Array<{ rfcId: string; probeResults: ProbeResult[]; coverage?: ProbeCoverageReport }>;
 } // ─── RFC-0330: verification evidence ─────────────────────────────────────────
 export interface VerificationEvidenceProbeRecord {
   probe: AcceptanceProbe;
@@ -343,6 +344,7 @@ export interface RfcValidationResult {
   count: number;
   violations: RfcValidationViolation[];
   markers?: Marker[];
+  coverage?: Array<{ rfcId: string; report: ProbeCoverageReport }>;
 } // ─── Command results ─────────────────────────────────────────────────────────
 
 export interface RfcCommandLifecycleDiagnosticData {
@@ -515,7 +517,8 @@ export type RfcImplementStampRule =
   | "RFC-IMP-04"
   | "RFC-IMP-05"
   | "RFC-IMP-06"
-  | "RFC-IMP-07";
+  | "RFC-IMP-07"
+  | "RFC-IMP-08";
 
 export interface RfcImplementStampViolation {
   rule: RfcImplementStampRule;
@@ -594,3 +597,24 @@ export const RFC_METADATA_CUTOFF = "2026-07-07";
  * a versionBump field. RFCs created before are exempt.
  */
 export const RFC_VERSION_BUMP_CUTOFF = "2026-07-21";
+
+/**
+ * RFC-0997: cutoff date for probe-criterion binding rules.
+ * RFCs created on or after this date are subject to V-35 (probe→criterion
+ * referential integrity), V-36 (criterion identifier discipline), V-37
+ * (evidence mechanism validity), and RFC-IMP-08 (minimum-one-probe stamp gate).
+ * RFCs created before are exempt.
+ */
+export const RFC_PROBE_BINDING_CUTOFF = "2026-09-01";
+
+/**
+ * RFC-0997: non-blocking probe coverage report per RFC.
+ * Emitted in `rfc.validate --json` and `rfc.acceptance.run` outputs.
+ */
+export interface ProbeCoverageReport {
+  totalCriteria: number;
+  probeBackedCriteria: number;
+  coverageRatio: number;
+  unboundProbes: string[];
+  uncoveredCriteria: string[];
+}

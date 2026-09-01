@@ -15,6 +15,7 @@ verification evidence, and atomically mutates RFC frontmatter.
   <item>RFC-0476: initial implementation.</item>
   <item>RFC-0756: auto-detect implementation commit when --implementation-commit is omitted.</item>
   <item>RFC-0795: add RFC-IMP-07 dependsOn dependency gate — blocks stamping when any dependsOn entry is not implemented.</item>
+  <item>RFC-0997: add RFC-IMP-08 minimum-one-probe gate — blocks stamping for post-cutoff architecture/contract/command RFCs with no acceptance probes.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -33,7 +34,7 @@ import {
 } from "../frontmatter-io.ts";
 import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
-import { RFC_DIR, RFC_METADATA_CUTOFF } from "../types.ts";
+import { RFC_DIR, RFC_METADATA_CUTOFF, RFC_PROBE_BINDING_CUTOFF } from "../types.ts";
 import type { RfcStatus, RfcImplementStampViolation, RfcImplementStampResult } from "../types.ts";
 import type {
   ForgeCommandInput,
@@ -397,6 +398,18 @@ export async function runRfcImplementStamp(
       const slug = targetId.toLowerCase();
       evidenceRelPath = join(VERIFICATION_DIR, `${slug}.generated.yaml`);
     }
+  }
+
+  // ── RFC-IMP-08: minimum-one-probe gate (RFC-0997) ─────────────────────────
+  // Post-cutoff architecture/contract/command RFCs must declare at least one
+  // acceptance probe. Policy and deprecation kinds are exempt.
+  const rfcKind = String(fm["kind"] ?? "");
+  const probeGateKinds = new Set(["architecture", "contract", "command"]);
+  if (createdAtStr >= RFC_PROBE_BINDING_CUTOFF && probeGateKinds.has(rfcKind) && !hasProbes) {
+    violations.push({
+      rule: "RFC-IMP-08",
+      message: `RFC ${targetId} (kind: ${rfcKind}) has no acceptance probes. Post-cutoff architecture/contract/command RFCs require at least one probe (RFC-0997). See RFC-0996 for the authoring standard.`,
+    });
   }
 
   // If any violations found, return without mutation

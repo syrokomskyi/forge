@@ -57,14 +57,18 @@ nonGoals: []
 # automatically inside build pipelines).
 # acceptance:
 #   - probe: run
+#     criterion: AC-1
 #     command: "pnpm exec forge some.command.validate"
 #     expect:
 #       exitCode: 0
 #   - probe: file-exists
+#     criterion: AC-2
 #     path: "packages/my-package/src/some-new-module.ts"
 #   - probe: command-registered
+#     criterion: AC-3
 #     name: "some.new.command"
 #   - probe: file-contains
+#     criterion: AC-4
 #     path: "AGENTS.md"
 #     pattern: "Some new governance paragraph"
 ---
