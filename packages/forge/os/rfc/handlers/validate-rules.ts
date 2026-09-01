@@ -159,7 +159,7 @@ export function computeProbeCoverage(
   const unboundProbes: string[] = [];
 
   for (const probe of probes) {
-    const criterion = (probe as Record<string, unknown>)["criterion"];
+    const criterion = probe.criterion;
     if (typeof criterion === "string" && /^AC-\d+$/.test(criterion)) {
       if (criterionIds.includes(criterion)) {
         probeBackedCriteria.add(criterion);
@@ -550,7 +550,7 @@ export async function validateSingleRfc(
       // V-35: every probe SHALL declare criterion referencing an existing AC-N id
       for (let i = 0; i < probes.length; i++) {
         const probe = probes[i]!;
-        const criterion = (probe as Record<string, unknown>)["criterion"];
+        const criterion = probe.criterion;
         if (criterion === undefined || criterion === null) {
           addViolation(
             rfcId,
@@ -594,58 +594,58 @@ export async function validateSingleRfc(
       }
 
       // V-37: checked criteria evidence SHALL resolve
-      const checkedLines = acceptanceMatch[1]!
-        .split("\n")
-        .filter((line: string) => /^- \[x\]/.test(line));
-      for (const line of checkedLines) {
-        const evidenceMatch = line.match(/\(evidence:\s*(.+?)\)/);
-        if (!evidenceMatch) continue;
-        const evidence = evidenceMatch[1]!.trim();
+      if (acceptanceMatch) {
+        const checkedLines = acceptanceMatch[1]!
+          .split("\n")
+          .filter((line: string) => /^- \[x\]/.test(line));
+        for (const line of checkedLines) {
+          const evidenceMatch = line.match(/\(evidence:\s*(.+?)\)/);
+          if (!evidenceMatch) continue;
+          const evidence = evidenceMatch[1]!.trim();
 
-        if (evidence.startsWith("probe:")) {
-          const refId = evidence.slice("probe:".length).trim();
-          const hasProbe = probes.some(
-            (p) => String((p as Record<string, unknown>)["criterion"] ?? "") === refId,
-          );
-          if (!criteriaEval.criterionIds.includes(refId)) {
-            addViolation(
-              rfcId,
-              relFile,
-              "V-37",
-              `evidence "probe:${refId}" references a criterion that does not exist in acceptance criteria`,
-            );
-          } else if (!hasProbe) {
-            addViolation(
-              rfcId,
-              relFile,
-              "V-37",
-              `evidence "probe:${refId}" references a criterion with no bound probe`,
-            );
-          }
-        } else if (evidence.startsWith("test:")) {
-          const testPath = evidence.slice("test:".length).trim();
-          try {
-            await stat(path.join(workspaceRoot, testPath));
-          } catch {
-            addViolation(
-              rfcId,
-              relFile,
-              "V-37",
-              `evidence "test:${testPath}" references a file that does not exist`,
-            );
-          }
-        } else if (/^[^:]+:\d+$/.test(evidence)) {
-          const lastColon = evidence.lastIndexOf(":");
-          const filePath = evidence.slice(0, lastColon).trim();
-          try {
-            await stat(path.join(workspaceRoot, filePath));
-          } catch {
-            addViolation(
-              rfcId,
-              relFile,
-              "V-37",
-              `evidence "${evidence}" references a file that does not exist`,
-            );
+          if (evidence.startsWith("probe:")) {
+            const refId = evidence.slice("probe:".length).trim();
+            const hasProbe = probes.some((p) => p.criterion === refId);
+            if (!criteriaEval.criterionIds.includes(refId)) {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-37",
+                `evidence "probe:${refId}" references a criterion that does not exist in acceptance criteria`,
+              );
+            } else if (!hasProbe) {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-37",
+                `evidence "probe:${refId}" references a criterion with no bound probe`,
+              );
+            }
+          } else if (evidence.startsWith("test:")) {
+            const testPath = evidence.slice("test:".length).trim();
+            try {
+              await stat(path.join(workspaceRoot, testPath));
+            } catch {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-37",
+                `evidence "test:${testPath}" references a file that does not exist`,
+              );
+            }
+          } else if (/^[^:]+:\d+$/.test(evidence)) {
+            const lastColon = evidence.lastIndexOf(":");
+            const filePath = evidence.slice(0, lastColon).trim();
+            try {
+              await stat(path.join(workspaceRoot, filePath));
+            } catch {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-37",
+                `evidence "${evidence}" references a file that does not exist`,
+              );
+            }
           }
         }
       }
