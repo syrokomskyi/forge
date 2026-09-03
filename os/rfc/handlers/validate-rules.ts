@@ -11,6 +11,7 @@
   <item>RFC-0755: add V-RFC-33 frontmatter YAML parseability check (checkFrontmatterYamlParse helper).</item>
   <item>RFC-0795: add V-33 dependsOn referential integrity/self-dependency/rejected-dependency and V-34 batch slug format rules.</item>
   <item>RFC-0997: add V-35 probe→criterion referential integrity, V-36 criterion identifier discipline, V-37 evidence mechanism validity, and computeProbeCoverage for non-blocking coverage reports.</item>
+  <item>RFC-1006: add V-38 document readiness completeness, V-39 non-atomic criterion, V-40 unbounded quantity, V-41 weasel verb, V-42 criterion versioning annotation format. Add evaluateDocumentReadiness and extend evaluateAcceptanceCriteria with supersession tracking and reject-checklist scans.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -33,6 +34,7 @@ import {
   RFC_METADATA_CUTOFF,
   RFC_VERSION_BUMP_CUTOFF,
   RFC_PROBE_BINDING_CUTOFF,
+  RFC_CRITERIA_CONTENT_CUTOFF,
 } from "../types.ts";
 import type { ProbeCoverageReport, AcceptanceProbe } from "../types.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
@@ -69,6 +71,120 @@ export interface AcceptanceCriteriaEvaluation {
   criterionIds: string[];
   duplicateCriterionIds: string[];
   linesWithoutId: string[];
+  supersededIds: string[];
+  nonAtomicViolations: { line: string; acId: string }[];
+  unboundedQuantityViolations: { line: string; acId: string; trigger: string }[];
+  weaselVerbViolations: { line: string; acId: string; trigger: string }[];
+  malformedSupersessionAnnotations: string[];
+}
+
+export interface DocumentReadinessEvaluation {
+  totalChecked: number;
+  totalUnchecked: number;
+  uncheckedLines: string[];
+  criterionIds: string[];
+  linesWithoutId: string[];
+}
+
+// ─── RFC-1006: reject checklist constants ──────────────────────────────────
+
+const UNBOUNDED_QUANTITY_TRIGGERS = [
+  "fast",
+  "quick",
+  "scalable",
+  "reasonable load",
+  "most requests",
+  "efficiently",
+  "high performance",
+  "low latency",
+  "responsively",
+  "smoothly",
+] as const;
+
+const WEASEL_VERBS = [
+  "handle gracefully",
+  "behave correctly",
+  "as appropriate",
+  "robust",
+  "user-friendly",
+  "works correctly",
+  "is reliable",
+  "gracefully handle",
+  "correctly handle",
+  "properly handle",
+] as const;
+
+// Detects "SHALL <verb-phrase> and <verb-phrase>" — non-atomic criterion.
+// Conservative: only fires when "and" appears after SHALL/SHOULD/MUST and
+// is followed by a verb-like word (a-z, not a noun-phrase connector).
+const NON_ATOMIC_PATTERN =
+  /\b(?:SHALL|SHOULD|MUST)\s+\S[^()]*?\band\s+(?:return|report|exit|emit|write|read|create|delete|update|persist|validate|reject|accept|log|send|store|load|fetch|process|register|enqueue|schedule|trigger|notify|redirect|render|display|show|hide|enable|disable|start|stop|restart|check|verify|ensure|prevent|allow|block|deny|grant|revoke|parse|serialize|deserialize|encode|decode|compress|decompress|encrypt|decrypt|hash|sign|verify|transform|convert|map|filter|sort|group|aggregate|count|sum|average|min|max|find|search|resolve|lookup)\b/i;
+
+const SUPERSEDED_ANNOTATION_PATTERN =
+  /^>\s*Superseded\s+(AC-\d+)\s+\((\d{4}-\d{2}-\d{2})\):\s*(.+)$/;
+
+/**
+ * Strip fenced code blocks (``` ... ```) from a markdown body.
+ * Prevents section extractors from matching headings inside code block examples.
+ * Pure function — no I/O, no side effects.
+ */
+export function stripFencedCodeBlocks(body: string): string {
+  return body.replace(/```[\s\S]*?```/g, "");
+}
+
+/**
+ * Extract the raw document-readiness section text from an RFC body.
+ * Pure function — no I/O, no side effects.
+ */
+export function extractDocumentReadinessSection(body: string): string | null {
+  const stripped = stripFencedCodeBlocks(body);
+  const match = stripped.match(/## Document readiness\s*\n([\s\S]*?)(?=\n## |\n*$)/);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Evaluate document-readiness checkboxes (RFC-1006).
+ * Pure function — no I/O, no side effects.
+ */
+export function evaluateDocumentReadiness(body: string): DocumentReadinessEvaluation {
+  const section = extractDocumentReadinessSection(body);
+  if (!section) {
+    return {
+      totalChecked: 0,
+      totalUnchecked: 0,
+      uncheckedLines: [],
+      criterionIds: [],
+      linesWithoutId: [],
+    };
+  }
+
+  const uncheckedLines = section
+    .split("\n")
+    .filter((line) => /^- \[ \]/.test(line))
+    .map((line) => line.trim());
+  const totalUnchecked = uncheckedLines.length;
+
+  const checkedLines = section.split("\n").filter((line) => /^- \[x\]/.test(line));
+
+  const checklistLines = section.split("\n").filter((line) => /^- \[[ x]\]/.test(line));
+  const criterionIds: string[] = [];
+  const linesWithoutId: string[] = [];
+  for (const line of checklistLines) {
+    const match = line.match(/^\s*- \[[ x]\]\s*DR-(\d+):/);
+    if (match) {
+      criterionIds.push(`DR-${match[1]}`);
+    } else {
+      linesWithoutId.push(line.trim());
+    }
+  }
+
+  return {
+    totalChecked: checkedLines.length,
+    totalUnchecked,
+    uncheckedLines,
+    criterionIds,
+    linesWithoutId,
+  };
 }
 
 /**
@@ -76,7 +192,8 @@ export interface AcceptanceCriteriaEvaluation {
  * Returns `undefined` when the section is absent.
  */
 export function extractAcceptanceCriteriaSection(body: string): string | undefined {
-  const match = body.match(/## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |\n*$)/);
+  const stripped = stripFencedCodeBlocks(body);
+  const match = stripped.match(/## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |\n*$)/);
   return match?.[1];
 }
 
@@ -96,6 +213,11 @@ export function evaluateAcceptanceCriteria(body: string): AcceptanceCriteriaEval
       criterionIds: [],
       duplicateCriterionIds: [],
       linesWithoutId: [],
+      supersededIds: [],
+      nonAtomicViolations: [],
+      unboundedQuantityViolations: [],
+      weaselVerbViolations: [],
+      malformedSupersessionAnnotations: [],
     };
   }
 
@@ -133,14 +255,89 @@ export function evaluateAcceptanceCriteria(body: string): AcceptanceCriteriaEval
     }
   }
 
+  // RFC-1006: detect supersession annotations and exclude superseded criteria
+  const sectionLines = section.split("\n");
+  const supersededIds: string[] = [];
+  const supersededSet = new Set<string>();
+  const malformedSupersessionAnnotations: string[] = [];
+
+  for (let i = 0; i < sectionLines.length; i++) {
+    const line = sectionLines[i]!;
+    const annMatch = line.match(SUPERSEDED_ANNOTATION_PATTERN);
+    if (annMatch) {
+      const acId = annMatch[1]!;
+      const dateStr = annMatch[2]!;
+      supersededIds.push(acId);
+      supersededSet.add(acId);
+      // Validate date format (already captured by regex, but check range)
+      const date = new Date(dateStr);
+      if (isNaN(date.getTime())) {
+        malformedSupersessionAnnotations.push(line.trim());
+      }
+    } else if (
+      /^>\s*Superseded\s+AC-/.test(line.trim()) &&
+      !SUPERSEDED_ANNOTATION_PATTERN.test(line.trim())
+    ) {
+      // Line starts with supersession annotation pattern but doesn't match full format
+      malformedSupersessionAnnotations.push(line.trim());
+    }
+  }
+
+  // Remove superseded criteria from unchecked count
+  const effectiveUncheckedLines = uncheckedLines.filter((line) => {
+    const match = line.match(/^\s*- \[ \]\s*AC-(\d+):/);
+    if (match) {
+      return !supersededSet.has(`AC-${match[1]}`);
+    }
+    return true;
+  });
+
+  // RFC-1006: reject checklist scans on criterion text
+  const nonAtomicViolations: { line: string; acId: string }[] = [];
+  const unboundedQuantityViolations: { line: string; acId: string; trigger: string }[] = [];
+  const weaselVerbViolations: { line: string; acId: string; trigger: string }[] = [];
+
+  for (const line of checklistLines) {
+    const acMatch = line.match(/^\s*- \[[ x]\]\s*(AC-\d+):/);
+    if (!acMatch) continue;
+    const acId = acMatch[1]!;
+    if (supersededSet.has(acId)) continue;
+
+    const text = line.toLowerCase();
+
+    // V-39: non-atomic criterion
+    if (NON_ATOMIC_PATTERN.test(line)) {
+      nonAtomicViolations.push({ line: line.trim(), acId });
+    }
+
+    // V-40: unbounded quantity
+    for (const trigger of UNBOUNDED_QUANTITY_TRIGGERS) {
+      if (text.includes(trigger)) {
+        unboundedQuantityViolations.push({ line: line.trim(), acId, trigger });
+      }
+    }
+
+    // V-41: weasel verbs
+    for (const trigger of WEASEL_VERBS) {
+      if (text.includes(trigger)) {
+        weaselVerbViolations.push({ line: line.trim(), acId, trigger });
+      }
+    }
+  }
+
   return {
     totalChecked: checkedLines.length,
-    totalUnchecked,
-    uncheckedLines,
+    totalUnchecked: effectiveUncheckedLines.length,
+    uncheckedLines: effectiveUncheckedLines,
     checkedWithoutEvidence,
     criterionIds,
     duplicateCriterionIds,
     linesWithoutId,
+    supersededIds,
+    nonAtomicViolations,
+    unboundedQuantityViolations,
+    weaselVerbViolations,
+    malformedSupersessionAnnotations,
   };
 }
 
@@ -503,7 +700,9 @@ export async function validateSingleRfc(
   }
 
   // V-14: acceptance criteria must have at least 3 checklist items
-  const acceptanceMatch = body.match(/## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |\n*$)/);
+  const acceptanceMatch = stripFencedCodeBlocks(body).match(
+    /## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |\n*$)/,
+  );
   if (acceptanceMatch) {
     const checklistItems = acceptanceMatch[1]!.match(/^- \[[ x]\]/gm);
     const count = checklistItems?.length ?? 0;
@@ -521,8 +720,8 @@ export async function validateSingleRfc(
   // V-26: implemented RFCs must have all acceptance criteria checked (RFC-0463)
   // V-27: every checked criterion must carry inline (evidence: ...) annotation (RFC-0463)
   // RFC-0476: both use the shared evaluateAcceptanceCriteria function.
+  const criteriaEval = evaluateAcceptanceCriteria(body);
   if (acceptanceMatch) {
-    const criteriaEval = evaluateAcceptanceCriteria(body);
     if (status === "implemented" && criteriaEval.totalUnchecked > 0 && !isArchived) {
       addViolation(
         rfcId,
@@ -649,6 +848,68 @@ export async function validateSingleRfc(
           }
         }
       }
+    }
+  }
+
+  // V-38..V-42: criteria content rules (RFC-1006, post-cutoff only)
+  const isCriteriaPostCutoff = createdAt >= RFC_CRITERIA_CONTENT_CUTOFF && !isArchived;
+  if (isCriteriaPostCutoff) {
+    const severity: "error" | "warning" = status === "draft" ? "warning" : "error";
+
+    // V-38: document readiness completeness for accepted+ RFCs
+    const drEval = evaluateDocumentReadiness(body);
+    if (drEval.totalUnchecked > 0 && (status === "accepted" || status === "implemented")) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-38",
+        `status is "${status}" but ${drEval.totalUnchecked} document readiness criteria are unchecked in "## Document readiness" section.`,
+        severity,
+      );
+    }
+
+    // V-39: non-atomic criterion
+    for (const v of criteriaEval.nonAtomicViolations) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-39",
+        `acceptance criterion ${v.acId} is non-atomic (contains "and" joining two behaviors): "${v.line}". Split into separate criteria.`,
+        severity,
+      );
+    }
+
+    // V-40: unbounded quantity
+    for (const v of criteriaEval.unboundedQuantityViolations) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-40",
+        `acceptance criterion ${v.acId} contains unbounded quantity "${v.trigger}": state a specific number or reference the decision that will set it.`,
+        severity,
+      );
+    }
+
+    // V-41: weasel verb
+    for (const v of criteriaEval.weaselVerbViolations) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-41",
+        `acceptance criterion ${v.acId} contains weasel verb "${v.trigger}": replace with a specific observable behavior.`,
+        severity,
+      );
+    }
+
+    // V-42: malformed supersession annotation
+    for (const line of criteriaEval.malformedSupersessionAnnotations) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-42",
+        `malformed criterion supersession annotation (expected "> Superseded AC-N (YYYY-MM-DD): <reason>"): "${line}"`,
+        "error",
+      );
     }
   }
 
