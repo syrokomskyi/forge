@@ -265,6 +265,16 @@ export async function runSessionSave(
       if (outputFormat === "pretty") {
         logger.info(`Skipped ${rawFileName}: already converted to ${outputRel}`);
       }
+      // Delete raw file even when skipping — otherwise .atif files accumulate
+      if (!dryRun && !keepRaw) {
+        try {
+          await trashPath(rawFilePath);
+        } catch (err) {
+          if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+            throw err;
+          }
+        }
+      }
       continue;
     } catch {
       // Output doesn't exist — proceed

@@ -99,6 +99,35 @@ describe("session.save", () => {
     expect(data2.skipped[0]).toHaveProperty("reason", "already converted");
   });
 
+  test("deletes raw file on skip when --keep-raw is not set (idempotency cleanup)", async () => {
+    const uniqueAtif = `2026-07-27T09:15:00+02:00
+User: Fix the session.save idempotency bug in save.ts.
+Assistant: Done. Raw files are now deleted even when the output .md already exists.
+Commit: b7e3f9a fixed idempotency cleanup in skip branch.
+Files: packages/forge/os/session/handlers/save.ts
+Commands: session.save`;
+    const rawPath = join(dir, "docs/sessions/.raw", "2026-07-27-session-idempotency.atif");
+    await writeFile(rawPath, uniqueAtif, "utf-8");
+
+    // First save converts and deletes raw (no --keep-raw)
+    const result1 = await runSessionSave(makeInput(), makeContext(dir));
+    const data1 = result1.data as SessionSaveResult & { skipped: unknown[] };
+    expect(data1.id).toBeDefined();
+    expect(data1.rawDeleted).toBe(true);
+
+    // Write the same raw file again to simulate a re-run
+    await writeFile(rawPath, uniqueAtif, "utf-8");
+
+    // Second save should skip (already converted) AND delete the raw file
+    const result2 = await runSessionSave(makeInput(), makeContext(dir));
+    const data2 = result2.data as SessionSaveResult & { skipped: unknown[] };
+    expect(data2.skipped.length).toBeGreaterThan(0);
+    expect(data2.skipped[0]).toHaveProperty("reason", "already converted");
+
+    // Raw file must be deleted even on skip — this is the bug fix
+    await expect(readFile(rawPath, "utf-8")).rejects.toThrow();
+  });
+
   test("no raw files — exit zero with summary", async () => {
     const emptyDir = await makeTempDir();
     try {
