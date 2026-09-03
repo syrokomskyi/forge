@@ -176,8 +176,9 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 4. **Annotate every `[x]` with inline evidence** — add `(evidence: ...)` to each checked criterion, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by V-27 (RFC-0996 evidence discipline).
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
 6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
+7. **Check document readiness** (RFC-1006) — if the RFC has a `## Document readiness` section, verify every `DR-N` checkbox is checked `[x]`. Unchecked `DR-N` items block `accepted`/`implemented` status via V-38. Document readiness criteria cover document quality (sections present, risks described, alternatives considered), not system behavior — they are checked by inspecting the RFC itself, not by running code.
 
-Do not proceed to step 4.7 until every acceptance criterion checkbox is checked with evidence.
+Do not proceed to step 4.7 until every acceptance criterion checkbox AND every document readiness checkbox is checked with evidence.
 
 #### 4.7. Run acceptance probes and emit evidence
 
