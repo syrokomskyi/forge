@@ -198,6 +198,18 @@ interface ExampleResult {
      Include: performance impact, false positive rate, maintenance burden,
      risk of agents misinterpreting this RFC. -->
 
+## Document readiness
+
+<!-- Optional (RFC-1006). RFC-phase criteria: document quality gates that verify
+     the RFC itself is ready for acceptance. These are NOT EARS statements about
+     system behavior — they are checks that the document is complete.
+     Use DR-N: identifiers. V-38 enforces completeness for accepted+ post-cutoff RFCs.
+
+- [ ] DR-1: Every considered alternative has a stated reason for rejection (evidence: file: <path:line>)
+- [ ] DR-2: The RFC enumerates every existing artifact it touches (evidence: file: <path:line>)
+- [ ] DR-3: The RFC states whether the decision is reversible and at what cost
+-->
+
 ## Acceptance criteria
 
 <!-- Authoring standard: see packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md (RFC-0996).

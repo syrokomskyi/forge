@@ -641,6 +641,15 @@ export const RFC_VERSION_BUMP_CUTOFF = "2026-07-21";
 export const RFC_PROBE_BINDING_CUTOFF = "2026-09-01";
 
 /**
+ * RFC-1006: cutoff date for criteria content rules (phase separation, reject
+ * checklist, criterion versioning). RFCs created on or after this date are
+ * subject to V-38 (document readiness completeness), V-39 (non-atomic
+ * criterion), V-40 (unbounded quantity), V-41 (weasel verb), and V-42
+ * (criterion versioning annotation format). RFCs created before are exempt.
+ */
+export const RFC_CRITERIA_CONTENT_CUTOFF = "2026-09-03";
+
+/**
  * RFC-0997: non-blocking probe coverage report per RFC.
  * Emitted in `rfc.validate --json` and `rfc.acceptance.run` outputs.
  */

@@ -91,7 +91,7 @@ Beyond V-13 (required sections exist) and V-14 (≥3 acceptance items), check th
 - **Rollout** describes default behavior, adoption path for existing apps, and new-app compliance.
 - **Alternatives considered** is honest — at least one real alternative with a rejection reason.
 - **Risks** includes agent misinterpretation risk and false-positive rate for validators.
-- **Acceptance criteria** items are checkable (can an agent or human verify each one?) and sufficient (do they cover the decision's full scope?).
+- **Acceptance criteria** items are checkable (can an agent or human verify each one?) and sufficient (do they cover the decision's full scope?). Run the reject checklist (RFC-1006): no non-atomic "and"-joined claims (V-39), no unbounded quantities like "fast" or "scalable" (V-40), no weasel verbs like "handle gracefully" (V-41). Check that document-readiness criteria (DR-N) are separated from system-conformance criteria (AC-N) if a `## Document readiness` section is present.
 - **Implementation notes for agents** are explicit behavioral rules, not vague guidance.
 
 #### Axis B — DNA alignment
