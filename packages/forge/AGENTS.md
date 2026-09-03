@@ -175,6 +175,8 @@ RFC-1006 adds five validation rules for post-cutoff RFCs and ADRs (createdAt >= 
 
 V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-cutoff RFCs and ADRs are exempt. The reject checklist is conservative — it uses closed trigger lists, not semantic analysis. See `packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md` for the canonical authoring guide.
 
+- **Section extractors in `validate-rules.ts` MUST call `stripFencedCodeBlocks(body)` before regex-matching markdown sections.** RFC documents contain fenced code blocks with example headings and checklists. Without stripping, extractors like `extractDocumentReadinessSection` and `extractAcceptanceCriteriaSection` match headings inside code blocks, producing false-positive validation errors (e.g. V-38 reporting unchecked criteria from a code block example). The `stripFencedCodeBlocks` helper removes all ` ```...``` ` blocks before extraction. Any new section extractor added to `validate-rules.ts` must follow this pattern.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
