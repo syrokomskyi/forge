@@ -700,11 +700,9 @@ export async function validateSingleRfc(
   }
 
   // V-14: acceptance criteria must have at least 3 checklist items
-  const acceptanceMatch = stripFencedCodeBlocks(body).match(
-    /## Acceptance criteria\s*\n([\s\S]*?)(?=\n## |\n*$)/,
-  );
-  if (acceptanceMatch) {
-    const checklistItems = acceptanceMatch[1]!.match(/^- \[[ x]\]/gm);
+  const acceptanceSection = extractAcceptanceCriteriaSection(body);
+  if (acceptanceSection) {
+    const checklistItems = acceptanceSection.match(/^- \[[ x]\]/gm);
     const count = checklistItems?.length ?? 0;
     if (count < 3) {
       addViolation(
@@ -721,7 +719,7 @@ export async function validateSingleRfc(
   // V-27: every checked criterion must carry inline (evidence: ...) annotation (RFC-0463)
   // RFC-0476: both use the shared evaluateAcceptanceCriteria function.
   const criteriaEval = evaluateAcceptanceCriteria(body);
-  if (acceptanceMatch) {
+  if (acceptanceSection) {
     if (status === "implemented" && criteriaEval.totalUnchecked > 0 && !isArchived) {
       addViolation(
         rfcId,
@@ -793,8 +791,8 @@ export async function validateSingleRfc(
       }
 
       // V-37: checked criteria evidence SHALL resolve
-      if (acceptanceMatch) {
-        const checkedLines = acceptanceMatch[1]!
+      if (acceptanceSection) {
+        const checkedLines = acceptanceSection
           .split("\n")
           .filter((line: string) => /^- \[x\]/.test(line));
         for (const line of checkedLines) {
