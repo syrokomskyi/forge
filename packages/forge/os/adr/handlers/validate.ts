@@ -37,7 +37,7 @@ import {
   ADR_STATUSES,
   ADR_ACCEPTANCE_CRITERIA_CUTOFF,
 } from "../types.ts";
-import { RFC_DIR } from "../../rfc/types.ts";
+import { RFC_DIR, RFC_CRITERIA_CONTENT_CUTOFF } from "../../rfc/types.ts";
 import { evaluateAcceptanceCriteria } from "../../rfc/handlers/validate-rules.ts";
 
 async function loadRfcIds(workspaceRoot: string): Promise<Set<string>> {
@@ -447,6 +447,35 @@ async function validateSingleAdr(
         relFile,
         "AV-17",
         `${adrId} has checked criterion without (evidence: ...) annotation: "${snippet}".`,
+      );
+    }
+  }
+
+  // V-39..V-41: reject checklist for post-cutoff implemented ADRs (RFC-1006)
+  if (status === "implemented" && createdAt >= RFC_CRITERIA_CONTENT_CUTOFF) {
+    const evaluation = evaluateAcceptanceCriteria(body);
+    for (const v of evaluation.nonAtomicViolations) {
+      addViolation(
+        adrId,
+        relFile,
+        "V-39",
+        `${adrId} acceptance criterion ${v.acId} is non-atomic (contains "and" joining two behaviors): "${v.line}". Split into separate criteria.`,
+      );
+    }
+    for (const v of evaluation.unboundedQuantityViolations) {
+      addViolation(
+        adrId,
+        relFile,
+        "V-40",
+        `${adrId} acceptance criterion ${v.acId} contains unbounded quantity "${v.trigger}": state a specific number or reference the decision that will set it.`,
+      );
+    }
+    for (const v of evaluation.weaselVerbViolations) {
+      addViolation(
+        adrId,
+        relFile,
+        "V-41",
+        `${adrId} acceptance criterion ${v.acId} contains weasel verb "${v.trigger}": replace with a specific observable behavior.`,
       );
     }
   }
