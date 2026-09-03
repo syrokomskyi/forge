@@ -163,6 +163,18 @@ RFC-0997 binds acceptance probes to criteria via the `criterion: "AC-N"` field a
 - **RFC-IMP-08**: `rfc.implement.stamp` blocks stamping for post-cutoff RFCs of kind `architecture`, `contract`, or `command` that declare zero acceptance probes. Policy and deprecation kinds are exempt.
 - **Coverage report**: `rfc.validate --json` and `rfc.acceptance.run` emit a non-blocking `coverage` block per post-cutoff RFC with `totalCriteria`, `probeBackedCriteria`, `coverageRatio`, `uncoveredCriteria`, `unboundProbes`.
 
+## RFC criteria content rules: phase separation, reject checklist, criterion versioning (RFC-1006)
+
+RFC-1006 adds five validation rules for post-cutoff RFCs and ADRs (createdAt >= `2026-09-03`):
+
+- **V-38**: `accepted`/`implemented` RFCs with unchecked `DR-N` items in `## Document readiness` section are blocking errors. Document readiness criteria (`DR-N`) are separated from system conformance criteria (`AC-N`).
+- **V-39**: acceptance criteria containing `SHALL ... and ...` joining two verb phrases are non-atomic — split into separate criteria.
+- **V-40**: acceptance criteria containing unbounded quantity triggers (`fast`, `scalable`, `low latency`, etc.) are blocking errors — state a specific number.
+- **V-41**: acceptance criteria containing weasel verbs (`handle gracefully`, `robust`, `works correctly`, etc.) are blocking errors — replace with a specific observable behavior.
+- **V-42**: malformed criterion supersession annotations (`> Superseded AC-N (YYYY-MM-DD): <reason>`) are blocking errors. Superseded criteria are excluded from the unchecked count.
+
+V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-cutoff RFCs and ADRs are exempt. The reject checklist is conservative — it uses closed trigger lists, not semantic analysis. See `packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md` for the canonical authoring guide.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
