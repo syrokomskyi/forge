@@ -1,6 +1,6 @@
 ---
 name: fo-handoff
-description: Compact the current conversation into a handoff document for another agent to pick up. Saves to OS temp directory, not the workspace.
+description: Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via ecosystem.commit.
 invocation: user
 category: fo
 concerns: document-only
@@ -13,7 +13,7 @@ triggers: ["create a handoff document", "compact conversation for next agent", "
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 
-Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save to the temporary directory of the user's OS — not the current workspace.
+Write a handoff document summarising the current conversation so a fresh agent can continue the work. Save to the project's handoffs directory (resolved from `forge.yaml` `paths.handoffsDir`, defaulting to `docs/handoffs/`), not the OS temp directory.
 
 ## Process
 
@@ -47,18 +47,27 @@ Redact any sensitive information, such as API keys, passwords, or personally ide
 
 ### 3. Save
 
-Save to the OS temporary directory — not the current workspace. On Windows, use `$env:TEMP`. On macOS/Linux, use `/tmp`.
+Resolve the target directory from `forge.yaml` `paths.handoffsDir` (falling back to `docs/handoffs/` if unset). Filename pattern: `handoff-YYYY-MM-DD-session-<brief-description>.md`.
 
 If the operator passed arguments, treat them as a description of what the next session will focus on and tailor the doc accordingly.
 
-### 4. Report
+### 4. Commit
+
+Commit the handoff document via `ecosystem.commit` so it survives stash operations and is available to the next session.
+
+```sh
+rtk pnpm exec werkstatt run ecosystem.commit --message "docs: add handoff document"
+```
+
+### 5. Report
 
 Tell the operator the absolute path of the handoff document and suggest opening a fresh session that references it. Report in `aiLanguage`.
 
 ## Constraints
 
-- **Do not save to the workspace.** The handoff document goes to the OS temp directory.
+- **Save to `docs/handoffs/`** (or the directory resolved from `forge.yaml` `paths.handoffsDir`). Never save to `/tmp/` or other temporary directories.
+- **Commit the handoff document** via `ecosystem.commit` after saving.
 - **Do not duplicate existing artifacts.** Reference them by path or URL.
 - **Redact sensitive information.** API keys, passwords, PII.
-- **Commit only your own files.** This skill does not commit anything — the handoff doc is in the temp directory. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
+- **Stage only the handoff file.** See `_shared/fo-pipeline-conventions.md` §Commit discipline.
 - **Session summary.** End every session with the closing block defined in `_shared/fo-session-summary.md`.
