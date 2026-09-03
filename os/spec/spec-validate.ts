@@ -9,6 +9,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0394: initial spec.validate handler with SPEC-01..07 rules.</item>
+  <item>Gap fix: resolve materialized RFCs recursively so terminal RFC archival does not invalidate accepted specs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,6 +20,7 @@ import { parse as parseYaml } from "yaml";
 import { byteHash } from "../../src/utils/hash.ts";
 import { collectFiles } from "../../src/utils/fs.ts";
 import { loadForgeConfig } from "../../src/config/forge-config.ts";
+import { listRfcFiles } from "../rfc/frontmatter-io.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -260,15 +262,15 @@ function checkDuplicates(spec: ForgeSpec, violations: SpecViolation[]): void {
 
 async function checkMaterializedAs(
   spec: ForgeSpec,
-  workspaceRoot: string,
   rfcDir: string,
   violations: SpecViolation[],
 ): Promise<void> {
+  const rfcFiles = await listRfcFiles(rfcDir);
   for (const node of spec.rfcs) {
     if (!node.materializedAs) continue;
     const rfcId = node.materializedAs;
-    const rfcFiles = await fs.readdir(rfcDir).catch(() => []);
-    const found = rfcFiles.some((f) => f.startsWith(rfcId.toLowerCase().replace(/^RFC-/, "rfc-")));
+    const prefix = rfcId.toLowerCase().replace(/^rfc-/, "rfc-");
+    const found = rfcFiles.some((file) => path.basename(file).startsWith(prefix));
     if (!found) {
       violations.push({
         rule: "SPEC-07",
@@ -467,7 +469,7 @@ export async function runSpecValidate(
     checkDuplicates(spec, violations);
 
     // SPEC-07: materializedAs
-    await checkMaterializedAs(spec, workspaceRoot, rfcDir, violations);
+    await checkMaterializedAs(spec, rfcDir, violations);
 
     // SPEC-08..11: Amendments (RFC-0397)
     const amendments = await loadAmendments(specDir);
