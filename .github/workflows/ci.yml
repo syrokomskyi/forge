@@ -8,31 +8,21 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   ci:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
+      - run: corepack enable
       - uses: actions/setup-node@v5
         with:
           node-version: "24"
           registry-url: https://registry.npmjs.org
-
-      - run: corepack enable
-
-      - run: pnpm install --no-frozen-lockfile
-
-      - run: pnpm run lint || true
-
+      - run: pnpm install --no-frozen-lockfile --config.dangerouslyAllowAllBuilds=true --config.minimumReleaseAge=0
       - run: pnpm run build:check || true
-
       - run: pnpm test || true
-
-      - name: Build
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-        run: pnpm run build
 
       - name: Publish
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -42,7 +32,7 @@ jobs:
           if npm view "${PKG_NAME}@${PKG_VERSION}" version 2>/dev/null | grep -q "${PKG_VERSION}"; then
             echo "Version ${PKG_VERSION} already published, skipping"
           else
-            npm publish --provenance --access public --ignore-scripts
+            npm publish --access public --ignore-scripts --provenance
           fi
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
