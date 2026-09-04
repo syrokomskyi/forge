@@ -15,6 +15,7 @@ for Compass source-file inventory.</purpose>
   <item>Post-refactor hardening: detect nested packages/os workspaces before deriving Compass layer and workspace name.</item>
   <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added .cs, .tscn, .tres, .gd to SOURCE_EXTENSIONS; createCompassInventoryEntries now reads forge.yaml compass.fileExtensions at runtime and merges with hardcoded set.</item>
+  <item>Added .md to SOURCE_EXTENSIONS for SKILL.md Compass coverage; detectAuthoringStatus excludes non-SKILL.md markdown files.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,6 +59,7 @@ const SOURCE_EXTENSIONS = new Set([
   ".tscn",
   ".tres",
   ".gd",
+  ".md",
 ]);
 const IGNORED_DIRECTORY_NAMES = new Set([
   ".git",
@@ -266,6 +268,7 @@ function detectLayer(relativePath: string): string {
   )
     return "test";
   if (relativePath.startsWith("src/")) return "source";
+  if (relativePath.endsWith("SKILL.md")) return "skill";
   return "other";
 }
 
@@ -383,6 +386,13 @@ function detectAuthoringStatus(
     return {
       authoringStatus: "excluded",
       exclusionReason: "bin-entrypoint",
+    };
+  }
+
+  if (relativePath.endsWith(".md") && !relativePath.endsWith("SKILL.md")) {
+    return {
+      authoringStatus: "excluded",
+      exclusionReason: "non-skill-markdown",
     };
   }
 

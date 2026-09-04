@@ -48,9 +48,12 @@ function extractBlockContentForPlugin(source: string, tagName: string): string |
 
 const INVENTORY_OUTPUT_PATH = "docs/compass-inventory.xml";
 
-function getExpectedCommentSyntax(filePath: string): "block" | "hash" | "semicolon" | null {
+function getExpectedCommentSyntax(
+  filePath: string,
+): "block" | "hash" | "semicolon" | "html" | null {
   if (filePath.endsWith(".gd")) return "hash";
   if (filePath.endsWith(".tscn") || filePath.endsWith(".tres")) return "semicolon";
+  if (filePath.endsWith(".md")) return "html";
   if (
     filePath.endsWith(".ts") ||
     filePath.endsWith(".tsx") ||
@@ -95,6 +98,13 @@ function checkCommentSyntax(source: string, filePath: string): string | null {
           return "MODULE_CONTRACT lines must be prefixed with '; ' for .tscn/.tres files";
         }
       }
+    }
+  } else if (syntax === "html") {
+    const blockStart = source.indexOf("<!--");
+    const blockEnd = source.lastIndexOf("-->");
+    const tagPos = source.indexOf("<MODULE_CONTRACT>");
+    if (blockStart === -1 || blockEnd === -1 || blockStart > tagPos || tagPos > blockEnd) {
+      return "MODULE_CONTRACT must be inside a <!-- ... --> HTML comment for .md files";
     }
   }
   return null;
