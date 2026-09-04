@@ -384,37 +384,43 @@ workspace:
       content: |
         #!/bin/bash
         # setup-git-guards.sh — install shell function guards for destructive git ops.
+        # Auto-detects shell: zsh → ~/.zshenv, bash → ~/.bashrc (Git Bash on Windows).
         set -euo pipefail
         repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
         if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
         guard_script="$repo_root/scripts/git-guard.sh"
         marker="# forge-git-guard"
-        zshenv="${HOME}/.zshenv"
+        # Auto-detect target profile file based on current shell
+        case "${SHELL:-}" in
+          *zsh*) profile_file="${HOME}/.zshenv" ;;
+          *bash*) profile_file="${HOME}/.bashrc" ;;
+          *) profile_file="${HOME}/.bashrc" ;;
+        esac
         mode="${1:-install}"
         case "$mode" in
           install)
             if [ ! -f "$guard_script" ]; then echo "ERROR: $guard_script not found" >&2; exit 1; fi
             chmod +x "$guard_script" 2>/dev/null || true
-            if [ -f "$zshenv" ]; then
+            if [ -f "$profile_file" ]; then
               tmp="$(mktemp)"
-              awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$zshenv" > "$tmp" || true
-              mv "$tmp" "$zshenv" 2>/dev/null || true
+              awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$profile_file" > "$tmp" || true
+              mv "$tmp" "$profile_file" 2>/dev/null || true
             fi
-            echo "" >> "$zshenv"
-            echo "$marker" >> "$zshenv"
-            echo "[ -f \"$guard_script\" ] && source \"$guard_script\"" >> "$zshenv"
-            echo "Git guards installed. Restart your shell or run: source $guard_script" ;;
+            echo "" >> "$profile_file"
+            echo "$marker" >> "$profile_file"
+            echo "[ -f \"$guard_script\" ] && source \"$guard_script\"" >> "$profile_file"
+            echo "Git guards installed into $profile_file. Restart your shell or run: source $guard_script" ;;
           --verify)
             if [ -z "${FORGE_GIT_GUARD:-}" ]; then echo "MISSING: git guard not loaded" >&2; exit 1; fi
-            if ! grep -qF "$marker" "$zshenv" 2>/dev/null; then echo "MISSING: guard not in $zshenv" >&2; exit 1; fi
+            if ! grep -qF "$marker" "$profile_file" 2>/dev/null; then echo "MISSING: guard not in $profile_file" >&2; exit 1; fi
             echo "OK: git guards installed and loaded" ;;
           --remove)
-            if [ -f "$zshenv" ]; then
+            if [ -f "$profile_file" ]; then
               tmp="$(mktemp)"
-              awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$zshenv" > "$tmp" || true
-              mv "$tmp" "$zshenv" 2>/dev/null || true
+              awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$profile_file" > "$tmp" || true
+              mv "$tmp" "$profile_file" 2>/dev/null || true
             fi
-            echo "Git guards removed from $zshenv" ;;
+            echo "Git guards removed from $profile_file" ;;
           *) echo "Usage: bash scripts/setup-git-guards.sh [install|--verify|--remove]" >&2; exit 1 ;;
         esac
     - path: scripts/clean-stale-stashes.sh
@@ -539,13 +545,64 @@ workspace:
           if [ -n "$tree_output" ]; then echo "" >&2; echo "$tree_output" >&2; fi
         fi
         exit 2
+    - path: hooks/pre-user-prompt-wrapper.mjs
+      content: |
+        #!/usr/bin/env node
+        // pre-user-prompt-wrapper.mjs — cross-platform wrapper for pre-user-prompt.sh.
+        // Detects bash availability, prints one-time warning if bash not found,
+        // then delegates to bash hooks/pre-user-prompt.sh with stdin piped.
+        import { execFileSync, spawn } from "node:child_process";
+        import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+        import { dirname, join } from "node:path";
+        import { fileURLToPath } from "node:url";
+
+        const __dirname = dirname(fileURLToPath(import.meta.url));
+        const scriptPath = join(__dirname, "pre-user-prompt.sh");
+        const cacheDir = join(__dirname, "..", ".cache");
+        const warningFlag = join(cacheDir, "git-guard-warning-sent");
+
+        // If pre-user-prompt.sh doesn't exist, silently exit
+        if (!existsSync(scriptPath)) {
+          process.exit(0);
+        }
+
+        // Check if bash is available
+        let bashAvailable = false;
+        try {
+          execFileSync("bash", ["--version"], { stdio: "ignore" });
+          bashAvailable = true;
+        } catch {
+          bashAvailable = false;
+        }
+
+        if (!bashAvailable) {
+          // Print one-time warning if not already sent
+          if (!existsSync(warningFlag)) {
+            console.error("⚠️  bash not found — pre-user-prompt hook is disabled.");
+            console.error("Install Git Bash (Git for Windows) or WSL to enable agent-safety hooks.");
+            console.error("");
+            try {
+              mkdirSync(cacheDir, { recursive: true });
+              writeFileSync(warningFlag, new Date().toISOString(), "utf8");
+            } catch {
+              // Best-effort — don't crash if cache dir is not writable
+            }
+          }
+          process.exit(0);
+        }
+
+        // Delegate to bash script with stdin piped
+        const child = spawn("bash", [scriptPath], { stdio: ["inherit", "inherit", "inherit"] });
+        child.on("exit", (code) => {
+          process.exit(code ?? 0);
+        });
     - path: .windsurf/hooks.json
       content: |
         {
           "hooks": {
             "pre_user_prompt": [
               {
-                "command": "bash $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt.sh 2>/dev/null || true",
+                "command": "node $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt-wrapper.mjs",
                 "show_output": true
               }
             ]
@@ -579,6 +636,8 @@ workspace:
           - path: scripts/setup-git-guards.sh
             mode: protect
           - path: hooks/pre-user-prompt.sh
+            mode: protect
+          - path: hooks/pre-user-prompt-wrapper.mjs
             mode: protect
     - path: README.md
       content: |
@@ -617,9 +676,9 @@ workspace:
         bash scripts/setup-git-guards.sh
         ```
 
-        This installs a shell function into `~/.zshenv`. Restart your shell or run `source scripts/git-guard.sh`.
+        This installs a shell function into your shell profile (`~/.zshenv` for zsh, `~/.bashrc` for bash/Git Bash). Restart your shell or run `source scripts/git-guard.sh`.
 
-        > **Windows**: Git guards require Git Bash or WSL. On native PowerShell, skip this step — the pre-user-prompt hook degrades gracefully (silently no-ops if bash is not found).
+        > **Windows**: Git guards require Git Bash (included with Git for Windows). Run `bash scripts/setup-git-guards.sh` from Git Bash. If bash is not in PATH, the pre-user-prompt hook wrapper prints a one-time warning. Install `jq` via `winget install jqlang.jq` or `choco install jq`.
 
         ### 4. Verify the workshop
 
