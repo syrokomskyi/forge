@@ -1,6 +1,6 @@
 {
   "name": "@warpgogol/werkstatt-typescript",
-  "version": "1.0.5",
+  "version": "2.0.0",
   "private": false,
   "type": "module",
   "engines": {
@@ -31,9 +31,7 @@
       "default": "./src/checks/module.ts"
     }
   },
-  "files": [
-    "src"
-  ],
+  "files": ["src"],
   "scripts": {
     "lint": "pnpm exec eslint \"src/**/*.ts\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",

@@ -6,7 +6,7 @@ forgePlugin: true
 projectDir: packages/werkstatt-typescript
 destName: werkstatt-typescript
 standalone: true
-versionBump: patch
+versionBump: major
 
 workspacePrefixes:
   - "@warpgogol/"
