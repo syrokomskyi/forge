@@ -21,6 +21,7 @@
   <item>RFC-0643: accept optional profileId and write it to forge.yaml as the `profile` field.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0941: create forge.plugin.yaml manifests for skill packs that lack them before calling discoverPackSkills.</item>
+  <item>RFC-1019: extend PREFERENCES.md with formOfAddress, session-end protocol, skill invocation tracking, plan confirmation vs implementation, commit granularity rules.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -186,14 +187,63 @@ export function runInit(
     }
   }
 
-  // 2. Create PREFERENCES.md if missing
+  // 2. Create PREFERENCES.md if missing (RFC-1019: extended with formOfAddress and operational rules)
   const prefsPath = path.join(workspaceRoot, "PREFERENCES.md");
   const register = domainFields?.register ?? "business";
+  const formOfAddress = "formal";
   if (fs.existsSync(prefsPath)) {
     skipped.push("PREFERENCES.md (already exists)");
   } else {
-    const prefsContent = `---\naiLanguage: ${aiLang}\ndocumentationLanguage: ${docLang}\nregister: ${register}\n---\n\n# Operator Preferences\n\n- \`aiLanguage\`: ${aiLang} — AI uses this language for all communication with the operator.\n- \`documentationLanguage\`: ${docLang} — generated documentation uses this language.\n- \`register\`: ${register} — communication register (business or creative).\n`;
-    fs.writeFileSync(prefsPath, prefsContent, "utf8");
+    const prefsContent = [
+      "---",
+      `aiLanguage: ${aiLang}`,
+      `documentationLanguage: ${docLang}`,
+      `register: ${register}`,
+      `formOfAddress: ${formOfAddress}`,
+      "---",
+      "",
+      "# Operator Preferences",
+      "",
+      "This file stores operator-level preferences that AI agents read at the start of a session.",
+      "",
+      "## Current preferences",
+      "",
+      `- \`aiLanguage\` — ${aiLang} — AI uses this language for all communication with the operator.`,
+      `- \`documentationLanguage\` — ${docLang} — generated documentation uses this language.`,
+      `- \`register\` — ${register} — communication register (business or creative).`,
+      `- \`formOfAddress\` — ${formOfAddress} — form of address (formal or informal).`,
+      "",
+      "## Plan confirmation vs implementation command (NON-NEGOTIABLE)",
+      "",
+      "Confirming a plan or design during grilling/discussion means the operator agrees with the approach — it is NOT a command to start implementation. The agent MUST wait for an explicit implementation command (\"implement\", \"go ahead\", \"реализуй\", \"начинай\") before writing any code beyond the RFC/ADR document itself.",
+      "",
+      "- **RFC creation** → agent creates the RFC file in `draft` status. No code changes.",
+      "- **Plan confirmation** → agent stops. No status change, no implementation, no todo list items moved to `in_progress`.",
+      "- **Implementation command** → only now does the agent begin coding, register commands, write tests, etc.",
+      "",
+      "If the agent is unsure whether the operator's message is a confirmation or a command to implement, the agent MUST ask for clarification before proceeding.",
+      "",
+      "## Skill invocation tracking",
+      "",
+      "When a skill is invoked (e.g. `fo-idea-i-just-want-to-see-the-result`), the agent MUST complete the full skill pipeline. Stopping halfway (e.g. after `fo-idea-create-rfc` when the operator asked for the full result) is a protocol violation. If a step fails, the agent reports the failure and asks for guidance — it does not silently skip remaining steps.",
+      "",
+      "## Commit granularity",
+      "",
+      "One logical fix = one commit, regardless of how many iterations were needed to produce it. Do not split a single logical change into multiple commits just because multiple edit rounds were needed. Conversely, do not combine unrelated changes into a single commit.",
+      "",
+      "## Session-end protocol",
+      "",
+      "When the operator signals session end (phrases like \"End session\", \"Wrap up\", \"Завершаем сессию\", \"/session-end\"), the agent MUST:",
+      "",
+      "1. Verify clean working trees — run: `bash scripts/check-clean-trees.sh`",
+      "2. Commit any uncommitted changes before proceeding",
+      "3. Invoke the `fo-session-retro` skill via the skill tool",
+      "4. The retro skill's report IS the session-end output — do not produce a separate closing summary",
+      "",
+      "This protocol is enforced by the `hooks/pre-user-prompt.sh` hook as a blocked gate.",
+      "",
+    ].join("\n");
+    fs.writeFileSync(prefsPath, prefsContent + "\n", "utf8");
     created.push("PREFERENCES.md");
   }
 
