@@ -5,6 +5,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0544: initial forge.create tests.</item>
   <item>RFC-0877: rewrite tests for --in-place mode, add strict empty-directory check and name-derivation tests.</item>
+  <item>RFC-1019: add tests for pre-user-prompt-wrapper.mjs, shell auto-detection, hooks.json wrapper, pinned.yaml.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -62,6 +63,7 @@ test("forge create --in-place scaffolds in cwd with forge.yaml and docs dirs", a
   expect(existsSync(join(tempDir, "PREFERENCES.md"))).toBe(true);
   expect(existsSync(join(tempDir, "package.json"))).toBe(true);
   expect(existsSync(join(tempDir, "scripts", "clean.mjs"))).toBe(true);
+  expect(existsSync(join(tempDir, "hooks", "pre-user-prompt-wrapper.mjs"))).toBe(true);
 }, 30000);
 
 test("forge create --in-place refuses when forge artifacts already exist", async () => {
@@ -303,6 +305,45 @@ test("forge create --profile godot-csharp writes compass.fileExtensions into for
   expect(forgeYaml).toContain(".tscn");
   expect(forgeYaml).toContain(".tres");
   expect(forgeYaml).toContain(".gd");
+}, 30000);
+
+test("forge create --in-place setup-git-guards.sh contains shell auto-detection (RFC-1019)", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const setupScript = await readFileAsync(join(tempDir, "scripts", "setup-git-guards.sh"), "utf8");
+  expect(setupScript).toContain(".zshenv");
+  expect(setupScript).toContain(".bashrc");
+  expect(setupScript).toContain("profile_file");
+}, 30000);
+
+test("forge create --in-place .windsurf/hooks.json calls wrapper not bash directly (RFC-1019)", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const hooksJson = await readFileAsync(join(tempDir, ".windsurf", "hooks.json"), "utf8");
+  expect(hooksJson).toContain("pre-user-prompt-wrapper.mjs");
+  expect(hooksJson).not.toContain("2>/dev/null || true");
+}, 30000);
+
+test("forge create --in-place pins pre-user-prompt-wrapper.mjs in pinned.yaml (RFC-1019)", async () => {
+  const result = await runCreate(
+    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    makeContext(tempDir),
+  );
+  expect(result.exitCode).toBe(0);
+
+  const { readFile: readFileAsync } = await import("node:fs/promises");
+  const pinnedYaml = await readFileAsync(join(tempDir, ".forge", "pinned.yaml"), "utf8");
+  expect(pinnedYaml).toContain("pre-user-prompt-wrapper.mjs");
 }, 30000);
 
 test("forge create --profile phaser-turborepo writes compass.fileExtensions into forge.yaml", async () => {
