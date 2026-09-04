@@ -3,12 +3,13 @@
 <purpose>forge.validate — execute validate commands for all artifacts declared in the active stack profile. Supports --dry-run, --json, --artifact filtering, and violation parsing.</purpose>
 <non-goals>
   <item>Do not implement dev or build logic — those are separate handlers.</item>
-  <item>Do not import from @warpgogol/* — this module is portable.</item>
+  <item>Do not import from @warpgogol/* — compass handler is intra-package within @warpgogol/forge.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0674: initial forge.validate handler with profile resolution, --dry-run, and per-artifact execution.</item>
   <item>RFC-0677: extended with --artifact filtering, violation parsing (outputFormat: json/plain), passed/allPassed fields.</item>
+  <item>Integrated compass.validate as in-process step after artifact validations for automatic Compass enforcement.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,6 +21,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
+import { runCompassValidation } from "../../compass/handlers/compass-inventory-handler.ts";
 
 const execAsync = promisify(exec);
 
@@ -41,11 +43,25 @@ export interface ForgeValidateArtifactResult {
   stderr: string;
 }
 
+export interface ForgeValidateCompassResult {
+  passed: boolean;
+  checkedFiles: number;
+  failures: number;
+  diagnostics: Array<{
+    ruleId: string;
+    severity: string;
+    file: string;
+    message: string;
+    fix: string;
+  }>;
+}
+
 export interface ForgeValidateResult {
   command: "forge.validate";
   profileId: string;
   artifacts: ForgeValidateArtifactResult[];
   allPassed: boolean;
+  compass?: ForgeValidateCompassResult;
 }
 
 export function parseViolations(
@@ -185,6 +201,12 @@ export async function runValidate(
           stderr: "",
         })),
         allPassed: true,
+        compass: {
+          passed: true,
+          checkedFiles: 0,
+          failures: 0,
+          diagnostics: [],
+        },
       },
       summary: `[dry-run] ${commands.length} validate command(s) resolved`,
     };
@@ -245,7 +267,37 @@ export async function runValidate(
     }
   }
 
-  const allPassed = results.every((r) => r.passed);
+  const artifactsAllPassed = results.every((r) => r.passed);
+
+  let compassResult: ForgeValidateCompassResult | undefined;
+  try {
+    const compassResponse = await runCompassValidation({ argv: [], flags: {} }, context);
+    if (compassResponse.data) {
+      compassResult = {
+        passed: (compassResponse.exitCode ?? 0) === 0,
+        checkedFiles: compassResponse.data.checkedFiles,
+        failures: compassResponse.data.failures,
+        diagnostics: compassResponse.data.diagnostics,
+      };
+    }
+  } catch {
+    // compass.validate not available in this workspace — skip
+  }
+
+  const allPassed = artifactsAllPassed && (compassResult?.passed ?? true);
+
+  const summaryParts: string[] = [
+    allPassed
+      ? `forge.validate: all ${results.length} artifact(s) passed`
+      : `forge.validate: ${results.filter((r) => !r.passed).length} artifact(s) failed`,
+  ];
+  if (compassResult) {
+    summaryParts.push(
+      compassResult.passed
+        ? `compass: OK (${compassResult.checkedFiles} files)`
+        : `compass: ${compassResult.failures} failure(s)`,
+    );
+  }
 
   return {
     data: {
@@ -253,10 +305,9 @@ export async function runValidate(
       profileId: profile.id,
       artifacts: results,
       allPassed,
+      compass: compassResult,
     },
     exitCode: allPassed ? 0 : 1,
-    summary: allPassed
-      ? `forge.validate: all ${results.length} artifact(s) passed`
-      : `forge.validate: ${results.filter((r) => !r.passed).length} artifact(s) failed`,
+    summary: summaryParts.join("; "),
   };
 }
