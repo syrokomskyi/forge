@@ -545,7 +545,7 @@ workspace:
           "hooks": {
             "pre_user_prompt": [
               {
-                "command": "bash $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt.sh",
+                "command": "bash $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt.sh 2>/dev/null || true",
                 "show_output": true
               }
             ]
@@ -591,6 +591,7 @@ workspace:
         - Node.js 24+
         - pnpm 10+
         - jq (for pre-user-prompt hook)
+        - On Windows: Git Bash or WSL (for shell scripts)
 
         ## Setup
 
@@ -617,6 +618,8 @@ workspace:
         ```
 
         This installs a shell function into `~/.zshenv`. Restart your shell or run `source scripts/git-guard.sh`.
+
+        > **Windows**: Git guards require Git Bash or WSL. On native PowerShell, skip this step — the pre-user-prompt hook degrades gracefully (silently no-ops if bash is not found).
 
         ### 4. Verify the workshop
 

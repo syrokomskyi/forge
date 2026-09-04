@@ -321,7 +321,7 @@ workspace:
           "hooks": {
             "pre_user_prompt": [
               {
-                "command": "bash $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt.sh",
+                "command": "bash $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt.sh 2>/dev/null || true",
                 "show_output": true
               }
             ]
