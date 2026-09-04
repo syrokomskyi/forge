@@ -1,3 +1,4 @@
+forgePlugin: true
 # extract.config.yaml — repo-extract standalone package export for @warpgogol/werkstatt-typescript
 # Extracts packages/werkstatt-typescript from the werkstatt monorepo into a standalone public repo.
 # RFC-0889: TypeScript TurboRepo stack plugin with best-practice validators.
