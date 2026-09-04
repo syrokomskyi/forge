@@ -697,6 +697,257 @@ workspace:
         pnpm exec werkstatt run werkstatt.autonomy.validate || exit 1
         pnpm exec werkstatt run werkstatt.plugin.validate || exit 1
         pnpm exec werkstatt run compass.validate || exit 1
+    - path: scripts/git-guard.sh
+      content: |
+        #!/bin/bash
+        # git-guard.sh — shell function that intercepts destructive git commands.
+        # Sourced by ~/.zshenv (via setup-git-guards.sh).
+        # Guards (only active in repos containing scripts/git-guard.sh):
+        #   git stash, git reset --hard, git checkout --, git checkout -f,
+        #   git switch -f, git clean -f, git restore
+        # Override: ALLOW_DESTRUCTIVE_GIT=1 git stash
+
+        export FORGE_GIT_GUARD=1
+
+        _git_guard_find_root() {
+          local _repo_root _dir
+          _repo_root="$(command git rev-parse --show-toplevel 2>/dev/null || echo "")"
+          if [ -z "$_repo_root" ]; then echo ""; return; fi
+          if [ -f "$_repo_root/scripts/git-guard.sh" ]; then echo "$_repo_root"; return; fi
+          _dir="$(dirname "$_repo_root")"
+          while [ -n "$_dir" ] && [ "$_dir" != "/" ]; do
+            if [ -f "$_dir/scripts/git-guard.sh" ]; then echo "$_dir"; return; fi
+            _dir="$(dirname "$_dir")"
+          done
+          echo ""
+        }
+
+        git() {
+          local _guard_root
+          _guard_root="$(_git_guard_find_root)"
+          if [ -z "$_guard_root" ] || [ -n "${ALLOW_DESTRUCTIVE_GIT:-}" ]; then
+            command git "$@"; return $?
+          fi
+          local _all_args=("$@") _i=0 _cmd="" _cmd_index=0
+          while [ "$_i" -lt "${#_all_args[@]}" ]; do
+            local _arg="${_all_args[$_i]}"
+            case "$_arg" in
+              -C|-c|--git-dir|--work-tree|--namespace) _i=$((_i + 2)); continue ;;
+              -*) _i=$((_i + 1)); continue ;;
+            esac
+            _cmd="$_arg"; _cmd_index="$_i"; break
+          done
+          local _sub_args=() _j=$((_cmd_index + 1))
+          while [ "$_j" -lt "${#_all_args[@]}" ]; do
+            _sub_args+=("${_all_args[$_j]}"); _j=$((_j + 1))
+          done
+          case "$_cmd" in
+            stash)
+              echo "BLOCKED: git stash is disabled in agent sessions." >&2
+              echo "Set ALLOW_DESTRUCTIVE_GIT=1 to override." >&2; return 1 ;;
+            reset)
+              for _arg in "${_sub_args[@]}"; do
+                if [ "$_arg" = "--hard" ] || [[ "$_arg" == --hard=* ]]; then
+                  echo "BLOCKED: git reset --hard is disabled." >&2; return 1
+                fi
+              done; command git "$@"; return $? ;;
+            checkout)
+              for _arg in "${_sub_args[@]}"; do
+                if [ "$_arg" = "--" ]; then
+                  echo "BLOCKED: git checkout -- is disabled." >&2; return 1
+                fi
+                case "$_arg" in -f*|--force*)
+                  echo "BLOCKED: git checkout -f is disabled." >&2; return 1 ;;
+                esac
+              done; command git "$@"; return $? ;;
+            switch)
+              for _arg in "${_sub_args[@]}"; do
+                case "$_arg" in -f*|--force*)
+                  echo "BLOCKED: git switch -f is disabled." >&2; return 1 ;;
+                esac
+              done; command git "$@"; return $? ;;
+            restore)
+              echo "BLOCKED: git restore is disabled." >&2; return 1 ;;
+            clean)
+              for _arg in "${_sub_args[@]}"; do
+                case "$_arg" in -f*|--force*)
+                  echo "BLOCKED: git clean -f is disabled." >&2; return 1 ;;
+                esac
+              done; command git "$@"; return $? ;;
+            *) command git "$@"; return $? ;;
+          esac
+        }
+    - path: scripts/setup-git-guards.sh
+      content: |
+        #!/bin/bash
+        # setup-git-guards.sh — install shell function guards for destructive git ops.
+        set -euo pipefail
+        repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
+        guard_script="$repo_root/scripts/git-guard.sh"
+        marker="# forge-git-guard"
+        zshenv="${HOME}/.zshenv"
+        mode="${1:-install}"
+        case "$mode" in
+          install)
+            if [ ! -f "$guard_script" ]; then echo "ERROR: $guard_script not found" >&2; exit 1; fi
+            chmod +x "$guard_script" 2>/dev/null || true
+            if [ -f "$zshenv" ]; then
+              tmp="$(mktemp)"
+              awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$zshenv" > "$tmp" || true
+              mv "$tmp" "$zshenv" 2>/dev/null || true
+            fi
+            echo "" >> "$zshenv"
+            echo "$marker" >> "$zshenv"
+            echo "[ -f \"$guard_script\" ] && source \"$guard_script\"" >> "$zshenv"
+            echo "Git guards installed. Restart your shell or run: source $guard_script" ;;
+          --verify)
+            if [ -z "${FORGE_GIT_GUARD:-}" ]; then echo "MISSING: git guard not loaded" >&2; exit 1; fi
+            if ! grep -qF "$marker" "$zshenv" 2>/dev/null; then echo "MISSING: guard not in $zshenv" >&2; exit 1; fi
+            echo "OK: git guards installed and loaded" ;;
+          --remove)
+            if [ -f "$zshenv" ]; then
+              tmp="$(mktemp)"
+              awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$zshenv" > "$tmp" || true
+              mv "$tmp" "$zshenv" 2>/dev/null || true
+            fi
+            echo "Git guards removed from $zshenv" ;;
+          *) echo "Usage: bash scripts/setup-git-guards.sh [install|--verify|--remove]" >&2; exit 1 ;;
+        esac
+    - path: scripts/clean-stale-stashes.sh
+      content: |
+        #!/bin/bash
+        # clean-stale-stashes.sh — detect and optionally drop stale git stash entries.
+        # Usage: bash scripts/clean-stale-stashes.sh [--drop|--drop-all]
+        set -euo pipefail
+        repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
+        mode="report"
+        if [ "${1:-}" = "--drop" ]; then mode="drop"; elif [ "${1:-}" = "--drop-all" ]; then mode="drop-all"; fi
+        stash_count="$(git -C "$repo_root" stash list 2>/dev/null | wc -l)"
+        if [ "$stash_count" -eq 0 ]; then exit 0; fi
+        stale_indices=() total="$stash_count"
+        for ((i = 0; i < total; i++)); do
+          ref="stash@{$i}"
+          if [ "$mode" = "drop-all" ]; then stale_indices+=("$i"); continue; fi
+          tracked_changes="$(git -C "$repo_root" stash show "$ref" --stat 2>/dev/null || true)"
+          untracked_files="$(git -C "$repo_root" stash show --include-untracked "$ref" --stat 2>/dev/null || true)"
+          if [ -z "$tracked_changes" ] && [ -z "$untracked_files" ]; then stale_indices+=("$i"); continue; fi
+          if [ -z "$tracked_changes" ] && [ -n "$untracked_files" ]; then
+            all_committed=true
+            while IFS= read -r filepath; do
+              [ -z "$filepath" ] && continue
+              if ! git -C "$repo_root" cat-file -e "HEAD:$filepath" 2>/dev/null; then all_committed=false; break; fi
+            done < <(git -C "$repo_root" stash show --include-untracked "$ref" --name-only 2>/dev/null || true)
+            if [ "$all_committed" = true ]; then stale_indices+=("$i"); fi
+          fi
+        done
+        if [ ${#stale_indices[@]} -eq 0 ]; then exit 0; fi
+        if [ "$mode" = "report" ]; then
+          echo "STALE STASH ENTRIES DETECTED (${#stale_indices[@]} of $stash_count):"
+          for idx in "${stale_indices[@]}"; do
+            echo "  stash@{$idx}: $(git -C "$repo_root" stash list | sed -n "$((idx + 1))p")"
+          done
+          echo "Clean with: bash scripts/clean-stale-stashes.sh --drop"; exit 1
+        fi
+        if [ "$mode" = "drop-all" ]; then git -C "$repo_root" stash clear; echo "Dropped all $stash_count entries."; exit 0; fi
+        for ((i = ${#stale_indices[@]} - 1; i >= 0; i--)); do
+          idx="${stale_indices[$i]}"
+          git -C "$repo_root" stash drop "stash@{$idx}" 2>/dev/null || true
+        done
+        echo "Dropped ${#stale_indices[@]} stale entry/entries."; exit 0
+    - path: scripts/check-clean-trees.sh
+      content: |
+        #!/bin/bash
+        # check-clean-trees.sh — verify all git trees are clean.
+        # Checks repo root + all nested .git directories up to 3 levels deep.
+        set -euo pipefail
+        repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
+        dirty=0 output=""
+        main_status="$(git -C "$repo_root" status --short 2>/dev/null || true)"
+        if [ -n "$main_status" ]; then
+          output+="DIRTY: $repo_root\n$(printf '%s\n' "$main_status" | sed 's/^/  /')\n"
+          dirty=1
+        fi
+        while IFS= read -r gitdir; do
+          nested_root="$(dirname "$gitdir")"
+          [ "$nested_root" = "$repo_root" ] && continue
+          nested_status="$(git -C "$nested_root" status --short 2>/dev/null || true)"
+          if [ -n "$nested_status" ]; then
+            output+="DIRTY: $nested_root\n$(printf '%s\n' "$nested_status" | sed 's/^/  /')\n"
+            dirty=1
+          fi
+        done < <(find "$repo_root" -maxdepth 3 -name ".git" -type d 2>/dev/null | head -20)
+        if [ "$dirty" -eq 1 ]; then
+          echo -e "$output" | head -40
+          echo "---"
+          echo "Uncommitted changes detected. Commit before session end."
+          exit 1
+        fi
+        exit 0
+    - path: hooks/pre-user-prompt.sh
+      content: |
+        #!/bin/bash
+        # Pre-user-prompt hook: session-end protocol + stale-stash + git-guard checks.
+        # Requires jq for JSON payload parsing.
+        set -euo pipefail
+        payload="$(cat)"
+        user_prompt="$(printf '%s' "$payload" | jq -r '.tool_info.user_prompt // empty' 2>/dev/null || true)"
+        if [ -z "$user_prompt" ]; then exit 0; fi
+        repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [ -n "$repo_root" ] && [ -x "$repo_root/scripts/clean-stale-stashes.sh" ]; then
+          stash_output="$("$repo_root/scripts/clean-stale-stashes.sh" 2>&1 || true)"
+          if [ -n "$stash_output" ]; then
+            echo "⚠️  STALE GIT STASH DETECTED" >&2
+            echo "$stash_output" >&2
+            echo "Clean with: bash scripts/clean-stale-stashes.sh --drop" >&2
+            echo "" >&2
+          fi
+        fi
+        if [ -n "$repo_root" ] && [ -f "$repo_root/scripts/git-guard.sh" ]; then
+          if [ -z "${FORGE_GIT_GUARD:-}" ]; then
+            echo "⚠️  GIT GUARD NOT LOADED — destructive git operations are NOT blocked." >&2
+            echo "Run: source $repo_root/scripts/git-guard.sh" >&2
+            echo "" >&2
+          fi
+        fi
+        session_end_phrases=("Завершаем эту сессию" "Завершаем сессию" "Заканчиваем сессию" "Завершить сессию" "End session" "Wrap up" "Session end" "/session-end")
+        matched=""
+        for phrase in "${session_end_phrases[@]}"; do
+          if printf '%s' "$user_prompt" | grep -qiF "$phrase"; then matched="$phrase"; break; fi
+        done
+        if [ -z "$matched" ]; then exit 0; fi
+        cat >&2 <<EOF
+        SESSION-END PROTOCOL TRIGGERED (matched: "$matched")
+        The user's original message was:
+          > $user_prompt
+        You MUST invoke the fo-session-retro skill via the skill tool BEFORE producing
+        any other output. This is a NON-NEGOTIABLE BLOCKED GATE per PREFERENCES.md.
+        DO NOT produce a closing summary or ad-hoc output. The closing block must come
+        from fo-session-retro's report.
+        Protocol steps:
+        1. Verify clean working trees — run: bash scripts/check-clean-trees.sh
+        2. Invoke fo-session-retro via the skill tool
+        3. The retro skill's report IS the session-end output
+        EOF
+        if [ -n "$repo_root" ] && [ -x "$repo_root/scripts/check-clean-trees.sh" ]; then
+          tree_output="$("$repo_root/scripts/check-clean-trees.sh" 2>&1 || true)"
+          if [ -n "$tree_output" ]; then echo "" >&2; echo "$tree_output" >&2; fi
+        fi
+        exit 2
+    - path: .windsurf/hooks.json
+      content: |
+        {
+          "hooks": {
+            "pre_user_prompt": [
+              {
+                "command": "bash $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt.sh",
+                "show_output": true
+              }
+            ]
+          }
+        }
     - path: systems-cache/.gitkeep
       content: |
         # Sternsystem cache directory (RFC-0790)
@@ -722,6 +973,12 @@ workspace:
             mode: protect
           - path: godot.version
             mode: protect
+          - path: scripts/git-guard.sh
+            mode: protect
+          - path: scripts/setup-git-guards.sh
+            mode: protect
+          - path: hooks/pre-user-prompt.sh
+            mode: protect
     - path: README.md
       content: |
         # __PROJECT_NAME__
@@ -735,6 +992,7 @@ workspace:
         - .NET SDK 10+
         - Godot 4.x (with .NET support)
         - On Windows: Git Bash or WSL (for shell scripts)
+        - jq (for pre-user-prompt hook)
 
         ## Setup
 
@@ -752,7 +1010,17 @@ workspace:
         pnpm install
         ```
 
-        ### 3. Verify the workshop
+        ### 3. Install git guards (recommended)
+
+        Git guards prevent AI agents from running destructive git commands (`git stash`, `git reset --hard`, `git checkout --`, `git restore`, `git clean -f`):
+
+        ```sh
+        bash scripts/setup-git-guards.sh
+        ```
+
+        This installs a shell function into `~/.zshenv`. Restart your shell or run `source scripts/git-guard.sh`.
+
+        ### 4. Verify the workshop
 
         ```sh
         pnpm exec werkstatt run forge.doctor
