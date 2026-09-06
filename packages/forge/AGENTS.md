@@ -68,6 +68,8 @@ When archiving terminal artifacts, prefer the `docs.archive` umbrella command ov
 
 - **RFC-0711: `docs.archive` post-loop `spec.live.merge` step.** After archiving, `docs.archive` scans implemented RFCs with a `liveSpec` frontmatter field and calls `spec.live.merge` for each, creating or updating living feature specs under `docs/specs/live/<domain>.md`. Rejected RFCs with `liveSpec` are skipped. Merge failures are non-fatal — the archive step still completes. Use `--dry-run` to preview merges without writing.
 
+- **`rfc.validate --root <file>` does NOT scope validation to a single file.** It validates ALL RFCs in the repo regardless of the `--root` flag. To check specific RFCs, use `--json` with `2>/dev/null` (log lines go to stderr) and filter the `data.violations[]` array by `rfcId`. Discovered during RFC-1035–1038 gap analysis.
+- **`rfc.archive` does NOT accept `--id`.** It archives ALL terminal-status RFCs at once. Available flags: `--dry-run` (preview), `--status <status>` (filter by status). Use `--dry-run` first to verify which files will move. Discovered during RFC-1038 archiving.
 - **Post-rename cleanup for `fs.rename` on watched directories:** When an archive handler uses `fs.rename` to move a directory that an IDE or file watcher is tracking (e.g. mission workpiece with an open `.astro/` cache), the watcher may recreate stale cache at the source path after the rename completes. Always add a post-rename cleanup check using `trashPath` from `utils/fs-trash.ts`: `if (existsSync(sourcePath)) { await trashPath(sourcePath); }` after the `fs.rename` call. See `os/mission/handlers/archive.ts` `moveMissionDir` for the reference implementation.
 
 ## Pinned-files protection (RFC-0733)
