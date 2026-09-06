@@ -41,7 +41,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 - `rfc.implement.stamp` — generates `docs/metrics/rfcs/<rfc-id>.metrics.yaml` after successful stamp (non-fatal on failure).
 - `session.save` — generates `docs/metrics/sessions/<session-id>.metrics.yaml` from parsed ATIF messages (non-fatal on failure).
 
-Both generators are best-effort: metrics failures log a warning and never block the primary operation.
+Both generators are best-effort: metrics failures log a warning and never block the primary operation. Agents MUST NOT manually edit `docs/metrics/` files — they are generated artifacts produced by `rfc.implement.stamp` and `session.save`.
 
 ## Compass contract extension points (RFC-0943)
 
