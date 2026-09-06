@@ -4,6 +4,8 @@
 
 Portable governance engine for AI-assisted project development. Provides skills, RFC/ADR workflows, naming conventions, spec vendoring, and a CLI — all framework-agnostic and dependency-free (only `yaml` + `zod`).
 
+> Engineered at [Warpgogol](https://warpgogol.com) · Released as open source.
+
 ---
 
 ## Start right now
@@ -685,3 +687,11 @@ After CI completes, verify the new version on [npmjs.com/package/@warpgogol/forg
 ## License
 
 Apache-2.0
+
+## Open Engineering
+
+This package originated from production engineering work at [Warpgogol](https://warpgogol.com), an engineering studio in Germany.
+
+We publish reusable parts of our infrastructure when they can be useful beyond our own projects. It is published independently of any Warpgogol commercial service. Using this package does not create any dependency on Warpgogol.
+
+Built for real systems. Shared openly.
