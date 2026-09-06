@@ -34,6 +34,15 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeProgramModule` | `program.packet.validate`, `program.packet.seal`, `program.packet.lease`, `program.packet.complete` | `os/program/` |
 | `forgePluginModule` | `forge.plugin.validate`, `forge.plugin.discover` | `os/plugin/` |
 
+## RFC-1053: Skill effectiveness metrics
+
+`metrics.aggregate` (RFC-1053) queries and aggregates per-skill effectiveness metrics from `docs/metrics/` YAML files. Metrics are generated at two integration points:
+
+- `rfc.implement.stamp` — generates `docs/metrics/rfcs/<rfc-id>.metrics.yaml` after successful stamp (non-fatal on failure).
+- `session.save` — generates `docs/metrics/sessions/<session-id>.metrics.yaml` from parsed ATIF messages (non-fatal on failure).
+
+Both generators are best-effort: metrics failures log a warning and never block the primary operation.
+
 ## Compass contract extension points (RFC-0943)
 
 Skill packs MAY declare additional Compass contract blocks beyond the built-in `MODULE_CONTRACT` and `CHANGE_SUMMARY` via `forge.plugin.yaml` `extensionPoints.compass.contract.blocks[]`. Each block spec is declarative data:
