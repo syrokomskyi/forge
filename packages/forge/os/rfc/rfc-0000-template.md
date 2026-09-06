@@ -218,8 +218,9 @@ interface ExampleResult {
 
 - [ ] AC-1: WHEN `<command> --json` is invoked, THE command SHALL return a JSON object matching the documented output schema (evidence: probe:AC-1 or test: <path>)
 - [ ] AC-2: THE `<command>` SHALL be registered in the kernel module with the correct name and scope (evidence: file: <module-path>)
-- [ ] AC-3: IF `<command>` receives invalid input, THEN THE command SHALL report a blocking error and exit non-zero (evidence: test: <path/to/test>)
-- [ ] AC-4: THE relevant `AGENTS.md` SHALL reference this RFC where agent behavior rules changed (evidence: file: <path:line>)
+- [ ] AC-3: IF `<command>` receives invalid input, THEN THE command SHALL report a blocking error (evidence: test: <path/to/test>)
+- [ ] AC-4: IF `<command>` receives invalid input, THEN THE command SHALL exit non-zero (evidence: test: <path/to/test>)
+- [ ] AC-5: THE relevant `AGENTS.md` SHALL reference this RFC where agent behavior rules changed (evidence: file: <path:line>)
 
 ## Implementation notes for agents
 
