@@ -24,7 +24,16 @@ import { join, dirname } from "node:path";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
-import { METRICS_DIR, type RfcMetrics, type RfcPipelineStep, type ReviewMetrics, type FixMetrics, type VerificationMetrics, type ResultMetrics, type RfcTimings } from "../types.ts";
+import {
+  METRICS_DIR,
+  type RfcMetrics,
+  type RfcPipelineStep,
+  type ReviewMetrics,
+  type FixMetrics,
+  type VerificationMetrics,
+  type ResultMetrics,
+  type RfcTimings,
+} from "../types.ts";
 
 // ─── Git helper ──────────────────────────────────────────────────────────────
 
@@ -62,7 +71,7 @@ interface GitLogEntry {
 }
 
 async function getRfcCommits(workspaceRoot: string, rfcId: string): Promise<GitLogEntry[]> {
-  const format = "%H%x1f%B%x1f%cI";
+  const format = "%H%x1f%s%x1f%cI";
   const raw = await execGit(workspaceRoot, [
     "log",
     "--no-merges",
@@ -159,7 +168,13 @@ async function parseVerificationEvidence(
   rfcId: string,
 ): Promise<VerificationMetrics | null> {
   const rfcNum = rfcId.replace(/^RFC-/, "").toLowerCase();
-  const evidencePath = join(workspaceRoot, "docs", "rfcs", "verification", `rfc-${rfcNum}.generated.yaml`);
+  const evidencePath = join(
+    workspaceRoot,
+    "docs",
+    "rfcs",
+    "verification",
+    `rfc-${rfcNum}.generated.yaml`,
+  );
   let content: string;
   try {
     content = await readFile(evidencePath, "utf-8");
@@ -169,7 +184,9 @@ async function parseVerificationEvidence(
 
   try {
     const data = yamlParse(content) as Record<string, unknown>;
-    const probes = Array.isArray(data["probes"]) ? (data["probes"] as Array<Record<string, unknown>>) : [];
+    const probes = Array.isArray(data["probes"])
+      ? (data["probes"] as Array<Record<string, unknown>>)
+      : [];
     const probesTotal = probes.length;
     const probesPassed = probes.filter((p) => p["ok"] === true).length;
     return {
@@ -197,7 +214,9 @@ async function parseAcceptanceCriteria(
   }
 
   const rfcLower = rfcId.toLowerCase();
-  const rfcFile = files.find((f) => f.toLowerCase().startsWith(rfcLower + "-") || f.toLowerCase().startsWith(rfcLower + "_"));
+  const rfcFile = files.find(
+    (f) => f.toLowerCase().startsWith(rfcLower + "-") || f.toLowerCase().startsWith(rfcLower + "_"),
+  );
   if (!rfcFile) {
     return { acceptanceCriteriaTotal: 0, acceptanceCriteriaMet: 0 };
   }
@@ -307,7 +326,12 @@ export async function generateRfcMetrics(
   };
 
   const yamlContent = yamlStringify(metrics, { lineWidth: 120 });
-  const metricsFilePath = join(workspaceRoot, METRICS_DIR, "rfcs", `${rfcId.toLowerCase()}.metrics.yaml`);
+  const metricsFilePath = join(
+    workspaceRoot,
+    METRICS_DIR,
+    "rfcs",
+    `${rfcId.toLowerCase()}.metrics.yaml`,
+  );
   await mkdir(dirname(metricsFilePath), { recursive: true });
   await writeFileAtomic(metricsFilePath, yamlContent);
 
