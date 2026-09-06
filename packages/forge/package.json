@@ -156,6 +156,7 @@
     "lint": "pnpm exec eslint \"src/**/*.ts\" \"os/**/*.ts\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
     "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest",
     "test:tarball:node24": "node test-fixtures/node24-consumer/smoke.mjs"
   },
@@ -176,6 +177,7 @@
     "fast-check": "^4.9.0",
     "typescript": "^6.0.3",
     "typescript-eslint": "8.68.0",
+    "@vitest/coverage-v8": "^4.1.11",
     "vitest": "^4.1.11"
   },
   "engines": {
