@@ -102,6 +102,7 @@ const NAMING_CONVENTION_EXEMPT_DIRS = new Set([
   "docs/performance", // Tool-generated screenshots and Lighthouse reports with timestamps
   "docs/specs", // Imported specification documents with their own naming convention
   "docs/rfcs/archive", // Archived RFCs — historical artifacts, cannot be renamed
+  "docs/metrics", // RFC-1053: generated metrics files with RFC/session IDs in filenames
 ]);
 
 /**

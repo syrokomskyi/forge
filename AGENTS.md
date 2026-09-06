@@ -27,7 +27,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive`, `adr.implement.stamp` | `os/adr/` |
 | `forgePlanModule` | `plan.archive` | `os/plan/` |
 | `forgeAuditModule` | `audit.archive` | `os/audit/` |
-| `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list` | `os/session/` |
+| `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list`, `metrics.aggregate` | `os/session/` |
 | `forgeMissionModule` | `mission.archive` | `os/mission/` |
 | `forgeExplorationModule` | `exploration.list`, `exploration.show`, `exploration.archive` | `os/exploration/` |
 | `forgeNotesModule` | `note.link.validate`, `note.frontmatter.validate`, `note.orphan.detect` | `os/notes/` |
