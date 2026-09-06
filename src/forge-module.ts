@@ -15,11 +15,28 @@
 
 import type { ForgeCommandDefinition } from "./types.ts";
 
-// ForgeModule is structurally compatible with KernelModule from @warpgogol/site-kernel.
-// Forge does NOT import from site-kernel — TypeScript structural typing ensures
-// compatibility. If the kernel's KernelModule interface changes, the build fails
-// at the point where forge modules are imported into kernel.config.ts.
+// ForgeModule is structurally compatible with ModuleExport from
+// @warpgogol/werkstatt-engine/runtime/desired-state. Forge does NOT import from
+// werkstatt-engine — TypeScript structural typing ensures compatibility.
+// If the ModuleExport interface changes, the build fails at the point where
+// forge modules are imported into kernel.config.ts.
 
+export interface ForgePipelineStep {
+  command: string;
+  args?: string[];
+}
+
+export interface ForgePipelineDeclaration {
+  name: string;
+  steps: ForgePipelineStep[];
+}
+
+/**
+ * RFC-1038: ForgeModuleRegistry is kept for the CLI's standalone registry
+ * implementation. The kernel no longer uses it — modules export commands/
+ * pipelines arrays directly. The CLI uses it to collect commands from
+ * ForgeModule.commands[] into its own registry.
+ */
 export interface ForgeModuleRegistry {
   registerCommand(command: ForgeCommandDefinition): void;
   registerPipeline(name: string, steps: ForgePipelineStep[]): void;
@@ -29,13 +46,10 @@ export interface ForgeModule {
   name: string;
   version: string;
   runtime: "autonomous" | "werkstatt-adapter";
-  register(registry: ForgeModuleRegistry): void | Promise<void>;
+  declarations: never[];
+  commands: ForgeCommandDefinition[];
+  pipelines: ForgePipelineDeclaration[];
 }
 
 // Re-export canonical types for convenience
 export type { ForgeCommandDefinition, ForgeCommandResult, ForgeFlagSpec } from "./types.ts";
-
-export interface ForgePipelineStep {
-  command: string;
-  args?: string[];
-}

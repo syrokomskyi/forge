@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgeRfcModule } from "./rfc.module.ts";
+export { createForgeRfcModule } from "./rfc.module.ts";
 export {
   listRfcFiles,
   parseRfcFile,

@@ -20,8 +20,9 @@ export const forgeWerkstattModule: ForgeModule = {
   name: "forge-werkstatt",
   version: "0.1.0",
   runtime: "werkstatt-adapter",
-  async register(registry) {
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "werkstatt.lock.status",
       description: "Report all Werkstatt locks, their age, owner, and staleness (RFC-0362).",
       scope: "workspace",
@@ -29,8 +30,8 @@ export const forgeWerkstattModule: ForgeModule = {
       flags: {},
       reads: [".werkstatt/locks/**"],
       execute: runWerkstattLockStatus,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "werkstatt.lock.recover",
       description:
         "Classify and clean stale locks and staging artifacts (RFC-0362). Flags: --scope, --purge.",
@@ -48,8 +49,8 @@ export const forgeWerkstattModule: ForgeModule = {
       reads: [".werkstatt/locks/**"],
       cacheable: false,
       execute: runWerkstattLockRecover,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "werkstatt.operation.validate",
       contract: "werkstatt",
       rules: [],
@@ -60,6 +61,8 @@ export const forgeWerkstattModule: ForgeModule = {
       flags: {},
       reads: ["packages/os/site-kernel-handoff/src/**/*.ts"],
       execute: runWerkstattOperationValidate,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};

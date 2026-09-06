@@ -15,13 +15,8 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeRfcModule: ForgeModule = {
-  name: "rfc",
-  version: "0.1.0",
-  runtime: "autonomous",
-
-  async register(registry) {
-    const {
+export async function createForgeRfcModule(): Promise<ForgeModule> {
+const {
       runRfcList,
       runRfcCreate,
       runRfcNextId,
@@ -41,8 +36,15 @@ export const forgeRfcModule: ForgeModule = {
     const { runRfcArchive } = await import("./handlers/archive.ts");
     const { runRfcPipelineStatus } = await import("./handlers/pipeline-status.ts");
     const { runRfcImplementStamp } = await import("./handlers/implement-stamp.ts");
-    // ── rfc.list ─────────────────────────────────────────────────────────────
-    registry.registerCommand({
+    // ── rfc.list ─────────────────────────────────────────────────────────────;
+  return {
+  name: "rfc",
+  version: "0.1.0",
+  runtime: "autonomous",
+
+    declarations: [],
+  commands: [
+    {
       name: "rfc.list",
       description:
         "List all RFCs. Filter with --status, --kind, --owner flags. " +
@@ -67,10 +69,8 @@ export const forgeRfcModule: ForgeModule = {
       },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcList,
-    });
-
-    // ── rfc.create ───────────────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.create",
       description:
         "Create a new RFC draft from the template. " +
@@ -99,10 +99,8 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcCreate,
-    });
-
-    // ── rfc.next-id ───────────────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.next-id",
       description:
         "Return the next free RFC number (max existing + 1) by scanning docs/rfcs/ recursively including archive/.",
@@ -110,10 +108,8 @@ export const forgeRfcModule: ForgeModule = {
       flags: {},
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcNextId,
-    });
-
-    // ── rfc.validate ─────────────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.validate",
       contract: "rfc",
       rules: [],
@@ -128,10 +124,8 @@ export const forgeRfcModule: ForgeModule = {
       },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcValidate,
-    });
-
-    // ── rfc.command-lifecycle.validate ───────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.command-lifecycle.validate",
       contract: "rfc",
       rules: [],
@@ -145,10 +139,8 @@ export const forgeRfcModule: ForgeModule = {
       reads: ["docs/rfcs/**/*.md"],
       cacheable: false,
       execute: runRfcCommandLifecycleValidate,
-    });
-
-    // ── rfc.check ────────────────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.check",
       contract: "rfc",
       rules: [],
@@ -166,10 +158,8 @@ export const forgeRfcModule: ForgeModule = {
       },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcCheck,
-    });
-
-    // ── rfc.index.generate ───────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.index.generate",
       description:
         "Emit a machine-readable relationship index of all RFCs (id, status, dates, " +
@@ -186,10 +176,8 @@ export const forgeRfcModule: ForgeModule = {
       reads: ["docs/rfcs/**/*.md"],
       cacheable: false,
       execute: runRfcIndexGenerate,
-    });
-
-    // ── rfc.index.validate ───────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.index.validate",
       contract: "rfc",
       rules: [],
@@ -201,10 +189,8 @@ export const forgeRfcModule: ForgeModule = {
       flags: {},
       reads: ["docs/rfcs/**/*.md", "docs/rfcs/index.yaml"],
       execute: runRfcIndexValidate,
-    });
-
-    // ── rfc.graph ────────────────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.graph",
       description:
         "Print one RFC's relationship neighbours (supersedes/supersededBy/amends/" +
@@ -215,10 +201,8 @@ export const forgeRfcModule: ForgeModule = {
       },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcGraph,
-    });
-
-    // ── rfc.acceptance.run ───────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.acceptance.run",
       description:
         "RFC-0268: execute the acceptance: probes declared in an RFC's frontmatter and report " +
@@ -236,10 +220,8 @@ export const forgeRfcModule: ForgeModule = {
       reads: ["docs/rfcs/**/*.md"],
       cacheable: false,
       execute: runRfcAcceptanceRun,
-    });
-
-    // ── rfc.verification.emit ────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.verification.emit",
       description:
         "RFC-0330: execute acceptance probes for target RFC(s) and write per-RFC verification " +
@@ -258,10 +240,8 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcVerificationEmit,
-    });
-
-    // ── rfc.verification.refresh ────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.verification.refresh",
       description:
         "RFC-0999: re-run acceptance probes for implemented RFC(s) and update verification " +
@@ -285,10 +265,8 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcVerificationRefresh,
-    });
-
-    // ── rfc.dna.trace.validate ───────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.dna.trace.validate",
       contract: "rfc",
       rules: [],
@@ -305,10 +283,8 @@ export const forgeRfcModule: ForgeModule = {
       },
       reads: ["docs/rfcs/**/*.md", "docs/architecture-dna.md"],
       execute: runRfcDnaTraceValidate,
-    });
-
-    // ── rfc.dna.trace.generate ───────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.dna.trace.generate",
       description:
         "RFC-0331: generate docs/rfcs/dna-trace.generated.yaml — the machine-readable " +
@@ -320,10 +296,8 @@ export const forgeRfcModule: ForgeModule = {
       cacheable: false,
       flags: {},
       execute: runRfcDnaTraceGenerate,
-    });
-
-    // ── rfc.decision-log.generate ────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.decision-log.generate",
       description:
         "RFC-0329: generate docs/rfcs/decision-log.generated.yaml and .md aggregating every " +
@@ -341,10 +315,8 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcDecisionLogGenerate,
-    });
-
-    // ── rfc.supersede.propose ─────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.supersede.propose",
       description:
         "RFC-0334: escalate a blocked implementation by creating a draft superseding RFC " +
@@ -373,10 +345,8 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcSupersedePropose,
-    });
-
-    // ── rfc.archive ───────────────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.archive",
       description:
         "Move terminal-status RFC files (implemented, rejected, superseded) into " +
@@ -400,10 +370,8 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcArchive,
-    });
-
-    // ── rfc.pipeline.status ──────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.pipeline.status",
       description:
         "Report the pipeline status of RFCs — which steps (audit, enhance, plan, implement) " +
@@ -416,10 +384,8 @@ export const forgeRfcModule: ForgeModule = {
       },
       reads: ["docs/rfcs/**/*.md"],
       execute: runRfcPipelineStatus,
-    });
-
-    // ── rfc.implement.stamp ──────────────────────────────────────────────────
-    registry.registerCommand({
+    },
+    {
       name: "rfc.implement.stamp",
       description:
         "RFC-0476: the exclusive atomic path for accepted → implemented transitions. " +
@@ -450,6 +416,10 @@ export const forgeRfcModule: ForgeModule = {
         },
       },
       execute: runRfcImplementStamp,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

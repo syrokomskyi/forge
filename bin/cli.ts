@@ -145,19 +145,26 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
   const registry = new ForgeCliRegistry();
 
   const modules: ForgeModule[] = [
-    await import("../os/core/core.module.ts").then((m) => m.forgeCoreModule),
-    await import("../os/rfc/rfc.module.ts").then((m) => m.forgeRfcModule),
-    await import("../os/workflow/workflow.module.ts").then((m) => m.forgeWorkflowModule),
-    await import("../os/naming/naming.module.ts").then((m) => m.forgeNamingModule),
+    await import("../os/core/core.module.ts").then((m) => m.createForgeCoreModule()),
+    await import("../os/rfc/rfc.module.ts").then((m) => m.createForgeRfcModule()),
+    await import("../os/workflow/workflow.module.ts").then((m) => m.createForgeWorkflowModule()),
+    await import("../os/naming/naming.module.ts").then((m) => m.createForgeNamingModule()),
     await import("../os/compass/compass.module.ts").then((m) => m.forgeCompassModule),
     await import("../os/werkstatt/werkstatt.module.ts").then((m) => m.forgeWerkstattModule),
-    await import("../os/session/session.module.ts").then((m) => m.forgeSessionModule),
-    await import("../os/exploration/exploration.module.ts").then((m) => m.forgeExplorationModule),
-    await import("../os/notes/notes.module.ts").then((m) => m.forgeNotesModule),
+    await import("../os/session/session.module.ts").then((m) => m.createForgeSessionModule()),
+    await import("../os/exploration/exploration.module.ts").then((m) =>
+      m.createForgeExplorationModule(),
+    ),
+    await import("../os/notes/notes.module.ts").then((m) => m.createForgeNotesModule()),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {
-    await mod.register(registry);
+    for (const cmd of mod.commands) {
+      registry.registerCommand(cmd);
+    }
+    for (const pipe of mod.pipelines) {
+      registry.registerPipeline(pipe.name, pipe.steps);
+    }
   }
 
   return registry;

@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgePlanModule } from "./plan.module.ts";
+export { createForgePlanModule } from "./plan.module.ts";
 export { runPlanArchive } from "./handlers/archive.ts";
 export {
   listPlanFiles,

@@ -173,18 +173,18 @@ export type {
 } from "./compass/types.ts";
 
 // OS modules
-export { forgeCoreModule } from "../os/core/core.module.ts";
-export { forgeRfcModule } from "../os/rfc/rfc.module.ts";
-export { forgeWorkflowModule } from "../os/workflow/workflow.module.ts";
-export { forgeNamingModule } from "../os/naming/naming.module.ts";
+export { createForgeCoreModule } from "../os/core/core.module.ts";
+export { createForgeRfcModule } from "../os/rfc/rfc.module.ts";
+export { createForgeWorkflowModule } from "../os/workflow/workflow.module.ts";
+export { createForgeNamingModule } from "../os/naming/naming.module.ts";
 export { forgeCompassModule } from "../os/compass/compass.module.ts";
 export { forgeWerkstattModule } from "../os/werkstatt/werkstatt.module.ts";
-export { forgeSpecModule } from "../os/spec/spec.module.ts";
-export { forgeAdrModule } from "../os/adr/adr.module.ts";
-export { forgePlanModule } from "../os/plan/plan.module.ts";
-export { forgeAuditModule } from "../os/audit/audit.module.ts";
-export { forgeMissionModule } from "../os/mission/mission.module.ts";
-export { forgeExplorationModule } from "../os/exploration/exploration.module.ts";
-export { forgeNotesModule } from "../os/notes/notes.module.ts";
-export { forgeProgramModule } from "../os/program/program.module.ts";
+export { createForgeSpecModule } from "../os/spec/spec.module.ts";
+export { createForgeAdrModule } from "../os/adr/adr.module.ts";
+export { createForgePlanModule } from "../os/plan/plan.module.ts";
+export { createForgeAuditModule } from "../os/audit/audit.module.ts";
+export { createForgeMissionModule } from "../os/mission/mission.module.ts";
+export { createForgeExplorationModule } from "../os/exploration/exploration.module.ts";
+export { createForgeNotesModule } from "../os/notes/notes.module.ts";
+export { createForgeProgramModule } from "../os/program/program.module.ts";
 export { forgePluginModule } from "../os/plugin/plugin.module.ts";

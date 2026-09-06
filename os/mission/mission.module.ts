@@ -13,14 +13,15 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeMissionModule: ForgeModule = {
+export async function createForgeMissionModule(): Promise<ForgeModule> {
+const { runMissionArchive } = await import("./handlers/archive.ts");
+  return {
   name: "forge-mission",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    const { runMissionArchive } = await import("./handlers/archive.ts");
-
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "mission.archive",
       description:
         "Move terminal-state mission directories (state: closed or aborted in " +
@@ -50,6 +51,10 @@ export const forgeMissionModule: ForgeModule = {
         },
       },
       execute: runMissionArchive,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

@@ -17,12 +17,8 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 
-export const forgeNotesModule: ForgeModule = {
-  name: "forge-notes",
-  version: "0.1.0",
-  runtime: "autonomous",
-  async register(registry) {
-    const { runNoteLinkValidate } = await import("../../src/validators/note-link-validate.ts");
+export async function createForgeNotesModule(): Promise<ForgeModule> {
+const { runNoteLinkValidate } = await import("../../src/validators/note-link-validate.ts");
     const { runNoteFrontmatterValidate } =
       await import("../../src/validators/note-frontmatter-validate.ts");
     const { runNoteOrphanDetect } = await import("../../src/validators/note-orphan-detect.ts");
@@ -47,8 +43,13 @@ export const forgeNotesModule: ForgeModule = {
     ): Promise<ForgeCommandResult> => {
       return runNoteOrphanDetect(input, context);
     };
-
-    registry.registerCommand({
+  return {
+  name: "forge-notes",
+  version: "0.1.0",
+  runtime: "autonomous",
+    declarations: [],
+  commands: [
+    {
       name: "note.link.validate",
       contract: "note",
       rules: [],
@@ -69,9 +70,8 @@ export const forgeNotesModule: ForgeModule = {
       reads: ["vault/**/*.md"],
       cacheable: false,
       execute: noteLinkValidateWrapper,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "note.frontmatter.validate",
       contract: "note",
       rules: [],
@@ -92,9 +92,8 @@ export const forgeNotesModule: ForgeModule = {
       reads: ["vault/**/*.md"],
       cacheable: false,
       execute: noteFrontmatterValidateWrapper,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "note.orphan.detect",
       description:
         "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
@@ -109,6 +108,10 @@ export const forgeNotesModule: ForgeModule = {
       reads: ["vault/**/*.md"],
       cacheable: false,
       execute: noteOrphanDetectWrapper,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

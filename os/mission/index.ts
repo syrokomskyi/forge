@@ -1,1 +1,1 @@
-export { forgeMissionModule } from "./mission.module.ts";
+export { createForgeMissionModule } from "./mission.module.ts";

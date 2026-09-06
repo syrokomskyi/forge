@@ -12,16 +12,17 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeExplorationModule: ForgeModule = {
+export async function createForgeExplorationModule(): Promise<ForgeModule> {
+const { runExplorationList } = await import("./handlers/list.ts");
+    const { runExplorationShow } = await import("./handlers/show.ts");
+    const { runExplorationArchive } = await import("./handlers/archive.ts");
+  return {
   name: "forge-exploration",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    const { runExplorationList } = await import("./handlers/list.ts");
-    const { runExplorationShow } = await import("./handlers/show.ts");
-    const { runExplorationArchive } = await import("./handlers/archive.ts");
-
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "exploration.list",
       description:
         "List all exploration notes in docs/explorations/. Returns id, title, status, and createdAt for each note. " +
@@ -39,9 +40,8 @@ export const forgeExplorationModule: ForgeModule = {
         },
       },
       execute: runExplorationList,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "exploration.show",
       description:
         "Show the full content of a single exploration note. Use --id <slug> to specify the note slug " +
@@ -60,9 +60,8 @@ export const forgeExplorationModule: ForgeModule = {
         },
       },
       execute: runExplorationShow,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "exploration.archive",
       description:
         "Archive an exploration note by setting its status to 'archived'. Use --id <slug> to specify the note. " +
@@ -86,6 +85,10 @@ export const forgeExplorationModule: ForgeModule = {
         },
       },
       execute: runExplorationArchive,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;
