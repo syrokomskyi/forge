@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0537: initial session module barrel.</item>
+  <item>RFC-1053: export metrics types and METRICS_DIR constant.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +35,7 @@ export {
   SESSION_DIR,
   SESSION_RAW_SUBDIR,
   SESSION_ARCHIVE_SUBDIR,
+  METRICS_DIR,
   SESSION_TYPES,
   SES_RULES,
   type SessionType,
@@ -47,4 +49,17 @@ export {
   type SessionListResult,
   type SessionListEntry,
   type SesRule,
+  type RfcMetrics,
+  type RfcPipelineStep,
+  type ReviewMetrics,
+  type FixMetrics,
+  type VerificationMetrics,
+  type ResultMetrics,
+  type RfcTimings,
+  type SessionMetrics,
+  type SessionDocumentRef,
+  type SessionSkillInvocation,
+  type InsightSummary,
+  type SkillAggregate,
+  type MetricsAggregateResult,
 } from "./types.ts";

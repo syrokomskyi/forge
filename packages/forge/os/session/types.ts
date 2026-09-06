@@ -12,12 +12,14 @@ validation rule identifiers.
 <CHANGE_SUMMARY>
   <item>RFC-0537: initial session domain types, constants, and SES rule identifiers.</item>
   <item>RFC-0884: add checkpoint interfaces, extend SessionFrontmatter with optional checkpoint fields, add SES-06 rule.</item>
+  <item>RFC-1053: add metrics type interfaces (RfcMetrics, SessionMetrics, MetricsAggregateResult) and METRICS_DIR constant.</item>
 </CHANGE_SUMMARY>
 */
 
 export const SESSION_DIR = "docs/sessions";
 export const SESSION_RAW_SUBDIR = ".raw";
 export const SESSION_ARCHIVE_SUBDIR = "archive";
+export const METRICS_DIR = "docs/metrics";
 export const SESSION_ID_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[0-9a-f]{6}$/;
 export const SESSION_FILE_PATTERN = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[0-9a-f]{6}\.md$/;
 
@@ -133,6 +135,7 @@ export interface SessionSaveResult {
     files: string[];
     commands: string[];
   };
+  metricsPath?: string;
   dryRun: boolean;
 }
 
@@ -200,4 +203,100 @@ export interface SessionListResult {
   status: "ok";
   sessions: SessionListEntry[];
   count: number;
+}
+
+// ── RFC-1053: Skill effectiveness metrics ──
+
+export interface RfcPipelineStep {
+  step: string;
+  skill: string | null;
+  commitSha: string | null;
+  timestamp: string | null;
+}
+
+export interface ReviewMetrics {
+  findingsCount: number;
+  findingsByAxis: Record<string, number>;
+  verdict: string | null;
+}
+
+export interface FixMetrics {
+  fixesApplied: number;
+  commitSha: string | null;
+  iterations: number;
+}
+
+export interface VerificationMetrics {
+  probesTotal: number;
+  probesPassed: number;
+  evidencePath: string | null;
+}
+
+export interface ResultMetrics {
+  acceptanceCriteriaTotal: number;
+  acceptanceCriteriaMet: number;
+}
+
+export interface RfcTimings {
+  firstCommitAt: string | null;
+  lastCommitAt: string | null;
+  totalDurationMs: number | null;
+}
+
+export interface RfcMetrics {
+  rfcId: string;
+  generatedAt: string;
+  pipeline: RfcPipelineStep[];
+  review: ReviewMetrics | null;
+  fix: FixMetrics | null;
+  verification: VerificationMetrics | null;
+  result: ResultMetrics;
+  timings: RfcTimings;
+}
+
+export interface SessionDocumentRef {
+  rfcId: string;
+  status: string;
+  metricsFile: string | null;
+}
+
+export interface SessionSkillInvocation {
+  skill: string;
+  approximateDurationMs: number | null;
+}
+
+export interface InsightSummary {
+  total: number;
+  byCategory: Record<string, number>;
+}
+
+export interface SessionMetrics {
+  sessionId: string;
+  generatedAt: string;
+  date: string;
+  durationMs: number;
+  approximateDurations: true;
+  documents: SessionDocumentRef[];
+  skills: SessionSkillInvocation[];
+  insights: InsightSummary | null;
+  commits: string[];
+}
+
+export interface SkillAggregate {
+  skill: string;
+  invocations: number;
+  avgFindings: number | null;
+  avgFixIterations: number | null;
+  avgDurationMs: number | null;
+}
+
+export interface MetricsAggregateResult {
+  command: "metrics.aggregate";
+  status: "ok";
+  skill: string | "all";
+  since: string | null;
+  until: string | null;
+  perSkill: SkillAggregate[];
+  totalRfcs: number;
+  totalSessions: number;
 }
