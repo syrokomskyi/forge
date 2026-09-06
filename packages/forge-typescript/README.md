@@ -4,6 +4,8 @@
 
 Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript-turborepo"`.
 
+> Engineered at [Warpgogol](https://warpgogol.com) · Released as open source.
+
 ---
 
 ## What this package does
@@ -181,3 +183,11 @@ After CI completes, verify the new version on [npmjs.com/package/@warpgogol/werk
 ## License
 
 Apache-2.0
+
+## Open Engineering
+
+This package originated from production engineering work at [Warpgogol](https://warpgogol.com), an engineering studio in Germany.
+
+We publish reusable parts of our infrastructure when they can be useful beyond our own projects. It is published independently of any Warpgogol commercial service. Using this package does not create any dependency on Warpgogol.
+
+Built for real systems. Shared openly.
