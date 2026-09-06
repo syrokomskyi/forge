@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Initial: forge.package.health validator — engines, CI workflow, extract config, devDeps completeness.</item>
+  <item>PKG-HEALTH-05: reject any versionBump in extract.config.yaml — version in package.json is source of truth.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -156,6 +157,25 @@ export async function runPackageHealth(
         file: pkgDir,
         fixHint: "Create extract.config.yaml with git remote and extraction settings.",
       });
+    } else {
+      // CHECK 3b: versionBump must be absent — version in package.json is source of truth
+      try {
+        const configRaw = fs.readFileSync(extractConfigPath, "utf8");
+        const versionBumpMatch = configRaw.match(/^versionBump:\s*(\S+)/m);
+        if (versionBumpMatch) {
+          violations.push({
+            ruleId: "PKG-HEALTH-05",
+            packageName,
+            severity: "error",
+            message: `extract.config.yaml has versionBump: ${versionBumpMatch[1]} — this auto-increments the version on every extract. The version in package.json is the source of truth.`,
+            file: extractConfigPath,
+            fixHint:
+              "Remove the versionBump line. Manually bump package.json version to the target before extracting.",
+          });
+        }
+      } catch {
+        // Read error — skip this check
+      }
     }
 
     // CHECK 4: devDependencies completeness — tools used in scripts must be declared
