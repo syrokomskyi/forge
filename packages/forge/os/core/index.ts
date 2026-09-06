@@ -10,4 +10,4 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgeCoreModule } from "./core.module.ts";
+export { createForgeCoreModule } from "./core.module.ts";

@@ -14,18 +14,19 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeAdrModule: ForgeModule = {
+export async function createForgeAdrModule(): Promise<ForgeModule> {
+const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");
+    const { runAdrValidate } = await import("./handlers/validate.ts");
+    const { runAdrArchive } = await import("./handlers/archive.ts");
+    const { runAdrImplementStamp } = await import("./handlers/implement-stamp.ts");
+  return {
   name: "forge-adr",
   version: "0.1.0",
   runtime: "autonomous",
 
-  async register(registry) {
-    const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");
-    const { runAdrValidate } = await import("./handlers/validate.ts");
-    const { runAdrArchive } = await import("./handlers/archive.ts");
-    const { runAdrImplementStamp } = await import("./handlers/implement-stamp.ts");
-
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "adr.list",
       description:
         "List all ADRs. Filter with --status, --scope, --decider flags. " +
@@ -45,9 +46,8 @@ export const forgeAdrModule: ForgeModule = {
       },
       reads: ["docs/adrs/**/*.md"],
       execute: runAdrList,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "adr.create",
       description:
         "Create a new ADR draft from the template. " +
@@ -83,9 +83,8 @@ export const forgeAdrModule: ForgeModule = {
         },
       },
       execute: runAdrCreate,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "adr.validate",
       contract: "adr",
       rules: [],
@@ -99,9 +98,8 @@ export const forgeAdrModule: ForgeModule = {
       },
       reads: ["docs/adrs/**/*.md"],
       execute: runAdrValidate,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "adr.archive",
       description:
         "Move terminal-status ADR files (implemented, rejected, superseded) into " +
@@ -125,9 +123,8 @@ export const forgeAdrModule: ForgeModule = {
         },
       },
       execute: runAdrArchive,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "adr.implement.stamp",
       description:
         "Atomically transition an ADR from accepted/proposed to implemented. " +
@@ -156,6 +153,10 @@ export const forgeAdrModule: ForgeModule = {
         },
       },
       execute: runAdrImplementStamp,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

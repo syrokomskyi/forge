@@ -46,8 +46,9 @@ export const forgeCompassModule: ForgeModule = {
   name: "forge-compass",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "compass.inventory",
       description: "Generate the repository-wide Compass source inventory XML report.",
       scope: "workspace",
@@ -59,8 +60,8 @@ export const forgeCompassModule: ForgeModule = {
         "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
       execute: runCompassInventory,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.validate",
       contract: "compass",
       rules: [],
@@ -76,8 +77,8 @@ export const forgeCompassModule: ForgeModule = {
         "docs/source-markup.xml",
       ],
       execute: runCompassValidation,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.changesummary.validate",
       contract: "compass",
       rules: [],
@@ -92,8 +93,8 @@ export const forgeCompassModule: ForgeModule = {
         "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
       execute: runCompassChangeSummaryValidate,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.summary.trim",
       description:
         "Deterministically trim CHANGE_SUMMARY blocks: remove boilerplate, cap total items to 30, preserve protected items (RFC-0538).",
@@ -113,8 +114,8 @@ export const forgeCompassModule: ForgeModule = {
       cacheable: false,
       flags: { ...compassScanFlags },
       execute: runCompassSummaryTrim,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.audit.plan",
       description:
         "Emit a deterministic work-order of files whose revision has advanced past the threshold since their last Compass audit (RFC-0352). Read-only, no LLM.",
@@ -134,8 +135,8 @@ export const forgeCompassModule: ForgeModule = {
         "docs/compass-audit-ledger.generated.yaml",
       ],
       execute: runCompassAuditPlan,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.audit.record",
       description:
         "Stamp a file's audit verdict and current revision into the compass-audit ledger (RFC-0352). Mutating.",
@@ -155,8 +156,8 @@ export const forgeCompassModule: ForgeModule = {
         agent: { kind: "string", description: "Agent identity to record in the ledger." },
       },
       execute: runCompassAuditRecord,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.audit.baseline",
       description:
         "Seed the compass-audit ledger for every authored file at its current revision with verdict=baseline (RFC-0352). One-time bootstrap.",
@@ -172,8 +173,8 @@ export const forgeCompassModule: ForgeModule = {
       cacheable: false,
       flags: { ...compassScanFlags },
       execute: runCompassAuditBaseline,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "compass.audit.validate",
       contract: "compass",
       rules: [],
@@ -204,6 +205,8 @@ export const forgeCompassModule: ForgeModule = {
           description: "Warns by default, fails with --strict",
         },
       },
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};

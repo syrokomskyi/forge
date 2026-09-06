@@ -13,14 +13,16 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeWorkflowModule: ForgeModule = {
+export async function createForgeWorkflowModule(): Promise<ForgeModule> {
+const { runWorkflowLint, runWorkflowList, runWorkflowAmendList } =
+      await import("./handlers.ts");
+  return {
   name: "workflow",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    const { runWorkflowLint, runWorkflowList, runWorkflowAmendList } =
-      await import("./handlers.ts");
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "workflow.lint",
       contract: "workflow",
       rules: [],
@@ -32,8 +34,8 @@ export const forgeWorkflowModule: ForgeModule = {
       supportsAllSites: true,
       reads: [".agents/workflows/**/*.md", ".windsurf/workflows/**/*.md"],
       execute: runWorkflowLint,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "workflow.list",
       description:
         "List .agents/workflows entries with phase, IO summary, and next workflow (RFC-0075).",
@@ -42,8 +44,8 @@ export const forgeWorkflowModule: ForgeModule = {
       supportsAllSites: true,
       reads: [".agents/workflows/**/*.md", ".windsurf/workflows/**/*.md"],
       execute: runWorkflowList,
-    });
-    registry.registerCommand({
+    },
+    {
       name: "workflow-amend.list",
       description:
         "List .agents/workflows-amend entries with phase, IO summary, and next workflow (RFC-0136).",
@@ -52,6 +54,10 @@ export const forgeWorkflowModule: ForgeModule = {
       supportsAllSites: true,
       reads: [".agents/workflows-amend/**/*.md"],
       execute: runWorkflowAmendList,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

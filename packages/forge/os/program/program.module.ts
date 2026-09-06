@@ -13,18 +13,19 @@ kernel registry (RFC-0856).</purpose>
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeProgramModule: ForgeModule = {
+export async function createForgeProgramModule(): Promise<ForgeModule> {
+const { runValidate } = await import("./handlers/validate.ts");
+    const { runSeal } = await import("./handlers/seal.ts");
+    const { runLease } = await import("./handlers/lease.ts");
+    const { runComplete } = await import("./handlers/complete.ts");
+  return {
   name: "forge-program",
   version: "0.1.0",
   runtime: "autonomous",
 
-  async register(registry) {
-    const { runValidate } = await import("./handlers/validate.ts");
-    const { runSeal } = await import("./handlers/seal.ts");
-    const { runLease } = await import("./handlers/lease.ts");
-    const { runComplete } = await import("./handlers/complete.ts");
-
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "program.packet.validate",
       contract: "program",
       rules: [],
@@ -57,9 +58,8 @@ export const forgeProgramModule: ForgeModule = {
       reads: ["docs/plans/**/program.yaml", "docs/plans/**/*.md"],
       cacheable: false,
       execute: runValidate,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "program.packet.seal",
       description:
         "Steward finalizes a packet against the predecessor's completion commit, " +
@@ -99,9 +99,8 @@ export const forgeProgramModule: ForgeModule = {
       reads: ["docs/plans/**/program.yaml", "docs/plans/**/*.md"],
       cacheable: false,
       execute: runSeal,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "program.packet.lease",
       description:
         "Manage the exclusive local executor lease for a sealed packet. " +
@@ -152,9 +151,8 @@ export const forgeProgramModule: ForgeModule = {
       reads: ["docs/plans/**/program.yaml", "docs/plans/**/*.md"],
       cacheable: false,
       execute: runLease,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "program.packet.complete",
       description:
         "Steward validates the implementation range, writes the completion report, " +
@@ -210,6 +208,10 @@ export const forgeProgramModule: ForgeModule = {
       reads: ["docs/plans/**/program.yaml", "docs/plans/**/*.md"],
       cacheable: false,
       execute: runComplete,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

@@ -14,7 +14,7 @@
 </CHANGE_SUMMARY> 
 */
 
-export { forgeWorkflowModule } from "./workflow.module.ts";
+export { createForgeWorkflowModule } from "./workflow.module.ts";
 export { runWorkflowLint, runWorkflowList, runWorkflowAmendList } from "./handlers.ts";
 export type {
   WorkflowPhase,

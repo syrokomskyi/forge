@@ -12,25 +12,29 @@
 </CHANGE_SUMMARY>
 */
 
-import type { KernelModule } from "@warpgogol/werkstatt-engine/kernel/types";
+
 import { createTsconfigValidateCommand } from "./tsconfig-validate.ts";
 import { createImportBoundariesValidateCommand } from "./import-boundaries-validate.ts";
 import { createPhantomDepsValidateCommand } from "./phantom-deps-validate.ts";
 import { createPackageExportsValidateCommand } from "./package-exports-validate.ts";
 import { createStrictModeValidateCommand } from "./strict-mode-validate.ts";
 import { createBarrelValidateCommand } from "./barrel-validate.ts";
+import type { ModuleExport } from "@warpgogol/werkstatt-engine/runtime/desired-state";
 
-export function createTypescriptCheckModule(): KernelModule {
+export function createTypescriptCheckModule(): ModuleExport {
   return {
     name: "typescript-checks",
     version: "0.1.0",
-    register(registry) {
-      registry.registerCommand(createTsconfigValidateCommand());
-      registry.registerCommand(createImportBoundariesValidateCommand());
-      registry.registerCommand(createPhantomDepsValidateCommand());
-      registry.registerCommand(createPackageExportsValidateCommand());
-      registry.registerCommand(createStrictModeValidateCommand());
-      registry.registerCommand(createBarrelValidateCommand());
-    },
-  };
+      declarations: [],
+  commands: [
+      createTsconfigValidateCommand(),
+      createImportBoundariesValidateCommand(),
+      createPhantomDepsValidateCommand(),
+      createPackageExportsValidateCommand(),
+      createStrictModeValidateCommand(),
+      createBarrelValidateCommand(),
+    ],
+  pipelines: [
+
+  ]};
 }

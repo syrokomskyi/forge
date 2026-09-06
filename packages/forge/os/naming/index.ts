@@ -10,5 +10,5 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgeNamingModule } from "./naming.module.ts";
+export { createForgeNamingModule } from "./naming.module.ts";
 export { runNamingConventionLint } from "./naming-convention.ts";

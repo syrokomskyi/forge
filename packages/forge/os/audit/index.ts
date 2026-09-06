@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgeAuditModule } from "./audit.module.ts";
+export { createForgeAuditModule } from "./audit.module.ts";
 export { runAuditArchive } from "./handlers/archive.ts";
 export {
   listAuditFiles,

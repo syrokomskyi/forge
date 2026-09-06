@@ -12,17 +12,18 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeSessionModule: ForgeModule = {
-  name: "forge-session",
-  version: "0.1.0",
-  runtime: "autonomous",
-  async register(registry) {
-    const { runSessionSave } = await import("./handlers/save.ts");
+export async function createForgeSessionModule(): Promise<ForgeModule> {
+const { runSessionSave } = await import("./handlers/save.ts");
     const { runSessionArchive } = await import("./handlers/archive.ts");
     const { runSessionValidate } = await import("./handlers/validate.ts");
     const { runSessionList } = await import("./handlers/list.ts");
-
-    registry.registerCommand({
+  return {
+  name: "forge-session",
+  version: "0.1.0",
+  runtime: "autonomous",
+    declarations: [],
+  commands: [
+    {
       name: "session.save",
       description:
         "Convert raw ATIF files from docs/sessions/.raw/ to structured markdown " +
@@ -49,9 +50,8 @@ export const forgeSessionModule: ForgeModule = {
         },
       },
       execute: runSessionSave,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "session.archive",
       description:
         "Move session files older than --max-age-days (default 7) from " +
@@ -76,9 +76,8 @@ export const forgeSessionModule: ForgeModule = {
         },
       },
       execute: runSessionArchive,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "session.validate",
       contract: "session",
       rules: [],
@@ -94,9 +93,8 @@ export const forgeSessionModule: ForgeModule = {
       },
       reads: ["docs/sessions/**/*.md", "docs/rfcs/**/*.md"],
       execute: runSessionValidate,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "session.list",
       description:
         "List all sessions. Filter with --date-from, --date-to, --rfc, --type flags. " +
@@ -124,6 +122,10 @@ export const forgeSessionModule: ForgeModule = {
       },
       reads: ["docs/sessions/**/*.md"],
       execute: runSessionList,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

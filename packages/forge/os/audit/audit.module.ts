@@ -12,14 +12,15 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeAuditModule: ForgeModule = {
+export async function createForgeAuditModule(): Promise<ForgeModule> {
+const { runAuditArchive } = await import("./handlers/archive.ts");
+  return {
   name: "forge-audit",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    const { runAuditArchive } = await import("./handlers/archive.ts");
-
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "audit.archive",
       description:
         "Move audit files whose parent RFC has terminal status " +
@@ -44,6 +45,10 @@ export const forgeAuditModule: ForgeModule = {
         },
       },
       execute: runAuditArchive,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

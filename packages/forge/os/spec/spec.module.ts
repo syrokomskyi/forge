@@ -14,20 +14,21 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeSpecModule: ForgeModule = {
-  name: "forge-spec",
-  version: "0.2.0",
-  runtime: "autonomous",
-  async register(registry) {
-    const { runSpecValidate } = await import("./spec-validate.ts");
+export async function createForgeSpecModule(): Promise<ForgeModule> {
+const { runSpecValidate } = await import("./spec-validate.ts");
     const { runSpecStatus } = await import("./spec-status.ts");
     const { runSpecMaterialize } = await import("./spec-materialize.ts");
     const { runSpecLiveMerge } = await import("./live-spec-merge.ts");
     const { runSpecLiveList } = await import("./live-spec-list.ts");
     const { runSpecLiveShow } = await import("./live-spec-show.ts");
     const { runSpecLiveValidate } = await import("./live-spec-validate.ts");
-
-    registry.registerCommand({
+  return {
+  name: "forge-spec",
+  version: "0.2.0",
+  runtime: "autonomous",
+    declarations: [],
+  commands: [
+    {
       name: "spec.validate",
       contract: "spec",
       rules: [],
@@ -45,9 +46,8 @@ export const forgeSpecModule: ForgeModule = {
       },
       reads: ["docs/specs/**/*"],
       execute: runSpecValidate,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "spec.status",
       description:
         "Show roadmap progress for vendored specs. " +
@@ -61,9 +61,8 @@ export const forgeSpecModule: ForgeModule = {
       },
       reads: ["docs/specs/**/*", "docs/rfcs/**/*.md"],
       execute: runSpecStatus,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "spec.materialize",
       description:
         "Scaffold RFC files for the next N front nodes of a spec roadmap. " +
@@ -78,9 +77,8 @@ export const forgeSpecModule: ForgeModule = {
         nodes: { kind: "string", description: "Comma-separated explicit node ids to materialize." },
       },
       execute: runSpecMaterialize,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "spec.live.merge",
       description:
         "Merge deltas from an implemented RFC's ## Design section into a living feature spec " +
@@ -98,9 +96,8 @@ export const forgeSpecModule: ForgeModule = {
         "dry-run": { kind: "boolean", description: "Preview deltas without writing files." },
       },
       execute: runSpecLiveMerge,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "spec.live.list",
       description:
         "List all living feature specs in docs/specs/live/. " +
@@ -108,9 +105,8 @@ export const forgeSpecModule: ForgeModule = {
       scope: "workspace",
       reads: ["docs/specs/live/*.md"],
       execute: runSpecLiveList,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "spec.live.show",
       description:
         "Show a single living feature spec by domain. " +
@@ -121,9 +117,8 @@ export const forgeSpecModule: ForgeModule = {
         domain: { kind: "string", required: true, description: "Domain name (filename without .md)." },
       },
       execute: runSpecLiveShow,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "spec.live.validate",
       contract: "spec",
       rules: [],
@@ -135,6 +130,10 @@ export const forgeSpecModule: ForgeModule = {
       scope: "workspace",
       reads: ["docs/specs/live/*.md", "docs/rfcs/**/*.md"],
       execute: runSpecLiveValidate,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

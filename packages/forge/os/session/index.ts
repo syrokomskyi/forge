@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgeSessionModule } from "./session.module.ts";
+export { createForgeSessionModule } from "./session.module.ts";
 export { runSessionSave } from "./handlers/save.ts";
 export { runSessionArchive } from "./handlers/archive.ts";
 export { runSessionValidate } from "./handlers/validate.ts";

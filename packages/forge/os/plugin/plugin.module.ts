@@ -233,8 +233,9 @@ export const forgePluginModule: ForgeModule = {
   name: "forge-plugin",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "forge.plugin.validate",
       contract: "forge",
       rules: [],
@@ -246,9 +247,8 @@ export const forgePluginModule: ForgeModule = {
       reads: ["forge.yaml", "**/forge.plugin.yaml"],
       cacheable: false,
       execute: runPluginValidate,
-    });
-
-    registry.registerCommand({
+    },
+    {
       name: "forge.plugin.discover",
       description:
         "Enumerate all project-declared skill packs with valid forge.plugin.yaml manifests (RFC-0941). Returns pack id, version, prefix, and directory.",
@@ -258,6 +258,8 @@ export const forgePluginModule: ForgeModule = {
       reads: ["forge.yaml", "**/forge.plugin.yaml"],
       cacheable: false,
       execute: runPluginDiscover,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};

@@ -11,7 +11,7 @@
 </CHANGE_SUMMARY>
 */
 
-export { forgeAdrModule } from "./adr.module.ts";
+export { createForgeAdrModule } from "./adr.module.ts";
 export { runAdrList, runAdrCreate } from "./handlers/list-create.ts";
 export { runAdrValidate } from "./handlers/validate.ts";
 export { runAdrArchive } from "./handlers/archive.ts";

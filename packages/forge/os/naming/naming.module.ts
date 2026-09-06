@@ -12,13 +12,15 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgeNamingModule: ForgeModule = {
+export async function createForgeNamingModule(): Promise<ForgeModule> {
+const { runNamingConventionLint } = await import("./naming-convention.ts");
+  return {
   name: "forge-naming",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    const { runNamingConventionLint } = await import("./naming-convention.ts");
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "naming.convention.lint",
       contract: "naming",
       rules: [],
@@ -34,6 +36,10 @@ export const forgeNamingModule: ForgeModule = {
       },
       reads: ["packages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "services/**/*.{ts,tsx}"],
       execute: runNamingConventionLint,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

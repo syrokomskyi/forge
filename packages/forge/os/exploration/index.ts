@@ -6,11 +6,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0710: expose forgeExplorationModule and exploration types from the exploration domain.</item>
+  <item>RFC-0710: expose createForgeExplorationModule and exploration types from the exploration domain.</item>
 </CHANGE_SUMMARY>
 */
 
-export { forgeExplorationModule } from "./exploration.module.ts";
+export { createForgeExplorationModule } from "./exploration.module.ts";
 export { runExplorationList } from "./handlers/list.ts";
 export { runExplorationShow } from "./handlers/show.ts";
 export { runExplorationArchive } from "./handlers/archive.ts";

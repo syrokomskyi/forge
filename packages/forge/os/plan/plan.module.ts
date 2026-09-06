@@ -12,14 +12,15 @@
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
-export const forgePlanModule: ForgeModule = {
+export async function createForgePlanModule(): Promise<ForgeModule> {
+const { runPlanArchive } = await import("./handlers/archive.ts");
+  return {
   name: "forge-plan",
   version: "0.1.0",
   runtime: "autonomous",
-  async register(registry) {
-    const { runPlanArchive } = await import("./handlers/archive.ts");
-
-    registry.registerCommand({
+    declarations: [],
+  commands: [
+    {
       name: "plan.archive",
       description:
         "Move plan files whose parent RFC has terminal status " +
@@ -44,6 +45,10 @@ export const forgePlanModule: ForgeModule = {
         },
       },
       execute: runPlanArchive,
-    });
-  },
-};
+    }
+  ],
+  pipelines: [
+
+  ]};
+}
+;

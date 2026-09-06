@@ -112,16 +112,18 @@ export const forge${capitalize(name)}Module: ForgeModule = {
   name: "forge-${name}",
   version: "0.1.0",
   runtime: "autonomous",
-  register(registry) {
-    registry.registerCommand({
+  declarations: [],
+  commands: [
+    {
       name: "${name}",
       description: "TODO — one-line description",
       scope: "workspace",
       execute() {
         // TODO: implement
       },
-    } satisfies ForgeCommandDefinition);
-  },
+    } satisfies ForgeCommandDefinition,
+  ],
+  pipelines: [],
 };
 `;
 
