@@ -13,6 +13,7 @@ Deterministic only — no LLM/intelligent annotation (that is fo-session-save sk
 <CHANGE_SUMMARY>
   <item>RFC-0537: implement session.save command handler.</item>
   <item>Replace fs.unlink with trashPath for raw file deletion (trash bin for LLM-initiated deletions).</item>
+  <item>RFC-1053: integrate generateSessionMetrics after markdown write (non-fatal, guarded by !dryRun).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +28,7 @@ import type {
 } from "../../../src/types.ts";
 import { parseAtif, messagesToTranscriptMarkdown } from "../atif-parser.ts";
 import { trashPath } from "../../../src/utils/fs-trash.ts";
+import { generateSessionMetrics } from "./metrics-session.ts";
 import {
   SESSION_DIR,
   SESSION_RAW_SUBDIR,
@@ -289,9 +291,25 @@ export async function runSessionSave(
       transcriptText,
     );
 
+    let metricsPath: string | undefined;
     if (!dryRun) {
       await fs.mkdir(sessionDirPath, { recursive: true });
       await fs.writeFile(outputPath, markdown, "utf-8");
+
+      // ── RFC-1053: Generate session metrics from ATIF messages (non-fatal) ──
+      try {
+        metricsPath = await generateSessionMetrics(
+          workspaceRoot,
+          id,
+          atifResult.messages,
+          { date: timestamp.toISOString(), relatedRfcs, commits },
+          logger,
+        );
+      } catch (metricsErr) {
+        logger.warn(
+          `[metrics] Failed to generate session metrics for ${id}: ${(metricsErr as Error).message}`,
+        );
+      }
 
       // Delete raw file unless --keep-raw
       if (!keepRaw) {
@@ -320,6 +338,7 @@ export async function runSessionSave(
         files,
         commands,
       },
+      ...(metricsPath ? { metricsPath } : {}),
       dryRun,
     };
     saved.push(result);
