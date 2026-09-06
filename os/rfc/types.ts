@@ -541,6 +541,7 @@ export interface RfcImplementStampData {
   stampedAt: string;
   criteriaChecked: number;
   evidencePath?: string;
+  metricsPath?: string;
 }
 
 export type RfcImplementStampRule =

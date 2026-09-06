@@ -12,10 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0476: initial implementation.</item>
+  <item>RFC-0476: initial rfc.implement.stamp handler with acceptance criteria evaluation, evidence checks, and atomic status transition.</item>
+  <item>RFC-0268: acceptance probe evidence check before stamping.</item>
   <item>RFC-0756: auto-detect implementation commit when --implementation-commit is omitted.</item>
   <item>RFC-0795: add RFC-IMP-07 dependsOn dependency gate — blocks stamping when any dependsOn entry is not implemented.</item>
   <item>RFC-0997: add RFC-IMP-08 minimum-one-probe gate — blocks stamping for post-cutoff architecture/contract/command RFCs with no acceptance probes.</item>
+  <item>RFC-1053: integrate generateRfcMetrics after successful stamp (non-fatal, guarded by !isDryRun).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,6 +27,7 @@ import { join, dirname } from "node:path";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse } from "yaml";
+import { generateRfcMetrics } from "../../session/handlers/metrics-rfc.ts";
 
 import {
   listRfcFiles,
@@ -466,6 +469,18 @@ export async function runRfcImplementStamp(
     // Write the mutated RFC file atomically
     await writeFileAtomic(rfcFilePath, mutatedSource);
 
+    // ── RFC-1053: Generate per-RFC metrics (non-fatal, guarded by !isDryRun) ─
+    let metricsPath: string | undefined;
+    if (!isDryRun) {
+      try {
+        metricsPath = await generateRfcMetrics(workspaceRoot, targetId, logger);
+      } catch (metricsErr) {
+        logger.warn(
+          `[metrics] Failed to generate metrics for ${targetId}: ${(metricsErr as Error).message}`,
+        );
+      }
+    }
+
     // ── Re-emit evidence if probes exist (to update with new status) ─────────
     if (hasProbes && requiresEvidence && evidenceRelPath) {
       // Evidence already exists and passed — no need to re-emit on stamp
@@ -493,6 +508,7 @@ export async function runRfcImplementStamp(
           stampedAt,
           criteriaChecked: criteriaEval.totalChecked,
           ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
+          ...(metricsPath ? { metricsPath } : {}),
         },
         violations: [],
       },
