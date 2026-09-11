@@ -131,6 +131,60 @@ describe("mission.archive", () => {
     expect(existsSync(path.join(missionsDir, "archive", "closed", "test-m006"))).toBe(false);
   });
 
+  test("closed mission without releaseId → warns in pretty mode", async () => {
+    await writeMissionManifest(missionsDir, "test-m007", "closed");
+    const warnSpy = vi.fn();
+    const ctx: ForgeRuntimeContext = {
+      workspaceRoot: tmpDir,
+      logger: {
+        info: () => {},
+        success: () => {},
+        warn: warnSpy,
+        error: () => {},
+        debug: () => {},
+      },
+      outputFormat: "pretty",
+      dryRun: false,
+    } as unknown as ForgeRuntimeContext;
+
+    await runMissionArchive(makeInput(), ctx);
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("test-m007: closed mission has no releaseId"),
+    );
+  });
+
+  test("closed mission with releaseId → no warning", async () => {
+    const missionDir = path.join(missionsDir, "test-m008");
+    await fs.mkdir(missionDir, { recursive: true });
+    await fs.writeFile(
+      path.join(missionDir, "mission.yaml"),
+      `missionId: test-m008\nstate: closed\nreleaseId: test-r000001\n`,
+    );
+    const warnSpy = vi.fn();
+    const ctx: ForgeRuntimeContext = {
+      workspaceRoot: tmpDir,
+      logger: {
+        info: () => {},
+        success: () => {},
+        warn: warnSpy,
+        error: () => {},
+        debug: () => {},
+      },
+      outputFormat: "pretty",
+      dryRun: false,
+    } as unknown as ForgeRuntimeContext;
+
+    await runMissionArchive(makeInput(), ctx);
+
+    expect(
+      warnSpy.mock.calls.some(
+        (c) =>
+          typeof c[0] === "string" && c[0].includes("test-m008: closed mission has no releaseId"),
+      ),
+    ).toBe(false);
+  });
+
   test("destination exists → skipped with 'destination exists' reason", async () => {
     await writeMissionManifest(missionsDir, "test-m007", "closed");
     const archiveDir = path.join(missionsDir, "archive", "closed", "test-m007");
