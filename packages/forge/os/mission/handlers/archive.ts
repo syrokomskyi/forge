@@ -69,6 +69,19 @@ function isCacheEntry(name: string): boolean {
   return name.startsWith(".") || name === "node_modules" || name === "dist";
 }
 
+async function readMissionReleaseId(missionDir: string): Promise<string | null> {
+  const manifestPath = path.join(missionDir, "mission.yaml");
+  try {
+    const raw = await fs.readFile(manifestPath, "utf8");
+    const parsed = parseYaml(raw) as Record<string, unknown>;
+    const releaseId = parsed?.releaseId;
+    if (typeof releaseId === "string" && releaseId.trim()) return releaseId.trim();
+  } catch {
+    // fall through
+  }
+  return null;
+}
+
 async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
   try {
@@ -335,6 +348,18 @@ export async function runMissionArchive(
         reason: `state ${state} does not match --status ${statusFilter}`,
       });
       continue;
+    }
+
+    // Warn when archiving a closed mission without a release — operator likely
+    // forgot to run release.prepare before archiving. Non-blocking: some missions
+    // (e.g. aborted, content-only) legitimately have no release.
+    if (state === "closed" && !dryRun) {
+      const releaseId = await readMissionReleaseId(missionDir);
+      if (!releaseId && outputFormat === "pretty") {
+        logger.warn(
+          `  ⚠ ${missionId}: closed mission has no releaseId — run release.prepare before archiving if this mission needs deployment`,
+        );
+      }
     }
 
     const targetDir = path.join(missionsPath, ARCHIVE_DIR_NAME, state);
