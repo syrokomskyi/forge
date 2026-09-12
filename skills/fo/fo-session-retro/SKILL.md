@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем сессию", "Завершаем эту сессию", "Заканчиваем сессию", "Завершить сессию", "End session", "Wrap up", "Session end", "/session-end"]
+triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем сессию", "Завершаем эту сессию", "Заканчиваем сессию", "Завершить сессию", "протокол завершения сессии", "End session", "Wrap up", "Session end", "/session-end"]
 ---
 
 # Session Retro
@@ -37,6 +37,7 @@ When the operator says any of the following, the agent's response is **BLOCKED**
 - "Wrap up"
 - "Session end"
 - "/session-end"
+- "протокол завершения сессии"
 
 **The agent MUST NOT produce any session-end output (summary, closing block, "session complete" message) before this skill is invoked and its report is presented. Producing a closing summary without running this skill is a CONTRACT VIOLATION.**
 
