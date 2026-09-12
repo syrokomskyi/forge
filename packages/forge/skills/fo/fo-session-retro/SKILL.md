@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем сессию", "/session-end"]
+triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем сессию", "Завершаем эту сессию", "Заканчиваем сессию", "Завершить сессию", "End session", "Wrap up", "Session end", "/session-end"]
 ---
 
 # Session Retro
