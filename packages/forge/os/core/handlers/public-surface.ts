@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1080: initial public-surface consistency validator — README length, Node version match, .tgz absence, docs/ structure, required root files.</item>
+  <item>RFC-1080: add monorepo auto-detection — resolve packages/forge/ when run from monorepo root.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -37,11 +38,7 @@ const REQUIRED_DOCS_FILES = [
   "docs/reference/cli.md",
 ];
 
-const REQUIRED_ROOT_FILES = [
-  "CONTRIBUTING.md",
-  "SECURITY.md",
-  "CHANGELOG.md",
-];
+const REQUIRED_ROOT_FILES = ["CONTRIBUTING.md", "SECURITY.md", "CHANGELOG.md"];
 
 function readJsonFile(filePath: string): Record<string, unknown> | null {
   try {
@@ -64,12 +61,17 @@ export async function runPublicSurfaceValidate(
   const { workspaceRoot, logger, outputFormat } = context;
   const checks: SurfaceCheck[] = [];
 
-  const readmePath = path.join(workspaceRoot, "README.md");
-  const packageJsonPath = path.join(workspaceRoot, "package.json");
+  // Monorepo vs standalone resolution (RFC-1080):
+  // If packages/forge/ exists relative to workspaceRoot, use it (monorepo mode).
+  // Otherwise, use workspaceRoot directly (standalone extracted repo mode).
+  const forgePkgRoot = fs.existsSync(path.join(workspaceRoot, "packages", "forge"))
+    ? path.join(workspaceRoot, "packages", "forge")
+    : workspaceRoot;
 
-  const readmeContent = fs.existsSync(readmePath)
-    ? fs.readFileSync(readmePath, "utf8")
-    : "";
+  const readmePath = path.join(forgePkgRoot, "README.md");
+  const packageJsonPath = path.join(forgePkgRoot, "package.json");
+
+  const readmeContent = fs.existsSync(readmePath) ? fs.readFileSync(readmePath, "utf8") : "";
   const readmeLines = readmeContent.split("\n").length;
 
   const pkg = readJsonFile(packageJsonPath);
@@ -118,9 +120,7 @@ export async function runPublicSurfaceValidate(
   }
 
   // SURFACE-03: No .tgz files in root (error)
-  const tgzFiles = fs
-    .readdirSync(workspaceRoot)
-    .filter((f) => f.endsWith(".tgz"));
+  const tgzFiles = fs.readdirSync(forgePkgRoot).filter((f) => f.endsWith(".tgz"));
   checks.push({
     rule: "SURFACE-03",
     message:
@@ -131,9 +131,7 @@ export async function runPublicSurfaceValidate(
   });
 
   // SURFACE-04: docs/ directory with required files (error)
-  const missingDocs = REQUIRED_DOCS_FILES.filter(
-    (f) => !fs.existsSync(path.join(workspaceRoot, f)),
-  );
+  const missingDocs = REQUIRED_DOCS_FILES.filter((f) => !fs.existsSync(path.join(forgePkgRoot, f)));
   checks.push({
     rule: "SURFACE-04",
     message:
@@ -144,9 +142,7 @@ export async function runPublicSurfaceValidate(
   });
 
   // SURFACE-05: Required root files (warning)
-  const missingRoot = REQUIRED_ROOT_FILES.filter(
-    (f) => !fs.existsSync(path.join(workspaceRoot, f)),
-  );
+  const missingRoot = REQUIRED_ROOT_FILES.filter((f) => !fs.existsSync(path.join(forgePkgRoot, f)));
   checks.push({
     rule: "SURFACE-05",
     message:
@@ -162,8 +158,7 @@ export async function runPublicSurfaceValidate(
   if (outputFormat === "pretty") {
     logger.section("Forge Public Surface Validate");
     for (const check of checks) {
-      const icon =
-        check.status === "pass" ? "✓" : check.status === "warn" ? "⚠" : "✖";
+      const icon = check.status === "pass" ? "✓" : check.status === "warn" ? "⚠" : "✖";
       const fn =
         check.status === "pass"
           ? logger.success
