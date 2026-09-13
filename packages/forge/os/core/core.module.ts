@@ -26,6 +26,7 @@
   <item>Lockfile safety net: docs.archive post-loop refreshes pnpm-lock.yaml after mission workpiece moves.</item>
   <item>RFC-0877: forge.create --in-place required, --profile required, --name optional (derived from folder), strict empty-directory check (only .git/ tolerated).</item>
   <item>RFC-0940: register forge.autonomy.validate command enforcing FORGE-AUTONOMY-01 (no @warpgogol/werkstatt-engine imports outside os/werkstatt/).</item>
+  <item>RFC-1080: register forge.public-surface.validate command for README/package.json consistency checks (SURFACE-01..05).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -67,6 +68,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runKnowledgeCompact } = await import("./handlers/knowledge-compact.ts");
   const { runPackageHealth } = await import("./handlers/package-health.ts");
   const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
+  const { runPublicSurfaceValidate } = await import("./handlers/public-surface.ts");
 
   const scaffoldWrapper = async (
     input: ForgeCommandInput,
@@ -730,6 +732,19 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         cacheable: false,
         flags: {},
         execute: runForgeAutonomyValidate,
+      },
+      {
+        name: "forge.public-surface.validate",
+        description:
+          "Check consistency between README.md, package.json, and docs/ structure. " +
+          "Enforces SURFACE-01..05 rules: README length, Node version match, " +
+          "no .tgz in root, docs/ structure, required root files (RFC-1080).",
+        scope: "workspace",
+        supportsAllSites: false,
+        reads: ["README.md", "package.json", "docs/**"],
+        cacheable: false,
+        flags: {},
+        execute: runPublicSurfaceValidate,
       },
       {
         name: "docs.archive",
