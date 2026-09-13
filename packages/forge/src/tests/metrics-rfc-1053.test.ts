@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile, readFile, readdir } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
@@ -37,7 +37,9 @@ function gitInit(workspaceRoot: string): void {
 
 function gitCommit(workspaceRoot: string, message: string): string {
   execFileSync("git", ["add", "-A"], { cwd: workspaceRoot });
-  execFileSync("git", ["commit", "--quiet", "-m", message, "--allow-empty"], { cwd: workspaceRoot });
+  execFileSync("git", ["commit", "--quiet", "-m", message, "--allow-empty"], {
+    cwd: workspaceRoot,
+  });
   const sha = execFileSync("git", ["rev-parse", "HEAD"], { cwd: workspaceRoot }).toString().trim();
   return sha;
 }
@@ -161,8 +163,16 @@ describe("RFC-1053: generateSessionMetrics", () => {
 
   it("extracts skill invocations from ATIF messages", async () => {
     const messages: AtifMessage[] = [
-      { role: "user", timestamp: "2026-09-06T10:00:00Z", content: "Please run fo-idea-audit on RFC-1053" },
-      { role: "assistant", timestamp: "2026-09-06T10:05:00Z", content: "Running fo-idea-audit now" },
+      {
+        role: "user",
+        timestamp: "2026-09-06T10:00:00Z",
+        content: "Please run fo-idea-audit on RFC-1053",
+      },
+      {
+        role: "assistant",
+        timestamp: "2026-09-06T10:05:00Z",
+        content: "Running fo-idea-audit now",
+      },
       { role: "user", timestamp: "2026-09-06T10:10:00Z", content: "Now run fo-review" },
       { role: "assistant", timestamp: "2026-09-06T10:15:00Z", content: "Running fo-review" },
     ];

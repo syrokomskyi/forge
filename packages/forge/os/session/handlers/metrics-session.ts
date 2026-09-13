@@ -17,13 +17,19 @@ docs/metrics/sessions/<session-id>.metrics.yaml via writeFileAtomic.
 </CHANGE_SUMMARY>
 */
 
-import { readFile, readdir, mkdir } from "node:fs/promises";
+import { readdir, mkdir } from "node:fs/promises";
 import { join, dirname } from "node:path";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { stringify as yamlStringify } from "yaml";
 
-import { METRICS_DIR, type SessionMetrics, type SessionSkillInvocation, type SessionDocumentRef, type InsightSummary } from "../types.ts";
+import {
+  METRICS_DIR,
+  type SessionMetrics,
+  type SessionSkillInvocation,
+  type SessionDocumentRef,
+  type InsightSummary,
+} from "../types.ts";
 import type { AtifMessage } from "../atif-parser.ts";
 
 // ─── Skill name extraction ───────────────────────────────────────────────────
@@ -176,7 +182,7 @@ export async function generateSessionMetrics(
     relatedRfcs?: string[];
     commits?: string[];
   },
-  logger: { warn: (msg: string) => void },
+  _logger: { warn: (msg: string) => void },
 ): Promise<string> {
   const skills = extractSkillInvocations(messages);
   const documents = await extractDocumentRefs(workspaceRoot, sessionFrontmatter.relatedRfcs ?? []);
@@ -196,12 +202,7 @@ export async function generateSessionMetrics(
   };
 
   const yamlContent = yamlStringify(metrics, { lineWidth: 120 });
-  const metricsFilePath = join(
-    workspaceRoot,
-    METRICS_DIR,
-    "sessions",
-    `${sessionId}.metrics.yaml`,
-  );
+  const metricsFilePath = join(workspaceRoot, METRICS_DIR, "sessions", `${sessionId}.metrics.yaml`);
   await mkdir(dirname(metricsFilePath), { recursive: true });
   await writeFileAtomic(metricsFilePath, yamlContent);
 
