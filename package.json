@@ -4,15 +4,18 @@
   "private": false,
   "type": "module",
   "license": "Apache-2.0",
-  "description": "Framework for documenting and implementing ideas — RFC/ADR governance, skills, and project bootstrapping.",
+  "description": "Repository-native governance for AI-assisted software development — project contracts, RFCs, ADRs, agent skills and deterministic validation.",
   "keywords": [
+    "ai",
+    "agent",
     "rfc",
     "adr",
     "governance",
     "skills",
-    "ai-agent",
-    "documentation",
-    "framework"
+    "validation",
+    "project-contract",
+    "ai-assisted",
+    "documentation"
   ],
   "homepage": "https://warpgogol.com",
   "repository": {
@@ -154,9 +157,14 @@
     "src/",
     "src/onboarding/templates/",
     "os/",
+    "docs/",
     "AGENTS.md",
     "README.md",
-    "LICENSE"
+    "README.uk.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "CHANGELOG.md"
   ],
   "scripts": {
     "build": "pnpm exec tsc -p tsconfig.json",
