@@ -40,7 +40,7 @@ The skill asks a few simple questions in the chat, then sets everything up. Afte
 pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
 ```
 
-Then open the project in your AI IDE and tell the agent what you want to build.
+Then open the project in your AI IDE (Windsurf, Cursor, Claude Code, Codex CLI, or any IDE that supports AI agents) and tell the agent what you want to build.
 
 One bootstrap command. After that, work through your coding agent.
 

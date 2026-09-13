@@ -40,7 +40,7 @@ Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my 
 pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
 ```
 
-Потім відкрийте проєкт у вашому ШІ-IDE і скажіть агентові, що ви хочете створити.
+Потім відкрийте проєкт у вашому ШІ-IDE (Windsurf, Cursor, Claude Code, Codex CLI або будь-якому IDE з підтримкою ШІ-агентів) і скажіть агентові, що ви хочете створити.
 
 Одна команда. Далі — робота через агента.
 
