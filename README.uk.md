@@ -6,6 +6,8 @@
 
 Репозиторіо-нативний шар управління для розробки за допомогою ШІ. Рішення, правила, навички та перевірки залишаються з проєктом — незалежно від агента, який з ним працює.
 
+> Розроблено в [Warpgogol](https://warpgogol.com) · Опубліковано як open source.
+
 [![npm version](https://img.shields.io/npm/v/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![npm downloads](https://img.shields.io/npm/dm/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![CI](https://github.com/syrokomskyi/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/syrokomskyi/forge/actions) [![Node](https://img.shields.io/badge/Node-24%2B-green.svg)](https://nodejs.org) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
 ---
