@@ -30,7 +30,6 @@ import { stringify as yamlStringify } from "yaml";
 import {
   captureGitContext,
   getKernelVersion,
-  byteHashHex,
   VERIFICATION_DIR,
   buildEvidenceEnvelope,
 } from "./verification-evidence.ts";
@@ -48,10 +47,6 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../src/types.ts";
-
-function normalizeProbes(probes: AcceptanceProbe[]): string {
-  return JSON.stringify(probes, Object.keys(probes[0] ?? {}).sort());
-}
 
 export async function runRfcVerificationRefresh(
   input: ForgeCommandInput,
@@ -74,8 +69,7 @@ export async function runRfcVerificationRefresh(
         summary: { total: 0, passed: 0, failed: 0, skipped: 0 },
       },
       exitCode: 0,
-      summary:
-        "rfc.verification.refresh: pass --id <rfc-id> or --all to select target RFC(s)",
+      summary: "rfc.verification.refresh: pass --id <rfc-id> or --all to select target RFC(s)",
     };
   }
 

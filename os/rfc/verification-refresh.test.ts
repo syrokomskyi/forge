@@ -6,6 +6,7 @@ import os from "node:os";
 import { stringify as yamlStringify } from "yaml";
 
 import { runRfcVerificationRefresh } from "./verification-refresh.ts";
+import type { ForgeCommandInput, ForgeRuntimeContext } from "../../src/types.ts";
 
 const { mockRunProbe, mockCaptureGitContext, mockGetKernelVersion } = vi.hoisted(() => ({
   mockRunProbe: vi.fn(),
@@ -26,11 +27,11 @@ vi.mock("./verification-evidence.ts", async (importOriginal) => {
   };
 });
 
-const RFC_FRONTMATTER = (id: string, status: string, probes: unknown[] = []) => {
+const RFC_FRONTMATTER = (id: string, status: string, probes: Record<string, unknown>[] = []) => {
   const probeYaml = probes
     .map(
       (p) =>
-        `  - probe: ${(p as any).probe}\n    path: ${(p as any).path ?? ""}\n    criterion: ${(p as any).criterion ?? ""}`,
+        `  - probe: ${p.probe}\n    path: ${p.path ?? ""}\n    criterion: ${p.criterion ?? ""}`,
     )
     .join("\n");
   return `---\nid: ${id}\ntitle: "Test ${id}"\nstatus: ${status}\nkind: command\nscope: workspace\nowners:\n  - architecture\ncreatedAt: 2026-01-01\nupdatedAt: 2026-01-01\nacceptance:\n${probeYaml}\n---\n\n# ${id}\n## Context\nTest.\n`;
@@ -134,8 +135,8 @@ describe("rfc.verification.refresh — AC-1: single-RFC refresh", () => {
       mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
 
       const result = await runRfcVerificationRefresh(
-        { flags: { id: "RFC-0100" } } as any,
-        makeContext(workspaceRoot) as any,
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
       );
 
       expect(result.data!.refreshed).toHaveLength(1);
@@ -175,8 +176,8 @@ describe("rfc.verification.refresh — AC-2: --all mode", () => {
       mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
 
       const result = await runRfcVerificationRefresh(
-        { flags: { all: true } } as any,
-        makeContext(workspaceRoot) as any,
+        { flags: { all: true } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
       );
 
       expect(result.data!.refreshed).toHaveLength(2);
@@ -200,8 +201,8 @@ describe("rfc.verification.refresh — AC-3: probe failure still writes envelope
       mockRunProbe.mockResolvedValue({ probe: PROBE, ok: false, detail: "does not exist" });
 
       const result = await runRfcVerificationRefresh(
-        { flags: { id: "RFC-0100" } } as any,
-        makeContext(workspaceRoot) as any,
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
       );
 
       expect(result.data!.refreshed).toHaveLength(1);
@@ -236,8 +237,8 @@ describe("rfc.verification.refresh — AC-4: --dry-run does not write files", ()
       mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
 
       const result = await runRfcVerificationRefresh(
-        { flags: { id: "RFC-0100", "dry-run": true } } as any,
-        makeContext(workspaceRoot) as any,
+        { flags: { id: "RFC-0100", "dry-run": true } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
       );
 
       expect(result.data!.refreshed).toHaveLength(1);
@@ -270,8 +271,8 @@ describe("rfc.verification.refresh — AC-5: no evidence envelope", () => {
       mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
 
       const result = await runRfcVerificationRefresh(
-        { flags: { id: "RFC-0100" } } as any,
-        makeContext(workspaceRoot) as any,
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
       );
 
       expect(result.data!.refreshed).toHaveLength(0);
@@ -296,8 +297,8 @@ describe("rfc.verification.refresh — AC-6: emittedAt preservation", () => {
       mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
 
       await runRfcVerificationRefresh(
-        { flags: { id: "RFC-0100" } } as any,
-        makeContext(workspaceRoot) as any,
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
       );
 
       const envelopePath = path.join(

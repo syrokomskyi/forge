@@ -225,7 +225,6 @@ export function evaluateAcceptanceCriteria(body: string): AcceptanceCriteriaEval
     .split("\n")
     .filter((line) => /^- \[ \]/.test(line))
     .map((line) => line.trim());
-  const totalUnchecked = uncheckedLines.length;
 
   const checkedLines = section.split("\n").filter((line) => /^- \[x\]/.test(line));
   const checkedWithoutEvidence: string[] = [];
