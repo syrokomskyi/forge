@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1080: initial public-surface consistency validator — README length, Node version match, .tgz absence, docs/ structure, required root files.</item>
   <item>RFC-1080: add monorepo auto-detection — resolve packages/forge/ when run from monorepo root.</item>
+  <item>RFC-1088: raise SURFACE-01 README threshold from 300 to 600 lines.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -76,11 +77,11 @@ export async function runPublicSurfaceValidate(
 
   const pkg = readJsonFile(packageJsonPath);
 
-  // SURFACE-01: README length (warning)
+  // SURFACE-01: README length (warning, RFC-1088: raised from 300 to 600)
   checks.push({
     rule: "SURFACE-01",
-    message: `README.md is ${readmeLines} lines (${readmeLines <= 300 ? "under 300" : "over 300"})`,
-    status: readmeLines <= 300 ? "pass" : "warn",
+    message: `README.md is ${readmeLines} lines (${readmeLines <= 600 ? "under 600" : "over 600"})`,
+    status: readmeLines <= 600 ? "pass" : "warn",
   });
 
   // SURFACE-02: Node version consistency (error)

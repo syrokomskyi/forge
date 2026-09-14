@@ -4,6 +4,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1080: initial public-surface validator tests covering all 5 rules, exit codes, and monorepo resolution.</item>
+  <item>RFC-1088: raise SURFACE-01 threshold from 300 to 600 lines.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -101,7 +102,7 @@ async function setupMonorepo(
   await setupStandalone(join(dir, "packages", "forge"), opts);
 }
 
-test("SURFACE-01: README under 300 lines passes", async () => {
+test("SURFACE-01: README under 600 lines passes", async () => {
   await setupStandalone(tempDir, { readmeLines: 100 });
   const result = await runPublicSurfaceValidate({} as never, mockContext(tempDir));
   const checks = result.data?.checks ?? [];
@@ -109,12 +110,20 @@ test("SURFACE-01: README under 300 lines passes", async () => {
   expect(surface01?.status, "README with 100 lines should pass SURFACE-01").toBe("pass");
 });
 
-test("SURFACE-01: README over 300 lines warns", async () => {
-  await setupStandalone(tempDir, { readmeLines: 301 });
+test("SURFACE-01: README at exactly 600 lines passes", async () => {
+  await setupStandalone(tempDir, { readmeLines: 600 });
   const result = await runPublicSurfaceValidate({} as never, mockContext(tempDir));
   const checks = result.data?.checks ?? [];
   const surface01 = checks.find((c) => c.rule === "SURFACE-01");
-  expect(surface01?.status, "README with 301 lines should warn on SURFACE-01").toBe("warn");
+  expect(surface01?.status, "README with 600 lines should pass SURFACE-01").toBe("pass");
+});
+
+test("SURFACE-01: README over 600 lines warns", async () => {
+  await setupStandalone(tempDir, { readmeLines: 601 });
+  const result = await runPublicSurfaceValidate({} as never, mockContext(tempDir));
+  const checks = result.data?.checks ?? [];
+  const surface01 = checks.find((c) => c.rule === "SURFACE-01");
+  expect(surface01?.status, "README with 601 lines should warn on SURFACE-01").toBe("warn");
 });
 
 test("SURFACE-02: Node version match passes", async () => {
