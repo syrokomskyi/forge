@@ -29,6 +29,7 @@
   <item>RFC-1080: register forge.public-surface.validate command for README/package.json consistency checks (SURFACE-01..05).</item>
   <item>RFC-1088: register forge.file-size.lint command for portable SIZE-01 line-count validation.</item>
   <item>RFC-1088 fix: add writes field to forge.file-size.lint registration per fo-review.</item>
+  <item>RFC-1089: rename forge.file-size.lint to file.size.lint (domain validator, no forge. prefix).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -750,7 +751,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         execute: runPublicSurfaceValidate,
       },
       {
-        name: "forge.file-size.lint",
+        name: "file.size.lint",
         contract: "file",
         rules: ["SIZE-01"],
         description:
