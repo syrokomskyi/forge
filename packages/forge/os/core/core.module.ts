@@ -27,6 +27,7 @@
   <item>RFC-0877: forge.create --in-place required, --profile required, --name optional (derived from folder), strict empty-directory check (only .git/ tolerated).</item>
   <item>RFC-0940: register forge.autonomy.validate command enforcing FORGE-AUTONOMY-01 (no @warpgogol/werkstatt-engine imports outside os/werkstatt/).</item>
   <item>RFC-1080: register forge.public-surface.validate command for README/package.json consistency checks (SURFACE-01..05).</item>
+  <item>RFC-1088: register forge.file-size.lint command for portable SIZE-01 line-count validation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -69,6 +70,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runPackageHealth } = await import("./handlers/package-health.ts");
   const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
   const { runPublicSurfaceValidate } = await import("./handlers/public-surface.ts");
+  const { runFileSizeLint } = await import("./handlers/file-size-lint.ts");
 
   const scaffoldWrapper = async (
     input: ForgeCommandInput,
@@ -745,6 +747,30 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         cacheable: false,
         flags: {},
         execute: runPublicSurfaceValidate,
+      },
+      {
+        name: "forge.file-size.lint",
+        contract: "file",
+        rules: ["SIZE-01"],
+        description:
+          "SIZE-01: flags a packages/** .ts/.tsx source file exceeding a 600-line threshold (warning 601-1200, error 1200+), against a shrink-only ratchet baseline. Pass --write-baseline to regenerate the baseline. Pass --baseline-path to override the default baseline location (RFC-1088).",
+        scope: "workspace",
+        supportsAllSites: false,
+        reads: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
+        writes: ["file-size-lint.baseline.yaml"],
+        cacheable: false,
+        flags: {
+          "write-baseline": {
+            kind: "boolean",
+            description: "Regenerate the oversized-file baseline instead of validating against it.",
+          },
+          "baseline-path": {
+            kind: "string",
+            description:
+              "Override the baseline file path (default: file-size-lint.baseline.yaml at workspace root).",
+          },
+        },
+        execute: runFileSizeLint,
       },
       {
         name: "docs.archive",
