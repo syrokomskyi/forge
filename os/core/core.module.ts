@@ -28,6 +28,7 @@
   <item>RFC-0940: register forge.autonomy.validate command enforcing FORGE-AUTONOMY-01 (no @warpgogol/werkstatt-engine imports outside os/werkstatt/).</item>
   <item>RFC-1080: register forge.public-surface.validate command for README/package.json consistency checks (SURFACE-01..05).</item>
   <item>RFC-1088: register forge.file-size.lint command for portable SIZE-01 line-count validation.</item>
+  <item>RFC-1088 fix: add writes field to forge.file-size.lint registration per fo-review.</item>
 </CHANGE_SUMMARY>
 */
 
