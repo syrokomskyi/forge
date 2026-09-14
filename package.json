@@ -48,6 +48,10 @@
       "types": "./os/core/core.module.ts",
       "default": "./os/core/core.module.ts"
     },
+    "./os/core/handlers/file-size-lint": {
+      "types": "./os/core/handlers/file-size-lint.ts",
+      "default": "./os/core/handlers/file-size-lint.ts"
+    },
     "./os/compass": {
       "types": "./os/compass/index.ts",
       "default": "./os/compass/index.ts"
@@ -226,6 +230,10 @@
       "./os/core": {
         "types": "./dist/os/core/core.module.d.ts",
         "default": "./dist/os/core/core.module.js"
+      },
+      "./os/core/handlers/file-size-lint": {
+        "types": "./dist/os/core/handlers/file-size-lint.d.ts",
+        "default": "./dist/os/core/handlers/file-size-lint.js"
       },
       "./os/compass": {
         "types": "./dist/os/compass/index.d.ts",
