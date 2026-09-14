@@ -17,7 +17,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 
 | Module | Commands | Source |
 | --- | --- | --- |
-| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `pinned.validate`, `pinned.init`, `package.health`, `docs.archive`, `forge.autonomy.validate`, `forge.public-surface.validate`, `forge.file-size.lint` | `os/core/` |
+| `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `pinned.validate`, `pinned.init`, `package.health`, `docs.archive`, `forge.autonomy.validate`, `forge.public-surface.validate`, `file.size.lint` | `os/core/` |
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, `rfc.verification.emit`, `rfc.verification.refresh`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
