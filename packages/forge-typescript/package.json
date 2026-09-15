@@ -31,7 +31,9 @@
       "default": "./src/checks/module.ts"
     }
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "scripts": {
     "lint": "pnpm exec eslint \"src/**/*.ts\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
@@ -49,10 +51,10 @@
     "@warpgogol/werkstatt-shared": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
-    "eslint": "^10.9.0",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "8.68.0",
-    "vitest": "^4.1.11"
+    "@types/node": "^26.5.1",
+    "eslint": "^10.10.0",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "8.70.0",
+    "vitest": "^5.0.0"
   }
 }
