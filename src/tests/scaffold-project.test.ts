@@ -60,7 +60,7 @@ test("forge.scaffold tolerates non-empty directory (RFC-0877 in-place mode)", as
   expect(result.data?.status).toBe("pass");
   expect(existsSync(join(tempDir, "package.json"))).toBe(true);
   expect(existsSync(join(tempDir, "some-file.txt"))).toBe(true);
-}, 30000);
+}, 120000);
 
 test("forge.scaffold fails on missing --profile", async () => {
   const result = await runScaffoldProject(

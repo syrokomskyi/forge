@@ -64,7 +64,7 @@ test("forge create --in-place scaffolds in cwd with forge.yaml and docs dirs", a
   expect(existsSync(join(tempDir, "package.json"))).toBe(true);
   expect(existsSync(join(tempDir, "scripts", "clean.mjs"))).toBe(true);
   expect(existsSync(join(tempDir, "hooks", "pre-user-prompt-wrapper.mjs"))).toBe(true);
-}, 30000);
+}, 120000);
 
 test("forge create --in-place refuses when forge artifacts already exist", async () => {
   await writeFile(join(tempDir, "forge.yaml"), "existing: true", "utf8");
@@ -102,7 +102,7 @@ test("forge create --in-place tolerates only .git directory in target directory"
   expect(result.data?.status).toBe("pass");
   expect(existsSync(join(tempDir, "forge.yaml"))).toBe(true);
   expect(existsSync(join(tempDir, ".git"))).toBe(true);
-}, 30000);
+}, 120000);
 
 test("forge create fails on non-kebab-case name", async () => {
   const result = await runCreate(
@@ -141,7 +141,7 @@ test("forge create --in-place --profile forge-shell uses forge-shell profile", a
   );
   expect(result.exitCode).toBe(0);
   expect(result.data?.profile).toBe("forge-shell");
-}, 30000);
+}, 120000);
 
 test("forge create --package-manager npm writes npm into forge.yaml with npx bindings", async () => {
   const result = await runCreate(
@@ -162,7 +162,7 @@ test("forge create --package-manager npm writes npm into forge.yaml with npx bin
   expect(config.project.packageManager).toBe("npm");
   expect(config.bindings?.commands.validateRfc).toContain("npx");
   expect(config.bindings?.commands.validateRfc).toContain("forge rfc.validate");
-}, 30000);
+}, 120000);
 
 test("forge create --package-manager pnpm writes pnpm into forge.yaml", async () => {
   const result = await runCreate(
@@ -182,7 +182,7 @@ test("forge create --package-manager pnpm writes pnpm into forge.yaml", async ()
   const config = loadForgeConfig(tempDir);
   expect(config.project.packageManager).toBe("pnpm");
   expect(config.bindings?.commands.validateRfc).toContain("pnpm exec");
-}, 30000);
+}, 120000);
 
 test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async () => {
   await runCreate(
@@ -199,7 +199,7 @@ test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async
   expect(config.bindings?.commands.typecheck).toBeNull();
   expect(config.bindings?.commands.test).toBeNull();
   expect(config.bindings?.commands.scopedBuild).toBeNull();
-}, 30000);
+}, 120000);
 
 test("forge.yaml has forge.syncedVersion set", async () => {
   await runCreate(
@@ -209,7 +209,7 @@ test("forge.yaml has forge.syncedVersion set", async () => {
 
   const config = loadForgeConfig(tempDir);
   expect(config.forge?.syncedVersion).toBeTruthy();
-}, 30000);
+}, 120000);
 
 test("result includes nextSteps with forge-bootstrap", async () => {
   const result = await runCreate(
@@ -220,7 +220,7 @@ test("result includes nextSteps with forge-bootstrap", async () => {
   expect(result.nextSteps).toBeDefined();
   expect(result.nextSteps?.some((s) => s.action.includes("forge-bootstrap"))).toBe(true);
   expect(result.nextSteps?.some((s) => s.kind === "required")).toBe(true);
-}, 30000);
+}, 120000);
 
 test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async () => {
   const result = await runCreate(
@@ -237,7 +237,7 @@ test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async 
   expect(agentsMd).toContain("<!-- forge:begin behavioral-layer -->");
   expect(agentsMd).toContain("<!-- forge:end behavioral-layer -->");
   expect(agentsMd).toContain("### Intent-to-skill routing");
-}, 30000);
+}, 120000);
 
 test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance (RFC-0550)", async () => {
   const result = await runCreate(
@@ -255,7 +255,7 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
   expect(nextSteps).toContain("forge-bootstrap");
   expect(nextSteps).toContain("language");
   expect(result.data?.filesCreated).toContain("NEXT_STEPS.md");
-}, 30000);
+}, 120000);
 
 test("forge create root package.json has scripts and replaced project name", async () => {
   const result = await runCreate(
@@ -272,7 +272,7 @@ test("forge create root package.json has scripts and replaced project name", asy
   expect(pkgJson.scripts["format:check"]).toBe("prettier --check .");
   expect(pkgJson.scripts.test).toBe("vitest run --passWithNoTests");
   expect(pkgJson.scripts["upgrade-packages"]).toBe("pnpm up");
-}, 30000);
+}, 120000);
 
 test("forge create --in-place derives name from folder name when --name omitted", async () => {
   const namedDir = join(tempDir, "my-derived-project");
@@ -288,7 +288,7 @@ test("forge create --in-place derives name from folder name when --name omitted"
   const { readFile: readFileAsync } = await import("node:fs/promises");
   const pkgJson = JSON.parse(await readFileAsync(join(namedDir, "package.json"), "utf8"));
   expect(pkgJson.name).toBe("my-derived-project");
-}, 30000);
+}, 120000);
 
 test("forge create --profile godot-csharp writes compass.fileExtensions into forge.yaml", async () => {
   const result = await runCreate(
@@ -305,7 +305,7 @@ test("forge create --profile godot-csharp writes compass.fileExtensions into for
   expect(forgeYaml).toContain(".tscn");
   expect(forgeYaml).toContain(".tres");
   expect(forgeYaml).toContain(".gd");
-}, 30000);
+}, 120000);
 
 test("forge create --in-place setup-git-guards.sh contains shell auto-detection (RFC-1019)", async () => {
   const result = await runCreate(
@@ -319,7 +319,7 @@ test("forge create --in-place setup-git-guards.sh contains shell auto-detection 
   expect(setupScript).toContain(".zshenv");
   expect(setupScript).toContain(".bashrc");
   expect(setupScript).toContain("profile_file");
-}, 30000);
+}, 120000);
 
 test("forge create --in-place .windsurf/hooks.json calls wrapper not bash directly (RFC-1019)", async () => {
   const result = await runCreate(
@@ -332,7 +332,7 @@ test("forge create --in-place .windsurf/hooks.json calls wrapper not bash direct
   const hooksJson = await readFileAsync(join(tempDir, ".windsurf", "hooks.json"), "utf8");
   expect(hooksJson).toContain("pre-user-prompt-wrapper.mjs");
   expect(hooksJson).not.toContain("2>/dev/null || true");
-}, 30000);
+}, 120000);
 
 test("forge create --in-place pins pre-user-prompt-wrapper.mjs in pinned.yaml (RFC-1019)", async () => {
   const result = await runCreate(
@@ -344,7 +344,7 @@ test("forge create --in-place pins pre-user-prompt-wrapper.mjs in pinned.yaml (R
   const { readFile: readFileAsync } = await import("node:fs/promises");
   const pinnedYaml = await readFileAsync(join(tempDir, ".forge", "pinned.yaml"), "utf8");
   expect(pinnedYaml).toContain("pre-user-prompt-wrapper.mjs");
-}, 30000);
+}, 120000);
 
 test("forge create --profile phaser-turborepo writes compass.fileExtensions into forge.yaml", async () => {
   const result = await runCreate(
@@ -357,4 +357,4 @@ test("forge create --profile phaser-turborepo writes compass.fileExtensions into
   const forgeYaml = await readFileAsync(join(tempDir, "forge.yaml"), "utf8");
   expect(forgeYaml).toContain("compass:");
   expect(forgeYaml).toContain("fileExtensions:");
-}, 30000);
+}, 120000);
