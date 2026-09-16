@@ -58,7 +58,7 @@ Blocks out of this order are a `COMPASS-ORDER-01` violation.
 ### Rules
 
 - At most 5 `<item>` entries, each `ID: one-line description` (`COMPASS-CS-05`). The retained items are the 5 newest — the chronological tail.
-- Every `<item>` MUST carry a governance ID (`RFC-XXXX`, `ADR-XXXX`, ticket pattern); items without an ID are violations (`COMPASS-CS-06`) and are deleted by `compass.migrate`.
+- Every `<item>` MUST carry a governance ID (`RFC-XXXX`, `ADR-XXXX`, ticket pattern); items without an ID are violations (`COMPASS-CS-06`) and will be deleted by `compass.migrate` (sibling RFC, not yet implemented).
 - Older IDs collapse into a single `<history>` element: comma-separated, deduplicated, per-namespace ascending numeric order (`COMPASS-CS-07`). `<history>` carries IDs only — no descriptions — and has no length cap.
 - An empty `CHANGE_SUMMARY` (no items, no history) is legal for files never touched by a governance-referencing commit.
 

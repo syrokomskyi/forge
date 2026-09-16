@@ -829,6 +829,13 @@ function detectMarkup(source: string) {
   };
 }
 
+const entrySources = new WeakMap<CompassInventoryEntry, string>();
+
+/** Returns the source text captured during `createCompassInventoryEntries`, if still cached. */
+export function getEntrySource(entry: CompassInventoryEntry): string | undefined {
+  return entrySources.get(entry);
+}
+
 export async function createCompassInventoryEntries(
   workspaceRoot: string,
   input: ForgeCommandInput,
@@ -892,6 +899,7 @@ export async function createCompassInventoryEntries(
     };
     candidate.violations = detectComplianceViolations(candidate);
     candidate.compliant = candidate.violations.length === 0;
+    entrySources.set(candidate, source);
     entries.push(candidate);
   }
 

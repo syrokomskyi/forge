@@ -26,6 +26,7 @@ import { readFile } from "node:fs/promises";
 import {
   createCompassInventoryEntries,
   evaluateV2Rules,
+  getEntrySource,
   resolveCompassMode,
   type CompassInventoryEntry,
 } from "./compass-inventory.ts";
@@ -325,7 +326,15 @@ export async function runCompassValidation(
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context);
-  const mode = resolveCompassMode(input);
+  let mode: ReturnType<typeof resolveCompassMode>;
+  try {
+    mode = resolveCompassMode(input);
+  } catch {
+    context.logger.error(
+      `[compass.validate] invalid --mode value: ${String(input.flags["mode"])} (expected warning|error)`,
+    );
+    return { exitCode: 1, summary: "invalid --mode value" };
+  }
   const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
   const summary = summarizeInventory(entries);
   const failures = entries.filter(
@@ -355,7 +364,7 @@ export async function runCompassValidation(
   );
   for (const entry of authoredEntries) {
     const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = await readFile(absPath, "utf8");
+    const source = getEntrySource(entry) ?? (await readFile(absPath, "utf8"));
     for (const v2 of evaluateV2Rules(entry, source)) {
       if (!V2_VALIDATE_RULE_PREFIXES.some((prefix) => v2.ruleId.startsWith(prefix))) {
         continue;
