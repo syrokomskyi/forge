@@ -42,11 +42,17 @@ const compassScanFlags = {
   },
 } satisfies Record<string, ForgeFlagSpec>;
 
+// RFC-1094: --mode governs v2 rule severity on the two validating commands only.
+const compassModeFlag = {
+  kind: "string",
+  description: "v2 rule severity: warning (default, transition window) or error (post-migration).",
+} satisfies ForgeFlagSpec;
+
 export const forgeCompassModule: ForgeModule = {
   name: "forge-compass",
   version: "0.1.0",
   runtime: "autonomous",
-    declarations: [],
+  declarations: [],
   commands: [
     {
       name: "compass.inventory",
@@ -69,7 +75,7 @@ export const forgeCompassModule: ForgeModule = {
         "Validate authored source files against current Compass scaffolding requirements.",
       scope: "workspace",
       supportsAllSites: true,
-      flags: { ...compassScanFlags },
+      flags: { ...compassScanFlags, mode: compassModeFlag },
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -86,7 +92,7 @@ export const forgeCompassModule: ForgeModule = {
         "Validate CHANGE_SUMMARY blocks for boilerplate items and over-cap unprotected items (RFC-0349).",
       scope: "workspace",
       supportsAllSites: true,
-      flags: { ...compassScanFlags },
+      flags: { ...compassScanFlags, mode: compassModeFlag },
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -205,8 +211,7 @@ export const forgeCompassModule: ForgeModule = {
           description: "Warns by default, fails with --strict",
         },
       },
-    }
+    },
   ],
-  pipelines: [
-
-  ]};
+  pipelines: [],
+};
