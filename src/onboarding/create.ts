@@ -9,15 +9,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0544: initial forge.create handler composing scaffold + init.</item>
-  <item>RFC-0544 fix: replace double cast on runInit return with proper InitResult typing.</item>
-  <item>RFC-0548: auto-run forge.agents.generate after init, update nextSteps to remove manual AGENTS.md step.</item>
-  <item>RFC-0550: write NEXT_STEPS.md into project root with creator-facing guidance (greenfield vs transplant via LLM).</item>
   <item>RFC-0640: load profile domain fields and pass them to runInit for domain-aware bootstrapping.</item>
   <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
   <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
   <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, strict empty-directory check (only .git/ tolerated).</item>
-  <item>Initialize git repo with --initial-branch=main if .git does not exist (hard guard for main branch default).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0544, RFC-0548, RFC-0550</history>
 </CHANGE_SUMMARY>
 */
 

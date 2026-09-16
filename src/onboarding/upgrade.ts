@@ -15,8 +15,9 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
   <item>RFC-0611: added nested AGENTS.md generation after skill sync.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0664: added scaffoldMemoryLayer step to scaffold .agents/memory/ and .gitignore block.</item>
-  <item>Added --update-npm flag: updates @warpgogol/forge from npm before syncing (skipped in monorepo).</item>
-  <item>Added npm latest-version check: warns when a newer @warpgogol/forge is available on npm.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

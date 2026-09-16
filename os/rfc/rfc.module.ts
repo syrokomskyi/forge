@@ -8,8 +8,10 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0260: declare typed `flags` schemas for the whole rfc.* command family; unknown/malformed flags now fail with KERNEL-FLAG-01/02/03 instead of being silently ignored.</item>
-  <item>Post-refactor hardening: expose `rfc.create --satisfies` for explicit DNA trace scaffolding.</item>
   <item>RFC-0795: add `--batch` flag to `rfc.list` for filtering by batch slug.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

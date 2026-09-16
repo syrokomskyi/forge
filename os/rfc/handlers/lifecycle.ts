@@ -7,9 +7,11 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0303: extracted lifecycle logic from handlers.ts into handlers/lifecycle.ts.</item>
-  <item>Post-refactor hardening: targeted lifecycle validation resolves RFC ids inside archive subdirectories.</item>
   <item>RFC-0465: added RFC_METADATA_CUTOFF check to RFC-CMD-02 and RFC-CMD-03 rules — pre-cutoff RFCs are exempt from command registration checks.</item>
   <item>RFC-0465 fix: added manifest-based fallback in getLiveCommands — reads docs/command-manifest.generated.yaml when commandRegistry returns empty (site-kernel mode).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

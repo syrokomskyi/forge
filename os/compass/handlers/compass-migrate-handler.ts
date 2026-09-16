@@ -13,6 +13,9 @@ the migrateWorkspace codemod and returns the per-file action manifest.</purpose>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,11 +61,17 @@ export async function runCompassMigrate(
   const force = input.flags["force"] === true;
 
   const rawFiles = input.flags["files"];
-  const files = Array.isArray(rawFiles)
-    ? rawFiles.filter((entry): entry is string => typeof entry === "string")
-    : typeof rawFiles === "string"
-      ? [rawFiles]
-      : undefined;
+  const files = (
+    Array.isArray(rawFiles)
+      ? rawFiles.filter((entry): entry is string => typeof entry === "string")
+      : typeof rawFiles === "string"
+        ? [rawFiles]
+        : []
+  )
+    .flatMap((entry) => entry.split(","))
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  const explicitFiles = files.length > 0 ? files : undefined;
 
   // Dirty-tree refusal guards the write only — a dry-run writes nothing and
   // stays useful as a pre-commit preview on a dirty tree.
@@ -70,7 +79,8 @@ export async function runCompassMigrate(
     const dirty = listDirtyPaths(baseRoot);
     if (dirty && dirty.length > 0) {
       const shown = dirty.slice(0, DIRTY_LIST_CAP);
-      const suffix = dirty.length > shown.length ? ` … and ${dirty.length - shown.length} more` : "";
+      const suffix =
+        dirty.length > shown.length ? ` … and ${dirty.length - shown.length} more` : "";
       context.logger.error(
         `[compass.migrate] refusing to run on a dirty git tree (${dirty.length} uncommitted path(s)):\n${shown.map((p) => `  ${p}`).join("\n")}${suffix}\nCommit or stash first, or pass --force to override.`,
       );
@@ -79,7 +89,7 @@ export async function runCompassMigrate(
   }
 
   const result = await migrateWorkspace(context.workspaceRoot, input, scanRoot, policy, {
-    files,
+    files: explicitFiles,
     dryRun,
   });
 

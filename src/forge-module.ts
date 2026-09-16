@@ -8,8 +8,10 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial ForgeModule, ForgeModuleRegistry, ForgeCommandDefinition, ForgePipelineStep interfaces.</item>
-  <item>Forge autonomy refactor: ForgeCommandDefinition and ForgeCommandResult now reference canonical types from types.ts.</item>
   <item>RFC-0940: add optional runtime field to ForgeModule for autonomy declaration.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

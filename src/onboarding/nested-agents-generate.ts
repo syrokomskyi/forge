@@ -11,10 +11,12 @@ runAgentsGenerate, runUpgrade, and runDoctor (staleness check via dryRun).</purp
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0611: initial shared nested generation function with dryRun support.</item>
-  <item>Enriched template: read package.json metadata and pass to buildNestedAgentsMd for content-rich output.</item>
   <item>RFC-0640: accept optional workspaceTypes from profile and pass to discoverWorkspaces for profile-driven detection.</item>
   <item>RFC-0643: return workspaceTypeMap for per-file workspace type metadata in details field.</item>
   <item>RFC-0643: use selectNestedTemplate for profile-driven nested templates with terminology substitution.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

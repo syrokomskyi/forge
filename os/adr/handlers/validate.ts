@@ -7,9 +7,11 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0366: implement fail-hard ADR validation for the new adrModule.</item>
-  <item>Post-refactor hardening: allow ADRs to be superseded by existing RFC decisions.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
   <item>RFC-0722: add ADR-DIR-01 directory structure warning rule for unsanctioned subdirectories.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

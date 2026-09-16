@@ -7,21 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0374: initial forge.init handler.</item>
-  <item>RFC-0391: reworked to be config-driven — creates forge.yaml, uses resolveForgeRoot, creates docs/plans/ and docs/audits/ directories.</item>
-  <item>RFC-0392: added --from flag for stack detection from existing project or spec folder.</item>
-  <item>RFC-0393: defaultForgeConfig now includes default bindings section (all commands null, default paths).</item>
-  <item>RFC-0524: extended skill sync to copy declared knowledge files alongside SKILL.md.</item>
-  <item>RFC-0539: extended skill sync to also copy declared pack skills from skillPacks config.</item>
-  <item>RFC-0543: write forge.syncedVersion on first init (set to installed forge version).</item>
-  <item>RFC-0544: accept optional context.forgeRoot to support composition from forge.create.</item>
-  <item>RFC-0544 fix: export InitResult interface for type-safe consumption by forge.create.</item>
-  <item>RFC-0552: add skippedSkills to InitResult, detect Forge-vs-pack skill name conflicts.</item>
-  <item>RFC-0640: accept optional domain fields from profile (register, domain, terminology, semanticBindings) and write them into PREFERENCES.md and forge.yaml.</item>
   <item>RFC-0643: accept optional profileId and write it to forge.yaml as the `profile` field.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0941: create forge.plugin.yaml manifests for skill packs that lack them before calling discoverPackSkills.</item>
   <item>RFC-1019: extend PREFERENCES.md with formOfAddress, session-end protocol, skill invocation tracking, plan confirmation vs implementation, commit granularity rules.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0374, RFC-0391, RFC-0392, RFC-0393, RFC-0524, RFC-0539, RFC-0543, RFC-0544, RFC-0552, RFC-0640</history>
 </CHANGE_SUMMARY>
 */
 

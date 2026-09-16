@@ -13,7 +13,9 @@ in subdirectories back to the root.
 <CHANGE_SUMMARY>
   <item>RFC-0367: implement rfc.archive command for terminal-status file archiving.</item>
   <item>RFC-0733: add pinned-files pre-check — skip pinned files with warning instead of moving them.</item>
-  <item>Gap fix: automatically rebuild docs/rfcs/index.yaml after moves to prevent stale index.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

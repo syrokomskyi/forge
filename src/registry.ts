@@ -6,18 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0374: initial ForgeSkillEntry interface and FORGE_SKILLS registry (17 migrated + 3 meta = 20).</item>
-  <item>Added fo-add-tests skill (11th fo skill) — absorbs tdd + PBT conventions from RFC-0347.</item>
-  <item>Skill consolidation: added fo-architecture, fo-handoff, fo-triage, fo-qa (15 fo skills). Removed handoff, improve-codebase-architecture, to-spec from shared (absorbed into fo-). Shared skills reduced to 4 (grilling, my-preferences, windows-ai-tooling, writing-great-skills).</item>
-  <item>Renamed skill prefix wg- → fo- across all skills, paths, and categories. Added fo-idea-status, fo-idea-i-just-want-to-see-the-plan, fo-idea-i-just-want-to-see-the-result (18 fo skills total).</item>
-  <item>Added fo-doc-audit skill (19th fo skill) — centralized documentation audit replacing inline AGENTS/README update steps in fo-fix and fo-idea-implement.</item>
-  <item>RFC-0395: added fo-spec-ingest skill (20th fo skill) — spec package ingest/authoring with validation, grilling, and acceptance gate.</item>
-  <item>Added fo-session-retro skill (21st fo skill) — session-end insight triage, categorizes discoveries and routes to AGENTS.md / ADR / DNA / forge / memory.</item>
-  <item>RFC-0523: expanded concerns enum from binary (document-only | implementation) to four-level taxonomy (read-only | document-only | content-mutation | code-mutation). All 30 skills reclassified.</item>
   <item>RFC-0524: added optional knowledge?: string[] field for cumulative knowledge system. Added knowledge arrays to fo-site-scan and grilling.</item>
   <item>RFC-0538: added fo-compass-annotate skill (22nd fo skill) — full-lifecycle Compass header management replacing removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add kernel commands.</item>
   <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to warpgogol-skills as wg- pack skills).</item>
   <item>RFC-0941: discoverPackSkills now requires forge.plugin.yaml manifest at each pack root — throws on missing or invalid manifest (fail-fast).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0374, RFC-0395, RFC-0523</history>
 </CHANGE_SUMMARY>
 */
 

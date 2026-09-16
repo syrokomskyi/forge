@@ -9,7 +9,9 @@
 <CHANGE_SUMMARY>
   <item>RFC-0392: initial forge.scaffold handler.</item>
   <item>RFC-0542: populate nextSteps in forge.scaffold result.</item>
-  <item>Add __PROJECT_NAME__ placeholder replacement for workspace files; profiles now include root package.json with scripts (clean, format, test, upgrade-packages) and scripts/clean.mjs.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

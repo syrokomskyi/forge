@@ -6,21 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0391: initial forge-config module with zod schema, loadForgeConfig, resolveForgeRoot.</item>
-  <item>RFC-0393: added ForgeBindings schema, resolveBinding with placeholder substitution.</item>
-  <item>RFC-0538: added optional compass binding section (fileExtensions, testPatterns).</item>
-  <item>RFC-0537: added sessionsDir to paths and bindings.paths schemas.</item>
-  <item>RFC-0539: added ForgeSkillPack schema and skillPacks to forge config for project-declared skill packs.</item>
-  <item>RFC-0540: added implementStamp to bindings schema, FORGE_CLI_BINDING_DEFAULTS, PM_RUNNER_MAP, resolvePmRunner, applyCliBindingDefaults.</item>
-  <item>RFC-0540 fix: eliminated type casts — applyCliBindingDefaults returns ForgeBindings["commands"] directly, resolvePackageManager validates pm against enum.</item>
-  <item>RFC-0543: added optional forge.syncedVersion field to forgeConfigSchema and defaultForgeConfig for consumer upgrade tracking.</item>
-  <item>RFC-0546: added optional migrationAdapters field to forgeConfigSchema for migration-adapter registry discovery.</item>
-  <item>RFC-0639: added 5 semantic command keys (validate, produce, verify, preview, lint), terminology promoted from .optional() to .default({}), resolveTerminology function.</item>
-  <item>RFC-0640: added optional domain field to project section for domain-aware bootstrapping and health checks.</item>
   <item>RFC-0643: added optional profile field to forgeConfigSchema and ForgeConfig; loadForgeConfig loads profiles/<id>.yaml when present.</item>
   <item>RFC-0661: added optional knowledge.budgets binding for hot/warm layer character budget overrides.</item>
   <item>RFC-0662: added optional knowledge.retentionDays and knowledge.staleDays bindings for compaction overrides.</item>
   <item>RFC-0704: added optional independentVersionPackages field to forgeConfigSchema for packages with autonomous npm versions.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640</history>
 </CHANGE_SUMMARY>
 */
 

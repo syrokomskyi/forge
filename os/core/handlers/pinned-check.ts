@@ -12,7 +12,9 @@ per invocation — loadPinnedManifest is called once and the result is reused.</
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0733: initial pinned-check utility — loadPinnedManifest, isPinned, checkFilesForPinned.</item>
-  <item>Gap fix: add isIntraDirMove to exempt moves within the same pinned directory (e.g. rfc.archive moves docs/rfcs/x.md → docs/rfcs/archive/implemented/x.md).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

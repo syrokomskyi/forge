@@ -6,30 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0374: initial forgeCoreModule registering 4 forge commands.</item>
-  <item>RFC-0521: register docs.archive umbrella command dispatching to rfc/adr/plan/audit archive commands.</item>
-  <item>RFC-0539: extended forge.skill.list to include pack skills with pack column.</item>
-  <item>RFC-0542: populate nextSteps in forge.init, forge.scaffold, forge.doctor, forge.port.scaffold results.</item>
-  <item>RFC-0543: register forge.upgrade command for additive consumer sync.</item>
-  <item>RFC-0544: register forge.create command composing scaffold + init.</item>
-  <item>RFC-0544 fix: simplify createWrapper — runCreate already populates nextSteps.</item>
-  <item>RFC-0546: remove forge.init CLI registration; runInit() remains as internal primitive called by forge.create.</item>
-  <item>RFC-0640: register forge.profile.validate command, add --strict flag to forge.doctor.</item>
-  <item>RFC-0662: register forge.skill.knowledge.compact command for skill knowledge lifecycle compaction.</item>
-  <item>RFC-0674: register forge.dev, forge.build, forge.validate lifecycle commands.</item>
-  <item>RFC-0678: register forge.determinism.check lifecycle command.</item>
-  <item>RFC-0679: register forge.assets.list, forge.assets.check commands.</item>
-  <item>RFC-0680: register forge.release.prepare, forge.release.publish commands.</item>
-  <item>ADR-0021: profile-driven video lifecycle — all lifecycle commands read behavior from profile YAML, zero domain-specific code in Forge source.</item>
-  <item>RFC-0711: docs.archive post-loop step calls spec.live.merge for implemented RFCs with liveSpec field; skips rejected RFCs.</item>
-  <item>RFC-0733: register forge pinned.validate and forge pinned.init commands for pinned-files protection system.</item>
-  <item>Lockfile safety net: docs.archive post-loop refreshes pnpm-lock.yaml after mission workpiece moves.</item>
-  <item>RFC-0877: forge.create --in-place required, --profile required, --name optional (derived from folder), strict empty-directory check (only .git/ tolerated).</item>
-  <item>RFC-0940: register forge.autonomy.validate command enforcing FORGE-AUTONOMY-01 (no @warpgogol/werkstatt-engine imports outside os/werkstatt/).</item>
   <item>RFC-1080: register forge.public-surface.validate command for README/package.json consistency checks (SURFACE-01..05).</item>
   <item>RFC-1088: register forge.file-size.lint command for portable SIZE-01 line-count validation.</item>
   <item>RFC-1088 fix: add writes field to forge.file-size.lint registration per fo-review.</item>
   <item>RFC-1089: rename forge.file-size.lint to file.size.lint (domain validator, no forge. prefix).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940</history>
 </CHANGE_SUMMARY>
 */
 

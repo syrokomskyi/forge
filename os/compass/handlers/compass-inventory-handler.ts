@@ -13,10 +13,12 @@ contract block specs alongside built-in MODULE_CONTRACT and CHANGE_SUMMARY check
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
-  <item>Game extensions: added COMPASS-SYNTAX-01 diagnostic validating comment syntax per file type (.gd needs # prefix, .tscn/.tres need ; prefix, .ts/.cs need block comment).</item>
   <item>RFC-0943: added COMPASS-PLUGIN-01/02/03 diagnostics for pack-declared contract block specs from forge.plugin.yaml extensionPoints.</item>
   <item>RFC-1094: --mode warning|error on compass.validate; mode-aware v2 diagnostics (KD/ORDER/PURPOSE) with severity field; inventory data.entries now carries full entries and XML gains v2 fields.</item>
   <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <history>RFC-0348, RFC-0350</history>
 </CHANGE_SUMMARY>
 */
