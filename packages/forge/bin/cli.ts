@@ -13,6 +13,7 @@ registers forge modules and dispatches commands. Works autonomously without
   <item>Initial CLI bin entrypoint for forge autonomy refactor.</item>
   <item>RFC-0542: self-documenting output contract — renderNextSteps, renderIdeRecommendation, generateHelp, --help <command> flag.</item>
   <item>RFC-0543: source VERSION from package.json at runtime instead of hardcoded constant.</item>
+  <item>Register all 16 forge modules in CLI registry — add adr, plan, audit, mission, spec, program, plugin (previously only 9 of 16 were reachable via `forge <cmd>`).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -147,6 +148,13 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
   const modules: ForgeModule[] = [
     await import("../os/core/core.module.ts").then((m) => m.createForgeCoreModule()),
     await import("../os/rfc/rfc.module.ts").then((m) => m.createForgeRfcModule()),
+    await import("../os/adr/adr.module.ts").then((m) => m.createForgeAdrModule()),
+    await import("../os/plan/plan.module.ts").then((m) => m.createForgePlanModule()),
+    await import("../os/audit/audit.module.ts").then((m) => m.createForgeAuditModule()),
+    await import("../os/mission/mission.module.ts").then((m) => m.createForgeMissionModule()),
+    await import("../os/spec/spec.module.ts").then((m) => m.createForgeSpecModule()),
+    await import("../os/program/program.module.ts").then((m) => m.createForgeProgramModule()),
+    await import("../os/plugin/plugin.module.ts").then((m) => m.forgePluginModule),
     await import("../os/workflow/workflow.module.ts").then((m) => m.createForgeWorkflowModule()),
     await import("../os/naming/naming.module.ts").then((m) => m.createForgeNamingModule()),
     await import("../os/compass/compass.module.ts").then((m) => m.forgeCompassModule),
