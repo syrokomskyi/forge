@@ -10,13 +10,14 @@ for Compass source-file inventory.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: moved canonical implementation from the legacy site kernel package to @warpgogol/forge for autonomous mode.</item>
-  <item>Game extensions: added .cs, .tscn, .tres, .gd to SOURCE_EXTENSIONS; createCompassInventoryEntries now reads forge.yaml compass.fileExtensions at runtime and merges with hardcoded set.</item>
   <item>Added .md to SOURCE_EXTENSIONS for SKILL.md Compass coverage; detectAuthoringStatus excludes non-SKILL.md markdown files.</item>
   <item>RFC-1094: v2 contract — KEY_DECISIONS/history parsing, new inventory fields, evaluateV2Rules, deriveFileTokens, resolveCompassMode, shared GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1096: all policy literals externalized to resolveCompassPolicy — scan roots, extensions, ignored dirs/paths, layer/risk rules, governance-ID and boilerplate patterns come from generic defaults + profile + bindings.compass.</item>
-  <history>RFC-0348</history>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <history>RFC-0348, RFC-0556</history>
 </CHANGE_SUMMARY>
 */
 
@@ -291,7 +292,11 @@ function detectAuthoringStatus(
     };
   }
 
-  if (relativePath.endsWith(".md") && !relativePath.endsWith("SKILL.md")) {
+  // Check the filename, not the workspace-relative path: files directly under
+  // a workspace dir (packages/AGENTS.md) get an empty workspace-relative path
+  // and would otherwise escape the markdown exclusion.
+  const fileName = segments[segments.length - 1] ?? relativePath;
+  if (fileName.endsWith(".md") && !fileName.endsWith("SKILL.md")) {
     return {
       authoringStatus: "excluded",
       exclusionReason: "non-skill-markdown",

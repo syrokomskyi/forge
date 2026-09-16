@@ -11,6 +11,20 @@ bindings:
   optional: []
 triggers: ["explore this idea", "let me think about this", "what are the options for", "what if we"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-explore skill — Explore an idea in the codebase without creating an RFC or ADR. Produces a markdown exploration note in docs/explorations/. Use when weighing options before committing to a specification.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Explore an idea before specification
 

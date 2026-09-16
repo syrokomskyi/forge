@@ -11,6 +11,20 @@ bindings:
   optional: [paths.invariantsFile, paths.compassDocs]
 triggers: ["review this code diff", "check code against Forge standards", "fitness check on code changes"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-review skill — Cross-session fitness check of a code diff against Forge standards — DNA, forward-only, Compass, agent clarity, pragmatism. The code analogue of fo-idea-audit. Use when another agent produced code.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # fo-review
 

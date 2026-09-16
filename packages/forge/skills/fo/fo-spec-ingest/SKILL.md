@@ -11,6 +11,20 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["ingest external specification", "vendor spec package into docs", "author spec skeleton"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-spec-ingest skill — Ingest an external specification package into docs/specs/ or author a spec skeleton from fo-idea escalation. Builds forge-spec.yaml, validates, grills the spec delta, and obtains operator acceptance.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Spec Ingest
 

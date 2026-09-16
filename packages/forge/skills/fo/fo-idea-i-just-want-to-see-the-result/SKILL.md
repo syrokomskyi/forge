@@ -8,6 +8,20 @@ dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["I just want to see the result", "run the full pipeline automatically", "implement this end-to-end without pauses"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-idea-i-just-want-to-see-the-result skill — Orchestrate the full feature pipeline (idea, audit, enhance, plan, implement, review, fix) in one invocation. Accepts a raw idea or RFC/ADR id. Use when the operator wants the complete pipeline.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Full Pipeline — Just Want to See the Result
 

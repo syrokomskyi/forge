@@ -11,6 +11,20 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["enhance this RFC", "fix audit findings in RFC", "improve RFC based on audit"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-idea-enhance skill — Enhance RFCs by integrating audit findings. Fixes gaps, DNA misalignment, drift, and blind spots. May split out new RFCs. Use after fo-idea-audit or when asked to enhance an RFC.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # RFC Enhance
 

@@ -11,6 +11,20 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["record this architectural decision", "create an ADR", "document a local technical decision"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-idea-create-adr skill — Create a lightweight Architectural Decision Record (ADR) draft in docs/adrs/. Use when the user asks to record a local technical decision that does not need a full RFC.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # ADR Create
 

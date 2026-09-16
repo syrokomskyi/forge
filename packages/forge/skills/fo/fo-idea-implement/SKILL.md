@@ -11,6 +11,20 @@ bindings:
   optional: [commands.test, commands.scopedBuild, paths.invariantsFile, paths.compassDocs]
 triggers: ["implement this RFC", "execute the implementation plan", "realize this RFC end-to-end"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-idea-implement skill — Implement one or more RFCs or ADRs end-to-end. Detects document type by prefix and executes the appropriate flow. Use when the user asks to implement, realize, or execute a document.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Implement RFC or ADR
 

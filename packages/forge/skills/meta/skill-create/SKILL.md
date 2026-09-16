@@ -7,6 +7,20 @@ concerns: document-only
 dependsOn: ['grilling', 'writing-great-skills']
 languagePolicy: ref(PREFERENCES.md)
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>skill-create skill — Guides an agent through creating a new forge-compliant skill — determines category, invocation, concerns, dependencies, generates frontmatter, calls port.scaffold, and validates.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # skill-create
 

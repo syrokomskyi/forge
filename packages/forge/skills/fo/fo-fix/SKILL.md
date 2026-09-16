@@ -11,6 +11,20 @@ bindings:
   optional: [commands.test, paths.invariantsFile]
 triggers: ["fix issues from review", "apply review findings and fix", "iterative fix workflow for code"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-fix skill — Iterative fix workflow for AI-generated work. Calls fo-review if needed, applies findings, runs scoped typecheck, commits, and delegates doc updates to fo-doc-audit.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # fo-fix
 
