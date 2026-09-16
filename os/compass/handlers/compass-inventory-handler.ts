@@ -31,6 +31,7 @@ import {
   type CompassInventoryEntry,
 } from "./compass-inventory.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
+import { resolveCompassPolicy, type CompassPolicySource } from "../policy.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import {
@@ -259,10 +260,12 @@ export async function runCompassInventory(
     entries: CompassInventoryEntry[];
     outputPath: string;
     summary: CompassInventorySummary;
+    policySource: CompassPolicySource;
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context) ?? context.workspaceRoot;
-  const entries = await createCompassInventoryEntries(scanRoot, input);
+  const policy = resolveCompassPolicy(scanRoot, context.forgeRoot);
+  const entries = await createCompassInventoryEntries(scanRoot, input, undefined, policy);
   const summary = summarizeInventory(entries);
 
   context.logger.info(
@@ -274,7 +277,7 @@ export async function runCompassInventory(
       `[compass.inventory] dry-run active — skipped writing ${INVENTORY_OUTPUT_PATH}`,
     );
     return {
-      data: { entries, outputPath: INVENTORY_OUTPUT_PATH, summary },
+      data: { entries, outputPath: INVENTORY_OUTPUT_PATH, summary, policySource: policy.source },
       summary: `[compass.inventory] previewed ${INVENTORY_OUTPUT_PATH}`,
       nextSteps: [
         {
@@ -290,7 +293,7 @@ export async function runCompassInventory(
   await writeFileIfChanged(outputPath, xml);
 
   return {
-    data: { entries, outputPath, summary },
+    data: { entries, outputPath, summary, policySource: policy.source },
     summary: `[compass.inventory] ${context.dryRun ? "previewed" : "wrote"} ${INVENTORY_OUTPUT_PATH}`,
     nextSteps: context.dryRun
       ? [
@@ -335,7 +338,13 @@ export async function runCompassValidation(
     );
     return { exitCode: 1, summary: "invalid --mode value" };
   }
-  const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
+  const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
+  const entries = await createCompassInventoryEntries(
+    context.workspaceRoot,
+    input,
+    scanRoot,
+    policy,
+  );
   const summary = summarizeInventory(entries);
   const failures = entries.filter(
     (entry) =>
@@ -370,7 +379,7 @@ export async function runCompassValidation(
   for (const entry of authoredEntries) {
     const absPath = resolve(context.workspaceRoot, entry.path);
     const source = getEntrySource(entry) ?? (await readFile(absPath, "utf8"));
-    for (const v2 of evaluateV2Rules(entry, source)) {
+    for (const v2 of evaluateV2Rules(entry, source, policy)) {
       if (!V2_VALIDATE_RULE_PREFIXES.some((prefix) => v2.ruleId.startsWith(prefix))) {
         continue;
       }

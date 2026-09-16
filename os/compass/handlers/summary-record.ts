@@ -20,12 +20,8 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
 import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
-import {
-  detectLayer,
-  detectRiskClass,
-  getWorkspaceRelativeSegments,
-  GOVERNANCE_ID_RE,
-} from "./compass-inventory.ts";
+import { detectRiskClass, getWorkspaceRelativeSegments } from "./compass-inventory.ts";
+import { parseGovernanceIdParts, resolveCompassPolicy, type CompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type {
@@ -37,8 +33,6 @@ import type {
 const CHANGE_SUMMARY_BLOCK_RE = /<CHANGE_SUMMARY>[\s\S]*?<\/CHANGE_SUMMARY>/;
 const ITEM_RE = /<item>([\s\S]*?)<\/item>/g;
 const HISTORY_RE = /<history>([\s\S]*?)<\/history>/;
-const HISTORY_ID_FULL_RE = /^([A-Z][A-Z0-9]*-)+\d+$/;
-const HISTORY_ID_PARTS_RE = /^(([A-Z][A-Z0-9]*-)+)(\d+)$/;
 const CONVENTIONAL_PREFIX_RE = /^[a-z]+(\([^)]*\))?!?:\s*/i;
 
 export const CHANGE_SUMMARY_WINDOW = 5;
@@ -92,19 +86,25 @@ function normalizeItemText(text: string): string {
   return text.trim().replace(/\s+/g, " ");
 }
 
-function leadingGovernanceId(item: string): string | null {
-  const match = item.match(GOVERNANCE_ID_RE);
+function leadingGovernanceId(item: string, policy: CompassPolicy): string | null {
+  const match = item.match(policy.idPattern);
   return match && match.index === 0 ? match[0] : null;
 }
 
 /** Merge existing + new history IDs: dedupe, per-namespace ascending numeric order. */
-export function mergeHistoryIds(existing: string[], incoming: string[]): string[] {
-  const all = [...new Set([...existing, ...incoming])].filter((id) => HISTORY_ID_FULL_RE.test(id));
+export function mergeHistoryIds(
+  existing: string[],
+  incoming: string[],
+  policy: CompassPolicy,
+): string[] {
+  const all = [...new Set([...existing, ...incoming])].filter((id) =>
+    policy.idPatternFull.test(id),
+  );
   return all.sort((a, b) => {
-    const pa = a.match(HISTORY_ID_PARTS_RE)!;
-    const pb = b.match(HISTORY_ID_PARTS_RE)!;
-    const ns = pa[1]!.localeCompare(pb[1]!);
-    return ns !== 0 ? ns : Number(pa[3]) - Number(pb[3]);
+    const pa = parseGovernanceIdParts(a)!;
+    const pb = parseGovernanceIdParts(b)!;
+    const ns = pa.namespace.localeCompare(pb.namespace);
+    return ns !== 0 ? ns : pa.numeric - pb.numeric;
   });
 }
 
@@ -138,8 +138,8 @@ export function stripConventionalPrefix(subject: string): string {
   return subject.replace(CONVENTIONAL_PREFIX_RE, "").trim();
 }
 
-export function isValidGovernanceId(id: string): boolean {
-  return new RegExp(`^${GOVERNANCE_ID_RE.source}$`).test(id);
+export function isValidGovernanceId(id: string, policy: CompassPolicy): boolean {
+  return policy.idPatternFull.test(id);
 }
 
 interface RecordOutcome {
@@ -158,6 +158,7 @@ export async function recordSummaryItem(
   id: string,
   text: string,
   dryRun: boolean,
+  policy: CompassPolicy,
 ): Promise<RecordOutcome> {
   const source = await readFile(absPath, "utf8");
   const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
@@ -192,11 +193,11 @@ export async function recordSummaryItem(
   const collapsedIds: string[] = [];
   while (nextItems.length > CHANGE_SUMMARY_WINDOW) {
     const oldest = nextItems.shift()!;
-    const oldId = leadingGovernanceId(oldest);
+    const oldId = leadingGovernanceId(oldest, policy);
     if (oldId) collapsedIds.push(oldId);
   }
   const collapsed = collapsedIds.length > 0;
-  const nextHistory = mergeHistoryIds(historyIds, collapsedIds);
+  const nextHistory = mergeHistoryIds(historyIds, collapsedIds, policy);
 
   const newBlock = buildChangeSummaryBlock(nextItems, nextHistory, relPath);
   const transformed = source.replace(CHANGE_SUMMARY_BLOCK_RE, newBlock);
@@ -206,11 +207,10 @@ export async function recordSummaryItem(
   return { recorded: true, collapsed };
 }
 
-function riskReminderNeeded(relPath: string, source: string): boolean {
+function riskReminderNeeded(relPath: string, source: string, policy: CompassPolicy): boolean {
   const segments = relPath.split("/").filter(Boolean);
-  const workspaceRel = getWorkspaceRelativeSegments(segments).join("/");
-  const layer = detectLayer(workspaceRel);
-  const risk = detectRiskClass(relPath, layer);
+  const workspaceRel = getWorkspaceRelativeSegments(segments, policy).join("/");
+  const risk = detectRiskClass(relPath, workspaceRel, policy);
   return risk === "medium" || risk === "high" || source.includes("<KEY_DECISIONS>");
 }
 
@@ -218,8 +218,12 @@ export async function runCompassSummaryRecord(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<SummaryRecordResult>> {
+  const scanRootEarly = resolveCompassScanRoot(input, context);
+  const baseRootEarly = scanRootEarly ?? context.workspaceRoot;
+  const policy = resolveCompassPolicy(baseRootEarly, context.forgeRoot);
+
   const id = input.flags["id"];
-  if (typeof id !== "string" || !isValidGovernanceId(id)) {
+  if (typeof id !== "string" || !isValidGovernanceId(id, policy)) {
     context.logger.error(
       `[compass.summary.record] --id is required and must be a governance ID (e.g. RFC-1095), got: ${String(id)}`,
     );
@@ -236,8 +240,7 @@ export async function runCompassSummaryRecord(
   const rawText = input.flags["text"];
   const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : id;
 
-  const scanRoot = resolveCompassScanRoot(input, context);
-  const baseRoot = scanRoot ?? context.workspaceRoot;
+  const baseRoot = baseRootEarly;
 
   const result: SummaryRecordResult = {
     command: "compass.summary.record",
@@ -257,7 +260,7 @@ export async function runCompassSummaryRecord(
       continue;
     }
     try {
-      const outcome = await recordSummaryItem(absPath, relPath, id, text, context.dryRun);
+      const outcome = await recordSummaryItem(absPath, relPath, id, text, context.dryRun, policy);
       if (outcome.skipReason) {
         result.skipped.push({ file, reason: outcome.skipReason });
         continue;
@@ -266,7 +269,7 @@ export async function runCompassSummaryRecord(
         result.recorded.push(relPath);
         if (outcome.collapsed) result.collapsed.push(relPath);
         const source = await readFile(absPath, "utf8");
-        if (riskReminderNeeded(relPath, source)) {
+        if (riskReminderNeeded(relPath, source, policy)) {
           result.keyDecisionsReminders.push(relPath);
           context.logger.warn(`[compass.summary.record] review KEY_DECISIONS in ${relPath}`);
         }

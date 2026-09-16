@@ -53,6 +53,10 @@ Skill packs MAY declare additional Compass contract blocks beyond the built-in `
 
 `compass.validate` loads block specs from all declared skill packs via `loadContractRegistry` and emits `COMPASS-PLUGIN-01` (missing block), `COMPASS-PLUGIN-02` (missing required tag), and `COMPASS-PLUGIN-03` (tag below minWords) diagnostics. Duplicate `blockId` across packs is rejected with `COMPASS-PLUGIN-DUP-01`. The `FORBIDDEN_PATTERNS` negative list stays hardcoded in `compass-inventory.ts` and is not extensible by packs.
 
+## Compass policy externalization (RFC-1096)
+
+All Compass policy values — scan roots, file extensions, ignored dirs/prefixes, test patterns, high-risk globs, layer/risk rules, workspace-kind map, exclusion globs, governance-ID and boilerplate regexes — are resolved by `resolveCompassPolicy` in `os/compass/policy.ts` from three layers: generic defaults → stack profile `compass:` section → consumer `forge.yaml` `bindings.compass`. Agents MUST NOT add stack- or consumer-specific literals (paths, extensions, regexes) to `os/compass/**` — they belong in `profiles/*.yaml` or the consumer's `forge.yaml`. Union keys merge with `!`-subtraction; `scanRoots`, `idPattern`, `purposeBoilerplatePatterns`, `layerRules`, `workspaceKinds` replace wholesale. `idPattern` must match the `ABC-123` probe or resolution throws `CompassPolicyConfigError`. See `docs/reference/forge-yaml.md` `bindings.compass` for the key reference.
+
 ## Commit and config loading rules
 
 - **Verify `ecosystem.commit` output.** `ecosystem.commit` commits whatever is in the git index (staged files). If another agent staged files before your call, those files will be included in your commit instead of your own. After every `ecosystem.commit`, run `git show --stat HEAD` to verify the correct files were committed. If wrong files were committed, the missing files remain untracked/unstaged and must be committed separately.

@@ -33,11 +33,12 @@ const MC = (purpose: string) =>
 const KD = (items: string[]) =>
   `<KEY_DECISIONS>\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n</KEY_DECISIONS>`;
 const KD_EMPTY = `<KEY_DECISIONS>\n</KEY_DECISIONS>`;
+// Dynamic tags: a literal CHANGE_SUMMARY block in this file would be matched
+// by compass.summary.record itself and rewritten at commit time.
+const CS_OPEN = "<" + "CHANGE_SUMMARY>";
+const CS_CLOSE = "</" + "CHANGE_SUMMARY>";
 const CS = (items: string[], history?: string) =>
-  `<CHANGE_SUMMARY>
-  <item>${i}</item>
-  <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
-</CHANGE_SUMMARY>`;
+  `${CS_OPEN}\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n${history ? `  <history>${history}</history>\n` : ""}${CS_CLOSE}`;
 const wrap = (...blocks: string[]) => `/*\n${blocks.join("\n")}\n*/`;
 
 const PURPOSE_WITH_TOKEN =
