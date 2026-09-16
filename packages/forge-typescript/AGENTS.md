@@ -47,19 +47,23 @@ src/
     typescript-paths.ts             # TypeScript path conventions
   invariants/
     typescript-invariants.ts        # TS-001..006 stack invariant declarations
+  model/
+    workspace-model.ts              # TsWorkspaceModel — single workspace scan + AST facts (RFC-1099)
   checks/
     module.ts                       # typescript-checks module registration
+    run-ts-check.ts                 # defineTsCheck harness — model + --globs + envelope (RFC-1099)
     diagnostic-helpers.ts           # Shared diagnostic/summary helpers for validators
-    tsconfig-validate.ts            # ts.tsconfig.validate (TS-001)
-    import-boundaries-validate.ts   # ts.import.boundaries.validate (TS-002)
-    phantom-deps-validate.ts        # ts.phantom.deps.validate (TS-003)
-    package-exports-validate.ts     # ts.package.exports.validate (TS-004)
-    strict-mode-validate.ts         # ts.strict.mode.validate (TS-005)
-    barrel-validate.ts              # ts.barrel.validate (TS-006)
+    tsconfig-validate.ts            # ts.tsconfig.validate (TS-001) — pure rule
+    import-boundaries-validate.ts   # ts.import.boundaries.validate (TS-002) — pure rule
+    phantom-deps-validate.ts        # ts.phantom.deps.validate (TS-003) — pure rule
+    package-exports-validate.ts     # ts.package.exports.validate (TS-004) — pure rule
+    strict-mode-validate.ts         # ts.strict.mode.validate (TS-005) — pure rule
+    barrel-validate.ts              # ts.barrel.validate (TS-006) — pure rule
   __tests__/
     plugin-entry.test.ts            # Plugin entry point tests
-    validators.test.ts              # Validator unit tests
 ```
+
+Validators are pure rules: each `src/checks/*-validate.ts` exports `create*Command()` built via `defineTsCheck({ name, contract, rules, reads, check })`. The `check(model)` function consumes `TsWorkspaceModel` facts only — no file I/O inside rules. Tests exercise the public `definition.execute()` seam in adjacent `*.test.ts` files.
 
 ## Plugin contract
 
