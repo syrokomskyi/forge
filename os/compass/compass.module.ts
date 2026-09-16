@@ -9,6 +9,7 @@
   <item>RFC-0374: initial forgeCompassModule registering 12 compass commands.</item>
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add.</item>
   <item>RFC-0556: removed dynamic import of @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/compass/handlers/.</item>
+  <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,10 +22,8 @@ import {
   runCompassAuditBaseline,
   runCompassAuditValidate,
 } from "./handlers/compass-audit-handler.ts";
-import {
-  runCompassChangeSummaryValidate,
-  runCompassSummaryTrim,
-} from "./handlers/compass-change-summary-handler.ts";
+import { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler.ts";
+import { runCompassSummaryRecord } from "./handlers/summary-record.ts";
 
 const compassScanFlags = {
   packages: {
@@ -85,25 +84,9 @@ export const forgeCompassModule: ForgeModule = {
       execute: runCompassValidation,
     },
     {
-      name: "compass.changesummary.validate",
-      contract: "compass",
-      rules: [],
+      name: "compass.summary.record",
       description:
-        "Validate CHANGE_SUMMARY blocks for boilerplate items and over-cap unprotected items (RFC-0349).",
-      scope: "workspace",
-      supportsAllSites: true,
-      flags: { ...compassScanFlags, mode: compassModeFlag },
-      reads: [
-        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
-        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
-        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
-      ],
-      execute: runCompassChangeSummaryValidate,
-    },
-    {
-      name: "compass.summary.trim",
-      description:
-        "Deterministically trim CHANGE_SUMMARY blocks: remove boilerplate, cap total items to 30, preserve protected items (RFC-0538).",
+        "Append a governance-referencing item to each target file's CHANGE_SUMMARY and collapse the 5-item window into <history> (RFC-1095). Invoked by commit commands when a commit carries an RFC/ADR reference.",
       scope: "workspace",
       mutatesState: true,
       supportsAllSites: true,
@@ -118,7 +101,51 @@ export const forgeCompassModule: ForgeModule = {
         "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
       cacheable: false,
-      flags: { ...compassScanFlags },
+      flags: {
+        ...compassScanFlags,
+        id: {
+          kind: "string",
+          required: true,
+          description: "Governance ID to record (e.g. RFC-1095, ADR-0042).",
+        },
+        files: {
+          kind: "string[]",
+          description:
+            "Target files (repo-relative, or workpiece-relative with --workpiece). Commit integrations pass the commit's changed-file set.",
+        },
+        text: {
+          kind: "string",
+          description:
+            "Item description. Default: commit subject minus conventional prefix; bare ID outside commit context.",
+        },
+      },
+      execute: runCompassSummaryRecord,
+    },
+    {
+      name: "compass.summary.trim",
+      description:
+        "Repair CHANGE_SUMMARY blocks to the v2 shape: collapse described items past 5 into <history>, remove ID-less items, normalize <history> (RFC-1095).",
+      scope: "workspace",
+      mutatesState: true,
+      supportsAllSites: true,
+      writes: [
+        "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
+      cacheable: false,
+      flags: {
+        ...compassScanFlags,
+        mode: {
+          kind: "string",
+          description: "Repair mode: repair (default, only mode — reserved for future modes).",
+        },
+      },
       execute: runCompassSummaryTrim,
     },
     {
