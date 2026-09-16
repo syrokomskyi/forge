@@ -11,6 +11,20 @@ bindings:
   optional: []
 triggers: ["distill knowledge", "compact skill knowledge", "knowledge lifecycle", "promote fix patterns"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-knowledge-distill skill — Distill raw knowledge logs (L0) into durable fix patterns (L1) and learned principles (L2), maintain confirmation counters, and migrate legacy sections — with operator approval on every mutation.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Knowledge Distillation
 

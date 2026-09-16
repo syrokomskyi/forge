@@ -8,6 +8,20 @@ dependsOn: ['my-preferences', 'fo-idea-i-just-want-to-see-the-result']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["I just want to see the plan", "plan this feature without implementing", "run idea to plan pipeline"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-idea-i-just-want-to-see-the-plan skill — Run the idea-to-plan pipeline (idea, audit, enhance, plan) in a single invocation, then stop. Accepts a raw idea or an existing RFC id. Use when the operator wants a plan, not implementation.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Idea to Plan — Just Want to See the Plan
 

@@ -11,6 +11,20 @@ bindings:
   optional: []
 triggers: ["design summit", "multi-persona review", "party mode"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-design-summit skill — Simulate a multi-persona design discussion for complex RFCs. Each persona reviews from its professional perspective and raises concerns. Optional, invoked for high-risk architectural RFCs.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Design Summit
 

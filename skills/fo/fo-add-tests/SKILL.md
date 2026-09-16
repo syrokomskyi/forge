@@ -8,6 +8,20 @@ dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["write tests for this code", "add unit tests", "add property-based tests", "write test coverage for this function"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-add-tests skill — Write unit and property-based tests for session-produced or specified code. Uses vitest + fast-check per RFC-XXXX.</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # fo-add-tests
 

@@ -11,6 +11,20 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["session retrospective", "capture insights from this session", "triage session discoveries", "Завершаем сессию", "Завершаем эту сессию", "Заканчиваем сессию", "Завершить сессию", "протокол завершения сессии", "End session", "Wrap up", "Session end", "/session-end"]
 ---
+<!--
+<MODULE_CONTRACT>
+<purpose>fo-session-retro skill — Session-end insight triage — review what was discovered, categorize each insight, and route it to the right durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, or memory).</purpose>
+<non-goals>
+  <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
+
+Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+</CHANGE_SUMMARY>
+-->
+
 
 # Session Retro
 
