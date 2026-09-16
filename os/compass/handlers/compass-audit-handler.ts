@@ -21,6 +21,7 @@ import { resolve, relative } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
+import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { getRevisionByPath } from "./git-revision.ts";
 import type { CompassInventoryEntry } from "./compass-inventory.ts";
@@ -139,7 +140,13 @@ export async function runCompassAuditPlan(
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context);
-  const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
+  const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
+  const entries = await createCompassInventoryEntries(
+    context.workspaceRoot,
+    input,
+    scanRoot,
+    policy,
+  );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
 
@@ -283,7 +290,13 @@ export async function runCompassAuditBaseline(
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context);
-  const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
+  const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
+  const entries = await createCompassInventoryEntries(
+    context.workspaceRoot,
+    input,
+    scanRoot,
+    policy,
+  );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
 
@@ -347,7 +360,13 @@ export async function runCompassAuditValidate(
 > {
   const strict = input.flags["strict"] === true;
   const scanRoot = resolveCompassScanRoot(input, context);
-  const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
+  const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
+  const entries = await createCompassInventoryEntries(
+    context.workspaceRoot,
+    input,
+    scanRoot,
+    policy,
+  );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
 

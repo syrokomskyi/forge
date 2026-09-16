@@ -204,6 +204,8 @@ function detectWorkspaceName(segments: string[], policy: CompassPolicy): string 
   if (isWorkspaceDir(segments[0], policy)) {
     return segments[1] ?? "unknown";
   }
+  // Files outside any workspace dir (e.g. tools/*) report "root" rather than
+  // leaking a filename into the workspace-name slot.
   return "root";
 }
 
