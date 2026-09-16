@@ -12,6 +12,7 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
 <CHANGE_SUMMARY>
   <item>RFC-1095: initial implementation of compass.summary.record with window collapse and commit integration.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
+  <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
 </CHANGE_SUMMARY>
 */
 
@@ -163,11 +164,12 @@ export async function recordSummaryItem(
   }
 
   const { items, historyIds } = parseChangeSummary(blockMatch[0]);
-  // Avoid "RFC-1095: RFC-1095 ..." when the text already leads with the same ID.
+  // Avoid "RFC-1095: RFC-1095 ..." when the text already leads with the same ID;
+  // a text equal to the bare ID collapses to the bare-ID item form.
   const strippedText = text.startsWith(id)
-    ? text.slice(id.length).replace(/^\s*[:—-]\s*/, "")
+    ? text.slice(id.length).replace(/^\s*[:—-]?\s*/, "")
     : text;
-  const newItem = `${id}: ${strippedText}`;
+  const newItem = strippedText.length > 0 ? `${id}: ${strippedText}` : id;
   const normalizedNew = normalizeItemText(newItem);
   if (items.some((item) => normalizeItemText(item) === normalizedNew)) {
     return { recorded: false, collapsed: false, skipReason: "duplicate" };

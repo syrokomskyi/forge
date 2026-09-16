@@ -3,7 +3,6 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { runCompassValidation, runCompassInventory } from "../compass-inventory-handler.ts";
-import { runCompassChangeSummaryValidate } from "../compass-change-summary-handler.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -35,7 +34,10 @@ const KD = (items: string[]) =>
   `<KEY_DECISIONS>\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n</KEY_DECISIONS>`;
 const KD_EMPTY = `<KEY_DECISIONS>\n</KEY_DECISIONS>`;
 const CS = (items: string[], history?: string) =>
-  `<CHANGE_SUMMARY>\n${items.map((i) => `  <item>${i}</item>`).join("\n")}${history ? `\n  <history>${history}</history>` : ""}\n</CHANGE_SUMMARY>`;
+  `<CHANGE_SUMMARY>
+  <item>${i}</item>
+  <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
+</CHANGE_SUMMARY>`;
 const wrap = (...blocks: string[]) => `/*\n${blocks.join("\n")}\n*/`;
 
 const PURPOSE_WITH_TOKEN =
@@ -100,7 +102,8 @@ describe("compass v2 contract (RFC-1094)", () => {
     const items = [1, 2, 3, 4, 5, 6].map((n) => `RFC-10${n}0: change number ${n}.`);
     writeFixture(MEDIUM_FILE, wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS(items)));
 
-    const result = await runCompassChangeSummaryValidate(makeInput(), makeContext(tempDir));
+    // RFC-1095: CS rules are covered by compass.validate via shared evaluateV2Rules.
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
     const diag = dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-05");
     expect(diag, "CS-05 must fire when CHANGE_SUMMARY exceeds 5 items").toBeDefined();
     expect(diag!.severity).toBe("warning");
@@ -113,7 +116,7 @@ describe("compass v2 contract (RFC-1094)", () => {
       wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS(["fixed a bug in the widget"])),
     );
 
-    const result = await runCompassChangeSummaryValidate(makeInput(), makeContext(tempDir));
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
     const diag = dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-06");
     expect(diag, "CS-06 must fire for items lacking a governance ID").toBeDefined();
   });
@@ -203,7 +206,7 @@ describe("compass v2 contract (RFC-1094)", () => {
       wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS([CS_ITEM], "RFC-0350, RFC-0348")),
     );
 
-    const result = await runCompassChangeSummaryValidate(makeInput(), makeContext(tempDir));
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
     expect(
       dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-07"),
       "CS-07 must fire on descending per-namespace order",
@@ -214,12 +217,8 @@ describe("compass v2 contract (RFC-1094)", () => {
     writeFixture(MEDIUM_FILE, wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS([])));
 
     const warnResult = await runCompassValidation(makeInput(), makeContext(tempDir));
-    const csResult = await runCompassChangeSummaryValidate(makeInput(), makeContext(tempDir));
     expect(
       dataOf(warnResult).diagnostics.filter((d) => d.ruleId.startsWith("COMPASS-CS-")),
-    ).toHaveLength(0);
-    expect(
-      dataOf(csResult).diagnostics.filter((d) => d.ruleId.startsWith("COMPASS-CS-")),
     ).toHaveLength(0);
   });
 
