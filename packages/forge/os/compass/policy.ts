@@ -311,6 +311,8 @@ export function resolveCompassPolicy(workspaceRoot: string, forgeRoot?: string):
     is: picomatch(entry.pattern, { dot: true }),
   }));
 
+  // Shallow freeze: the Readonly* types are the real immutability contract —
+  // do not mutate the nested Sets/arrays after resolution.
   return Object.freeze({
     fileExtensions: new Set(fileExtensions),
     testPatterns,

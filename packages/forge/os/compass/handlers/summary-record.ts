@@ -218,9 +218,9 @@ export async function runCompassSummaryRecord(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<SummaryRecordResult>> {
-  const scanRootEarly = resolveCompassScanRoot(input, context);
-  const baseRootEarly = scanRootEarly ?? context.workspaceRoot;
-  const policy = resolveCompassPolicy(baseRootEarly, context.forgeRoot);
+  const scanRoot = resolveCompassScanRoot(input, context);
+  const baseRoot = scanRoot ?? context.workspaceRoot;
+  const policy = resolveCompassPolicy(baseRoot, context.forgeRoot);
 
   const id = input.flags["id"];
   if (typeof id !== "string" || !isValidGovernanceId(id, policy)) {
@@ -239,8 +239,6 @@ export async function runCompassSummaryRecord(
 
   const rawText = input.flags["text"];
   const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : id;
-
-  const baseRoot = baseRootEarly;
 
   const result: SummaryRecordResult = {
     command: "compass.summary.record",
