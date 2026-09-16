@@ -14,60 +14,21 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1099: rewrite tsconfig-validate.ts as a pure model-consuming rule via defineTsCheck.</item>
 </CHANGE_SUMMARY>
 */
 
-import type {
-  KernelCommandDefinition,
-  KernelCommandResult,
-  Diagnostic,
-} from "@warpgogol/werkstatt-engine/kernel/types";
-import { readFile, readdir } from "node:fs/promises";
-import { join } from "node:path";
-import { makeDiagnostic, emptySummary, buildSummary } from "./diagnostic-helpers.ts";
+import type { KernelCommandDefinition, Diagnostic } from "@warpgogol/werkstatt-engine/kernel/types";
+import type { TsWorkspaceModel } from "../model/workspace-model.ts";
+import { makeDiagnostic } from "./diagnostic-helpers.ts";
+import { defineTsCheck, type TsCheckData } from "./run-ts-check.ts";
 
-export interface TsconfigValidateData {
-  command: string;
-  status: "pass" | "warn" | "fail";
-  diagnostics: Diagnostic[];
-  summary: { error: number; warning: number; info: number };
-}
+export type TsconfigValidateData = TsCheckData;
 
-export async function runTsconfigValidate(
-  workspaceRoot: string,
-): Promise<KernelCommandResult<TsconfigValidateData>> {
+function check(model: TsWorkspaceModel): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
-  const basePath = join(workspaceRoot, "tsconfig.base.json");
 
-  let baseConfig: Record<string, unknown> | null = null;
-
-  // Check if workspace is truly empty (no tsconfig.base.json AND no packages directory)
-  let hasPackagesDir = false;
-  try {
-    const packagesDir = join(workspaceRoot, "packages");
-    const entries = await readdir(packagesDir);
-    hasPackagesDir = entries.length > 0;
-  } catch {
-    // No packages directory
-  }
-
-  try {
-    const baseContent = await readFile(basePath, "utf8");
-    baseConfig = JSON.parse(baseContent) as Record<string, unknown>;
-  } catch {
-    if (!hasPackagesDir) {
-      // Truly empty workspace — nothing to validate
-      return {
-        data: {
-          command: "ts.tsconfig.validate",
-          status: "pass",
-          diagnostics: [],
-          summary: emptySummary(),
-        },
-        exitCode: 0,
-        summary: "ts.tsconfig.validate: pass (empty workspace)",
-      };
-    }
+  if (model.baseTsconfig === null) {
     diagnostics.push(
       makeDiagnostic(
         "TS-TSCONFIG-01",
@@ -76,15 +37,10 @@ export async function runTsconfigValidate(
         "tsconfig.base.json",
       ),
     );
-    const summary = buildSummary(diagnostics);
-    return {
-      data: { command: "ts.tsconfig.validate", status: "fail", diagnostics, summary },
-      exitCode: 1,
-      summary: `ts.tsconfig.validate: ${summary.error} error(s)`,
-    };
+    return diagnostics;
   }
 
-  const baseCompilerOptions = (baseConfig?.compilerOptions ?? {}) as Record<string, unknown>;
+  const baseCompilerOptions = model.baseTsconfig.compilerOptions ?? {};
 
   if (baseCompilerOptions.strict !== true) {
     diagnostics.push(
@@ -100,71 +56,10 @@ export async function runTsconfigValidate(
   const expectedModuleResolution = baseCompilerOptions.moduleResolution;
   const expectedTarget = baseCompilerOptions.target;
 
-  const tsconfigPaths: string[] = [];
-  try {
-    const packagesDir = join(workspaceRoot, "packages");
-    const entries = await readdir(packagesDir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        const tsconfigPath = join(packagesDir, entry.name, "tsconfig.json");
-        try {
-          await readFile(tsconfigPath, "utf8");
-          tsconfigPaths.push(tsconfigPath);
-        } catch {
-          // No tsconfig.json in this package — skip
-        }
-      }
-    }
-  } catch {
-    // No packages directory — empty workspace
-  }
+  for (const pkg of model.packages) {
+    const relPath = `${pkg.dir}/tsconfig.json`;
 
-  if (tsconfigPaths.length === 0 && diagnostics.length === 0) {
-    return {
-      data: {
-        command: "ts.tsconfig.validate",
-        status: "pass",
-        diagnostics: [],
-        summary: emptySummary(),
-      },
-      exitCode: 0,
-      summary: "ts.tsconfig.validate: pass (no per-package tsconfig files found)",
-    };
-  }
-
-  for (const tsconfigPath of tsconfigPaths) {
-    const relPath = tsconfigPath.replace(workspaceRoot + "/", "");
-    try {
-      const content = await readFile(tsconfigPath, "utf8");
-      const config = JSON.parse(content) as Record<string, unknown>;
-      const compilerOptions = (config?.compilerOptions ?? {}) as Record<string, unknown>;
-
-      if (expectedModuleResolution && compilerOptions.moduleResolution !== undefined) {
-        if (compilerOptions.moduleResolution !== expectedModuleResolution) {
-          diagnostics.push(
-            makeDiagnostic(
-              "TS-TSCONFIG-03",
-              "error",
-              `moduleResolution mismatch: expected "${expectedModuleResolution}", got "${compilerOptions.moduleResolution}".`,
-              relPath,
-            ),
-          );
-        }
-      }
-
-      if (expectedTarget && compilerOptions.target !== undefined) {
-        if (compilerOptions.target !== expectedTarget) {
-          diagnostics.push(
-            makeDiagnostic(
-              "TS-TSCONFIG-04",
-              "error",
-              `target mismatch: expected "${expectedTarget}", got "${compilerOptions.target}".`,
-              relPath,
-            ),
-          );
-        }
-      }
-    } catch {
+    if (pkg.tsconfigMalformed) {
       diagnostics.push(
         makeDiagnostic(
           "TS-TSCONFIG-05",
@@ -173,32 +68,61 @@ export async function runTsconfigValidate(
           relPath,
         ),
       );
+      continue;
+    }
+
+    if (pkg.tsconfig === null) continue;
+
+    const compilerOptions = pkg.tsconfig.compilerOptions ?? {};
+
+    if (
+      expectedModuleResolution !== undefined &&
+      compilerOptions.moduleResolution !== undefined &&
+      compilerOptions.moduleResolution !== expectedModuleResolution
+    ) {
+      diagnostics.push(
+        makeDiagnostic(
+          "TS-TSCONFIG-03",
+          "error",
+          `moduleResolution mismatch: expected "${String(expectedModuleResolution)}", got "${String(compilerOptions.moduleResolution)}".`,
+          relPath,
+        ),
+      );
+    }
+
+    if (
+      expectedTarget !== undefined &&
+      compilerOptions.target !== undefined &&
+      compilerOptions.target !== expectedTarget
+    ) {
+      diagnostics.push(
+        makeDiagnostic(
+          "TS-TSCONFIG-04",
+          "error",
+          `target mismatch: expected "${String(expectedTarget)}", got "${String(compilerOptions.target)}".`,
+          relPath,
+        ),
+      );
     }
   }
 
-  const summary = buildSummary(diagnostics);
-  const status = summary.error > 0 ? "fail" : "pass";
-
-  return {
-    data: { command: "ts.tsconfig.validate", status, diagnostics, summary },
-    exitCode: summary.error > 0 ? 1 : 0,
-    summary: `ts.tsconfig.validate: ${status} (${summary.error} error(s), ${summary.warning} warning(s))`,
-  };
+  return diagnostics;
 }
 
 export function createTsconfigValidateCommand(): KernelCommandDefinition<TsconfigValidateData> {
-  return {
+  return defineTsCheck({
     name: "ts.tsconfig.validate",
     contract: "ts",
-    rules: [],
+    rules: [
+      "TS-TSCONFIG-01",
+      "TS-TSCONFIG-02",
+      "TS-TSCONFIG-03",
+      "TS-TSCONFIG-04",
+      "TS-TSCONFIG-05",
+    ],
     description:
       "Validate tsconfig.base.json and per-package tsconfig.json consistency: strict mode, moduleResolution, target (TS-001).",
-    scope: "workspace",
-    cacheable: true,
-    supportsAllSites: false,
-    reads: ["tsconfig.base.json", "packages/*/tsconfig.json"],
-    async execute(_input, context) {
-      return runTsconfigValidate(context.workspaceRoot);
-    },
-  };
+    reads: ["tsconfig.base.json", "packages/*/tsconfig.json", "services/*/tsconfig.json"],
+    check,
+  });
 }

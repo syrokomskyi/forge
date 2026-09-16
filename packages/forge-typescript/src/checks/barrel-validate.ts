@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0889: initial barrel validator.</item>
+  <item>RFC-1099: rewrite as a pure model-consuming rule via defineTsCheck; regexes replaced by AST facts (imports, reExports).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -17,146 +18,73 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import type {
-  KernelCommandDefinition,
-  KernelCommandResult,
-  Diagnostic,
-} from "@warpgogol/werkstatt-engine/kernel/types";
-import { readFile, readdir, stat } from "node:fs/promises";
-import { join, relative } from "node:path";
-import { makeDiagnostic, emptySummary, buildSummary } from "./diagnostic-helpers.ts";
+import type { KernelCommandDefinition, Diagnostic } from "@warpgogol/werkstatt-engine/kernel/types";
+import type { TsWorkspaceModel } from "../model/workspace-model.ts";
+import { makeDiagnostic } from "./diagnostic-helpers.ts";
+import { defineTsCheck, type TsCheckData } from "./run-ts-check.ts";
 
-export interface BarrelValidateData {
-  command: string;
-  status: "pass" | "warn" | "fail";
-  diagnostics: Diagnostic[];
-  summary: { error: number; warning: number; info: number };
+export type BarrelValidateData = TsCheckData;
+
+const BARREL_BASENAMES = new Set(["index.ts", "index.tsx"]);
+
+function isBarrelFile(path: string): boolean {
+  const base = path.split("/").pop() ?? "";
+  return BARREL_BASENAMES.has(base);
 }
 
-const NODE_ONLY_PATTERN = /from\s+["'](node:[^"']+)["']/g;
-const RE_EXPORT_PATTERN = /export\s+(?:\*|\{[^}]+\})\s+from\s+["']([^"']+)["']/g;
+function check(model: TsWorkspaceModel): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
 
-async function scanBarrelFiles(
-  dir: string,
-  workspaceRoot: string,
-  diagnostics: Diagnostic[],
-): Promise<void> {
-  let entries: string[];
-  try {
-    entries = await readdir(dir);
-  } catch {
-    return;
-  }
+  for (const pkg of model.packages) {
+    for (const file of pkg.sourceFiles) {
+      if (!isBarrelFile(file.path)) continue;
 
-  for (const entry of entries) {
-    const fullPath = join(dir, entry);
-    let entryStat;
-    try {
-      entryStat = await stat(fullPath);
-    } catch {
-      continue;
-    }
-
-    if (entryStat.isDirectory()) {
-      await scanBarrelFiles(fullPath, workspaceRoot, diagnostics);
-    } else if (entry === "index.ts" || entry === "index.tsx") {
-      const relPath = relative(workspaceRoot, fullPath);
-      if (relPath.includes("/__tests__/")) continue;
-
-      let content: string;
-      try {
-        content = await readFile(fullPath, "utf8");
-      } catch {
-        continue;
-      }
-
-      const lines = content.split("\n");
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const lineNumber = i + 1;
-
-        const nodeOnlyMatch = NODE_ONLY_PATTERN.exec(line);
-        if (nodeOnlyMatch) {
+      for (const imp of file.imports) {
+        if (imp.specifier.startsWith("node:")) {
           diagnostics.push(
             makeDiagnostic(
               "TS-BARREL-01",
               "warning",
-              `Barrel file re-exports Node-only module "${nodeOnlyMatch[1]}". Use a subpath export for client-side isolation.`,
-              relPath,
-              lineNumber,
+              `Barrel file imports Node-only module "${imp.specifier}". Use a subpath export for client-side isolation.`,
+              file.path,
+              imp.line,
             ),
           );
         }
-        NODE_ONLY_PATTERN.lastIndex = 0;
+      }
 
-        const reExportMatch = RE_EXPORT_PATTERN.exec(line);
-        if (reExportMatch) {
-          const importSpecifier = reExportMatch[1];
-          if (importSpecifier.startsWith("node:")) {
-            diagnostics.push(
-              makeDiagnostic(
-                "TS-BARREL-02",
-                "warning",
-                `Barrel file re-exports from Node-only module "${importSpecifier}". Move to a subpath export.`,
-                relPath,
-                lineNumber,
-              ),
-            );
-          }
+      for (const re of file.reExports) {
+        if (re.specifier.startsWith("node:")) {
+          diagnostics.push(
+            makeDiagnostic(
+              "TS-BARREL-02",
+              "warning",
+              `Barrel file re-exports from Node-only module "${re.specifier}". Move to a subpath export.`,
+              file.path,
+              re.line,
+            ),
+          );
         }
-        RE_EXPORT_PATTERN.lastIndex = 0;
       }
     }
   }
-}
 
-export async function runBarrelValidate(
-  workspaceRoot: string,
-): Promise<KernelCommandResult<BarrelValidateData>> {
-  const diagnostics: Diagnostic[] = [];
-
-  const packagesDir = join(workspaceRoot, "packages");
-  try {
-    await stat(packagesDir);
-  } catch {
-    return {
-      data: {
-        command: "ts.barrel.validate",
-        status: "pass",
-        diagnostics: [],
-        summary: emptySummary(),
-      },
-      exitCode: 0,
-      summary: "ts.barrel.validate: pass (no packages directory)",
-    };
-  }
-
-  await scanBarrelFiles(packagesDir, workspaceRoot, diagnostics);
-
-  const summary = buildSummary(diagnostics);
-  const status = summary.error > 0 ? "fail" : summary.warning > 0 ? "warn" : "pass";
-
-  return {
-    data: { command: "ts.barrel.validate", status, diagnostics, summary },
-    exitCode: summary.error > 0 ? 1 : 0,
-    summary: `ts.barrel.validate: ${status} (${summary.error} error(s), ${summary.warning} warning(s))`,
-  };
+  return diagnostics;
 }
 
 export function createBarrelValidateCommand(): KernelCommandDefinition<BarrelValidateData> {
-  return {
+  return defineTsCheck({
     name: "ts.barrel.validate",
     contract: "ts",
-    rules: [],
+    rules: ["TS-BARREL-01", "TS-BARREL-02"],
     description:
       "Validate barrel exports (index.ts) do not re-export Node-only modules without subpath exports (TS-006).",
-    scope: "workspace",
-    cacheable: true,
-    supportsAllSites: false,
-    reads: ["packages/**/index.ts", "packages/**/index.tsx"],
-    async execute(_input, context) {
-      return runBarrelValidate(context.workspaceRoot);
-    },
-  };
+    reads: [
+      "packages/**/index.ts",
+      "packages/**/index.tsx",
+      "services/**/index.ts",
+      "services/**/index.tsx",
+    ],
+    check,
+  });
 }

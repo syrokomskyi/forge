@@ -50,6 +50,8 @@ export interface ReExportFact {
 export interface AnyRefFact {
   kind: "annotation" | "as-cast";
   line: number;
+  /** True when the any's line carries an eslint-disable or @ts-expect-error comment. */
+  suppressed: boolean;
 }
 
 export interface SuppressionFact {
@@ -78,6 +80,8 @@ export interface TsWorkspacePackage {
   dir: string;
   packageJson: PackageJson;
   tsconfig: TsconfigJson | null;
+  /** True when tsconfig.json exists on disk but failed to parse. */
+  tsconfigMalformed: boolean;
   /** All file paths under the package dir (relative to workspaceRoot), excluding node_modules. */
   existingFiles: Set<string>;
   sourceFiles: ParsedSourceFile[];
@@ -221,10 +225,14 @@ function extractFacts(sourceFile: ts.SourceFile, text: string): Omit<ParsedSourc
 
     if (node.kind === ts.SyntaxKind.AnyKeyword) {
       const parent = node.parent;
+      const line = lineOf(sourceFile, node.getStart());
+      const lineText = text.split("\n")[line - 1] ?? "";
+      const suppressed =
+        lineText.includes("eslint-disable") || lineText.includes("@ts-expect-error");
       if (parent && ts.isAsExpression(parent)) {
-        anyRefs.push({ kind: "as-cast", line: lineOf(sourceFile, node.getStart()) });
+        anyRefs.push({ kind: "as-cast", line, suppressed });
       } else {
-        anyRefs.push({ kind: "annotation", line: lineOf(sourceFile, node.getStart()) });
+        anyRefs.push({ kind: "annotation", line, suppressed });
       }
     }
 
@@ -323,6 +331,8 @@ export async function buildWorkspaceModel(
 
     const tsconfig = await readJsonFile<TsconfigJson>(join(pkgDir, "tsconfig.json"));
     const { sourceFiles, existingFiles } = await walkPackageDir(pkgDir, workspaceRoot);
+    const tsconfigMalformed =
+      tsconfig === null && existingFiles.has(`${relative(workspaceRoot, pkgDir)}/tsconfig.json`);
 
     const parsed: ParsedSourceFile[] = [];
     for (const file of sourceFiles) {
@@ -342,6 +352,7 @@ export async function buildWorkspaceModel(
       dir: relative(workspaceRoot, pkgDir),
       packageJson,
       tsconfig,
+      tsconfigMalformed,
       existingFiles,
       sourceFiles: parsed,
     });
