@@ -12,12 +12,12 @@ contract block specs alongside built-in MODULE_CONTRACT and CHANGE_SUMMARY check
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0348: v2 two-block contract — XML output updated, compass.validate emits COMPASS-* diagnostics, summary uses standard-required-files.</item>
-  <item>RFC-0350: added COMPASS-TODO-01 diagnostic for unfilled Compass TODO sentinels.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added COMPASS-SYNTAX-01 diagnostic validating comment syntax per file type (.gd needs # prefix, .tscn/.tres need ; prefix, .ts/.cs need block comment).</item>
   <item>RFC-0943: added COMPASS-PLUGIN-01/02/03 diagnostics for pack-declared contract block specs from forge.plugin.yaml extensionPoints.</item>
   <item>RFC-1094: --mode warning|error on compass.validate; mode-aware v2 diagnostics (KD/ORDER/PURPOSE) with severity field; inventory data.entries now carries full entries and XML gains v2 fields.</item>
+  <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
+  <history>RFC-0348, RFC-0350</history>
 </CHANGE_SUMMARY>
 */
 
@@ -355,9 +355,14 @@ export async function runCompassValidation(
 
   // RFC-1094: v2 rules are mode-aware — warnings in `warning` mode (default
   // during the migration window), errors in `error` mode. Owned subset:
-  // COMPASS-KD-*, COMPASS-ORDER-01, COMPASS-PURPOSE-*. CS-* rules are emitted
-  // by compass.changesummary.validate.
-  const V2_VALIDATE_RULE_PREFIXES = ["COMPASS-KD-", "COMPASS-ORDER-", "COMPASS-PURPOSE-"];
+  // COMPASS-KD-*, COMPASS-ORDER-01, COMPASS-PURPOSE-*, COMPASS-CS-*.
+  // RFC-1095: CS-* rules moved here — compass.changesummary.validate is removed.
+  const V2_VALIDATE_RULE_PREFIXES = [
+    "COMPASS-KD-",
+    "COMPASS-ORDER-",
+    "COMPASS-PURPOSE-",
+    "COMPASS-CS-",
+  ];
   const v2Severity = mode === "error" ? "error" : "warning";
   const authoredEntries = entries.filter(
     (entry) => entry.authoringStatus === "authored" && entry.requiredScaffolding !== "none",
