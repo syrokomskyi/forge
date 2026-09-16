@@ -13,6 +13,7 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>RFC-1095: initial implementation of compass.summary.record with window collapse and commit integration.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
+  <item>RFC-1095: header-region guard in summary.record, restore test fixture with dynamic tags</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,6 +42,11 @@ const HISTORY_ID_PARTS_RE = /^(([A-Z][A-Z0-9]*-)+)(\d+)$/;
 const CONVENTIONAL_PREFIX_RE = /^[a-z]+(\([^)]*\))?!?:\s*/i;
 
 export const CHANGE_SUMMARY_WINDOW = 5;
+
+// A CHANGE_SUMMARY block is a file header only when it starts within this many
+// lines from the top. Deeper matches are examples inside template literals or
+// fenced doc sections, not headers.
+const HEADER_SCAN_LINES = 120;
 
 export interface SummaryRecordInput {
   id: string;
@@ -155,7 +161,14 @@ export async function recordSummaryItem(
 ): Promise<RecordOutcome> {
   const source = await readFile(absPath, "utf8");
   const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
-  if (!blockMatch) {
+  // Header-region guard: a CHANGE_SUMMARY is a header only when it sits at the
+  // top of the file. Blocks deeper in the source are examples inside template
+  // literals or fenced doc sections — recording into them corrupts the file.
+  const inHeaderRegion =
+    blockMatch !== null &&
+    blockMatch.index !== undefined &&
+    source.slice(0, blockMatch.index).split("\n").length <= HEADER_SCAN_LINES;
+  if (!blockMatch || !inHeaderRegion) {
     return {
       recorded: false,
       collapsed: false,
