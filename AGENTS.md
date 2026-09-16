@@ -45,7 +45,7 @@ Both generators are best-effort: metrics failures log a warning and never block 
 
 ## Compass contract extension points (RFC-0943)
 
-Skill packs MAY declare additional Compass contract blocks beyond the built-in `MODULE_CONTRACT` and `CHANGE_SUMMARY` via `forge.plugin.yaml` `extensionPoints.compass.contract.blocks[]`. Each block spec is declarative data:
+Skill packs MAY declare additional Compass contract blocks beyond the built-in `MODULE_CONTRACT`, `KEY_DECISIONS`, and `CHANGE_SUMMARY` (v2, RFC-1094) via `forge.plugin.yaml` `extensionPoints.compass.contract.blocks[]`. Each block spec is declarative data:
 
 - `blockId` — kebab-case identifier (e.g. `api-contract`). The marker in source files is the uppercased, underscore-separated form (e.g. `<API_CONTRACT>`).
 - `requiredFor` — glob patterns matching files that must carry this block (e.g. `["packages/my-pack/**/*.ts"]`).
