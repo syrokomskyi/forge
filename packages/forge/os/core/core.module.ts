@@ -729,6 +729,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "Check consistency between README.md, package.json, and docs/ structure. " +
           "Enforces SURFACE-01..05 rules: README length, Node version match, " +
           "no .tgz in root, docs/ structure, required root files (RFC-1080).",
+        contract: "forge",
+        rules: ["SURFACE-01", "SURFACE-02", "SURFACE-03", "SURFACE-04", "SURFACE-05"],
         scope: "workspace",
         supportsAllSites: false,
         reads: ["README.md", "package.json", "docs/**"],
