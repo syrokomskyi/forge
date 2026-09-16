@@ -14,6 +14,9 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
   <item>RFC-1095: header-region guard in summary.record, restore test fixture with dynamic tags</item>
+  <item>RFC-1097: steps 1-4 — compass.migrate codemod
+
+Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -108,7 +111,7 @@ export function mergeHistoryIds(
   });
 }
 
-function getLineCommentPrefix(filePath: string): string | null {
+export function getLineCommentPrefix(filePath: string): string | null {
   if (filePath.endsWith(".gd")) return "# ";
   if (filePath.endsWith(".tscn") || filePath.endsWith(".tres")) return "; ";
   return null;
