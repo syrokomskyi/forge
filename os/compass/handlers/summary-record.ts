@@ -15,7 +15,6 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
   <item>RFC-1095: header-region guard in summary.record, restore test fixture with dynamic tags</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
@@ -24,6 +23,9 @@ Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, s
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <item>RFC-1097: sweep — werkstatt-engine clean
+
+Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <history>RFC-1095</history>
 </CHANGE_SUMMARY>
 */
@@ -150,7 +152,7 @@ export function stripConventionalPrefix(subject: string): string {
 }
 
 // Literal Compass block tags inside an item corrupt block parsing — a commit
-// message saying "collapsed into <history>" would be matched by HISTORY_RE and
+// message saying "collapsed into history" would be matched by HISTORY_RE and
 // produce phantom non-ID tokens (CS-07). Strip the angle brackets on record.
 const COMPASS_TAG_LITERAL_RE =
   /<\/?(?:CHANGE_SUMMARY|MODULE_CONTRACT|KEY_DECISIONS|history|item|purpose|non-goals)>/g;
