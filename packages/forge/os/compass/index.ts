@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial compass module barrel.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
+  <item>RFC-1095: review findings: execFileSync git add, drop speculative barrel exports</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,14 +30,12 @@ export {
 export { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler.ts";
 export {
   runCompassSummaryRecord,
-  recordSummaryItem,
   parseChangeSummary,
   mergeHistoryIds,
   buildChangeSummaryBlock,
   stripConventionalPrefix,
   isValidGovernanceId,
   CHANGE_SUMMARY_WINDOW,
-  type SummaryRecordInput,
   type SummaryRecordResult,
   type SummaryRecordSkipReason,
 } from "./handlers/summary-record.ts";
