@@ -10,6 +10,9 @@
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add.</item>
   <item>RFC-0556: removed dynamic import of @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/compass/handlers/.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
+  <item>RFC-1097: steps 1-4 — compass.migrate codemod
+
+Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +27,7 @@ import {
 } from "./handlers/compass-audit-handler.ts";
 import { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler.ts";
 import { runCompassSummaryRecord } from "./handlers/summary-record.ts";
+import { runCompassMigrate } from "./handlers/compass-migrate-handler.ts";
 
 const compassScanFlags = {
   packages: {
@@ -147,6 +151,41 @@ export const forgeCompassModule: ForgeModule = {
         },
       },
       execute: runCompassSummaryTrim,
+    },
+    {
+      name: "compass.migrate",
+      description:
+        "Rewrite authored file headers to the Compass v2 shape (RFC-1097): collapse CHANGE_SUMMARY into <history>, strip forbidden v1 blocks, seed KEY_DECISIONS from @ai-invariant comments, reorder blocks canonically. Refuses a dirty git tree unless --force.",
+      scope: "workspace",
+      mutatesState: true,
+      supportsAllSites: true,
+      writes: [
+        "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
+      cacheable: false,
+      flags: {
+        ...compassScanFlags,
+        files: {
+          kind: "string[]",
+          description: "Explicit root-relative file list — bypasses scan-root filtering entirely.",
+        },
+        "dry-run": {
+          kind: "boolean",
+          description: "Print the action manifest without writing any file.",
+        },
+        force: {
+          kind: "boolean",
+          description: "Override the dirty-tree refusal.",
+        },
+      },
+      execute: runCompassMigrate,
     },
     {
       name: "compass.audit.plan",
