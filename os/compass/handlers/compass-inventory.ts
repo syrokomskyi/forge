@@ -85,7 +85,6 @@ const HIGH_RISK_EXACT_RELATIVE_PATHS = new Set([
   "packages/os/site-kernel/src/runtime.ts",
   "packages/os/site-kernel/src/types.ts",
 ]);
-const REQUIRED_MARKERS = ["<MODULE_CONTRACT>", "<CHANGE_SUMMARY>"] as const;
 function forbiddenMarkerPattern(tagName: string): RegExp {
   return new RegExp(`<${tagName}\\b`);
 }
