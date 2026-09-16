@@ -17,12 +17,18 @@ contract block specs alongside built-in MODULE_CONTRACT and CHANGE_SUMMARY check
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added COMPASS-SYNTAX-01 diagnostic validating comment syntax per file type (.gd needs # prefix, .tscn/.tres need ; prefix, .ts/.cs need block comment).</item>
   <item>RFC-0943: added COMPASS-PLUGIN-01/02/03 diagnostics for pack-declared contract block specs from forge.plugin.yaml extensionPoints.</item>
+  <item>RFC-1094: --mode warning|error on compass.validate; mode-aware v2 diagnostics (KD/ORDER/PURPOSE) with severity field; inventory data.entries now carries full entries and XML gains v2 fields.</item>
 </CHANGE_SUMMARY>
 */
 
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
-import { createCompassInventoryEntries, type CompassInventoryEntry } from "./compass-inventory.ts";
+import {
+  createCompassInventoryEntries,
+  evaluateV2Rules,
+  resolveCompassMode,
+  type CompassInventoryEntry,
+} from "./compass-inventory.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
@@ -202,6 +208,21 @@ function renderInventoryXml(
       `      <has-change-summary>${entry.hasChangeSummary ? "true" : "false"}</has-change-summary>`,
     );
     lines.push(
+      `      <has-key-decisions>${entry.hasKeyDecisions ? "true" : "false"}</has-key-decisions>`,
+    );
+    lines.push(
+      `      <key-decisions-item-count>${entry.keyDecisionsItemCount}</key-decisions-item-count>`,
+    );
+    lines.push(
+      `      <key-decisions-required>${entry.keyDecisionsRequired ? "true" : "false"}</key-decisions-required>`,
+    );
+    lines.push(
+      `      <change-summary-item-count>${entry.changeSummaryItemCount}</change-summary-item-count>`,
+    );
+    if (entry.historyIds.length > 0) {
+      lines.push(`      <history-ids>${escapeXml(entry.historyIds.join(", "))}</history-ids>`);
+    }
+    lines.push(
       `      <has-ai-invariant>${entry.hasAiInvariant ? "true" : "false"}</has-ai-invariant>`,
     );
     lines.push(`      <has-purpose>${entry.hasPurpose ? "true" : "false"}</has-purpose>`);
@@ -233,7 +254,11 @@ export async function runCompassInventory(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<
-  ForgeCommandResult<{ entries: number; outputPath: string; summary: CompassInventorySummary }>
+  ForgeCommandResult<{
+    entries: CompassInventoryEntry[];
+    outputPath: string;
+    summary: CompassInventorySummary;
+  }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context) ?? context.workspaceRoot;
   const entries = await createCompassInventoryEntries(scanRoot, input);
@@ -248,7 +273,7 @@ export async function runCompassInventory(
       `[compass.inventory] dry-run active — skipped writing ${INVENTORY_OUTPUT_PATH}`,
     );
     return {
-      data: { entries: entries.length, outputPath: INVENTORY_OUTPUT_PATH, summary },
+      data: { entries, outputPath: INVENTORY_OUTPUT_PATH, summary },
       summary: `[compass.inventory] previewed ${INVENTORY_OUTPUT_PATH}`,
       nextSteps: [
         {
@@ -264,7 +289,7 @@ export async function runCompassInventory(
   await writeFileIfChanged(outputPath, xml);
 
   return {
-    data: { entries: entries.length, outputPath, summary },
+    data: { entries, outputPath, summary },
     summary: `[compass.inventory] ${context.dryRun ? "previewed" : "wrote"} ${INVENTORY_OUTPUT_PATH}`,
     nextSteps: context.dryRun
       ? [
@@ -300,6 +325,7 @@ export async function runCompassValidation(
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context);
+  const mode = resolveCompassMode(input);
   const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
   const summary = summarizeInventory(entries);
   const failures = entries.filter(
@@ -311,12 +337,44 @@ export async function runCompassValidation(
 
   const diagnostics: Array<{
     ruleId: string;
-    severity: string;
+    severity: "warning" | "error";
     file: string;
     message: string;
     fix: string;
     pack?: string;
   }> = [];
+
+  // RFC-1094: v2 rules are mode-aware — warnings in `warning` mode (default
+  // during the migration window), errors in `error` mode. Owned subset:
+  // COMPASS-KD-*, COMPASS-ORDER-01, COMPASS-PURPOSE-*. CS-* rules are emitted
+  // by compass.changesummary.validate.
+  const V2_VALIDATE_RULE_PREFIXES = ["COMPASS-KD-", "COMPASS-ORDER-", "COMPASS-PURPOSE-"];
+  const v2Severity = mode === "error" ? "error" : "warning";
+  const authoredEntries = entries.filter(
+    (entry) => entry.authoringStatus === "authored" && entry.requiredScaffolding !== "none",
+  );
+  for (const entry of authoredEntries) {
+    const absPath = resolve(context.workspaceRoot, entry.path);
+    const source = await readFile(absPath, "utf8");
+    for (const v2 of evaluateV2Rules(entry, source)) {
+      if (!V2_VALIDATE_RULE_PREFIXES.some((prefix) => v2.ruleId.startsWith(prefix))) {
+        continue;
+      }
+      const log = `[compass.validate] ${v2.ruleId}: ${entry.path}: ${v2.message}`;
+      if (v2Severity === "error") {
+        context.logger.error(log);
+      } else {
+        context.logger.warn(log);
+      }
+      diagnostics.push({
+        ruleId: v2.ruleId,
+        severity: v2Severity,
+        file: entry.path,
+        message: v2.message,
+        fix: v2.fix,
+      });
+    }
+  }
 
   for (const failure of failures) {
     for (const violation of failure.violations) {
@@ -477,7 +535,9 @@ export async function runCompassValidation(
     }
   }
 
-  const hasFailures = diagnostics.length > 0;
+  const hasErrors = diagnostics.some((d) => d.severity === "error");
+  const warningCount =
+    diagnostics.length - diagnostics.filter((d) => d.severity === "error").length;
 
   return {
     data: {
@@ -486,9 +546,9 @@ export async function runCompassValidation(
       summary,
       diagnostics,
     },
-    exitCode: hasFailures ? 1 : 0,
-    summary: hasFailures
+    exitCode: hasErrors ? 1 : 0,
+    summary: hasErrors
       ? undefined
-      : `[compass.validate] OK (${summary.authoredFiles} authored files checked)`,
+      : `[compass.validate] OK (${summary.authoredFiles} authored files checked${warningCount > 0 ? `, ${warningCount} v2 warnings` : ""})`,
   };
 }

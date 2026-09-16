@@ -16,6 +16,7 @@ for Compass source-file inventory.</purpose>
   <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added .cs, .tscn, .tres, .gd to SOURCE_EXTENSIONS; createCompassInventoryEntries now reads forge.yaml compass.fileExtensions at runtime and merges with hardcoded set.</item>
   <item>Added .md to SOURCE_EXTENSIONS for SKILL.md Compass coverage; detectAuthoringStatus excludes non-SKILL.md markdown files.</item>
+  <item>RFC-1094: v2 contract — KEY_DECISIONS/history parsing, new inventory fields, evaluateV2Rules, deriveFileTokens, resolveCompassMode, shared GOVERNANCE_ID_RE.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -96,6 +97,55 @@ const FORBIDDEN_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "COMPASS_BLOCK", regex: new RegExp(`</?${"COMPASS_BLOCK"}\\b`) },
 ];
 
+// RFC-1094: v2 contract constants. GOVERNANCE_ID_RE is the canonical
+// governance-ID pattern shared with the change-summary handler.
+export const GOVERNANCE_ID_RE = /\b([A-Z][A-Z0-9]*-)+\d+\b/;
+const GOVERNANCE_ID_PREFIX_RE = /^([A-Z][A-Z0-9]*-)+\d+\b/;
+const HISTORY_ID_RE = /^([A-Z][A-Z0-9]*-)+\d+$/;
+const HISTORY_ID_PARTS_RE = /^(([A-Z][A-Z0-9]*-)+)(\d+)$/;
+const TODO_PLACEHOLDER_RE = /^TODO\b/i;
+
+const GENERIC_STEMS = new Set([
+  "index",
+  "styles",
+  "style",
+  "local",
+  "global",
+  "utils",
+  "helpers",
+  "types",
+  "constants",
+  "readme",
+]);
+const SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts"]);
+const EXPORTED_SYMBOL_RE =
+  /export\s+(?:async\s+)?(?:function|const|let|class|interface|type|enum)\s+(\w+)/g;
+
+const PURPOSE_BOILERPLATE_PATTERNS: RegExp[] = [
+  /^(this file|the file|a file|this module|a module)\b/i,
+  /^(utility|utilities|helper|helpers|misc)\b/i,
+  /^(todo|placeholder|fixme)\b/i,
+];
+
+const KEY_DECISIONS_MAX_ITEMS = 7;
+const KEY_DECISIONS_MAX_WORDS = 20;
+const CHANGE_SUMMARY_MAX_ITEMS = 5;
+
+export type CompassValidationMode = "warning" | "error";
+
+export interface CompassV2Diagnostic {
+  ruleId: string;
+  message: string;
+  fix: string;
+}
+
+export function resolveCompassMode(input: ForgeCommandInput): CompassValidationMode {
+  const raw = input.flags["mode"];
+  if (raw === undefined) return "warning";
+  if (raw === "warning" || raw === "error") return raw;
+  throw new Error(`--mode must be "warning" or "error", got "${String(raw)}"`);
+}
+
 type CompassWorkspaceKind = "app" | "package" | "service";
 type CompassRiskClass = "high" | "medium" | "low";
 type CompassComplexity = "non-trivial" | "trivial";
@@ -116,6 +166,11 @@ export interface CompassInventoryEntry {
   nonEmptyLineCount: number;
   hasModuleContract: boolean;
   hasChangeSummary: boolean;
+  hasKeyDecisions: boolean;
+  keyDecisionsItemCount: number;
+  keyDecisionsRequired: boolean;
+  changeSummaryItemCount: number;
+  historyIds: string[];
   hasAiInvariant: boolean;
   hasPurpose: boolean;
   hasNonGoals: boolean;
@@ -478,23 +533,274 @@ function detectComplianceViolations(
   return violations;
 }
 
+interface CompassBlockParse {
+  hasModuleContract: boolean;
+  hasKeyDecisions: boolean;
+  hasChangeSummary: boolean;
+  keyDecisionsItems: string[];
+  changeSummaryItems: string[];
+  historyIds: string[];
+  historyRaw: string | null;
+  purposeText: string;
+  positions: {
+    moduleContract: number;
+    keyDecisions: number;
+    changeSummary: number;
+  };
+}
+
+function extractItems(block: string): string[] {
+  const items: string[] = [];
+  const re = /<item>([\s\S]*?)<\/item>/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(block)) !== null) {
+    items.push(m[1]!.trim());
+  }
+  return items;
+}
+
+function parseCompassBlocks(source: string): CompassBlockParse {
+  const positions = {
+    moduleContract: source.indexOf("<MODULE_CONTRACT>"),
+    keyDecisions: source.indexOf("<KEY_DECISIONS>"),
+    changeSummary: source.indexOf("<CHANGE_SUMMARY>"),
+  };
+
+  const contractBlock = extractBlockContent(source, "MODULE_CONTRACT");
+  const keyDecisionsBlock = extractBlockContent(source, "KEY_DECISIONS");
+  const changeSummaryBlock = extractBlockContent(source, "CHANGE_SUMMARY");
+
+  let purposeText = "";
+  if (contractBlock) {
+    const purposeBlock = extractBlockContent(contractBlock, "purpose");
+    if (purposeBlock) {
+      purposeText = purposeBlock.replace(/<[^>]+>/g, " ").trim();
+    }
+  }
+
+  let historyRaw: string | null = null;
+  let historyIds: string[] = [];
+  if (changeSummaryBlock) {
+    const historyMatch = changeSummaryBlock.match(/<history>([\s\S]*?)<\/history>/);
+    if (historyMatch) {
+      historyRaw = historyMatch[1]!.trim();
+      historyIds = historyRaw
+        .split(",")
+        .map((token) => token.trim())
+        .filter(Boolean);
+    }
+  }
+
+  return {
+    hasModuleContract: positions.moduleContract >= 0,
+    hasKeyDecisions: positions.keyDecisions >= 0,
+    hasChangeSummary: positions.changeSummary >= 0,
+    keyDecisionsItems: keyDecisionsBlock ? extractItems(keyDecisionsBlock) : [],
+    changeSummaryItems: changeSummaryBlock ? extractItems(changeSummaryBlock) : [],
+    historyIds,
+    historyRaw,
+    purposeText,
+    positions,
+  };
+}
+
+function splitIdentifier(name: string): string[] {
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .toLowerCase()
+    .split(" ")
+    .filter(Boolean);
+}
+
+export function deriveFileTokens(pathFromRoot: string, source: string): Set<string> {
+  const segments = pathFromRoot.split("/").filter(Boolean);
+  const filename = segments[segments.length - 1] ?? "";
+  const dotIndex = filename.lastIndexOf(".");
+  const stem = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+  const extension = dotIndex > 0 ? filename.slice(dotIndex) : "";
+
+  const tokens = new Set<string>();
+  for (const segment of stem.split("-").filter(Boolean)) {
+    tokens.add(segment.toLowerCase());
+  }
+
+  if (SYMBOL_EXTENSIONS.has(extension)) {
+    for (const match of source.matchAll(EXPORTED_SYMBOL_RE)) {
+      for (const word of splitIdentifier(match[1]!)) {
+        tokens.add(word);
+      }
+    }
+  }
+
+  if (GENERIC_STEMS.has(stem.toLowerCase())) {
+    const parent = segments[segments.length - 2] ?? "";
+    for (const segment of parent.split("-").filter(Boolean)) {
+      tokens.add(segment.toLowerCase());
+    }
+  }
+
+  return tokens;
+}
+
+function validateHistoryIds(historyIds: string[]): string | null {
+  for (const token of historyIds) {
+    if (!HISTORY_ID_RE.test(token)) {
+      return `<history> contains a non-ID token: "${token}"`;
+    }
+  }
+  if (new Set(historyIds).size !== historyIds.length) {
+    return "<history> contains duplicate IDs";
+  }
+  const lastSeenByNamespace = new Map<string, number>();
+  for (const token of historyIds) {
+    const parts = token.match(HISTORY_ID_PARTS_RE)!;
+    const namespace = parts[1]!.replace(/-$/, "");
+    const numeric = Number(parts[3]);
+    const last = lastSeenByNamespace.get(namespace);
+    if (last !== undefined && numeric <= last) {
+      return `<history> IDs are not in per-namespace ascending numeric order (${token} after ${namespace}-${last})`;
+    }
+    lastSeenByNamespace.set(namespace, numeric);
+  }
+  return null;
+}
+
+export function evaluateV2Rules(
+  entry: Pick<CompassInventoryEntry, "path" | "keyDecisionsRequired">,
+  source: string,
+): CompassV2Diagnostic[] {
+  const parse = parseCompassBlocks(source);
+  const diagnostics: CompassV2Diagnostic[] = [];
+
+  const orderedPositions = [
+    parse.positions.moduleContract,
+    parse.positions.keyDecisions,
+    parse.positions.changeSummary,
+  ].filter((position) => position >= 0);
+  if (orderedPositions.length >= 2) {
+    const sorted = [...orderedPositions].sort((a, b) => a - b);
+    const inOrder = orderedPositions.every((position, index) => position === sorted[index]);
+    if (!inOrder) {
+      diagnostics.push({
+        ruleId: "COMPASS-ORDER-01",
+        message:
+          "Compass blocks out of canonical order (MODULE_CONTRACT → KEY_DECISIONS → CHANGE_SUMMARY)",
+        fix: "fix: reorder blocks to MODULE_CONTRACT, KEY_DECISIONS, CHANGE_SUMMARY",
+      });
+    }
+  }
+
+  if (entry.keyDecisionsRequired && !parse.hasKeyDecisions) {
+    diagnostics.push({
+      ruleId: "COMPASS-KD-01",
+      message: "missing KEY_DECISIONS (required for medium/high riskClass)",
+      fix: "fix: add a KEY_DECISIONS block with 1-7 current-state design items",
+    });
+  }
+  if (parse.hasKeyDecisions) {
+    const items = parse.keyDecisionsItems;
+    const realItems = items.filter((item) => item.length > 0 && !TODO_PLACEHOLDER_RE.test(item));
+    if (items.length === 0 || realItems.length === 0) {
+      diagnostics.push({
+        ruleId: "COMPASS-KD-02",
+        message: "KEY_DECISIONS block is empty or contains only TODO placeholder items",
+        fix: "fix: write real current-state decisions or remove the block",
+      });
+    }
+    for (const item of items) {
+      if (countWords(item) > KEY_DECISIONS_MAX_WORDS) {
+        diagnostics.push({
+          ruleId: "COMPASS-KD-03",
+          message: `KEY_DECISIONS item exceeds ${KEY_DECISIONS_MAX_WORDS} words`,
+          fix: "fix: compress the item to a single decision statement",
+        });
+      }
+      if (GOVERNANCE_ID_PREFIX_RE.test(item)) {
+        diagnostics.push({
+          ruleId: "COMPASS-KD-05",
+          message:
+            "KEY_DECISIONS item starts with a governance-ID prefix — history belongs in CHANGE_SUMMARY",
+          fix: "fix: rewrite the item as a current-state decision without an ID prefix",
+        });
+      }
+    }
+    if (items.length > KEY_DECISIONS_MAX_ITEMS) {
+      diagnostics.push({
+        ruleId: "COMPASS-KD-04",
+        message: `KEY_DECISIONS has ${items.length} items (cap is ${KEY_DECISIONS_MAX_ITEMS})`,
+        fix: "fix: keep only the decisions that still govern the file",
+      });
+    }
+  }
+
+  if (parse.purposeText.length > 0) {
+    if (PURPOSE_BOILERPLATE_PATTERNS.some((pattern) => pattern.test(parse.purposeText))) {
+      diagnostics.push({
+        ruleId: "COMPASS-PURPOSE-01",
+        message: "<purpose> matches a boilerplate pattern",
+        fix: "fix: write a specific purpose naming what this file does",
+      });
+    }
+    const tokens = deriveFileTokens(entry.path, source);
+    const purposeWords = new Set(
+      parse.purposeText
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter(Boolean),
+    );
+    const hasToken = [...tokens].some((token) => purposeWords.has(token));
+    if (!hasToken) {
+      diagnostics.push({
+        ruleId: "COMPASS-PURPOSE-02",
+        message: "<purpose> contains no file-derived token (stem, parent dir, or exported symbol)",
+        fix: "fix: mention the file's own name or an exported symbol in <purpose>",
+      });
+    }
+  }
+
+  if (parse.hasChangeSummary) {
+    if (parse.changeSummaryItems.length > CHANGE_SUMMARY_MAX_ITEMS) {
+      diagnostics.push({
+        ruleId: "COMPASS-CS-05",
+        message: `CHANGE_SUMMARY has ${parse.changeSummaryItems.length} items (cap is ${CHANGE_SUMMARY_MAX_ITEMS}); collapse oldest into <history>`,
+        fix: "fix: keep the 5 newest items and collapse older IDs into <history>",
+      });
+    }
+    for (const item of parse.changeSummaryItems) {
+      if (!GOVERNANCE_ID_RE.test(item)) {
+        diagnostics.push({
+          ruleId: "COMPASS-CS-06",
+          message: `CHANGE_SUMMARY item lacks a governance-ID reference: "${item.slice(0, 60)}"`,
+          fix: "fix: prefix the item with its RFC/ADR/ticket ID or remove it",
+        });
+      }
+    }
+    if (parse.historyRaw !== null) {
+      const historyError = validateHistoryIds(parse.historyIds);
+      if (historyError) {
+        diagnostics.push({
+          ruleId: "COMPASS-CS-07",
+          message: historyError,
+          fix: "fix: <history> carries comma-separated governance IDs only, deduplicated, per-namespace ascending",
+        });
+      }
+    }
+  }
+
+  return diagnostics;
+}
+
 function detectMarkup(source: string) {
-  const hasModuleContract = source.includes(REQUIRED_MARKERS[0]);
-  const hasChangeSummary = source.includes(REQUIRED_MARKERS[1]);
+  const parse = parseCompassBlocks(source);
   const hasAiInvariant = /@ai-invariant\b/.test(source);
 
-  let hasPurpose = false;
+  const hasPurpose = countWords(parse.purposeText) >= 10;
   let hasNonGoals = false;
 
-  if (hasModuleContract) {
+  if (parse.hasModuleContract) {
     const contractBlock = extractBlockContent(source, "MODULE_CONTRACT");
     if (contractBlock) {
-      const purposeBlock = extractBlockContent(contractBlock, "purpose");
-      if (purposeBlock) {
-        const purposeText = purposeBlock.replace(/<[^>]+>/g, " ");
-        hasPurpose = countWords(purposeText) >= 10;
-      }
-
       const nonGoalsBlock = extractBlockContent(contractBlock, "non-goals");
       if (nonGoalsBlock) {
         hasNonGoals = (nonGoalsBlock.match(/<item>/g) ?? []).length >= 1;
@@ -510,8 +816,12 @@ function detectMarkup(source: string) {
   }
 
   return {
-    hasModuleContract,
-    hasChangeSummary,
+    hasModuleContract: parse.hasModuleContract,
+    hasChangeSummary: parse.hasChangeSummary,
+    hasKeyDecisions: parse.hasKeyDecisions,
+    keyDecisionsItemCount: parse.keyDecisionsItems.length,
+    changeSummaryItemCount: parse.changeSummaryItems.length,
+    historyIds: parse.historyIds,
     hasAiInvariant,
     hasPurpose,
     hasNonGoals,
@@ -546,6 +856,10 @@ export async function createCompassInventoryEntries(
     );
     const requiredScaffolding = detectRequiredScaffolding(authoringStatus);
     const markup = detectMarkup(source);
+    const keyDecisionsRequired =
+      authoringStatus === "authored" &&
+      requiredScaffolding === "standard" &&
+      (riskClass === "medium" || riskClass === "high");
     const nonEmptyLineCount = source.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
     const candidate: CompassInventoryEntry = {
       path: pathFromRoot,
@@ -564,6 +878,11 @@ export async function createCompassInventoryEntries(
       nonEmptyLineCount,
       hasModuleContract: markup.hasModuleContract,
       hasChangeSummary: markup.hasChangeSummary,
+      hasKeyDecisions: markup.hasKeyDecisions,
+      keyDecisionsItemCount: markup.keyDecisionsItemCount,
+      keyDecisionsRequired,
+      changeSummaryItemCount: markup.changeSummaryItemCount,
+      historyIds: markup.historyIds,
       hasAiInvariant: markup.hasAiInvariant,
       hasPurpose: markup.hasPurpose,
       hasNonGoals: markup.hasNonGoals,

@@ -13,12 +13,18 @@ autonomous mode (RFC-0556). Provides compass.changesummary.validate and compass.
   <item>RFC-0349: initial implementation of classifyChangeSummaryItem, compass.changesummary.validate, and compass.changesummary.tidy.</item>
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, raised cap from 3 unprotected to 30 total items, aligned validate cap to 30 total.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
+  <item>RFC-1094: --mode flag; mode-aware COMPASS-CS-05/06/07 diagnostics via shared evaluateV2Rules; PROTECTED_RE now aliases GOVERNANCE_ID_RE.</item>
 </CHANGE_SUMMARY>
 */
 
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
-import { createCompassInventoryEntries } from "./compass-inventory.ts";
+import {
+  createCompassInventoryEntries,
+  evaluateV2Rules,
+  resolveCompassMode,
+  GOVERNANCE_ID_RE,
+} from "./compass-inventory.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type {
@@ -28,7 +34,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
-const PROTECTED_RE = /\b([A-Z][A-Z0-9]*-)+\d+\b/;
+const PROTECTED_RE = GOVERNANCE_ID_RE;
 const BOILERPLATE_RE =
   /^(Wave\s+\d|Backfill\b|Annotate Compass|Annotation revision|Initial creation|Compass scaffolding|Created as part of|Enhance .* with Compass)/i;
 
@@ -92,10 +98,15 @@ export async function runCompassChangeSummaryValidate(
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context);
+  const mode = resolveCompassMode(input);
   const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
 
   const diagnostics: Diagnostic[] = [];
   let checkedFiles = 0;
+
+  // RFC-1094: v2 CS rules (CS-05/06/07) are mode-aware; v1 rules (CS-01/02)
+  // stay at error severity in both modes until the sibling lifecycle RFC lands.
+  const v2Severity = mode === "error" ? "error" : "warning";
 
   for (const entry of entries) {
     if (entry.authoringStatus !== "authored" || entry.requiredScaffolding === "none") {
@@ -104,12 +115,26 @@ export async function runCompassChangeSummaryValidate(
 
     checkedFiles++;
 
+    const absPath = resolve(context.workspaceRoot, entry.path);
+    const source = await readFile(absPath, "utf8");
+
+    for (const v2 of evaluateV2Rules(entry, source)) {
+      if (!v2.ruleId.startsWith("COMPASS-CS-")) {
+        continue;
+      }
+      diagnostics.push({
+        ruleId: v2.ruleId,
+        severity: v2Severity,
+        file: entry.path,
+        message: v2.message,
+        fixHint: v2.fix,
+      });
+    }
+
     if (!entry.hasChangeSummary) {
       continue;
     }
 
-    const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = await readFile(absPath, "utf8");
     const block = extractChangeSummaryBlock(source);
     if (!block) continue;
 
@@ -146,10 +171,15 @@ export async function runCompassChangeSummaryValidate(
     }
   }
 
-  const failed = diagnostics.length > 0;
+  const failed = diagnostics.some((d) => d.severity === "error");
 
   for (const d of diagnostics) {
-    context.logger.error(`[compass.changesummary.validate] ${d.ruleId}: ${d.file}: ${d.message}`);
+    const log = `[compass.changesummary.validate] ${d.ruleId}: ${d.file}: ${d.message}`;
+    if (d.severity === "error") {
+      context.logger.error(log);
+    } else {
+      context.logger.warn(log);
+    }
   }
 
   return {

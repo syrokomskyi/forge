@@ -56,10 +56,11 @@ For each discovered file, determine the required action:
 If the file has no `MODULE_CONTRACT` and no `CHANGE_SUMMARY` block:
 
 1. Read the file content and understand its purpose.
-2. Use `templates/header-prompt.md` to generate a `MODULE_CONTRACT` block with `<purpose>` and `<non-goals>`.
-3. Create a `CHANGE_SUMMARY` block with a single `<item>` noting the initial creation.
-4. Insert both blocks at the top of the file, after any existing license/comment header but before imports.
-5. Use `reference/comment-styles.md` to determine the correct comment syntax for the file extension.
+2. Use `templates/header-prompt.md` to generate a `MODULE_CONTRACT` block with `<purpose>` and `<non-goals>`. The `<purpose>` must contain a file-derived token (stem segment, parent-directory segment for generic stems, or exported symbol).
+3. If the file's `riskClass` is `medium` or `high`, generate a `KEY_DECISIONS` block with 1–7 current-state design items (no governance-ID prefixes — current truth, not history).
+4. Create a `CHANGE_SUMMARY` block with a single `<item>` carrying the governing RFC/ADR/ticket ID.
+5. Insert the blocks at the top of the file in canonical order `MODULE_CONTRACT` → `KEY_DECISIONS` → `CHANGE_SUMMARY`, after any existing license/comment header but before imports.
+6. Use `reference/comment-styles.md` to determine the correct comment syntax for the file extension.
 
 #### 2b. Update (file has headers but content has changed)
 
@@ -67,17 +68,18 @@ If the file has Compass headers but the content has significantly changed:
 
 1. Read the current `MODULE_CONTRACT` and compare with the file's actual purpose.
 2. Use `templates/header-prompt.md` to regenerate the `MODULE_CONTRACT` if the purpose has shifted.
-3. Add a new `<item>` to `CHANGE_SUMMARY` referencing the current RFC or change.
-4. Run `compass.summary.trim` if the `CHANGE_SUMMARY` exceeds 30 total items.
+3. Rewrite `KEY_DECISIONS` items in place when the change alters a recorded decision — never append chronologically.
+4. Add a new `<item>` to `CHANGE_SUMMARY` referencing the current RFC/ADR/ticket ID. When the block exceeds 5 items, collapse the oldest IDs into the `<history>` element (comma-separated, deduplicated, per-namespace ascending).
 
 #### 2c. Audit (semantic check)
 
 For each file with Compass headers:
 
-1. Use `templates/audit-prompt.md` to audit the `MODULE_CONTRACT` against the file's actual content.
+1. Use `templates/audit-prompt.md` to audit the `MODULE_CONTRACT` (and `KEY_DECISIONS` when present) against the file's actual content.
 2. Check that `<purpose>` accurately describes what the file does.
 3. Check that `<non-goals>` lists at least one boundary the file does not cross.
-4. Flag files where the header is stale, misleading, or empty.
+4. Check that `KEY_DECISIONS` items still describe current design truth.
+5. Flag files where the header is stale, misleading, or empty.
 
 #### 2d. Risk flag
 
@@ -91,8 +93,8 @@ For each file with Compass headers:
 
 After processing all files:
 
-1. Run `compass.validate` to verify all headers are well-formed.
-2. If any violations are found, attempt to fix them automatically (missing `<non-goals>`, empty `<purpose>`, etc.).
+1. Run `compass.validate` to verify all headers are well-formed. v2 rules emit warnings by default (`--mode warning`); use `--mode error` to check post-migration compliance.
+2. If any violations are found, attempt to fix them automatically (missing `<non-goals>`, empty `<purpose>`, missing `KEY_DECISIONS` on medium/high-risk files, etc.).
 3. Re-run `compass.validate` to confirm fixes.
 4. If violations persist after 3 retry attempts, report them to the operator.
 
@@ -122,7 +124,7 @@ Output a summary:
 
 ## Completion criteria
 
-- All discovered files have `MODULE_CONTRACT` and `CHANGE_SUMMARY` blocks.
+- All discovered files have `MODULE_CONTRACT` and `CHANGE_SUMMARY` blocks in canonical order; medium/high-risk files also carry `KEY_DECISIONS`.
 - Pack-declared Compass contract blocks (RFC-0943, if any are declared in `forge.plugin.yaml` `extensionPoints.compass.contract`) are present in matching files.
 - `compass.validate` passes with zero errors.
 - No `TODO(compass)` sentinels remain (if `--cleanup` was used).

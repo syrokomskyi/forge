@@ -12,6 +12,7 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 <CHANGE_SUMMARY>
   <item>RFC-0352: initial implementation of compass.audit.plan, compass.audit.record, compass.audit.baseline, compass.audit.validate.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
+  <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -65,6 +66,7 @@ interface CompassAuditWorkOrderItem {
   auditedRevision: number | null;
   reason: "never-audited" | "revision-threshold-crossed";
   moduleContract: string;
+  keyDecisions: string;
   changeSummary: string;
 }
 
@@ -166,6 +168,7 @@ export async function runCompassAuditPlan(
     const absPath = resolve(context.workspaceRoot, entry.path);
     const source = await readFile(absPath, "utf8");
     const moduleContract = extractBlock(source, "MODULE_CONTRACT");
+    const keyDecisions = extractBlock(source, "KEY_DECISIONS");
     const changeSummary = extractBlock(source, "CHANGE_SUMMARY");
 
     items.push({
@@ -174,6 +177,7 @@ export async function runCompassAuditPlan(
       auditedRevision,
       reason: auditedRevision === null ? "never-audited" : "revision-threshold-crossed",
       moduleContract,
+      keyDecisions,
       changeSummary,
     });
   }
