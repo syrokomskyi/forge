@@ -9,8 +9,9 @@
 <CHANGE_SUMMARY>
   <item>RFC-0546: initial migration-adapter type contracts (MigrationAdapter, AdapterAnalysis, MigrationResult, Conflict).</item>
   <item>RFC-0547: remove .git from DEFAULT_EXCLUDE_PATTERNS — git history handled by postSetup via format-patch + git am.</item>
-  <item>Re-add .git to DEFAULT_EXCLUDE_PATTERNS — copyDirectory copies into apps/<appName>/, not the project root; copying .git there creates a nested repo. Git history is handled by postSetup at the project root.</item>
-  <item>Add .env* to untracked-file transfer guarantee — the adapter copies ALL files on disk (including git-ignored), not just git-tracked files.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

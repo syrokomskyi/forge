@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>typescript-checks module — registers all six ts.*.validate commands as a single autonomous KernelModule (RFC-0889).</purpose>
-<keywords>module, checks, typescript, validators</keywords>
+
 <non-goals>
   <item>Do not import from @warpgogol/werkstatt-engine beyond kernel types.</item>
   <item>Do not import from any stack plugin.</item>
@@ -9,6 +9,9 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0889: initial typescript-checks module with six validators.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

@@ -12,12 +12,14 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0476: initial rfc.implement.stamp handler with acceptance criteria evaluation, evidence checks, and atomic status transition.</item>
-  <item>RFC-0268: acceptance probe evidence check before stamping.</item>
   <item>RFC-0756: auto-detect implementation commit when --implementation-commit is omitted.</item>
   <item>RFC-0795: add RFC-IMP-07 dependsOn dependency gate — blocks stamping when any dependsOn entry is not implemented.</item>
   <item>RFC-0997: add RFC-IMP-08 minimum-one-probe gate — blocks stamping for post-cutoff architecture/contract/command RFCs with no acceptance probes.</item>
   <item>RFC-1053: integrate generateRfcMetrics after successful stamp (non-fatal, guarded by !isDryRun).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0268, RFC-0476</history>
 </CHANGE_SUMMARY>
 */
 

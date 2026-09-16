@@ -7,17 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0638: initial domain-neutral profile schema extensions with six optional fields.</item>
-  <item>RFC-0674: add profileDevServerSchema and devServer field for lifecycle commands.</item>
-  <item>RFC-0675: add profileInvariantCheckSchema and check field to profileInvariantSchema for enforcement.</item>
-  <item>RFC-0679: add profileAssetSchema and assets field for asset management commands.</item>
   <item>RFC-0680: add profileReleaseSchema and release field for release lifecycle commands.</item>
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
-  <item>Add prerequisites field for profile-declared system dependency checks (e.g. FFmpeg).</item>
-  <item>Add templates field for multi-template profiles (e.g. React + HTML).</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
   <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for note vault validation.</item>
-  <item>Add gitignore-entry and secret-scan check kinds for godot-csharp profile.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0638, RFC-0674, RFC-0675, RFC-0679</history>
 </CHANGE_SUMMARY>
 */
 

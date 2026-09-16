@@ -11,12 +11,14 @@ statuses, scopes, frontmatter shape, validation results, and list output.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0366: introduce ADR types and constants mirroring the RFC domain contract.</item>
   <item>RFC-0367: extend AdrStatus with reviewing and implemented; add implementedAt, closedAt, reviewers fields.</item>
-  <item>Post-refactor hardening: document that an ADR may be superseded by a broader RFC.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
   <item>RFC-0727: add AdrImplementStamp types for atomic ADR status transition.</item>
   <item>RFC-0996: add AV-17 acceptance criteria completeness check for implemented post-cutoff ADRs.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0366</history>
 </CHANGE_SUMMARY>
 */
 

@@ -8,8 +8,13 @@ code paths that cannot use the async `trash` npm package.</purpose>
   <item>Requires `trash-put` (trash-cli) installed on Linux/macOS. On Windows, uses PowerShell Recycle Bin API (no external binary needed).</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>TODO: record current design decisions</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>Initial implementation: sync wrapper for `trash-put` (Linux/macOS) and PowerShell Recycle Bin (Windows).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

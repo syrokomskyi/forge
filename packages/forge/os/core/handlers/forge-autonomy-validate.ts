@@ -4,7 +4,7 @@
 @warpgogol/werkstatt-engine imports outside os/werkstatt/. Enforces FORGE-AUTONOMY-01
 (RFC-0940, DNA-64). @warpgogol/werkstatt-shared is exempt (shared infrastructure).
 Type-only imports (import type) are exempt.</purpose>
-<keywords>autonomy, guard, RFC-0940, DNA-64, forge, import boundary</keywords>
+
 <non-goals>
   <item>Does not scan test files — .test.ts and .spec.ts are always excluded.</item>
   <item>Does not scan os/werkstatt/ — the adapter directory may import @warpgogol/werkstatt-engine.</item>
@@ -15,6 +15,9 @@ Type-only imports (import type) are exempt.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0940: initial forge.autonomy.validate handler implementing FORGE-AUTONOMY-01.</item>
   <item>ADR-0019: inlined scanDirectoryForImports to make forge dependency-free.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

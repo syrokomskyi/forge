@@ -1,13 +1,16 @@
 /*
 <MODULE_CONTRACT>
 <purpose>ts.tsconfig.validate — validates tsconfig.base.json and per-package tsconfig.json consistency (TS-001, RFC-0889).</purpose>
-<keywords>tsconfig, validate, strict, typescript</keywords>
+
 <non-goals>
   <item>Does not modify tsconfig files — read-only validator.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0889: initial tsconfig validator.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

@@ -8,22 +8,14 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial forge.doctor handler for autonomy refactor.</item>
-  <item>RFC-0391: added @warpgogol/* forbidden-imports autonomy guard.</item>
-  <item>RFC-0393: added bindings validation — resolved/absent/invalid reporting.</item>
-  <item>RFC-0524: added stale knowledge file detection — compares source and .agents/ copies.</item>
-  <item>RFC-0539: extended knowledge file check to iterate pack skills via discoverPackSkills. Added pack-skills check for stale/missing copies and skillPacks config validation.</item>
-  <item>RFC-0540: added defaultable-binding-null notices for forge-CLI-backed bindings.</item>
-  <item>RFC-0611: added nested AGENTS.md checks — missing, stale (dryRun comparison), hand-written improvement.</item>
-  <item>RFC-0640: added domain reporting, invariant listing (reported-only), terminology resolution, --strict flag, and software-specific check skipping for non-software domains.</item>
-  <item>RFC-0675: upgraded domain-invariants check from advisory to enforcement using invariant engine.</item>
-  <item>RFC-0660: added legacy-section count reporting for structured knowledge files.</item>
-  <item>RFC-0661: added knowledge-budgets check — validates override shape, computes per-skill budget reports, reports summary with headroom %.</item>
   <item>RFC-0663: added knowledge-duplicates check (cross-skill L2 duplicate detection) and shared-knowledge-file check (schema/id uniqueness for the shared layer).</item>
   <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
   <item>RFC-0704: added independent-version-packages check — validates that paths in independentVersionPackages exist and contain package.json.</item>
   <item>RFC-0941: added pack-manifests advisory check — validates forge.plugin.yaml existence and schema for each declared skill pack.</item>
-  <item>Added git-branch check — warns when current branch is 'master' instead of 'main'.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0675</history>
 </CHANGE_SUMMARY>
 */
 

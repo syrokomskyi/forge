@@ -7,12 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0392: initial stack profile module with zod schema, listStackProfiles, detectStack.</item>
-  <item>RFC-0638: extended stackProfileSchema with optional domain-neutral fields (domain, terminology, artifacts, workspaceTypes, invariants, register).</item>
   <item>RFC-0674: add devServer field to stackProfileSchema for lifecycle commands.</item>
   <item>RFC-0679: add assets field to stackProfileSchema for asset management commands.</item>
   <item>RFC-0680: add release field to stackProfileSchema for release lifecycle commands.</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0392, RFC-0638</history>
 </CHANGE_SUMMARY>
 */
 

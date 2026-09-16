@@ -1,13 +1,8 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Werkstatt TypeScript plugin entry point — generic TypeScript TurboRepo stack implementing werkstatt/plugin@1 (RFC-0889).</purpose>
-<keywords>plugin, typescript, turborepo, werkstatt</keywords>
-<responsibilities>
-  <item>Exports werkstattTypescriptPlugin: WerkstattPlugin with profileId "typescript-turborepo".</item>
-  <item>Registers TypeScript-stack check module via moduleLoaders.</item>
-  <item>Declares TypeScript path conventions via StackPathConventions.</item>
-  <item>Surfaces TS-001..006 stack invariants to agents.</item>
-</responsibilities>
+
+
 <non-goals>
   <item>Do not import from @warpgogol/werkstatt-site or any other stack plugin.</item>
   <item>Do not import from the engine package beyond plugin contract types and kernel types.</item>
@@ -17,6 +12,9 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0889: initial TypeScript plugin entry point — six validators, TS-001..006 invariants, no deploy adapters, no hooks.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

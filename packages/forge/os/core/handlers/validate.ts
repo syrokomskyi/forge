@@ -9,7 +9,9 @@
 <CHANGE_SUMMARY>
   <item>RFC-0674: initial forge.validate handler with profile resolution, --dry-run, and per-artifact execution.</item>
   <item>RFC-0677: extended with --artifact filtering, violation parsing (outputFormat: json/plain), passed/allPassed fields.</item>
-  <item>Integrated compass.validate as in-process step after artifact validations for automatic Compass enforcement.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

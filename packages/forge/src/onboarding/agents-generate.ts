@@ -7,16 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0391: initial forge.agents.generate handler.</item>
-  <item>RFC-0393: added Capabilities section rendered from resolved bindings.</item>
-  <item>RFC-0548: added Core behavioral layer section with intent-to-skill routing table from triggers, fixed policy text, and conditional extended layer (RFC-0549) based on register.</item>
-  <item>RFC-0549: replaced extended layer stub with full nine-section content from extended-behavioral-layer.ts.</item>
-  <item>RFC-0551: added register-conditional commit policy to core behavioral layer.</item>
   <item>RFC-0611: added nested AGENTS.md generation for workspace directories + dryRun support.</item>
   <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
   <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
   <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
-  <item>Profile-driven root AGENTS.md template via rootAgentsMdTemplate field — profiles can now provide stack-specific root templates instead of generic business/creative templates.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551</history>
 </CHANGE_SUMMARY>
 */
 

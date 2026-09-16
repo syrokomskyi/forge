@@ -6,17 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0374: initial forge.skill.validate handler.</item>
-  <item>RFC-0393: added SKILL-11 — canonical skill bodies must not contain hardcoded project-specific literals.</item>
-  <item>RFC-0523: added SKILL-12 — concerns must be one of four-level enum. Updated SKILL-10 to cover read-only skills.</item>
-  <item>RFC-0524: added SKILL-13 — declared knowledge files must exist relative to SKILL.md directory.</item>
-  <item>RFC-0539: added SKILL-14 (pack skill name must start with pack prefix) and SKILL-15 (non-forge skill may not use fo- prefix). Extended SKILL-07 with asymmetric dependency direction (forge→pack forbidden). Added pack skill validation loop.</item>
-  <item>RFC-0548: added SKILL-16 — triggers field must be an array of 1-5 strings, each 5-100 characters, only allowed on fo-category skills.</item>
   <item>RFC-0553: added SKILL-17 — skill files must not contain specific platform RFC/ADR ids (RFC-\\d{4}, ADR-\\d{4}) or platform names (Warpgogol, WarpGogol).</item>
   <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
   <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
   <item>RFC-0661: added SKILL-21 (knowledge layer token budget warnings), refactored warning handling — warnings go to separate `warnings` array, not `violations`.</item>
-  <item>2026-08-03: SKILL-17 WarpGogol brand pattern made case-sensitive — the /gi flag defeated the first pattern's @-lookbehind and false-flagged every `@warpgogol/<pkg>` npm-scope reference.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548</history>
 </CHANGE_SUMMARY>
 */
 

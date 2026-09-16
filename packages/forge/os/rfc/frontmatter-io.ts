@@ -11,9 +11,11 @@ circular import between the two.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0268: extracted from handlers.ts to break a circular import with acceptance.ts.</item>
-  <item>Post-refactor hardening: added basename-based RFC id matching for archived RFC paths.</item>
   <item>RFC-0521: added getRfcStatusById and loadRfcStatusMap helpers for plan/audit archive commands.</item>
   <item>RFC-0755: readAndParseRfc now returns { fileName, error } on YAML parse failure instead of undefined.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

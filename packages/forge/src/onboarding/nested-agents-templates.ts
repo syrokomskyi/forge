@@ -9,8 +9,10 @@ content-rich AGENTS.md for a workspace from its package.json metadata. No I/O.</
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0611: initial minimal stub template for app, package, service workspaces.</item>
-  <item>Enriched template: render package name, description, entry points, scripts, and dependencies from package.json metadata instead of a minimal stub.</item>
   <item>RFC-0643: selectNestedTemplate() for profile-driven template selection with path traversal guard.</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 

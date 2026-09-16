@@ -12,8 +12,10 @@ Deterministic only — no LLM/intelligent annotation (that is fo-session-save sk
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0537: implement session.save command handler.</item>
-  <item>Replace fs.unlink with trashPath for raw file deletion (trash bin for LLM-initiated deletions).</item>
   <item>RFC-1053: integrate generateSessionMetrics after markdown write (non-fatal, guarded by !dryRun).</item>
+  <item>RFC-1097: step 6 — compass.migrate codemod run
+
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
 </CHANGE_SUMMARY>
 */
 
