@@ -15,20 +15,25 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
 </CHANGE_SUMMARY>
 */
 
 import type { KernelCommandDefinition, Diagnostic } from "@warpgogol/werkstatt-engine/kernel/types";
+import { builtinModules } from "node:module";
 import type { TsWorkspaceModel } from "../model/workspace-model.ts";
 import { makeDiagnostic } from "./diagnostic-helpers.ts";
 import { defineTsCheck, type TsCheckData } from "./run-ts-check.ts";
 
 export type PhantomDepsValidateData = TsCheckData;
 
+/** Scheme-prefixed specifiers are virtual/builtin modules, not npm packages (node:, bun:, virtual:, astro:, cloudflare:, data:, …). */
+const SCHEME_PREFIX = /^[a-z][a-z0-9+.-]*:/i;
+const NODE_BUILTINS = new Set(builtinModules);
+
 function extractPackageName(specifier: string): string | null {
-  if (specifier.startsWith("node:") || specifier.startsWith("bun:")) return null;
+  if (SCHEME_PREFIX.test(specifier)) return null;
   if (specifier.startsWith(".") || specifier.startsWith("/")) return null;
-  if (specifier.startsWith("virtual:")) return null;
 
   if (specifier.startsWith("@")) {
     const parts = specifier.split("/");
@@ -39,7 +44,9 @@ function extractPackageName(specifier: string): string | null {
   }
 
   const parts = specifier.split("/");
-  return parts[0] ?? null;
+  const name = parts[0] ?? null;
+  if (name && NODE_BUILTINS.has(name)) return null;
+  return name;
 }
 
 function check(model: TsWorkspaceModel): Diagnostic[] {
@@ -50,7 +57,9 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
       ...Object.keys(pkg.packageJson.dependencies ?? {}),
       ...Object.keys(pkg.packageJson.devDependencies ?? {}),
       ...Object.keys(pkg.packageJson.peerDependencies ?? {}),
+      ...Object.keys(pkg.packageJson.optionalDependencies ?? {}),
     ]);
+    const selfName = pkg.packageJson.name;
 
     const specifiers: { specifier: string; path: string; line: number }[] = [];
     for (const file of pkg.sourceFiles) {
@@ -64,7 +73,7 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 
     for (const { specifier, path, line } of specifiers) {
       const pkgName = extractPackageName(specifier);
-      if (pkgName && !declaredDeps.has(pkgName)) {
+      if (pkgName && pkgName !== selfName && !declaredDeps.has(pkgName)) {
         diagnostics.push(
           makeDiagnostic(
             "TS-PHANTOM-01",

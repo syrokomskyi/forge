@@ -13,6 +13,7 @@ envelope for all six ts.*.validate commands (RFC-1099).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial check harness — replaces per-validator boilerplate (walk, read, envelope shaping) with one defineTsCheck seam.</item>
+  <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -69,7 +70,13 @@ export function defineTsCheck(input: DefineTsCheckInput): KernelCommandDefinitio
       },
     },
     async execute(commandInput, context) {
-      const globs = parseGlobsFlag(commandInput.flags.globs);
+      const rawGlobs = commandInput.flags.globs;
+      const globs = parseGlobsFlag(rawGlobs);
+      if (typeof rawGlobs === "string" && rawGlobs.trim().length > 0 && globs.length === 0) {
+        context.logger.warn(
+          `${input.name}: --globs "${rawGlobs}" parsed to an empty list — no packages will be scanned.`,
+        );
+      }
       const model = await buildWorkspaceModel(context.workspaceRoot, globs);
 
       if (model.packages.length === 0) {
@@ -90,8 +97,7 @@ export function defineTsCheck(input: DefineTsCheckInput): KernelCommandDefinitio
 
       const diagnostics = input.check(model);
       const summary = buildSummary(diagnostics);
-      const status =
-        summary.error > 0 ? "fail" : summary.warning > 0 ? "warn" : "pass";
+      const status = summary.error > 0 ? "fail" : summary.warning > 0 ? "warn" : "pass";
 
       const result: KernelCommandResult<TsCheckData> = {
         data: {

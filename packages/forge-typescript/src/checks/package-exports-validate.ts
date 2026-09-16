@@ -15,6 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -45,6 +46,19 @@ function resolveExportPath(exportEntry: unknown): string[] {
   return [];
 }
 
+/** `*` in an exports target is a subpath pattern — verify at least one existing file matches. */
+function wildcardMatches(pattern: string, existingFiles: Set<string>): boolean {
+  const regex = new RegExp(`^${pattern.split("*").map(escapeRegExp).join(".*")}$`);
+  for (const file of existingFiles) {
+    if (regex.test(file)) return true;
+  }
+  return false;
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function check(model: TsWorkspaceModel): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
 
@@ -59,7 +73,10 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 
       for (const target of resolveExportPath(exportEntry)) {
         const relTarget = join(pkg.dir, target);
-        if (!pkg.existingFiles.has(relTarget)) {
+        const exists = relTarget.includes("*")
+          ? wildcardMatches(relTarget, pkg.existingFiles)
+          : pkg.existingFiles.has(relTarget);
+        if (!exists) {
           diagnostics.push(
             makeDiagnostic(
               "TS-EXPORTS-01",

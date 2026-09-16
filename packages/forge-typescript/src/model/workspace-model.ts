@@ -13,6 +13,7 @@ via ts.createSourceFile (syntactic parse only, no ts.Program).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial workspace model — one deep module owns workspace discovery and AST fact extraction for all six ts.*.validate commands.</item>
+  <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +27,7 @@ export interface PackageJson {
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
+  optionalDependencies?: Record<string, string>;
   exports?: Record<string, unknown>;
 }
 
@@ -107,6 +109,18 @@ async function readJsonFile<T>(path: string): Promise<T | null> {
   try {
     const content = await readFile(path, "utf8");
     return JSON.parse(content) as T;
+  } catch {
+    return null;
+  }
+}
+
+/** tsconfig.json is JSONC — comments and trailing commas are legal. Parse via the TS config parser. */
+async function readTsconfigFile(path: string): Promise<TsconfigJson | null> {
+  try {
+    const content = await readFile(path, "utf8");
+    const parsed = ts.parseConfigFileTextToJson(path, content);
+    if (parsed.error) return null;
+    return (parsed.config ?? null) as TsconfigJson | null;
   } catch {
     return null;
   }
@@ -329,7 +343,7 @@ export async function buildWorkspaceModel(
     const packageJson = await readJsonFile<PackageJson>(join(pkgDir, "package.json"));
     if (!packageJson) continue;
 
-    const tsconfig = await readJsonFile<TsconfigJson>(join(pkgDir, "tsconfig.json"));
+    const tsconfig = await readTsconfigFile(join(pkgDir, "tsconfig.json"));
     const { sourceFiles, existingFiles } = await walkPackageDir(pkgDir, workspaceRoot);
     const tsconfigMalformed =
       tsconfig === null && existingFiles.has(`${relative(workspaceRoot, pkgDir)}/tsconfig.json`);
@@ -358,7 +372,7 @@ export async function buildWorkspaceModel(
     });
   }
 
-  const baseTsconfig = await readJsonFile<TsconfigJson>(join(workspaceRoot, "tsconfig.base.json"));
+  const baseTsconfig = await readTsconfigFile(join(workspaceRoot, "tsconfig.base.json"));
 
   return { packages, baseTsconfig, scannedFiles };
 }

@@ -15,6 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1099: rewrite tsconfig-validate.ts as a pure model-consuming rule via defineTsCheck.</item>
+  <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -75,10 +76,16 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 
     const compilerOptions = pkg.tsconfig.compilerOptions ?? {};
 
+    // module:NodeNext implies moduleResolution:NodeNext — an explicit coupled pair is a
+    // deliberate Node-resolution choice (e.g. published CLI), not drift from the base.
+    const coupledNodeNext =
+      compilerOptions.module === "NodeNext" && compilerOptions.moduleResolution === "NodeNext";
+
     if (
       expectedModuleResolution !== undefined &&
       compilerOptions.moduleResolution !== undefined &&
-      compilerOptions.moduleResolution !== expectedModuleResolution
+      compilerOptions.moduleResolution !== expectedModuleResolution &&
+      !coupledNodeNext
     ) {
       diagnostics.push(
         makeDiagnostic(
