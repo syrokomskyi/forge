@@ -6,14 +6,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0755: add V-RFC-33 frontmatter YAML parseability check (checkFrontmatterYamlParse helper).</item>
   <item>RFC-0795: add V-33 dependsOn referential integrity/self-dependency/rejected-dependency and V-34 batch slug format rules.</item>
   <item>RFC-0997: add V-35 probe→criterion referential integrity, V-36 criterion identifier discipline, V-37 evidence mechanism validity, and computeProbeCoverage for non-blocking coverage reports.</item>
   <item>RFC-1006: add V-38 document readiness completeness, V-39 non-atomic criterion, V-40 unbounded quantity, V-41 weasel verb, V-42 criterion versioning annotation format. Add evaluateDocumentReadiness and extend evaluateAcceptanceCriteria with supersession tracking and reject-checklist scans.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
-  <history>RFC-0303, RFC-0722</history>
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <history>RFC-0303, RFC-0722, RFC-0755</history>
 </CHANGE_SUMMARY>
 */
 

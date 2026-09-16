@@ -1,12 +1,15 @@
 /*
 <MODULE_CONTRACT>
-<purpose>exploration.list handler — list all exploration notes with metadata.</purpose>
+<purpose>exploration.list handler — list all exploration notes in the workspace with their metadata and status.</purpose>
 <non-goals>
   <item>Do not validate frontmatter shape — listing is metadata-only.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0710: initial exploration.list handler.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
 </CHANGE_SUMMARY>
 */
 

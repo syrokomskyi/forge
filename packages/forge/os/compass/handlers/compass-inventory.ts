@@ -9,14 +9,21 @@ for Compass source-file inventory.</purpose>
   <item>Do not register commands — this is a pure utility module.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>Authoring status is classified before compliance — generated, test, and excluded files never reach rule evaluation.</item>
+  <item>Risk class derives from layer rules plus high-risk globs — KEY_DECISIONS is required only on medium and high.</item>
+  <item>Policy literals come from resolveCompassPolicy — no stack- or consumer-specific values live in this module.</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>Added .md to SOURCE_EXTENSIONS for SKILL.md Compass coverage; detectAuthoringStatus excludes non-SKILL.md markdown files.</item>
   <item>RFC-1094: v2 contract — KEY_DECISIONS/history parsing, new inventory fields, evaluateV2Rules, deriveFileTokens, resolveCompassMode, shared GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1096: all policy literals externalized to resolveCompassPolicy — scan roots, extensions, ignored dirs/paths, layer/risk rules, governance-ID and boilerplate patterns come from generic defaults + profile + bindings.compass.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <history>RFC-0348, RFC-0556</history>
 </CHANGE_SUMMARY>
 */

@@ -9,14 +9,22 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Do not import @warpgogol/* packages — this handler is autonomous (FORGE-AUTONOMY-01).</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>The 5-item window collapses oldest-first into history — history holds IDs only, never prose.</item>
+  <item>Recording is header-region guarded — a CHANGE_SUMMARY deeper than 120 lines is a doc example, not a header.</item>
+  <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1095: initial implementation of compass.summary.record with window collapse and commit integration.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
   <item>RFC-1095: header-region guard in summary.record, restore test fixture with dynamic tags</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <history>RFC-1095</history>
 </CHANGE_SUMMARY>
 */
 
@@ -141,6 +149,16 @@ export function stripConventionalPrefix(subject: string): string {
   return subject.replace(CONVENTIONAL_PREFIX_RE, "").trim();
 }
 
+// Literal Compass block tags inside an item corrupt block parsing — a commit
+// message saying "collapsed into <history>" would be matched by HISTORY_RE and
+// produce phantom non-ID tokens (CS-07). Strip the angle brackets on record.
+const COMPASS_TAG_LITERAL_RE =
+  /<\/?(?:CHANGE_SUMMARY|MODULE_CONTRACT|KEY_DECISIONS|history|item|purpose|non-goals)>/g;
+
+export function sanitizeItemText(text: string): string {
+  return text.replace(COMPASS_TAG_LITERAL_RE, (tag) => tag.replace(/[<>]/g, ""));
+}
+
 export function isValidGovernanceId(id: string, policy: CompassPolicy): boolean {
   return policy.idPatternFull.test(id);
 }
@@ -186,7 +204,7 @@ export async function recordSummaryItem(
   const strippedText = text.startsWith(id)
     ? text.slice(id.length).replace(/^\s*[:—-]?\s*/, "")
     : text;
-  const newItem = strippedText.length > 0 ? `${id}: ${strippedText}` : id;
+  const newItem = strippedText.length > 0 ? `${id}: ${sanitizeItemText(strippedText)}` : id;
   const normalizedNew = normalizeItemText(newItem);
   if (items.some((item) => normalizeItemText(item) === normalizedNew)) {
     return { recorded: false, collapsed: false, skipReason: "duplicate" };
