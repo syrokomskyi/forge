@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>ADR list and create handlers mirroring the RFC domain.</purpose>
+<purpose>ADR list and create command handlers mirroring the RFC domain lifecycle for architecture decision records.</purpose>
 <non-goals>
   <item>Do not introduce app-specific runtime composition or deployment behavior.</item>
 </non-goals>
@@ -8,6 +8,9 @@
 <CHANGE_SUMMARY>
   <item>RFC-0366: create ADR list and create handlers mirroring the RFC domain.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
 </CHANGE_SUMMARY>
 */
 

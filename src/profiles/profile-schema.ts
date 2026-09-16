@@ -7,14 +7,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0680: add profileReleaseSchema and release field for release lifecycle commands.</item>
   <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
   <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for note vault validation.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
-  <history>RFC-0638, RFC-0674, RFC-0675, RFC-0679</history>
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <history>RFC-0638, RFC-0674, RFC-0675, RFC-0679, RFC-0680</history>
 </CHANGE_SUMMARY>
 */
 

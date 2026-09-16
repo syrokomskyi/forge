@@ -7,14 +7,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0611: added nested AGENTS.md generation for workspace directories + dryRun support.</item>
   <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
   <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
   <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into <history>, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551</history>
+Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
+  <item>RFC-1097: sweep — packages/forge + services clean
+
+Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611</history>
 </CHANGE_SUMMARY>
 */
 
