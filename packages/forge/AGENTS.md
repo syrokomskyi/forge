@@ -21,7 +21,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, `rfc.verification.emit`, `rfc.verification.refresh`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
-| `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.trim`, etc. (8 commands). All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). | `os/compass/` |
+| `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.record`, `compass.summary.trim`, etc. (8 commands). All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). `compass.summary.record` appends governance-ID items to `CHANGE_SUMMARY` at commit time (RFC-1095). | `os/compass/` |
 | `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate` | `os/werkstatt/` |
 | `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate` | `os/spec/` |
 | `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive`, `adr.implement.stamp` | `os/adr/` |

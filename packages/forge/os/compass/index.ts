@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial compass module barrel.</item>
+  <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,9 +26,17 @@ export {
   runCompassAuditValidate,
   isAuditDue,
 } from "./handlers/compass-audit-handler.ts";
+export { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler.ts";
 export {
-  runCompassChangeSummaryValidate,
-  runCompassSummaryTrim,
-  classifyChangeSummaryItem,
-  type ChangeSummaryItemClass,
-} from "./handlers/compass-change-summary-handler.ts";
+  runCompassSummaryRecord,
+  recordSummaryItem,
+  parseChangeSummary,
+  mergeHistoryIds,
+  buildChangeSummaryBlock,
+  stripConventionalPrefix,
+  isValidGovernanceId,
+  CHANGE_SUMMARY_WINDOW,
+  type SummaryRecordInput,
+  type SummaryRecordResult,
+  type SummaryRecordSkipReason,
+} from "./handlers/summary-record.ts";

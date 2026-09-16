@@ -10,13 +10,12 @@ for Compass source-file inventory.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0348: collapsed to two-block contract (MODULE_CONTRACT + CHANGE_SUMMARY); removed MODULE_MAP, keywords, responsibilities, COMPASS_BLOCK anchors; coverage modes collapsed to standard/none.</item>
-  <item>Post-refactor hardening: exclude src/templates generation inputs from authored Compass requirements.</item>
-  <item>Post-refactor hardening: detect nested packages/os workspaces before deriving Compass layer and workspace name.</item>
   <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added .cs, .tscn, .tres, .gd to SOURCE_EXTENSIONS; createCompassInventoryEntries now reads forge.yaml compass.fileExtensions at runtime and merges with hardcoded set.</item>
   <item>Added .md to SOURCE_EXTENSIONS for SKILL.md Compass coverage; detectAuthoringStatus excludes non-SKILL.md markdown files.</item>
   <item>RFC-1094: v2 contract — KEY_DECISIONS/history parsing, new inventory fields, evaluateV2Rules, deriveFileTokens, resolveCompassMode, shared GOVERNANCE_ID_RE.</item>
+  <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
+  <history>RFC-0348</history>
 </CHANGE_SUMMARY>
 */
 
@@ -275,7 +274,7 @@ async function collectSourceFiles(
   return files;
 }
 
-function getRelativeSegments(filePath: string, workspaceRoot: string): string[] {
+export function getRelativeSegments(filePath: string, workspaceRoot: string): string[] {
   return relative(workspaceRoot, filePath).replace(/\\/g, "/").split("/").filter(Boolean);
 }
 
@@ -291,14 +290,14 @@ function detectWorkspaceName(segments: string[]): string {
   return segments[1] ?? "unknown";
 }
 
-function getWorkspaceRelativeSegments(segments: string[]): string[] {
+export function getWorkspaceRelativeSegments(segments: string[]): string[] {
   if (segments[0] === "packages" && segments[1] === "os") {
     return segments.slice(3);
   }
   return segments.slice(2);
 }
 
-function detectLayer(relativePath: string): string {
+export function detectLayer(relativePath: string): string {
   if (relativePath.startsWith("bin/")) return "bin";
   if (relativePath === "tools/kernel.config.ts") return "tool-config";
   if (relativePath.startsWith("tools/modules/")) return "tool-module";
@@ -326,7 +325,7 @@ function detectLayer(relativePath: string): string {
   return "other";
 }
 
-function detectRiskClass(pathFromRoot: string, layer: string): CompassRiskClass {
+export function detectRiskClass(pathFromRoot: string, layer: string): CompassRiskClass {
   if (HIGH_RISK_EXACT_RELATIVE_PATHS.has(pathFromRoot)) {
     return "high";
   }

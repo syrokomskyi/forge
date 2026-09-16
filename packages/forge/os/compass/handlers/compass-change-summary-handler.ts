@@ -1,211 +1,43 @@
 /*
 <MODULE_CONTRACT>
-<purpose>CHANGE_SUMMARY classification, validation, and deterministic tidy logic
-per RFC-0349. Moved from @warpgogol/site-kernel-checks to @warpgogol/forge for full
-autonomous mode (RFC-0556). Provides compass.changesummary.validate and compass.summary.trim.</purpose>
+<purpose>CHANGE_SUMMARY v2 repair logic per RFC-1095. Moved from
+@warpgogol/site-kernel-checks to @warpgogol/forge for full autonomous mode
+(RFC-0556). Provides compass.summary.trim --mode repair.</purpose>
 <non-goals>
   <item>Do not audit truthfulness of CHANGE_SUMMARY items against code — that is RFC-0352.</item>
-  <item>Do not delete protected (RFC/code-referencing) items under any circumstance.</item>
-  <item>Do not use an LLM — classification and tidy are purely deterministic.</item>
+  <item>Do not use an LLM — repair is purely deterministic.</item>
+  <item>Do not classify items — under the v2 contract every item carries a governance ID; ID-less items are removed, not classified.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0349: initial implementation of classifyChangeSummaryItem, compass.changesummary.validate, and compass.changesummary.tidy.</item>
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, raised cap from 3 unprotected to 30 total items, aligned validate cap to 30 total.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: --mode flag; mode-aware COMPASS-CS-05/06/07 diagnostics via shared evaluateV2Rules; PROTECTED_RE now aliases GOVERNANCE_ID_RE.</item>
+  <item>RFC-1095: rewrote trim as v2 repair (collapse >5 described items into history, remove ID-less items, normalize history); removed compass.changesummary.validate and the classify machinery (classifyChangeSummaryItem, PROTECTED_RE, BOILERPLATE_RE).</item>
+  <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
+  <history>RFC-0349</history>
 </CHANGE_SUMMARY>
 */
 
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
-import {
-  createCompassInventoryEntries,
-  evaluateV2Rules,
-  getEntrySource,
-  resolveCompassMode,
-  GOVERNANCE_ID_RE,
-} from "./compass-inventory.ts";
+import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
+import {
+  buildChangeSummaryBlock,
+  CHANGE_SUMMARY_WINDOW,
+  mergeHistoryIds,
+  parseChangeSummary,
+} from "./summary-record.ts";
 import type {
-  Diagnostic,
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
-const PROTECTED_RE = GOVERNANCE_ID_RE;
-const BOILERPLATE_RE =
-  /^(Wave\s+\d|Backfill\b|Annotate Compass|Annotation revision|Initial creation|Compass scaffolding|Created as part of|Enhance .* with Compass)/i;
-
-export type ChangeSummaryItemClass = "protected" | "boilerplate" | "unprotected";
-
-export function classifyChangeSummaryItem(text: string): ChangeSummaryItemClass {
-  if (PROTECTED_RE.test(text)) return "protected";
-  if (BOILERPLATE_RE.test(text.trim())) return "boilerplate";
-  return "unprotected";
-}
-
-function extractChangeSummaryBlock(source: string): string | null {
-  const match = source.match(/<CHANGE_SUMMARY>[\s\S]*?<\/CHANGE_SUMMARY>/);
-  return match?.[0] ?? null;
-}
-
-function extractItems(block: string): string[] {
-  const items: string[] = [];
-  const re = /<item>([\s\S]*?)<\/item>/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(block)) !== null) {
-    items.push(m[1]!.trim());
-  }
-  return items;
-}
-
-function getLineCommentPrefix(filePath: string): string | null {
-  if (filePath.endsWith(".gd")) return "# ";
-  if (filePath.endsWith(".tscn") || filePath.endsWith(".tres")) return "; ";
-  return null;
-}
-
-function rebuildChangeSummaryBlock(items: string[], filePath: string): string {
-  const prefix = getLineCommentPrefix(filePath);
-  const lines = ["<CHANGE_SUMMARY>"];
-  for (const item of items) {
-    lines.push(`  <item>${item}</item>`);
-  }
-  lines.push("</CHANGE_SUMMARY>");
-  if (prefix) {
-    return lines.map((line, i) => (i === 0 ? line : prefix + line)).join("\n");
-  }
-  return lines.join("\n");
-}
-
-function replaceChangeSummaryBlock(source: string, newBlock: string): string {
-  return source.replace(/<CHANGE_SUMMARY>[\s\S]*?<\/CHANGE_SUMMARY>/, newBlock);
-}
-
-const MAX_TOTAL_ITEMS = 30;
-
-export async function runCompassChangeSummaryValidate(
-  input: ForgeCommandInput,
-  context: ForgeRuntimeContext,
-): Promise<
-  ForgeCommandResult<{
-    command: string;
-    status: "pass" | "fail";
-    diagnostics: Diagnostic[];
-    checkedFiles: number;
-  }>
-> {
-  const scanRoot = resolveCompassScanRoot(input, context);
-  let mode: ReturnType<typeof resolveCompassMode>;
-  try {
-    mode = resolveCompassMode(input);
-  } catch {
-    context.logger.error(
-      `[compass.changesummary.validate] invalid --mode value: ${String(input.flags["mode"])} (expected warning|error)`,
-    );
-    return { exitCode: 1, summary: "invalid --mode value" };
-  }
-  const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
-
-  const diagnostics: Diagnostic[] = [];
-  let checkedFiles = 0;
-
-  // RFC-1094: v2 CS rules (CS-05/06/07) are mode-aware; v1 rules (CS-01/02)
-  // stay at error severity in both modes until the sibling lifecycle RFC lands.
-  const v2Severity = mode === "error" ? "error" : "warning";
-
-  for (const entry of entries) {
-    if (entry.authoringStatus !== "authored" || entry.requiredScaffolding === "none") {
-      continue;
-    }
-
-    checkedFiles++;
-
-    const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = getEntrySource(entry) ?? (await readFile(absPath, "utf8"));
-
-    for (const v2 of evaluateV2Rules(entry, source)) {
-      if (!v2.ruleId.startsWith("COMPASS-CS-")) {
-        continue;
-      }
-      diagnostics.push({
-        ruleId: v2.ruleId,
-        severity: v2Severity,
-        file: entry.path,
-        message: v2.message,
-        fixHint: v2.fix,
-      });
-    }
-
-    if (!entry.hasChangeSummary) {
-      continue;
-    }
-
-    const block = extractChangeSummaryBlock(source);
-    if (!block) continue;
-
-    const items = extractItems(block);
-    let hasBoilerplate = false;
-    let totalItems = 0;
-
-    for (const item of items) {
-      const cls = classifyChangeSummaryItem(item);
-      if (cls === "boilerplate") {
-        hasBoilerplate = true;
-      }
-      totalItems++;
-    }
-
-    if (hasBoilerplate) {
-      diagnostics.push({
-        ruleId: "COMPASS-CS-01",
-        severity: "error",
-        file: entry.path,
-        message: "CHANGE_SUMMARY contains a boilerplate item",
-        fixHint: "fix: run compass.summary.trim",
-      });
-    }
-
-    if (totalItems > MAX_TOTAL_ITEMS) {
-      diagnostics.push({
-        ruleId: "COMPASS-CS-02",
-        severity: "error",
-        file: entry.path,
-        message: `CHANGE_SUMMARY has ${totalItems} total items (cap is ${MAX_TOTAL_ITEMS})`,
-        fixHint: `fix: run compass.summary.trim (cap is ${MAX_TOTAL_ITEMS} total items)`,
-      });
-    }
-  }
-
-  const failed = diagnostics.some((d) => d.severity === "error");
-
-  for (const d of diagnostics) {
-    const log = `[compass.changesummary.validate] ${d.ruleId}: ${d.file}: ${d.message}`;
-    if (d.severity === "error") {
-      context.logger.error(log);
-    } else {
-      context.logger.warn(log);
-    }
-  }
-
-  return {
-    data: {
-      command: "compass.changesummary.validate",
-      status: failed ? "fail" : "pass",
-      diagnostics,
-      checkedFiles,
-    },
-    exitCode: failed ? 1 : 0,
-    summary: failed
-      ? undefined
-      : `[compass.changesummary.validate] OK (${checkedFiles} authored files checked)`,
-  };
-}
-
-const TRIM_FALLBACK_ITEM = "Tidied by compass.summary.trim; see git history for prior entries.";
+const CHANGE_SUMMARY_BLOCK_RE = /<CHANGE_SUMMARY>[\s\S]*?<\/CHANGE_SUMMARY>/;
+const LEADING_ID_RE = /^([A-Z][A-Z0-9]*-)+\d+\b/;
 
 export async function runCompassSummaryTrim(
   input: ForgeCommandInput,
@@ -217,6 +49,14 @@ export async function runCompassSummaryTrim(
     files: Array<{ path: string; removed: string[]; kept: number }>;
   }>
 > {
+  const mode = input.flags["mode"];
+  if (mode !== undefined && mode !== "repair") {
+    context.logger.error(
+      `[compass.summary.trim] invalid --mode value: ${String(mode)} (expected "repair")`,
+    );
+    return { exitCode: 1, summary: "invalid --mode value" };
+  }
+
   if (context.dryRun) {
     context.logger.info(`[compass.summary.trim] dry-run active — will not apply changes`);
   }
@@ -237,58 +77,41 @@ export async function runCompassSummaryTrim(
 
     const absPath = resolve(context.workspaceRoot, entry.path);
     const source = await readFile(absPath, "utf8");
-    const block = extractChangeSummaryBlock(source);
-    if (!block) continue;
+    const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
+    if (!blockMatch) continue;
 
-    const items = extractItems(block);
-    const keptItems: string[] = [];
+    const { items, historyIds } = parseChangeSummary(blockMatch[0]);
     const removedItems: string[] = [];
 
-    const unprotectedItems: Array<{ index: number; text: string }> = [];
-
-    for (let i = 0; i < items.length; i++) {
-      const text = items[i]!;
-      const cls = classifyChangeSummaryItem(text);
-
-      if (cls === "protected") {
-        keptItems.push(text);
-      } else if (cls === "boilerplate") {
-        removedItems.push(text);
+    // v2 repair: drop ID-less items, collapse described items past the window.
+    const idItems: string[] = [];
+    for (const item of items) {
+      if (LEADING_ID_RE.test(item)) {
+        idItems.push(item);
       } else {
-        unprotectedItems.push({ index: i, text });
+        removedItems.push(item);
       }
     }
 
-    const protectedCount = keptItems.length;
-    const maxUnprotectedToKeep = Math.max(0, MAX_TOTAL_ITEMS - protectedCount);
-    const unprotectedToKeep = unprotectedItems.slice(-maxUnprotectedToKeep);
-    const unprotectedToRemove = unprotectedItems.slice(0, -maxUnprotectedToKeep);
-
-    for (const item of unprotectedToRemove) {
-      removedItems.push(item.text);
+    const collapsedIds: string[] = [];
+    while (idItems.length > CHANGE_SUMMARY_WINDOW) {
+      const oldest = idItems.shift()!;
+      const idMatch = oldest.match(LEADING_ID_RE);
+      if (idMatch) collapsedIds.push(idMatch[0]);
+      removedItems.push(oldest);
     }
 
-    const keepSet = new Set<string>();
-    for (const item of unprotectedToKeep) {
-      keepSet.add(item.text);
+    const nextHistory = mergeHistoryIds(historyIds, collapsedIds);
+    const historyChanged =
+      nextHistory.length !== historyIds.length ||
+      nextHistory.some((id, i) => id !== historyIds[i]);
+
+    if (removedItems.length === 0 && !historyChanged) {
+      continue;
     }
 
-    const finalItems: string[] = [];
-    const protectedTexts = new Set(keptItems);
-    const unprotectedTexts = new Set(unprotectedToKeep.map((u) => u.text));
-
-    for (const originalItem of items) {
-      if (protectedTexts.has(originalItem) || unprotectedTexts.has(originalItem)) {
-        finalItems.push(originalItem);
-      }
-    }
-
-    if (finalItems.length === 0) {
-      finalItems.push(TRIM_FALLBACK_ITEM);
-    }
-
-    const newBlock = rebuildChangeSummaryBlock(finalItems, entry.path);
-    const transformed = replaceChangeSummaryBlock(source, newBlock);
+    const newBlock = buildChangeSummaryBlock(idItems, nextHistory, entry.path);
+    const transformed = source.replace(CHANGE_SUMMARY_BLOCK_RE, newBlock);
 
     if (transformed === source) {
       continue;
@@ -299,13 +122,13 @@ export async function runCompassSummaryTrim(
     }
 
     context.logger.info(
-      `[compass.summary.trim] trimmed: ${entry.path} (removed ${removedItems.length}, kept ${finalItems.length})`,
+      `[compass.summary.trim] repaired: ${entry.path} (removed ${removedItems.length}, kept ${idItems.length})`,
     );
 
     results.push({
       path: entry.path,
       removed: removedItems,
-      kept: finalItems.length,
+      kept: idItems.length,
     });
   }
 
@@ -319,7 +142,7 @@ export async function runCompassSummaryTrim(
     summary: `[compass.summary.trim] files=${results.length}, removed=${results.reduce((sum, r) => sum + r.removed.length, 0)}`,
     nextSteps: [
       {
-        action: `Commit the trimmed headers: pnpm exec forge run ecosystem.commit`,
+        action: `Commit the repaired headers: pnpm exec forge run ecosystem.commit`,
         kind: "optional",
       },
     ],
