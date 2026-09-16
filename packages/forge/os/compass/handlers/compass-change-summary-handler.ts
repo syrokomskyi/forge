@@ -22,6 +22,7 @@
 import { resolve } from "node:path";
 import { readFile } from "node:fs/promises";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
+import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import {
@@ -37,7 +38,6 @@ import type {
 } from "../../../src/types.ts";
 
 const CHANGE_SUMMARY_BLOCK_RE = /<CHANGE_SUMMARY>[\s\S]*?<\/CHANGE_SUMMARY>/;
-const LEADING_ID_RE = /^([A-Z][A-Z0-9]*-)+\d+\b/;
 
 export async function runCompassSummaryTrim(
   input: ForgeCommandInput,
@@ -62,7 +62,13 @@ export async function runCompassSummaryTrim(
   }
 
   const scanRoot = resolveCompassScanRoot(input, context);
-  const entries = await createCompassInventoryEntries(context.workspaceRoot, input, scanRoot);
+  const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
+  const entries = await createCompassInventoryEntries(
+    context.workspaceRoot,
+    input,
+    scanRoot,
+    policy,
+  );
 
   const results: Array<{ path: string; removed: string[]; kept: number }> = [];
 
@@ -86,7 +92,7 @@ export async function runCompassSummaryTrim(
     // v2 repair: drop ID-less items, collapse described items past the window.
     const idItems: string[] = [];
     for (const item of items) {
-      if (LEADING_ID_RE.test(item)) {
+      if (policy.idPatternPrefix.test(item)) {
         idItems.push(item);
       } else {
         removedItems.push(item);
@@ -96,15 +102,14 @@ export async function runCompassSummaryTrim(
     const collapsedIds: string[] = [];
     while (idItems.length > CHANGE_SUMMARY_WINDOW) {
       const oldest = idItems.shift()!;
-      const idMatch = oldest.match(LEADING_ID_RE);
+      const idMatch = oldest.match(policy.idPatternPrefix);
       if (idMatch) collapsedIds.push(idMatch[0]);
       removedItems.push(oldest);
     }
 
-    const nextHistory = mergeHistoryIds(historyIds, collapsedIds);
+    const nextHistory = mergeHistoryIds(historyIds, collapsedIds, policy);
     const historyChanged =
-      nextHistory.length !== historyIds.length ||
-      nextHistory.some((id, i) => id !== historyIds[i]);
+      nextHistory.length !== historyIds.length || nextHistory.some((id, i) => id !== historyIds[i]);
 
     if (removedItems.length === 0 && !historyChanged) {
       continue;

@@ -28,7 +28,11 @@ import fs from "node:fs";
 import path from "node:path";
 import { z } from "zod";
 import { parse as parseYaml } from "yaml";
-import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
+import {
+  TERMINOLOGY_DEFAULTS,
+  compassPolicyOverridesSchema,
+  type CompassPolicyOverrides,
+} from "../profiles/profile-schema.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
 
 // ---------------------------------------------------------------------------
@@ -61,12 +65,9 @@ export const forgeBindingsSchema = z.object({
     sessionsDir: z.string().nullable().default(null),
   }),
   terminology: z.record(z.string(), z.string()).default({}),
-  compass: z
-    .object({
-      fileExtensions: z.array(z.string()).optional(),
-      testPatterns: z.array(z.string()).optional(),
-    })
-    .optional(),
+  // RFC-1096: consumer-level Compass policy overrides (same shape as the
+  // stack profile `compass:` section).
+  compass: compassPolicyOverridesSchema.optional(),
   // RFC-0661: optional knowledge layer character budget overrides
   // RFC-0662: optional retention/stale day overrides
   knowledge: z
@@ -115,10 +116,7 @@ export interface ForgeBindings {
     sessionsDir: string | null;
   };
   terminology: Record<string, string>;
-  compass?: {
-    fileExtensions?: string[];
-    testPatterns?: string[];
-  };
+  compass?: CompassPolicyOverrides;
   // RFC-0661: optional knowledge layer character budget overrides
   // RFC-0662: optional retention/stale day overrides
   knowledge?: {

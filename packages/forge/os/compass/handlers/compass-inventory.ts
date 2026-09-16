@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Canonical Compass inventory scanning logic. Moved from @warpgogol/site-kernel
-to @warpgogol/forge for full autonomous mode (RFC-0556). Provides file collection,
+<purpose>Canonical Compass inventory scanning logic. Moved from the legacy site
+kernel package to @warpgogol/forge for full autonomous mode (RFC-0556). Provides file collection,
 workspace detection, layer classification, risk assessment, and compliance checking
 for Compass source-file inventory.</purpose>
 <non-goals>
@@ -10,80 +10,28 @@ for Compass source-file inventory.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
+  <item>RFC-0556: moved canonical implementation from the legacy site kernel package to @warpgogol/forge for autonomous mode.</item>
   <item>Game extensions: added .cs, .tscn, .tres, .gd to SOURCE_EXTENSIONS; createCompassInventoryEntries now reads forge.yaml compass.fileExtensions at runtime and merges with hardcoded set.</item>
   <item>Added .md to SOURCE_EXTENSIONS for SKILL.md Compass coverage; detectAuthoringStatus excludes non-SKILL.md markdown files.</item>
   <item>RFC-1094: v2 contract — KEY_DECISIONS/history parsing, new inventory fields, evaluateV2Rules, deriveFileTokens, resolveCompassMode, shared GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
+  <item>RFC-1096: all policy literals externalized to resolveCompassPolicy — scan roots, extensions, ignored dirs/paths, layer/risk rules, governance-ID and boilerplate patterns come from generic defaults + profile + bindings.compass.</item>
   <history>RFC-0348</history>
 </CHANGE_SUMMARY>
 */
 
 import { readdir, readFile } from "node:fs/promises";
-import { readFileSync, existsSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { parse as parseYaml } from "yaml";
 import type { ForgeCommandInput } from "../../../src/types.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
+import {
+  parseGovernanceIdParts,
+  resolveCompassPolicy,
+  type CompassPolicy,
+  type CompassRiskClass,
+  type CompassWorkspaceKind,
+} from "../policy.ts";
 
-function loadCompassExtensionsFromForgeYaml(workspaceRoot: string): Set<string> {
-  const forgeYamlPath = join(workspaceRoot, "forge.yaml");
-  if (!existsSync(forgeYamlPath)) {
-    return new Set();
-  }
-  try {
-    const raw = readFileSync(forgeYamlPath, "utf8");
-    const parsed = parseYaml(raw) as Record<string, unknown> | null;
-    const bindings = parsed?.bindings as Record<string, unknown> | undefined;
-    const compass = bindings?.compass as Record<string, unknown> | undefined;
-    const extensions = compass?.fileExtensions;
-    if (Array.isArray(extensions)) {
-      return new Set(extensions.filter((e: unknown) => typeof e === "string"));
-    }
-  } catch {
-    // forge.yaml not parseable or missing compass section — fall back to hardcoded set
-  }
-  return new Set();
-}
-
-const SOURCE_EXTENSIONS = new Set([
-  ".ts",
-  ".tsx",
-  ".astro",
-  ".js",
-  ".jsx",
-  ".mjs",
-  ".mts",
-  ".css",
-  ".cs",
-  ".tscn",
-  ".tres",
-  ".gd",
-  ".md",
-]);
-const IGNORED_DIRECTORY_NAMES = new Set([
-  ".git",
-  ".turbo",
-  ".astro",
-  ".wrangler",
-  ".vscode",
-  ".cache",
-  "coverage",
-  "dist",
-  "node_modules",
-  "spec",
-  "todo",
-]);
-const DEFAULT_SCAN_ROOTS = ["apps", "packages", "services"];
-const HIGH_RISK_EXACT_RELATIVE_PATHS = new Set([
-  "apps/main/src/content/config.ts",
-  "apps/main/src/middleware.ts",
-  "packages/os/site-kernel/src/cli/index.ts",
-  "packages/os/site-kernel/src/discovery.ts",
-  "packages/os/site-kernel/src/registry.ts",
-  "packages/os/site-kernel/src/runtime.ts",
-  "packages/os/site-kernel/src/types.ts",
-]);
 function forbiddenMarkerPattern(tagName: string): RegExp {
   return new RegExp(`<${tagName}\\b`);
 }
@@ -95,12 +43,7 @@ const FORBIDDEN_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "COMPASS_BLOCK", regex: new RegExp(`</?${"COMPASS_BLOCK"}\\b`) },
 ];
 
-// RFC-1094: v2 contract constants. GOVERNANCE_ID_RE is the canonical
-// governance-ID pattern shared with the change-summary handler.
-export const GOVERNANCE_ID_RE = /\b([A-Z][A-Z0-9]*-)+\d+\b/;
-const GOVERNANCE_ID_PREFIX_RE = /^([A-Z][A-Z0-9]*-)+\d+\b/;
-const HISTORY_ID_RE = /^([A-Z][A-Z0-9]*-)+\d+$/;
-const HISTORY_ID_PARTS_RE = /^(([A-Z][A-Z0-9]*-)+)(\d+)$/;
+// RFC-1096: governance-ID regexes are policy-derived (policy.idPattern*).
 const TODO_PLACEHOLDER_RE = /^TODO\b/i;
 
 const GENERIC_STEMS = new Set([
@@ -118,12 +61,6 @@ const GENERIC_STEMS = new Set([
 const SYMBOL_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".jsx", ".mjs", ".mts"]);
 const EXPORTED_SYMBOL_RE =
   /export\s+(?:async\s+)?(?:function|const|let|class|interface|type|enum)\s+(\w+)/g;
-
-const PURPOSE_BOILERPLATE_PATTERNS: RegExp[] = [
-  /^(this file|the file|a file|this module|a module)\b/i,
-  /^(utility|utilities|helper|helpers|misc)\b/i,
-  /^(todo|placeholder|fixme)\b/i,
-];
 
 const KEY_DECISIONS_MAX_ITEMS = 7;
 const KEY_DECISIONS_MAX_WORDS = 20;
@@ -144,8 +81,6 @@ export function resolveCompassMode(input: ForgeCommandInput): CompassValidationM
   throw new Error(`--mode must be "warning" or "error", got "${String(raw)}"`);
 }
 
-type CompassWorkspaceKind = "app" | "package" | "service";
-type CompassRiskClass = "high" | "medium" | "low";
 type CompassComplexity = "non-trivial" | "trivial";
 type CompassScaffoldingMode = "standard" | "none";
 type CompassAuthoringStatus = "authored" | "excluded";
@@ -185,45 +120,33 @@ function getFlagValues(input: ForgeCommandInput, key: string): string[] {
   return typeof value === "string" ? [value] : [];
 }
 
-function resolveScanRoots(workspaceRoot: string, input: ForgeCommandInput): string[] {
+function resolveScanRoots(
+  workspaceRoot: string,
+  input: ForgeCommandInput,
+  policy: CompassPolicy,
+): string[] {
   const values = getFlagValues(input, "root");
-  const roots = values.length > 0 ? values : DEFAULT_SCAN_ROOTS;
+  const roots = values.length > 0 ? values : policy.scanRoots;
   return roots.map((value) => resolve(workspaceRoot, value));
 }
 
-function shouldIgnoreDirectory(name: string): boolean {
-  if (IGNORED_DIRECTORY_NAMES.has(name)) {
+function shouldIgnoreDirectory(name: string, policy: CompassPolicy): boolean {
+  if (policy.ignoredDirs.has(name)) {
     return true;
   }
-  if (name.startsWith("old-")) {
-    return true;
-  }
-  if (name.startsWith("-")) {
-    return true;
-  }
-  return false;
+  return policy.ignoredDirPrefixes.some((prefix) => name.startsWith(prefix));
 }
 
-function hasRelevantExtension(filePath: string, extraExtensions?: Set<string>): boolean {
-  for (const extension of SOURCE_EXTENSIONS) {
+function hasRelevantExtension(filePath: string, policy: CompassPolicy): boolean {
+  for (const extension of policy.fileExtensions) {
     if (filePath.endsWith(extension)) {
       return true;
     }
   }
-  if (extraExtensions) {
-    for (const extension of extraExtensions) {
-      if (filePath.endsWith(extension)) {
-        return true;
-      }
-    }
-  }
   return false;
 }
 
-async function collectSourceFiles(
-  targetPath: string,
-  extraExtensions?: Set<string>,
-): Promise<string[]> {
+async function collectSourceFiles(targetPath: string, policy: CompassPolicy): Promise<string[]> {
   let stat;
   try {
     const { stat: fsStat } = await import("node:fs/promises");
@@ -233,7 +156,7 @@ async function collectSourceFiles(
   }
 
   if (stat.isFile()) {
-    return hasRelevantExtension(targetPath, extraExtensions) ? [targetPath] : [];
+    return hasRelevantExtension(targetPath, policy) ? [targetPath] : [];
   }
 
   let entries;
@@ -248,25 +171,15 @@ async function collectSourceFiles(
     const absolutePath = join(targetPath, entry.name);
 
     if (entry.isDirectory()) {
-      if (shouldIgnoreDirectory(entry.name)) {
+      if (shouldIgnoreDirectory(entry.name, policy)) {
         continue;
       }
 
-      const normalizedPath = absolutePath.replace(/\\/g, "/");
-      if (
-        normalizedPath.endsWith("/src/assets") ||
-        normalizedPath.endsWith("/src/icons/gen") ||
-        normalizedPath.includes("/public/_video") ||
-        normalizedPath.includes("/public/_img")
-      ) {
-        continue;
-      }
-
-      files.push(...(await collectSourceFiles(absolutePath, extraExtensions)));
+      files.push(...(await collectSourceFiles(absolutePath, policy)));
       continue;
     }
 
-    if (entry.isFile() && hasRelevantExtension(absolutePath, extraExtensions)) {
+    if (entry.isFile() && hasRelevantExtension(absolutePath, policy)) {
       files.push(absolutePath);
     }
   }
@@ -278,73 +191,42 @@ export function getRelativeSegments(filePath: string, workspaceRoot: string): st
   return relative(workspaceRoot, filePath).replace(/\\/g, "/").split("/").filter(Boolean);
 }
 
-function detectWorkspaceKind(segments: string[]): CompassWorkspaceKind {
-  if (segments[0] === "services") return "service";
-  return segments[0] === "packages" ? "package" : "app";
+function isWorkspaceDir(segment: string | undefined, policy: CompassPolicy): boolean {
+  return segment !== undefined && segment in policy.workspaceKinds;
 }
 
-function detectWorkspaceName(segments: string[]): string {
-  if (segments[0] === "packages" && segments[1] === "os") {
-    return segments[2] ?? "unknown";
-  }
-  return segments[1] ?? "unknown";
+function detectWorkspaceKind(segments: string[], policy: CompassPolicy): CompassWorkspaceKind {
+  const first = segments[0];
+  return (first !== undefined && policy.workspaceKinds[first]) || "app";
 }
 
-export function getWorkspaceRelativeSegments(segments: string[]): string[] {
-  if (segments[0] === "packages" && segments[1] === "os") {
-    return segments.slice(3);
+function detectWorkspaceName(segments: string[], policy: CompassPolicy): string {
+  if (isWorkspaceDir(segments[0], policy)) {
+    return segments[1] ?? "unknown";
   }
-  return segments.slice(2);
+  return "root";
 }
 
-export function detectLayer(relativePath: string): string {
-  if (relativePath.startsWith("bin/")) return "bin";
-  if (relativePath === "tools/kernel.config.ts") return "tool-config";
-  if (relativePath.startsWith("tools/modules/")) return "tool-module";
-  if (relativePath.startsWith("tools/runtime/")) return "tool-runtime";
-  if (relativePath.startsWith("src/middleware/")) return "middleware";
-  if (relativePath === "src/middleware.ts") return "middleware";
-  if (relativePath.startsWith("src/pages/")) return "page";
-  if (relativePath.startsWith("src/components/")) return "component";
-  if (relativePath.startsWith("src/content/schemas/")) return "schema";
-  if (relativePath.startsWith("src/content/")) return "content";
-  if (relativePath.startsWith("src/styles/")) return "style";
-  if (relativePath.startsWith("src/scripts/")) return "script";
-  if (relativePath.startsWith("src/layouts/")) return "layout";
-  if (relativePath.startsWith("src/utils/")) return "utility";
-  if (relativePath.startsWith("src/configure/")) return "config";
-  if (
-    relativePath.startsWith("test/") ||
-    relativePath.startsWith("src/tests/") ||
-    relativePath.endsWith(".test.ts") ||
-    relativePath.endsWith(".spec.ts")
-  )
-    return "test";
-  if (relativePath.startsWith("src/")) return "source";
-  if (relativePath.endsWith("SKILL.md")) return "skill";
-  return "other";
+export function getWorkspaceRelativeSegments(segments: string[], policy: CompassPolicy): string[] {
+  if (isWorkspaceDir(segments[0], policy)) {
+    return segments.slice(2);
+  }
+  return segments;
 }
 
-export function detectRiskClass(pathFromRoot: string, layer: string): CompassRiskClass {
-  if (HIGH_RISK_EXACT_RELATIVE_PATHS.has(pathFromRoot)) {
+export function detectLayer(relativePath: string, policy: CompassPolicy): string {
+  return policy.matchLayer(relativePath)?.layer ?? "other";
+}
+
+export function detectRiskClass(
+  pathFromRoot: string,
+  workspaceRelativePath: string,
+  policy: CompassPolicy,
+): CompassRiskClass {
+  if (policy.isHighRisk(pathFromRoot)) {
     return "high";
   }
-  if (pathFromRoot.includes("/src/scripts/layout-scroll/")) {
-    return "high";
-  }
-  if (pathFromRoot.includes("/src/layouts/")) {
-    return "high";
-  }
-  if (pathFromRoot.includes("/src/middleware/")) {
-    return "high";
-  }
-  if (layer === "tool-runtime" || layer === "tool-config" || layer === "schema") {
-    return "medium";
-  }
-  if (layer === "page" || layer === "component" || layer === "utility" || layer === "script") {
-    return "medium";
-  }
-  return "low";
+  return policy.matchLayer(workspaceRelativePath)?.risk ?? "low";
 }
 
 function detectComplexity(source: string): CompassComplexity {
@@ -355,20 +237,11 @@ function detectComplexity(source: string): CompassComplexity {
   return "non-trivial";
 }
 
-function isSimpleSvgLogoComponent(segments: string[]): boolean {
-  return (
-    segments.length >= 4 &&
-    segments[0] === "apps" &&
-    segments[2] === "src" &&
-    segments[3] === "components" &&
-    segments[4] === "logo"
-  );
-}
-
 function detectAuthoringStatus(
   segments: string[],
   relativePath: string,
   source: string,
+  policy: CompassPolicy,
 ): {
   authoringStatus: CompassAuthoringStatus;
   exclusionReason?: string;
@@ -380,24 +253,11 @@ function detectAuthoringStatus(
     };
   }
 
-  if (relativePath.startsWith("src/icons/gen/")) {
+  const policyExclusion = policy.excludedReason(relativePath);
+  if (policyExclusion !== undefined) {
     return {
       authoringStatus: "excluded",
-      exclusionReason: "generated-icon-tree",
-    };
-  }
-
-  if (relativePath.startsWith("src/assets/")) {
-    return {
-      authoringStatus: "excluded",
-      exclusionReason: "assets-directory",
-    };
-  }
-
-  if (isSimpleSvgLogoComponent(segments)) {
-    return {
-      authoringStatus: "excluded",
-      exclusionReason: "svg-component",
+      exclusionReason: policyExclusion,
     };
   }
 
@@ -415,20 +275,7 @@ function detectAuthoringStatus(
     };
   }
 
-  if (relativePath.startsWith("src/templates/")) {
-    return {
-      authoringStatus: "excluded",
-      exclusionReason: "template-source",
-    };
-  }
-
-  if (
-    relativePath.startsWith("test/") ||
-    relativePath.endsWith(".test.ts") ||
-    relativePath.endsWith(".test.js") ||
-    relativePath.endsWith(".spec.ts") ||
-    relativePath.endsWith(".spec.js")
-  ) {
+  if (policy.isTestPath(relativePath)) {
     return {
       authoringStatus: "excluded",
       exclusionReason: "test-file",
@@ -641,9 +488,9 @@ export function deriveFileTokens(pathFromRoot: string, source: string): Set<stri
   return tokens;
 }
 
-function validateHistoryIds(historyIds: string[]): string | null {
+function validateHistoryIds(historyIds: string[], policy: CompassPolicy): string | null {
   for (const token of historyIds) {
-    if (!HISTORY_ID_RE.test(token)) {
+    if (!policy.idPatternFull.test(token)) {
       return `<history> contains a non-ID token: "${token}"`;
     }
   }
@@ -652,14 +499,12 @@ function validateHistoryIds(historyIds: string[]): string | null {
   }
   const lastSeenByNamespace = new Map<string, number>();
   for (const token of historyIds) {
-    const parts = token.match(HISTORY_ID_PARTS_RE)!;
-    const namespace = parts[1]!.replace(/-$/, "");
-    const numeric = Number(parts[3]);
-    const last = lastSeenByNamespace.get(namespace);
-    if (last !== undefined && numeric <= last) {
-      return `<history> IDs are not in per-namespace ascending numeric order (${token} after ${namespace}-${last})`;
+    const parts = parseGovernanceIdParts(token)!;
+    const last = lastSeenByNamespace.get(parts.namespace);
+    if (last !== undefined && parts.numeric <= last) {
+      return `<history> IDs are not in per-namespace ascending numeric order (${token} after ${parts.namespace}-${last})`;
     }
-    lastSeenByNamespace.set(namespace, numeric);
+    lastSeenByNamespace.set(parts.namespace, parts.numeric);
   }
   return null;
 }
@@ -667,6 +512,7 @@ function validateHistoryIds(historyIds: string[]): string | null {
 export function evaluateV2Rules(
   entry: Pick<CompassInventoryEntry, "path" | "keyDecisionsRequired">,
   source: string,
+  policy: CompassPolicy,
 ): CompassV2Diagnostic[] {
   const parse = parseCompassBlocks(source);
   const diagnostics: CompassV2Diagnostic[] = [];
@@ -714,7 +560,7 @@ export function evaluateV2Rules(
           fix: "fix: compress the item to a single decision statement",
         });
       }
-      if (GOVERNANCE_ID_PREFIX_RE.test(item)) {
+      if (policy.idPatternPrefix.test(item)) {
         diagnostics.push({
           ruleId: "COMPASS-KD-05",
           message:
@@ -733,7 +579,7 @@ export function evaluateV2Rules(
   }
 
   if (parse.purposeText.length > 0) {
-    if (PURPOSE_BOILERPLATE_PATTERNS.some((pattern) => pattern.test(parse.purposeText))) {
+    if (policy.purposeBoilerplatePatterns.some((pattern) => pattern.test(parse.purposeText))) {
       diagnostics.push({
         ruleId: "COMPASS-PURPOSE-01",
         message: "<purpose> matches a boilerplate pattern",
@@ -766,7 +612,7 @@ export function evaluateV2Rules(
       });
     }
     for (const item of parse.changeSummaryItems) {
-      if (!GOVERNANCE_ID_RE.test(item)) {
+      if (!policy.idPattern.test(item)) {
         diagnostics.push({
           ruleId: "COMPASS-CS-06",
           message: `CHANGE_SUMMARY item lacks a governance-ID reference: "${item.slice(0, 60)}"`,
@@ -775,7 +621,7 @@ export function evaluateV2Rules(
       }
     }
     if (parse.historyRaw !== null) {
-      const historyError = validateHistoryIds(parse.historyIds);
+      const historyError = validateHistoryIds(parse.historyIds, policy);
       if (historyError) {
         diagnostics.push({
           ruleId: "COMPASS-CS-07",
@@ -838,11 +684,12 @@ export async function createCompassInventoryEntries(
   workspaceRoot: string,
   input: ForgeCommandInput,
   scanRoot?: string,
+  policy?: CompassPolicy,
 ): Promise<CompassInventoryEntry[]> {
-  const roots = scanRoot ? [scanRoot] : resolveScanRoots(workspaceRoot, input);
-  const extraExtensions = loadCompassExtensionsFromForgeYaml(workspaceRoot);
+  const resolvedPolicy = policy ?? resolveCompassPolicy(workspaceRoot);
+  const roots = scanRoot ? [scanRoot] : resolveScanRoots(workspaceRoot, input, resolvedPolicy);
   const files = (
-    await Promise.all(roots.map((root) => collectSourceFiles(root, extraExtensions)))
+    await Promise.all(roots.map((root) => collectSourceFiles(root, resolvedPolicy)))
   ).flat();
   const entries: CompassInventoryEntry[] = [];
 
@@ -850,14 +697,17 @@ export async function createCompassInventoryEntries(
     const source = await readFile(filePath, "utf8");
     const pathFromRoot = relative(workspaceRoot, filePath).replace(/\\/g, "/");
     const segments = getRelativeSegments(filePath, workspaceRoot);
-    const relativePathWithinWorkspace = getWorkspaceRelativeSegments(segments).join("/");
-    const layer = detectLayer(relativePathWithinWorkspace);
-    const riskClass = detectRiskClass(pathFromRoot, layer);
+    const relativePathWithinWorkspace = getWorkspaceRelativeSegments(segments, resolvedPolicy).join(
+      "/",
+    );
+    const layer = detectLayer(relativePathWithinWorkspace, resolvedPolicy);
+    const riskClass = detectRiskClass(pathFromRoot, relativePathWithinWorkspace, resolvedPolicy);
     const complexity = detectComplexity(source);
     const { authoringStatus, exclusionReason } = detectAuthoringStatus(
       segments,
       relativePathWithinWorkspace,
       source,
+      resolvedPolicy,
     );
     const requiredScaffolding = detectRequiredScaffolding(authoringStatus);
     const markup = detectMarkup(source);
@@ -868,8 +718,8 @@ export async function createCompassInventoryEntries(
     const nonEmptyLineCount = source.split(/\r?\n/).filter((line) => line.trim().length > 0).length;
     const candidate: CompassInventoryEntry = {
       path: pathFromRoot,
-      workspaceKind: detectWorkspaceKind(segments),
-      workspaceName: detectWorkspaceName(segments),
+      workspaceKind: detectWorkspaceKind(segments, resolvedPolicy),
+      workspaceName: detectWorkspaceName(segments, resolvedPolicy),
       layer,
       extension:
         segments.length > 0

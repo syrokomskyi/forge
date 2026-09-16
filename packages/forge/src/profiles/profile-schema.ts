@@ -317,6 +317,39 @@ export interface ProfileTemplate {
 // Stack profile domain fields
 // ---------------------------------------------------------------------------
 
+// RFC-1096: shared Compass policy override shape — used by both the stack
+// profile `compass:` section and the consumer `bindings.compass` section.
+export const compassPolicyOverridesSchema = z.object({
+  fileExtensions: z.array(z.string()).optional(),
+  testPatterns: z.array(z.string()).optional(),
+  scanRoots: z.array(z.string()).optional(),
+  ignoredDirs: z.array(z.string()).optional(),
+  ignoredDirPrefixes: z.array(z.string()).optional(),
+  highRiskPaths: z.array(z.string()).optional(),
+  idPattern: z.string().optional(),
+  purposeBoilerplatePatterns: z.array(z.string()).optional(),
+  layerRules: z
+    .array(
+      z.object({
+        pattern: z.string().min(1),
+        layer: z.string().min(1),
+        risk: z.enum(["high", "medium", "low"]),
+      }),
+    )
+    .optional(),
+  workspaceKinds: z.record(z.string(), z.enum(["app", "package", "service"])).optional(),
+  excludedPaths: z
+    .array(
+      z.object({
+        pattern: z.string().min(1),
+        reason: z.string().min(1),
+      }),
+    )
+    .optional(),
+});
+
+export type CompassPolicyOverrides = z.infer<typeof compassPolicyOverridesSchema>;
+
 export const stackProfileDomainFieldsSchema = z.object({
   domain: z.string().optional(),
   terminology: z.record(z.string(), z.string()).optional(),
@@ -331,12 +364,7 @@ export const stackProfileDomainFieldsSchema = z.object({
   templates: z.array(profileTemplateSchema).optional(),
   scriptDir: z.string().min(1).optional(),
   rootAgentsMdTemplate: z.string().optional(),
-  compass: z
-    .object({
-      fileExtensions: z.array(z.string()).optional(),
-      testPatterns: z.array(z.string()).optional(),
-    })
-    .optional(),
+  compass: compassPolicyOverridesSchema.optional(),
 });
 
 export interface StackProfileDomainFields {
@@ -353,8 +381,5 @@ export interface StackProfileDomainFields {
   templates?: ProfileTemplate[];
   scriptDir?: string;
   rootAgentsMdTemplate?: string;
-  compass?: {
-    fileExtensions?: string[];
-    testPatterns?: string[];
-  };
+  compass?: CompassPolicyOverrides;
 }

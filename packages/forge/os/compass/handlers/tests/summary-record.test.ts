@@ -11,7 +11,12 @@ import {
   isValidGovernanceId,
   CHANGE_SUMMARY_WINDOW,
 } from "../summary-record.ts";
+import { resolveCompassPolicy } from "../../policy.ts";
 import type { ForgeRuntimeContext } from "../../../../src/types.ts";
+
+// Generic policy — this path has no forge.yaml, so resolution falls back to
+// GENERIC defaults.
+const policy = resolveCompassPolicy(join(tmpdir(), "summary-record-no-forge-yaml"));
 
 const logger = {
   section() {},
@@ -195,16 +200,16 @@ describe("summary-record helpers", () => {
   });
 
   it("isValidGovernanceId accepts RFC/ADR/ticket shapes only", () => {
-    expect(isValidGovernanceId("RFC-1095")).toBe(true);
-    expect(isValidGovernanceId("ADR-0042")).toBe(true);
-    expect(isValidGovernanceId("PROJ-123")).toBe(true);
-    expect(isValidGovernanceId("rfc-1095")).toBe(false);
-    expect(isValidGovernanceId("RFC1095")).toBe(false);
-    expect(isValidGovernanceId("RFC-1095 extra")).toBe(false);
+    expect(isValidGovernanceId("RFC-1095", policy)).toBe(true);
+    expect(isValidGovernanceId("ADR-0042", policy)).toBe(true);
+    expect(isValidGovernanceId("PROJ-123", policy)).toBe(true);
+    expect(isValidGovernanceId("rfc-1095", policy)).toBe(false);
+    expect(isValidGovernanceId("RFC1095", policy)).toBe(false);
+    expect(isValidGovernanceId("RFC-1095 extra", policy)).toBe(false);
   });
 
   it("mergeHistoryIds dedupes and sorts per-namespace ascending", () => {
-    expect(mergeHistoryIds(["RFC-0005"], ["RFC-0002", "ADR-0001", "RFC-0005"])).toEqual([
+    expect(mergeHistoryIds(["RFC-0005"], ["RFC-0002", "ADR-0001", "RFC-0005"], policy)).toEqual([
       "ADR-0001",
       "RFC-0002",
       "RFC-0005",
