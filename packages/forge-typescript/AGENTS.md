@@ -86,6 +86,9 @@ Validators are pure rules: each `src/checks/*-validate.ts` exports `create*Comma
 - Do NOT add new engine hooks — the hook list is closed at five.
 - Use `execFile()` not `exec()` for external binary invocation (DNA-89).
 - Validators are standalone kernel commands, not pipeline-integrated.
+- **`tsconfig.json` is JSONC, not JSON** — parse via the TypeScript API (`ts.parseConfigFileTextToJson` / `ts.readConfigFile`), never `JSON.parse`. Comments and trailing commas are legal in tsconfig files.
+- **`package.json` `exports` supports `*` wildcards** — validators must expand wildcard subpaths against existing files (regex/glob match), not treat the pattern as a literal path.
+- **`module: "NodeNext"` + `moduleResolution: "NodeNext"` is a coupled pair, not a mismatch** — consistency validators must treat identical module/moduleResolution values (and the NodeNext pair specifically) as consistent.
 
 ## Scripts
 
