@@ -417,7 +417,7 @@ test("agents-generate nested separates workspace and external dependencies", asy
     JSON.stringify({
       name: "@test/my-pkg",
       dependencies: {
-        "@warpgogol/werkstatt-shared/share": "workspace:*",
+        "@warpgogol/werkstatt-shared": "workspace:*",
         zod: "^4.4.3",
       },
     }),
@@ -428,7 +428,7 @@ test("agents-generate nested separates workspace and external dependencies", asy
 
   const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
   expect(nested).toContain("**Workspace:**");
-  expect(nested).toContain("- `@warpgogol/werkstatt-shared/share`");
+  expect(nested).toContain("- `@warpgogol/werkstatt-shared`");
   expect(nested).toContain("**External:**");
   expect(nested).toContain("- `zod` `^4.4.3`");
 });
