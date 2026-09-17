@@ -36,7 +36,7 @@ const compassScanFlags = {
   },
   package: {
     kind: "string",
-    description: "With --packages, scan one package by directory/name.",
+    description: "Scan one package by directory/name (implies --packages).",
   },
   workpiece: {
     kind: "string",
