@@ -19,6 +19,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1097: AC-4 banned literal in os/compass handlers
 
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
+  <item>RFC-0617: fix — --package alone now implies --packages scope (was a silent no-op falling through to full-repo scan).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +31,9 @@ export function resolveCompassScanRoot(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): string | undefined {
-  const hasPackages = input.flags["packages"] === true;
+  const packageName = input.flags["package"];
+  const hasPackage = typeof packageName === "string" && packageName.length > 0;
+  const hasPackages = input.flags["packages"] === true || hasPackage;
   const workpiecePath = input.flags["workpiece"];
   const hasWorkpiece = typeof workpiecePath === "string" && workpiecePath.length > 0;
 
@@ -64,8 +67,7 @@ export function resolveCompassScanRoot(
     return context.site ? context.site.directory : undefined;
   }
 
-  const packageName = input.flags["package"];
-  if (!packageName || typeof packageName !== "string") {
+  if (!hasPackage) {
     return resolve(context.workspaceRoot, "packages");
   }
 
