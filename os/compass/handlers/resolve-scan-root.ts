@@ -71,10 +71,7 @@ export function resolveCompassScanRoot(
     return resolve(context.workspaceRoot, "packages");
   }
 
-  const candidates = [
-    resolve(context.workspaceRoot, "packages", "os", packageName),
-    resolve(context.workspaceRoot, "packages", packageName),
-  ];
+  const candidates = [resolve(context.workspaceRoot, "packages", packageName)];
 
   for (const candidate of candidates) {
     if (existsSync(candidate)) {

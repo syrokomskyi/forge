@@ -42,12 +42,6 @@ describe("resolveCompassScanRoot --package", () => {
     expect(result).toBe(join(tempDir, "packages", "my-pkg"));
   });
 
-  it("resolves packages/os/<name> candidates first", () => {
-    mkdirSync(join(tempDir, "packages", "os", "my-pkg"), { recursive: true });
-    const result = resolveCompassScanRoot(makeInput({ package: "my-pkg" }), makeContext(tempDir));
-    expect(result).toBe(join(tempDir, "packages", "os", "my-pkg"));
-  });
-
   it("throws when --package and --workpiece are both set", () => {
     expect(() =>
       resolveCompassScanRoot(
