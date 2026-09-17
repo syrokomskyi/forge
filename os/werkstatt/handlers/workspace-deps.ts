@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Lazy dynamic-import bridge for @warpgogol/werkstatt-engine/fingerprint and @warpgogol/werkstatt-shared/share/fs. These workspace packages are not published to npm — when forge is installed standalone from npm, they are unavailable and handlers that depend on them must degrade gracefully.</purpose>
+<purpose>Lazy dynamic-import bridge for @warpgogol/werkstatt-engine/fingerprint and @warpgogol/werkstatt-shared/node/fs. These workspace packages are not published to npm — when forge is installed standalone from npm, they are unavailable and handlers that depend on them must degrade gracefully.</purpose>
 <non-goals>
   <item>Do not re-export types from @warpgogol/* — only runtime functions.</item>
   <item>Do not use static imports — that would break npm installs without workspace deps.</item>
