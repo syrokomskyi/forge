@@ -43,7 +43,7 @@ export async function collectFiles(
   const results: string[] = [];
 
   // fs.walk.lint: allow — this is the canonical collectFiles implementation,
-  // inlined from @warpgogol/werkstatt-shared/share/fs to keep @warpgogol/forge dependency-free (RFC-0303).
+  // inlined from @warpgogol/werkstatt-shared/node/fs to keep @warpgogol/forge dependency-free (RFC-0303).
   async function walk(dir: string): Promise<void> {
     let entries;
     try {

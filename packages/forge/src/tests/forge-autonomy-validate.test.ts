@@ -94,7 +94,7 @@ describe("forge.autonomy.validate", () => {
   test("passes when @warpgogol/werkstatt-shared is imported (exempt)", async () => {
     writeFileSync(
       join(workspace, "packages", "forge", "os", "core", "handlers", "shared.ts"),
-      `import { scanDirectoryForImports } from "@warpgogol/werkstatt-shared/share/import-scan";\nexport function bar() { return scanDirectoryForImports; }\n`,
+      `import { scanDirectoryForImports } from "@warpgogol/werkstatt-shared/node/import-scan";\nexport function bar() { return scanDirectoryForImports; }\n`,
     );
 
     const result = await runForgeAutonomyValidate({ argv: [], flags: {} }, makeContext(workspace));

@@ -20,7 +20,7 @@ via ts.createSourceFile (syntactic parse only, no ts.Program).</purpose>
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative } from "node:path";
 import ts from "typescript";
-import { EXCLUDE_DIRS, EXCLUDE_SUFFIXES } from "@warpgogol/werkstatt-shared/share/import-scan";
+import { EXCLUDE_DIRS, EXCLUDE_SUFFIXES } from "@warpgogol/werkstatt-shared/node/import-scan";
 
 export interface PackageJson {
   name?: string;

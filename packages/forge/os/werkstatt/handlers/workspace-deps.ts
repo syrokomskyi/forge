@@ -37,7 +37,7 @@ export async function loadWorkspaceDeps(): Promise<WorkspaceDeps> {
   try {
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
-    const shareMod = await import("@warpgogol/werkstatt-shared/share/fs");
+    const shareMod = await import("@warpgogol/werkstatt-shared/node/fs");
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
     // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
     const fpMod = await import("@warpgogol/werkstatt-engine/fingerprint");
@@ -48,7 +48,7 @@ export async function loadWorkspaceDeps(): Promise<WorkspaceDeps> {
     return cached;
   } catch (err) {
     loadError =
-      `@warpgogol/werkstatt-engine/fingerprint and @warpgogol/werkstatt-shared/share are required for this command but not installed. ` +
+      `@warpgogol/werkstatt-engine/fingerprint and @warpgogol/werkstatt-shared are required for this command but not installed. ` +
       `When using forge standalone from npm, install them separately or use forge within the warpgogol workspace. ` +
       `Error: ${(err as Error).message}`;
     throw new Error(loadError);
