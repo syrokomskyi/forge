@@ -2,7 +2,7 @@
 
 ## Project
 
-`@warpgogol/werkstatt-typescript` — Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript-turborepo"`. Provides one kernel module (typescript-checks) with six validators, no deploy adapters, no hooks, and TS-001..006 stack invariants.
+`@warpgogol/werkstatt-typescript` — Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript"`. Provides one kernel module (typescript-checks) with six validators, no deploy adapters, no hooks, and TS-001..006 stack invariants.
 
 Priorities when modifying:
 
@@ -71,7 +71,7 @@ Validators are pure rules: each `src/checks/*-validate.ts` exports `create*Comma
 | ---------------- | ------------------------------------------------------------------ |
 | `schema`         | `werkstatt/plugin@1`                                               |
 | `id`             | `werkstatt-typescript`                                             |
-| `profileId`      | `typescript-turborepo`                                             |
+| `profileId`      | `typescript`                                             |
 | `moduleLoaders`  | `checks`                                                           |
 | `deployAdapters` | (none)                                                             |
 | `hooks`          | (none — validators are standalone, not pipeline-integrated)        |
