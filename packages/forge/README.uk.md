@@ -39,7 +39,7 @@ Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my 
 ## Швидкий старт (термінал)
 
 ```sh
-pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript
 ```
 
 Потім відкрийте проєкт у вашому ШІ-IDE (Windsurf, Cursor, Claude Code, Codex CLI або будь-якому IDE з підтримкою ШІ-агентів) і скажіть агентові, що ви хочете створити.
@@ -53,10 +53,10 @@ Forge не залежить від типу проєкту. Профілі ст�
 | Профіль                          | Призначення                                 |
 | -------------------------------- | ------------------------------------------- |
 | `forge-shell`                    | Лише управління, бібліотеки, не-веб проєкти |
-| `typescript-turborepo`           | TypeScript монорепозиторій з валідаторами   |
-| `phaser-turborepo`               | Браузерні ігри, інтерактивні досвіди        |
-| `godot-csharp`                   | Десктопні/мобільні ігри на Godot 4.x + C#   |
-| `knowledge-typescript-turborepo` | Бази знань з підтримкою доказів             |
+| `typescript`           | TypeScript монорепозиторій з валідаторами   |
+| `phaser-game`               | Браузерні ігри, інтерактивні досвіди        |
+| `godot-game`                   | Десктопні/мобільні ігри на Godot 4.x + C#   |
+| `knowledge` | Бази знань з підтримкою доказів             |
 
 ```sh
 # Перелічити доступні профілі

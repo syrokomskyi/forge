@@ -2,7 +2,7 @@
 
 Українська | [English](README.md)
 
-Плагін Werkstatt для загальних TypeScript TurboRepo проєктів. Реалізує `werkstatt/plugin@1` з `profileId: "typescript-turborepo"`.
+Плагін Werkstatt для загальних TypeScript TurboRepo проєктів. Реалізує `werkstatt/plugin@1` з `profileId: "typescript"`.
 
 > Розроблено в [Warpgogol](https://warpgogol.com) · Опубліковано як open source.
 
@@ -19,7 +19,7 @@
 - **Угоди строгого режиму** — жодних неекранованих `any`, явні типи повернення для експортованих функцій, жодних необґрунтованих `@ts-ignore`
 - **Безпека barrel-експортів** — barrel-файли не реекспортують Node-only модулі без subpath exports
 
-Ви не використовуєте цей пакет самостійно — його завантажує рушій Werkstatt, коли ви створюєте проєкт з профілем `typescript-turborepo`.
+Ви не використовуєте цей пакет самостійно — його завантажує рушій Werkstatt, коли ви створюєте проєкт з профілем `typescript`.
 
 ---
 
@@ -31,7 +31,7 @@
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-typescript
 ```
 
-> **Примітка для агентів:** Під час створення каркасу проєкту через `forge create --profile typescript-turborepo` завжди встановлюйте рушій та цей плагін після завершення скаффолдингу. Прив'язки у `forge.yaml` посилаються на команди з цих пакетів, і вони завершаться помилкою, якщо пакети не встановлені.
+> **Примітка для агентів:** Під час створення каркасу проєкту через `forge create --profile typescript` завжди встановлюйте рушій та цей плагін після завершення скаффолдингу. Прив'язки у `forge.yaml` посилаються на команди з цих пакетів, і вони завершаться помилкою, якщо пакети не встановлені.
 
 ---
 
@@ -69,14 +69,14 @@ pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-typescript
 
 | Профіль | Тип проєкту | Перший робочий простір | Призначення |
 | --- | --- | --- | --- |
-| `typescript-turborepo` | Бібліотека TypeScript | — | Загальний TypeScript TurboRepo монорепозиторій з валідаторами найкращих практик |
+| `typescript` | Бібліотека TypeScript | — | Загальний TypeScript TurboRepo монорепозиторій з валідаторами найкращих практик |
 
 Створіть новий TypeScript проєкт:
 
 ```sh
 mkdir my-ts-project
 cd my-ts-project
-pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript
 ```
 
 ---
@@ -100,7 +100,7 @@ import { werkstattTypescriptPlugin } from "@warpgogol/werkstatt-typescript";
 engine.registerPlugin(werkstattTypescriptPlugin);
 ```
 
-Плагін експортує єдиний об'єкт `WerkstattPlugin` з `profileId: "typescript-turborepo"`. Рушій виявляє його автоматично, коли пакет встановлено.
+Плагін експортує єдиний об'єкт `WerkstattPlugin` з `profileId: "typescript"`. Рушій виявляє його автоматично, коли пакет встановлено.
 
 ### Subpath exports
 
