@@ -39,7 +39,7 @@ The skill asks a few simple questions in the chat, then sets everything up. Afte
 ## Quick start (terminal)
 
 ```sh
-pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript
 ```
 
 Then open the project in your AI IDE (Windsurf, Cursor, Claude Code, Codex CLI, or any IDE that supports AI agents) and tell the agent what you want to build.
@@ -50,13 +50,13 @@ One bootstrap command. After that, work through your coding agent.
 
 Forge is project-agnostic. Stack profiles provide ready-made starting points.
 
-| Profile                          | Use case                                              |
-| -------------------------------- | ----------------------------------------------------- |
-| `forge-shell`                    | Governance-only projects, libraries, non-web projects |
-| `typescript-turborepo`           | TypeScript monorepo with best-practice validators     |
-| `phaser-turborepo`               | Browser games, interactive experiences                |
-| `godot-csharp`                   | Desktop/mobile games with Godot 4.x + C#              |
-| `knowledge-typescript-turborepo` | Evidence-backed knowledge bases                       |
+| Profile       | Use case                                              |
+| ------------- | ----------------------------------------------------- |
+| `forge-shell` | Governance-only projects, libraries, non-web projects |
+| `typescript`  | TypeScript monorepo with best-practice validators     |
+| `phaser-game` | Browser games, interactive experiences                |
+| `godot-game`  | Desktop/mobile games with Godot 4.x + C#              |
+| `knowledge`   | Evidence-backed knowledge bases                       |
 
 ```sh
 # List available profiles
