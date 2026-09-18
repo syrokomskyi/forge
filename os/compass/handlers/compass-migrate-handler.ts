@@ -97,6 +97,7 @@ export async function runCompassMigrate(
   const result = await migrateWorkspace(context.workspaceRoot, input, scanRoot, policy, {
     files: explicitFiles,
     dryRun,
+    siteDirectory: context.site?.directory,
   });
 
   const counts = new Map<string, number>();

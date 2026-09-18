@@ -348,6 +348,7 @@ export async function runCompassValidation(
     input,
     scanRoot,
     policy,
+    context.site?.directory,
   );
   const summary = summarizeInventory(entries);
   const failures = entries.filter(
