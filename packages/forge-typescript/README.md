@@ -2,7 +2,7 @@
 
 [Українська](README.uk.md) | English
 
-Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript-turborepo"`.
+Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript"`.
 
 > Engineered at [Warpgogol](https://warpgogol.com) · Released as open source.
 
@@ -19,7 +19,7 @@ This is a **stack plugin** for the [Werkstatt](https://github.com/syrokomskyi/we
 - **Strict mode conventions** — no unescaped `any`, explicit return types on exported functions, no unjustified `@ts-ignore`
 - **Barrel export safety** — barrel files do not re-export Node-only modules without subpath exports
 
-You don't use this package on its own — it is loaded by the Werkstatt engine when you create a project with the `typescript-turborepo` profile.
+You don't use this package on its own — it is loaded by the Werkstatt engine when you create a project with the `typescript` profile.
 
 ---
 
@@ -31,7 +31,7 @@ This package is installed as a devDependency alongside the Werkstatt engine:
 pnpm add -D @warpgogol/werkstatt @warpgogol/werkstatt-typescript
 ```
 
-> **Note for agents:** When scaffolding a new project with `forge create --profile typescript-turborepo`, always install the engine and this plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages, and they will fail if the packages are not installed.
+> **Note for agents:** When scaffolding a new project with `forge create --profile typescript`, always install the engine and this plugin after the scaffold completes. The `forge.yaml` bindings reference commands from these packages, and they will fail if the packages are not installed.
 
 ---
 
@@ -69,14 +69,14 @@ Validators are standalone kernel commands, not pipeline-integrated. They can be 
 
 | Profile | Project type | First workspace | Use case |
 | --- | --- | --- | --- |
-| `typescript-turborepo` | TypeScript library | — | Generic TypeScript TurboRepo monorepo with best-practice validators |
+| `typescript` | TypeScript library | — | Generic TypeScript TurboRepo monorepo with best-practice validators |
 
 Create a new TypeScript project:
 
 ```sh
 mkdir my-ts-project
 cd my-ts-project
-pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript
 ```
 
 ---
@@ -100,7 +100,7 @@ import { werkstattTypescriptPlugin } from "@warpgogol/werkstatt-typescript";
 engine.registerPlugin(werkstattTypescriptPlugin);
 ```
 
-The plugin exports a single `WerkstattPlugin` object with `profileId: "typescript-turborepo"`. The engine discovers it automatically when the package is installed.
+The plugin exports a single `WerkstattPlugin` object with `profileId: "typescript"`. The engine discovers it automatically when the package is installed.
 
 ### Subpath exports
 
