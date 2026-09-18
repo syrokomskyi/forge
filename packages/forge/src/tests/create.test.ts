@@ -290,9 +290,9 @@ test("forge create --in-place derives name from folder name when --name omitted"
   expect(pkgJson.name).toBe("my-derived-project");
 }, 120000);
 
-test("forge create --profile godot-csharp writes compass.fileExtensions into forge.yaml", async () => {
+test("forge create --profile godot-game writes compass.fileExtensions into forge.yaml", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "godot-csharp", name: "my-game" } },
+    { argv: [], flags: { "in-place": true, profile: "godot-game", name: "my-game" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -346,9 +346,9 @@ test("forge create --in-place pins pre-user-prompt-wrapper.mjs in pinned.yaml (R
   expect(pinnedYaml).toContain("pre-user-prompt-wrapper.mjs");
 }, 120000);
 
-test("forge create --profile phaser-turborepo writes compass.fileExtensions into forge.yaml", async () => {
+test("forge create --profile phaser-game writes compass.fileExtensions into forge.yaml", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "phaser-turborepo", name: "my-phaser-game" } },
+    { argv: [], flags: { "in-place": true, profile: "phaser-game", name: "my-phaser-game" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
