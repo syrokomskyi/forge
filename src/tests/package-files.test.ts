@@ -10,8 +10,18 @@ but are missing from the published package.</purpose>
 */
 
 import { test, expect } from "vitest";
-import { readFileSync, readdirSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { resolveForgePackageRoot } from "../config/forge-config.ts";
 
 const PACKAGE_ROOT = join(import.meta.dirname, "..", "..");
 
@@ -51,4 +61,46 @@ test("root AGENTS.md templates exist and are readable", () => {
     const content = readFileSync(join(templatesDir, file), "utf8");
     expect(content.length).toBeGreaterThan(0);
   }
+});
+
+// Regression: published 5.1.0 resolved templates/profiles via import.meta.dirname,
+// which points at dist/src/onboarding/ in the compiled package — tsc never copies
+// .md assets into dist/, so lookups silently failed. resolveForgePackageRoot must
+// find the package root from both source and compiled layouts.
+test("resolveForgePackageRoot finds package root from compiled dist layout", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "forge-pkgroot-"));
+  try {
+    writeFileSync(join(tmp, "package.json"), JSON.stringify({ name: "@warpgogol/forge" }));
+    const distOnboarding = join(tmp, "dist", "src", "onboarding");
+    mkdirSync(distOnboarding, { recursive: true });
+    const srcTemplates = join(tmp, "src", "onboarding", "templates");
+    mkdirSync(srcTemplates, { recursive: true });
+
+    const root = resolveForgePackageRoot(distOnboarding);
+    expect(root).toBe(tmp);
+    expect(existsSync(join(root, "src", "onboarding", "templates"))).toBe(true);
+    expect(existsSync(join(root, "profiles"))).toBe(false);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveForgePackageRoot finds package root from source layout", () => {
+  const tmp = mkdtempSync(join(tmpdir(), "forge-pkgroot-"));
+  try {
+    writeFileSync(join(tmp, "package.json"), JSON.stringify({ name: "@warpgogol/forge" }));
+    const srcOnboarding = join(tmp, "src", "onboarding");
+    mkdirSync(srcOnboarding, { recursive: true });
+
+    expect(resolveForgePackageRoot(srcOnboarding)).toBe(tmp);
+  } finally {
+    rmSync(tmp, { recursive: true, force: true });
+  }
+});
+
+test("resolveForgePackageRoot resolves the real package root from src/onboarding", () => {
+  const root = resolveForgePackageRoot(join(PACKAGE_ROOT, "src", "onboarding"));
+  expect(root).toBe(PACKAGE_ROOT);
+  expect(existsSync(join(root, "src", "onboarding", "templates"))).toBe(true);
+  expect(existsSync(join(root, "profiles"))).toBe(true);
 });

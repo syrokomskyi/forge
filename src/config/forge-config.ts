@@ -433,6 +433,30 @@ export function resolveForgeRoot(workspaceRoot: string): string {
   );
 }
 
+/**
+ * Resolve the forge package root from inside the package's own modules.
+ * Handles both source layout (`src/<dir>/` → package root is two levels up)
+ * and compiled layout (`dist/src/<dir>/` → package root is three levels up)
+ * by walking up from `startDir` until a `package.json` is found.
+ *
+ * Use this for resolving package-shipped assets (templates, profiles) —
+ * `src/` and `profiles/` are both listed in package.json `files`, so they
+ * exist at the package root in the published tarball even though `tsc`
+ * never copies them into `dist/`.
+ */
+export function resolveForgePackageRoot(startDir: string): string {
+  let dir = startDir;
+  for (let i = 0; i < 6; i += 1) {
+    if (fs.existsSync(path.join(dir, "package.json"))) {
+      return dir;
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return startDir;
+}
+
 // ---------------------------------------------------------------------------
 // Binding resolver — RFC-0393
 // ---------------------------------------------------------------------------

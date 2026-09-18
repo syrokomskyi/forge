@@ -20,6 +20,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 import { buildGeneratedHeader } from "../utils/index.ts";
+import { resolveForgePackageRoot } from "../config/forge-config.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { WorkspaceDir, WorkspaceType } from "./workspace-discovery.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
@@ -151,8 +152,10 @@ export function selectNestedTemplate(
     return fallback;
   }
 
-  // Resolve relative to profiles/ directory (where profile YAMLs live)
-  const forgeRoot = path.resolve(import.meta.dirname, "..", "..");
+  // Resolve relative to profiles/ directory (where profile YAMLs live).
+  // import.meta.dirname points at dist/src/onboarding/ in the compiled package —
+  // resolve the package root so profiles/ is found in both src and dist layouts.
+  const forgeRoot = resolveForgePackageRoot(import.meta.dirname);
   const profilesDir = path.join(forgeRoot, "profiles");
   const templatePath = path.resolve(profilesDir, templateRel);
 
