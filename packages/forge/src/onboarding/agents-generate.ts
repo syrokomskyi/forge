@@ -23,7 +23,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 import fs from "node:fs";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { loadForgeConfig, resolveBinding, resolveForgeRoot } from "../config/forge-config.ts";
+import { loadForgeConfig, resolveBinding, resolveForgePackageRoot, resolveForgeRoot } from "../config/forge-config.ts";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
@@ -58,13 +58,22 @@ export interface TemplateContext {
   workspaceType?: string;
 }
 
-// RFC-0643: Root template paths
-const BUSINESS_ROOT_TEMPLATE = path.join(import.meta.dirname, "templates", "root-agents-business.md");
-const CREATIVE_ROOT_TEMPLATE = path.join(import.meta.dirname, "templates", "root-agents-creative.md");
+// RFC-0643: Root template paths.
+// Templates ship in the tarball under src/onboarding/templates/ but tsc never
+// copies .md files into dist/ — resolve via the package root so both the source
+// layout (src/onboarding/) and compiled layout (dist/src/onboarding/) work.
+const TEMPLATES_DIR = path.join(
+  resolveForgePackageRoot(import.meta.dirname),
+  "src",
+  "onboarding",
+  "templates",
+);
+const BUSINESS_ROOT_TEMPLATE = path.join(TEMPLATES_DIR, "root-agents-business.md");
+const CREATIVE_ROOT_TEMPLATE = path.join(TEMPLATES_DIR, "root-agents-creative.md");
 
 // Behavioral layer template paths
-const BEHAVIORAL_LAYER_CORE_TEMPLATE = path.join(import.meta.dirname, "templates", "behavioral-layer-core.md");
-const BEHAVIORAL_LAYER_EXTENDED_TEMPLATE = path.join(import.meta.dirname, "templates", "behavioral-layer-extended.md");
+const BEHAVIORAL_LAYER_CORE_TEMPLATE = path.join(TEMPLATES_DIR, "behavioral-layer-core.md");
+const BEHAVIORAL_LAYER_EXTENDED_TEMPLATE = path.join(TEMPLATES_DIR, "behavioral-layer-extended.md");
 
 export function selectRootTemplate(
   register: BehavioralRegister,
@@ -75,7 +84,7 @@ export function selectRootTemplate(
     const templateRel = profile.rootAgentsMdTemplate;
     // Path traversal guard: reject absolute paths and ..
     if (!path.isAbsolute(templateRel) && !templateRel.includes("..")) {
-      const forgeRoot = path.resolve(import.meta.dirname, "..", "..");
+      const forgeRoot = resolveForgePackageRoot(import.meta.dirname);
       const profilesDir = path.join(forgeRoot, "profiles");
       const templatePath = path.resolve(profilesDir, templateRel);
       // Ensure resolved path is within profiles directory
