@@ -29,7 +29,7 @@ import { TYPESCRIPT_INVARIANTS } from "./invariants/typescript-invariants.ts";
 export const werkstattTypescriptPlugin: WerkstattPlugin = {
   schema: "werkstatt/plugin@1",
   id: "werkstatt-typescript",
-  profileId: "typescript-turborepo",
+  profileId: "typescript",
   paths: typescriptPathConventions,
   moduleLoaders: {
     checks: async (): Promise<KernelModule> =>
