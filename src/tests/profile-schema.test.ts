@@ -162,16 +162,16 @@ test("all shipped profiles parse without changes", () => {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);
     // Domain fields should be undefined for existing software-domain profiles
-    if (profile.id !== "godot-csharp") {
+    if (profile.id !== "godot-game") {
       expect(profile.domain).toBeUndefined();
       expect(profile.register).toBeUndefined();
     }
   }
 });
 
-test("shipped phaser-turborepo profile loads via loadStackProfile", () => {
-  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "phaser-turborepo.yaml"));
-  expect(profile.id).toBe("phaser-turborepo");
+test("shipped phaser-game profile loads via loadStackProfile", () => {
+  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "phaser-game.yaml"));
+  expect(profile.id).toBe("phaser-game");
 });
 
 test("UNIVERSAL_TERMINOLOGY_KEYS contains the 7 documented keys", () => {

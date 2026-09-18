@@ -1,5 +1,5 @@
 schema: forge/stack-profile@1
-id: godot-csharp
+id: godot-game
 displayName: Godot 4.x + C#
 detect:
   anyOf:
@@ -1123,7 +1123,7 @@ workspace:
 
         - Engine: @warpgogol/werkstatt-engine
         - Plugin: @warpgogol/werkstatt-godot-game
-        - Stack profile: godot-csharp
+        - Stack profile: godot-game
 install:
   - pnpm install
 firstWorkspace:
