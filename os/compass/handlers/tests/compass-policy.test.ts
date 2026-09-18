@@ -51,7 +51,7 @@ ${bindings}`;
 
 const FORGE_YAML_WITH_PROFILE = `
 schema: forge/config@1
-profile: godot-csharp
+profile: godot-game
 project:
   name: test-ws
   stack: [godot]
@@ -136,7 +136,7 @@ describe("resolveCompassPolicy (RFC-1096)", () => {
   it("AC-2: profile compass section applies when forge.yaml declares `profile`", () => {
     writeFileSync(join(root, "forge.yaml"), FORGE_YAML_WITH_PROFILE);
     const policy = resolveCompassPolicy(root, FORGE_ROOT);
-    expect(policy.source.profile).toBe("godot-csharp");
+    expect(policy.source.profile).toBe("godot-game");
     for (const ext of [".cs", ".tscn", ".tres", ".gd"]) {
       expect(policy.fileExtensions.has(ext), `missing ${ext}`).toBe(true);
     }

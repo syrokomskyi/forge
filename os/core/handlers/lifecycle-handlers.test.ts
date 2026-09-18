@@ -63,7 +63,7 @@ const input = (flags: Record<string, unknown> = {}): ForgeCommandInput => ({
   flags: flags as Record<string, boolean | string | string[]>,
 });
 
-const godotYaml = `profile: godot-csharp\n`;
+const godotYaml = `profile: godot-game\n`;
 
 let tmpDir: string;
 
@@ -77,10 +77,10 @@ afterEach(() => {
 
 // ── resolveActiveProfile ──────────────────────────────────────────────────
 
-test("resolveActiveProfile returns the godot-csharp profile when forge.yaml declares it", () => {
+test("resolveActiveProfile returns the godot-game profile when forge.yaml declares it", () => {
   const resolved = resolveActiveProfile(tmpDir, FORGE_ROOT);
   expect(resolved).not.toBeNull();
-  expect(resolved!.profile.id).toBe("godot-csharp");
+  expect(resolved!.profile.id).toBe("godot-game");
 });
 
 test("resolveActiveProfile returns null when forge.yaml has no profile field", () => {
@@ -97,9 +97,9 @@ test("resolveActiveProfile returns null when forge.yaml is missing", () => {
 });
 
 test("resolveActiveProfile uses profileIdOverride when provided", () => {
-  const resolved = resolveActiveProfile(tmpDir, FORGE_ROOT, "godot-csharp");
+  const resolved = resolveActiveProfile(tmpDir, FORGE_ROOT, "godot-game");
   expect(resolved).not.toBeNull();
-  expect(resolved!.profile.id).toBe("godot-csharp");
+  expect(resolved!.profile.id).toBe("godot-game");
 });
 
 // ── runBuild ───────────────────────────────────────────────────────────────
@@ -107,7 +107,7 @@ test("resolveActiveProfile uses profileIdOverride when provided", () => {
 test("runBuild --dry-run does not execute child process and prints resolved commands", async () => {
   const result = await runBuild(input({ "dry-run": true }), makeContext(tmpDir));
   expect(result.exitCode).toBeUndefined();
-  expect(result.data?.profileId).toBe("godot-csharp");
+  expect(result.data?.profileId).toBe("godot-game");
   expect(result.data?.artifacts.length).toBeGreaterThan(0);
   const game = result.data?.artifacts.find((a) => a.id === "game");
   expect(game).toBeDefined();
@@ -130,7 +130,7 @@ test("runBuild --dry-run resolves commands without execution", async () => {
 
 test("runValidate --dry-run does not execute child process and prints resolved commands", async () => {
   const result = await runValidate(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("godot-csharp");
+  expect(result.data?.profileId).toBe("godot-game");
   expect(result.data?.artifacts.length).toBeGreaterThan(0);
   const game = result.data?.artifacts.find((a) => a.id === "game");
   expect(game).toBeDefined();
@@ -220,7 +220,7 @@ test("parseViolations returns empty array on malformed regex pattern", () => {
 
 test("runDev --dry-run does not spawn child process and prints resolved command", async () => {
   const result = await runDev(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("godot-csharp");
+  expect(result.data?.profileId).toBe("godot-game");
   expect(result.data?.devServerCommand).toBe("godot --path . --editor");
   expect(result.data?.port).toBe(6005);
   expect(result.data?.exitCode).toBe(0);
@@ -246,7 +246,7 @@ test("runDev returns exit 1 when no active profile found", async () => {
 
 test("runDeterminismCheck --dry-run prints resolved inputs without executing builds", async () => {
   const result = await runDeterminismCheck(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("godot-csharp");
+  expect(result.data?.profileId).toBe("godot-game");
   expect(result.data?.artifacts.length).toBe(1);
   expect(result.data?.artifacts[0].artifactId).toBe("game");
   expect(result.data?.artifacts[0].inputs).toContain("Scenes/**/*.tscn");
@@ -344,7 +344,7 @@ test("runAssetsList --dry-run lists assets without hashing", async () => {
   writeFileSync(join(tmpDir, "Assets", "audio", "narration.wav"), "fake-wav");
 
   const result = await runAssetsList(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("godot-csharp");
+  expect(result.data?.profileId).toBe("godot-game");
   expect(result.data?.assets.length).toBe(2);
   const image = result.data?.assets.find((a) => a.type === "image");
   expect(image).toBeDefined();
@@ -450,7 +450,7 @@ test("runReleasePrepare --dry-run prints resolved release steps", async () => {
   writeFileSync(join(tmpDir, "bin", "Debug"), "fake-build-content");
 
   const result = await runReleasePrepare(input({ "dry-run": true }), makeContext(tmpDir));
-  expect(result.data?.profileId).toBe("godot-csharp");
+  expect(result.data?.profileId).toBe("godot-game");
   expect(result.data?.manifest.schemaVersion).toBe("1");
   expect(result.data?.manifest.artifacts.length).toBeGreaterThan(0);
   expect(result.data?.manifest.artifacts[0].artifactId).toBe("game");
@@ -467,7 +467,7 @@ test("runReleasePrepare generates manifest with artifact hashes", async () => {
   expect(result.data?.manifest.artifacts.length).toBeGreaterThan(0);
   expect(result.data?.manifest.artifacts[0].hash).toBeTruthy();
   expect(result.data?.manifest.artifacts[0].size).toBeGreaterThan(0);
-  expect(result.data?.manifest.releaseId).toContain("godot-csharp-");
+  expect(result.data?.manifest.releaseId).toContain("godot-game-");
   expect(result.data?.manifest.schemaVersion).toBe("1");
 });
 
