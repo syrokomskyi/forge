@@ -7,15 +7,15 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | Profile | Project type | First workspace | Use case |
 | --- | --- | --- | --- |
 | `forge-shell` | Governance / library | — | Governance-only projects, libraries, non-web projects |
-| `typescript-turborepo` | TypeScript library | — | Generic TypeScript Turborepo monorepo with validators |
-| `phaser-turborepo` | Browser game | `games/my-game` | Browser games, interactive experiences |
-| `godot-csharp` | Godot game | `games/my-game` | Desktop/mobile games, Godot-based projects |
-| `knowledge-typescript-turborepo` | Knowledge system | `knowledge/my-kb` | Evidence-backed knowledge bases |
+| `typescript` | TypeScript library | — | Generic TypeScript Turborepo monorepo with validators |
+| `phaser-game` | Browser game | `games/my-game` | Browser games, interactive experiences |
+| `godot-game` | Godot game | `games/my-game` | Desktop/mobile games, Godot-based projects |
+| `knowledge` | Knowledge system | `knowledge/my-kb` | Evidence-backed knowledge bases |
 
 ## Using a profile
 
 ```sh
-pnpm dlx @warpgogol/forge@latest create --in-place --profile phaser-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile phaser-game
 ```
 
 ## Listing profiles
@@ -28,9 +28,9 @@ pnpm exec forge profile.validate
 
 When bringing an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile by checking for marker files:
 
-- `phaser.config.*` → `phaser-turborepo`
-- `project.godot` → `godot-csharp`
-- `tsconfig.json` + `pnpm-workspace.yaml` → `typescript-turborepo`
+- `phaser.config.*` → `phaser-game`
+- `project.godot` → `godot-game`
+- `tsconfig.json` + `pnpm-workspace.yaml` → `typescript`
 
 ## Project-agnostic
 

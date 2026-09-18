@@ -11,7 +11,7 @@
 ```sh
 mkdir my-project
 cd my-project
-pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript-turborepo
+pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript
 ```
 
 The project name is derived from the folder name. Override with `--name`.
