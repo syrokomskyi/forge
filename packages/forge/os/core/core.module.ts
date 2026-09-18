@@ -312,7 +312,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           profile: {
             kind: "string",
             required: true,
-            description: "Stack profile id (e.g. phaser-turborepo).",
+            description: "Stack profile id (e.g. phaser-game).",
           },
           name: { kind: "string", required: true, description: "Project name (kebab-case)." },
           template: {
@@ -340,7 +340,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             kind: "string",
             required: true,
             description:
-              "Stack profile id. Required. Available: forge-shell, phaser-turborepo, godot-csharp, knowledge-typescript-turborepo, typescript-turborepo.",
+              "Stack profile id. Required. Available: forge-shell, phaser-game, godot-game, knowledge, typescript.",
           },
           name: {
             kind: "string",

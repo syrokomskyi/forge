@@ -21,8 +21,8 @@ describe("werkstattTypescriptPlugin", () => {
     expect(werkstattTypescriptPlugin.id).toBe("werkstatt-typescript");
   });
 
-  it("has profileId typescript-turborepo", () => {
-    expect(werkstattTypescriptPlugin.profileId).toBe("typescript-turborepo");
+  it("has profileId typescript", () => {
+    expect(werkstattTypescriptPlugin.profileId).toBe("typescript");
   });
 
   it("has moduleLoaders.checks function", () => {

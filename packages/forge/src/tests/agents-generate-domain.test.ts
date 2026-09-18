@@ -147,7 +147,7 @@ test("creative template contains {{dynamicSections}} marker", () => {
 
 test("selectRootTemplate with profile rootAgentsMdTemplate loads profile template", () => {
   const profile = {
-    id: "godot-csharp",
+    id: "godot-game",
     rootAgentsMdTemplate: "root-agents-godot.md",
   } as StackProfile;
   const content = selectRootTemplate("creative", profile);
@@ -301,8 +301,8 @@ test("agents-generate with creative register uses creative template", async () =
   expect(rootDetail?.register).toBe("creative");
 });
 
-test("agents-generate with godot-csharp profile generates Godot-specific AGENTS.md", async () => {
-  await makeForgeYaml(tempDir, "profile: godot-csharp");
+test("agents-generate with godot-game profile generates Godot-specific AGENTS.md", async () => {
+  await makeForgeYaml(tempDir, "profile: godot-game");
   const ctx = makeContext(tempDir);
   ctx.dryRun = true;
 

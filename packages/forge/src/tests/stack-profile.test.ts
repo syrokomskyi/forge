@@ -139,31 +139,31 @@ test("detectStack matches on exact filename", async () => {
   expect(match?.id).toBe("ts");
 });
 
-test("shipped phaser-turborepo profile validates", () => {
-  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "phaser-turborepo.yaml"));
-  expect(profile.id).toBe("phaser-turborepo");
+test("shipped phaser-game profile validates", () => {
+  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "phaser-game.yaml"));
+  expect(profile.id).toBe("phaser-game");
   expect(profile.workspace.dirs.length).toBeGreaterThan(0);
 });
 
-test("shipped godot-csharp profile validates", () => {
-  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "godot-csharp.yaml"));
-  expect(profile.id).toBe("godot-csharp");
+test("shipped godot-game profile validates", () => {
+  const profile = loadStackProfile(join(FORGE_ROOT, "profiles", "godot-game.yaml"));
+  expect(profile.id).toBe("godot-game");
   expect(profile.workspace.dirs.length).toBeGreaterThan(0);
 });
 
 test("listStackProfiles finds all shipped profiles", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
   const ids = profiles.map((p) => p.id).sort();
-  expect(ids).toContain("phaser-turborepo");
-  expect(ids).toContain("godot-csharp");
+  expect(ids).toContain("phaser-game");
+  expect(ids).toContain("godot-game");
   expect(ids).toContain("forge-shell");
 });
 
 test("all shipped profiles include @warpgogol/forge in install steps or package.json template", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
   for (const profile of profiles) {
-    // knowledge-typescript-turborepo uses @warpgogol/werkstatt-knowledge plugin, not forge
-    if (profile.id === "knowledge-typescript-turborepo") continue;
+    // knowledge uses @warpgogol/werkstatt-knowledge plugin, not forge
+    if (profile.id === "knowledge") continue;
     const hasForgeInInstall = profile.install.some((cmd) => cmd.includes("@warpgogol/forge"));
     const pkgFile = profile.workspace.files.find((f) => f.path === "package.json");
     const hasForgeInPkg = pkgFile?.content.includes("@warpgogol/forge") ?? false;
@@ -174,8 +174,8 @@ test("all shipped profiles include @warpgogol/forge in install steps or package.
 test("all shipped profiles include operator-profile.md in .gitignore content", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
   for (const profile of profiles) {
-    // knowledge-typescript-turborepo uses a different plugin and gitignore template
-    if (profile.id === "knowledge-typescript-turborepo") continue;
+    // knowledge uses a different plugin and gitignore template
+    if (profile.id === "knowledge") continue;
     const gitignoreFile = profile.workspace.files.find((f) => f.path === ".gitignore");
     expect(gitignoreFile).toBeDefined();
     expect(gitignoreFile?.content).toContain("operator-profile.md");

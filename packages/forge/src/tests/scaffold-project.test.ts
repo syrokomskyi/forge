@@ -73,7 +73,7 @@ test("forge.scaffold fails on missing --profile", async () => {
 
 test("forge.scaffold derives name from folder when --name omitted", async () => {
   const result = await runScaffoldProject(
-    { argv: [], flags: { profile: "phaser-turborepo" } },
+    { argv: [], flags: { profile: "phaser-game" } },
     { ...makeContext(tempDir), forgeRoot: FORGE_ROOT },
   );
   // Name is now derived from the folder name (consistent with forge.create)
@@ -89,7 +89,7 @@ test("forge.scaffold derives name from folder when --name omitted", async () => 
 
 test("forge.scaffold fails on non-kebab-case name", async () => {
   const result = await runScaffoldProject(
-    { argv: [], flags: { profile: "phaser-turborepo", name: "MySite" } },
+    { argv: [], flags: { profile: "phaser-game", name: "MySite" } },
     { ...makeContext(tempDir), forgeRoot: FORGE_ROOT },
   );
   expect(result.exitCode).toBe(1);
@@ -129,7 +129,7 @@ test("forge.init --from detects stack from existing project", async () => {
   const result = runInit({ flags: { from: fakeProject } }, { workspaceRoot: WORKSPACE_ROOT });
   expect(result.status).toBe("pass");
   expect(result.detection).toBeDefined();
-  expect(result.detection?.profile).toBe("phaser-turborepo");
+  expect(result.detection?.profile).toBe("phaser-game");
 });
 
 test("forge.init --from reports null when stack undetectable", async () => {
