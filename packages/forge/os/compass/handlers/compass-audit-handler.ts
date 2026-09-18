@@ -146,6 +146,7 @@ export async function runCompassAuditPlan(
     input,
     scanRoot,
     policy,
+    context.site?.directory,
   );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
@@ -296,6 +297,7 @@ export async function runCompassAuditBaseline(
     input,
     scanRoot,
     policy,
+    context.site?.directory,
   );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
@@ -366,6 +368,7 @@ export async function runCompassAuditValidate(
     input,
     scanRoot,
     policy,
+    context.site?.directory,
   );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);

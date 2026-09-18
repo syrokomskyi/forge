@@ -699,21 +699,31 @@ export async function createCompassInventoryEntries(
   input: ForgeCommandInput,
   scanRoot?: string,
   policy?: CompassPolicy,
+  siteDirectory?: string,
 ): Promise<CompassInventoryEntry[]> {
   const resolvedPolicy = policy ?? resolveCompassPolicy(workspaceRoot);
   const roots = scanRoot ? [scanRoot] : resolveScanRoots(workspaceRoot, input, resolvedPolicy);
   const files = (
     await Promise.all(roots.map((root) => collectSourceFiles(root, resolvedPolicy)))
   ).flat();
+  // --workpiece/--site resolve scanRoot to a leaf workspace root (the mission
+  // workpiece or site dir). For those, workspace-relative paths are relative to
+  // scanRoot so workspace-relative exclusion/layer/risk patterns match. Container
+  // scans (--packages), package-src scans (--package), and default scanRoots keep
+  // the repo-relative + workspace-kind-prefix stripping via getWorkspaceRelativeSegments.
+  const leafWorkspaceRoot =
+    scanRoot !== undefined && (input.flags["workpiece"] !== undefined || scanRoot === siteDirectory)
+      ? scanRoot
+      : undefined;
   const entries: CompassInventoryEntry[] = [];
 
   for (const filePath of files.sort()) {
     const source = await readFile(filePath, "utf8");
     const pathFromRoot = relative(workspaceRoot, filePath).replace(/\\/g, "/");
     const segments = getRelativeSegments(filePath, workspaceRoot);
-    const relativePathWithinWorkspace = getWorkspaceRelativeSegments(segments, resolvedPolicy).join(
-      "/",
-    );
+    const relativePathWithinWorkspace = leafWorkspaceRoot
+      ? relative(leafWorkspaceRoot, filePath).replace(/\\/g, "/")
+      : getWorkspaceRelativeSegments(segments, resolvedPolicy).join("/");
     const layer = detectLayer(relativePathWithinWorkspace, resolvedPolicy);
     const riskClass = detectRiskClass(pathFromRoot, relativePathWithinWorkspace, resolvedPolicy);
     const complexity = detectComplexity(source);

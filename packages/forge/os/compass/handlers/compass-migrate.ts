@@ -72,6 +72,8 @@ export interface MigrateOptions {
   files?: string[];
   /** Compute actions without writing. */
   dryRun?: boolean;
+  /** Resolved site/workpiece directory — enables leaf-workspace path normalization. */
+  siteDirectory?: string;
 }
 
 const HEADER_SCAN_LINES = 120;
@@ -341,8 +343,13 @@ export async function migrateWorkspace(
     }
     return result;
   }
-
-  const entries = await createCompassInventoryEntries(workspaceRoot, input, scanRoot, policy);
+  const entries = await createCompassInventoryEntries(
+    workspaceRoot,
+    input,
+    scanRoot,
+    policy,
+    options.siteDirectory,
+  );
   for (const entry of entries) {
     if (entry.authoringStatus !== "authored") continue;
     result.scanned += 1;

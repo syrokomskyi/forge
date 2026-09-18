@@ -68,6 +68,7 @@ export async function runCompassSummaryTrim(
     input,
     scanRoot,
     policy,
+    context.site?.directory,
   );
 
   const results: Array<{ path: string; removed: string[]; kept: number }> = [];
