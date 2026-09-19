@@ -24,6 +24,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <item>RFC-1111: normalize dynamic-route bracket stems in deriveFileTokens — [token]/[...slug]/[lang] segments strip brackets and dots so PURPOSE-02 is satisfiable for Astro dynamic routes.</item>
   <history>RFC-0348, RFC-0556</history>
 </CHANGE_SUMMARY>
 */
@@ -481,7 +482,10 @@ export function deriveFileTokens(pathFromRoot: string, source: string): Set<stri
 
   const tokens = new Set<string>();
   for (const segment of stem.split("-").filter(Boolean)) {
-    tokens.add(segment.toLowerCase());
+    // Dynamic-route stems carry brackets/dots ([token], [...slug], [lang]) that
+    // can never match an alphanumeric purpose word — normalize them away.
+    const normalized = segment.replace(/[[\].]/g, "").toLowerCase();
+    if (normalized) tokens.add(normalized);
   }
 
   if (SYMBOL_EXTENSIONS.has(extension)) {
