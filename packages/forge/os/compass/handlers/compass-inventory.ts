@@ -15,7 +15,6 @@ for Compass source-file inventory.</purpose>
   <item>Policy literals come from resolveCompassPolicy — no stack- or consumer-specific values live in this module.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1094: v2 contract — KEY_DECISIONS/history parsing, new inventory fields, evaluateV2Rules, deriveFileTokens, resolveCompassMode, shared GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1096: all policy literals externalized to resolveCompassPolicy — scan roots, extensions, ignored dirs/paths, layer/risk rules, governance-ID and boilerplate patterns come from generic defaults + profile + bindings.compass.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
@@ -25,8 +24,9 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1111: normalize dynamic-route bracket stems in deriveFileTokens — [token]/[...slug]/[lang] segments strip brackets and dots so PURPOSE-02 is satisfiable for Astro dynamic routes.</item>
-  <history>RFC-0348, RFC-0556</history>
+  <history>RFC-0348, RFC-0556, RFC-1094</history>
 </CHANGE_SUMMARY>
+
 */
 
 import { readdir, readFile } from "node:fs/promises";

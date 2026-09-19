@@ -8,7 +8,6 @@ Moved from @warpgogol/site-kernel to @warpgogol/forge for full autonomous mode (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: moved canonical implementation from @warpgogol/site-kernel to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-0617: added --workpiece flag for mission workpiece directory scanning.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -20,6 +19,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
   <item>RFC-0617: fix — --package alone now implies --packages scope (was a silent no-op falling through to full-repo scan).</item>
+  <history>RFC-0556</history>
 </CHANGE_SUMMARY>
 */
 
