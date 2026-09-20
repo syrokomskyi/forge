@@ -447,8 +447,13 @@ export function serializeForgeConfig(config: ForgeConfig): Record<string, unknow
   // Runtime-only fields must not be persisted
   delete out["profileDeclaredId"];
   delete out["profileResolution"];
-  if (config.profileDeclaredId) {
-    out["profile"] = config.profileDeclaredId;
+  // Prefer the preserved declared id; fall back to a raw string `profile`
+  // (hand-built configs that never went through loadForgeConfig).
+  const declared =
+    config.profileDeclaredId ??
+    (typeof config.profile === "string" ? (config.profile as unknown as string) : undefined);
+  if (declared) {
+    out["profile"] = declared;
   } else {
     delete out["profile"];
   }

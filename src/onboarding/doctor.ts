@@ -1028,14 +1028,23 @@ function checkDomainInfo(domainReport: DomainReport): DoctorCheck {
 // A declared id absent from the installed catalog is a hard failure —
 // never silently dropped. An unreadable catalog is a warning, not a fail.
 function checkProfileIdKnown(workspaceRoot: string, forgeRoot: string): DoctorCheck {
-  let config: ReturnType<typeof loadForgeConfig>;
-  try {
-    config = loadForgeConfig(workspaceRoot, forgeRoot);
-  } catch {
+  const forgeYamlPath = join(workspaceRoot, "forge.yaml");
+  if (!fs.existsSync(forgeYamlPath)) {
     return {
       name: "profile-id-known",
       status: "pass",
       message: "no forge.yaml — nothing to resolve",
+    };
+  }
+  let config: ReturnType<typeof loadForgeConfig>;
+  try {
+    config = loadForgeConfig(workspaceRoot, forgeRoot);
+  } catch (err) {
+    // forge.yaml exists but is unreadable/schema-invalid — a real defect, fail-closed
+    return {
+      name: "profile-id-known",
+      status: "fail",
+      message: `forge.yaml unreadable: ${(err as Error).message.split("\n")[0]}`,
     };
   }
 
