@@ -197,7 +197,10 @@ export const forgeConfigSchema = z.object({
     })
     .optional(),
   /** RFC-0643: profile id — when present, loadForgeConfig loads the corresponding profiles/<id>.yaml */
-  profile: z.string().optional(),
+  // RFC-1118: accept the corrupted object form (whole StackProfile written by a
+  // previous buggy serialize) so loadForgeConfig can recover the declared id —
+  // a hard schema throw here would deadlock `forge upgrade`, the healing path.
+  profile: z.union([z.string(), z.object({ id: z.string().min(1) }).passthrough()]).optional(),
   /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
   independentVersionPackages: z.array(z.string()).optional(),
 });
@@ -230,6 +233,10 @@ export interface ForgeConfig {
   forge?: { syncedVersion: string | null };
   /** RFC-0643: loaded stack profile — present when forge.yaml has a `profile` field */
   profile?: StackProfile;
+  /** RFC-1118: raw `profile:` id string from forge.yaml — preserved verbatim even when unresolvable */
+  profileDeclaredId?: string;
+  /** RFC-1118: resolution outcome for the declared `profile:` id */
+  profileResolution?: "resolved" | "unknown" | "absent" | "catalog-unavailable";
   /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
   independentVersionPackages?: string[];
 }
@@ -382,21 +389,45 @@ export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: strin
   }
 
   const rawData = result.data as Record<string, unknown>;
-  const profileId = rawData["profile"] as string | undefined;
+  // RFC-1118: recover the declared id even when a previous buggy serialize wrote
+  // the whole StackProfile object into forge.yaml (object with an `id` field).
+  const rawProfile = rawData["profile"];
+  const profileId =
+    typeof rawProfile === "string"
+      ? rawProfile
+      : rawProfile && typeof rawProfile === "object" && "id" in rawProfile
+        ? String((rawProfile as { id: unknown }).id)
+        : undefined;
 
   // RFC-0643: load stack profile when `profile` field is present in forge.yaml
   let loadedProfile: StackProfile | undefined;
+  let catalogAvailable = false;
   if (profileId) {
     try {
       const forgeRoot = forgeRootOverride ?? resolveForgeRoot(workspaceRoot);
-      const profiles = listStackProfiles(forgeRoot);
-      loadedProfile = profiles.find((p) => p.id === profileId);
+      // RFC-1118: listStackProfiles returns [] on a missing profiles/ dir — an
+      // unreadable catalog (forge not installed, fallback path) must surface as
+      // "catalog-unavailable", not "unknown" (which would fail doctor spuriously).
+      if (fs.existsSync(path.join(forgeRoot, "profiles"))) {
+        const profiles = listStackProfiles(forgeRoot);
+        catalogAvailable = true;
+        loadedProfile = profiles.find((p) => p.id === profileId);
+      }
     } catch {
-      // forge root not resolvable — profile not loaded
+      // forge root not resolvable — catalog unavailable, resolvability undetermined
     }
   }
 
   const config = { ...rawData } as unknown as ForgeConfig;
+  // RFC-1118: preserve the declared id and its resolution status — never silently drop it
+  config.profileDeclaredId = profileId;
+  config.profileResolution = !profileId
+    ? "absent"
+    : loadedProfile
+      ? "resolved"
+      : catalogAvailable
+        ? "unknown"
+        : "catalog-unavailable";
   if (loadedProfile) {
     config.profile = loadedProfile;
   } else {
@@ -404,6 +435,24 @@ export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: strin
   }
 
   return config;
+}
+
+// ---------------------------------------------------------------------------
+// Serializer — RFC-1118: forge.yaml stores the declared profile id (string),
+// never the resolved StackProfile object, and never drops a declared id.
+// ---------------------------------------------------------------------------
+
+export function serializeForgeConfig(config: ForgeConfig): Record<string, unknown> {
+  const out = { ...config } as unknown as Record<string, unknown>;
+  // Runtime-only fields must not be persisted
+  delete out["profileDeclaredId"];
+  delete out["profileResolution"];
+  if (config.profileDeclaredId) {
+    out["profile"] = config.profileDeclaredId;
+  } else {
+    delete out["profile"];
+  }
+  return out;
 }
 
 // ---------------------------------------------------------------------------

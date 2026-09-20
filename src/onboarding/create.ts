@@ -32,6 +32,7 @@ import { runAgentsGenerate } from "./agents-generate.ts";
 import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import {
   loadForgeConfig,
+  serializeForgeConfig,
   resolveForgeRoot,
   resolvePackageManager,
   applyCliBindingDefaults,
@@ -348,13 +349,9 @@ export async function runCreate(
         if (config.bindings) {
           config.bindings.commands = applyCliBindingDefaults(pm);
         }
-        // RFC-0643: strip loaded profile object before serializing — forge.yaml stores profile id (string), not the full profile
-        const configToSerialize = { ...config } as unknown as Record<string, unknown>;
-        if (typeof configToSerialize["profile"] === "object") {
-          const profileObj = configToSerialize["profile"] as { id?: string };
-          configToSerialize["profile"] = profileObj.id ?? configToSerialize["profile"];
-        }
-        fs.writeFileSync(forgeYamlPath, stringifyYaml(configToSerialize), "utf8");
+        // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
+        // never the resolved StackProfile object, never drops an unresolvable id.
+        fs.writeFileSync(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)), "utf8");
       } catch {
         // Post-processing is best-effort — init already wrote a valid config
       }

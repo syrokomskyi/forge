@@ -230,6 +230,7 @@ V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-
 - **MUST NOT** run `forge.agents.generate` against this monorepo's root `AGENTS.md` — it is hand-written and carries no generated marker; the edit guard enforces this, do not bypass it.
 - **MUST NOT** re-add any `@warpgogol/*` import to `packages/forge` source — `doctor` autonomy guard will fail.
 - **MUST NOT** hand-edit a generated `AGENTS.md` in bootstrapped projects — edit `forge.yaml` and regenerate.
+- **MUST NOT** delete or "fix" an unresolvable `profile:` field to silence `doctor` (RFC-1118). The `profile-id-known` check fails when the declared id is absent from the installed `@warpgogol/forge` catalog — the remedy is `forge upgrade` (config ahead of pinned forge) or correcting the id, never removing the field. Re-serialization preserves the declared id verbatim; `forge init`/`create` never overwrite an existing `profile:` with a detection result.
 
 ## Stack profiles (RFC-0392)
 

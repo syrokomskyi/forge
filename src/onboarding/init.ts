@@ -60,7 +60,11 @@ export function runInit(
   context: unknown,
   domainFields?: InitDomainFields,
 ): InitResult {
-  const ctx = context as { workspaceRoot?: string; forgeRoot?: string };
+  const ctx = context as {
+    workspaceRoot?: string;
+    forgeRoot?: string;
+    logger?: { warn?: (msg: string) => void };
+  };
   const workspaceRoot = ctx?.workspaceRoot ?? process.cwd();
   const contextForgeRoot = ctx?.forgeRoot;
 
@@ -114,6 +118,20 @@ export function runInit(
       config = loadForgeConfig(workspaceRoot);
     } catch {
       config = defaultForgeConfig(path.basename(workspaceRoot));
+    }
+    // RFC-1118: a declared `profile:` is never overwritten by re-detection.
+    // If --from detection disagrees with the declared id, surface a warning —
+    // the declared id stays verbatim in forge.yaml.
+    if (
+      detection?.profile &&
+      config.profileDeclaredId &&
+      detection.profile !== config.profileDeclaredId
+    ) {
+      const msg =
+        `profile: declared id "${config.profileDeclaredId}" preserved — ` +
+        `detected "${detection.profile}" not written (forge.yaml already exists)`;
+      skipped.push(msg);
+      ctx?.logger?.warn?.(msg);
     }
   } else {
     const projectName = path.basename(workspaceRoot);
