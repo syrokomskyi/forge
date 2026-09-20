@@ -32,6 +32,7 @@ import {
   FORGE_CLI_BINDING_DEFAULTS,
   resolveForgeRoot,
   loadForgeConfig,
+  serializeForgeConfig,
   resolvePmRunner,
   resolvePmInstall,
   type ForgeConfig,
@@ -311,8 +312,10 @@ function updateSyncedVersion(
   config.forge = { syncedVersion: version };
 
   // Write the full config back to forge.yaml
+  // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
+  // never the resolved StackProfile object, never drops an unresolvable id.
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
-  fs.writeFileSync(forgeYamlPath, stringifyYaml(config), "utf8");
+  fs.writeFileSync(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)), "utf8");
 }
 
 export async function runUpgrade(

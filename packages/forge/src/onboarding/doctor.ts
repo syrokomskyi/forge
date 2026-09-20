@@ -50,6 +50,7 @@ import { checkMemoryLayerHealth } from "./memory-scaffold.ts";
 import { checkInvariants } from "./invariant-engine.ts";
 import type { InvariantViolation } from "./invariant-engine.ts";
 import { execSync } from "node:child_process";
+import fs from "node:fs";
 import type { ProfilePrerequisite } from "../profiles/profile-schema.ts";
 
 interface DoctorCheck {
@@ -1023,6 +1024,63 @@ function checkDomainInfo(domainReport: DomainReport): DoctorCheck {
   };
 }
 
+// RFC-1118: fail-closed diagnostic for an unresolvable `profile:` id.
+// A declared id absent from the installed catalog is a hard failure —
+// never silently dropped. An unreadable catalog is a warning, not a fail.
+function checkProfileIdKnown(workspaceRoot: string, forgeRoot: string): DoctorCheck {
+  let config: ReturnType<typeof loadForgeConfig>;
+  try {
+    config = loadForgeConfig(workspaceRoot, forgeRoot);
+  } catch {
+    return {
+      name: "profile-id-known",
+      status: "pass",
+      message: "no forge.yaml — nothing to resolve",
+    };
+  }
+
+  switch (config.profileResolution) {
+    case "unknown": {
+      let version = "unknown";
+      try {
+        const pkg = JSON.parse(fs.readFileSync(join(forgeRoot, "package.json"), "utf8")) as {
+          version?: string;
+        };
+        version = pkg.version ?? "unknown";
+      } catch {
+        // version unreadable — message still names the declared id
+      }
+      return {
+        name: "profile-id-known",
+        status: "fail",
+        message:
+          `profile "${config.profileDeclaredId}" not in installed @warpgogol/forge v${version} catalog — ` +
+          `renamed/removed id or forge upgrade required`,
+      };
+    }
+    case "catalog-unavailable":
+      return {
+        name: "profile-id-known",
+        status: "warn",
+        message:
+          `profile "${config.profileDeclaredId}" declared but the installed profile catalog cannot be read ` +
+          `(forge root unresolvable) — resolvability undetermined`,
+      };
+    case "resolved":
+      return {
+        name: "profile-id-known",
+        status: "pass",
+        message: `profile "${config.profileDeclaredId}" resolved`,
+      };
+    default:
+      return {
+        name: "profile-id-known",
+        status: "pass",
+        message: "no profile declared",
+      };
+  }
+}
+
 // RFC-0664: Memory layer health check
 function checkMemoryLayer(workspaceRoot: string): DoctorCheck {
   const health = checkMemoryLayerHealth(workspaceRoot);
@@ -1221,6 +1279,9 @@ export async function runDoctor(
 
   // RFC-0640: Domain info check
   checks.push(checkDomainInfo(domainReport));
+
+  // RFC-1118: profile identity check — fail-closed on unresolvable declared id
+  checks.push(checkProfileIdKnown(workspaceRoot, forgeRoot));
 
   // RFC-0675: Enforce invariants using the invariant engine
   if (domainReport.invariants.length > 0) {
