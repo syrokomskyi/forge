@@ -40,7 +40,7 @@ function makeContext(): ForgeRuntimeContext {
     },
     dryRun: false,
     outputFormat: "json",
-  } as ForgeRuntimeContext;
+  };
 }
 
 const FORGE_YAML_BASE = `schema: "forge/config@1"
@@ -90,7 +90,11 @@ async function writeFakeForgeRoot(
     "utf8",
   );
   for (const p of profiles) {
-    await writeFile(join(forgeRoot, "profiles", `${p.id}.yaml`), minimalProfile(p.id, p.marker), "utf8");
+    await writeFile(
+      join(forgeRoot, "profiles", `${p.id}.yaml`),
+      minimalProfile(p.id, p.marker),
+      "utf8",
+    );
   }
   return forgeRoot;
 }
@@ -208,10 +212,7 @@ test("forge init preserves a declared profile id against conflicting detection",
   await mkdir(fromDir, { recursive: true });
   await writeFile(join(fromDir, "marker-y.txt"), "x", "utf8");
 
-  const result = runInit(
-    { flags: { from: fromDir } },
-    { workspaceRoot: tempDir, forgeRoot },
-  );
+  const result = runInit({ flags: { from: fromDir } }, { workspaceRoot: tempDir, forgeRoot });
 
   const written = await readFile(join(tempDir, "forge.yaml"), "utf8");
   expect(written).toContain("profile: declared-x");
@@ -224,9 +225,7 @@ test("forge init preserves a declared profile id against conflicting detection",
 // Corrupted state recovery: object-form profile (written by the old bug) heals to the declared id
 test("loadForgeConfig recovers profileDeclaredId from a corrupted object-form profile", async () => {
   await writeFakeForgeRoot("9.9.9", [{ id: "known-profile", marker: "marker-known.txt" }]);
-  await writeForgeYaml(
-    `profile:\n  id: known-profile\n  displayName: known-profile profile\n`,
-  );
+  await writeForgeYaml(`profile:\n  id: known-profile\n  displayName: known-profile profile\n`);
 
   const config = loadForgeConfig(tempDir);
   expect(config.profileDeclaredId).toBe("known-profile");
