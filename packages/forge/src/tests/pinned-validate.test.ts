@@ -63,11 +63,7 @@ describe("runPinnedValidate", () => {
     try {
       // Simulate docs.archive: docs/rfcs/rfc-0001.md → docs/rfcs/archive/implemented/rfc-0001.md
       await mkdir(join(dir, "docs", "rfcs", "archive", "implemented"), { recursive: true });
-      await git(dir, [
-        "mv",
-        "docs/rfcs/rfc-0001.md",
-        "docs/rfcs/archive/implemented/rfc-0001.md",
-      ]);
+      await git(dir, ["mv", "docs/rfcs/rfc-0001.md", "docs/rfcs/archive/implemented/rfc-0001.md"]);
 
       const result = await runPinnedValidate(makeInput(), makeContext(dir));
       expect(result.data?.status).toBe("pass");
@@ -100,8 +96,11 @@ describe("runPinnedValidate", () => {
   test("flags move into a pinned dir", async () => {
     const dir = await makeRepo();
     try {
+      // Source must be committed first — otherwise git records the staged
+      // result as A (add), not R (rename).
       await writeFile(join(dir, "incoming.md"), "# incoming\n");
       await git(dir, ["add", "incoming.md"]);
+      await git(dir, ["commit", "-m", "add incoming"]);
       await git(dir, ["mv", "incoming.md", "docs/rfcs/incoming.md"]);
 
       const result = await runPinnedValidate(makeInput(), makeContext(dir));
