@@ -33,6 +33,7 @@ import type {
 import {
   loadPinnedManifest,
   isPinned,
+  isIntraDirMove,
   PINNED_MANIFEST_PATH,
   PinnedManifestMalformedError,
 } from "./pinned-check.ts";
@@ -51,11 +52,18 @@ const AUDIT_LOG_PATH = path.join(".forge", "pinned-audit.log");
  * Git status codes:
  *   D = deleted, R = renamed (move), M = modified, A = added, C = copied
  * Format: "R100\tdocs/old.md\tdocs/new.md" or "D\tdocs/file.md"
+ *
+ * R/C entries keep their destination in `destPath` so the violation check can
+ * apply the isIntraDirMove exemption (same rule the archive handlers use).
  */
 function parseGitNameStatus(
   output: string,
-): Array<{ relPath: string; operation: PinnedViolation["operation"] }> {
-  const entries: Array<{ relPath: string; operation: PinnedViolation["operation"] }> = [];
+): Array<{ relPath: string; operation: PinnedViolation["operation"]; destPath?: string }> {
+  const entries: Array<{
+    relPath: string;
+    operation: PinnedViolation["operation"];
+    destPath?: string;
+  }> = [];
   const lines = output.trim().split("\n").filter(Boolean);
 
   for (const line of lines) {
@@ -69,10 +77,7 @@ function parseGitNameStatus(
     if (statusCode.startsWith("D")) {
       entries.push({ relPath: oldPath, operation: "delete" });
     } else if (statusCode.startsWith("R") || statusCode.startsWith("C")) {
-      entries.push({ relPath: oldPath, operation: "move" });
-      if (newPath !== oldPath) {
-        entries.push({ relPath: newPath, operation: "move" });
-      }
+      entries.push({ relPath: oldPath, operation: "move", destPath: newPath });
     } else if (statusCode.startsWith("M")) {
       entries.push({ relPath: oldPath, operation: "modify" });
     }
@@ -228,7 +233,28 @@ export async function runPinnedValidate(
 
   // Check each changed file against the manifest
   const allViolations: PinnedViolation[] = [];
-  for (const { relPath, operation } of changedFiles) {
+  for (const { relPath, operation, destPath } of changedFiles) {
+    if (operation === "move" && destPath) {
+      // Exempt intra-directory moves — the file stays inside the same pinned
+      // dir (e.g. docs.archive moves docs/rfcs/x.md → docs/rfcs/archive/…/x.md).
+      // Same exemption the archive handlers apply via isIntraDirMove.
+      if (isIntraDirMove(manifest, relPath, destPath)) {
+        continue;
+      }
+      for (const movePath of new Set([relPath, destPath])) {
+        const moveEntry = isPinned(manifest, movePath);
+        if (moveEntry) {
+          allViolations.push({
+            path: movePath,
+            mode: moveEntry.mode,
+            operation,
+            reason: moveEntry.reason,
+          });
+        }
+      }
+      continue;
+    }
+
     const entry = isPinned(manifest, relPath);
     if (entry) {
       // For protect mode, only delete and move are violations — modify is allowed
