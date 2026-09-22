@@ -68,8 +68,10 @@ export function readNpmrcTokenStatus(
     return { registry, tokenPresent: true };
   }
 
-  // 2. Literal _authToken in .npmrc for the scope's registry host
-  const tokenMatch = npmrc.match(/_authToken=(\S+)\s*$/);
+  // 2. Literal _authToken in .npmrc for the scope's registry host.
+  // `m` flag required — the token line is never last in a scaffolded .npmrc
+  // (dangerously-allow-all-builds + appended ignore-workspace-root-check follow it).
+  const tokenMatch = npmrc.match(/_authToken=(\S+)[ \t]*$/m);
   if (tokenMatch) {
     const value = tokenMatch[1];
     // ${VAR} references resolve at install time — count as present only when set
