@@ -22,6 +22,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { execSync } from "node:child_process";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
+import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
 import { resolveForgeRoot } from "../config/forge-config.ts";
 import type {
   ForgeCommandInput,
@@ -163,6 +164,16 @@ export async function runScaffoldProject(
         .replace(/my-game/g, effectiveProjectName);
       fs.writeFileSync(filePath, content, "utf8");
       created.push(`${wsPath}/${file.path}`);
+    }
+  }
+
+  // RFC-1125: non-interactive npm-token probe — fail fast before pnpm install when
+  // the @warpgogol scope is needed but the token cannot fetch @warpgogol/werkstatt-engine.
+  // Runs after .npmrc is materialized so the probe sees the final token state.
+  if (profile.install.length > 0 && workshopNeedsWarpgogolToken(workspaceRoot, profile.install)) {
+    const tokenCheck = await checkNpmToken(workspaceRoot);
+    if (!tokenCheck.canFetch) {
+      return fail("forge.scaffold", profileId, tokenCheck.fixHint!, errors, outputFormat, logger);
     }
   }
 
