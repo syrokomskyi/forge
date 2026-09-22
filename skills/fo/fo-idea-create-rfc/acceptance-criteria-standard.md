@@ -31,7 +31,7 @@ A criterion is a _falsifiable claim about an observable artifact_, not a descrip
 
 **Probes.** Every criterion checkable by an existing probe kind MUST get a probe in `acceptance:` frontmatter. Criteria without a feasible probe must state their manual verification procedure explicitly — "manually verified" without a procedure is not evidence.
 
-**Evidence discipline (at check-off time).** `(evidence: ...)` must point to the _mechanism_, not the _artifact_: prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. Never check a box based on intention; run the mechanism first.
+**Evidence discipline (at check-off time).** `(evidence: ...)` must point to the _mechanism_, not the _artifact_: prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. Never check a box based on intention; run the mechanism first. The annotation is **single-value** (V-37): exactly one of `probe:<AC-id>` (requires a bound probe in `acceptance:` frontmatter), `test:<path>`, or `<path>:<line>` — compound strings like `probe:AC-1; file:…; test:…` fail validation. Pick the strongest single mechanism per criterion.
 
 **Self-test before submitting:** hand the criteria set to a hostile reviewer who has _only_ the repo and a shell. If they cannot verify every box without talking to you, the spec is prose, not a spec.
 
