@@ -72,6 +72,17 @@ test("missing .npmrc → no registry, no token", () => {
   expect(status.tokenPresent).toBe(false);
 });
 
+test("detects _authToken when it is not the last line (scaffolded .npmrc shape)", async () => {
+  // Regression: scaffolded .npmrc appends dangerously-allow-all-builds and
+  // ignore-workspace-root-check AFTER the token line — the regex must match mid-file.
+  await writeFile(
+    join(tempDir, ".npmrc"),
+    `@warpgogol:registry=https://registry.npmjs.org/\n//registry.npmjs.org/:_authToken=npm_real_token\ndangerously-allow-all-builds=true\nignore-workspace-root-check=true\n`,
+  );
+  const status = readNpmrcTokenStatus(tempDir, {});
+  expect(status.tokenPresent).toBe(true);
+});
+
 // --- workshopNeedsWarpgogolToken ---
 
 test("needs token when .npmrc declares @warpgogol scope", async () => {
