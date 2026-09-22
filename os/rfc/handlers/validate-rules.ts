@@ -404,7 +404,14 @@ async function checkImplementationCommitDrift(
   createdAt: string,
   currentStatus: string,
 ): Promise<{ found: boolean; commitCount: number }> {
-  if (currentStatus === "implemented") {
+  // Terminal statuses are exempt: implemented is the target state, and
+  // superseded/rejected RFCs may legitimately carry implement: commits from
+  // work that landed before the status transition (RFC-0769 lifecycle).
+  if (
+    currentStatus === "implemented" ||
+    currentStatus === "superseded" ||
+    currentStatus === "rejected"
+  ) {
     return { found: false, commitCount: 0 };
   }
 
