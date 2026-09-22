@@ -49,6 +49,7 @@ import type { DuplicatePair } from "../knowledge/index.ts";
 import { checkMemoryLayerHealth } from "./memory-scaffold.ts";
 import { checkInvariants } from "./invariant-engine.ts";
 import type { InvariantViolation } from "./invariant-engine.ts";
+import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import type { ProfilePrerequisite } from "../profiles/profile-schema.ts";
@@ -1271,6 +1272,22 @@ export async function runDoctor(
       ? "docs/adrs/ directory found"
       : "docs/adrs/ directory not found — run 'forge create' to create ADR directory",
   });
+
+  // RFC-1125: re-verify the @warpgogol npm token post-install when the workshop
+  // uses the private scope (.npmrc declares it or package.json has @warpgogol deps)
+  const pkgJsonPath = join(workspaceRoot, "package.json");
+  const pkgHasWarpgogol =
+    fs.existsSync(pkgJsonPath) && fs.readFileSync(pkgJsonPath, "utf8").includes("@warpgogol/");
+  if (workshopNeedsWarpgogolToken(workspaceRoot, []) || pkgHasWarpgogol) {
+    const tokenCheck = await checkNpmToken(workspaceRoot);
+    checks.push({
+      name: "npm-token (@warpgogol)",
+      status: tokenCheck.canFetch ? "pass" : "fail",
+      message: tokenCheck.canFetch
+        ? `npm token fetches @warpgogol/werkstatt-engine (${tokenCheck.registry ?? "default registry"})`
+        : tokenCheck.fixHint!,
+    });
+  }
 
   // Check git branch is 'main' (not 'master')
   checks.push(checkGitBranch(workspaceRoot));
