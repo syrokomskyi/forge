@@ -56,6 +56,7 @@ export async function listRfcFiles(rfcDirPath: string): Promise<string[]> {
           entry.isFile() &&
           entry.name.endsWith(".md") &&
           !entry.name.startsWith("rfc-0000") &&
+          !entry.name.endsWith(".generated.md") &&
           entry.name !== "README.md"
         ) {
           results.push(relativePath);
