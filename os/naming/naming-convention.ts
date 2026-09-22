@@ -69,6 +69,8 @@ const NAMING_CONVENTION_IGNORED_TOP_LEVEL = new Set([
   ".forge",
   "patches",
   "storage",
+  ".check-warpgogol",
+  ".coverage-report-html",
 ]);
 
 // Tool-mandated filenames exempt from kebab-case (Docker, Caddy use these exact names).

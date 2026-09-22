@@ -1,12 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Non-interactive npm-token probe for the private @warpgogol registry scope (RFC-1125) — verifies the token can fetch @warpgogol/werkstatt-engine before pnpm install runs in forge create, and re-verifies post-install in forge.doctor.</purpose>
-<keywords>npm, token, registry, onboarding, doctor, site-workshop</keywords>
-<responsibilities>
-  <item>Parses .npmrc for the @warpgogol scope registry and auth token presence.</item>
-  <item>Probes the registry via `npm view @warpgogol/werkstatt-engine version` (injectable for tests).</item>
-  <item>Returns a structured NpmTokenCheck with an actionable fixHint on failure.</item>
-</responsibilities>
+<purpose>Non-interactive npm-token probe for the private @warpgogol registry scope (RFC-1125) — parses .npmrc for the @warpgogol scope registry and auth token presence, probes the registry via `npm view @warpgogol/werkstatt-engine version` (injectable for tests) before pnpm install runs in forge create, re-verifies post-install in forge.doctor, and returns a structured NpmTokenCheck with an actionable fixHint on failure.</purpose>
 <non-goals>
   <item>Do not prompt the operator — the probe is non-interactive (create.ts forbids prompts).</item>
   <item>Do not accept tokens via CLI flags — tokens must not appear in argv/history.</item>
