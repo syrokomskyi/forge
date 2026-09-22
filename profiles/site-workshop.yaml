@@ -1,0 +1,654 @@
+schema: forge/stack-profile@1
+id: site-workshop
+displayName: Werkstatt Site Workshop
+detect:
+  anyOf:
+  - werkstatt.identity.json
+  - missions/.gitkeep
+workspace:
+  dirs:
+  - docs
+  - scripts
+  - tools
+  - missions
+  files:
+  - path: .vscode/extensions.json
+    content: |
+      {
+        "recommendations": [
+          "dbaeumer.vscode-eslint",
+          "esbenp.prettier-vscode",
+          "github.vscode-github-actions",
+          "mechatroner.rainbow-csv"
+        ]
+      }
+  - path: .gitignore
+    content: |
+      node_modules
+      dist
+      .turbo
+      .cache
+      operator-profile.md
+  - path: .github/workflows/ci.yml
+    content: |
+      name: CI
+
+      on:
+        pull_request:
+        push:
+          branches: [main]
+        workflow_dispatch:
+
+      concurrency:
+        group: ${{ github.workflow }}-${{ github.ref }}
+        cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+      permissions:
+        contents: read
+
+      jobs:
+        ci:
+          runs-on: ubuntu-latest
+          timeout-minutes: 15
+          name: Lint, type-check, test
+          env:
+            TZ: UTC
+
+          steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+
+            - name: Enable Corepack
+              run: corepack enable
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v5
+              with:
+                node-version: "24"
+                cache: "pnpm"
+
+            - name: Install dependencies
+              run: pnpm install --frozen-lockfile
+
+            - name: Format check
+              run: pnpm format:check
+
+            - name: Test
+              run: pnpm test
+
+      # Windows CI (optional — uncomment if Windows checks are needed):
+      #
+      #   windows-ci:
+      #     runs-on: windows-latest
+      #     name: Lint, type-check, test (Windows)
+      #     env:
+      #       GIT_CONFIG_COUNT: 1
+      #       GIT_CONFIG_KEY_0: core.longpaths
+      #       GIT_CONFIG_VALUE_0: "true"
+      #     steps:
+      #       - name: Checkout
+      #         uses: actions/checkout@v5
+      #       - name: Enable Corepack
+      #         run: corepack enable
+      #       - name: Setup Node.js
+      #         uses: actions/setup-node@v5
+      #         with:
+      #           node-version: "24"
+      #           cache: "pnpm"
+      #       - name: Install dependencies
+      #         run: pnpm install --frozen-lockfile
+      #       - name: Format check
+      #         run: pnpm format:check
+      #       - name: Test
+      #         run: pnpm test
+      #
+      # The GIT_CONFIG_COUNT env block MUST be set before the checkout step
+      # so git can handle long file paths during clone on Windows.
+      # Do not add Windows to the matrix "just in case" — it requires
+      # separate path-length and platform-specific dependency verification.
+  - path: package.json
+    content: |
+      {
+        "name": "__PROJECT_NAME__",
+        "version": "0.1.0",
+        "private": true,
+        "type": "module",
+        "engines": {
+          "node": ">=24 <25"
+        },
+        "scripts": {
+          "clean": "node scripts/clean.mjs",
+          "format": "prettier --write .",
+          "format:check": "prettier --check .",
+          "test": "vitest run --passWithNoTests",
+          "upgrade-packages": "pnpm up"
+        }
+      }
+  - path: scripts/clean.mjs
+    content: |
+      import { readdir, rm } from "node:fs/promises";
+      import { join } from "node:path";
+      import { fileURLToPath } from "node:url";
+
+      const TARGETS = new Set(["node_modules", ".turbo", "dist", ".astro", ".cache", ".wrangler"]);
+
+      const repoRoot = join(fileURLToPath(import.meta.url), "..", "..");
+
+      async function walk(dir, toDelete) {
+        const entries = await readdir(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isDirectory()) continue;
+          const name = entry.name;
+          const fullPath = join(dir, name);
+          if (TARGETS.has(name)) {
+            toDelete.push(fullPath);
+            continue;
+          }
+          await walk(fullPath, toDelete);
+        }
+      }
+
+      const toDelete = [];
+      await walk(repoRoot, toDelete);
+
+      if (toDelete.length === 0) {
+        console.log("Nothing to clean.");
+        process.exit(0);
+      }
+
+      await Promise.all(toDelete.map((p) => rm(p, { recursive: true, force: true })));
+
+      for (const p of toDelete) {
+        console.log("deleted", p.replace(repoRoot + "/", ""));
+      }
+
+      console.log(`Cleaned ${toDelete.length} directories.`)
+  - path: tools/kernel.config.ts
+    content: |
+      import { defineKernelConfig } from "@warpgogol/werkstatt-engine/kernel/types";
+      import { workshopModuleLoaders } from "@warpgogol/werkstatt-engine/kernel/module-map";
+
+      export default defineKernelConfig({
+        name: "__PROJECT_NAME__",
+        description: "__PROJECT_NAME__ workshop",
+        moduleLoaders: {
+          // RFC-1125: shared workshop subset — single-sourced in
+          // @warpgogol/werkstatt-engine/kernel/module-map. Do not add loaders here;
+          // new workshop-facing modules are added to WORKSHOP_MODULE_MAP once.
+          ...workshopModuleLoaders(),
+        },
+      });
+  - path: .npmrc
+    content: |
+      # @warpgogol scoped registry — replace YOUR_NPM_TOKEN with a valid npm read token
+      @warpgogol:registry=https://registry.npmjs.org/
+      //registry.npmjs.org/:_authToken=YOUR_NPM_TOKEN
+      # Auto-approve build scripts so operators aren't prompted during install
+      dangerously-allow-all-builds=true
+  - path: eslint.config.js
+    content: |
+      export default [
+        {
+          rules: {},
+        },
+      ];
+  - path: .prettierrc.mjs
+    content: |
+      export default {
+        semi: true,
+        singleQuote: false,
+        trailingComma: "all",
+        printWidth: 100,
+        tabWidth: 2,
+      };
+  - path: .gitattributes
+    content: |
+      # No LFS patterns for this stack
+  - path: hooks/pre-commit
+    content: |
+      #!/bin/sh
+      # Platform-scope pre-commit guard
+      # Runs forge validation before commits
+      echo "Pre-commit: running platform checks..."
+      pnpm exec forge run forge.validate || exit 1
+  - path: scripts/git-guard.sh
+    content: |
+      #!/bin/bash
+      # git-guard.sh — shell function that intercepts destructive git commands.
+      # Sourced by ~/.zshenv (via setup-git-guards.sh).
+      # Guards (only active in repos containing scripts/git-guard.sh):
+      #   git stash, git reset --hard, git checkout --, git checkout -f,
+      #   git switch -f, git clean -f, git restore
+      # Override: ALLOW_DESTRUCTIVE_GIT=1 git stash
+
+      export FORGE_GIT_GUARD=1
+
+      _git_guard_find_root() {
+        local _repo_root _dir
+        _repo_root="$(command git rev-parse --show-toplevel 2>/dev/null || echo "")"
+        if [ -z "$_repo_root" ]; then echo ""; return; fi
+        if [ -f "$_repo_root/scripts/git-guard.sh" ]; then echo "$_repo_root"; return; fi
+        _dir="$(dirname "$_repo_root")"
+        while [ -n "$_dir" ] && [ "$_dir" != "/" ]; do
+          if [ -f "$_dir/scripts/git-guard.sh" ]; then echo "$_dir"; return; fi
+          _dir="$(dirname "$_dir")"
+        done
+        echo ""
+      }
+
+      git() {
+        local _guard_root
+        _guard_root="$(_git_guard_find_root)"
+        if [ -z "$_guard_root" ] || [ -n "${ALLOW_DESTRUCTIVE_GIT:-}" ]; then
+          command git "$@"; return $?
+        fi
+        local _all_args=("$@") _i=0 _cmd="" _cmd_index=0
+        while [ "$_i" -lt "${#_all_args[@]}" ]; do
+          local _arg="${_all_args[$_i]}"
+          case "$_arg" in
+            -C|-c|--git-dir|--work-tree|--namespace) _i=$((_i + 2)); continue ;;
+            -*) _i=$((_i + 1)); continue ;;
+          esac
+          _cmd="$_arg"; _cmd_index="$_i"; break
+        done
+        local _sub_args=() _j=$((_cmd_index + 1))
+        while [ "$_j" -lt "${#_all_args[@]}" ]; do
+          _sub_args+=("${_all_args[$_j]}"); _j=$((_j + 1))
+        done
+        case "$_cmd" in
+          stash)
+            echo "BLOCKED: git stash is disabled in agent sessions." >&2
+            echo "Set ALLOW_DESTRUCTIVE_GIT=1 to override." >&2; return 1 ;;
+          reset)
+            for _arg in "${_sub_args[@]}"; do
+              if [ "$_arg" = "--hard" ] || [[ "$_arg" == --hard=* ]]; then
+                echo "BLOCKED: git reset --hard is disabled." >&2; return 1
+              fi
+            done; command git "$@"; return $? ;;
+          checkout)
+            for _arg in "${_sub_args[@]}"; do
+              if [ "$_arg" = "--" ]; then
+                echo "BLOCKED: git checkout -- is disabled." >&2; return 1
+              fi
+              case "$_arg" in -f*|--force*)
+                echo "BLOCKED: git checkout -f is disabled." >&2; return 1 ;;
+              esac
+            done; command git "$@"; return $? ;;
+          switch)
+            for _arg in "${_sub_args[@]}"; do
+              case "$_arg" in -f*|--force*)
+                echo "BLOCKED: git switch -f is disabled." >&2; return 1 ;;
+              esac
+            done; command git "$@"; return $? ;;
+          restore)
+            echo "BLOCKED: git restore is disabled." >&2; return 1 ;;
+          clean)
+            for _arg in "${_sub_args[@]}"; do
+              case "$_arg" in -f*|--force*)
+                echo "BLOCKED: git clean -f is disabled." >&2; return 1 ;;
+              esac
+            done; command git "$@"; return $? ;;
+          *) command git "$@"; return $? ;;
+        esac
+      }
+  - path: scripts/setup-git-guards.sh
+    content: |
+      #!/bin/bash
+      # setup-git-guards.sh — install shell function guards for destructive git ops.
+      # Auto-detects shell: zsh → ~/.zshenv, bash → ~/.bashrc (Git Bash on Windows).
+      set -euo pipefail
+      repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+      if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
+      guard_script="$repo_root/scripts/git-guard.sh"
+      marker="# forge-git-guard"
+      # Auto-detect target profile file based on current shell
+      case "${SHELL:-}" in
+        *zsh*) profile_file="${HOME}/.zshenv" ;;
+        *bash*) profile_file="${HOME}/.bashrc" ;;
+        *) profile_file="${HOME}/.bashrc" ;;
+      esac
+      mode="${1:-install}"
+      case "$mode" in
+        install)
+          if [ ! -f "$guard_script" ]; then echo "ERROR: $guard_script not found" >&2; exit 1; fi
+          chmod +x "$guard_script" 2>/dev/null || true
+          if [ -f "$profile_file" ]; then
+            tmp="$(mktemp)"
+            awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$profile_file" > "$tmp" || true
+            mv "$tmp" "$profile_file" 2>/dev/null || true
+          fi
+          echo "" >> "$profile_file"
+          echo "$marker" >> "$profile_file"
+          echo "[ -f \"$guard_script\" ] && source \"$guard_script\"" >> "$profile_file"
+          echo "Git guards installed into $profile_file. Restart your shell or run: source $guard_script" ;;
+        --verify)
+          if [ -z "${FORGE_GIT_GUARD:-}" ]; then echo "MISSING: git guard not loaded" >&2; exit 1; fi
+          if ! grep -qF "$marker" "$profile_file" 2>/dev/null; then echo "MISSING: guard not in $profile_file" >&2; exit 1; fi
+          echo "OK: git guards installed and loaded" ;;
+        --remove)
+          if [ -f "$profile_file" ]; then
+            tmp="$(mktemp)"
+            awk -v marker="$marker" '$0 == marker { skip=2; next } skip > 0 { skip--; next } { print }' "$profile_file" > "$tmp" || true
+            mv "$tmp" "$profile_file" 2>/dev/null || true
+          fi
+          echo "Git guards removed from $profile_file" ;;
+        *) echo "Usage: bash scripts/setup-git-guards.sh [install|--verify|--remove]" >&2; exit 1 ;;
+      esac
+  - path: scripts/clean-stale-stashes.sh
+    content: |
+      #!/bin/bash
+      # clean-stale-stashes.sh — detect and optionally drop stale git stash entries.
+      # Usage: bash scripts/clean-stale-stashes.sh [--drop|--drop-all]
+      set -euo pipefail
+      repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+      if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
+      mode="report"
+      if [ "${1:-}" = "--drop" ]; then mode="drop"; elif [ "${1:-}" = "--drop-all" ]; then mode="drop-all"; fi
+      stash_count="$(git -C "$repo_root" stash list 2>/dev/null | wc -l)"
+      if [ "$stash_count" -eq 0 ]; then exit 0; fi
+      stale_indices=() total="$stash_count"
+      for ((i = 0; i < total; i++)); do
+        ref="stash@{$i}"
+        if [ "$mode" = "drop-all" ]; then stale_indices+=("$i"); continue; fi
+        tracked_changes="$(git -C "$repo_root" stash show "$ref" --stat 2>/dev/null || true)"
+        untracked_files="$(git -C "$repo_root" stash show --include-untracked "$ref" --stat 2>/dev/null || true)"
+        if [ -z "$tracked_changes" ] && [ -z "$untracked_files" ]; then stale_indices+=("$i"); continue; fi
+        if [ -z "$tracked_changes" ] && [ -n "$untracked_files" ]; then
+          all_committed=true
+          while IFS= read -r filepath; do
+            [ -z "$filepath" ] && continue
+            if ! git -C "$repo_root" cat-file -e "HEAD:$filepath" 2>/dev/null; then all_committed=false; break; fi
+          done < <(git -C "$repo_root" stash show --include-untracked "$ref" --name-only 2>/dev/null || true)
+          if [ "$all_committed" = true ]; then stale_indices+=("$i"); fi
+        fi
+      done
+      if [ ${#stale_indices[@]} -eq 0 ]; then exit 0; fi
+      if [ "$mode" = "report" ]; then
+        echo "STALE STASH ENTRIES DETECTED (${#stale_indices[@]} of $stash_count):"
+        for idx in "${stale_indices[@]}"; do
+          echo "  stash@{$idx}: $(git -C "$repo_root" stash list | sed -n "$((idx + 1))p")"
+        done
+        echo "Clean with: bash scripts/clean-stale-stashes.sh --drop"; exit 1
+      fi
+      if [ "$mode" = "drop-all" ]; then git -C "$repo_root" stash clear; echo "Dropped all $stash_count entries."; exit 0; fi
+      for ((i = ${#stale_indices[@]} - 1; i >= 0; i--)); do
+        idx="${stale_indices[$i]}"
+        git -C "$repo_root" stash drop "stash@{$idx}" 2>/dev/null || true
+      done
+      echo "Dropped ${#stale_indices[@]} stale entry/entries."; exit 0
+  - path: scripts/check-clean-trees.sh
+    content: |
+      #!/bin/bash
+      # check-clean-trees.sh — verify all git trees are clean.
+      # Checks repo root + all nested .git directories up to 3 levels deep.
+      set -euo pipefail
+      repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+      if [ -z "$repo_root" ]; then echo "ERROR: not inside a git repository" >&2; exit 1; fi
+      dirty=0 output=""
+      main_status="$(git -C "$repo_root" status --short 2>/dev/null || true)"
+      if [ -n "$main_status" ]; then
+        output+="DIRTY: $repo_root\n$(printf '%s\n' "$main_status" | sed 's/^/  /')\n"
+        dirty=1
+      fi
+      while IFS= read -r gitdir; do
+        nested_root="$(dirname "$gitdir")"
+        [ "$nested_root" = "$repo_root" ] && continue
+        nested_status="$(git -C "$nested_root" status --short 2>/dev/null || true)"
+        if [ -n "$nested_status" ]; then
+          output+="DIRTY: $nested_root\n$(printf '%s\n' "$nested_status" | sed 's/^/  /')\n"
+          dirty=1
+        fi
+      done < <(find "$repo_root" -maxdepth 3 -name ".git" -type d 2>/dev/null | head -20)
+      if [ "$dirty" -eq 1 ]; then
+        echo -e "$output" | head -40
+        echo "---"
+        echo "Uncommitted changes detected. Commit before session end."
+        exit 1
+      fi
+      exit 0
+  - path: hooks/pre-user-prompt.sh
+    content: |
+      #!/bin/bash
+      # Pre-user-prompt hook: session-end protocol + stale-stash + git-guard checks.
+      # Requires jq for JSON payload parsing.
+      set -euo pipefail
+      payload="$(cat)"
+      user_prompt="$(printf '%s' "$payload" | jq -r '.tool_info.user_prompt // empty' 2>/dev/null || true)"
+      if [ -z "$user_prompt" ]; then exit 0; fi
+      repo_root="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+      if [ -n "$repo_root" ] && [ -x "$repo_root/scripts/clean-stale-stashes.sh" ]; then
+        stash_output="$("$repo_root/scripts/clean-stale-stashes.sh" 2>&1 || true)"
+        if [ -n "$stash_output" ]; then
+          echo "⚠️  STALE GIT STASH DETECTED" >&2
+          echo "$stash_output" >&2
+          echo "Clean with: bash scripts/clean-stale-stashes.sh --drop" >&2
+          echo "" >&2
+        fi
+      fi
+      if [ -n "$repo_root" ] && [ -f "$repo_root/scripts/git-guard.sh" ]; then
+        if [ -z "${FORGE_GIT_GUARD:-}" ]; then
+          echo "⚠️  GIT GUARD NOT LOADED — destructive git operations are NOT blocked." >&2
+          echo "Run: source $repo_root/scripts/git-guard.sh" >&2
+          echo "" >&2
+        fi
+      fi
+      session_end_phrases=("Завершаем эту сессию" "Завершаем сессию" "Заканчиваем сессию" "Завершить сессию" "End session" "Wrap up" "Session end" "/session-end")
+      matched=""
+      for phrase in "${session_end_phrases[@]}"; do
+        if printf '%s' "$user_prompt" | grep -qiF "$phrase"; then matched="$phrase"; break; fi
+      done
+      if [ -z "$matched" ]; then exit 0; fi
+      cat >&2 <<EOF
+      SESSION-END PROTOCOL TRIGGERED (matched: "$matched")
+      The user's original message was:
+        > $user_prompt
+      You MUST invoke the fo-session-retro skill via the skill tool BEFORE producing
+      any other output. This is a NON-NEGOTIABLE BLOCKED GATE per PREFERENCES.md.
+      DO NOT produce a closing summary or ad-hoc output. The closing block must come
+      from fo-session-retro's report.
+      Protocol steps:
+      1. Verify clean working trees — run: bash scripts/check-clean-trees.sh
+      2. Invoke fo-session-retro via the skill tool
+      3. The retro skill's report IS the session-end output
+      EOF
+      if [ -n "$repo_root" ] && [ -x "$repo_root/scripts/check-clean-trees.sh" ]; then
+        tree_output="$("$repo_root/scripts/check-clean-trees.sh" 2>&1 || true)"
+        if [ -n "$tree_output" ]; then echo "" >&2; echo "$tree_output" >&2; fi
+      fi
+      exit 2
+  - path: hooks/pre-user-prompt-wrapper.mjs
+    content: |
+      #!/usr/bin/env node
+      // pre-user-prompt-wrapper.mjs — cross-platform wrapper for pre-user-prompt.sh.
+      // Detects bash availability, prints one-time warning if bash not found,
+      // then delegates to bash hooks/pre-user-prompt.sh with stdin piped.
+      import { execFileSync, spawn } from "node:child_process";
+      import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+      import { dirname, join } from "node:path";
+      import { fileURLToPath } from "node:url";
+
+      const __dirname = dirname(fileURLToPath(import.meta.url));
+      const scriptPath = join(__dirname, "pre-user-prompt.sh");
+      const cacheDir = join(__dirname, "..", ".cache");
+      const warningFlag = join(cacheDir, "git-guard-warning-sent");
+
+      // If pre-user-prompt.sh doesn't exist, silently exit
+      if (!existsSync(scriptPath)) {
+        process.exit(0);
+      }
+
+      // Check if bash is available
+      let bashAvailable = false;
+      try {
+        execFileSync("bash", ["--version"], { stdio: "ignore" });
+        bashAvailable = true;
+      } catch {
+        bashAvailable = false;
+      }
+
+      if (!bashAvailable) {
+        // Print one-time warning if not already sent
+        if (!existsSync(warningFlag)) {
+          console.error("⚠️  bash not found — pre-user-prompt hook is disabled.");
+          console.error("Install Git Bash (Git for Windows) or WSL to enable agent-safety hooks.");
+          console.error("");
+          try {
+            mkdirSync(cacheDir, { recursive: true });
+            writeFileSync(warningFlag, new Date().toISOString(), "utf8");
+          } catch {
+            // Best-effort — don't crash if cache dir is not writable
+          }
+        }
+        process.exit(0);
+      }
+
+      // Delegate to bash script with stdin piped
+      const child = spawn("bash", [scriptPath], { stdio: ["inherit", "inherit", "inherit"] });
+      child.on("exit", (code) => {
+        process.exit(code ?? 0);
+      });
+  - path: .windsurf/hooks.json
+    content: |
+      {
+        "hooks": {
+          "pre_user_prompt": [
+            {
+              "command": "node $ROOT_WORKSPACE_PATH/hooks/pre-user-prompt-wrapper.mjs",
+              "show_output": true
+            }
+          ]
+        }
+      }
+  - path: missions/.gitkeep
+    content: ""
+  - path: .forge/pinned.yaml
+    content: |
+      # Pinned foundation files (DNA-62, RFC-0733)
+      # Protect mode: warns on delete/move. Freeze mode: blocks modify too.
+      entries:
+        - path: tools/kernel.config.ts
+          mode: protect
+        - path: forge.yaml
+          mode: protect
+        - path: pnpm-workspace.yaml
+          mode: protect
+        - path: scripts/git-guard.sh
+          mode: protect
+        - path: scripts/setup-git-guards.sh
+          mode: protect
+        - path: hooks/pre-user-prompt.sh
+          mode: protect
+        - path: hooks/pre-user-prompt-wrapper.mjs
+          mode: protect
+  - path: README.md
+    content: |
+      # __PROJECT_NAME__
+
+      A Werkstatt site workshop — full-lifecycle site management powered by the Warpgogol platform.
+
+      ## Prerequisites
+
+      - Node.js 24+
+      - pnpm 10+
+      - jq (for pre-user-prompt hook)
+      - An npm read token for the private `@warpgogol` scope (issued at workshop provisioning)
+      - On Windows: Git Bash or WSL (for shell scripts)
+
+      ## Setup
+
+      ### 1. Configure the npm token
+
+      This workshop depends on private @warpgogol packages. Either export the token:
+
+      ```sh
+      export NPM_TOKEN=your_token_here
+      ```
+
+      or edit `.npmrc` and replace `YOUR_NPM_TOKEN` with the token.
+
+      ### 2. Install dependencies
+
+      ```sh
+      pnpm install
+      ```
+
+      ### 3. Bootstrap workshop identity (required before first site)
+
+      ```sh
+      pnpm exec werkstatt run identity.bootstrap --operator-name <name> --domain <domain>
+      ```
+
+      This creates `werkstatt.identity.json` and prints a private key — store it as `SIGNING_PRIVATE_KEY` in your environment. `sternsystem.register` refuses to run until both exist.
+
+      ### 4. Register your first site
+
+      ```sh
+      pnpm exec werkstatt run sternsystem.register --id <site-id> --cosmicStar <StarName> --mirrors <cache,bare,...>
+      ```
+
+      ### 5. Verify the workshop
+
+      ```sh
+      pnpm exec forge run doctor
+      pnpm exec werkstatt run sternsystem.validate --id <site-id>
+      ```
+
+      ## Stack
+
+      - Engine: @warpgogol/werkstatt-engine + @warpgogol/werkstatt-site
+      - Governance: @warpgogol/forge
+      - Stack profile: site-workshop
+
+      ## Platform updates
+
+      ```sh
+      pnpm exec werkstatt run werkstatt.platform.update --to latest
+      ```
+
+      Bumps `@warpgogol/*` dependencies and reports Sternsystems whose `pinnedPlatform` drifts.
+nextSteps: |
+  # Next Steps
+
+  Your Werkstatt site workshop is ready.
+
+  ## Step 1: Configure the npm token (required)
+
+  This workshop installs private `@warpgogol/*` packages. Export the token issued at provisioning:
+
+  ```sh
+  export NPM_TOKEN=your_token_here
+  ```
+
+  or replace `YOUR_NPM_TOKEN` in `.npmrc`. Without it, `pnpm install` fails on registry 404s.
+
+  ## Step 2: Install dependencies
+
+  ```sh
+  pnpm install
+  ```
+
+  ## Step 3: Bootstrap workshop identity (required before first site)
+
+  ```sh
+  pnpm exec werkstatt run identity.bootstrap --operator-name <name> --domain <domain>
+  ```
+
+  This creates `werkstatt.identity.json` and prints a private key. Store the key as `SIGNING_PRIVATE_KEY` (or `SIGNING_PRIVATE_KEY_PATH`) in your environment — `sternsystem.register` blocks until both the identity file and the signing key exist. An unsigned passport is worse than no registration.
+
+  ## Step 4: Configure your project
+
+  Run `/forge-bootstrap` to set language preferences, communication style, and project bindings.
+
+  ## Step 5: Register a site
+
+  ```sh
+  pnpm exec werkstatt run sternsystem.register --id <site-id> --cosmicStar <StarName> --mirrors <cache,bare,...>
+  ```
+
+  `systems-cache/` is a sibling directory (`../systems-cache/<id>`) — it is created on demand, never inside the workshop root.
+
+  ## Token lifecycle
+
+  Per-client granular npm tokens are issued at workshop provisioning and revoked at exit/handover-out. To rotate: replace the token in `.npmrc` or update `NPM_TOKEN`, then re-run `pnpm exec forge run doctor` to verify.
+install:
+- pnpm add -wD @warpgogol/forge @warpgogol/werkstatt-engine @warpgogol/werkstatt-site prettier vitest

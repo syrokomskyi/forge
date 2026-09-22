@@ -49,6 +49,7 @@ export interface InitDomainFields {
   terminology?: Record<string, string>;
   semanticBindings?: Record<string, string | null>;
   profileId?: string;
+  nextSteps?: string;
   compass?: {
     fileExtensions?: string[];
     testPatterns?: string[];

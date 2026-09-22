@@ -80,6 +80,8 @@ export const stackProfileSchema = z.object({
   scriptDir: stackProfileDomainFieldsSchema.shape.scriptDir,
   // Profile-driven root AGENTS.md template
   rootAgentsMdTemplate: stackProfileDomainFieldsSchema.shape.rootAgentsMdTemplate,
+  // RFC-1125: profile-driven NEXT_STEPS.md content override
+  nextSteps: stackProfileDomainFieldsSchema.shape.nextSteps,
   // Profile-driven Compass file extensions
   compass: stackProfileDomainFieldsSchema.shape.compass,
 });
