@@ -94,6 +94,9 @@ function loadProfileDomainFields(profileId: string, forgeRoot: string): InitDoma
     if (profile.compass) {
       fields.compass = profile.compass;
     }
+    if (profile.nextSteps) {
+      fields.nextSteps = profile.nextSteps;
+    }
     return fields;
   } catch {
     return {};
@@ -384,9 +387,9 @@ export async function runCreate(
     }
   }
 
-  // 13. Write NEXT_STEPS.md (RFC-0550)
+  // 13. Write NEXT_STEPS.md (RFC-0550); RFC-1125: profile may override via nextSteps field
   const nextStepsPath = path.join(targetDir, "NEXT_STEPS.md");
-  const nextStepsContent = `# Next Steps
+  const nextStepsContent = initDomainFields.nextSteps ?? `# Next Steps
 
 Your Forge project is ready. The next step is mandatory: run \`/forge-bootstrap\` to configure your project interactively.
 
