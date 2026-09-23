@@ -56,7 +56,7 @@ function sleep(ms: number): Promise<void> {
 function makeTempPath(filePath: string): string {
   const dir = dirname(filePath);
   const name = basename(filePath);
-  const random = randomBytes(6).toString("hex");
+  const random = Array.from(randomBytes(6), (b) => b.toString(16).padStart(2, "0")).join("");
   return join(dir, `${name}.${random}.tmp`);
 }
 

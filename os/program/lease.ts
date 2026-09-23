@@ -38,7 +38,7 @@ export function leasePath(workspaceRoot: string, program: string, packetId: stri
  * Generate a random opaque lease token (32 bytes hex).
  */
 export function generateLeaseToken(): string {
-  return randomBytes(32).toString("hex");
+  return Array.from(randomBytes(32), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 /**
