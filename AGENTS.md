@@ -33,6 +33,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeNotesModule` | `note.link.validate`, `note.frontmatter.validate`, `note.orphan.detect` | `os/notes/` |
 | `forgeProgramModule` | `program.packet.validate`, `program.packet.seal`, `program.packet.lease`, `program.packet.complete` | `os/program/` |
 | `forgePluginModule` | `forge.plugin.validate`, `forge.plugin.discover` | `os/plugin/` |
+| `forgeQueueModule` | `queue.validate` — validates `docs/queues/*.yaml` manifests and reports derived per-item pipeline status (RFC-1140). Shared resolver lives in `src/pipeline-status.ts`. | `os/queue/` |
 
 ## RFC-1053: Skill effectiveness metrics
 
