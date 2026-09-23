@@ -385,6 +385,56 @@ describe("V-32: implementation commit drift detection", () => {
     }
   });
 
+  test("no V-32 or V-17 when implemented RFC is later superseded", async () => {
+    const dir = createGitRepoWithCommits([
+      { message: "implement: RFC-9999 — step 1", date: "2026-01-02T10:00:00" },
+    ]);
+    try {
+      const parsed = makeParsed("superseded", BASE_BODY, {
+        supersededBy: "RFC-0001",
+      });
+      const { add, violations } = makeViolationsCollector();
+      const allParsed = new Map([
+        [
+          "RFC-0001",
+          {
+            fileName: "rfc-0001-other.md",
+            parsed: makeParsed("accepted", BASE_BODY, { supersedes: ["RFC-9999"] }),
+          },
+        ],
+      ]);
+      await validateSingleRfc(
+        "rfc-9999-test.md",
+        parsed,
+        allParsed,
+        new Map(),
+        new Set(),
+        new Set(),
+        new Set(Object.keys(parsed.frontmatter)),
+        dir,
+        add,
+      );
+      expect(filterRule(violations, "V-32")).toHaveLength(0);
+      expect(filterRule(violations, "V-17")).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  test("no V-32 when status is rejected", async () => {
+    const dir = createGitRepoWithCommits([
+      { message: "implement: RFC-9999 — step 1", date: "2026-01-02T10:00:00" },
+    ]);
+    try {
+      const parsed = makeParsed("rejected", BASE_BODY);
+      const violations = await runValidateInDir(parsed, dir);
+      const v32 = filterRule(violations, "V-32");
+      expect(v32).toHaveLength(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   test("no V-32 when no implement: commits exist", async () => {
     const dir = createGitRepoWithCommits([
       { message: "feat: add some feature", date: "2026-01-02T10:00:00" },
