@@ -8,6 +8,7 @@ dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["I just want to see the result", "run the full pipeline automatically", "implement this end-to-end without pauses"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea-i-just-want-to-see-the-result skill — Orchestrate the full feature pipeline (idea, audit, enhance, plan, implement, review, fix) in one invocation. Accepts a raw idea or RFC/ADR id. Use when the operator wants the complete pipeline.</purpose>
@@ -19,9 +20,11 @@ triggers: ["I just want to see the result", "run the full pipeline automatically
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1140: step 5 — queue-mode section in orchestrator SKILL.md
+
+Add Queue mode section (pre-flight queue.validate, loop semantics, failure handling, manifest immutability) to fo-idea-i-just-want-to-see-the-result SKILL.md, sync .agents copy, add forgeQueueModule row to forge AGENTS.md.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # Full Pipeline — Just Want to See the Result
 
@@ -48,7 +51,28 @@ The operator may provide either:
 
 - **A raw idea** — natural-language description of a feature, change, or decision. The skill will invoke `fo-idea` as step 0 to create the RFC/ADR first.
 - **An existing RFC/ADR id** — e.g. `RFC-XXXX` or `ADR-XXXX`. The skill skips idea creation and starts the pipeline from the appropriate step.
+- **A queue manifest** — `--queue <path>` or a `docs/queues/*.yaml` path in the invocation text. The skill enters queue mode (see §Queue mode) and processes the manifest's `items[]` in order.
 - **Nothing** — if neither is provided, check session context and IDE for a recently created document. If none found, ask the operator: "Какую идею реализуем? Опишите идею или укажите RFC-XXXX / ADR-XXXX."
+
+## Queue mode
+
+When the invocation carries `--queue <path>` or a `docs/queues/*.yaml` path, the orchestrator runs in **queue mode** — the document list comes from a committed manifest, not from invocation context.
+
+**Pre-flight (mandatory):** Before anything else, run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. If the command exits non-zero (schema errors, unknown ids, duplicates, id↔filename mismatch), do NOT start the batch — report the errors and stop.
+
+**Batch plan preview:** Emit the existing batch plan preview per `_shared/fo-pipeline-conventions.md` §Batch plan preview, listing items in manifest order.
+
+**Loop semantics:** Process `items[]` in manifest order with no pauses between items:
+
+1. **Skip terminal items** — items whose derived status is `implemented` or `skipped` (rejected/superseded frontmatter) are recorded in the batch summary and skipped.
+2. **Resume mid-pipeline items** — an `in-progress` item resumes at its derived `pipelineStep`, not from step 1.
+3. **Run the existing per-doc pipeline** — RFC items run audit → enhance → plan → implement; ADR items run implement only. All skill-internal interactions (grilling) stay inside the invoked skills.
+4. **Batch-item checkpoint** — after each item, emit the context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items.
+5. **Clean-tree gate** — before starting the next item, verify the working tree has no uncommitted leftovers from the completed item; warn and stop if dirty.
+
+**Failure:** If an item fails after its error checkpoint, stop the batch. The report names the blocked item id and the remaining item count. `blocked` is in-session report language only — never persist it into frontmatter, manifests, or files. Resume = re-invoke with the same manifest; `queue.validate` derives where to continue.
+
+**Manifest immutability:** Do not edit `items[]` or the manifest during a queue run. Reordering requires stopping the batch and re-validating.
 
 ## Process
 
