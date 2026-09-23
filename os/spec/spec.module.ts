@@ -103,6 +103,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "List all living feature specs in docs/specs/live/. " +
         "Returns domain, title, lastMergedRfc, updatedAt, and historyCount for each spec.",
       scope: "workspace",
+      flags: {},
       reads: ["docs/specs/live/*.md"],
       execute: runSpecLiveList,
     },
@@ -128,6 +129,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "V-LS-03 (lastMergedRfc is archived), V-LS-04 (history entries are archived), " +
         "V-LS-05 (no duplicate domains).",
       scope: "workspace",
+      flags: {},
       reads: ["docs/specs/live/*.md", "docs/rfcs/**/*.md"],
       execute: runSpecLiveValidate,
     }
