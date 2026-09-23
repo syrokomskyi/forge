@@ -10,6 +10,9 @@
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>RFC-1140: queue.validate missing contract/rules metadata (DNA-91)
+
+fo-review REVIEW-CODE-2026-09-23-01 finding: declare contract queue and emitted ruleIds QUEUE-01..06 so validator.inventory.generate does not fail closed. Manifest regenerated.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,6 +33,8 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
           "per-item pipeline status plus the next actionable item. Read-only — " +
           "the pipeline orchestrator runs this before starting a queued batch (RFC-1140).",
         scope: "workspace",
+        contract: "queue",
+        rules: ["QUEUE-01", "QUEUE-02", "QUEUE-03", "QUEUE-04", "QUEUE-05", "QUEUE-06"],
         mutatesState: false,
         reads: [
           "docs/queues/*.yaml",
