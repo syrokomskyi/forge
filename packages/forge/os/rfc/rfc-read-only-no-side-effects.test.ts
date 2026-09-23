@@ -72,7 +72,7 @@ describe("read-only commands — RFC-1139 no side-effect writes", () => {
   it("AC-4: rfc.list leaves the working tree byte-identical", async () => {
     const before = await snapshotTree(root);
     const result = await runRfcList(makeInput(), makeContext(root));
-    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("ok");
     const after = await snapshotTree(root);
 
     expect([...after.keys()].sort()).toEqual([...before.keys()].sort());
