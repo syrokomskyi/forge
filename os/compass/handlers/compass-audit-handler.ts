@@ -165,6 +165,24 @@ async function filterLedgerEligiblePaths(
   return eligible;
 }
 
+// RFC-1143: partition authored entries into ledger-eligible and ineligible
+// sets. Shared by plan/validate so the predicate lives in exactly one place.
+async function partitionLedgerEligibleAuthored(
+  workspaceRoot: string,
+  authored: CompassInventoryEntry[],
+): Promise<{ eligible: CompassInventoryEntry[]; ineligible: CompassInventoryEntry[] }> {
+  const eligiblePaths = await filterLedgerEligiblePaths(
+    workspaceRoot,
+    authored.map((e) => e.path),
+  );
+  const eligible: CompassInventoryEntry[] = [];
+  const ineligible: CompassInventoryEntry[] = [];
+  for (const entry of authored) {
+    (eligiblePaths.has(entry.path) ? eligible : ineligible).push(entry);
+  }
+  return { eligible, ineligible };
+}
+
 export async function runCompassAuditPlan(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -193,12 +211,11 @@ export async function runCompassAuditPlan(
   // RFC-1143: drop ledger-ineligible authored paths (missions/, gitignored)
   // before the per-entry revision loop — they can never be audited long-term
   // and must not cost a git call each.
-  const eligiblePaths = await filterLedgerEligiblePaths(
+  const { eligible: eligibleAuthored, ineligible } = await partitionLedgerEligibleAuthored(
     context.workspaceRoot,
-    authored.map((e) => e.path),
+    authored,
   );
-  const eligibleAuthored = authored.filter((e) => eligiblePaths.has(e.path));
-  const skippedIneligible = authored.length - eligibleAuthored.length;
+  const skippedIneligible = ineligible.length;
 
   const ledgerMap = new Map<string, CompassAuditLedgerEntry>();
   for (const e of ledger.entries) {
@@ -443,15 +460,11 @@ export async function runCompassAuditValidate(
   // RFC-1143: drop ledger-ineligible authored paths (missions/, gitignored)
   // before the per-entry revision loop — baseline is forbidden to seed them,
   // so demanding entries is a guaranteed false-positive (COMPASS-AUDIT-01).
-  const eligiblePaths = await filterLedgerEligiblePaths(
+  const { eligible: eligibleAuthored, ineligible } = await partitionLedgerEligibleAuthored(
     context.workspaceRoot,
-    authored.map((e) => e.path),
+    authored,
   );
-  const eligibleAuthored = authored.filter((e) => eligiblePaths.has(e.path));
-  const skippedPaths = authored
-    .filter((e) => !eligiblePaths.has(e.path))
-    .map((e) => e.path)
-    .sort();
+  const skippedPaths = ineligible.map((e) => e.path).sort();
   const skippedIneligible = skippedPaths.length;
 
   const ledgerMap = new Map<string, CompassAuditLedgerEntry>();
