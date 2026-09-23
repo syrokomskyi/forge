@@ -19,6 +19,9 @@ os/ or kernel imports.</purpose>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>RFC-1140: step 6 — cover shared resolver and queue.validate
+
+Add pipeline-status.test.ts (derivation matrix, order, next selection, ADR, skipped) and queue-validate.test.ts (schema errors, unknown/dup ids, id-filename mismatch, empty items, dependsOn warning, JSON shape). Fix queue derivation: pipelineStep is the stage after the last completed stage, not first incomplete — handles non-contiguous artifacts.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -77,9 +80,7 @@ export async function findAuditFile(
   try {
     const entries = await fs.readdir(auditsDir);
     const prefix = `audit-${docId.toLowerCase()}`;
-    const match = entries.find(
-      (e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"),
-    );
+    const match = entries.find((e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"));
     return match ? path.join("docs/audits", match) : undefined;
   } catch {
     return undefined;
@@ -94,9 +95,7 @@ export async function findPlanFile(
   try {
     const entries = await fs.readdir(plansDir);
     const prefix = `plan-${docId.toLowerCase()}`;
-    const match = entries.find(
-      (e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"),
-    );
+    const match = entries.find((e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"));
     return match ? path.join("docs/plans", match) : undefined;
   } catch {
     return undefined;
@@ -279,12 +278,22 @@ export async function deriveQueueItemStatus(
     auditFile,
     planFile,
   });
-  const next = nextPipelineStep(status, stages);
 
-  if (next === null || next === "audit") {
+  // Queue semantics: the actionable step is the stage AFTER the last completed
+  // one — artifacts may be non-contiguous (e.g. enhancedAt without an audit
+  // file), where "first incomplete stage" would wrongly report audit.
+  let lastDone = -1;
+  for (let i = 0; i < stages.length; i++) {
+    if (stages[i]!.done) lastDone = i;
+  }
+  if (lastDone === -1) {
     return { id: doc.id, status: "pending" };
   }
-  return { id: doc.id, status: "in-progress", pipelineStep: next };
+  const nextStage = stages[lastDone + 1];
+  if (!nextStage) {
+    return { id: doc.id, status: "pending" };
+  }
+  return { id: doc.id, status: "in-progress", pipelineStep: nextStage.stage };
 }
 
 export interface QueueReport {
