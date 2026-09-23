@@ -7,12 +7,13 @@ and atomically mutates ADR frontmatter.
 </purpose>
 <non-goals>
   <item>Does not transition ADRs not in accepted or proposed status.</item>
-  <item>Does not add acceptance criteria or evidence checks — ADRs do not have these.</item>
+  <item>Does not author acceptance criteria — it only enforces completeness of an existing "## Acceptance criteria" section on post-cutoff ADRs (ADR-IMP-02, mirroring AV-17).</item>
   <item>Does not call the GitHub API or require network access.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0727: initial implementation — mirrors rfc.implement.stamp for ADRs.</item>
+  <item>fix: add ADR-IMP-02 acceptance-criteria gate — block stamping post-cutoff ADRs with unchecked or evidence-less criteria (parity with rfc.implement.stamp RFC-IMP-02; prevents late adr.validate AV-17 failures).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,7 +24,8 @@ import { join, dirname } from "node:path";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 
 import { listAdrFiles, readAndParseAdr, adrFileMatchesId } from "../frontmatter-io.ts";
-import { ADR_DIR } from "../types.ts";
+import { evaluateAcceptanceCriteria } from "../../rfc/handlers/validate-rules.ts";
+import { ADR_DIR, ADR_ACCEPTANCE_CRITERIA_CUTOFF } from "../types.ts";
 import type { AdrStatus, AdrImplementStampViolation, AdrImplementStampResult } from "../types.ts";
 import type {
   ForgeCommandInput,
@@ -207,6 +209,28 @@ export async function runAdrImplementStamp(
     return stampFailResult(violations, isDryRun, outputFormat, logger);
   }
 
+  // ── ADR-IMP-02: acceptance criteria completeness (mirrors AV-17 / RFC-IMP-02) ──
+  // Post-cutoff ADRs with an "## Acceptance criteria" section must have all
+  // criteria checked with inline (evidence: ...) before stamping — otherwise
+  // adr.validate fails with AV-17 after the status transition.
+  const createdAtStr = String(fm["createdAt"] ?? "");
+  const criteriaEval =
+    createdAtStr >= ADR_ACCEPTANCE_CRITERIA_CUTOFF
+      ? evaluateAcceptanceCriteria(targetParsed.parsed.body)
+      : undefined;
+  if (criteriaEval && criteriaEval.totalUnchecked > 0) {
+    violations.push({
+      rule: "ADR-IMP-02",
+      message: `${criteriaEval.totalUnchecked} acceptance criteria are unchecked. All criteria must be checked before stamping: ${criteriaEval.uncheckedLines.join("; ")}`,
+    });
+  }
+  if (criteriaEval && criteriaEval.checkedWithoutEvidence.length > 0) {
+    violations.push({
+      rule: "ADR-IMP-02",
+      message: `${criteriaEval.checkedWithoutEvidence.length} checked criteria lack inline (evidence: ...) annotation: ${criteriaEval.checkedWithoutEvidence.join("; ")}`,
+    });
+  }
+
   // ── ADR-IMP-04: ADR file must be clean (no uncommitted edits to the target ADR) ──
   const adrRelPath = join(ADR_DIR, targetFile);
   const adrFileClean = await isAdrFileClean(workspaceRoot, adrRelPath);
@@ -262,6 +286,9 @@ export async function runAdrImplementStamp(
       if (outputFormat === "pretty") {
         logger.success(`[dry-run] ${targetId} would be stamped as implemented`);
         logger.info(`  implementation commit: ${implementationCommit}`);
+        if (criteriaEval) {
+          logger.info(`  criteria checked: ${criteriaEval.totalChecked}`);
+        }
         logger.info(`  stamped at: ${stampedAt}`);
       }
       return {
@@ -272,6 +299,7 @@ export async function runAdrImplementStamp(
             adrId: targetId,
             implementationCommit,
             stampedAt,
+            ...(criteriaEval ? { criteriaChecked: criteriaEval.totalChecked } : {}),
           },
           violations: [],
         },
@@ -285,6 +313,9 @@ export async function runAdrImplementStamp(
     if (outputFormat === "pretty") {
       logger.success(`${targetId} stamped as implemented`);
       logger.info(`  implementation commit: ${implementationCommit}`);
+      if (criteriaEval) {
+        logger.info(`  criteria checked: ${criteriaEval.totalChecked}`);
+      }
       logger.info(`  stamped at: ${stampedAt}`);
     }
 
@@ -296,6 +327,7 @@ export async function runAdrImplementStamp(
           adrId: targetId,
           implementationCommit,
           stampedAt,
+          ...(criteriaEval ? { criteriaChecked: criteriaEval.totalChecked } : {}),
         },
         violations: [],
       },

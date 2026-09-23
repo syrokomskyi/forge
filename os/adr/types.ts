@@ -132,12 +132,14 @@ export const ADR_KNOWN_KEYS: readonly string[] = [
 
 // ─── RFC-0727: adr.implement.stamp types ─────────────────────────────────────
 
-export type AdrImplementStampRule = "ADR-IMP-01" | "ADR-IMP-03" | "ADR-IMP-04" | "ADR-IMP-05";
+export type AdrImplementStampRule =
+  "ADR-IMP-01" | "ADR-IMP-02" | "ADR-IMP-03" | "ADR-IMP-04" | "ADR-IMP-05";
 
 export interface AdrImplementStampData {
   adrId: string;
   implementationCommit: string;
   stampedAt: string;
+  criteriaChecked?: number;
 }
 
 export interface AdrImplementStampViolation {
