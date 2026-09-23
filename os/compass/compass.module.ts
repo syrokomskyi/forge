@@ -90,7 +90,7 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.summary.record",
       description:
-        "Append a governance-referencing item to each target file's CHANGE_SUMMARY and collapse the 5-item window into <history> (RFC-1095). Invoked by commit commands when a commit carries an RFC/ADR reference.",
+        "Append a governance-referencing item to each target file's CHANGE_SUMMARY and collapse the 5-item window into <history> (RFC-1095). Invoked by commit commands when a commit carries an RFC/ADR reference. Required flags: `--id`.",
       scope: "workspace",
       mutatesState: true,
       supportsAllSites: true,
@@ -211,7 +211,7 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.audit.record",
       description:
-        "Stamp a file's audit verdict and current revision into the compass-audit ledger (RFC-0352). Mutating.",
+        "Stamp a file's audit verdict and current revision into the compass-audit ledger (RFC-0352). Mutating. Required flags: `--file`, `--verdict`.",
       scope: "workspace",
       mutatesState: true,
       supportsAllSites: true,

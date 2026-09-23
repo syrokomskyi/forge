@@ -130,7 +130,7 @@ const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");
         "Atomically transition an ADR from accepted/proposed to implemented. " +
         "Validates preconditions (status, implementation commit, file cleanliness, " +
         "concurrent safety) and mutates frontmatter in one atomic write. " +
-        "Use --dry-run to preview without mutating.",
+        "Use --dry-run to preview without mutating. Required flags: `--id`, `--implementation-commit`.",
       scope: "workspace",
       mutatesState: true,
       writes: ["docs/adrs/*.md"],

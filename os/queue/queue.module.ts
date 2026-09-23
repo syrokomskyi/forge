@@ -31,7 +31,7 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
         description:
           "Validate a queue manifest (docs/queues/*.yaml) and report derived " +
           "per-item pipeline status plus the next actionable item. Read-only — " +
-          "the pipeline orchestrator runs this before starting a queued batch (RFC-1140).",
+          "the pipeline orchestrator runs this before starting a queued batch (RFC-1140). Required flags: `--file`.",
         scope: "workspace",
         contract: "queue",
         rules: ["QUEUE-01", "QUEUE-02", "QUEUE-03", "QUEUE-04", "QUEUE-05", "QUEUE-06"],
