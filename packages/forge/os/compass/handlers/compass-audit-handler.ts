@@ -14,6 +14,7 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
+  <item>RFC-1143: validate/plan/record apply filterLedgerEligiblePaths — ledger-ineligible authored paths (missions/, gitignored) are skipped with skippedIneligible diagnostics instead of failing COMPASS-AUDIT-01; record warns but still writes.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,6 +39,9 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 const execFileAsync = promisify(execFile);
 const LEDGER_PATH = "docs/compass-audit-ledger.generated.yaml";
 const DEFAULT_THRESHOLD = 30;
+// RFC-1143: cap the skippedPaths diagnostic list so huge ineligible sets do not
+// flood the output; the pretty summary appends "and N more" when truncated.
+const SKIPPED_PATHS_CAP = 20;
 
 function resolveRevisionThreshold(value: unknown, fallback: number): number {
   if (value === undefined) return fallback;
@@ -169,6 +173,7 @@ export async function runCompassAuditPlan(
     threshold: number;
     dueCount: number;
     items: CompassAuditWorkOrderItem[];
+    skippedIneligible: number;
   }>
 > {
   const scanRoot = resolveCompassScanRoot(input, context);
@@ -185,6 +190,16 @@ export async function runCompassAuditPlan(
 
   const threshold = resolveRevisionThreshold(input.flags["threshold"], ledger.revisionThreshold);
 
+  // RFC-1143: drop ledger-ineligible authored paths (missions/, gitignored)
+  // before the per-entry revision loop — they can never be audited long-term
+  // and must not cost a git call each.
+  const eligiblePaths = await filterLedgerEligiblePaths(
+    context.workspaceRoot,
+    authored.map((e) => e.path),
+  );
+  const eligibleAuthored = authored.filter((e) => eligiblePaths.has(e.path));
+  const skippedIneligible = authored.length - eligibleAuthored.length;
+
   const ledgerMap = new Map<string, CompassAuditLedgerEntry>();
   for (const e of ledger.entries) {
     ledgerMap.set(e.path, e);
@@ -192,7 +207,7 @@ export async function runCompassAuditPlan(
 
   const items: CompassAuditWorkOrderItem[] = [];
 
-  for (const entry of authored) {
+  for (const entry of eligibleAuthored) {
     const ledgerEntry = ledgerMap.get(entry.path);
     const auditedRevision = ledgerEntry?.auditedRevision ?? null;
 
@@ -224,10 +239,12 @@ export async function runCompassAuditPlan(
 
   items.sort((a, b) => a.path.localeCompare(b.path));
 
-  context.logger.info(`[compass.audit.plan] threshold=${threshold}, due=${items.length}`);
+  context.logger.info(
+    `[compass.audit.plan] threshold=${threshold}, due=${items.length}, skippedIneligible=${skippedIneligible}`,
+  );
 
   return {
-    data: { threshold, dueCount: items.length, items },
+    data: { threshold, dueCount: items.length, items, skippedIneligible },
     exitCode: 0,
     summary: `[compass.audit.plan] ${items.length} files due for audit (threshold=${threshold})`,
     nextSteps:
@@ -266,6 +283,16 @@ export async function runCompassAuditRecord(
   }
 
   const filePath = relative(context.workspaceRoot, resolve(process.cwd(), rawFilePath));
+
+  // RFC-1143: warn when recording an audit for a ledger-ineligible path — the
+  // entry will be swept by the next baseline run (RFC-1139). Operator intent
+  // wins: the write still proceeds.
+  const recordEligible = await filterLedgerEligiblePaths(context.workspaceRoot, [filePath]);
+  if (!recordEligible.has(filePath)) {
+    context.logger.warn(
+      `[compass.audit.record] ${filePath}: path is ledger-ineligible (missions/ or gitignored) — this entry will be swept by the next compass.audit.baseline run`,
+    );
+  }
 
   const { revision, entityId, contentHash } = await getRevisionByPath(
     context.workspaceRoot,
@@ -396,6 +423,8 @@ export async function runCompassAuditValidate(
       message: string;
       fix: string;
     }>;
+    skippedIneligible: number;
+    skippedPaths: string[];
   }>
 > {
   const strict = input.flags["strict"] === true;
@@ -411,6 +440,20 @@ export async function runCompassAuditValidate(
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
 
+  // RFC-1143: drop ledger-ineligible authored paths (missions/, gitignored)
+  // before the per-entry revision loop — baseline is forbidden to seed them,
+  // so demanding entries is a guaranteed false-positive (COMPASS-AUDIT-01).
+  const eligiblePaths = await filterLedgerEligiblePaths(
+    context.workspaceRoot,
+    authored.map((e) => e.path),
+  );
+  const eligibleAuthored = authored.filter((e) => eligiblePaths.has(e.path));
+  const skippedPaths = authored
+    .filter((e) => !eligiblePaths.has(e.path))
+    .map((e) => e.path)
+    .sort();
+  const skippedIneligible = skippedPaths.length;
+
   const ledgerMap = new Map<string, CompassAuditLedgerEntry>();
   for (const e of ledger.entries) {
     ledgerMap.set(e.path, e);
@@ -424,7 +467,7 @@ export async function runCompassAuditValidate(
     fix: string;
   }> = [];
 
-  for (const entry of authored) {
+  for (const entry of eligibleAuthored) {
     const ledgerEntry = ledgerMap.get(entry.path);
     const auditedRevision = ledgerEntry?.auditedRevision ?? null;
 
@@ -453,8 +496,22 @@ export async function runCompassAuditValidate(
   const dueCount = diagnostics.length;
   const hasErrors = strict && dueCount > 0;
 
+  if (skippedIneligible > 0) {
+    const shown = skippedPaths.slice(0, SKIPPED_PATHS_CAP);
+    const more = skippedIneligible - shown.length;
+    context.logger.info(
+      `[compass.audit.validate] skipped ${skippedIneligible} ledger-ineligible path(s) (missions/, gitignored)${more > 0 ? ` and ${more} more` : ""}`,
+    );
+  }
+
   return {
-    data: { strict, dueCount, diagnostics },
+    data: {
+      strict,
+      dueCount,
+      diagnostics,
+      skippedIneligible,
+      skippedPaths: skippedPaths.slice(0, SKIPPED_PATHS_CAP),
+    },
     exitCode: hasErrors ? 1 : 0,
     summary: dueCount > 0 ? undefined : `[compass.audit.validate] OK (0 files overdue)`,
     nextSteps:
