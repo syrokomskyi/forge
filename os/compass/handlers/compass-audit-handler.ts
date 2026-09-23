@@ -13,12 +13,13 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
   <item>RFC-0352: initial implementation of compass.audit.plan, compass.audit.record, compass.audit.baseline, compass.audit.validate.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
+  <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile } from "node:fs/promises";
 import { resolve, relative } from "node:path";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 import { promisify } from "node:util";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";
@@ -99,6 +100,7 @@ async function saveLedger(workspaceRoot: string, ledger: CompassAuditLedger): Pr
   const normalized = withLedgerAdvisory(ledger);
   normalized.entries.sort((a, b) => a.path.localeCompare(b.path));
   const abs = resolve(workspaceRoot, LEDGER_PATH);
+  await mkdir(resolve(abs, ".."), { recursive: true });
   const header = buildGeneratedHeader({
     ownerCommand: "compass.audit.record",
     filePath: LEDGER_PATH,
@@ -127,6 +129,36 @@ function getAuthoredEntries(entries: CompassInventoryEntry[]): CompassInventoryE
   return entries.filter(
     (e) => e.authoringStatus === "authored" && e.requiredScaffolding !== "none",
   );
+}
+
+// RFC-1139: the tracked ledger must not accumulate entries for paths that
+// can never be audited long-term — gitignored roots (missions/, dist/) and
+// the missions/ tree specifically (workpieces move to archive on close).
+// Batch-checks `git check-ignore --stdin` once for all candidate paths.
+async function filterLedgerEligiblePaths(
+  workspaceRoot: string,
+  paths: string[],
+): Promise<Set<string>> {
+  const eligible = new Set<string>();
+  const candidates = paths.filter((p) => !p.startsWith("missions/"));
+  let ignored = new Set<string>();
+  if (candidates.length > 0) {
+    try {
+      const stdout = execFileSync("git", ["check-ignore", "--stdin"], {
+        cwd: workspaceRoot,
+        input: candidates.join("\n"),
+        encoding: "utf-8",
+      });
+      ignored = new Set(stdout.split("\n").filter((l: string) => l.length > 0));
+    } catch {
+      // check-ignore exits 1 when nothing is ignored — treat all as eligible
+      ignored = new Set();
+    }
+  }
+  for (const p of candidates) {
+    if (!ignored.has(p)) eligible.add(p);
+  }
+  return eligible;
 }
 
 export async function runCompassAuditPlan(
@@ -302,11 +334,17 @@ export async function runCompassAuditBaseline(
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
 
+  // RFC-1139: drop ineligible entries (missions/, gitignored) already in the
+  // ledger — self-healing cleanup — and never seed new ones.
+  const candidatePaths = [...authored.map((e) => e.path), ...ledger.entries.map((e) => e.path)];
+  const eligible = await filterLedgerEligiblePaths(context.workspaceRoot, candidatePaths);
+  ledger.entries = ledger.entries.filter((e) => eligible.has(e.path));
+
   const existingPaths = new Set(ledger.entries.map((e) => e.path));
   let seededCount = 0;
 
   for (const entry of authored) {
-    if (existingPaths.has(entry.path)) {
+    if (!eligible.has(entry.path) || existingPaths.has(entry.path)) {
       continue;
     }
 
