@@ -572,4 +572,53 @@ describe("mission.archive", () => {
     expect(data.skipped).toHaveLength(1);
     expect(data.skipped[0].reason).toContain("use --clean-orphans");
   });
+
+  test("RFC-1138 AC-2: git add -A skipped when archive target is gitignored", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("pnpm install")) return "";
+      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
+      // git check-ignore exits 0 → path is ignored (missions/ is gitignored)
+      if (cmd.startsWith("git check-ignore")) return "";
+      return "";
+    });
+    await writeMissionManifest(missionsDir, "test-r1138-01", "closed");
+
+    await runMissionArchive(makeInput(), makeContext(tmpDir));
+
+    const checkIgnoreCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git check-ignore"),
+    );
+    expect(checkIgnoreCall).toBeDefined();
+
+    const addArchiveCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git add -A"),
+    );
+    expect(addArchiveCall).toBeUndefined();
+
+    // Lockfile itself is still staged + committed
+    const lockfileAdd = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0] === "git add pnpm-lock.yaml",
+    );
+    expect(lockfileAdd).toBeDefined();
+  });
+
+  test("RFC-1138 AC-2: git add -A still runs when archive target is NOT gitignored", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("pnpm install")) return "";
+      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
+      // git check-ignore exits 1 → not ignored → execSync throws
+      if (cmd.startsWith("git check-ignore")) throw new Error("exit 1");
+      return "";
+    });
+    await writeMissionManifest(missionsDir, "test-r1138-02", "closed");
+
+    await runMissionArchive(makeInput(), makeContext(tmpDir));
+
+    const addArchiveCall = execSyncMock.mock.calls.find(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git add -A"),
+    );
+    expect(addArchiveCall).toBeDefined();
+  });
 });

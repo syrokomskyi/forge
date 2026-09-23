@@ -13,6 +13,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
 </CHANGE_SUMMARY>
 */
 
@@ -184,21 +185,6 @@ export async function runRfcCreate(
   }
   await assertSatisfiesIdsExist(workspaceRoot, satisfies);
 
-  const files = await listRfcFiles(rfcDirPath);
-  let maxId = 0;
-  for (const f of files) {
-    const basename = path.basename(f);
-    const match = basename.match(/^rfc-(\d{4})/);
-    if (match) {
-      const num = parseInt(match[1]!, 10);
-      if (num > maxId) maxId = num;
-    }
-  }
-  const nextNum = maxId + 1;
-  const paddedNum = String(nextNum).padStart(4, "0");
-  const nextSlug = `rfc-${paddedNum}`;
-  const nextId = `RFC-${paddedNum}`;
-
   const templatePath = resolveRfcTemplate(workspaceRoot);
   let templateContent: string;
   try {
@@ -208,7 +194,6 @@ export async function runRfcCreate(
   }
 
   const kebabTitle = toKebabCase(title);
-  const fileName = `${nextSlug}-${kebabTitle}.md`;
 
   // RFC-0329: consult decision log before scaffolding
   let consultedDecisions: ConsultedDecision[] = [];
@@ -230,25 +215,86 @@ export async function runRfcCreate(
     }
   }
 
-  let content = templateContent;
-  content = content.replace(/^id: RFC-0000$/m, `id: ${nextId}`);
-  content = content.replace(/^title: ".*"$/m, `title: "${title}"`);
-  content = content.replace(/^kind: \w+$/m, `kind: ${kind}`);
-  content = content.replace(/^scope: \w+$/m, `scope: ${scope}`);
-  content = content.replace(/^createdAt: YYYY-MM-DD$/m, `createdAt: ${today}`);
-  content = content.replace(/^updatedAt: YYYY-MM-DD$/m, `updatedAt: ${today}`);
-  if (satisfies.length > 0) {
-    content = content.replace(
-      /^satisfies: \[\]$/m,
-      `satisfies:\n${satisfies.map((id) => `  - ${id}`).join("\n")}`,
+  // RFC-1138: atomic id allocation — scan → claim the id via wx on a
+  // title-independent `rfc-NNNN.claim` file → write the real file → release.
+  // The claim must be on the id, not the filename: two creates with different
+  // titles produce different filenames, so a wx write on the target path can
+  // never collide. `.claim` files are invisible to listRfcFiles (.md-only),
+  // so they don't pollute rfc.list or the maxId scan. Stale claims (crashed
+  // create) are reclaimed after CLAIM_STALE_MS.
+  const MAX_CREATE_ATTEMPTS = 10;
+  const CLAIM_STALE_MS = 30_000;
+  let nextId = "";
+  let relativeFile = "";
+  let allocated = false;
+
+  const files = await listRfcFiles(rfcDirPath);
+  let maxId = 0;
+  for (const f of files) {
+    const basename = path.basename(f);
+    const match = basename.match(/^rfc-(\d{4})/);
+    if (match) {
+      const num = parseInt(match[1]!, 10);
+      if (num > maxId) maxId = num;
+    }
+  }
+  let candidate = maxId + 1;
+
+  for (let attempt = 1; attempt <= MAX_CREATE_ATTEMPTS; attempt++) {
+    const paddedNum = String(candidate).padStart(4, "0");
+    const nextSlug = `rfc-${paddedNum}`;
+    nextId = `RFC-${paddedNum}`;
+    const fileName = `${nextSlug}-${kebabTitle}.md`;
+    const claimPath = path.join(rfcDirPath, `${nextSlug}.claim`);
+
+    try {
+      await fs.writeFile(claimPath, `${process.pid}\n`, { flag: "wx" });
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") {
+        // Stale claim (crashed create) → reclaim and retry the same id.
+        // Live claim → another create holds this id — move to the next.
+        const st = await fs.stat(claimPath).catch(() => null);
+        if (st && Date.now() - st.mtimeMs > CLAIM_STALE_MS) {
+          await fs.rm(claimPath, { force: true });
+        } else {
+          candidate++;
+        }
+        continue;
+      }
+      throw err;
+    }
+
+    try {
+      let content = templateContent;
+      content = content.replace(/^id: RFC-0000$/m, `id: ${nextId}`);
+      content = content.replace(/^title: ".*"$/m, `title: "${title}"`);
+      content = content.replace(/^kind: \w+$/m, `kind: ${kind}`);
+      content = content.replace(/^scope: \w+$/m, `scope: ${scope}`);
+      content = content.replace(/^createdAt: YYYY-MM-DD$/m, `createdAt: ${today}`);
+      content = content.replace(/^updatedAt: YYYY-MM-DD$/m, `updatedAt: ${today}`);
+      if (satisfies.length > 0) {
+        content = content.replace(
+          /^satisfies: \[\]$/m,
+          `satisfies:\n${satisfies.map((id) => `  - ${id}`).join("\n")}`,
+        );
+      }
+      content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
+
+      const targetPath = path.join(rfcDirPath, fileName);
+      await fs.writeFile(targetPath, content, { flag: "wx" });
+      relativeFile = path.join(RFC_DIR, fileName);
+      allocated = true;
+    } finally {
+      await fs.rm(claimPath, { force: true });
+    }
+    if (allocated) break;
+  }
+
+  if (!allocated) {
+    throw new Error(
+      `rfc.create: id allocation failed after ${MAX_CREATE_ATTEMPTS} attempts — concurrent creates keep claiming the next id`,
     );
   }
-  content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
-
-  const targetPath = path.join(rfcDirPath, fileName);
-  await fs.writeFile(targetPath, content, "utf-8");
-
-  const relativeFile = path.join(RFC_DIR, fileName);
 
   if (outputFormat === "pretty") {
     logger.success(`Created ${nextId}: ${title}`);

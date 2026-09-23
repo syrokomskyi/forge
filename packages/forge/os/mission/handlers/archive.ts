@@ -13,7 +13,6 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0733: add pinned-files pre-check — skip pinned mission directories with warning instead of moving them.</item>
   <item>RFC-0804: auto-refresh pnpm-lock.yaml after directory moves.</item>
   <item>RFC-0982: fallback state detection for orphaned workpiece dirs (no mission.yaml) via .closed marker and cache-only heuristic; --clean-orphans flag; improved skip reasons.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -22,7 +21,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0573, RFC-0801</history>
+  <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
+  <history>RFC-0573, RFC-0733, RFC-0801</history>
 </CHANGE_SUMMARY>
 */
 
@@ -520,10 +520,25 @@ export async function runMissionArchive(
           stdio: ["pipe", "pipe", "pipe"],
         });
         for (const m of moved) {
-          execSync(`git add -A ${JSON.stringify(m.to)}`, {
-            cwd: workspaceRoot,
-            stdio: ["pipe", "pipe", "pipe"],
-          });
+          // RFC-1138: missions/ is gitignored — `git add` on the archive path is
+          // structurally guaranteed to fail. Skip staging when the target is
+          // ignored (git check-ignore exits 0 = ignored, 1 = not ignored).
+          let targetIgnored = false;
+          try {
+            execSync(`git check-ignore -q ${JSON.stringify(m.to)}`, {
+              cwd: workspaceRoot,
+              stdio: ["pipe", "pipe", "pipe"],
+            });
+            targetIgnored = true;
+          } catch {
+            targetIgnored = false;
+          }
+          if (!targetIgnored) {
+            execSync(`git add -A ${JSON.stringify(m.to)}`, {
+              cwd: workspaceRoot,
+              stdio: ["pipe", "pipe", "pipe"],
+            });
+          }
           if (existsSync(m.from)) continue;
           execSync(`git rm -r --cached --ignore-unmatch ${JSON.stringify(m.from)}`, {
             cwd: workspaceRoot,
