@@ -396,7 +396,7 @@ const {
         "RFC-0476: the exclusive atomic path for accepted → implemented transitions. " +
         "Verifies preconditions (accepted status, checked+evidenced criteria, clean tree, " +
         "reachable RFC-referencing commit, passing probe evidence) then atomically sets " +
-        "status: implemented, implementedAt, and updatedAt. Use --dry-run to preview.",
+        "status: implemented, implementedAt, and updatedAt. Use --dry-run to preview. Required flags: `--id`.",
       scope: "workspace",
       mutatesState: true,
       writes: ["docs/rfcs/**/*.md"],

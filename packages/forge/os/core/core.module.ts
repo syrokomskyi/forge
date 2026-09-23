@@ -305,7 +305,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       {
         name: "forge.scaffold",
         description:
-          "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory.",
+          "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory. Required flags: `--profile`, `--name`.",
         scope: "workspace",
         supportsAllSites: false,
         flags: {
