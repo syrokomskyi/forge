@@ -23,6 +23,9 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1140: step 5 — queue-mode section in orchestrator SKILL.md
 
 Add Queue mode section (pre-flight queue.validate, loop semantics, failure handling, manifest immutability) to fo-idea-i-just-want-to-see-the-result SKILL.md, sync .agents copy, add forgeQueueModule row to forge AGENTS.md.</item>
+  <item>RFC-1140: queue mode — materialize manifest at invocation from pasted doc list
+
+When the invocation carries >=2 RFC/ADR ids without a manifest path, the orchestrator builds docs/queues/session-<timestamp>.yaml from the pasted order, runs queue.validate, then processes queue mode. Unresolvable ids are named explicitly.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -52,13 +55,31 @@ The operator may provide either:
 - **A raw idea** — natural-language description of a feature, change, or decision. The skill will invoke `fo-idea` as step 0 to create the RFC/ADR first.
 - **An existing RFC/ADR id** — e.g. `RFC-XXXX` or `ADR-XXXX`. The skill skips idea creation and starts the pipeline from the appropriate step.
 - **A queue manifest** — `--queue <path>` or a `docs/queues/*.yaml` path in the invocation text. The skill enters queue mode (see §Queue mode) and processes the manifest's `items[]` in order.
+- **A pasted document list** — >=2 `RFC-XXXX`/`ADR-XXXX` ids in the invocation text (e.g. another agent's ordered implementation plan). The skill materializes a session manifest (see §Queue mode → Manifest materialization) and enters queue mode.
 - **Nothing** — if neither is provided, check session context and IDE for a recently created document. If none found, ask the operator: "Какую идею реализуем? Опишите идею или укажите RFC-XXXX / ADR-XXXX."
 
 ## Queue mode
 
-When the invocation carries `--queue <path>` or a `docs/queues/*.yaml` path, the orchestrator runs in **queue mode** — the document list comes from a committed manifest, not from invocation context.
+The orchestrator runs in **queue mode** when the invocation carries `--queue <path>`, a `docs/queues/*.yaml` path, OR a pasted document list (>=2 `RFC-XXXX`/`ADR-XXXX` ids — e.g. another agent's ordered implementation plan).
 
-**Pre-flight (mandatory):** Before anything else, run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. If the command exits non-zero (schema errors, unknown ids, duplicates, id↔filename mismatch), do NOT start the batch — report the errors and stop.
+**Manifest materialization (mandatory when no manifest path is given):** Build the manifest from the invocation text before anything else:
+
+1. Extract `RFC-\d{4}`/`ADR-\d{4}` tokens in order of appearance; dedupe preserving first-seen order. The pasted order IS the dependency order — preserve it even when the surrounding prose discusses a different grouping.
+2. Write `docs/queues/session-<YYYYMMDD>-<HHmm>.yaml`:
+
+   ```yaml
+   id: session-<YYYYMMDD>-<HHmm>
+   createdAt: <YYYY-MM-DD>
+   items:
+     - id: RFC-XXXX
+     - id: ADR-XXXX
+   ```
+
+   The `id` field MUST equal the filename stem (`queue.validate` enforces this). Leave the file uncommitted — it is a session artifact; the operator may commit it for cross-session durability.
+
+3. If the paste mixes ids with prose, ignore the prose — only the id sequence matters. Do not invent items that are not in the text.
+
+**Pre-flight (mandatory):** Run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. If the command exits non-zero (schema errors, unknown ids, duplicates, id↔filename mismatch), do NOT start the batch — report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
 
 **Batch plan preview:** Emit the existing batch plan preview per `_shared/fo-pipeline-conventions.md` §Batch plan preview, listing items in manifest order.
 
