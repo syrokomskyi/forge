@@ -70,6 +70,48 @@ Test consequences.
 Test evolution.
 `;
 
+const ADR_BODY_WITH_AC = (
+  id: string,
+  status: string,
+  createdAt: string,
+  acBlock: string,
+): string => `---
+id: ${id}
+title: "Test ADR"
+status: ${status}
+scope: workspace
+decider: human:test
+createdAt: ${createdAt}
+updatedAt: ${createdAt}
+---
+
+# ${id}: Test ADR
+
+## Context
+
+Test context.
+
+## Decision
+
+Test decision.
+
+## Justification
+
+Test justification.
+
+## Consequences
+
+Test consequences.
+
+## Evolution
+
+Test evolution.
+
+## Acceptance criteria
+
+${acBlock}
+`;
+
 async function makeGitRepo(dir: string): Promise<void> {
   execFileSync("git", ["init"], { cwd: dir, timeout: 5000 });
   execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: dir, timeout: 5000 });
@@ -293,6 +335,114 @@ describe("adr.implement.stamp", () => {
 
     expect(result.data?.status).toBe("fail");
     expect(result.data?.violations.some((v) => v.rule === "ADR-IMP-05")).toBe(true);
+  });
+
+  // ── ADR-IMP-02: acceptance criteria completeness (post-cutoff, mirrors AV-17) ──
+
+  it("rejects post-cutoff ADR with unchecked acceptance criteria", async () => {
+    await writeFile(
+      join(workspaceRoot, "docs", "adrs", "adr-0001-test.md"),
+      ADR_BODY_WITH_AC(
+        "ADR-0001",
+        "accepted",
+        "2026-09-10",
+        "- [ ] AC-1: THE artifact SHALL exist (evidence: file: x.ts:1)\n- [x] AC-2: THE other SHALL pass (evidence: file: y.ts:2)",
+      ),
+    );
+    const sha = await commitAll(workspaceRoot, "implement: ADR-0001 add feature");
+
+    const result = await runAdrImplementStamp(
+      makeInput("ADR-0001", sha),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.data?.violations.some((v) => v.rule === "ADR-IMP-02")).toBe(true);
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("rejects post-cutoff ADR with checked criteria lacking evidence annotation", async () => {
+    await writeFile(
+      join(workspaceRoot, "docs", "adrs", "adr-0001-test.md"),
+      ADR_BODY_WITH_AC(
+        "ADR-0001",
+        "accepted",
+        "2026-09-10",
+        "- [x] AC-1: THE artifact SHALL exist",
+      ),
+    );
+    const sha = await commitAll(workspaceRoot, "implement: ADR-0001 add feature");
+
+    const result = await runAdrImplementStamp(
+      makeInput("ADR-0001", sha),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.data?.violations.some((v) => v.rule === "ADR-IMP-02")).toBe(true);
+  });
+
+  it("stamps post-cutoff ADR when all criteria are checked with evidence", async () => {
+    const adrPath = join(workspaceRoot, "docs", "adrs", "adr-0001-test.md");
+    await writeFile(
+      adrPath,
+      ADR_BODY_WITH_AC(
+        "ADR-0001",
+        "accepted",
+        "2026-09-10",
+        "- [x] AC-1: THE artifact SHALL exist (evidence: file: x.ts:1)\n- [x] AC-2: THE other SHALL pass (evidence: file: y.ts:2)",
+      ),
+    );
+    const sha = await commitAll(workspaceRoot, "implement: ADR-0001 add feature");
+
+    const result = await runAdrImplementStamp(
+      makeInput("ADR-0001", sha),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.data?.status).toBe("pass");
+    expect(result.data?.data?.criteriaChecked).toBe(2);
+
+    const afterContent = await readFile(adrPath, "utf-8");
+    expect(afterContent).toContain("status: implemented");
+  });
+
+  it("stamps pre-cutoff ADR with unchecked criteria (AV-17 exempt)", async () => {
+    await writeFile(
+      join(workspaceRoot, "docs", "adrs", "adr-0001-test.md"),
+      ADR_BODY_WITH_AC(
+        "ADR-0001",
+        "accepted",
+        "2026-08-01",
+        "- [ ] AC-1: THE artifact SHALL exist (evidence: file: x.ts:1)",
+      ),
+    );
+    const sha = await commitAll(workspaceRoot, "implement: ADR-0001 add feature");
+
+    const result = await runAdrImplementStamp(
+      makeInput("ADR-0001", sha),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.data?.status).toBe("pass");
+    expect(result.data?.data?.criteriaChecked).toBeUndefined();
+  });
+
+  it("stamps post-cutoff ADR without an acceptance criteria section", async () => {
+    const adrPath = join(workspaceRoot, "docs", "adrs", "adr-0001-test.md");
+    const body = ADR_BODY("ADR-0001", "accepted").replace(
+      "createdAt: 2026-08-01",
+      "createdAt: 2026-09-10",
+    );
+    await writeFile(adrPath, body);
+    const sha = await commitAll(workspaceRoot, "implement: ADR-0001 add feature");
+
+    const result = await runAdrImplementStamp(
+      makeInput("ADR-0001", sha),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.data?.status).toBe("pass");
   });
 
   // ── Dry-run ──────────────────────────────────────────────────────────────────
