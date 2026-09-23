@@ -464,6 +464,11 @@ Skill-text-only RFCs MUST include `packages/forge/AGENTS.md` in the file system 
 
 `rfc.create` may reuse the title from a previous invocation in the same session. After creating an RFC, always verify the generated filename matches the intended title before populating content. If the filename is wrong, delete the file and re-run `rfc.create` with the correct `--title`. Do not rename the file — the RFC ID is assigned by the command and must not be manually changed.
 
+## rfc.archive scope and bulk frontmatter edits
+
+- **`rfc.archive` moves files only from `docs/rfcs/` root into `archive/`** — it does NOT re-sort between archive subdirectories. An RFC whose status changes to `superseded` while already inside `archive/implemented/` stays there; the validator does not enforce the subdirectory. Discovered during the 2026-09-22 validation cleanup (16 RFCs transitioned to superseded in place).
+- **Bulk frontmatter edits must handle both empty-field forms.** YAML serializes unset fields as both `closedAt:` (empty) and `closedAt: null` — a regex matching only `^closedAt:\s*$` misses the `null` variant. Match `^closedAt:\s*(null)?\s*$` when filling fields mechanically. Similarly, acceptance probe commands appear both quoted (`command: "site-kernel run ..."`) and unquoted (`command: site-kernel run ...`) — rewrite patterns must cover both.
+
 ## Profile-driven RFC conventions
 
 All profile-driven RFCs (RFC-0674 onwards) MUST follow these conventions:
