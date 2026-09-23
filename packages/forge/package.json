@@ -147,6 +147,14 @@
     "./os/plugin": {
       "types": "./os/plugin/plugin.module.ts",
       "default": "./os/plugin/plugin.module.ts"
+    },
+    "./os/queue": {
+      "types": "./os/queue/index.ts",
+      "default": "./os/queue/index.ts"
+    },
+    "./os/queue-module": {
+      "types": "./os/queue/queue.module.ts",
+      "default": "./os/queue/queue.module.ts"
     }
   },
   "files": [
@@ -325,6 +333,14 @@
       "./os/plugin": {
         "types": "./dist/os/plugin/plugin.module.d.ts",
         "default": "./dist/os/plugin/plugin.module.js"
+      },
+      "./os/queue": {
+        "types": "./dist/os/queue/index.d.ts",
+        "default": "./dist/os/queue/index.js"
+      },
+      "./os/queue-module": {
+        "types": "./dist/os/queue/queue.module.d.ts",
+        "default": "./dist/os/queue/queue.module.js"
       }
     }
   }

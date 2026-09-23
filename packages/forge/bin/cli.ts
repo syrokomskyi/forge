@@ -14,6 +14,9 @@ registers forge modules and dispatches commands. Works autonomously without
   <item>RFC-0542: self-documenting output contract — renderNextSteps, renderIdeRecommendation, generateHelp, --help <command> flag.</item>
   <item>RFC-0543: source VERSION from package.json at runtime instead of hardcoded constant.</item>
   <item>Register all 16 forge modules in CLI registry — add adr, plan, audit, mission, spec, program, plugin (previously only 9 of 16 were reachable via `forge <cmd>`).</item>
+  <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
+
+Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -164,6 +167,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
       m.createForgeExplorationModule(),
     ),
     await import("../os/notes/notes.module.ts").then((m) => m.createForgeNotesModule()),
+    await import("../os/queue/queue.module.ts").then((m) => m.createForgeQueueModule()),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {

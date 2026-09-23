@@ -8,16 +8,21 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1140: refactored onto the shared resolver in src/pipeline-status.ts —
+  artifact finders, TERMINAL_STATUSES, and stage computation now imported from
+  the portable layer so queue.validate and the orchestrator share one derivation.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
+
+Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
 import path from "node:path";
 
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
@@ -26,17 +31,18 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import {
+  TERMINAL_STATUSES,
+  computeRfcPipelineStages,
+  findAuditFile,
+  findPlanFile,
+  nextPipelineStep,
+} from "../../../src/pipeline-status.ts";
+import type { PipelineStage, RfcPipelineStageInfo } from "../../../src/pipeline-status.ts";
 import type { RfcStatus } from "../types.ts";
 import { RFC_DIR } from "../types.ts";
 
-export type PipelineStage = "audit" | "enhance" | "plan" | "implement";
-
-export interface RfcPipelineStageInfo {
-  stage: PipelineStage;
-  done: boolean;
-  /** File or marker that confirms completion, when applicable. */
-  evidence?: string;
-}
+export type { PipelineStage, RfcPipelineStageInfo };
 
 export interface RfcPipelineEntry {
   id: string;
@@ -53,32 +59,6 @@ export interface RfcPipelineStatusResult {
   status: "ok";
   count: number;
   entries: RfcPipelineEntry[];
-}
-
-const TERMINAL_STATUSES: ReadonlySet<string> = new Set(["implemented", "rejected", "superseded"]);
-
-async function findAuditFile(workspaceRoot: string, rfcId: string): Promise<string | undefined> {
-  const auditsDir = path.join(workspaceRoot, "docs/audits");
-  try {
-    const entries = await fs.readdir(auditsDir);
-    const prefix = `audit-${rfcId.toLowerCase()}`;
-    const match = entries.find((e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"));
-    return match ? path.join("docs/audits", match) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-async function findPlanFile(workspaceRoot: string, rfcId: string): Promise<string | undefined> {
-  const plansDir = path.join(workspaceRoot, "docs/plans");
-  try {
-    const entries = await fs.readdir(plansDir);
-    const prefix = `plan-${rfcId.toLowerCase()}`;
-    const match = entries.find((e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"));
-    return match ? path.join("docs/plans", match) : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 export async function runRfcPipelineStatus(
@@ -116,38 +96,15 @@ export async function runRfcPipelineStatus(
     const auditFile = await findAuditFile(workspaceRoot, id);
     const planFile = await findPlanFile(workspaceRoot, id);
 
-    const stages: RfcPipelineStageInfo[] = [
-      {
-        stage: "audit",
-        done: !!auditFile,
-        evidence: auditFile,
-      },
-      {
-        stage: "enhance",
-        done: !!enhancedAt,
-        evidence: enhancedAt ? `enhancedAt: ${enhancedAt}` : undefined,
-      },
-      {
-        stage: "plan",
-        done: !!planFile,
-        evidence: planFile,
-      },
-      {
-        stage: "implement",
-        done: status === "implemented" || !!implementedAt,
-        evidence: implementedAt ? `implementedAt: ${implementedAt}` : undefined,
-      },
-    ];
+    const stages: RfcPipelineStageInfo[] = computeRfcPipelineStages({
+      status,
+      enhancedAt,
+      implementedAt,
+      auditFile,
+      planFile,
+    });
 
-    let nextStep: PipelineStage | null = null;
-    if (!isTerminal) {
-      for (const s of stages) {
-        if (!s.done) {
-          nextStep = s.stage;
-          break;
-        }
-      }
-    }
+    const nextStep: PipelineStage | null = isTerminal ? null : nextPipelineStep(status, stages);
 
     entries.push({
       id,
