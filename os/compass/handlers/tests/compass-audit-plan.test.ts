@@ -52,7 +52,6 @@ function makeInput(flags: Record<string, unknown> = {}): ForgeCommandInput {
   return { argv: [], flags: { root: SCAN_ROOTS, ...flags } } as unknown as ForgeCommandInput;
 }
 
-const MISSION_FILE = "missions/acme-m000001/workpiece/src/local.ts";
 const ELIGIBLE_FILE = "packages/foo/index.ts";
 
 describe("compass.audit.plan — RFC-1143 ledger-ineligible skips", () => {
