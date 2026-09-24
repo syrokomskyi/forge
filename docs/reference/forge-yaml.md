@@ -106,6 +106,18 @@ Merge semantics per key:
 
 `idPattern` must compile and match the `NAMESPACE-NUMBER` probe `ABC-123`, otherwise `resolveCompassPolicy` throws `CompassPolicyConfigError` naming the key. `layerRules` are evaluated first-match on the workspace-relative path; `highRiskPaths` are picomatch globs on the root-relative path that force `riskClass: high`. `excludedPaths` mark matching files `authoringStatus: excluded` with the given `reason` (they are still inventoried).
 
+## bindings.workspaces
+
+Optional. Consumer-declared workspace discovery exclusions (RFC-1150). Directory names listed here are skipped by `discoverWorkspaces` — merged over the built-in `SKIP_DIRS` defaults (`node_modules`, `.git`, `dist`, `.turbo`, `.cache`, `.agents`, `missions`, `test-fixtures`, `.stryker-tmp`).
+
+```yaml
+bindings:
+  workspaces:
+    skipDirs: [builds, exports, .sandbox]
+```
+
+Use this for project-specific artifact directories that contain `package.json` files but are not real workspaces — generated output trees, fixture workshops, sandbox checkouts. Entries match directory **names** at any scan depth, not paths. A name that matches a real workspace silently removes it from discovery (and from `nested-AGENTS.md` diagnostics) — list artifact dirs only.
+
 ## skillPacks
 
 Optional. Declares project-local skill packs:

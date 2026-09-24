@@ -41,6 +41,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runPortValidate } = await import("../../src/validators/port-validate.ts");
   const { runDoctor } = await import("../../src/onboarding/doctor.ts");
   const { runAgentsGenerate } = await import("../../src/onboarding/agents-generate.ts");
+  const { runMemoryCompact } = await import("../../src/onboarding/memory-compact.ts");
   const { runScaffoldProject } = await import("../../src/onboarding/scaffold-project.ts");
   const { runUpgrade } = await import("../../src/onboarding/upgrade.ts");
   const { runCreate } = await import("../../src/onboarding/create.ts");
@@ -219,6 +220,10 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             kind: "boolean",
             description: "Elevate domain invariant warnings to errors (RFC-0640).",
           },
+          fix: {
+            kind: "boolean",
+            description: "Apply safe remediations for warn/fail checks (RFC-1151).",
+          },
         },
         cacheable: false,
         execute: doctorWrapper,
@@ -279,6 +284,16 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         flags: {},
         cacheable: false,
         execute: runAgentsGenerate,
+      },
+      {
+        name: "memory.compact",
+        description:
+          "Enforce the MEMORY.md character budget by removing oldest Environment notes bullets (RFC-1151).",
+        scope: "workspace",
+        supportsAllSites: false,
+        flags: {},
+        cacheable: false,
+        execute: runMemoryCompact,
       },
       {
         name: "forge.upgrade",

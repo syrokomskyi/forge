@@ -138,7 +138,7 @@ export function scaffoldMemoryLayer(workspaceRoot: string): MemoryScaffoldResult
 // Health check
 // ---------------------------------------------------------------------------
 
-function resolveMemoryBudget(workspaceRoot: string): number {
+export function resolveMemoryBudget(workspaceRoot: string): number {
   try {
     const config = loadForgeConfig(workspaceRoot);
     if (config.bindings?.memory?.budget !== undefined && config.bindings?.memory?.budget !== null) {

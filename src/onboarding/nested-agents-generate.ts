@@ -56,7 +56,11 @@ export async function generateNestedAgentsMd(
   dryRun: boolean,
   workspaceTypes?: ProfileWorkspaceType[],
 ): Promise<NestedGenerateResult> {
-  const workspaces = discoverWorkspaces(workspaceRoot, workspaceTypes);
+  const workspaces = discoverWorkspaces(
+    workspaceRoot,
+    workspaceTypes,
+    config.bindings?.workspaces?.skipDirs,
+  );
   const generated: string[] = [];
   const skipped: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};

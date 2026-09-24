@@ -117,8 +117,15 @@ function matchesWorkspaceType(dirPath: string, wt: ProfileWorkspaceType): boolea
 export function discoverWorkspaces(
   workspaceRoot: string,
   workspaceTypes?: ProfileWorkspaceType[],
+  extraSkipDirs?: readonly string[],
 ): WorkspaceDir[] {
   const results: WorkspaceDir[] = [];
+  // RFC-1150: consumer-declared exclusions (bindings.workspaces.skipDirs)
+  // merge over the SKIP_DIRS defaults.
+  const skipDirs =
+    extraSkipDirs && extraSkipDirs.length > 0
+      ? new Set([...SKIP_DIRS, ...extraSkipDirs])
+      : SKIP_DIRS;
 
   function scanDir(dirPath: string, depth: number): void {
     if (depth > 5) return;
@@ -132,7 +139,7 @@ export function discoverWorkspaces(
 
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
-      if (SKIP_DIRS.has(entry.name)) continue;
+      if (skipDirs.has(entry.name)) continue;
 
       const childPath = path.join(dirPath, entry.name);
       const type = detectWorkspaceType(childPath, workspaceTypes);

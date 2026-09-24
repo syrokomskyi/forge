@@ -224,13 +224,36 @@ test("agents-generate is idempotent — running twice produces the same content"
   expect(second).toBe(first);
 });
 
-test("agents-generate refuses to overwrite hand-written AGENTS.md", async () => {
+// RFC-1150: hand-written root guard is non-fatal — skip root, continue nested
+
+test("agents-generate skips hand-written root and still generates nested", async () => {
   await makeForgeYaml(tempDir);
   await writeFile(join(tempDir, "AGENTS.md"), "# Hand-written\nNo marker.\n", "utf8");
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
 
   const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
-  expect(result.exitCode).toBe(1);
-  expect(result.data?.status).toBe("fail");
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.rootSkipped).toBe(true);
+  expect(result.data?.rootSkipReason).toBe("hand-written");
+  expect(result.data?.skipped).toContain("AGENTS.md (hand-written)");
+  expect(result.data?.generated).toContain("packages/my-pkg/AGENTS.md");
+});
+
+test("agents-generate does not modify hand-written root AGENTS.md", async () => {
+  await makeForgeYaml(tempDir);
+  const original = "# Hand-written\nNo marker.\n";
+  await writeFile(join(tempDir, "AGENTS.md"), original, "utf8");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const after = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  expect(after).toBe(original);
 });
 
 // RFC-0611: nested AGENTS.md generation tests

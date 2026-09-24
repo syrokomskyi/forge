@@ -116,6 +116,22 @@ test("discoverWorkspaces skips missions, test-fixtures, .stryker-tmp", async () 
   expect(workspaces).toHaveLength(0);
 });
 
+// RFC-1150: consumer-declared exclusions (bindings.workspaces.skipDirs)
+
+test("discoverWorkspaces honors extraSkipDirs for consumer artifact dirs", async () => {
+  await mkdir(join(tempDir, "builds", "out"), { recursive: true });
+  await writeFile(join(tempDir, "builds", "out", "package.json"), "{}");
+  await mkdir(join(tempDir, "packages", "real-pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "real-pkg", "package.json"), "{}");
+
+  const without = discoverWorkspaces(tempDir);
+  expect(without.map((w) => w.path)).toContain(join("builds", "out"));
+
+  const withSkip = discoverWorkspaces(tempDir, undefined, ["builds"]);
+  expect(withSkip.map((w) => w.path)).not.toContain(join("builds", "out"));
+  expect(withSkip.map((w) => w.path)).toContain(join("packages", "real-pkg"));
+});
+
 test("discoverWorkspaces detects generated AGENTS.md", async () => {
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
   await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
