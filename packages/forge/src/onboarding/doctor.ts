@@ -35,7 +35,7 @@ import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, 
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd, selectNestedTemplate } from "./nested-agents-templates.ts";
-import { readPackageInfo } from "./nested-agents-generate.ts";
+import { readPackageInfo, generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
@@ -47,13 +47,20 @@ import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
 import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS } from "../knowledge/budgets.ts";
 import { detectDuplicatePrinciples } from "../knowledge/index.ts";
 import type { DuplicatePair } from "../knowledge/index.ts";
-import { checkMemoryLayerHealth } from "./memory-scaffold.ts";
+import { checkMemoryLayerHealth, resolveMemoryBudget } from "./memory-scaffold.ts";
+import { compactMemoryMd } from "./memory-compact.ts";
 import { checkInvariants } from "./invariant-engine.ts";
 import type { InvariantViolation } from "./invariant-engine.ts";
 import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
 import { execSync } from "node:child_process";
 import fs from "node:fs";
 import type { ProfilePrerequisite } from "../profiles/profile-schema.ts";
+
+interface DoctorFixResult {
+  check: string;
+  action: "fixed" | "skipped" | "failed";
+  detail: string;
+}
 
 interface DoctorCheck {
   name: string;
@@ -826,7 +833,11 @@ async function checkNestedAgentsMd(
     };
   }
 
-  const workspaces = discoverWorkspaces(workspaceRoot, workspaceTypes);
+  const workspaces = discoverWorkspaces(
+    workspaceRoot,
+    workspaceTypes,
+    config.bindings?.workspaces?.skipDirs,
+  );
 
   if (workspaces.length === 0) {
     return {
@@ -1209,9 +1220,10 @@ function checkPrerequisites(prerequisites: ProfilePrerequisite[]): DoctorCheck {
 export async function runDoctor(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
-): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; forbiddenImports: ForbiddenImport[]; bindings: BindingValidation; domain?: DomainReport }>> {
-  const { workspaceRoot, logger, outputFormat } = context;
+): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; forbiddenImports: ForbiddenImport[]; bindings: BindingValidation; domain?: DomainReport; fixes?: DoctorFixResult[] }>> {
+  const { workspaceRoot, logger, outputFormat, dryRun } = context;
   const strict = input.flags["strict"] === true;
+  const fix = input.flags["fix"] === true;
   const checks: DoctorCheck[] = [];
 
   // Check forge.yaml
@@ -1418,6 +1430,9 @@ export async function runDoctor(
   // RFC-0664: Check memory layer health (budget, gitignore coverage, leak risk)
   checks.push(checkMemoryLayer(workspaceRoot));
 
+  // RFC-1151: Check dist freshness — stale dist/ silently shadows src/ in source checkouts
+  checks.push(checkDistFreshness(forgeRoot));
+
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot);
   checks.push(packCheck);
@@ -1435,8 +1450,8 @@ export async function runDoctor(
   // RFC-0640 fix: previously gated by isSoftwareDomain, which skipped the check
   // entirely for non-software domains. Now runs for all domains — profile-driven
   // wsTypes replace hardcoded detection when present.
+  let wsTypes: ProfileWorkspaceType[] | undefined;
   {
-    let wsTypes: ProfileWorkspaceType[] | undefined;
     try {
       const config = loadForgeConfig(workspaceRoot);
       // RFC-0643: prefer config.profile (loaded by loadForgeConfig)
@@ -1472,12 +1487,25 @@ export async function runDoctor(
   const allPass = finalChecks.every((c) => c.status === "pass");
   const hasFails = finalChecks.some((c) => c.status === "fail");
 
+  // RFC-1151: --fix applies registered safe remediations for warn/fail checks
+  const fixes: DoctorFixResult[] = [];
+  if (fix) {
+    for (const check of finalChecks) {
+      if (check.status === "pass") continue;
+      fixes.push(await applyDoctorRemediation(check, workspaceRoot, wsTypes, dryRun === true));
+    }
+  }
+
   if (outputFormat === "pretty") {
     logger.section(`Forge Doctor — ${workspaceRoot}`);
     for (const check of finalChecks) {
       const icon = check.status === "pass" ? "✓" : check.status === "warn" ? "⚠" : "✖";
       const fn = check.status === "pass" ? logger.success : check.status === "warn" ? logger.warn : logger.error;
       fn(`${icon} ${check.name}: ${check.message}`);
+    }
+    for (const f of fixes) {
+      const fn = f.action === "fixed" ? logger.success : f.action === "failed" ? logger.error : logger.info;
+      fn(`  fix ${f.check}: ${f.action} — ${f.detail}`);
     }
     if (allPass) {
       logger.success("All checks passed — forge is properly configured.");
@@ -1488,11 +1516,108 @@ export async function runDoctor(
     }
   }
 
+  const fixFailed = fixes.some((f) => f.action === "failed");
+
   return {
-    data: { command: "forge.doctor", checks: finalChecks, allPass, forbiddenImports, bindings: bindingsResult, domain: domainReport },
-    exitCode: hasFails ? 1 : 0,
+    data: { command: "forge.doctor", checks: finalChecks, allPass, forbiddenImports, bindings: bindingsResult, domain: domainReport, ...(fix ? { fixes } : {}) },
+    exitCode: hasFails || fixFailed ? 1 : 0,
     summary: allPass
       ? "forge.doctor: all checks passed"
-      : `forge.doctor: ${finalChecks.filter((c) => c.status === "fail").length} fail(s), ${finalChecks.filter((c) => c.status === "warn").length} warn(s)`,
+      : `forge.doctor: ${finalChecks.filter((c) => c.status === "fail").length} fail(s), ${finalChecks.filter((c) => c.status === "warn").length} warn(s)${fix ? `, ${fixes.filter((f) => f.action === "fixed").length} fixed` : ""}`,
   };
+}
+
+// RFC-1151: dist-freshness — a stale dist/ silently shadows src/ because
+// bin/cli.js prefers dist when present. Warn-only; rebuild is a pnpm script,
+// not forge's call. Pass (skip) when src/ or dist/ is absent — npm consumers
+// ship dist-only, so this activates only in source checkouts.
+function checkDistFreshness(forgeRoot: string): DoctorCheck {
+  const srcDir = join(forgeRoot, "src");
+  const distDir = join(forgeRoot, "dist");
+  if (!fs.existsSync(srcDir) || !fs.existsSync(distDir)) {
+    return {
+      name: "dist-freshness",
+      status: "pass",
+      message: "no src+dist pair — not a source checkout",
+    };
+  }
+  const newestSrc = newestMtime(srcDir);
+  const distMtime = fs.statSync(distDir).mtimeMs;
+  if (newestSrc > distMtime) {
+    return {
+      name: "dist-freshness",
+      status: "warn",
+      message: `dist/ older than newest src/ file — run 'pnpm run build' in ${forgeRoot}`,
+    };
+  }
+  return { name: "dist-freshness", status: "pass", message: "dist/ is fresh" };
+}
+
+function newestMtime(dir: string): number {
+  let newest = 0;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true, recursive: true })) {
+    if (!entry.isFile()) continue;
+    const m = fs.statSync(join(entry.parentPath, entry.name)).mtimeMs;
+    if (m > newest) newest = m;
+  }
+  return newest;
+}
+
+// RFC-1151: remediation dispatch — check name → safe fix action.
+// Remediations reuse existing generators; hand-written files are never touched
+// (generated-marker edit guard inside generateNestedAgentsMd).
+async function applyDoctorRemediation(
+  check: DoctorCheck,
+  workspaceRoot: string,
+  workspaceTypes: ProfileWorkspaceType[] | undefined,
+  dryRun: boolean,
+): Promise<DoctorFixResult> {
+  switch (check.name) {
+    case "nested-AGENTS.md": {
+      try {
+        const config = loadForgeConfig(workspaceRoot);
+        const res = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes);
+        return {
+          check: check.name,
+          action: res.generated.length > 0 ? "fixed" : "skipped",
+          detail: `${res.generated.length} file(s) ${dryRun ? "would be " : ""}regenerated, ${res.skipped.length} skipped`,
+        };
+      } catch (err) {
+        return { check: check.name, action: "failed", detail: (err as Error).message };
+      }
+    }
+    case "memory-layer": {
+      try {
+        const memoryPath = join(workspaceRoot, ".agents", "memory", "MEMORY.md");
+        if (!fs.existsSync(memoryPath)) {
+          return { check: check.name, action: "skipped", detail: "MEMORY.md absent" };
+        }
+        const content = fs.readFileSync(memoryPath, "utf8");
+        const budget = resolveMemoryBudget(workspaceRoot);
+        const { lines, removedLines, fitsBudget } = compactMemoryMd(content, budget);
+        if (!fitsBudget) {
+          return {
+            check: check.name,
+            action: "failed",
+            detail: "still over budget after Environment notes truncation — manual editorial compaction required",
+          };
+        }
+        if (removedLines.length === 0) {
+          return { check: check.name, action: "skipped", detail: "within budget" };
+        }
+        if (!dryRun) {
+          fs.writeFileSync(memoryPath, lines.join("\n"), "utf8");
+        }
+        return {
+          check: check.name,
+          action: "fixed",
+          detail: `${dryRun ? "would remove" : "removed"} ${removedLines.length} bullet(s)`,
+        };
+      } catch (err) {
+        return { check: check.name, action: "failed", detail: (err as Error).message };
+      }
+    }
+    default:
+      return { check: check.name, action: "skipped", detail: "no-remediation" };
+  }
 }

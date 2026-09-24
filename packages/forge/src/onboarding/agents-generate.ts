@@ -2,7 +2,7 @@
 <MODULE_CONTRACT>
 <purpose>forge.agents.generate — regenerates AGENTS.md deterministically from forge.yaml + skill registry. Carries the standard generated-file marker.</purpose>
 <non-goals>
-  <item>Do not overwrite a hand-written AGENTS.md (no generated marker) — refuse with exit 1.</item>
+  <item>Do not overwrite a hand-written AGENTS.md (no generated marker) — skip with warning, continue nested (RFC-1150).</item>
   <item>Do not read or modify forge.yaml — only read it via loadForgeConfig.</item>
 </non-goals>
 </MODULE_CONTRACT>
@@ -215,6 +215,9 @@ interface AgentsGenerateResult {
   errors: string[];
   renderedFiles?: { [relPath: string]: string };
   details?: Array<{ path: string; domain?: string; register?: string; workspaceType?: string }>;
+  // RFC-1150: set when the root AGENTS.md was skipped (hand-written, no marker)
+  rootSkipped?: boolean;
+  rootSkipReason?: string;
 }
 
 export async function runAgentsGenerate(
@@ -247,26 +250,18 @@ export async function runAgentsGenerate(
 
   const agentsMdPath = path.join(workspaceRoot, "AGENTS.md");
 
-  // Edit guard: refuse to overwrite a hand-written AGENTS.md (skipped in dryRun)
+  // Edit guard: never overwrite a hand-written AGENTS.md — skip the root file
+  // with a warning and continue to nested generation (RFC-1150, non-fatal).
+  let rootSkipped = false;
   if (!dryRun && fs.existsSync(agentsMdPath)) {
     const existing = fs.readFileSync(agentsMdPath, "utf8");
     if (!hasGeneratedMarker(existing)) {
-      const msg = `AGENTS.md exists without a generated marker — refusing to overwrite a hand-written file. Delete or rename it first, then re-run forge.agents.generate.`;
+      rootSkipped = true;
       if (outputFormat === "pretty") {
-        logger.error(msg);
+        logger.warn(
+          "AGENTS.md exists without a generated marker — skipping root file (hand-written). Nested AGENTS.md generation continues.",
+        );
       }
-      return {
-        data: {
-          command: "forge.agents.generate",
-          status: "fail",
-          configPath: "forge.yaml",
-          generated: [],
-          skipped: [],
-          errors: [msg],
-        },
-        exitCode: 1,
-        summary: `forge.agents.generate: failed — hand-written AGENTS.md`,
-      };
     }
   }
 
@@ -371,7 +366,7 @@ export async function runAgentsGenerate(
   const resolvedTerminology = resolveAllTerminology(config, profile);
   content = substituteTemplate(content, resolvedTerminology);
 
-  const generated: string[] = ["AGENTS.md"];
+  const generated: string[] = [];
   const skipped: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};
   const details: Array<{ path: string; domain?: string; register?: string; workspaceType?: string }> = [];
@@ -383,8 +378,12 @@ export async function runAgentsGenerate(
 
   if (dryRun) {
     renderedFiles["AGENTS.md"] = content;
+    generated.push("AGENTS.md");
+  } else if (rootSkipped) {
+    skipped.push("AGENTS.md (hand-written)");
   } else {
     await writeFileIfChanged(agentsMdPath, content);
+    generated.push("AGENTS.md");
     if (outputFormat === "pretty") {
       logger.success(`Generated ${path.relative(workspaceRoot, agentsMdPath)}`);
     }
@@ -443,11 +442,12 @@ export async function runAgentsGenerate(
       skipped,
       errors: [],
       details,
+      ...(rootSkipped ? { rootSkipped: true, rootSkipReason: "hand-written" } : {}),
       ...(dryRun ? { renderedFiles } : {}),
     },
     exitCode: 0,
     summary: dryRun
       ? `forge.agents.generate: [dry-run] would generate ${generated.length} file(s), skip ${skipped.length}`
-      : `forge.agents.generate: OK — ${generated.length} file(s) generated, ${skipped.length} skipped`,
+      : `forge.agents.generate: OK — ${generated.length} file(s) generated, ${skipped.length} skipped${rootSkipped ? " (root AGENTS.md hand-written — skipped)" : ""}`,
   };
 }

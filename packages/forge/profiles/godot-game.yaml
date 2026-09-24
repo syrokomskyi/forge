@@ -292,6 +292,9 @@ workspace:
               - name: Install dependencies
                 run: pnpm install --frozen-lockfile
 
+              - name: Forge doctor
+                run: pnpm exec forge run forge.doctor
+
               - name: Format check
                 run: pnpm format:check
 

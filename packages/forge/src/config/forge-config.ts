@@ -83,6 +83,13 @@ export const forgeBindingsSchema = z.object({
       budget: z.number().int().positive().default(4096),
     })
     .optional(),
+  // RFC-1150: consumer-declared directory names excluded from workspace
+  // discovery (merged over the SKIP_DIRS defaults in workspace-discovery.ts).
+  workspaces: z
+    .object({
+      skipDirs: z.array(z.string()).default([]),
+    })
+    .optional(),
 });
 
 export interface ForgeBindings {
@@ -125,6 +132,10 @@ export interface ForgeBindings {
   // RFC-0664: optional memory layer budget override (MEMORY.md hot store)
   memory?: {
     budget: number;
+  };
+  // RFC-1150: consumer-declared workspace discovery exclusions
+  workspaces?: {
+    skipDirs: string[];
   };
 }
 
