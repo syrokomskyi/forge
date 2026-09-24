@@ -104,6 +104,18 @@ test("discoverWorkspaces skips node_modules, .git, dist, .turbo, .cache, .agents
   expect(workspaces).toHaveLength(0);
 });
 
+test("discoverWorkspaces skips missions, test-fixtures, .stryker-tmp", async () => {
+  // Pipeline-managed workpieces/archives, fixture workshops, and mutation-testing
+  // sandboxes are not project workspaces — their AGENTS.md is owned elsewhere.
+  for (const skip of ["missions", "test-fixtures", ".stryker-tmp"]) {
+    await mkdir(join(tempDir, skip, "sub"), { recursive: true });
+    await writeFile(join(tempDir, skip, "sub", "package.json"), "{}");
+  }
+
+  const workspaces = discoverWorkspaces(tempDir);
+  expect(workspaces).toHaveLength(0);
+});
+
 test("discoverWorkspaces detects generated AGENTS.md", async () => {
   await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
   await writeFile(join(tempDir, "packages", "my-pkg", "package.json"), "{}");
