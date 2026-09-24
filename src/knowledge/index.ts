@@ -51,3 +51,10 @@ export {
   type DuplicatePair,
   type PromotionPlan,
 } from "./promote.ts";
+export {
+  planKnowledgeSync,
+  syncKnowledgeFile,
+  type KnowledgeSyncAction,
+  type KnowledgeSyncResult,
+  type KnowledgeSyncPlan,
+} from "./sync.ts";

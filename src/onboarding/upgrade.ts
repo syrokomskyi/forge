@@ -39,6 +39,7 @@ import {
   type ForgeBindings,
 } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
+import { syncKnowledgeFile } from "../knowledge/index.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import type { SkippedSkill } from "./init.ts";
@@ -143,8 +144,9 @@ function syncForgeSkills(
   forgeRoot: string,
   skillsDir: string,
   dryRun: boolean,
-): string[] {
+): { updated: string[]; knowledgeConflicts: string[] } {
   const updated: string[] = [];
+  const knowledgeConflicts: string[] = [];
   const agentsSkillsDir = path.join(workspaceRoot, skillsDir);
 
   for (const skill of FORGE_SKILLS) {
@@ -160,7 +162,7 @@ function syncForgeSkills(
       const content = fs.readFileSync(srcPath, "utf8");
       fs.writeFileSync(destPath, content, "utf8");
 
-      // Sync knowledge files
+      // Sync knowledge files (append-only — never overwrite local entries)
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (fmMatch) {
         try {
@@ -173,7 +175,10 @@ function syncForgeSkills(
               const kfSrcPath = path.join(skillSrcDir, kf);
               const kfDestPath = path.join(destDir, kf);
               if (fs.existsSync(kfSrcPath)) {
-                fs.writeFileSync(kfDestPath, fs.readFileSync(kfSrcPath, "utf8"), "utf8");
+                const syncResult = syncKnowledgeFile(kfSrcPath, kfDestPath);
+                for (const id of syncResult.conflicts) {
+                  knowledgeConflicts.push(`${skillName}/${kf}#${id}`);
+                }
               }
             }
           }
@@ -185,7 +190,7 @@ function syncForgeSkills(
     updated.push(skillName);
   }
 
-  return updated;
+  return { updated, knowledgeConflicts };
 }
 
 function syncSharedKnowledge(
@@ -193,20 +198,24 @@ function syncSharedKnowledge(
   forgeRoot: string,
   skillsDir: string,
   dryRun: boolean,
-): string[] {
+): { updated: string[]; knowledgeConflicts: string[] } {
   const updated: string[] = [];
+  const knowledgeConflicts: string[] = [];
   const srcPath = path.join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
-  if (!fs.existsSync(srcPath)) return updated;
+  if (!fs.existsSync(srcPath)) return { updated, knowledgeConflicts };
 
   const destDir = path.join(workspaceRoot, skillsDir, "shared-knowledge");
   const destPath = path.join(destDir, "learned-principles.md");
 
   if (!dryRun) {
     fs.mkdirSync(destDir, { recursive: true });
-    fs.writeFileSync(destPath, fs.readFileSync(srcPath, "utf8"), "utf8");
+    const syncResult = syncKnowledgeFile(srcPath, destPath);
+    for (const id of syncResult.conflicts) {
+      knowledgeConflicts.push(`shared-knowledge/learned-principles.md#${id}`);
+    }
   }
   updated.push("shared-knowledge");
-  return updated;
+  return { updated, knowledgeConflicts };
 }
 
 function syncPackSkills(
@@ -214,9 +223,10 @@ function syncPackSkills(
   config: ForgeConfig,
   skillsDir: string,
   dryRun: boolean,
-): { updated: string[]; skipped: SkippedSkill[] } {
+): { updated: string[]; skipped: SkippedSkill[]; knowledgeConflicts: string[] } {
   const updated: string[] = [];
   const skipped: SkippedSkill[] = [];
+  const knowledgeConflicts: string[] = [];
   const agentsSkillsDir = path.join(workspaceRoot, skillsDir);
   let packSkills: ReturnType<typeof discoverPackSkills> = [];
   try {
@@ -245,7 +255,7 @@ function syncPackSkills(
       const content = fs.readFileSync(srcPath, "utf8");
       fs.writeFileSync(destPath, content, "utf8");
 
-      // Sync knowledge files
+      // Sync knowledge files (append-only — never overwrite local entries)
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (fmMatch) {
         try {
@@ -258,7 +268,10 @@ function syncPackSkills(
               const kfSrcPath = path.join(skillSrcDir, kf);
               const kfDestPath = path.join(destDir, kf);
               if (fs.existsSync(kfSrcPath)) {
-                fs.writeFileSync(kfDestPath, fs.readFileSync(kfSrcPath, "utf8"), "utf8");
+                const syncResult = syncKnowledgeFile(kfSrcPath, kfDestPath);
+                for (const id of syncResult.conflicts) {
+                  knowledgeConflicts.push(`${skillName}/${kf}#${id}`);
+                }
               }
             }
           }
@@ -270,7 +283,7 @@ function syncPackSkills(
     updated.push(skillName);
   }
 
-  return { updated, skipped };
+  return { updated, skipped, knowledgeConflicts };
 }
 
 function addMissingBindingDefaults(
@@ -467,7 +480,7 @@ export async function runUpgrade(
   }
 
   // Step 3: Sync forge skills
-  const forgeSkillsUpdated = syncForgeSkills(
+  const forgeSkillsResult = syncForgeSkills(
     workspaceRoot,
     forgeRoot,
     config.paths.skillsDir,
@@ -483,14 +496,29 @@ export async function runUpgrade(
   );
 
   // Step 3c: Sync shared knowledge layer (RFC-0663)
-  const sharedKnowledgeUpdated = syncSharedKnowledge(
+  const sharedKnowledgeResult = syncSharedKnowledge(
     workspaceRoot,
     forgeRoot,
     config.paths.skillsDir,
     isDryRun,
   );
 
-  const skillsUpdated = [...forgeSkillsUpdated, ...packResult.updated, ...sharedKnowledgeUpdated];
+  const skillsUpdated = [
+    ...forgeSkillsResult.updated,
+    ...packResult.updated,
+    ...sharedKnowledgeResult.updated,
+  ];
+  const knowledgeConflicts = [
+    ...forgeSkillsResult.knowledgeConflicts,
+    ...packResult.knowledgeConflicts,
+    ...sharedKnowledgeResult.knowledgeConflicts,
+  ];
+  if (knowledgeConflicts.length > 0) {
+    context.logger.warn(
+      `forge.upgrade: ${knowledgeConflicts.length} knowledge entr${knowledgeConflicts.length === 1 ? "y" : "ies"} ` +
+        `diverge between package and project — local versions kept: ${knowledgeConflicts.join(", ")}`,
+    );
+  }
 
   // Step 3d: Scaffold memory layer (RFC-0664)
   const memoryScaffold = isDryRun ? { created: [], gitignoreUpdated: false, skipped: [] } : scaffoldMemoryLayer(workspaceRoot);
@@ -565,6 +593,9 @@ export async function runUpgrade(
       ? `[dry-run] forge.upgrade: would sync ${skillsUpdated.length} skill(s), add ${bindingsAdded.length} binding(s), update syncedVersion to ${toVersion}`
       : npmCheck.warning
         ? `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion} — ⚠ ${npmCheck.warning}`
-        : `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion}`,
+        : `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion}` +
+          (knowledgeConflicts.length > 0
+            ? ` — ${knowledgeConflicts.length} knowledge conflict(s), local kept`
+            : ""),
   };
 }

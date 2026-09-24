@@ -42,6 +42,7 @@ import { TERMINOLOGY_DEFAULTS } from "../profiles/profile-schema.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import { runProfileValidate } from "./profile-validate.ts";
 import { parseKnowledgeFile } from "../knowledge/index.ts";
+import { planKnowledgeSync } from "../knowledge/index.ts";
 import type { ParsedKnowledgeFile } from "../knowledge/index.ts";
 import { computeLayerBudgets, resolveKnowledgeBudgets, DEFAULT_KNOWLEDGE_BUDGETS } from "../knowledge/budgets.ts";
 import { detectDuplicatePrinciples } from "../knowledge/index.ts";
@@ -243,9 +244,10 @@ async function checkStaleKnowledgeFiles(
       const destExists = await pathExists(destPath);
 
       if (srcExists && destExists) {
-        const srcContent = await readFile(srcPath, "utf8").catch(() => "");
-        const destContent = await readFile(destPath, "utf8").catch(() => "");
-        if (srcContent !== destContent) {
+        // Append-only contract: local copies legitimately accumulate entries.
+        // Stale = source has entries the local copy lacks (sync would merge).
+        const plan = planKnowledgeSync(srcPath, destPath);
+        if (plan.action === "merged") {
           stale.push(`${skill.name}/${kf}`);
         }
       }
@@ -274,9 +276,8 @@ async function checkStaleKnowledgeFiles(
       const destExists = await pathExists(destPath);
 
       if (srcExists && destExists) {
-        const srcContent = await readFile(srcPath, "utf8").catch(() => "");
-        const destContent = await readFile(destPath, "utf8").catch(() => "");
-        if (srcContent !== destContent) {
+        const plan = planKnowledgeSync(srcPath, destPath);
+        if (plan.action === "merged") {
           stale.push(`${skill.name}/${kf}`);
         }
       }

@@ -24,6 +24,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
+import { syncKnowledgeFile } from "../knowledge/index.ts";
 import { defaultForgeConfig, loadForgeConfig, resolveForgeRoot, type ForgeConfig } from "../config/forge-config.ts";
 import { listStackProfiles, detectStack } from "../profiles/stack-profile.ts";
 
@@ -292,9 +293,11 @@ export function runInit(
             const kfSrcPath = path.join(skillSrcDir, kf);
             const kfDestPath = path.join(destDir, kf);
             if (fs.existsSync(kfSrcPath)) {
-              const kfContent = fs.readFileSync(kfSrcPath, "utf8");
-              fs.writeFileSync(kfDestPath, kfContent, "utf8");
-              created.push(`${config.paths.skillsDir}/${skillName}/${kf}`);
+              // Append-only sync — never overwrite local knowledge entries
+              const syncResult = syncKnowledgeFile(kfSrcPath, kfDestPath);
+              if (syncResult.action === "copied" || syncResult.action === "merged") {
+                created.push(`${config.paths.skillsDir}/${skillName}/${kf}`);
+              }
             } else {
               errors.push(`Knowledge file '${kf}' declared in ${skillName} but not found in source`);
             }
@@ -362,9 +365,11 @@ export function runInit(
             const kfSrcPath = path.join(skillSrcDir, kf);
             const kfDestPath = path.join(destDir, kf);
             if (fs.existsSync(kfSrcPath)) {
-              const kfContent = fs.readFileSync(kfSrcPath, "utf8");
-              fs.writeFileSync(kfDestPath, kfContent, "utf8");
-              created.push(`${config.paths.skillsDir}/${skillName}/${kf}`);
+              // Append-only sync — never overwrite local knowledge entries
+              const syncResult = syncKnowledgeFile(kfSrcPath, kfDestPath);
+              if (syncResult.action === "copied" || syncResult.action === "merged") {
+                created.push(`${config.paths.skillsDir}/${skillName}/${kf}`);
+              }
             } else {
               errors.push(`Knowledge file '${kf}' declared in ${skillName} but not found in source`);
             }
@@ -382,8 +387,10 @@ export function runInit(
     const sharedKnowledgeDestDir = path.join(agentsSkillsDir, "shared-knowledge");
     fs.mkdirSync(sharedKnowledgeDestDir, { recursive: true });
     const sharedKnowledgeDest = path.join(sharedKnowledgeDestDir, "learned-principles.md");
-    fs.writeFileSync(sharedKnowledgeDest, fs.readFileSync(sharedKnowledgeSrc, "utf8"), "utf8");
-    created.push(`${config.paths.skillsDir}/shared-knowledge/learned-principles.md`);
+    const syncResult = syncKnowledgeFile(sharedKnowledgeSrc, sharedKnowledgeDest);
+    if (syncResult.action === "copied" || syncResult.action === "merged") {
+      created.push(`${config.paths.skillsDir}/shared-knowledge/learned-principles.md`);
+    }
   }
 
   // 4. Create docs directories from config paths

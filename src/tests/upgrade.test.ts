@@ -431,3 +431,56 @@ test("forge.upgrade without --update-npm does not attempt npm install", async ()
   expect(result.data?.npmUpdated).toBe(false);
   expect(result.data?.npmUpdateSkipped).toBe(null);
 });
+
+function qaLog(entries: { id: string; title: string; body: string }[]): string {
+  const blocks = entries.map(
+    (e) =>
+      `### ${e.id}: ${e.title}\n\n\`\`\`knowledge-entry\nid: ${e.id}\nlayer: L0\ncreated: 2026-08-03\nstatus: active\n\`\`\`\n\n${e.body}\n`,
+  );
+  return `<!-- knowledge-layer: L0 -->\n\n# Q&A Log (L0)\n\n${blocks.join("\n")}`;
+}
+
+test("forge.upgrade preserves project-accumulated knowledge entries (append-only merge)", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  // Declare a knowledge file on the fixture skill
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "SKILL.md"),
+    "---\nname: fo-idea\nknowledge: [qa-log.md]\n---\n# fo-idea\n",
+    "utf8",
+  );
+  // Package ships K-0001 + new K-0003
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "qa-log.md"),
+    qaLog([
+      { id: "K-0001", title: "First", body: "Package body." },
+      { id: "K-0003", title: "Third", body: "New package entry." },
+    ]),
+    "utf8",
+  );
+  await setupConsumerForgeYaml(tempDir, null);
+
+  // Local copy already accumulated: edited K-0001 + project-only K-0002
+  await mkdir(join(tempDir, ".agents", "skills", "fo-idea"), { recursive: true });
+  await writeFile(
+    join(tempDir, ".agents", "skills", "fo-idea", "qa-log.md"),
+    qaLog([
+      { id: "K-0001", title: "First", body: "Locally edited body." },
+      { id: "K-0002", title: "Local record", body: "Project-accumulated entry." },
+    ]),
+    "utf8",
+  );
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  const merged = await readFile(join(tempDir, ".agents", "skills", "fo-idea", "qa-log.md"), "utf8");
+  // Local entries preserved — the data-loss bug would have wiped K-0002
+  expect(merged).toContain("K-0002");
+  expect(merged).toContain("Project-accumulated entry.");
+  // Local version of the conflicting entry wins
+  expect(merged).toContain("Locally edited body.");
+  expect(merged).not.toContain("Package body.");
+  // New package entry appended
+  expect(merged).toContain("K-0003");
+  expect(merged).toContain("New package entry.");
+});
