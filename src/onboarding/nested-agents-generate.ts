@@ -23,7 +23,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { writeFileIfChanged } from "../utils/index.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
@@ -31,6 +31,7 @@ import { buildNestedAgentsMd, selectNestedTemplate, type PackageInfo } from "./n
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 
 export interface NestedGenerateResult {
@@ -55,6 +56,7 @@ export async function generateNestedAgentsMd(
   config: ForgeConfig,
   dryRun: boolean,
   workspaceTypes?: ProfileWorkspaceType[],
+  io?: WorkspaceIO,
 ): Promise<NestedGenerateResult> {
   const workspaces = discoverWorkspaces(
     workspaceRoot,
@@ -90,7 +92,7 @@ export async function generateNestedAgentsMd(
       continue;
     }
 
-    await writeFileIfChanged(agentsMdPath, content);
+    await writeFileIfChanged(agentsMdPath, content, io);
     generated.push(relPath);
     workspaceTypeMap[relPath] = ws.type;
   }

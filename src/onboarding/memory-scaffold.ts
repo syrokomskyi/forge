@@ -12,7 +12,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { loadForgeConfig } from "../config/forge-config.ts";
 

@@ -14,7 +14,7 @@ Invoked standalone and by forge doctor --fix for the memory-layer check (RFC-115
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeRuntimeContext } from "../types.ts";
 import { resolveMemoryBudget } from "./memory-scaffold.ts";

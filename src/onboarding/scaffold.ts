@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { FORGE_SKILLS } from "../registry.ts";
 import { resolveForgeRoot } from "../config/forge-config.ts";

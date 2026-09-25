@@ -27,27 +27,27 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
-import { writeFileAtomic } from "./fs-atomic.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "./io.ts";
 
 // Forge-autonomy boundary (ADR-0019 / FORGE-AUTONOMY-01): `io` is optional and
-// TYPE-ONLY — forge's standalone CLI has no kernel context, so the ambient
-// readFile/writeFileAtomic path stays the default here. Kernel callers pass
-// context.io so the read-compare-write goes through the recording adapter.
+// TYPE-ONLY — forge's standalone CLI has no kernel context, so `resolveIo`
+// falls back to the ambient adapter. Kernel callers pass context.io so the
+// read-compare-write goes through the recording adapter.
 export async function writeFileIfChanged(
   filePath: string,
   content: string | Uint8Array,
   io?: WorkspaceIO,
 ): Promise<"written" | "unchanged"> {
+  const fio = resolveIo(io);
   try {
     if (typeof content === "string") {
-      const existing = io ? await io.readFile(filePath) : await readFile(filePath, "utf8");
+      const existing = await fio.readFile(filePath);
       if (existing === content) {
         return "unchanged";
       }
     } else {
-      const existing = io ? await io.readFileBytes(filePath) : await readFile(filePath);
+      const existing = await fio.readFileBytes(filePath);
       if (Buffer.compare(Buffer.from(existing), Buffer.from(content)) === 0) {
         return "unchanged";
       }
@@ -55,10 +55,6 @@ export async function writeFileIfChanged(
   } catch {
     // File does not exist — proceed to write.
   }
-  if (io) {
-    await io.writeFile(filePath, content);
-  } else {
-    await writeFileAtomic(filePath, content);
-  }
+  await fio.writeFile(filePath, content);
   return "written";
 }

@@ -16,7 +16,7 @@ the synced copy with the package version.</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { parseKnowledgeFile } from "./parse.ts";
 import { serializeKnowledgeFile } from "./serialize.ts";

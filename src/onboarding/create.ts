@@ -22,9 +22,9 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "../utils/sync-fs.ts";
 import { stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";
 import { runInit, type InitResult, type InitDomainFields } from "./init.ts";

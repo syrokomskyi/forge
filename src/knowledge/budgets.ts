@@ -13,7 +13,7 @@
 */
 
 import path from "node:path";
-import { readFileSync } from "node:fs";
+import { readFileSync } from "../utils/sync-fs.ts";
 import { parse as parseYaml } from "yaml";
 import type { ParsedKnowledgeFile, KnowledgeLayer } from "./schema.ts";
 

@@ -20,7 +20,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { StackProfile } from "../profiles/stack-profile.ts";

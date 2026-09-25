@@ -18,9 +18,9 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync } from "../utils/sync-fs.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
 import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
 import { resolveForgeRoot } from "../config/forge-config.ts";
