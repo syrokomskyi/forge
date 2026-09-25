@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import type {
   ForgeCommandInput,
@@ -110,7 +110,7 @@ export async function runExplorationArchive(
         related,
       };
       const updatedContent = serializeExplorationNote(updatedFrontmatter, result.parsed.body);
-      await fs.writeFile(filePath, updatedContent, "utf-8");
+      await fs.writeFile(filePath, updatedContent);
     }
     if (outputFormat === "pretty") {
       logger.info(`Exploration note ${slug} is already archived (no-op).`);
@@ -136,7 +136,7 @@ export async function runExplorationArchive(
   };
 
   const updatedContent = serializeExplorationNote(updatedFrontmatter, result.parsed.body);
-  await fs.writeFile(filePath, updatedContent, "utf-8");
+  await fs.writeFile(filePath, updatedContent);
 
   if (outputFormat === "pretty") {
     logger.success(`Archived exploration note: ${slug} (${previousStatus} → archived)`);

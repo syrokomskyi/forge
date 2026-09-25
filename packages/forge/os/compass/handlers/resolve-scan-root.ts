@@ -23,7 +23,7 @@ compass-migrate-handler hint used a consumer-specific run command — switched t
 </CHANGE_SUMMARY>
 */
 
-import { existsSync } from "node:fs";
+import { existsSync } from "../../../src/utils/sync-fs.ts";
 import { resolve } from "node:path";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
 

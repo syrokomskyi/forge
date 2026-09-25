@@ -10,8 +10,8 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { existsSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,7 +38,7 @@ export async function loadInvariantIds(
   const re = new RegExp(`^##\\s+${prefix}-(\\d+)\\b`, "gm");
   for (const rel of relPaths) {
     try {
-      const src = await fs.readFile(path.join(workspaceRoot, rel), "utf-8");
+      const src = await fs.readFile(path.join(workspaceRoot, rel));
       for (const m of src.matchAll(re)) ids.add(parseInt(m[1]!, 10));
     } catch {
       // Doc not present at this path — try the next candidate.

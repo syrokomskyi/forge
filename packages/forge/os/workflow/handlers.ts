@@ -12,7 +12,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 import type {
@@ -82,7 +82,7 @@ const PENDING_ACCEPTED_RFC_COMMANDS = new Set([
 
 async function pathExists(target: string): Promise<boolean> {
   try {
-    await fs.access(target);
+    await fs.exists(target).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
     return true;
   } catch {
     return false;
@@ -91,9 +91,9 @@ async function pathExists(target: string): Promise<boolean> {
 
 async function readWorkflowFiles(workspaceRoot: string, dir: string) {
   const directory = path.join(workspaceRoot, dir);
-  const entries = await fs.readdir(directory, { withFileTypes: true }).catch(() => []);
+  const entries = await fs.readdir(directory).catch(() => []);
   return entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".md") && entry.name !== "README.md")
+    .filter((entry) => entry.isFile && entry.name.endsWith(".md") && entry.name !== "README.md")
     .map((entry) => path.join(directory, entry.name))
     .sort();
 }
@@ -160,7 +160,7 @@ async function loadWorkflows(workspaceRoot: string, chain: WorkflowChain = "gree
   for (const file of files) {
     const relativeFile = path.relative(workspaceRoot, file).replace(/\\/g, "/");
     try {
-      const source = await fs.readFile(file, "utf8");
+      const source = await fs.readFile(file);
       workflows.push({
         relativeFile,
         chain,

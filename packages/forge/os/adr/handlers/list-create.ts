@@ -14,8 +14,8 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { existsSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
@@ -152,7 +152,7 @@ export async function runAdrCreate(
   const templatePath = resolveAdrTemplate(workspaceRoot);
   let templateContent: string;
   try {
-    templateContent = await fs.readFile(templatePath, "utf-8");
+    templateContent = await fs.readFile(templatePath);
   } catch {
     throw new Error(
       `ADR template not found at ${templatePath}. Ensure docs/adrs/ contains the template.`,
@@ -190,13 +190,13 @@ export async function runAdrCreate(
   }
 
   try {
-    await fs.mkdir(adrDirPath, { recursive: true });
+    await fs.mkdir(adrDirPath);
   } catch {
     // ignore
   }
 
   const targetPath = path.join(adrDirPath, fileName);
-  await fs.writeFile(targetPath, content, "utf-8");
+  await fs.writeFile(targetPath, content);
 
   const relativeFile = path.join(ADR_DIR, fileName);
 

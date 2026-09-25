@@ -13,7 +13,7 @@ their YAML frontmatter without validating the shape.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 import { EXPLORATION_DIR } from "./types.ts";
@@ -38,9 +38,9 @@ export async function listExplorationFiles(explorationsDirPath: string): Promise
   const results: string[] = [];
 
   try {
-    const entries = await fs.readdir(explorationsDirPath, { withFileTypes: true });
+    const entries = await fs.readdir(explorationsDirPath);
     for (const entry of entries) {
-      if (entry.isFile() && entry.name.endsWith(".md") && entry.name !== "README.md") {
+      if (entry.isFile && entry.name.endsWith(".md") && entry.name !== "README.md") {
         results.push(entry.name);
       }
     }
@@ -57,7 +57,7 @@ export async function readAndParseExplorationNote(
 ): Promise<{ fileName: string; parsed: ParsedExplorationNote } | undefined> {
   try {
     const filePath = path.join(explorationsDirPath, fileName);
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await fs.readFile(filePath);
     return { fileName, parsed: parseExplorationFile(content) };
   } catch {
     return undefined;

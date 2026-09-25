@@ -16,7 +16,7 @@ Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, r
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 
@@ -60,7 +60,7 @@ export async function loadQueueManifest(
 
   let source: string;
   try {
-    source = await fs.readFile(absolutePath, "utf-8");
+    source = await fs.readFile(absolutePath);
   } catch (e) {
     errors.push(
       diag(

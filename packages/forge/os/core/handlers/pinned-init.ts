@@ -13,7 +13,8 @@ generates CI workflow. Idempotent: re-running merges defaults with existing entr
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { chmodSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { stringify as stringifyYaml } from "yaml";
 import type {
@@ -184,12 +185,12 @@ async function installPreCommitHook(
 
   let existingContent: string;
   try {
-    existingContent = await fs.readFile(hookPath, "utf8");
+    existingContent = await fs.readFile(hookPath);
   } catch {
     // No existing hook — create new
-    await fs.mkdir(path.dirname(hookPath), { recursive: true });
+    await fs.mkdir(path.dirname(hookPath));
     await writeFileIfChanged(hookPath, PRE_COMMIT_HOOK_SCRIPT);
-    await fs.chmod(hookPath, 0o755);
+    chmodSync(hookPath, 0o755);
     return "created";
   }
 
@@ -201,7 +202,7 @@ async function installPreCommitHook(
   // Append forge hook to existing hook
   const mergedContent = existingContent + "\n" + PRE_COMMIT_HOOK_SCRIPT;
   await writeFileIfChanged(hookPath, mergedContent);
-  await fs.chmod(hookPath, 0o755);
+  chmodSync(hookPath, 0o755);
   return "updated";
 }
 
@@ -214,7 +215,7 @@ async function addToGitignore(repoRoot: string): Promise<"created" | "updated" |
 
   let existingContent: string;
   try {
-    existingContent = await fs.readFile(gitignorePath, "utf8");
+    existingContent = await fs.readFile(gitignorePath);
   } catch {
     // No .gitignore — create new
     await writeFileIfChanged(gitignorePath, entry + "\n");
@@ -238,7 +239,7 @@ async function addToGitignore(repoRoot: string): Promise<"created" | "updated" |
  */
 async function generateCiWorkflow(repoRoot: string): Promise<"created" | "unchanged"> {
   const workflowPath = path.join(repoRoot, ".github", "workflows", "pinned-check.yml");
-  await fs.mkdir(path.dirname(workflowPath), { recursive: true });
+  await fs.mkdir(path.dirname(workflowPath));
   await writeFileIfChanged(workflowPath, CI_WORKFLOW_TEMPLATE);
   return "created";
 }
@@ -283,7 +284,7 @@ export async function runPinnedInit(
 
   // Write manifest
   const manifestFullPath = path.join(workspaceRoot, PINNED_MANIFEST_PATH);
-  await fs.mkdir(path.dirname(manifestFullPath), { recursive: true });
+  await fs.mkdir(path.dirname(manifestFullPath));
   const manifestContent = stringifyYaml(merged);
   await writeFileIfChanged(manifestFullPath, manifestContent);
 

@@ -27,6 +27,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import path from "node:path";
+import { execSync } from "../../src/utils/sync-fs.ts";
 import {
   FORGE_SKILLS,
   discoverPackSkills,
@@ -942,7 +943,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           // so the caller (or the next commit) includes it.
           if (!dryRun && totalMoved > 0) {
             try {
-              const { execSync } = await import("node:child_process");
               const lockfileStatus = execSync("git status --porcelain pnpm-lock.yaml", {
                 cwd: context.workspaceRoot,
                 encoding: "utf-8",

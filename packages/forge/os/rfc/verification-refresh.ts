@@ -17,8 +17,10 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+
 import { join } from "node:path";
+import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { performance } from "node:perf_hooks";
 import { parse as yamlParse } from "yaml";
 
@@ -52,6 +54,7 @@ export async function runRfcVerificationRefresh(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcVerificationRefreshResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;
@@ -103,7 +106,7 @@ export async function runRfcVerificationRefresh(
 
     let existingEnvelope: VerificationEvidence | null = null;
     try {
-      const raw = await readFile(evidenceAbsPath, "utf-8");
+      const raw = await io.readFile(evidenceAbsPath);
       const parsed = yamlParse(raw) as VerificationEvidence;
       if (parsed && typeof parsed === "object" && parsed.rfcId) {
         existingEnvelope = parsed;
@@ -126,7 +129,7 @@ export async function runRfcVerificationRefresh(
     const probes = acceptance as AcceptanceProbe[];
     const probeRecords: VerificationEvidenceProbeRecord[] = [];
     const rfcFilePath = join(rfcDirPath, fileName);
-    const rfcMarkdown = await readFile(rfcFilePath, "utf-8");
+    const rfcMarkdown = await io.readFile(rfcFilePath);
     const now = new Date().toISOString();
 
     for (const probe of probes) {

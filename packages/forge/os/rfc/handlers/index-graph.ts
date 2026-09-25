@@ -16,7 +16,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
@@ -78,7 +78,7 @@ export async function runRfcIndexGenerate(
       count: entries.length,
       entries,
     };
-    await fs.writeFile(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`, "utf-8");
+    await fs.writeFile(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`);
     written = outRel;
   }
 
@@ -166,7 +166,7 @@ export async function runRfcIndexValidate(
   // RFC-IDX-01: missing index file
   let indexContent: string;
   try {
-    indexContent = await fs.readFile(indexPath, "utf-8");
+    indexContent = await fs.readFile(indexPath);
   } catch {
     violations.push({
       rule: "RFC-IDX-01",

@@ -20,7 +20,8 @@
 */
 
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
@@ -49,6 +50,7 @@ export async function runCompassSummaryTrim(
     files: Array<{ path: string; removed: string[]; kept: number }>;
   }>
 > {
+  const io = resolveIo(context.io);
   const mode = input.flags["mode"];
   if (mode !== undefined && mode !== "repair") {
     context.logger.error(
@@ -83,7 +85,7 @@ export async function runCompassSummaryTrim(
     }
 
     const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = await readFile(absPath, "utf8");
+    const source = await io.readFile(absPath);
     const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
     if (!blockMatch) continue;
 

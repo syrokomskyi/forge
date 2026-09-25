@@ -16,7 +16,9 @@ helper module (RFC-0362 §6).</purpose>
 */
 
 import { basename, join, relative } from "node:path";
-import { readFile } from "node:fs/promises";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 import { collectFiles } from "../../../src/utils/fs.ts";
 import type {
   ForgeCommandInput,
@@ -43,6 +45,7 @@ export async function runWerkstattOperationValidate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<WerkstattOperationValidateData>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger } = context;
   const scanPath = join(workspaceRoot, SCAN_DIR);
   const allowlistPath = join(workspaceRoot, ALLOWLIST_DIR);
@@ -67,7 +70,7 @@ export async function runWerkstattOperationValidate(
 
     let content: string;
     try {
-      content = await readFile(filePath, "utf8");
+      content = await io.readFile(filePath);
     } catch {
       continue;
     }

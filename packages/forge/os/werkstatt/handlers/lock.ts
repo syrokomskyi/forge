@@ -13,8 +13,8 @@ heartbeat, status, and stale-lock removal.</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { existsSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { werkstattLockSchema, type WerkstattLock } from "./schema.ts";
 
@@ -57,11 +57,11 @@ export async function acquireLock(
   const locksDir = resolveLocksDir(workspaceRoot);
 
   if (!existsSync(locksDir)) {
-    await fs.mkdir(locksDir, { recursive: true });
+    await fs.mkdir(locksDir);
   }
 
   if (existsSync(lockPath)) {
-    const raw = await fs.readFile(lockPath, "utf8");
+    const raw = await fs.readFile(lockPath);
     try {
       const existing = werkstattLockSchema.parse(JSON.parse(raw));
       if (existing.pid === process.pid && !isLockStale(existing)) {
@@ -71,7 +71,7 @@ export async function acquireLock(
           heartbeatAt: new Date().toISOString(),
         };
         werkstattLockSchema.parse(updated);
-        await fs.writeFile(lockPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
+        await fs.writeFile(lockPath, JSON.stringify(updated, null, 2) + "\n");
         return updated;
       }
       if (!isLockStale(existing)) {
@@ -98,7 +98,7 @@ export async function acquireLock(
   };
 
   werkstattLockSchema.parse(lock);
-  await fs.writeFile(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf8");
+  await fs.writeFile(lockPath, JSON.stringify(lock, null, 2) + "\n");
   return lock;
 }
 
@@ -106,19 +106,19 @@ export async function releaseLock(workspaceRoot: string, scope: string): Promise
   const lockPath = resolveLockPath(workspaceRoot, scope);
   if (!existsSync(lockPath)) return;
   try {
-    const raw = await fs.readFile(lockPath, "utf8");
+    const raw = await fs.readFile(lockPath);
     const lock = werkstattLockSchema.parse(JSON.parse(raw));
     if (lock.pid === process.pid && (lock.depth ?? 1) > 1) {
       const decremented = { ...lock, depth: (lock.depth ?? 1) - 1 };
       werkstattLockSchema.parse(decremented);
-      await fs.writeFile(lockPath, JSON.stringify(decremented, null, 2) + "\n", "utf8");
+      await fs.writeFile(lockPath, JSON.stringify(decremented, null, 2) + "\n");
       return;
     }
-    await fs.unlink(lockPath);
+    await fs.rm(lockPath);
   } catch {
     // corrupt or missing — try direct delete
     try {
-      await fs.unlink(lockPath);
+      await fs.rm(lockPath);
     } catch {
       /* already gone */
     }
@@ -128,10 +128,10 @@ export async function releaseLock(workspaceRoot: string, scope: string): Promise
 export async function heartbeatLock(workspaceRoot: string, scope: string): Promise<void> {
   const lockPath = resolveLockPath(workspaceRoot, scope);
   if (!existsSync(lockPath)) return;
-  const raw = await fs.readFile(lockPath, "utf8");
+  const raw = await fs.readFile(lockPath);
   const lock = werkstattLockSchema.parse(JSON.parse(raw));
   lock.heartbeatAt = new Date().toISOString();
-  await fs.writeFile(lockPath, JSON.stringify(lock, null, 2) + "\n", "utf8");
+  await fs.writeFile(lockPath, JSON.stringify(lock, null, 2) + "\n");
 }
 
 export async function readAllLocks(
@@ -140,12 +140,12 @@ export async function readAllLocks(
   const locksDir = resolveLocksDir(workspaceRoot);
   if (!existsSync(locksDir)) return [];
 
-  const files = await fs.readdir(locksDir);
+  const files = (await fs.readdir(locksDir)).map((e) => e.name);
   const locks: Array<WerkstattLock & { stale: boolean }> = [];
 
   for (const file of files) {
     if (!file.endsWith(".lock.json")) continue;
-    const raw = await fs.readFile(path.join(locksDir, file), "utf8");
+    const raw = await fs.readFile(path.join(locksDir, file));
     try {
       const lock = werkstattLockSchema.parse(JSON.parse(raw));
       locks.push({ ...lock, stale: isLockStale(lock) });
@@ -160,9 +160,9 @@ export async function readAllLocks(
 export async function removeStaleLock(workspaceRoot: string, scope: string): Promise<boolean> {
   const lockPath = resolveLockPath(workspaceRoot, scope);
   if (!existsSync(lockPath)) return false;
-  const raw = await fs.readFile(lockPath, "utf8");
+  const raw = await fs.readFile(lockPath);
   const lock = werkstattLockSchema.parse(JSON.parse(raw));
   if (!isLockStale(lock)) return false;
-  await fs.unlink(lockPath);
+  await fs.rm(lockPath);
   return true;
 }

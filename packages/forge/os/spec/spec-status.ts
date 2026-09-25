@@ -10,8 +10,8 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../src/utils/io.ts";
+import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { loadForgeConfig } from "../../src/config/forge-config.ts";
@@ -70,7 +70,7 @@ interface SpecStatusResult {
 
 async function readYaml<T>(filePath: string): Promise<T | null> {
   try {
-    const content = await fs.readFile(filePath, "utf8");
+    const content = await fs.readFile(filePath);
     return parseYaml(content) as T;
   } catch {
     return null;
@@ -79,8 +79,8 @@ async function readYaml<T>(filePath: string): Promise<T | null> {
 
 async function listSpecDirs(specsDir: string): Promise<string[]> {
   if (!existsSync(specsDir)) return [];
-  const entries = await fs.readdir(specsDir, { withFileTypes: true });
-  return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+  const entries = await fs.readdir(specsDir);
+  return entries.filter((e) => e.isDirectory).map((e) => e.name);
 }
 
 async function loadRfcStatuses(
@@ -88,11 +88,11 @@ async function loadRfcStatuses(
 ): Promise<Map<string, string>> {
   const statuses = new Map<string, string>();
   if (!existsSync(rfcDir)) return statuses;
-  const files = await fs.readdir(rfcDir);
+  const files = (await fs.readdir(rfcDir)).map((e) => e.name);
   for (const file of files) {
     if (!file.endsWith(".md") || file.startsWith("rfc-0000")) continue;
     try {
-      const content = await fs.readFile(path.join(rfcDir, file), "utf8");
+      const content = await fs.readFile(path.join(rfcDir, file));
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
       if (!fmMatch) continue;
       const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
@@ -110,13 +110,13 @@ async function loadAmendments(specDir: string): Promise<SpecAmendment[]> {
   const amendmentsDir = path.join(specDir, "amendments");
   if (!existsSync(amendmentsDir)) return [];
 
-  const entries = await fs.readdir(amendmentsDir);
+  const entries = (await fs.readdir(amendmentsDir)).map((e) => e.name);
   const amendments: SpecAmendment[] = [];
 
   for (const entry of entries) {
     if (!entry.endsWith(".md")) continue;
     try {
-      const content = await fs.readFile(path.join(amendmentsDir, entry), "utf8");
+      const content = await fs.readFile(path.join(amendmentsDir, entry));
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
       if (!fmMatch) continue;
       const raw = parseYaml(fmMatch[1]) as unknown;

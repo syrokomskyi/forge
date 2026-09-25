@@ -22,7 +22,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import YAML from "yaml";
@@ -182,7 +182,7 @@ export async function runSessionSave(
       ? rawFileFlag
       : path.join(workspaceRoot, rawFileFlag);
     try {
-      await fs.access(resolvedPath);
+      await fs.exists(resolvedPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
     } catch {
       throw new Error(`Raw file not found: ${rawFileFlag}`);
     }
@@ -193,8 +193,8 @@ export async function runSessionSave(
     ];
   } else {
     try {
-      const entries = await fs.readdir(rawDirPath, { withFileTypes: true });
-      rawFiles = entries.filter((e) => e.isFile()).map((e) => e.name);
+      const entries = await fs.readdir(rawDirPath);
+      rawFiles = entries.filter((e) => e.isFile).map((e) => e.name);
     } catch {
       rawFiles = [];
     }
@@ -234,7 +234,7 @@ export async function runSessionSave(
     const rawFilePath = path.join(rawDirPath, rawFileName);
     let rawContent: string;
     try {
-      rawContent = await fs.readFile(rawFilePath, "utf-8");
+      rawContent = await fs.readFile(rawFilePath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         skipped.push({ rawFile: rawFileName, reason: "already processed by another process" });
@@ -267,7 +267,7 @@ export async function runSessionSave(
     const outputRel = path.join(SESSION_DIR, outputFileName);
 
     try {
-      await fs.access(outputPath);
+      await fs.exists(outputPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
       skipped.push({ rawFile: rawFileName, reason: "already converted" });
       if (outputFormat === "pretty") {
         logger.info(`Skipped ${rawFileName}: already converted to ${outputRel}`);
@@ -298,8 +298,8 @@ export async function runSessionSave(
 
     let metricsPath: string | undefined;
     if (!dryRun) {
-      await fs.mkdir(sessionDirPath, { recursive: true });
-      await fs.writeFile(outputPath, markdown, "utf-8");
+      await fs.mkdir(sessionDirPath);
+      await fs.writeFile(outputPath, markdown);
 
       // ── RFC-1053: Generate session metrics from ATIF messages (non-fatal) ──
       try {

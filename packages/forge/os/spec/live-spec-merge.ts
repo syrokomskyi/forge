@@ -14,8 +14,8 @@ headings, and writes atomically (RFC-0711).</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../src/utils/io.ts";
+import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import YAML from "yaml";
 import type {
@@ -223,7 +223,7 @@ export async function runSpecLiveMerge(
     };
   }
 
-  const rfcContent = await fs.readFile(path.join(rfcDir, rfcFile), "utf-8");
+  const rfcContent = await fs.readFile(path.join(rfcDir, rfcFile));
   const parsed = parseRfcFile(rfcContent);
   const fm = parsed.frontmatter;
 
@@ -282,7 +282,7 @@ export async function runSpecLiveMerge(
 
   let existingSpec: LivingSpec | null = null;
   if (existsSync(specFilePath)) {
-    const specContent = await fs.readFile(specFilePath, "utf-8");
+    const specContent = await fs.readFile(specFilePath);
     existingSpec = parseLivingSpec(specContent);
   }
 
@@ -311,7 +311,7 @@ export async function runSpecLiveMerge(
     };
 
     if (!dryRun) {
-      await fs.mkdir(liveSpecsDir, { recursive: true });
+      await fs.mkdir(liveSpecsDir);
       await writeFileIfChanged(specFilePath, serializeLivingSpec(newSpec));
     }
 

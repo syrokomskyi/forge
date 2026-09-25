@@ -32,13 +32,18 @@ compass-migrate-handler hint used a consumer-specific run command — switched t
 </CHANGE_SUMMARY>
 */
 
-import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { existsSync } from "../../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+
 import { resolve, relative } from "node:path";
 import { detectRiskClass, getWorkspaceRelativeSegments } from "./compass-inventory.ts";
 import { parseGovernanceIdParts, resolveCompassPolicy, type CompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -185,7 +190,7 @@ export async function recordSummaryItem(
   dryRun: boolean,
   policy: CompassPolicy,
 ): Promise<RecordOutcome> {
-  const source = await readFile(absPath, "utf8");
+  const source = await io.readFile(absPath);
   const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
   // Header-region guard: a CHANGE_SUMMARY is a header only when it sits at the
   // top of the file. Blocks deeper in the source are examples inside template
@@ -243,6 +248,7 @@ export async function runCompassSummaryRecord(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<SummaryRecordResult>> {
+  const io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context);
   const baseRoot = scanRoot ?? context.workspaceRoot;
   const policy = resolveCompassPolicy(baseRoot, context.forgeRoot);
@@ -291,7 +297,7 @@ export async function runCompassSummaryRecord(
       if (outcome.recorded) {
         result.recorded.push(relPath);
         if (outcome.collapsed) result.collapsed.push(relPath);
-        const source = await readFile(absPath, "utf8");
+        const source = await io.readFile(absPath);
         if (riskReminderNeeded(relPath, source, policy)) {
           result.keyDecisionsReminders.push(relPath);
           context.logger.warn(`[compass.summary.record] review KEY_DECISIONS in ${relPath}`);

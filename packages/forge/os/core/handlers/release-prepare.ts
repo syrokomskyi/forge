@@ -14,8 +14,10 @@
 </CHANGE_SUMMARY>
 */
 
-import { readFile, copyFile, mkdir, stat } from "node:fs/promises";
+
 import { join, basename } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { createHash } from "node:crypto";
 import type {
   ForgeCommandInput,
@@ -26,6 +28,10 @@ import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.t
 import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type { ProfileRelease } from "../../../src/profiles/profile-schema.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 export interface ReleaseManifest {
   schemaVersion: string;
@@ -58,7 +64,7 @@ function generateReleaseId(profileId: string, shortHash: string): string {
 
 async function readVersionFromPackageJson(workspaceRoot: string): Promise<string> {
   try {
-    const raw = await readFile(join(workspaceRoot, "package.json"), "utf8");
+    const raw = await io.readFile(join(workspaceRoot, "package.json"));
     const pkg = JSON.parse(raw) as { version?: string };
     return pkg.version ?? "0.0.0";
   } catch {
@@ -79,7 +85,7 @@ async function findBuiltArtifacts(
     if (!isGlob) {
       const fullPath = join(workspaceRoot, produceOutput);
       try {
-        const _s = await stat(fullPath);
+        const _s = await io.stat(fullPath);
         return [fullPath];
       } catch {
         return [];
@@ -110,6 +116,7 @@ export async function runReleasePrepare(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeReleasePrepareResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
 
@@ -212,7 +219,7 @@ export async function runReleasePrepare(
       if (!dryRun) {
         const { byteHashFile } = await loadWorkspaceDeps();
         hash = await byteHashFile(builtFile);
-        const stats = await stat(builtFile);
+        const stats = await io.stat(builtFile);
         size = stats.size;
         allHashes += hash;
       }
@@ -268,12 +275,12 @@ export async function runReleasePrepare(
     };
   }
 
-  await mkdir(releaseDir, { recursive: true });
+  await io.mkdir(releaseDir);
 
   for (const a of manifestArtifacts) {
     const srcPath = join(workspaceRoot, a.path);
     const dstPath = join(releaseDir, basename(a.path));
-    await copyFile(srcPath, dstPath);
+    await io.copyFile(srcPath, dstPath);
   }
 
   const manifestPath = join(releaseDir, releaseConfig.manifestName);

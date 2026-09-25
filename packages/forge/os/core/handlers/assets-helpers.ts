@@ -11,10 +11,16 @@
 </CHANGE_SUMMARY>
 */
 
-import { readFile, stat } from "node:fs/promises";
+
 import { join, relative, extname } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
 import type { ProfileAsset, ProfileAssetType } from "../../../src/profiles/profile-schema.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 export interface AssetEntry {
   path: string;
@@ -63,7 +69,7 @@ export async function scanAssets(
     let hash = "";
 
     if (!options.dryRun) {
-      const stats = await stat(absPath);
+      const stats = await io.stat(absPath);
       size = stats.size;
       hash = await byteHashFile(absPath);
     }
@@ -103,7 +109,7 @@ export async function extractReferences(
   for (const absPath of allFiles) {
     const relPath = relative(workspaceRoot, absPath);
     try {
-      const content = await readFile(absPath, "utf8");
+      const content = await io.readFile(absPath);
 
       for (const assetType of assetsConfig.types) {
         if (!assetType.referencePattern) continue;

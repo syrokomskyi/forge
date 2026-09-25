@@ -13,7 +13,7 @@ Raw tokens are never persisted to disk.</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { createHash, randomBytes } from "node:crypto";
 import { programPacketLeaseSchema, type ProgramPacketLease } from "./schemas.ts";

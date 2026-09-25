@@ -17,8 +17,10 @@ and atomically mutates ADR frontmatter.
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "node:child_process";
-import { readFile, unlink, mkdir } from "node:fs/promises";
+import { execFile, writeFileSync } from "../../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 import { join, dirname } from "node:path";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
@@ -27,6 +29,10 @@ import { listAdrFiles, readAndParseAdr, adrFileMatchesId } from "../frontmatter-
 import { evaluateAcceptanceCriteria } from "../../rfc/handlers/validate-rules.ts";
 import { ADR_DIR, ADR_ACCEPTANCE_CRITERIA_CUTOFF } from "../types.ts";
 import type { AdrStatus, AdrImplementStampViolation, AdrImplementStampResult } from "../types.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -98,15 +104,14 @@ async function acquireAdrLock(
 ): Promise<{ acquired: boolean; lockPath: string }> {
   const lockPath = lockFilePath(workspaceRoot, adrId);
   const lockDir = dirname(lockPath);
-  await mkdir(lockDir, { recursive: true });
+  await io.mkdir(lockDir);
 
-  const { open } = await import("node:fs/promises");
   try {
-    const handle = await open(lockPath, "wx");
-    await handle.writeFile(
+    writeFileSync(
+      lockPath,
       JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
+      { flag: "wx" },
     );
-    await handle.close();
     return { acquired: true, lockPath };
   } catch {
     return { acquired: false, lockPath };
@@ -115,7 +120,7 @@ async function acquireAdrLock(
 
 async function releaseAdrLock(lockPath: string): Promise<void> {
   try {
-    await unlink(lockPath);
+    await io.rm(lockPath);
   } catch {
     // Lock file already removed — safe
   }
@@ -157,6 +162,7 @@ export async function runAdrImplementStamp(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<AdrImplementStampResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
   const adrDirPath = join(workspaceRoot, ADR_DIR);
 
@@ -276,7 +282,7 @@ export async function runAdrImplementStamp(
   try {
     // ── Atomic mutation ──────────────────────────────────────────────────────
     const adrFilePath = join(adrDirPath, targetFile);
-    const adrSource = await readFile(adrFilePath, "utf-8");
+    const adrSource = await io.readFile(adrFilePath);
 
     const today = toIsoDate(new Date());
     const stampedAt = new Date().toISOString();

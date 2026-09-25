@@ -14,7 +14,7 @@ to sealed, and records the seal in the program manifest (RFC-0856).</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {

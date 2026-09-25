@@ -11,8 +11,8 @@ with rules V-LS-01..05 (RFC-0711).</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../src/utils/io.ts";
+import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import YAML from "yaml";
 import type {
@@ -75,13 +75,13 @@ export async function runSpecLiveValidate(
     };
   }
 
-  const files = await fs.readdir(liveSpecsDir);
+  const files = (await fs.readdir(liveSpecsDir)).map((e) => e.name);
   const specFiles = files.filter((f) => f.endsWith(".md") && f !== "README.md");
 
   for (const file of specFiles) {
     specsChecked++;
     const filePath = path.join(liveSpecsDir, file);
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await fs.readFile(filePath);
     const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!match) {
       violations.push({ rule: "V-LS-01", message: `${file}: no valid frontmatter block`, domain: file });

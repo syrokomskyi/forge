@@ -16,7 +16,7 @@ younger than threshold are moved back to docs/sessions/.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import {
   listSessionFiles,
@@ -131,7 +131,7 @@ export async function runSessionArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -139,7 +139,7 @@ export async function runSessionArchive(
       }
 
       if (!dryRun) {
-        await fs.mkdir(archiveDirPath, { recursive: true });
+        await fs.mkdir(archiveDirPath);
         try {
           await fs.rename(path.join(sessionDirPath, fileName), targetPath);
         } catch (err) {
@@ -217,7 +217,7 @@ export async function runSessionArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id, file: archRelFile, reason: "destination exists" });
         continue;
       } catch {

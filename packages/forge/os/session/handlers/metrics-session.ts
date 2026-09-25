@@ -17,8 +17,10 @@ docs/metrics/sessions/<session-id>.metrics.yaml via writeFileAtomic.
 </CHANGE_SUMMARY>
 */
 
-import { readdir, mkdir } from "node:fs/promises";
+
 import { join, dirname } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { stringify as yamlStringify } from "yaml";
@@ -31,6 +33,10 @@ import {
   type InsightSummary,
 } from "../types.ts";
 import type { AtifMessage } from "../atif-parser.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 // ─── Skill name extraction ───────────────────────────────────────────────────
 
@@ -116,7 +122,7 @@ async function extractDocumentRefs(
 
   let existingMetricsFiles: string[] = [];
   try {
-    existingMetricsFiles = await readdir(metricsRfcDir);
+    existingMetricsFiles = (await io.readdir(metricsRfcDir)).map((e) => e.name);
   } catch {
     // No metrics directory yet
   }
@@ -203,7 +209,7 @@ export async function generateSessionMetrics(
 
   const yamlContent = yamlStringify(metrics, { lineWidth: 120 });
   const metricsFilePath = join(workspaceRoot, METRICS_DIR, "sessions", `${sessionId}.metrics.yaml`);
-  await mkdir(dirname(metricsFilePath), { recursive: true });
+  await io.mkdir(dirname(metricsFilePath));
   await writeFileAtomic(metricsFilePath, yamlContent);
 
   return `${METRICS_DIR}/sessions/${sessionId}.metrics.yaml`;

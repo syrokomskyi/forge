@@ -21,7 +21,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { PinnedEntry, PinnedManifest, PinnedMode, PinnedViolation } from "./pinned-types.ts";
@@ -55,7 +55,7 @@ export async function loadPinnedManifest(repoRoot: string): Promise<PinnedManife
 
   let content: string;
   try {
-    content = await fs.readFile(manifestPath, "utf8");
+    content = await fs.readFile(manifestPath);
   } catch {
     return null;
   }

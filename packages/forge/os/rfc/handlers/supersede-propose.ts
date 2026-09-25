@@ -20,8 +20,10 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+
 import { join, basename } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
@@ -37,12 +39,16 @@ import type {
 } from "../../../src/types.ts";
 import { toIsoDate } from "./shared.ts";
 
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
+
 const DNA_REGISTRY_PATH = "docs/architecture-dna.md";
 const DNA_HEADING_RE = /^##\s+DNA-(\d+)\b/gm;
 
 async function validateDnaIds(workspaceRoot: string, ids: string[]): Promise<string[]> {
   const errors: string[] = [];
-  const registrySrc = await readFile(join(workspaceRoot, DNA_REGISTRY_PATH), "utf-8");
+  const registrySrc = await io.readFile(join(workspaceRoot, DNA_REGISTRY_PATH));
   const knownDna = new Set<string>();
   for (const m of registrySrc.matchAll(DNA_HEADING_RE)) {
     knownDna.add(`DNA-${m[1]}`);
@@ -68,6 +74,7 @@ export async function runRfcSupersedePropose(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcSupersedeProposeResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
 
@@ -147,7 +154,7 @@ export async function runRfcSupersedePropose(
   const templatePath = resolveRfcTemplate(workspaceRoot);
   let templateContent: string;
   try {
-    templateContent = await readFile(templatePath, "utf-8");
+    templateContent = await io.readFile(templatePath);
   } catch {
     throw new Error(`RFC template not found at ${templatePath}.`);
   }

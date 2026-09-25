@@ -24,8 +24,14 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import { readdir, readFile } from "node:fs/promises";
+
 import { join, relative } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -51,19 +57,19 @@ async function scanDirectoryForImports(
 ): Promise<{ violations: { file: string; specifier: string }[]; scannedFiles: number }> {
   let scannedFiles = 0;
   const violations: { file: string; specifier: string }[] = [];
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const entries = await io.readdir(dir).catch(() => []);
 
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
 
-    if (entry.isDirectory()) {
+    if (entry.isDirectory) {
       if (EXCLUDE_DIRS.has(entry.name)) continue;
       const subResult = await scanDirectoryForImports(fullPath, workspaceRoot, specifierFilter);
       scannedFiles += subResult.scannedFiles;
       violations.push(...subResult.violations);
     } else if (entry.name.endsWith(".ts") && !shouldExcludeFile(entry.name)) {
       scannedFiles++;
-      const content = await readFile(fullPath, "utf8").catch(() => "");
+      const content = await io.readFile(fullPath).catch(() => "");
       let match: RegExpExecArray | null;
       const pattern = new RegExp(IMPORT_PATTERN.source, "g");
       while ((match = pattern.exec(content)) !== null) {
@@ -110,6 +116,7 @@ export async function runForgeAutonomyValidate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeAutonomyValidateResult>> {
+  const io = resolveIo(context.io);
   const workspaceRoot = context.workspaceRoot;
   const forgeOsDir = join(workspaceRoot, "packages", "forge", "os");
 
@@ -124,7 +131,7 @@ export async function runForgeAutonomyValidate(
     if (v.file.startsWith(ADAPTER_DIR_PREFIX)) continue;
 
     const fullPath = join(workspaceRoot, v.file);
-    const content = await readFile(fullPath, "utf8").catch(() => "");
+    const content = await io.readFile(fullPath).catch(() => "");
     if (!isTypeOnlyImport(content, v.specifier)) {
       violations.push({
         ruleId: "FORGE-AUTONOMY-01",

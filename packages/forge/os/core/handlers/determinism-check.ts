@@ -11,10 +11,12 @@
 </CHANGE_SUMMARY>
 */
 
-import { exec } from "node:child_process";
+import { exec } from "../../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { promisify } from "node:util";
-import { readFile, writeFile, mkdir } from "node:fs/promises";
-import { existsSync } from "node:fs";
+
+import { existsSync } from "../../../src/utils/sync-fs.ts";
 import { join, relative, dirname } from "node:path";
 import { createHash } from "node:crypto";
 import { loadWorkspaceDeps } from "../../werkstatt/handlers/workspace-deps.ts";
@@ -24,6 +26,10 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 const execAsync = promisify(exec);
 
@@ -119,7 +125,7 @@ async function computeInputHash(workspaceRoot: string, inputPatterns: string[]):
 
 async function readCache(cachePath: string): Promise<CacheFile> {
   try {
-    const content = await readFile(cachePath, "utf8");
+    const content = await io.readFile(cachePath);
     return JSON.parse(content) as CacheFile;
   } catch {
     return { entries: {} };
@@ -129,15 +135,16 @@ async function readCache(cachePath: string): Promise<CacheFile> {
 async function writeCache(cachePath: string, cache: CacheFile): Promise<void> {
   const dir = dirname(cachePath);
   if (!existsSync(dir)) {
-    await mkdir(dir, { recursive: true });
+    await io.mkdir(dir);
   }
-  await writeFile(cachePath, JSON.stringify(cache, null, 2) + "\n", "utf8");
+  await io.writeFile(cachePath, JSON.stringify(cache, null, 2) + "\n");
 }
 
 export async function runDeterminismCheck(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeDeterminismCheckResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
   const artifactFilter =

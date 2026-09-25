@@ -25,8 +25,10 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "node:child_process";
-import { readFile, unlink, mkdir } from "node:fs/promises";
+import { execFile, writeFileSync } from "../../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 import { join, dirname } from "node:path";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
@@ -43,6 +45,10 @@ import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
 import { RFC_DIR, RFC_METADATA_CUTOFF, RFC_PROBE_BINDING_CUTOFF } from "../types.ts";
 import type { RfcStatus, RfcImplementStampViolation, RfcImplementStampResult } from "../types.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -162,16 +168,15 @@ async function acquireRfcLock(
 ): Promise<{ acquired: boolean; lockPath: string }> {
   const lockPath = lockFilePath(workspaceRoot, rfcId);
   const lockDir = dirname(lockPath);
-  await mkdir(lockDir, { recursive: true });
+  await io.mkdir(lockDir);
 
   // Atomic lock acquisition via O_EXCL file creation
-  const { open } = await import("node:fs/promises");
   try {
-    const handle = await open(lockPath, "wx");
-    await handle.writeFile(
+    writeFileSync(
+      lockPath,
       JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
+      { flag: "wx" },
     );
-    await handle.close();
     return { acquired: true, lockPath };
   } catch {
     return { acquired: false, lockPath };
@@ -180,7 +185,7 @@ async function acquireRfcLock(
 
 async function releaseRfcLock(lockPath: string): Promise<void> {
   try {
-    await unlink(lockPath);
+    await io.rm(lockPath);
   } catch {
     // Lock file already removed — safe
   }
@@ -195,7 +200,7 @@ async function checkExistingEvidence(
   const slug = rfcId.toLowerCase();
   const evidencePath = join(workspaceRoot, VERIFICATION_DIR, `${slug}.generated.yaml`);
   try {
-    const content = await readFile(evidencePath, "utf-8");
+    const content = await io.readFile(evidencePath);
     const evidence = yamlParse(content) as { overall?: string };
     return { exists: true, overall: String(evidence.overall ?? "") };
   } catch {
@@ -239,6 +244,7 @@ export async function runRfcImplementStamp(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcImplementStampResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
 
@@ -437,7 +443,7 @@ export async function runRfcImplementStamp(
   try {
     // ── Atomic mutation ──────────────────────────────────────────────────────
     const rfcFilePath = join(rfcDirPath, targetFile);
-    const rfcSource = await readFile(rfcFilePath, "utf-8");
+    const rfcSource = await io.readFile(rfcFilePath);
 
     const today = toIsoDate(new Date());
     const stampedAt = new Date().toISOString();

@@ -22,7 +22,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
@@ -137,7 +137,7 @@ export async function runRfcArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -145,7 +145,7 @@ export async function runRfcArchive(
       }
 
       if (!dryRun) {
-        await fs.mkdir(targetDir, { recursive: true });
+        await fs.mkdir(targetDir);
         try {
           await fs.rename(path.join(rfcDirPath, fileName), targetPath);
         } catch (err) {
@@ -184,7 +184,7 @@ export async function runRfcArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -269,7 +269,7 @@ export async function runRfcArchive(
         count: entries.length,
         entries,
       };
-      await fs.writeFile(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`, "utf-8");
+      await fs.writeFile(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`);
       indexRefreshed = true;
       if (outputFormat === "pretty") {
         logger.info(`rfc.archive: refreshed ${outRel} (${entries.length} entries)`);

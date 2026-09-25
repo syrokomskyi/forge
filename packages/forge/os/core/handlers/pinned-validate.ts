@@ -21,8 +21,8 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { exec } from "node:child_process";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { exec } from "../../../src/utils/sync-fs.ts";
 import { promisify } from "node:util";
 import path from "node:path";
 import type {
@@ -141,7 +141,7 @@ async function appendAuditLog(
 ): Promise<void> {
   const logPath = path.join(repoRoot, AUDIT_LOG_PATH);
   const line = JSON.stringify(entry) + "\n";
-  await fs.appendFile(logPath, line, "utf8");
+  await fs.appendFile(logPath, line);
 }
 
 export async function runPinnedValidate(

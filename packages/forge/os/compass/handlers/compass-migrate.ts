@@ -26,8 +26,9 @@ Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, s
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+
 import { relative, resolve } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import {
   createCompassInventoryEntries,
   detectRiskClass,
@@ -45,6 +46,10 @@ import {
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type { CompassPolicy } from "../policy.ts";
 import type { ForgeCommandInput } from "../../../src/types.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 export type MigrateAction =
   | "collapsed"
@@ -324,7 +329,7 @@ export async function migrateWorkspace(
       const target = toTarget(workspaceRoot, absPath, policy);
       let source: string;
       try {
-        source = await readFile(absPath, "utf8");
+        source = await io.readFile(absPath);
       } catch {
         result.files.push({ path: file, actions: ["unparseable"] });
         continue;
@@ -354,7 +359,7 @@ export async function migrateWorkspace(
     if (entry.authoringStatus !== "authored") continue;
     result.scanned += 1;
     const absPath = resolve(workspaceRoot, entry.path);
-    const source = getEntrySource(entry) ?? (await readFile(absPath, "utf8"));
+    const source = getEntrySource(entry) ?? (await io.readFile(absPath));
     const segments = getRelativeSegments(absPath, workspaceRoot);
     const workspaceRelativePath = getWorkspaceRelativeSegments(segments, policy).join("/");
     const migrated = migrateFile(source, policy, entry.path, workspaceRelativePath);
