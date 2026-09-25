@@ -12,6 +12,8 @@
 */
 
 import * as fs from "../utils/sync-fs.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "../utils/io.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { stackProfileSchema } from "../profiles/stack-profile.ts";
@@ -37,6 +39,7 @@ export async function runProfileValidate(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ProfileValidateResult>> {
   const { workspaceRoot, logger, outputFormat } = context;
+  const fio = resolveIo(context.io);
   const filterId = input.flags["id"] as string | undefined;
 
   const forgeRoot = context.forgeRoot ?? path.join(workspaceRoot, "packages", "forge");
@@ -44,7 +47,7 @@ export async function runProfileValidate(
 
   const profileResults: ProfileValidateResult["profiles"] = [];
 
-  if (!fs.existsSync(profilesDir)) {
+  if (!(await fio.exists(profilesDir))) {
     const result: ProfileValidateResult = {
       command: "forge.profile.validate",
       valid: true,
@@ -60,12 +63,12 @@ export async function runProfileValidate(
     };
   }
 
-  const entries = fs.readdirSync(profilesDir);
+  const entries = (await fio.readdir(profilesDir)).map((e) => e.name);
   for (const entry of entries) {
     if (!entry.endsWith(".yaml") || entry.startsWith(".")) continue;
 
     const profilePath = path.join(profilesDir, entry);
-    const raw = fs.readFileSync(profilePath, "utf8");
+    const raw = await fio.readFile(profilePath);
 
     let parsed: unknown;
     let parseError: string | null = null;
