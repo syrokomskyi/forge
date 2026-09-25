@@ -20,6 +20,11 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
+// RFC-1152: type-only import — FORGE-AUTONOMY-01 (ADR-0019) exempts `import
+// type` so helpers/contexts can receive the WorkspaceIO port without a runtime
+// dependency on @warpgogol/* packages.
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 // ---------------------------------------------------------------------------
 // Command input / output
 // ---------------------------------------------------------------------------
@@ -227,4 +232,10 @@ export interface ForgeRuntimeContext {
    * use this instead of calling resolveForgeRoot(workspaceRoot).
    */
   forgeRoot?: string;
+  /**
+   * RFC-1152: optional WorkspaceIO port — populated when a kernel invokes the
+   * command (writes flow through the recording adapter); absent under the
+   * standalone `forge` CLI, where helpers fall back to the ambient adapter.
+   */
+  io?: WorkspaceIO;
 }

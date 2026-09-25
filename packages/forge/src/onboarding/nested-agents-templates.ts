@@ -25,7 +25,7 @@ import type { ForgeConfig } from "../config/forge-config.ts";
 import type { WorkspaceDir, WorkspaceType } from "./workspace-discovery.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 
 export interface PackageInfo {

@@ -11,7 +11,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import {

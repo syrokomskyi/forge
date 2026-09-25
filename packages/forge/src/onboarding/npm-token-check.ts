@@ -11,8 +11,8 @@
 </CHANGE_SUMMARY>
 */
 
-import { execSync } from "node:child_process";
-import fs from "node:fs";
+import { execSync } from "../utils/sync-fs.ts";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 
 /** Result of the npm-token probe (RFC-1125). */

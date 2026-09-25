@@ -24,9 +24,11 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "../utils/io.ts";
 import path from "node:path";
-import { execSync } from "node:child_process";
+
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import {
   FORGE_CLI_BINDING_DEFAULTS,

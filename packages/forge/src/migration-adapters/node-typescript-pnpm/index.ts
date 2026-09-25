@@ -13,7 +13,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../../utils/sync-fs.ts";
 import path from "node:path";
 import type { MigrationAdapter, AdapterAnalysis, MigrationResult, Conflict } from "../types.ts";
 import { FORGE_PROTECTED_PATHS, DEFAULT_EXCLUDE_PATTERNS } from "../types.ts";

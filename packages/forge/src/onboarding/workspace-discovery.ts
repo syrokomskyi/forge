@@ -15,7 +15,7 @@ workspace type (app, service, package) by content markers.</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { hasGeneratedMarker } from "../utils/index.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";

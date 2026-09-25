@@ -25,8 +25,9 @@ Add pipeline-status.test.ts (derivation matrix, order, next selection, ADR, skip
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
 import path from "node:path";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "./utils/io.ts";
 import YAML from "yaml";
 
 // ---------------------------------------------------------------------------
@@ -75,10 +76,12 @@ export function parseFrontmatter(source: string): ParsedDocument {
 export async function findAuditFile(
   workspaceRoot: string,
   docId: string,
+  io?: WorkspaceIO,
 ): Promise<string | undefined> {
+  const fio = resolveIo(io);
   const auditsDir = path.join(workspaceRoot, "docs/audits");
   try {
-    const entries = await fs.readdir(auditsDir);
+    const entries = (await fio.readdir(auditsDir)).map((e) => e.name);
     const prefix = `audit-${docId.toLowerCase()}`;
     const match = entries.find((e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"));
     return match ? path.join("docs/audits", match) : undefined;
@@ -90,10 +93,12 @@ export async function findAuditFile(
 export async function findPlanFile(
   workspaceRoot: string,
   docId: string,
+  io?: WorkspaceIO,
 ): Promise<string | undefined> {
+  const fio = resolveIo(io);
   const plansDir = path.join(workspaceRoot, "docs/plans");
   try {
-    const entries = await fs.readdir(plansDir);
+    const entries = (await fio.readdir(plansDir)).map((e) => e.name);
     const prefix = `plan-${docId.toLowerCase()}`;
     const match = entries.find((e) => e.toLowerCase().startsWith(prefix) && e.endsWith(".md"));
     return match ? path.join("docs/plans", match) : undefined;
@@ -122,20 +127,26 @@ async function scanForDocument(
   dirPath: string,
   relativePrefix: string,
   idLower: string,
+  io: WorkspaceIO,
 ): Promise<string | undefined> {
   let entries;
   try {
-    entries = await fs.readdir(dirPath, { withFileTypes: true });
+    entries = await io.readdir(dirPath);
   } catch {
     return undefined;
   }
   for (const entry of entries) {
     const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) {
-      const found = await scanForDocument(path.join(dirPath, entry.name), relativePath, idLower);
+    if (entry.isDirectory) {
+      const found = await scanForDocument(
+        path.join(dirPath, entry.name),
+        relativePath,
+        idLower,
+        io,
+      );
       if (found) return found;
     } else if (
-      entry.isFile() &&
+      entry.isFile &&
       entry.name.endsWith(".md") &&
       entry.name.toLowerCase().startsWith(idLower)
     ) {
@@ -153,19 +164,21 @@ async function scanForDocument(
 export async function resolveDocument(
   workspaceRoot: string,
   docId: string,
+  io?: WorkspaceIO,
 ): Promise<ResolvedDocument | undefined> {
+  const fio = resolveIo(io);
   const idMatch = DOC_ID_PATTERN.exec(docId.trim());
   if (!idMatch) return undefined;
   const kind: QueueDocumentKind = idMatch[1]!.toUpperCase() === "ADR" ? "adr" : "rfc";
   const baseDir = kind === "adr" ? "docs/adrs" : "docs/rfcs";
   const idLower = docId.toLowerCase();
 
-  const found = await scanForDocument(path.join(workspaceRoot, baseDir), "", idLower);
+  const found = await scanForDocument(path.join(workspaceRoot, baseDir), "", idLower, fio);
   if (!found) return undefined;
 
   let source: string;
   try {
-    source = await fs.readFile(path.join(workspaceRoot, baseDir, found), "utf-8");
+    source = await fio.readFile(path.join(workspaceRoot, baseDir, found));
   } catch {
     return undefined;
   }
@@ -242,8 +255,10 @@ export interface QueueItemReport {
 export async function deriveQueueItemStatus(
   workspaceRoot: string,
   docId: string,
+  io?: WorkspaceIO,
 ): Promise<QueueItemReport | undefined> {
-  const doc = await resolveDocument(workspaceRoot, docId);
+  const fio = resolveIo(io);
+  const doc = await resolveDocument(workspaceRoot, docId, fio);
   if (!doc) return undefined;
 
   const fm = doc.frontmatter;
@@ -268,8 +283,8 @@ export async function deriveQueueItemStatus(
   }
 
   const enhancedAt = fm["enhancedAt"] ? String(fm["enhancedAt"]) : undefined;
-  const auditFile = await findAuditFile(workspaceRoot, doc.id);
-  const planFile = await findPlanFile(workspaceRoot, doc.id);
+  const auditFile = await findAuditFile(workspaceRoot, doc.id, fio);
+  const planFile = await findPlanFile(workspaceRoot, doc.id, fio);
 
   const stages = computeRfcPipelineStages({
     status,
@@ -306,10 +321,12 @@ export interface QueueReport {
 export async function deriveQueueReport(
   workspaceRoot: string,
   itemIds: string[],
+  io?: WorkspaceIO,
 ): Promise<QueueReport> {
+  const fio = resolveIo(io);
   const items: QueueItemReport[] = [];
   for (const id of itemIds) {
-    const report = await deriveQueueItemStatus(workspaceRoot, id);
+    const report = await deriveQueueItemStatus(workspaceRoot, id, fio);
     // Unresolvable ids are reported by the manifest validator; the resolver
     // skips them here so a partial report stays usable.
     if (report) items.push(report);

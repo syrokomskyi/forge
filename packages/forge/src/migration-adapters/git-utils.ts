@@ -17,9 +17,9 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "../utils/sync-fs.ts";
 import { trashSync } from "../utils/fs-trash-sync.ts";
 import type { AdapterAnalysis } from "./types.ts";
 

@@ -21,8 +21,9 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-import { readFile, readdir, stat } from "node:fs/promises";
-import { readFileSync, existsSync } from "node:fs";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "../utils/io.ts";
+import { readFileSync, existsSync } from "../utils/sync-fs.ts";
 import { join, relative, dirname, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
@@ -52,8 +53,8 @@ import { compactMemoryMd } from "./memory-compact.ts";
 import { checkInvariants } from "./invariant-engine.ts";
 import type { InvariantViolation } from "./invariant-engine.ts";
 import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
-import { execSync } from "node:child_process";
-import fs from "node:fs";
+import { execSync } from "../utils/sync-fs.ts";
+import * as fs from "../utils/sync-fs.ts";
 import type { ProfilePrerequisite } from "../profiles/profile-schema.ts";
 
 interface DoctorFixResult {
@@ -87,13 +88,8 @@ interface BindingNotice {
   suggestion: string;
 }
 
-async function pathExists(target: string): Promise<boolean> {
-  try {
-    await stat(target);
-    return true;
-  } catch {
-    return false;
-  }
+async function pathExists(target: string, io: WorkspaceIO): Promise<boolean> {
+  return io.exists(target);
 }
 
 const FORBIDDEN_IMPORT_PATTERN =
@@ -102,19 +98,20 @@ const FORBIDDEN_IMPORT_PATTERN =
 async function scanForForbiddenImports(
   dir: string,
   workspaceRoot: string,
+  io: WorkspaceIO,
 ): Promise<ForbiddenImport[]> {
   const violations: ForbiddenImport[] = [];
-  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const entries = await io.readdir(dir).catch(() => []);
 
   for (const entry of entries) {
     const fullPath = join(dir, entry.name);
 
-    if (entry.isDirectory()) {
+    if (entry.isDirectory) {
       if (entry.name === "node_modules" || entry.name === "tests") continue;
-      const sub = await scanForForbiddenImports(fullPath, workspaceRoot);
+      const sub = await scanForForbiddenImports(fullPath, workspaceRoot, io);
       violations.push(...sub);
     } else if (entry.name.endsWith(".ts")) {
-      const content = await readFile(fullPath, "utf8").catch(() => "");
+      const content = await io.readFile(fullPath).catch(() => "");
       let match: RegExpExecArray | null;
       const pattern = new RegExp(FORBIDDEN_IMPORT_PATTERN.source, "g");
       while ((match = pattern.exec(content)) !== null) {
@@ -151,7 +148,7 @@ const BINDING_COMMAND_KEYS = [
   "commands.sessionSave",
 ];
 
-async function validateBindings(workspaceRoot: string): Promise<BindingValidation> {
+async function validateBindings(workspaceRoot: string, io: WorkspaceIO): Promise<BindingValidation> {
   const result: BindingValidation = { resolved: [], absent: [], invalid: [], notices: [] };
 
   let config;
@@ -170,7 +167,7 @@ async function validateBindings(workspaceRoot: string): Promise<BindingValidatio
     if (value === null) {
       result.absent.push(key);
     } else if (typeof value === "string") {
-      const exists = await pathExists(join(workspaceRoot, value));
+      const exists = await pathExists(join(workspaceRoot, value), io);
       if (exists) {
         result.resolved.push(key);
       } else {
@@ -182,7 +179,7 @@ async function validateBindings(workspaceRoot: string): Promise<BindingValidatio
   const compassDocs = resolveBinding(config, "paths.compassDocs");
   if (Array.isArray(compassDocs) && compassDocs.length > 0) {
     for (const docPath of compassDocs) {
-      const exists = await pathExists(join(workspaceRoot, docPath));
+      const exists = await pathExists(join(workspaceRoot, docPath), io);
       if (exists) {
         result.resolved.push(`paths.compassDocs[${docPath}]`);
       } else {
@@ -226,6 +223,7 @@ async function validateBindings(workspaceRoot: string): Promise<BindingValidatio
 async function checkStaleKnowledgeFiles(
   workspaceRoot: string,
   forgeRoot: string,
+  io: WorkspaceIO,
 ): Promise<DoctorCheck> {
   const stale: string[] = [];
 
@@ -247,8 +245,8 @@ async function checkStaleKnowledgeFiles(
       const srcPath = join(skillSrcDir, kf);
       const destPath = join(agentsSkillsDir, skill.name, kf);
 
-      const srcExists = await pathExists(srcPath);
-      const destExists = await pathExists(destPath);
+      const srcExists = await pathExists(srcPath, io);
+      const destExists = await pathExists(destPath, io);
 
       if (srcExists && destExists) {
         // Append-only contract: local copies legitimately accumulate entries.
@@ -279,8 +277,8 @@ async function checkStaleKnowledgeFiles(
       const srcPath = join(skillSrcDir, kf);
       const destPath = join(agentsSkillsDir, skill.name, kf);
 
-      const srcExists = await pathExists(srcPath);
-      const destExists = await pathExists(destPath);
+      const srcExists = await pathExists(srcPath, io);
+      const destExists = await pathExists(destPath, io);
 
       if (srcExists && destExists) {
         const plan = planKnowledgeSync(srcPath, destPath);
@@ -642,7 +640,7 @@ function checkSharedKnowledgeFile(
 // Independent version packages diagnostics (RFC-0704)
 // ---------------------------------------------------------------------------
 
-async function checkIndependentVersionPackages(workspaceRoot: string): Promise<DoctorCheck> {
+async function checkIndependentVersionPackages(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
   let config;
   try {
     config = loadForgeConfig(workspaceRoot);
@@ -658,8 +656,8 @@ async function checkIndependentVersionPackages(workspaceRoot: string): Promise<D
   let validCount = 0;
 
   for (const pkgPath of config.independentVersionPackages) {
-    const dirExists = await pathExists(join(workspaceRoot, pkgPath));
-    const pkgJsonExists = await pathExists(join(workspaceRoot, pkgPath, "package.json"));
+    const dirExists = await pathExists(join(workspaceRoot, pkgPath), io);
+    const pkgJsonExists = await pathExists(join(workspaceRoot, pkgPath, "package.json"), io);
     if (!dirExists) {
       issues.push(`path '${pkgPath}' does not exist`);
     } else if (!pkgJsonExists) {
@@ -688,7 +686,7 @@ async function checkIndependentVersionPackages(workspaceRoot: string): Promise<D
 // Pack skill diagnostics (RFC-0539)
 // ---------------------------------------------------------------------------
 
-async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
+async function checkPackSkills(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
   let config;
   try {
     config = loadForgeConfig(workspaceRoot);
@@ -720,7 +718,7 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
     }
     dirs.add(pack.dir);
 
-    const packDirExists = await pathExists(join(workspaceRoot, pack.dir));
+    const packDirExists = await pathExists(join(workspaceRoot, pack.dir), io);
     if (!packDirExists) {
       issues.push(`pack dir '${pack.dir}' does not exist`);
     }
@@ -739,12 +737,12 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
     const srcPath = join(workspaceRoot, skill.dir, skill.path);
     const destPath = join(agentsSkillsDir, skill.name, "SKILL.md");
 
-    const srcExists = await pathExists(srcPath);
-    const destExists = await pathExists(destPath);
+    const srcExists = await pathExists(srcPath, io);
+    const destExists = await pathExists(destPath, io);
 
     if (srcExists && destExists) {
-      const srcContent = await readFile(srcPath, "utf8").catch(() => "");
-      const destContent = await readFile(destPath, "utf8").catch(() => "");
+      const srcContent = await io.readFile(srcPath).catch(() => "");
+      const destContent = await io.readFile(destPath).catch(() => "");
       if (srcContent !== destContent) {
         issues.push(`stale copy of '${skill.name}'`);
       }
@@ -767,7 +765,7 @@ async function checkPackSkills(workspaceRoot: string): Promise<DoctorCheck> {
 // Pack manifest diagnostics (RFC-0941)
 // ---------------------------------------------------------------------------
 
-async function checkPackManifests(workspaceRoot: string): Promise<DoctorCheck> {
+async function checkPackManifests(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
   let config;
   try {
     config = loadForgeConfig(workspaceRoot);
@@ -820,7 +818,8 @@ async function checkPackManifests(workspaceRoot: string): Promise<DoctorCheck> {
 
 async function checkNestedAgentsMd(
   workspaceRoot: string,
-  workspaceTypes?: ProfileWorkspaceType[],
+  workspaceTypes: ProfileWorkspaceType[] | undefined,
+  io: WorkspaceIO,
 ): Promise<DoctorCheck> {
   let config;
   try {
@@ -863,7 +862,7 @@ async function checkNestedAgentsMd(
       handwritten++;
       const suggestions: string[] = [];
       try {
-        const content = await readFile(join(workspaceRoot, ws.path, "AGENTS.md"), "utf8");
+        const content = await io.readFile(join(workspaceRoot, ws.path, "AGENTS.md"));
         if (!content.includes("AGENTS.md")) {
           suggestions.push("reference root AGENTS.md");
         }
@@ -885,7 +884,7 @@ async function checkNestedAgentsMd(
       const terminology = resolveAllTerminology(config, profile);
       const wsType = workspaceTypes?.find((wt) => wt.id === ws.type);
       const expected = selectNestedTemplate(wsType, profile, terminology, fallback);
-      const actual = await readFile(join(workspaceRoot, ws.path, "AGENTS.md"), "utf8");
+      const actual = await io.readFile(join(workspaceRoot, ws.path, "AGENTS.md"));
       if (expected !== actual) {
         stale++;
         issues.push(`${ws.path}/AGENTS.md stale — run 'forge agents generate'`);
@@ -1222,12 +1221,13 @@ export async function runDoctor(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<{ command: string; checks: DoctorCheck[]; allPass: boolean; forbiddenImports: ForbiddenImport[]; bindings: BindingValidation; domain?: DomainReport; fixes?: DoctorFixResult[] }>> {
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
+  const fio = resolveIo(context.io);
   const strict = input.flags["strict"] === true;
   const fix = input.flags["fix"] === true;
   const checks: DoctorCheck[] = [];
 
   // Check forge.yaml
-  const forgeYamlExists = await pathExists(join(workspaceRoot, "forge.yaml"));
+  const forgeYamlExists = await pathExists(join(workspaceRoot, "forge.yaml"), fio);
   checks.push({
     name: "forge.yaml",
     status: forgeYamlExists ? "pass" : "warn",
@@ -1237,7 +1237,7 @@ export async function runDoctor(
   });
 
   // Check AGENTS.md
-  const agentsMdExists = await pathExists(join(workspaceRoot, "AGENTS.md"));
+  const agentsMdExists = await pathExists(join(workspaceRoot, "AGENTS.md"), fio);
   checks.push({
     name: "AGENTS.md",
     status: agentsMdExists ? "pass" : "warn",
@@ -1247,7 +1247,7 @@ export async function runDoctor(
   });
 
   // Check PREFERENCES.md
-  const preferencesExists = await pathExists(join(workspaceRoot, "PREFERENCES.md"));
+  const preferencesExists = await pathExists(join(workspaceRoot, "PREFERENCES.md"), fio);
   checks.push({
     name: "PREFERENCES.md",
     status: preferencesExists ? "pass" : "warn",
@@ -1257,7 +1257,7 @@ export async function runDoctor(
   });
 
   // Check .agents/skills/
-  const skillsDirExists = await pathExists(join(workspaceRoot, ".agents", "skills"));
+  const skillsDirExists = await pathExists(join(workspaceRoot, ".agents", "skills"), fio);
   checks.push({
     name: ".agents/skills/",
     status: skillsDirExists ? "pass" : "fail",
@@ -1267,7 +1267,7 @@ export async function runDoctor(
   });
 
   // Check docs/rfcs/
-  const rfcsDirExists = await pathExists(join(workspaceRoot, "docs", "rfcs"));
+  const rfcsDirExists = await pathExists(join(workspaceRoot, "docs", "rfcs"), fio);
   checks.push({
     name: "docs/rfcs/",
     status: rfcsDirExists ? "pass" : "warn",
@@ -1277,7 +1277,7 @@ export async function runDoctor(
   });
 
   // Check docs/adrs/
-  const adrsDirExists = await pathExists(join(workspaceRoot, "docs", "adrs"));
+  const adrsDirExists = await pathExists(join(workspaceRoot, "docs", "adrs"), fio);
   checks.push({
     name: "docs/adrs/",
     status: adrsDirExists ? "pass" : "warn",
@@ -1386,7 +1386,7 @@ export async function runDoctor(
         : `${invalidProfiles.length} profile(s) invalid (advisory): ${invalidProfiles.map((p) => p.id).join(", ")}`,
   });
 
-  const forbiddenImports = await scanForForbiddenImports(forgeRoot, workspaceRoot);
+  const forbiddenImports = await scanForForbiddenImports(forgeRoot, workspaceRoot, fio);
   checks.push({
     name: "autonomy-guard",
     status: forbiddenImports.length === 0 ? "pass" : "fail",
@@ -1397,7 +1397,7 @@ export async function runDoctor(
   });
 
   // Check bindings contract (RFC-0393)
-  const bindingsResult = await validateBindings(workspaceRoot);
+  const bindingsResult = await validateBindings(workspaceRoot, fio);
   checks.push({
     name: "bindings",
     status: bindingsResult.invalid.length === 0 ? "pass" : "fail",
@@ -1408,7 +1408,7 @@ export async function runDoctor(
   });
 
   // Check stale knowledge files (RFC-0524, RFC-0539)
-  const staleCheck = await checkStaleKnowledgeFiles(workspaceRoot, forgeRoot);
+  const staleCheck = await checkStaleKnowledgeFiles(workspaceRoot, forgeRoot, fio);
   checks.push(staleCheck);
 
   // RFC-0660: Check legacy sections in knowledge files
@@ -1434,15 +1434,15 @@ export async function runDoctor(
   checks.push(checkDistFreshness(forgeRoot));
 
   // RFC-0539: Check pack skills — stale/missing copies and config validation
-  const packCheck = await checkPackSkills(workspaceRoot);
+  const packCheck = await checkPackSkills(workspaceRoot, fio);
   checks.push(packCheck);
 
   // RFC-0941: Check pack manifests — forge.plugin.yaml existence and validity
-  const packManifestCheck = await checkPackManifests(workspaceRoot);
+  const packManifestCheck = await checkPackManifests(workspaceRoot, fio);
   checks.push(packManifestCheck);
 
   // RFC-0704: Check independent version packages — paths must exist and contain package.json
-  const independentCheck = await checkIndependentVersionPackages(workspaceRoot);
+  const independentCheck = await checkIndependentVersionPackages(workspaceRoot, fio);
   checks.push(independentCheck);
 
   // RFC-0611: Check nested AGENTS.md — missing, stale, hand-written
@@ -1470,7 +1470,7 @@ export async function runDoctor(
     } catch {
       // profiles not loadable
     }
-    const nestedCheck = await checkNestedAgentsMd(workspaceRoot, wsTypes);
+    const nestedCheck = await checkNestedAgentsMd(workspaceRoot, wsTypes, fio);
     checks.push(nestedCheck);
   }
 
@@ -1492,7 +1492,7 @@ export async function runDoctor(
   if (fix) {
     for (const check of finalChecks) {
       if (check.status === "pass") continue;
-      fixes.push(await applyDoctorRemediation(check, workspaceRoot, wsTypes, dryRun === true));
+      fixes.push(await applyDoctorRemediation(check, workspaceRoot, wsTypes, dryRun === true, fio));
     }
   }
 
@@ -1571,12 +1571,13 @@ async function applyDoctorRemediation(
   workspaceRoot: string,
   workspaceTypes: ProfileWorkspaceType[] | undefined,
   dryRun: boolean,
+  io: WorkspaceIO,
 ): Promise<DoctorFixResult> {
   switch (check.name) {
     case "nested-AGENTS.md": {
       try {
         const config = loadForgeConfig(workspaceRoot);
-        const res = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes);
+        const res = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes, io);
         return {
           check: check.name,
           action: res.generated.length > 0 ? "fixed" : "skipped",
@@ -1589,10 +1590,10 @@ async function applyDoctorRemediation(
     case "memory-layer": {
       try {
         const memoryPath = join(workspaceRoot, ".agents", "memory", "MEMORY.md");
-        if (!fs.existsSync(memoryPath)) {
+        if (!(await io.exists(memoryPath))) {
           return { check: check.name, action: "skipped", detail: "MEMORY.md absent" };
         }
-        const content = fs.readFileSync(memoryPath, "utf8");
+        const content = await io.readFile(memoryPath);
         const budget = resolveMemoryBudget(workspaceRoot);
         const { lines, removedLines, fitsBudget } = compactMemoryMd(content, budget);
         if (!fitsBudget) {
