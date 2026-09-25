@@ -24,7 +24,8 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 
 import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-import { execFileSync } from "../utils/sync-fs.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "../utils/io.ts";
 import { stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";
 import { runInit, type InitResult, type InitDomainFields } from "./init.ts";
@@ -127,6 +128,7 @@ export async function runCreate(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<CreateCommandResult>> {
   const { logger, outputFormat } = context;
+  const fio = resolveIo(context.io);
   const inPlace = input.flags["in-place"] as boolean | undefined;
   const nameOverride = input.flags["name"] as string | undefined;
   const profile = input.flags["profile"] as string | undefined;
@@ -217,7 +219,7 @@ export async function runCreate(
   // If any other files or directories exist, refuse to scaffold.
   let dirEntries: string[];
   try {
-    dirEntries = fs.readdirSync(targetDir);
+    dirEntries = (await fio.readdir(targetDir)).map((e) => e.name);
   } catch {
     dirEntries = [];
   }
@@ -240,13 +242,13 @@ export async function runCreate(
   // This is a hard guard — forge.create programmatically ensures main branch,
   // so greenfield projects don't depend on the agent running git init correctly.
   const gitDir = path.join(targetDir, ".git");
-  if (!fs.existsSync(gitDir)) {
-    try {
-      execFileSync("git", ["init", "--initial-branch=main"], { cwd: targetDir, stdio: "pipe" });
+  if (!(await fio.exists(gitDir))) {
+    const gitInit = await fio.exec("git", ["init", "--initial-branch=main"], { cwd: targetDir });
+    if (gitInit.exitCode === 0) {
       if (outputFormat === "pretty") {
         logger.info("Initialized git repository with main branch");
       }
-    } catch {
+    } else {
       if (outputFormat === "pretty") {
         logger.warn("Failed to initialize git repository — run 'git init --initial-branch=main' manually");
       }
@@ -344,7 +346,7 @@ export async function runCreate(
   // 11. Post-process forge.yaml if --package-manager differs from default
   if (packageManager !== "pnpm") {
     const forgeYamlPath = path.join(targetDir, "forge.yaml");
-    if (fs.existsSync(forgeYamlPath)) {
+    if (await fio.exists(forgeYamlPath)) {
       try {
         const config = loadForgeConfig(targetDir);
         const pm = resolvePackageManager(packageManager);
@@ -354,7 +356,7 @@ export async function runCreate(
         }
         // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
         // never the resolved StackProfile object, never drops an unresolvable id.
-        fs.writeFileSync(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)), "utf8");
+        await fio.writeFile(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)));
       } catch {
         // Post-processing is best-effort — init already wrote a valid config
       }
@@ -417,7 +419,7 @@ If you already have a project elsewhere and want to move it into Forge, tell the
 
 The system will guide you through the process — it detects your project type, migrates the code (including \`.env\` and git-ignored files), optionally transfers git history, and verifies the build.
 `;
-  fs.writeFileSync(nextStepsPath, nextStepsContent, "utf8");
+  await fio.writeFile(nextStepsPath, nextStepsContent);
 
   // 14. Collect filesCreated
   const filesCreated = [

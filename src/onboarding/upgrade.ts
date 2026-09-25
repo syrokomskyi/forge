@@ -64,60 +64,62 @@ export interface UpgradeResult {
   doctorReport: unknown;
 }
 
-function isMonorepoForge(workspaceRoot: string): boolean {
-  return fs.existsSync(path.join(workspaceRoot, "packages", "forge", "package.json"));
+async function isMonorepoForge(workspaceRoot: string, io: WorkspaceIO): Promise<boolean> {
+  return io.exists(path.join(workspaceRoot, "packages", "forge", "package.json"));
 }
 
-function updateNpmPackage(
+async function updateNpmPackage(
   workspaceRoot: string,
   config: ForgeConfig,
   isDryRun: boolean,
-): { updated: boolean; skipped: string | null } {
-  if (isMonorepoForge(workspaceRoot)) {
+  io: WorkspaceIO,
+): Promise<{ updated: boolean; skipped: string | null }> {
+  if (await isMonorepoForge(workspaceRoot, io)) {
     return { updated: false, skipped: "monorepo (local package, not npm-installed)" };
   }
 
   const pm = config.project.packageManager;
   const installCmd = resolvePmInstall(pm);
-  const fullCmd = `${installCmd} @warpgogol/forge@latest`;
+  const installArgs = installCmd.split(/\s+/);
 
   if (isDryRun) {
     return { updated: false, skipped: "dry-run" };
   }
 
-  try {
-    execSync(fullCmd, {
+  const result = await io
+    .exec(installArgs[0]!, [...installArgs.slice(1), "@warpgogol/forge@latest"], {
       cwd: workspaceRoot,
-      stdio: "pipe",
-      timeout: 120_000,
-    });
+      timeoutMs: 120_000,
+    })
+    .catch(() => null);
+  if (result && result.exitCode === 0) {
     return { updated: true, skipped: null };
-  } catch {
-    return { updated: false, skipped: "install failed (network error or registry unavailable)" };
   }
+  return { updated: false, skipped: "install failed (network error or registry unavailable)" };
 }
 
-function readForgePackageVersion(forgeRoot: string): string {
+async function readForgePackageVersion(forgeRoot: string, io: WorkspaceIO): Promise<string> {
   const pkgPath = path.join(forgeRoot, "package.json");
-  const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf8")) as { version?: string };
+  const pkg = JSON.parse(await io.readFile(pkgPath)) as { version?: string };
   return pkg.version ?? "0.0.0-unknown";
 }
 
-function checkLatestNpmVersion(
+async function checkLatestNpmVersion(
   workspaceRoot: string,
   installedVersion: string,
   isMonorepo: boolean,
-): { latest: string | null; warning: string | null } {
+  io: WorkspaceIO,
+): Promise<{ latest: string | null; warning: string | null }> {
   if (isMonorepo) {
     return { latest: null, warning: null };
   }
   try {
-    const latest = execSync("npm view @warpgogol/forge version", {
+    const result = await io.exec("npm", ["view", "@warpgogol/forge", "version"], {
       cwd: workspaceRoot,
-      stdio: "pipe",
-      timeout: 15_000,
-      encoding: "utf8",
-    }).trim();
+      timeoutMs: 15_000,
+    });
+    if (result.exitCode !== 0) throw new Error(result.stderr || "npm view failed");
+    const latest = result.stdout.trim();
     if (!latest || !/^\d+\.\d+\.\d+/.test(latest)) {
       return { latest: null, warning: null };
     }
@@ -141,28 +143,29 @@ function checkLatestNpmVersion(
   }
 }
 
-function syncForgeSkills(
+async function syncForgeSkills(
   workspaceRoot: string,
   forgeRoot: string,
   skillsDir: string,
   dryRun: boolean,
-): { updated: string[]; knowledgeConflicts: string[] } {
+  io: WorkspaceIO,
+): Promise<{ updated: string[]; knowledgeConflicts: string[] }> {
   const updated: string[] = [];
   const knowledgeConflicts: string[] = [];
   const agentsSkillsDir = path.join(workspaceRoot, skillsDir);
 
   for (const skill of FORGE_SKILLS) {
     const srcPath = path.join(forgeRoot, skill.path);
-    if (!fs.existsSync(srcPath)) continue;
+    if (!(await io.exists(srcPath))) continue;
 
     const skillName = skill.name;
     const destDir = path.join(agentsSkillsDir, skillName);
     const destPath = path.join(destDir, "SKILL.md");
 
     if (!dryRun) {
-      fs.mkdirSync(destDir, { recursive: true });
-      const content = fs.readFileSync(srcPath, "utf8");
-      fs.writeFileSync(destPath, content, "utf8");
+      await io.mkdir(destDir);
+      const content = await io.readFile(srcPath);
+      await io.writeFile(destPath, content);
 
       // Sync knowledge files (append-only — never overwrite local entries)
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -176,7 +179,7 @@ function syncForgeSkills(
               if (typeof kf !== "string") continue;
               const kfSrcPath = path.join(skillSrcDir, kf);
               const kfDestPath = path.join(destDir, kf);
-              if (fs.existsSync(kfSrcPath)) {
+              if (await io.exists(kfSrcPath)) {
                 const syncResult = syncKnowledgeFile(kfSrcPath, kfDestPath);
                 for (const id of syncResult.conflicts) {
                   knowledgeConflicts.push(`${skillName}/${kf}#${id}`);
@@ -195,22 +198,23 @@ function syncForgeSkills(
   return { updated, knowledgeConflicts };
 }
 
-function syncSharedKnowledge(
+async function syncSharedKnowledge(
   workspaceRoot: string,
   forgeRoot: string,
   skillsDir: string,
   dryRun: boolean,
-): { updated: string[]; knowledgeConflicts: string[] } {
+  io: WorkspaceIO,
+): Promise<{ updated: string[]; knowledgeConflicts: string[] }> {
   const updated: string[] = [];
   const knowledgeConflicts: string[] = [];
   const srcPath = path.join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
-  if (!fs.existsSync(srcPath)) return { updated, knowledgeConflicts };
+  if (!(await io.exists(srcPath))) return { updated, knowledgeConflicts };
 
   const destDir = path.join(workspaceRoot, skillsDir, "shared-knowledge");
   const destPath = path.join(destDir, "learned-principles.md");
 
   if (!dryRun) {
-    fs.mkdirSync(destDir, { recursive: true });
+    await io.mkdir(destDir);
     const syncResult = syncKnowledgeFile(srcPath, destPath);
     for (const id of syncResult.conflicts) {
       knowledgeConflicts.push(`shared-knowledge/learned-principles.md#${id}`);
@@ -220,12 +224,13 @@ function syncSharedKnowledge(
   return { updated, knowledgeConflicts };
 }
 
-function syncPackSkills(
+async function syncPackSkills(
   workspaceRoot: string,
   config: ForgeConfig,
   skillsDir: string,
   dryRun: boolean,
-): { updated: string[]; skipped: SkippedSkill[]; knowledgeConflicts: string[] } {
+  io: WorkspaceIO,
+): Promise<{ updated: string[]; skipped: SkippedSkill[]; knowledgeConflicts: string[] }> {
   const updated: string[] = [];
   const skipped: SkippedSkill[] = [];
   const knowledgeConflicts: string[] = [];
@@ -240,7 +245,7 @@ function syncPackSkills(
 
   for (const skill of packSkills) {
     const srcPath = path.join(workspaceRoot, skill.dir, skill.path);
-    if (!fs.existsSync(srcPath)) continue;
+    if (!(await io.exists(srcPath))) continue;
 
     const skillName = skill.name;
 
@@ -253,9 +258,9 @@ function syncPackSkills(
     const destPath = path.join(destDir, "SKILL.md");
 
     if (!dryRun) {
-      fs.mkdirSync(destDir, { recursive: true });
-      const content = fs.readFileSync(srcPath, "utf8");
-      fs.writeFileSync(destPath, content, "utf8");
+      await io.mkdir(destDir);
+      const content = await io.readFile(srcPath);
+      await io.writeFile(destPath, content);
 
       // Sync knowledge files (append-only — never overwrite local entries)
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -269,7 +274,7 @@ function syncPackSkills(
               if (typeof kf !== "string") continue;
               const kfSrcPath = path.join(skillSrcDir, kf);
               const kfDestPath = path.join(destDir, kf);
-              if (fs.existsSync(kfSrcPath)) {
+              if (await io.exists(kfSrcPath)) {
                 const syncResult = syncKnowledgeFile(kfSrcPath, kfDestPath);
                 for (const id of syncResult.conflicts) {
                   knowledgeConflicts.push(`${skillName}/${kf}#${id}`);
@@ -315,12 +320,13 @@ function addMissingBindingDefaults(
   return added;
 }
 
-function updateSyncedVersion(
+async function updateSyncedVersion(
   workspaceRoot: string,
   config: ForgeConfig,
   version: string,
   dryRun: boolean,
-): void {
+  io: WorkspaceIO,
+): Promise<void> {
   if (dryRun) return;
 
   // Set the syncedVersion on the in-memory config (bindings already updated)
@@ -330,7 +336,7 @@ function updateSyncedVersion(
   // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
   // never the resolved StackProfile object, never drops an unresolvable id.
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
-  fs.writeFileSync(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)), "utf8");
+  await io.writeFile(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)));
 }
 
 export async function runUpgrade(
@@ -338,12 +344,13 @@ export async function runUpgrade(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<UpgradeResult>> {
   const { workspaceRoot, dryRun } = context;
+  const fio = resolveIo(context.io);
   const isDryRun = dryRun || input.flags["dry-run"] === true;
   const isUpdateNpm = input.flags["update-npm"] === true;
 
   // Step 0: Check forge.yaml exists
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
-  if (!fs.existsSync(forgeYamlPath)) {
+  if (!(await fio.exists(forgeYamlPath))) {
     return {
       data: {
         command: "forge.upgrade",
@@ -377,7 +384,7 @@ export async function runUpgrade(
     } catch {
       configForNpm = { project: { packageManager: "npm" } } as unknown as ForgeConfig;
     }
-    const npmResult = updateNpmPackage(workspaceRoot, configForNpm, isDryRun);
+    const npmResult = await updateNpmPackage(workspaceRoot, configForNpm, isDryRun, fio);
     npmUpdated = npmResult.updated;
     npmUpdateSkipped = npmResult.skipped;
   }
@@ -387,7 +394,7 @@ export async function runUpgrade(
   let toVersion: string;
   try {
     forgeRoot = context.forgeRoot ?? resolveForgeRoot(workspaceRoot);
-    toVersion = readForgePackageVersion(forgeRoot);
+    toVersion = await readForgePackageVersion(forgeRoot, fio);
   } catch (err) {
     return {
       data: {
@@ -415,7 +422,7 @@ export async function runUpgrade(
   }
 
   // Step 1.5: Check npm for newer version (non-fatal)
-  const npmCheck = checkLatestNpmVersion(workspaceRoot, toVersion, isMonorepoForge(workspaceRoot));
+  const npmCheck = await checkLatestNpmVersion(workspaceRoot, toVersion, await isMonorepoForge(workspaceRoot, fio), fio);
   if (npmCheck.warning && context.outputFormat === "pretty") {
     context.logger.warn(`⚠ ${npmCheck.warning}`);
   }
@@ -482,27 +489,30 @@ export async function runUpgrade(
   }
 
   // Step 3: Sync forge skills
-  const forgeSkillsResult = syncForgeSkills(
+  const forgeSkillsResult = await syncForgeSkills(
     workspaceRoot,
     forgeRoot,
     config.paths.skillsDir,
     isDryRun,
+    fio,
   );
 
   // Step 3b: Sync pack skills
-  const packResult = syncPackSkills(
+  const packResult = await syncPackSkills(
     workspaceRoot,
     config,
     config.paths.skillsDir,
     isDryRun,
+    fio,
   );
 
   // Step 3c: Sync shared knowledge layer (RFC-0663)
-  const sharedKnowledgeResult = syncSharedKnowledge(
+  const sharedKnowledgeResult = await syncSharedKnowledge(
     workspaceRoot,
     forgeRoot,
     config.paths.skillsDir,
     isDryRun,
+    fio,
   );
 
   const skillsUpdated = [
@@ -530,14 +540,14 @@ export async function runUpgrade(
 
   // Step 5: Update forge.syncedVersion
   if (!isDryRun) {
-    updateSyncedVersion(workspaceRoot, config, toVersion, false);
+    await updateSyncedVersion(workspaceRoot, config, toVersion, false, fio);
   }
 
   // Step 5b: Generate nested AGENTS.md (RFC-0611)
   let nestedAgentsGenerated: string[] = [];
   if (!isDryRun) {
     try {
-      const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, false);
+      const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, false, undefined, fio);
       nestedAgentsGenerated = nestedResult.generated;
     } catch {
       // Nested generation failure is non-fatal

@@ -19,8 +19,9 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 import * as fs from "../utils/sync-fs.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import path from "node:path";
-import { execSync } from "../utils/sync-fs.ts";
+import { resolveIo } from "../utils/io.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
 import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
 import { resolveForgeRoot } from "../config/forge-config.ts";
@@ -45,6 +46,18 @@ export async function runScaffoldProject(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ScaffoldProjectResult>> {
   const { workspaceRoot, logger, outputFormat } = context;
+  const fio = resolveIo(context.io);
+  const execCommand = async (
+    cmd: string,
+    cwd: string,
+    timeoutMs: number,
+  ): Promise<{ ok: boolean; stdout: string; stderr: string }> => {
+    const parts = cmd.split(/\s+/).filter(Boolean);
+    const res = await fio
+      .exec(parts[0]!, parts.slice(1), { cwd, timeoutMs })
+      .catch((err: Error) => ({ exitCode: null, stdout: "", stderr: String(err) }));
+    return { ok: res.exitCode === 0, stdout: res.stdout, stderr: res.stderr };
+  };
   const profileId = input.flags["profile"] as string | undefined;
   const projectName = input.flags["name"] as string | undefined;
   const templateId = input.flags["template"] as string | undefined;
@@ -98,16 +111,16 @@ export async function runScaffoldProject(
   // Create workspace directories
   for (const dir of profile.workspace.dirs) {
     const dirPath = path.join(workspaceRoot, dir);
-    fs.mkdirSync(dirPath, { recursive: true });
+    await fio.mkdir(dirPath);
     created.push(`${dir}/`);
   }
 
   // Create workspace files (with __PROJECT_NAME__ placeholder replacement)
   for (const file of profile.workspace.files) {
     const filePath = path.join(workspaceRoot, file.path);
-    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    await fio.mkdir(path.dirname(filePath));
     const content = file.content.replace(/__PROJECT_NAME__/g, effectiveProjectName);
-    fs.writeFileSync(filePath, content, "utf8");
+    await fio.writeFile(filePath, content);
     created.push(file.path);
   }
 
@@ -117,13 +130,13 @@ export async function runScaffoldProject(
   // Profiles may already include .npmrc in workspace.files — append the setting if missing.
   const npmrcPath = path.join(workspaceRoot, ".npmrc");
   if (profile.install.length > 0) {
-    if (fs.existsSync(npmrcPath)) {
-      const existing = fs.readFileSync(npmrcPath, "utf8");
+    if (await fio.exists(npmrcPath)) {
+      const existing = await fio.readFile(npmrcPath);
       if (!existing.includes("ignore-workspace-root-check=true")) {
-        fs.appendFileSync(npmrcPath, "ignore-workspace-root-check=true\n", "utf8");
+        await fio.appendFile(npmrcPath, "ignore-workspace-root-check=true\n");
       }
     } else {
-      fs.writeFileSync(npmrcPath, "ignore-workspace-root-check=true\n", "utf8");
+      await fio.writeFile(npmrcPath, "ignore-workspace-root-check=true\n");
       created.push(".npmrc");
     }
   }
@@ -152,17 +165,17 @@ export async function runScaffoldProject(
   if (effectiveFirstWorkspace) {
     const wsPath = effectiveFirstWorkspace.path.replace("my-site", effectiveProjectName).replace("my-game", effectiveProjectName);
     const wsDir = path.join(workspaceRoot, wsPath);
-    fs.mkdirSync(wsDir, { recursive: true });
+    await fio.mkdir(wsDir);
     created.push(`${wsPath}/`);
 
     for (const file of effectiveFirstWorkspace.files) {
       const filePath = path.join(wsDir, file.path);
-      fs.mkdirSync(path.dirname(filePath), { recursive: true });
+      await fio.mkdir(path.dirname(filePath));
       // Replace placeholder names (quoted and bare)
       const content = file.content
         .replace(/my-site/g, effectiveProjectName)
         .replace(/my-game/g, effectiveProjectName);
-      fs.writeFileSync(filePath, content, "utf8");
+      await fio.writeFile(filePath, content);
       created.push(`${wsPath}/${file.path}`);
     }
   }
@@ -186,16 +199,17 @@ export async function runScaffoldProject(
     if (outputFormat === "pretty") {
       logger.info(`Running: ${cmd}`);
     }
-    try {
-      execSync(cmd, { cwd: workspaceRoot, stdio: "pipe", timeout: 60000 });
+    const res = await execCommand(cmd, workspaceRoot, 60000);
+    if (res.ok) {
       installLog.push(`${cmd} — ok`);
       if (outputFormat === "pretty") {
         logger.success(`Finished: ${cmd}`);
       }
-    } catch (err) {
-      const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
-      const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
-      const details = [stderr, stdout].filter(Boolean).join("\n");
+      if (outputFormat === "pretty") {
+        logger.success(`Finished: ${cmd}`);
+      }
+    } else {
+      const details = [res.stderr.trim(), res.stdout.trim()].filter(Boolean).join("\n");
       // pnpm v10 exits non-zero for ERR_PNPM_IGNORED_BUILDS even when install succeeded
       if (details.includes("ERR_PNPM_IGNORED_BUILDS")) {
         installLog.push(`${cmd} — ok (build scripts ignored)`);
@@ -203,7 +217,7 @@ export async function runScaffoldProject(
           logger.success(`Finished: ${cmd} (build scripts ignored — run 'pnpm approve-builds' later)`);
         }
       } else {
-        installLog.push(`${cmd} — FAILED: ${details || (err as Error).message}`);
+        installLog.push(`${cmd} — FAILED: ${details || "non-zero exit"}`);
         if (outputFormat === "pretty") {
           logger.warn(`Install failed (non-fatal): ${cmd}`);
           if (details) logger.warn(details);
@@ -224,16 +238,14 @@ export async function runScaffoldProject(
       if (outputFormat === "pretty") {
         logger.info(`Running: ${cmd}`);
       }
-      try {
-        execSync(cmd, { cwd: wsDir, stdio: "pipe", timeout: 60000 });
+      const res2 = await execCommand(cmd, wsDir, 60000);
+      if (res2.ok) {
         installLog.push(`${cmd} — ok`);
         if (outputFormat === "pretty") {
           logger.success(`Finished: ${cmd}`);
         }
-      } catch (err) {
-        const stderr = String((err as { stderr?: Buffer }).stderr ?? "").trim();
-        const stdout = String((err as { stdout?: Buffer }).stdout ?? "").trim();
-        const details = [stderr, stdout].filter(Boolean).join("\n");
+      } else {
+        const details = [res2.stderr.trim(), res2.stdout.trim()].filter(Boolean).join("\n");
         // pnpm v10 exits non-zero for ERR_PNPM_IGNORED_BUILDS even when install succeeded
         if (details.includes("ERR_PNPM_IGNORED_BUILDS")) {
           installLog.push(`${cmd} — ok (build scripts ignored)`);
@@ -241,7 +253,7 @@ export async function runScaffoldProject(
             logger.success(`Finished: ${cmd} (build scripts ignored — run 'pnpm approve-builds' later)`);
           }
         } else {
-          errors.push(`Install step failed: ${cmd}\n${details || (err as Error).message}`);
+          errors.push(`Install step failed: ${cmd}\n${details || "non-zero exit"}`);
           if (outputFormat === "pretty") {
             logger.error(`Install failed: ${cmd}`);
             if (details) logger.error(details);
@@ -262,7 +274,8 @@ export async function runScaffoldProject(
     if (outputFormat === "pretty") {
       logger.info("Formatting generated files with prettier...");
     }
-    execSync("npx prettier --write .", { cwd: workspaceRoot, stdio: "pipe", timeout: 30000 });
+    const res3 = await execCommand("npx prettier --write .", workspaceRoot, 30000);
+    if (!res3.ok) throw new Error(res3.stderr || "prettier failed");
     installLog.push("prettier --write . — ok");
     if (outputFormat === "pretty") {
       logger.success("Formatting complete.");
