@@ -15,6 +15,8 @@ Invoked standalone and by forge doctor --fix for the memory-layer check (RFC-115
 */
 
 import * as fs from "../utils/sync-fs.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "../utils/io.ts";
 import path from "node:path";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeRuntimeContext } from "../types.ts";
 import { resolveMemoryBudget } from "./memory-scaffold.ts";
@@ -100,6 +102,7 @@ export async function runMemoryCompact(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<MemoryCompactResult>> {
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
+  const fio = resolveIo(context.io);
   const memoryPath = path.join(workspaceRoot, MEMORY_MD_PATH);
   const budget = resolveMemoryBudget(workspaceRoot);
 
@@ -116,7 +119,7 @@ export async function runMemoryCompact(
     summary: `forge.memory.compact: failed — ${msg}`,
   });
 
-  if (!fs.existsSync(memoryPath)) {
+  if (!(await fio.exists(memoryPath))) {
     return {
       data: {
         command: "forge.memory.compact",
@@ -131,7 +134,7 @@ export async function runMemoryCompact(
     };
   }
 
-  const content = fs.readFileSync(memoryPath, "utf8");
+  const content = await fio.readFile(memoryPath);
   if (content.length <= budget) {
     return {
       data: {
@@ -158,7 +161,7 @@ export async function runMemoryCompact(
   }
 
   if (!dryRun) {
-    fs.writeFileSync(memoryPath, lines.join("\n"), "utf8");
+    await fio.writeFile(memoryPath, lines.join("\n"));
   }
 
   if (outputFormat === "pretty") {

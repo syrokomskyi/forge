@@ -21,6 +21,8 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 */
 
 import * as fs from "../utils/sync-fs.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { resolveIo } from "../utils/io.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import { loadForgeConfig, resolveBinding, resolveForgePackageRoot, resolveForgeRoot } from "../config/forge-config.ts";
@@ -225,6 +227,7 @@ export async function runAgentsGenerate(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<AgentsGenerateResult>> {
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
+  const fio = resolveIo(context.io);
 
   let config;
   try {
@@ -253,8 +256,8 @@ export async function runAgentsGenerate(
   // Edit guard: never overwrite a hand-written AGENTS.md — skip the root file
   // with a warning and continue to nested generation (RFC-1150, non-fatal).
   let rootSkipped = false;
-  if (!dryRun && fs.existsSync(agentsMdPath)) {
-    const existing = fs.readFileSync(agentsMdPath, "utf8");
+  if (!dryRun && (await fio.exists(agentsMdPath))) {
+    const existing = await fio.readFile(agentsMdPath);
     if (!hasGeneratedMarker(existing)) {
       rootSkipped = true;
       if (outputFormat === "pretty") {
