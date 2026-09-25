@@ -19,7 +19,8 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { writeFileSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
@@ -190,7 +191,7 @@ export async function runRfcCreate(
   const templatePath = resolveRfcTemplate(workspaceRoot);
   let templateContent: string;
   try {
-    templateContent = await fs.readFile(templatePath, "utf-8");
+    templateContent = await fs.readFile(templatePath);
   } catch {
     throw new Error(`RFC template not found at ${templatePath}.`);
   }
@@ -250,14 +251,14 @@ export async function runRfcCreate(
     const claimPath = path.join(rfcDirPath, `${nextSlug}.claim`);
 
     try {
-      await fs.writeFile(claimPath, `${process.pid}\n`, { flag: "wx" });
+      writeFileSync(claimPath, `${process.pid}\n`, { flag: "wx" });
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "EEXIST") {
         // Stale claim (crashed create) → reclaim and retry the same id.
         // Live claim → another create holds this id — move to the next.
         const st = await fs.stat(claimPath).catch(() => null);
         if (st && Date.now() - st.mtimeMs > CLAIM_STALE_MS) {
-          await fs.rm(claimPath, { force: true });
+          await fs.rm(claimPath);
         } else {
           candidate++;
         }
@@ -283,11 +284,11 @@ export async function runRfcCreate(
       content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
 
       const targetPath = path.join(rfcDirPath, fileName);
-      await fs.writeFile(targetPath, content, { flag: "wx" });
+      writeFileSync(targetPath, content, { flag: "wx" });
       relativeFile = path.join(RFC_DIR, fileName);
       allocated = true;
     } finally {
-      await fs.rm(claimPath, { force: true });
+      await fs.rm(claimPath);
     }
     if (allocated) break;
   }

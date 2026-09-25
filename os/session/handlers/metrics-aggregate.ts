@@ -16,16 +16,22 @@ result when no metrics files exist.
 </CHANGE_SUMMARY>
 */
 
-import { readdir, readFile } from "node:fs/promises";
+
 import { join } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { parse as yamlParse } from "yaml";
 
 import { METRICS_DIR, type MetricsAggregateResult, type SkillAggregate, type RfcMetrics, type SessionMetrics } from "../types.ts";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeRuntimeContext } from "../../../src/types.ts";
 
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
+
 async function readYamlFile<T>(filePath: string): Promise<T | null> {
   try {
-    const content = await readFile(filePath, "utf-8");
+    const content = await io.readFile(filePath);
     return yamlParse(content) as T;
   } catch {
     return null;
@@ -36,6 +42,7 @@ export async function runMetricsAggregate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<MetricsAggregateResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, outputFormat } = context;
   const skillFilter = input.flags["skill"] as string | undefined;
   const since = input.flags["since"] as string | undefined;
@@ -48,13 +55,13 @@ export async function runMetricsAggregate(
   let sessionFiles: string[] = [];
 
   try {
-    rfcFiles = await readdir(rfcMetricsDir);
+    rfcFiles = (await io.readdir(rfcMetricsDir)).map((e) => e.name);
   } catch {
     // No RFC metrics directory yet
   }
 
   try {
-    sessionFiles = await readdir(sessionMetricsDir);
+    sessionFiles = (await io.readdir(sessionMetricsDir)).map((e) => e.name);
   } catch {
     // No session metrics directory yet
   }

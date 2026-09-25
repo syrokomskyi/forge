@@ -14,6 +14,8 @@ import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runUpgrade } from "../onboarding/upgrade.ts";
+import { ambientIo } from "../utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { runInit } from "../onboarding/init.ts";
 import {
   loadForgeConfig,
@@ -358,66 +360,40 @@ test("forge.upgrade --update-npm attempts npm install for npm consumer", async (
   await setupNpmConsumerForge(tempDir, "0.2.0");
   await setupConsumerForgeYaml(tempDir, null);
 
-  // Mock execSync to avoid real npm install
-  const execSyncMock = vi.fn(() => "");
-  vi.resetModules();
-  vi.doMock("node:child_process", () => ({
-    execSync: execSyncMock,
-    exec: vi.fn(),
-    execFile: vi.fn(),
-    spawn: vi.fn(),
-    fork: vi.fn(),
-  }));
+  // RFC-1152: inject a fake WorkspaceIO — exec is the port seam; real fs stays.
+  const execMock = vi.fn(async () => ({ exitCode: 0, stdout: "", stderr: "" }));
+  const io = { ...ambientIo, exec: execMock } as WorkspaceIO;
 
-  // Re-import with mock
-  const { runUpgrade: runUpgradeMocked } = await import("../onboarding/upgrade.ts");
-
-  const result = await runUpgradeMocked(
+  const result = await runUpgrade(
     { argv: [], flags: { "update-npm": true } },
-    makeContext(tempDir, false),
+    { ...makeContext(tempDir, false), io },
   );
 
   expect(result.data?.status).toBe("pass");
-  expect(execSyncMock).toHaveBeenCalled();
+  expect(execMock).toHaveBeenCalled();
   expect(result.data?.npmUpdated).toBe(true);
   expect(result.data?.npmUpdateSkipped).toBe(null);
-
-  vi.doUnmock("node:child_process");
-  vi.resetModules();
 });
 
 test("forge.upgrade --update-npm reports failure when npm install throws", async () => {
   await setupNpmConsumerForge(tempDir, "0.2.0");
   await setupConsumerForgeYaml(tempDir, null);
 
-  // Mock execSync to throw (simulates network error / registry unavailable)
-  const execSyncMock = vi.fn(() => {
-    throw new Error("network error");
-  });
-  vi.resetModules();
-  vi.doMock("node:child_process", () => ({
-    execSync: execSyncMock,
-    exec: vi.fn(),
-    execFile: vi.fn(),
-    spawn: vi.fn(),
-    fork: vi.fn(),
-  }));
+  // RFC-1152: fake io.exec fails — simulates network error / registry unavailable
+  const execMock = vi.fn(async () => ({ exitCode: 1, stdout: "", stderr: "network error" }));
+  const io = { ...ambientIo, exec: execMock } as WorkspaceIO;
 
-  const { runUpgrade: runUpgradeMocked } = await import("../onboarding/upgrade.ts");
-
-  const result = await runUpgradeMocked(
+  const result = await runUpgrade(
     { argv: [], flags: { "update-npm": true } },
-    makeContext(tempDir, false),
+    { ...makeContext(tempDir, false), io },
   );
 
   expect(result.data?.status).toBe("pass");
-  expect(execSyncMock).toHaveBeenCalled();
+  expect(execMock).toHaveBeenCalled();
   expect(result.data?.npmUpdated).toBe(false);
   expect(result.data?.npmUpdateSkipped).toBe(
     "install failed (network error or registry unavailable)",
   );
-
-  vi.doUnmock("node:child_process");
   vi.resetModules();
 });
 

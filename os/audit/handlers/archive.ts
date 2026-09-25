@@ -17,7 +17,7 @@ files (not matching audit-rfc-XXXX-*) are silently excluded.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import { listAuditFiles, extractRfcIdFromAuditFile } from "../frontmatter-io.ts";
 import { loadRfcStatusMap } from "../../rfc/frontmatter-io.ts";
@@ -116,7 +116,7 @@ export async function runAuditArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id: rfcId, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -124,7 +124,7 @@ export async function runAuditArchive(
       }
 
       if (!dryRun) {
-        await fs.mkdir(targetDir, { recursive: true });
+        await fs.mkdir(targetDir);
         try {
           await fs.rename(path.join(auditDirPath, fileName), targetPath);
         } catch (err) {
@@ -167,7 +167,7 @@ export async function runAuditArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id: rfcId, file: relFile, reason: "destination exists" });
         continue;
       } catch {

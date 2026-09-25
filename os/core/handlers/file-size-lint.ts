@@ -17,9 +17,14 @@ collectFiles and diagnosticsResult. Ratcheted baseline at workspace root.
 </CHANGE_SUMMARY>
 */
 
-import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   CheckResult,
   Diagnostic,
@@ -52,25 +57,26 @@ async function collectSourceFiles(root: string): Promise<string[]> {
   async function walk(dir: string): Promise<void> {
     let entries;
     try {
-      entries = await readdir(dir, { withFileTypes: true });
+      entries = await io.readdir(dir);
     } catch {
       return;
     }
 
     for (const entry of entries) {
       if (entry.name.startsWith("-") || entry.name.startsWith("old-")) continue;
-      if (entry.name === "tests" || entry.name === "node_modules" || entry.name === "dist") continue;
+      if (entry.name === "tests" || entry.name === "node_modules" || entry.name === "dist")
+        continue;
       if (entry.name === ".astro" || entry.name.endsWith(".d.ts")) continue;
       if (entry.name.endsWith(".generated.yaml")) continue;
 
       const full = join(dir, entry.name);
 
-      if (entry.isDirectory()) {
+      if (entry.isDirectory) {
         await walk(full);
         continue;
       }
 
-      if (!entry.isFile()) continue;
+      if (!entry.isFile) continue;
       if (!entry.name.endsWith(".ts") && !entry.name.endsWith(".tsx")) continue;
 
       results.push(full);
@@ -86,7 +92,7 @@ async function readBaseline(
   baselinePath: string,
 ): Promise<FileSizeLintBaseline | undefined> {
   try {
-    const raw = await readFile(join(workspaceRoot, baselinePath), "utf8");
+    const raw = await io.readFile(join(workspaceRoot, baselinePath));
     return yamlParse(raw) as FileSizeLintBaseline;
   } catch {
     return undefined;
@@ -107,7 +113,7 @@ async function findOversizedFiles(workspaceRoot: string): Promise<Map<string, nu
   for (const filePath of files) {
     let source: string;
     try {
-      source = await readFile(filePath, "utf8");
+      source = await io.readFile(filePath);
     } catch {
       continue;
     }
@@ -134,7 +140,8 @@ function diagnosticsResult(
     summary.error > 0 ? "fail" : summary.warning > 0 ? "warn" : "pass";
   const counts: string[] = [];
   if (summary.error > 0) counts.push(`${summary.error} error${summary.error === 1 ? "" : "s"}`);
-  if (summary.warning > 0) counts.push(`${summary.warning} warning${summary.warning === 1 ? "" : "s"}`);
+  if (summary.warning > 0)
+    counts.push(`${summary.warning} warning${summary.warning === 1 ? "" : "s"}`);
   const summaryStr = counts.length > 0 ? `[${command}] ${counts.join(", ")}` : `[${command}]`;
   return {
     data: { command, status, diagnostics, summary },
@@ -156,6 +163,7 @@ export async function runFileSizeLint(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<CheckResult | { file: string; files: number }>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot } = context;
   const baselinePath =
     (input.flags["baseline-path"] as string | undefined) ?? DEFAULT_BASELINE_PATH;
@@ -164,7 +172,7 @@ export async function runFileSizeLint(
   if (input.flags["write-baseline"] === true) {
     const ceilings: Record<string, number> = {};
     for (const [file, lines] of oversized) ceilings[file] = lines;
-    await writeFile(join(workspaceRoot, baselinePath), renderBaseline(ceilings), "utf8");
+    await io.writeFile(join(workspaceRoot, baselinePath), renderBaseline(ceilings));
     return {
       data: { file: baselinePath, files: oversized.size },
       exitCode: 0,

@@ -14,8 +14,9 @@
 </CHANGE_SUMMARY>
 */
 
-import { readFile, copyFile, mkdir } from "node:fs/promises";
 import { join, basename } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -46,6 +47,7 @@ export async function runReleasePublish(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<ForgeReleasePublishResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger } = context;
   const { dryRun, profileIdOverride } = resolveLifecycleFlags(input, context);
 
@@ -87,7 +89,7 @@ export async function runReleasePublish(
 
   let manifest: ReleaseManifest;
   try {
-    const raw = await readFile(manifestPath, "utf8");
+    const raw = await io.readFile(manifestPath);
     manifest = JSON.parse(raw) as ReleaseManifest;
   } catch {
     return {
@@ -155,15 +157,14 @@ export async function runReleasePublish(
 
   if (target === "local") {
     const publishedDir = join(releaseDir, "published");
-    await mkdir(publishedDir, { recursive: true });
+    await io.mkdir(publishedDir);
     for (const f of filesToPublish) {
       const dst = join(publishedDir, basename(f));
-      await copyFile(f, dst);
+      await io.copyFile(f, dst);
       publishedFiles.push({ path: f, targetPath: dst });
     }
   } else if (target === "r2" || target === "s3") {
     const { S3Client, PutObjectCommand } = await import("@aws-sdk/client-s3");
-    const { readFile: fsReadFile } = await import("node:fs/promises");
 
     const endpoint =
       target === "r2"
@@ -185,7 +186,7 @@ export async function runReleasePublish(
 
     for (const f of filesToPublish) {
       const key = prefix ? `${prefix}/${basename(f)}` : basename(f);
-      const body = await fsReadFile(f);
+      const body = await io.readFile(f);
       await client.send(
         new PutObjectCommand({
           Bucket: bucket,

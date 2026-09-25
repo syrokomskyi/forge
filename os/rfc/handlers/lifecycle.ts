@@ -18,8 +18,10 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+
 import path from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { parse as yamlParse } from "yaml";
 
 import type { CommandRegistry } from "../../../src/types.ts";
@@ -42,10 +44,14 @@ import type {
 import { RFC_DIR, RFC_METADATA_CUTOFF } from "../types.ts";
 import { commandBuckets } from "./shared.ts";
 
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
+
 async function loadManifestCommandNames(workspaceRoot: string): Promise<Set<string>> {
   const manifestPath = path.join(workspaceRoot, "docs", "command-manifest.generated.yaml");
   try {
-    const raw = await readFile(manifestPath, "utf-8");
+    const raw = await io.readFile(manifestPath);
     const manifest = yamlParse(raw) as { commands?: Array<{ name: string }> };
     return new Set((manifest.commands ?? []).map((c) => c.name));
   } catch {
@@ -195,6 +201,7 @@ export async function runRfcCommandLifecycleValidate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcCommandLifecycleValidationResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = path.join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;

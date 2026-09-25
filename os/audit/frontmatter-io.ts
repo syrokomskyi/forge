@@ -15,7 +15,7 @@ are silently excluded.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 import { AUDIT_RFC_FILE_PATTERN } from "./types.ts";
@@ -41,13 +41,13 @@ export async function listAuditFiles(auditDirPath: string): Promise<string[]> {
 
   async function scanDir(dirPath: string, relativePrefix: string): Promise<void> {
     try {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const entries = await fs.readdir(dirPath);
       for (const entry of entries) {
         const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
+        if (entry.isDirectory) {
           await scanDir(path.join(dirPath, entry.name), relativePath);
         } else if (
-          entry.isFile() &&
+          entry.isFile &&
           entry.name.endsWith(".md") &&
           !entry.name.startsWith("audit-0000") &&
           entry.name !== "README.md" &&
@@ -71,7 +71,7 @@ export async function readAndParseAudit(
 ): Promise<{ fileName: string; parsed: ParsedAudit } | undefined> {
   try {
     const filePath = path.join(auditDirPath, fileName);
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await fs.readFile(filePath);
     return { fileName, parsed: parseAuditFile(content) };
   } catch {
     return undefined;

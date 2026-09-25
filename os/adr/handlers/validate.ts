@@ -19,7 +19,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 import path from "node:path";
-import { execFile } from "node:child_process";
+import { execFile } from "../../../src/utils/sync-fs.ts";
 import {
   listAdrFiles,
   readAndParseAdr,

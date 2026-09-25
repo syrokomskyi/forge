@@ -11,7 +11,7 @@
 </CHANGE_SUMMARY>
 */
 
-import { spawn } from "node:child_process";
+import { spawn } from "../../../src/utils/sync-fs.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,

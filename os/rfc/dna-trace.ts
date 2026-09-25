@@ -15,14 +15,20 @@ entries from all RFCs, and builds a bidirectional trace matrix.
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+
 import { join } from "node:path";
+import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { RFC_DIR } from "./types.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   Diagnostic,
   ForgeCommandInput,
@@ -56,7 +62,7 @@ export interface DnaTraceResult {
 async function parseDnaRegistry(workspaceRoot: string): Promise<Set<string>> {
   const ids = new Set<string>();
   try {
-    const src = await readFile(join(workspaceRoot, DNA_REGISTRY_PATH), "utf-8");
+    const src = await io.readFile(join(workspaceRoot, DNA_REGISTRY_PATH));
     for (const m of src.matchAll(DNA_HEADING_RE)) {
       ids.add(`DNA-${m[1]}`);
     }
@@ -186,6 +192,7 @@ export async function runRfcDnaTraceValidate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DnaTraceResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const dnaFilter = input.flags["dna"] as string | undefined;
 
@@ -241,6 +248,7 @@ export async function runRfcDnaTraceGenerate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DnaTraceResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
 
   const { entries, diagnostics, registryIds } = await buildDnaTrace(workspaceRoot);

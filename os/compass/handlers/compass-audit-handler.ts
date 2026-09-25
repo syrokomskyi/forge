@@ -18,9 +18,10 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, readFile } from "node:fs/promises";
+
 import { resolve, relative } from "node:path";
-import { execFile, execFileSync } from "node:child_process";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { execFile, execFileSync } from "../../../src/utils/sync-fs.ts";
 import { promisify } from "node:util";
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";
@@ -35,6 +36,10 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 const execFileAsync = promisify(execFile);
 const LEDGER_PATH = "docs/compass-audit-ledger.generated.yaml";
@@ -93,7 +98,7 @@ function withLedgerAdvisory(ledger: Partial<CompassAuditLedger>): CompassAuditLe
 async function loadLedger(workspaceRoot: string): Promise<CompassAuditLedger> {
   const abs = resolve(workspaceRoot, LEDGER_PATH);
   try {
-    const content = await readFile(abs, "utf8");
+    const content = await io.readFile(abs);
     return withLedgerAdvisory(yamlParse(content) as Partial<CompassAuditLedger>);
   } catch {
     return withLedgerAdvisory({});
@@ -104,7 +109,7 @@ async function saveLedger(workspaceRoot: string, ledger: CompassAuditLedger): Pr
   const normalized = withLedgerAdvisory(ledger);
   normalized.entries.sort((a, b) => a.path.localeCompare(b.path));
   const abs = resolve(workspaceRoot, LEDGER_PATH);
-  await mkdir(resolve(abs, ".."), { recursive: true });
+  await io.mkdir(resolve(abs, ".."));
   const header = buildGeneratedHeader({
     ownerCommand: "compass.audit.record",
     filePath: LEDGER_PATH,
@@ -194,6 +199,7 @@ export async function runCompassAuditPlan(
     skippedIneligible: number;
   }>
 > {
+  const io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
   const entries = await createCompassInventoryEntries(
@@ -238,7 +244,7 @@ export async function runCompassAuditPlan(
     }
 
     const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = await readFile(absPath, "utf8");
+    const source = await io.readFile(absPath);
     const moduleContract = extractBlock(source, "MODULE_CONTRACT");
     const keyDecisions = extractBlock(source, "KEY_DECISIONS");
     const changeSummary = extractBlock(source, "CHANGE_SUMMARY");
@@ -285,6 +291,7 @@ export async function runCompassAuditRecord(
     action: "recorded";
   }>
 > {
+  const io = resolveIo(context.io);
   const rawFilePath = input.flags["file"] as string | undefined;
   const verdict = input.flags["verdict"] as CompassAuditVerdict | undefined;
   const agentFlag = input.flags["agent"] as string | undefined;
@@ -366,6 +373,7 @@ export async function runCompassAuditBaseline(
     total: number;
   }>
 > {
+  const io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
   const entries = await createCompassInventoryEntries(
@@ -444,6 +452,7 @@ export async function runCompassAuditValidate(
     skippedPaths: string[];
   }>
 > {
+  const io = resolveIo(context.io);
   const strict = input.flags["strict"] === true;
   const scanRoot = resolveCompassScanRoot(input, context);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);

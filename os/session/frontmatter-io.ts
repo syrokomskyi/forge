@@ -14,7 +14,7 @@ subdirectories from the main file list.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 import { SESSION_FILE_PATTERN, SESSION_RAW_SUBDIR, SESSION_ARCHIVE_SUBDIR } from "./types.ts";
@@ -43,9 +43,9 @@ export async function listSessionFiles(sessionDirPath: string): Promise<string[]
   const results: string[] = [];
 
   async function scanDir(dirPath: string, relativePrefix: string): Promise<void> {
-    let entries: import("node:fs").Dirent[];
+    let entries: Awaited<ReturnType<typeof fs.readdir>>;
     try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true });
+      entries = await fs.readdir(dirPath);
     } catch {
       return;
     }
@@ -54,10 +54,10 @@ export async function listSessionFiles(sessionDirPath: string): Promise<string[]
         continue;
       }
       const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
+      if (entry.isDirectory) {
         await scanDir(path.join(dirPath, entry.name), relativePath);
       } else if (
-        entry.isFile() &&
+        entry.isFile &&
         entry.name.endsWith(".md") &&
         entry.name !== "README.md" &&
         SESSION_FILE_PATTERN.test(entry.name)
@@ -80,18 +80,18 @@ export async function listArchivedSessionFiles(sessionDirPath: string): Promise<
   const results: string[] = [];
 
   async function scanDir(dirPath: string, relativePrefix: string): Promise<void> {
-    let entries: import("node:fs").Dirent[];
+    let entries: Awaited<ReturnType<typeof fs.readdir>>;
     try {
-      entries = await fs.readdir(dirPath, { withFileTypes: true });
+      entries = await fs.readdir(dirPath);
     } catch {
       return;
     }
     for (const entry of entries) {
       const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-      if (entry.isDirectory()) {
+      if (entry.isDirectory) {
         await scanDir(path.join(dirPath, entry.name), relativePath);
       } else if (
-        entry.isFile() &&
+        entry.isFile &&
         entry.name.endsWith(".md") &&
         SESSION_FILE_PATTERN.test(entry.name)
       ) {
@@ -110,7 +110,7 @@ export async function readAndParseSession(
 ): Promise<{ fileName: string; parsed: ParsedSession } | undefined> {
   try {
     const filePath = path.join(sessionDirPath, fileName);
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await fs.readFile(filePath);
     return { fileName, parsed: parseSessionFile(content) };
   } catch {
     return undefined;
@@ -125,10 +125,10 @@ export async function readAndParseSession(
 export async function listNonMarkdownSessionFiles(sessionDirPath: string): Promise<string[]> {
   const results: string[] = [];
   try {
-    const entries = await fs.readdir(sessionDirPath, { withFileTypes: true });
+    const entries = await fs.readdir(sessionDirPath);
     for (const entry of entries) {
       if (
-        entry.isFile() &&
+        entry.isFile &&
         !entry.name.endsWith(".md") &&
         entry.name !== ".gitkeep" &&
         entry.name !== "README.md"
@@ -150,9 +150,9 @@ export async function listRawFiles(sessionDirPath: string): Promise<string[]> {
   const rawDirPath = path.join(sessionDirPath, SESSION_RAW_SUBDIR);
   const results: string[] = [];
   try {
-    const entries = await fs.readdir(rawDirPath, { withFileTypes: true });
+    const entries = await fs.readdir(rawDirPath);
     for (const entry of entries) {
-      if (entry.isFile()) {
+      if (entry.isFile) {
         results.push(entry.name);
       }
     }

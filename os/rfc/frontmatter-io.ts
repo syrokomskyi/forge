@@ -22,7 +22,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 
@@ -47,13 +47,13 @@ export async function listRfcFiles(rfcDirPath: string): Promise<string[]> {
 
   async function scanDir(dirPath: string, relativePrefix: string): Promise<void> {
     try {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const entries = await fs.readdir(dirPath);
       for (const entry of entries) {
         const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
+        if (entry.isDirectory) {
           await scanDir(path.join(dirPath, entry.name), relativePath);
         } else if (
-          entry.isFile() &&
+          entry.isFile &&
           entry.name.endsWith(".md") &&
           !entry.name.startsWith("rfc-0000") &&
           !entry.name.endsWith(".generated.md") &&
@@ -84,7 +84,7 @@ export async function readAndParseRfc(
 ): Promise<ReadAndParseRfcResult | undefined> {
   try {
     const filePath = path.join(rfcDirPath, fileName);
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await fs.readFile(filePath);
     return { fileName, parsed: parseRfcFile(content) };
   } catch (e) {
     if (e instanceof Error) {

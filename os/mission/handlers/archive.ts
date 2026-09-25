@@ -26,10 +26,10 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import {existsSync, lstatSync} from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
-import { execSync } from "node:child_process";
+import { execSync } from "../../../src/utils/sync-fs.ts";
 import { parse as parseYaml } from "yaml";
 import type {
   ForgeCommandInput,
@@ -61,7 +61,7 @@ async function cleanServiceFolders(workpieceDir: string): Promise<string[]> {
   for (const folder of SERVICE_FOLDERS) {
     const target = path.join(workpieceDir, folder);
     if (existsSync(target)) {
-      await fs.rm(target, { recursive: true, force: true });
+      await fs.rm(target);
       removed.push(folder);
     }
   }
@@ -76,7 +76,7 @@ function isCacheEntry(name: string): boolean {
 async function readMissionReleaseId(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
   try {
-    const raw = await fs.readFile(manifestPath, "utf8");
+    const raw = await fs.readFile(manifestPath);
     const parsed = parseYaml(raw) as Record<string, unknown>;
     const releaseId = parsed?.releaseId;
     if (typeof releaseId === "string" && releaseId.trim()) return releaseId.trim();
@@ -89,7 +89,7 @@ async function readMissionReleaseId(missionDir: string): Promise<string | null> 
 async function readMissionState(missionDir: string): Promise<string | null> {
   const manifestPath = path.join(missionDir, "mission.yaml");
   try {
-    const raw = await fs.readFile(manifestPath, "utf8");
+    const raw = await fs.readFile(manifestPath);
     const parsed = parseYaml(raw) as Record<string, unknown>;
     const state = parsed?.state;
     if (typeof state === "string") return state.trim();
@@ -106,7 +106,7 @@ async function readMissionState(missionDir: string): Promise<string | null> {
   const workpieceDir = path.join(missionDir, "workpiece");
   if (existsSync(workpieceDir)) {
     const entries = await fs.readdir(workpieceDir);
-    const nonCacheEntries = entries.filter((e) => !isCacheEntry(e));
+    const nonCacheEntries = entries.filter((e) => !isCacheEntry(e.name));
     if (nonCacheEntries.length === 0) {
       return "closed";
     }
@@ -125,17 +125,17 @@ async function isOrphanedRemnant(missionDir: string): Promise<boolean> {
   if (!existsSync(workpieceDir)) return true;
 
   const entries = await fs.readdir(workpieceDir);
-  const nonCacheEntries = entries.filter((e) => !isCacheEntry(e));
+  const nonCacheEntries = entries.filter((e) => !isCacheEntry(e.name));
   return nonCacheEntries.length === 0;
 }
 
 // RFC-0982: Check if a mission directory has non-cache content (source files,
 // configs, etc.) that warrants manual inspection rather than auto-cleanup.
 async function hasNonCacheContent(missionDir: string): Promise<boolean> {
-  const entries = await fs.readdir(missionDir, { withFileTypes: true });
+  const entries = await fs.readdir(missionDir);
   for (const entry of entries) {
     if (entry.name === "workpiece") continue;
-    if (entry.isDirectory() && isCacheEntry(entry.name)) {
+    if (entry.isDirectory && isCacheEntry(entry.name)) {
       continue;
     }
     // Any file or non-cache directory at mission root is content
@@ -146,7 +146,7 @@ async function hasNonCacheContent(missionDir: string): Promise<boolean> {
   const workpieceDir = path.join(missionDir, "workpiece");
   if (existsSync(workpieceDir)) {
     const wpEntries = await fs.readdir(workpieceDir);
-    const nonCacheEntries = wpEntries.filter((e) => !isCacheEntry(e));
+    const nonCacheEntries = wpEntries.filter((e) => !isCacheEntry(e.name));
     if (nonCacheEntries.length > 0) return true;
   }
 
@@ -176,7 +176,7 @@ async function moveMissionDir(
 
   if (!dryRun) {
     if (targetParentDir) {
-      await fs.mkdir(targetParentDir, { recursive: true });
+      await fs.mkdir(targetParentDir);
     }
 
     // RFC-0801: Clean service folders from workpiece before move.
@@ -271,14 +271,14 @@ export async function runMissionArchive(
   }
 
   // Phase 1: Scan missions/ for terminal-state missions to move into archive
-  const rootEntries = await fs.readdir(missionsPath, { withFileTypes: true });
+  const rootEntries = await fs.readdir(missionsPath);
 
   // Stale symlink cleanup: IDEs or file watchers may recreate symlinks to
   // archived mission directories after mission.archive has moved them.
   // These symlinks break pnpm workspace resolution and mission number derivation.
   // Trash them before they can cause downstream issues.
   for (const e of rootEntries) {
-    if (e.isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME) {
+    if (lstatSync(path.join(missionsPath, e.name)).isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME) {
       const symlinkPath = path.join(missionsPath, e.name);
       const sourceRel = `${MISSIONS_DIR}/${e.name}`;
       if (!dryRun) {
@@ -296,7 +296,7 @@ export async function runMissionArchive(
   }
 
   const rootDirs = rootEntries
-    .filter((e) => e.isDirectory() && !e.isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME)
+    .filter((e) => e.isDirectory && !lstatSync(path.join(missionsPath, e.name)).isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME)
     .map((e) => e.name);
 
   for (const missionId of rootDirs) {
@@ -410,13 +410,13 @@ export async function runMissionArchive(
   // Phase 2: Scan missions/archive/<state>/ for non-terminal missions to move back
   const archivePath = path.join(missionsPath, ARCHIVE_DIR_NAME);
   if (existsSync(archivePath)) {
-    const stateDirs = await fs.readdir(archivePath, { withFileTypes: true });
-    const stateDirNames = stateDirs.filter((e) => e.isDirectory()).map((e) => e.name);
+    const stateDirs = await fs.readdir(archivePath);
+    const stateDirNames = stateDirs.filter((e) => e.isDirectory).map((e) => e.name);
 
     for (const stateDirName of stateDirNames) {
       const stateDirPath = path.join(archivePath, stateDirName);
-      const archivedMissions = await fs.readdir(stateDirPath, { withFileTypes: true });
-      const archivedDirNames = archivedMissions.filter((e) => e.isDirectory()).map((e) => e.name);
+      const archivedMissions = await fs.readdir(stateDirPath);
+      const archivedDirNames = archivedMissions.filter((e) => e.isDirectory).map((e) => e.name);
 
       for (const missionId of archivedDirNames) {
         const archivedMissionDir = path.join(stateDirPath, missionId);

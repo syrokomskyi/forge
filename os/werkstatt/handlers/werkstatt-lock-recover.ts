@@ -19,8 +19,8 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { existsSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import type {
   ForgeCommandInput,
@@ -57,7 +57,7 @@ async function classifyArtifacts(
 
     let entries: string[];
     try {
-      entries = await fs.readdir(rootPath);
+      entries = (await fs.readdir(rootPath)).map((e) => e.name);
     } catch {
       continue;
     }

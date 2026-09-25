@@ -17,8 +17,10 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "node:child_process";
-import { readFile, mkdir } from "node:fs/promises";
+import { execFile } from "../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";
 import { byteHash } from "../../src/utils/hash.ts";
@@ -29,6 +31,10 @@ import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
 import { RFC_DIR } from "./types.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   AcceptanceProbe,
   RfcStatus,
@@ -74,7 +80,7 @@ export async function captureGitContext(
 export async function getKernelVersion(workspaceRoot: string): Promise<string> {
   try {
     const pkgPath = join(workspaceRoot, "packages", "os", "site-kernel", "package.json");
-    const pkg = JSON.parse(await readFile(pkgPath, "utf-8"));
+    const pkg = JSON.parse(await io.readFile(pkgPath));
     return String(pkg.version ?? "unknown");
   } catch {
     return "unknown";
@@ -120,6 +126,7 @@ export async function runRfcVerificationEmit(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcVerificationEmitResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;
@@ -155,7 +162,7 @@ export async function runRfcVerificationEmit(
   }
   const kernelVersion = await getKernelVersion(workspaceRoot);
   const verificationDirAbs = join(workspaceRoot, VERIFICATION_DIR);
-  await mkdir(verificationDirAbs, { recursive: true });
+  await io.mkdir(verificationDirAbs);
 
   for (const fileName of allFiles) {
     const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
@@ -176,7 +183,7 @@ export async function runRfcVerificationEmit(
     const probes = acceptance as AcceptanceProbe[];
     const probeRecords: VerificationEvidenceProbeRecord[] = [];
     const rfcFilePath = join(rfcDirPath, fileName);
-    const rfcMarkdown = await readFile(rfcFilePath, "utf-8");
+    const rfcMarkdown = await io.readFile(rfcFilePath);
     const emittedAt = new Date().toISOString();
 
     for (const probe of probes) {

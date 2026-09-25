@@ -13,9 +13,15 @@ uses kebab-case (lowercase letters, digits, hyphens only), with documented exemp
 */
 
 import { basename, join, relative } from "node:path";
-import { readFile } from "node:fs/promises";
-import { readdirSync, type Dirent } from "node:fs";
+import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
+import {readdirSync, type Dirent, lstatSync} from "../../src/utils/sync-fs.ts";
 import { collectFiles } from "../../src/utils/fs.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -168,7 +174,7 @@ function hasNamingViolation(fileName: string): boolean {
 async function readSimpleIgnorePatterns(filePath: string): Promise<Set<string>> {
   const patterns = new Set<string>();
   try {
-    const content = await readFile(filePath, "utf8");
+    const content = await io.readFile(filePath);
     for (const rawLine of content.split("\n")) {
       const line = rawLine.trim();
       if (!line || line.startsWith("#")) continue;
@@ -270,6 +276,7 @@ export async function runNamingConventionLint(
     unknownTopLevelDirs?: string[];
   }>
 > {
+  const io = resolveIo(context.io);
   const workspaceRoot = context.workspaceRoot;
   const includeIgnored = input.flags["include-ignored"] === true;
 

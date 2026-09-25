@@ -10,8 +10,8 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../src/utils/io.ts";
+import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import YAML from "yaml";
 import type {
@@ -68,7 +68,7 @@ export async function runSpecLiveShow(
     };
   }
 
-  const content = await fs.readFile(specFilePath, "utf-8");
+  const content = await fs.readFile(specFilePath);
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
   if (!match) {
     return {

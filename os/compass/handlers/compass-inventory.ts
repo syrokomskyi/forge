@@ -29,10 +29,15 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 
 */
 
-import { readdir, readFile } from "node:fs/promises";
+
 import { join, relative, resolve } from "node:path";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import type { ForgeCommandInput } from "../../../src/types.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 import {
   parseGovernanceIdParts,
   resolveCompassPolicy,
@@ -158,19 +163,18 @@ function hasRelevantExtension(filePath: string, policy: CompassPolicy): boolean 
 async function collectSourceFiles(targetPath: string, policy: CompassPolicy): Promise<string[]> {
   let stat;
   try {
-    const { stat: fsStat } = await import("node:fs/promises");
-    stat = await fsStat(targetPath);
+    stat = await io.stat(targetPath);
   } catch {
     return [];
   }
 
-  if (stat.isFile()) {
+  if (stat.isFile) {
     return hasRelevantExtension(targetPath, policy) ? [targetPath] : [];
   }
 
   let entries;
   try {
-    entries = await readdir(targetPath, { withFileTypes: true });
+    entries = await io.readdir(targetPath);
   } catch {
     return [];
   }
@@ -179,7 +183,7 @@ async function collectSourceFiles(targetPath: string, policy: CompassPolicy): Pr
   for (const entry of entries) {
     const absolutePath = join(targetPath, entry.name);
 
-    if (entry.isDirectory()) {
+    if (entry.isDirectory) {
       if (shouldIgnoreDirectory(entry.name, policy)) {
         continue;
       }
@@ -188,7 +192,7 @@ async function collectSourceFiles(targetPath: string, policy: CompassPolicy): Pr
       continue;
     }
 
-    if (entry.isFile() && hasRelevantExtension(absolutePath, policy)) {
+    if (entry.isFile && hasRelevantExtension(absolutePath, policy)) {
       files.push(absolutePath);
     }
   }
@@ -722,7 +726,7 @@ export async function createCompassInventoryEntries(
   const entries: CompassInventoryEntry[] = [];
 
   for (const filePath of files.sort()) {
-    const source = await readFile(filePath, "utf8");
+    const source = await io.readFile(filePath);
     const pathFromRoot = relative(workspaceRoot, filePath).replace(/\\/g, "/");
     const segments = getRelativeSegments(filePath, workspaceRoot);
     const relativePathWithinWorkspace = leafWorkspaceRoot

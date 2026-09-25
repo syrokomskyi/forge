@@ -13,10 +13,10 @@ against schemas, and computes normative source hashes.</purpose>
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs";
+import * as fs from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { execSync } from "node:child_process";
+import { execSync } from "../../src/utils/sync-fs.ts";
 import { parse as parseYaml } from "yaml";
 import {
   programManifestSchema,

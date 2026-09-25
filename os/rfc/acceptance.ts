@@ -18,8 +18,10 @@ prose checklist.
 </CHANGE_SUMMARY>
 */
 
-import { spawn } from "node:child_process";
-import { stat, readFile } from "node:fs/promises";
+import { spawn } from "../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 import path from "node:path";
 import { parse as yamlParse } from "yaml";
 import { Ajv } from "ajv";
@@ -40,12 +42,16 @@ import { RFC_DIR, RFC_PROBE_BINDING_CUTOFF } from "./types.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./handlers/validate-rules.ts";
 
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
+
 const RUN_PROBE_ALLOWED_PREFIX = "werkstatt ";
 
 async function loadManifestCommandNames(workspaceRoot: string): Promise<Set<string>> {
   const manifestPath = path.join(workspaceRoot, "docs", "command-manifest.generated.yaml");
   try {
-    const raw = await readFile(manifestPath, "utf-8");
+    const raw = await io.readFile(manifestPath);
     const manifest = yamlParse(raw) as { commands?: Array<{ name: string }> };
     return new Set((manifest.commands ?? []).map((c) => c.name));
   } catch {
@@ -290,7 +296,7 @@ export async function runProbe(
     }
     case "file-exists": {
       try {
-        await stat(path.join(workspaceRoot, probe.path));
+        await io.stat(path.join(workspaceRoot, probe.path));
         return { probe, ok: true, detail: "exists" };
       } catch {
         return { probe, ok: false, detail: "does not exist" };
@@ -298,7 +304,7 @@ export async function runProbe(
     }
     case "file-contains": {
       try {
-        const content = await readFile(path.join(workspaceRoot, probe.path), "utf8");
+        const content = await io.readFile(path.join(workspaceRoot, probe.path));
         const re = new RegExp(probe.pattern, "m");
         const ok = re.test(content);
         return { probe, ok, detail: ok ? "pattern found" : "pattern not found" };
@@ -336,7 +342,7 @@ export async function runProbe(
       const artifactPath = path.join(workspaceRoot, probe.artifact);
       let raw: string;
       try {
-        raw = await readFile(artifactPath, "utf8");
+        raw = await io.readFile(artifactPath);
       } catch {
         return { probe, ok: false, detail: "artifact file not found" };
       }
@@ -373,6 +379,7 @@ export async function runRfcAcceptanceRun(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcAcceptanceRunResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot } = context;
   const rfcDirPath = path.join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;

@@ -13,7 +13,7 @@ parsing for plan files under docs/plans/.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
 import YAML from "yaml";
 import { PLAN_FILE_PATTERN } from "./types.ts";
@@ -39,13 +39,13 @@ export async function listPlanFiles(planDirPath: string): Promise<string[]> {
 
   async function scanDir(dirPath: string, relativePrefix: string): Promise<void> {
     try {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true });
+      const entries = await fs.readdir(dirPath);
       for (const entry of entries) {
         const relativePath = relativePrefix ? `${relativePrefix}/${entry.name}` : entry.name;
-        if (entry.isDirectory()) {
+        if (entry.isDirectory) {
           await scanDir(path.join(dirPath, entry.name), relativePath);
         } else if (
-          entry.isFile() &&
+          entry.isFile &&
           entry.name.endsWith(".md") &&
           !entry.name.startsWith("plan-0000") &&
           entry.name !== "README.md" &&
@@ -69,7 +69,7 @@ export async function readAndParsePlan(
 ): Promise<{ fileName: string; parsed: ParsedPlan } | undefined> {
   try {
     const filePath = path.join(planDirPath, fileName);
-    const content = await fs.readFile(filePath, "utf-8");
+    const content = await fs.readFile(filePath);
     return { fileName, parsed: parsePlanFile(content) };
   } catch {
     return undefined;

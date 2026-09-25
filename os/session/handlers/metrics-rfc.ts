@@ -17,12 +17,18 @@ Writes to docs/metrics/rfcs/<rfc-id>.metrics.yaml via writeFileAtomic.
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "node:child_process";
-import { readFile, readdir, mkdir } from "node:fs/promises";
+import { execFile } from "../../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
 import { join, dirname } from "node:path";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 import {
   METRICS_DIR,
@@ -111,7 +117,7 @@ async function findReviewReport(workspaceRoot: string, rfcId: string): Promise<s
   const reviewDir = join(workspaceRoot, "docs", "reviews", "code");
   let files: string[];
   try {
-    files = await readdir(reviewDir, { recursive: true });
+    files = await io.glob("**/*", { cwd: reviewDir });
   } catch {
     return null;
   }
@@ -121,7 +127,7 @@ async function findReviewReport(workspaceRoot: string, rfcId: string): Promise<s
     if (!file.endsWith(".md")) continue;
     if (file.toLowerCase().includes(rfcLower)) {
       try {
-        const content = await readFile(join(reviewDir, file), "utf-8");
+        const content = await io.readFile(join(reviewDir, file));
         return content;
       } catch {
         continue;
@@ -177,7 +183,7 @@ async function parseVerificationEvidence(
   );
   let content: string;
   try {
-    content = await readFile(evidencePath, "utf-8");
+    content = await io.readFile(evidencePath);
   } catch {
     return null;
   }
@@ -208,7 +214,7 @@ async function parseAcceptanceCriteria(
   const rfcDir = join(workspaceRoot, "docs", "rfcs");
   let files: string[];
   try {
-    files = await readdir(rfcDir);
+    files = (await io.readdir(rfcDir)).map((e) => e.name);
   } catch {
     return { acceptanceCriteriaTotal: 0, acceptanceCriteriaMet: 0 };
   }
@@ -223,7 +229,7 @@ async function parseAcceptanceCriteria(
 
   let content: string;
   try {
-    content = await readFile(join(rfcDir, rfcFile), "utf-8");
+    content = await io.readFile(join(rfcDir, rfcFile));
   } catch {
     return { acceptanceCriteriaTotal: 0, acceptanceCriteriaMet: 0 };
   }
@@ -332,7 +338,7 @@ export async function generateRfcMetrics(
     "rfcs",
     `${rfcId.toLowerCase()}.metrics.yaml`,
   );
-  await mkdir(dirname(metricsFilePath), { recursive: true });
+  await io.mkdir(dirname(metricsFilePath));
   await writeFileAtomic(metricsFilePath, yamlContent);
 
   return `${METRICS_DIR}/rfcs/${rfcId.toLowerCase()}.metrics.yaml`;

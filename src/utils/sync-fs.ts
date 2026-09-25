@@ -34,5 +34,9 @@ export {
   unlinkSync,
   copyFileSync,
   realpathSync,
+  chmodSync,
 } from "node:fs";
 export { execSync, execFileSync } from "node:child_process";
+// Async process primitives for the forge ambient layer — os/ handlers spawn
+// git/npm/pnpm; these stay ambient (identical to execSync carve-out).
+export { exec, execFile, spawn } from "node:child_process";

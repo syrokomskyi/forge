@@ -26,7 +26,8 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 */
 
 import { resolve } from "node:path";
-import { readFile } from "node:fs/promises";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+
 import {
   createCompassInventoryEntries,
   evaluateV2Rules,
@@ -267,6 +268,7 @@ export async function runCompassInventory(
     policySource: CompassPolicySource;
   }>
 > {
+  const io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context) ?? context.workspaceRoot;
   const policy = resolveCompassPolicy(scanRoot, context.forgeRoot);
   const entries = await createCompassInventoryEntries(scanRoot, input, undefined, policy);
@@ -332,6 +334,7 @@ export async function runCompassValidation(
     }>;
   }>
 > {
+  const io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context);
   let mode: ReturnType<typeof resolveCompassMode>;
   try {
@@ -383,7 +386,7 @@ export async function runCompassValidation(
   );
   for (const entry of authoredEntries) {
     const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = getEntrySource(entry) ?? (await readFile(absPath, "utf8"));
+    const source = getEntrySource(entry) ?? (await io.readFile(absPath));
     for (const v2 of evaluateV2Rules(entry, source, policy)) {
       if (!V2_VALIDATE_RULE_PREFIXES.some((prefix) => v2.ruleId.startsWith(prefix))) {
         continue;
@@ -449,7 +452,7 @@ export async function runCompassValidation(
     }
 
     const absPath = resolve(context.workspaceRoot, entry.path);
-    const source = await readFile(absPath, "utf8");
+    const source = await io.readFile(absPath);
     if (TODO_COMPASS_RE.test(source)) {
       context.logger.error(
         `[compass.validate] COMPASS-TODO-01: ${entry.path}: unfilled ${compassTodoLabel} sentinel in Compass block`,
@@ -496,7 +499,7 @@ export async function runCompassValidation(
       if (applicableSpecs.length === 0) continue;
 
       const absPath = resolve(context.workspaceRoot, entry.path);
-      const source = await readFile(absPath, "utf8");
+      const source = await io.readFile(absPath);
 
       for (const spec of applicableSpecs) {
         const blockMarker = `<${spec.blockId.toUpperCase().replace(/-/g, "_")}>`;

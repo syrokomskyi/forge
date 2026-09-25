@@ -14,11 +14,16 @@ with integrity-registry lookup and git-history fallback, plus getFileRevisionFro
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "node:child_process";
+import { execFile } from "../../../src/utils/sync-fs.ts";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
+
 import { resolve, join } from "node:path";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_TIMEOUT_MS = 15_000;
@@ -73,7 +78,7 @@ type PathsCurrent = Record<string, string>;
 async function loadEntitiesById(cwd: string): Promise<EntitiesById> {
   const filePath = join(cwd, ".integrity", "index", "entities.by-id.json");
   try {
-    const content = await readFile(filePath, "utf8");
+    const content = await io.readFile(filePath);
     return JSON.parse(content) as EntitiesById;
   } catch {
     return {};
@@ -83,7 +88,7 @@ async function loadEntitiesById(cwd: string): Promise<EntitiesById> {
 async function loadPathsCurrent(cwd: string): Promise<PathsCurrent> {
   const filePath = join(cwd, ".integrity", "index", "paths.current.json");
   try {
-    const content = await readFile(filePath, "utf8");
+    const content = await io.readFile(filePath);
     return JSON.parse(content) as PathsCurrent;
   } catch {
     return {};
@@ -110,7 +115,7 @@ export async function getRevisionByPath(
       let contentHash = entity.contentHash;
       try {
         const abs = resolve(cwd, repoPath);
-        const content = await readFile(abs, "utf8");
+        const content = await io.readFile(abs);
         contentHash = "sha256-" + createHash("sha256").update(content).digest("hex");
       } catch {
         // keep registry hash
@@ -127,7 +132,7 @@ export async function getRevisionByPath(
   let contentHash = "";
   try {
     const abs = resolve(cwd, repoPath);
-    const content = await readFile(abs, "utf8");
+    const content = await io.readFile(abs);
     contentHash = "sha256-" + createHash("sha256").update(content).digest("hex");
   } catch {
     // file may not exist

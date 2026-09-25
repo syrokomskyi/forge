@@ -12,7 +12,7 @@
 */
 
 import path from "node:path";
-import fs from "node:fs";
+import * as fs from "../../src/utils/sync-fs.ts";
 import { parse as parseYaml } from "yaml";
 import type { ForgeModule } from "../../src/forge-module.ts";
 import type {

@@ -17,7 +17,7 @@ in subdirectories back to the root.
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 import { listAdrFiles, readAndParseAdr } from "../frontmatter-io.ts";
 import type {
@@ -129,7 +129,7 @@ export async function runAdrArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -137,7 +137,7 @@ export async function runAdrArchive(
       }
 
       if (!dryRun) {
-        await fs.mkdir(targetDir, { recursive: true });
+        await fs.mkdir(targetDir);
         try {
           await fs.rename(path.join(adrDirPath, fileName), targetPath);
         } catch (err) {
@@ -176,7 +176,7 @@ export async function runAdrArchive(
       }
 
       try {
-        await fs.access(targetPath);
+        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
         skipped.push({ id, file: relFile, reason: "destination exists" });
         continue;
       } catch {

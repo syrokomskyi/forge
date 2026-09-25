@@ -18,7 +18,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import { exec } from "node:child_process";
+import { exec } from "../../../src/utils/sync-fs.ts";
 import { promisify } from "node:util";
 import type {
   ForgeCommandInput,

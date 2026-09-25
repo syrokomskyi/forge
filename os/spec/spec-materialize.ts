@@ -11,8 +11,8 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { ambientIo as fs } from "../../src/utils/io.ts";
+import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { toKebabCase } from "../../src/utils/string-utils.ts";
@@ -63,7 +63,7 @@ interface SpecMaterializeResult {
 
 async function readYaml<T>(filePath: string): Promise<T | null> {
   try {
-    const content = await fs.readFile(filePath, "utf8");
+    const content = await fs.readFile(filePath);
     return parseYaml(content) as T;
   } catch {
     return null;
@@ -163,11 +163,11 @@ export async function runSpecMaterialize(
   const amendmentsDir = path.join(specDir, "amendments");
   const amendments: SpecAmendment[] = [];
   if (existsSync(amendmentsDir)) {
-    const amdEntries = await fs.readdir(amendmentsDir);
+    const amdEntries = (await fs.readdir(amendmentsDir)).map((e) => e.name);
     for (const entry of amdEntries) {
       if (!entry.endsWith(".md")) continue;
       try {
-        const content = await fs.readFile(path.join(amendmentsDir, entry), "utf8");
+        const content = await fs.readFile(path.join(amendmentsDir, entry));
         const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
         if (!fmMatch) continue;
         const raw = parseYaml(fmMatch[1]) as unknown;
@@ -197,7 +197,7 @@ export async function runSpecMaterialize(
   const rfcStatuses = new Map<string, string>();
   for (const file of rfcFiles) {
     try {
-      const content = await fs.readFile(path.join(rfcDir, file), "utf8");
+      const content = await fs.readFile(path.join(rfcDir, file));
       const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
       if (!fmMatch) continue;
       const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
@@ -283,7 +283,7 @@ export async function runSpecMaterialize(
   const templatePath = resolveRfcTemplate(workspaceRoot);
   let templateContent: string;
   try {
-    templateContent = await fs.readFile(templatePath, "utf-8");
+    templateContent = await fs.readFile(templatePath);
   } catch {
     return {
       data: {
@@ -335,7 +335,7 @@ export async function runSpecMaterialize(
     content = content.replace(/^---\n\n# /m, `---\n${designSection}\n# `);
 
     const targetPath = path.join(rfcDir, fileName);
-    await fs.writeFile(targetPath, content, "utf-8");
+    await fs.writeFile(targetPath, content);
     maxId = nextNum;
 
     created.push({
@@ -355,7 +355,7 @@ export async function runSpecMaterialize(
       }),
     };
     const yamlContent = stringifyYaml(updatedSpec);
-    await fs.writeFile(forgeSpecPath, yamlContent, "utf-8");
+    await fs.writeFile(forgeSpecPath, yamlContent);
   }
 
   // Report skipped front nodes (beyond the materialized batch)

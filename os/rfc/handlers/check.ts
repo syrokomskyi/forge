@@ -10,7 +10,7 @@
 </CHANGE_SUMMARY>
 */
 
-import fs from "node:fs/promises";
+import { ambientIo as fs } from "../../../src/utils/io.ts";
 import path from "node:path";
 
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
@@ -117,7 +117,7 @@ async function loadFeatureKeysForApps(
       "features.ts",
     );
     try {
-      const source = await fs.readFile(featuresPath, "utf-8");
+      const source = await fs.readFile(featuresPath);
       result.set(siteName, extractDefinedFeatureKeysFromSource(source));
     } catch {
       // features.ts not found for this app — skip
@@ -165,7 +165,7 @@ export async function runRfcCheck(
       if (!isLiteralFsPath(declaredPath)) continue;
       const absPath = path.join(workspaceRoot, declaredPath);
       try {
-        await fs.access(absPath);
+        await fs.exists(absPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
       } catch {
         violations.push({
           rfcId,

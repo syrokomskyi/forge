@@ -25,7 +25,7 @@ compass-migrate-handler hint used a consumer-specific run command — switched t
 </CHANGE_SUMMARY>
 */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync } from "../../../src/utils/sync-fs.ts";
 import { migrateWorkspace, type MigrateResult } from "./compass-migrate.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { resolveCompassPolicy } from "../policy.ts";

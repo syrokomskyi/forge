@@ -20,8 +20,10 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 */
 
 import path from "node:path";
-import { readFile, stat } from "node:fs/promises";
-import { execFile } from "node:child_process";
+import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+
+import { execFile } from "../../../src/utils/sync-fs.ts";
 
 import { parse as yamlParse } from "yaml";
 import { validateAcceptanceShape } from "../acceptance.ts";
@@ -42,6 +44,10 @@ import {
 } from "../types.ts";
 import type { ProbeCoverageReport, AcceptanceProbe } from "../types.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
+
+// Ambient default for helper fns without a context param — handlers override
+// with `const io = resolveIo(context.io)` inside their own scope.
+const io = ambientIo;
 
 const DNA_DOC = DNA_DOCS[0]!;
 const AP_DOC = AP_DOCS[0]!;
@@ -831,7 +837,7 @@ export async function validateSingleRfc(
           } else if (evidence.startsWith("test:")) {
             const testPath = evidence.slice("test:".length).trim();
             try {
-              await stat(path.join(workspaceRoot, testPath));
+              await io.stat(path.join(workspaceRoot, testPath));
             } catch {
               addViolation(
                 rfcId,
@@ -844,7 +850,7 @@ export async function validateSingleRfc(
             const lastColon = evidence.lastIndexOf(":");
             const filePath = evidence.slice(0, lastColon).trim();
             try {
-              await stat(path.join(workspaceRoot, filePath));
+              await io.stat(path.join(workspaceRoot, filePath));
             } catch {
               addViolation(
                 rfcId,
@@ -1110,7 +1116,7 @@ export async function validateSingleRfc(
     let evidenceOk = false;
     let evidenceOverall = "";
     try {
-      const evidenceContent = await readFile(evidenceAbsPath, "utf-8");
+      const evidenceContent = await io.readFile(evidenceAbsPath);
       const evidence = yamlParse(evidenceContent) as { overall?: string };
       evidenceOverall = String(evidence.overall ?? "");
       evidenceOk = evidenceOverall === "pass";

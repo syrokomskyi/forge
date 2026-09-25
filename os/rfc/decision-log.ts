@@ -15,8 +15,10 @@ keywords for rfc.create consultation, and generate/validate projections.
 </CHANGE_SUMMARY>
 */
 
-import { readFile } from "node:fs/promises";
+
 import { join } from "node:path";
+import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
@@ -209,6 +211,7 @@ export async function runRfcDecisionLogGenerate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DecisionLogResult>> {
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const checkMode = Boolean(input.flags["check"]);
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
@@ -223,7 +226,7 @@ export async function runRfcDecisionLogGenerate(
     let drift = false;
 
     try {
-      const existingJson = await readFile(join(workspaceRoot, jsonRelPath), "utf-8");
+      const existingJson = await io.readFile(join(workspaceRoot, jsonRelPath));
       const expectedJson = `${buildGeneratedHeader({ filePath: jsonRelPath, ownerCommand: "rfc.decision-log.generate" })}${yamlStringify({ command: "rfc.decision-log.generate", status: "ok", count: entries.length, entries })}\n`;
       if (existingJson !== expectedJson) {
         drift = true;
@@ -245,7 +248,7 @@ export async function runRfcDecisionLogGenerate(
     }
 
     try {
-      const existingMd = await readFile(join(workspaceRoot, mdRelPath), "utf-8");
+      const existingMd = await io.readFile(join(workspaceRoot, mdRelPath));
       const expectedMd = renderMarkdown(entries);
       if (existingMd !== expectedMd) {
         drift = true;
