@@ -17,7 +17,7 @@ via ts.createSourceFile (syntactic parse only, no ts.Program).</purpose>
 </CHANGE_SUMMARY>
 */
 
-import { readdir, readFile } from "node:fs/promises";
+import { readdir, readFile } from "../utils/fs-io.ts";
 import { join, relative } from "node:path";
 import ts from "typescript";
 import { EXCLUDE_DIRS, EXCLUDE_SUFFIXES } from "@warpgogol/werkstatt-shared/node/import-scan";
