@@ -1607,7 +1607,7 @@ async function applyDoctorRemediation(
           return { check: check.name, action: "skipped", detail: "within budget" };
         }
         if (!dryRun) {
-          fs.writeFileSync(memoryPath, lines.join("\n"), "utf8");
+          await io.writeFile(memoryPath, lines.join("\n"));
         }
         return {
           check: check.name,
