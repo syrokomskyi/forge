@@ -419,11 +419,16 @@ export function runInit(
   }
 
   // RFC-1154: reconcile the forge-managed .prettierignore block (prettier
-  // consumers only; additive + idempotent, no-op otherwise).
-  applyPrettierignoreSync(
-    workspaceRoot,
-    planPrettierignoreSync(workspaceRoot, config.paths.skillsDir),
-  );
+  // consumers only; additive + idempotent, no-op otherwise). Non-fatal —
+  // a prettierignore write failure must not fail init.
+  try {
+    applyPrettierignoreSync(
+      workspaceRoot,
+      planPrettierignoreSync(workspaceRoot, config.paths.skillsDir),
+    );
+  } catch (err) {
+    errors.push(`.prettierignore reconcile failed: ${(err as Error).message}`);
+  }
 
   // 4. Create docs directories from config paths
   const dirsToCreate = [
