@@ -15,9 +15,10 @@ operator-owned.
   <item>Do not list unmarked skill dirs — .agents/skills entries come from .forge-managed markers only (AC-9).</item>
 </non-goals>
 <KEY_DECISIONS>
-  <item>Skill entries enumerate dirs carrying a .forge-managed marker, so block membership is exactly the forge-owned set — no separate name registry to keep in sync.</item>
-  <item>Unbalanced block markers treat the whole file as operator-owned: a fresh block is appended rather than merging into a corrupted region.</item>
+  <item>Skill entries enumerate dirs carrying a .forge-managed marker — block membership equals the forge-owned set.</item>
+  <item>Unbalanced markers treat the file as operator-owned; a fresh block is appended, never merged.</item>
 </KEY_DECISIONS>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial implementation — plan/apply + delimited-block reconcile.</item>
 </CHANGE_SUMMARY>
