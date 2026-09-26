@@ -351,6 +351,8 @@ async function reconcileGeneratedSurface(
   skipped: SkippedSkill[];
   prune: PruneResult;
   prettierignore: PrettierignoreResult;
+  /** Non-fatal reconcile failures — surface as warnings, never block upgrade. */
+  warnings: string[];
 }> {
   const forgeSkillsResult = await syncForgeSkills(
     workspaceRoot,
@@ -374,21 +376,33 @@ async function reconcileGeneratedSurface(
     ...sharedKnowledgeResult.updated,
   ]);
 
-  const prune = dryRun
-    ? { pruned: [], keptWithConsumerFiles: [] }
-    : await pruneStaleSkillDirs(
+  const warnings: string[] = [];
+
+  let prune: PruneResult = { pruned: [], keptWithConsumerFiles: [] };
+  if (!dryRun) {
+    try {
+      prune = await pruneStaleSkillDirs(
         path.join(workspaceRoot, config.paths.skillsDir),
         currentSyncSet,
         io,
       );
+    } catch (err) {
+      warnings.push(`stale skill dir prune failed: ${(err as Error).message}`);
+    }
+  }
 
-  const prettierignore = dryRun
-    ? ("skipped" as const)
-    : await applyPrettierignore(
+  let prettierignore: PrettierignoreResult = "skipped";
+  if (!dryRun) {
+    try {
+      prettierignore = await applyPrettierignore(
         workspaceRoot,
         await planPrettierignore(workspaceRoot, config.paths.skillsDir, io),
         io,
       );
+    } catch (err) {
+      warnings.push(`.prettierignore reconcile failed: ${(err as Error).message}`);
+    }
+  }
 
   return {
     updated: [
@@ -404,6 +418,7 @@ async function reconcileGeneratedSurface(
     skipped: packResult.skipped,
     prune,
     prettierignore,
+    warnings,
   };
 }
 
@@ -604,6 +619,9 @@ export async function runUpgrade(
     for (const kept of reconcile.prune.keptWithConsumerFiles) {
       context.logger.warn(`forge.upgrade: kept stale skill dir ${kept}`);
     }
+    for (const warn of reconcile.warnings) {
+      context.logger.warn(`forge.upgrade: ${warn}`);
+    }
     return {
       data: {
         command: "forge.upgrade",
@@ -651,6 +669,12 @@ export async function runUpgrade(
   const skillsUpdated = reconcile.updated;
   const knowledgeConflicts = reconcile.knowledgeConflicts;
   const packSkipped = reconcile.skipped;
+  for (const kept of reconcile.prune.keptWithConsumerFiles) {
+    context.logger.warn(`forge.upgrade: kept stale skill dir ${kept}`);
+  }
+  for (const warn of reconcile.warnings) {
+    context.logger.warn(`forge.upgrade: ${warn}`);
+  }
   if (knowledgeConflicts.length > 0) {
     context.logger.warn(
       `forge.upgrade: ${knowledgeConflicts.length} knowledge entr${knowledgeConflicts.length === 1 ? "y" : "ies"} ` +
