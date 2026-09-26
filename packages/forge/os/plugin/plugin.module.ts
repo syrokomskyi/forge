@@ -233,7 +233,7 @@ export const forgePluginModule: ForgeModule = {
   name: "forge-plugin",
   version: "0.1.0",
   runtime: "autonomous",
-    declarations: [],
+  declarations: [],
   commands: [
     {
       name: "forge.plugin.validate",
@@ -258,8 +258,7 @@ export const forgePluginModule: ForgeModule = {
       reads: ["forge.yaml", "**/forge.plugin.yaml"],
       cacheable: false,
       execute: runPluginDiscover,
-    }
+    },
   ],
-  pipelines: [
-
-  ]};
+  pipelines: [],
+};

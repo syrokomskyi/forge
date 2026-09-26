@@ -82,7 +82,9 @@ const PENDING_ACCEPTED_RFC_COMMANDS = new Set([
 
 async function pathExists(target: string): Promise<boolean> {
   try {
-    await fs.exists(target).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+    await fs.exists(target).then((ok) => {
+      if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+    });
     return true;
   } catch {
     return false;

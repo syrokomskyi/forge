@@ -17,7 +17,10 @@ import { alignMarkdownTable, parseMarkdownTable } from "../utils/markdown-table.
 test("aligns cells and pads separator with dashes to column width", () => {
   const out = alignMarkdownTable(
     ["Name", "Value"],
-    [["long-name-here", "x"], ["a", "b"]],
+    [
+      ["long-name-here", "x"],
+      ["a", "b"],
+    ],
   );
   expect(out).toBe(
     [
@@ -55,7 +58,10 @@ test("empty input emits empty string", () => {
 test("AC-5: re-aligning emitted output is byte-identical", () => {
   const once = alignMarkdownTable(
     ["Name", "Category", "Concerns"],
-    [["fo-idea", "fo", "classification"], ["wg-mission", "wg", "lifecycle"]],
+    [
+      ["fo-idea", "fo", "classification"],
+      ["wg-mission", "wg", "lifecycle"],
+    ],
   );
   const parsed = parseMarkdownTable(once);
   expect(parsed).not.toBeNull();
@@ -94,5 +100,8 @@ test("regression guard: no forge emitter emits a compact '| --- |' separator", (
     }
   };
   walk(srcDir);
-  expect(offenders, "compact '| --- |' table literals found — route through alignMarkdownTable").toEqual([]);
+  expect(
+    offenders,
+    "compact '| --- |' table literals found — route through alignMarkdownTable",
+  ).toEqual([]);
 });

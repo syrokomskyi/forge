@@ -8,6 +8,7 @@ dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-qa skill — Interactive QA session where the operator reports bugs conversationally and the agent files durable GitHub issues. Explores codebase for domain language.</purpose>
@@ -21,7 +22,6 @@ triggers: ["I found a bug", "file a GitHub issue for this bug", "report a bug co
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-qa
 

@@ -16,7 +16,7 @@ import { basename, join, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
-import {readdirSync, type Dirent, lstatSync} from "../../src/utils/sync-fs.ts";
+import { readdirSync, type Dirent, lstatSync } from "../../src/utils/sync-fs.ts";
 import { collectFiles } from "../../src/utils/fs.ts";
 
 // Ambient default for helper fns without a context param — handlers override

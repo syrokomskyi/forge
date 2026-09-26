@@ -18,7 +18,6 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-
 import { createTsconfigValidateCommand } from "./tsconfig-validate.ts";
 import { createImportBoundariesValidateCommand } from "./import-boundaries-validate.ts";
 import { createPhantomDepsValidateCommand } from "./phantom-deps-validate.ts";
@@ -31,8 +30,8 @@ export function createTypescriptCheckModule(): ModuleExport {
   return {
     name: "typescript-checks",
     version: "0.1.0",
-      declarations: [],
-  commands: [
+    declarations: [],
+    commands: [
       createTsconfigValidateCommand(),
       createImportBoundariesValidateCommand(),
       createPhantomDepsValidateCommand(),
@@ -40,7 +39,6 @@ export function createTypescriptCheckModule(): ModuleExport {
       createStrictModeValidateCommand(),
       createBarrelValidateCommand(),
     ],
-  pipelines: [
-
-  ]};
+    pipelines: [],
+  };
 }

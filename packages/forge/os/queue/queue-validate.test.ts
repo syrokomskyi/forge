@@ -119,9 +119,9 @@ describe("loadQueueManifest — validation rules (RFC-1140)", () => {
 
 describe("runQueueValidate — command contract (RFC-1140)", () => {
   test("throws without --file", async () => {
-    await expect(
-      runQueueValidate({ argv: [], flags: {} }, testContext()),
-    ).rejects.toThrow("--file");
+    await expect(runQueueValidate({ argv: [], flags: {} }, testContext())).rejects.toThrow(
+      "--file",
+    );
   });
 
   test("valid manifest → pass, items + next in JSON output", async () => {
@@ -132,10 +132,7 @@ describe("runQueueValidate — command contract (RFC-1140)", () => {
       "id: block-h\ncreatedAt: 2026-09-23\nitems:\n  - id: RFC-1400\n  - id: RFC-1401\n",
     );
 
-    const result = await runQueueValidate(
-      { argv: [], flags: { file } },
-      testContext(),
-    );
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
 
     expect(result?.data?.status).toBe("pass");
     expect(result?.data?.queue).toBe("block-h");
@@ -152,10 +149,7 @@ describe("runQueueValidate — command contract (RFC-1140)", () => {
       "id: block-i\ncreatedAt: 2026-09-23\nitems:\n  - id: RFC-9999\n",
     );
 
-    const result = await runQueueValidate(
-      { argv: [], flags: { file } },
-      testContext(),
-    );
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
 
     expect(result?.data?.status).toBe("fail");
     expect(result?.exitCode).toBe(1);
@@ -165,10 +159,7 @@ describe("runQueueValidate — command contract (RFC-1140)", () => {
   test("empty items → pass with next null", async () => {
     const file = await writeManifest("block-j", "id: block-j\ncreatedAt: 2026-09-23\nitems: []\n");
 
-    const result = await runQueueValidate(
-      { argv: [], flags: { file } },
-      testContext(),
-    );
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
 
     expect(result?.data?.status).toBe("pass");
     expect(result?.data?.items).toEqual([]);

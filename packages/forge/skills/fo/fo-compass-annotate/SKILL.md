@@ -11,6 +11,7 @@ bindings:
   optional: [compass.fileExtensions, compass.testPatterns]
 triggers: ["manage Compass headers", "annotate source files with Compass", "audit Compass module contracts"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-compass-annotate skill — Full-lifecycle Compass header management — generate, update, audit, validate, cleanup. Replaces removed compass.annotate/clear/migrate/invariant.add commands.</purpose>
@@ -24,7 +25,6 @@ triggers: ["manage Compass headers", "annotate source files with Compass", "audi
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-compass-annotate
 

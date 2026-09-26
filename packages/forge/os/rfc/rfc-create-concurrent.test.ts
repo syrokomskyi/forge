@@ -77,7 +77,9 @@ describe("rfc.create — RFC-1138 concurrent id allocation", () => {
     const ids = results.map((r) => (r.data as { id: string }).id);
     expect(new Set(ids).size).toBe(5);
 
-    const files = (await fs.readdir(rfcDir)).filter((f) => f.startsWith("rfc-") && f !== "rfc-0000-template.md");
+    const files = (await fs.readdir(rfcDir)).filter(
+      (f) => f.startsWith("rfc-") && f !== "rfc-0000-template.md",
+    );
     expect(files).toHaveLength(5);
   });
 
@@ -94,7 +96,11 @@ describe("rfc.create — RFC-1138 concurrent id allocation", () => {
   test("AC-5: pre-existing highest id is respected after a collision", async () => {
     // Seed rfc-0001 so the first create takes 0002; a file racing in at 0002
     // forces the retry path to land on 0003.
-    await fs.writeFile(path.join(rfcDir, "rfc-0001-seeded.md"), "---\nid: RFC-0001\n---\n", "utf-8");
+    await fs.writeFile(
+      path.join(rfcDir, "rfc-0001-seeded.md"),
+      "---\nid: RFC-0001\n---\n",
+      "utf-8",
+    );
     const winner = runRfcCreate(makeInput("Winner"), makeContext(tmpDir));
     // Interleave a manual claim at the id the scan will compute.
     const claim = (async () => {
@@ -111,7 +117,9 @@ describe("rfc.create — RFC-1138 concurrent id allocation", () => {
     const id = (result.data as { id: string }).id;
     // Either the create won 0002 (interloper lost the wx race) or it retried to 0003.
     expect(["RFC-0002", "RFC-0003"]).toContain(id);
-    const files = (await fs.readdir(rfcDir)).filter((f) => f.startsWith("rfc-") && f !== "rfc-0000-template.md");
+    const files = (await fs.readdir(rfcDir)).filter(
+      (f) => f.startsWith("rfc-") && f !== "rfc-0000-template.md",
+    );
     // Seeded + interloper (if it won) + create output — never a silent overwrite.
     expect(files.length).toBeGreaterThanOrEqual(2);
   });

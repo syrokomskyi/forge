@@ -11,6 +11,7 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["extract DNA invariant", "discover architectural invariants", "formalize implicit architectural rules"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-extract-dna skill — Discover implicit architectural invariants, grill the operator about each, and delegate to fo-idea-create-rfc. After acceptance, append to architecture-dna.md. Use when extracting DNA.</purpose>
@@ -24,7 +25,6 @@ triggers: ["extract DNA invariant", "discover architectural invariants", "formal
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # Extract DNA
 

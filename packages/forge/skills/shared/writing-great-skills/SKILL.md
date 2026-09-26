@@ -7,6 +7,7 @@ concerns: read-only
 dependsOn: []
 languagePolicy: ref(PREFERENCES.md)
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>writing-great-skills skill — Reference for writing and editing skills well — the vocabulary and principles that make a skill predictable.</purpose>
@@ -20,7 +21,6 @@ languagePolicy: ref(PREFERENCES.md)
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 

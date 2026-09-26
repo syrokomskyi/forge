@@ -83,10 +83,7 @@ test("doctor --fix regenerates stale nested AGENTS.md and subsequent run passes"
   expect(fixEntry).toBeDefined();
   expect(fixEntry!.action).toBe("fixed");
 
-  const regenerated = await readFile(
-    join(tempDir, "packages", "my-pkg", "AGENTS.md"),
-    "utf8",
-  );
+  const regenerated = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
   expect(regenerated).toContain("`@test/my-pkg` — Agent Guide");
   expect(regenerated).not.toContain("Old content");
 

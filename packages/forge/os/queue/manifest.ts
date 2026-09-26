@@ -51,12 +51,8 @@ export async function loadQueueManifest(
 ): Promise<LoadedQueueManifest> {
   const errors: Diagnostic[] = [];
   const warnings: Diagnostic[] = [];
-  const absolutePath = path.isAbsolute(filePath)
-    ? filePath
-    : path.join(workspaceRoot, filePath);
-  const displayPath = path.isAbsolute(filePath)
-    ? path.relative(workspaceRoot, filePath)
-    : filePath;
+  const absolutePath = path.isAbsolute(filePath) ? filePath : path.join(workspaceRoot, filePath);
+  const displayPath = path.isAbsolute(filePath) ? path.relative(workspaceRoot, filePath) : filePath;
 
   let source: string;
   try {
@@ -125,7 +121,12 @@ export async function loadQueueManifest(
     const id = item.id.trim();
     if (!QUEUE_ITEM_ID_PATTERN.test(id)) {
       errors.push(
-        diag("QUEUE-03", "error", `Item id "${item.id}" does not match ^(RFC|ADR)-\\d{4}$`, displayPath),
+        diag(
+          "QUEUE-03",
+          "error",
+          `Item id "${item.id}" does not match ^(RFC|ADR)-\\d{4}$`,
+          displayPath,
+        ),
       );
       continue;
     }

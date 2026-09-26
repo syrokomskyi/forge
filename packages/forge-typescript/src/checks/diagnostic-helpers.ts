@@ -34,7 +34,11 @@ export function emptySummary(): { error: number; warning: number; info: number }
   return { error: 0, warning: 0, info: 0 };
 }
 
-export function buildSummary(diagnostics: Diagnostic[]): { error: number; warning: number; info: number } {
+export function buildSummary(diagnostics: Diagnostic[]): {
+  error: number;
+  warning: number;
+  info: number;
+} {
   const summary = emptySummary();
   for (const d of diagnostics) {
     summary[d.severity]++;

@@ -11,6 +11,7 @@ bindings:
   optional: [paths.invariantsFile, paths.compassDocs]
 triggers: ["audit this RFC", "check RFC for ecosystem fit", "review RFC against DNA and forward-only rules"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea-audit skill — Audit RFCs for ecosystem fit, DNA alignment, forward-only compliance, agent policy, and pragmatism. Accepts a single id, list, or range. Use after creating or revising an RFC.</purpose>
@@ -24,7 +25,6 @@ triggers: ["audit this RFC", "check RFC for ecosystem fit", "review RFC against 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # RFC Audit
 

@@ -11,6 +11,7 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["draft an RFC", "create a full RFC", "scaffold an RFC from template"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea-create-rfc skill — Create a full RFC draft from the rfc-0000-template.md template and prepare it for human architecture review. Use when the user asks to draft or scaffold an RFC.</purpose>
@@ -24,7 +25,6 @@ triggers: ["draft an RFC", "create a full RFC", "scaffold an RFC from template"]
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # RFC Create
 

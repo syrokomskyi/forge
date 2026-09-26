@@ -71,7 +71,7 @@ Validators are pure rules: each `src/checks/*-validate.ts` exports `create*Comma
 | ---------------- | ------------------------------------------------------------------ |
 | `schema`         | `werkstatt/plugin@1`                                               |
 | `id`             | `werkstatt-typescript`                                             |
-| `profileId`      | `typescript`                                             |
+| `profileId`      | `typescript`                                                       |
 | `moduleLoaders`  | `checks`                                                           |
 | `deployAdapters` | (none)                                                             |
 | `hooks`          | (none — validators are standalone, not pipeline-integrated)        |

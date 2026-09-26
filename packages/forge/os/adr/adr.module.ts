@@ -15,148 +15,146 @@
 import type { ForgeModule } from "../../src/forge-module.ts";
 
 export async function createForgeAdrModule(): Promise<ForgeModule> {
-const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");
-    const { runAdrValidate } = await import("./handlers/validate.ts");
-    const { runAdrArchive } = await import("./handlers/archive.ts");
-    const { runAdrImplementStamp } = await import("./handlers/implement-stamp.ts");
+  const { runAdrList, runAdrCreate } = await import("./handlers/list-create.ts");
+  const { runAdrValidate } = await import("./handlers/validate.ts");
+  const { runAdrArchive } = await import("./handlers/archive.ts");
+  const { runAdrImplementStamp } = await import("./handlers/implement-stamp.ts");
   return {
-  name: "forge-adr",
-  version: "0.1.0",
-  runtime: "autonomous",
+    name: "forge-adr",
+    version: "0.1.0",
+    runtime: "autonomous",
 
     declarations: [],
-  commands: [
-    {
-      name: "adr.list",
-      description:
-        "List all ADRs. Filter with --status, --scope, --decider flags. " +
-        "Use --json for machine-readable output. " +
-        "Parses frontmatter on the fly — no index file needed.",
-      scope: "workspace",
-      flags: {
-        status: {
-          kind: "string",
-          description: "Filter by ADR status (e.g. proposed, accepted, superseded).",
+    commands: [
+      {
+        name: "adr.list",
+        description:
+          "List all ADRs. Filter with --status, --scope, --decider flags. " +
+          "Use --json for machine-readable output. " +
+          "Parses frontmatter on the fly — no index file needed.",
+        scope: "workspace",
+        flags: {
+          status: {
+            kind: "string",
+            description: "Filter by ADR status (e.g. proposed, accepted, superseded).",
+          },
+          scope: {
+            kind: "string",
+            description: "Filter by ADR scope (package, app, workspace).",
+          },
+          decider: { kind: "string", description: "Filter by decider string." },
         },
-        scope: {
-          kind: "string",
-          description: "Filter by ADR scope (package, app, workspace).",
-        },
-        decider: { kind: "string", description: "Filter by decider string." },
+        reads: ["docs/adrs/**/*.md"],
+        execute: runAdrList,
       },
-      reads: ["docs/adrs/**/*.md"],
-      execute: runAdrList,
-    },
-    {
-      name: "adr.create",
-      description:
-        "Create a new ADR draft from the template. " +
-        'Pass --title "Short title" (required). ' +
-        "Optional: --scope, --decider, --status, --related. " +
-        "Always creates status: proposed unless overridden. " +
-        "AI agents are allowed to use this command.",
-      scope: "workspace",
-      mutatesState: true,
-      writes: ["docs/adrs/adr-*.md"],
-      reads: ["docs/adrs/**/*.md"],
-      cacheable: false,
-      flags: {
-        title: { kind: "string", required: true, description: "Short imperative ADR title." },
-        scope: {
-          kind: "string",
-          default: "package",
-          description: "ADR scope: package | app | workspace.",
+      {
+        name: "adr.create",
+        description:
+          "Create a new ADR draft from the template. " +
+          'Pass --title "Short title" (required). ' +
+          "Optional: --scope, --decider, --status, --related. " +
+          "Always creates status: proposed unless overridden. " +
+          "AI agents are allowed to use this command.",
+        scope: "workspace",
+        mutatesState: true,
+        writes: ["docs/adrs/adr-*.md"],
+        reads: ["docs/adrs/**/*.md"],
+        cacheable: false,
+        flags: {
+          title: { kind: "string", required: true, description: "Short imperative ADR title." },
+          scope: {
+            kind: "string",
+            default: "package",
+            description: "ADR scope: package | app | workspace.",
+          },
+          decider: {
+            kind: "string",
+            default: "architecture",
+            description: "ADR decider, e.g. architecture or human:<handle>.",
+          },
+          status: {
+            kind: "string",
+            default: "proposed",
+            description: "ADR status: proposed | accepted | superseded | rejected.",
+          },
+          related: {
+            kind: "string",
+            description: "Comma-separated list of related RFC/ADR ids (e.g. RFC-0365,RFC-0001).",
+          },
         },
-        decider: {
-          kind: "string",
-          default: "architecture",
-          description: "ADR decider, e.g. architecture or human:<handle>.",
-        },
-        status: {
-          kind: "string",
-          default: "proposed",
-          description: "ADR status: proposed | accepted | superseded | rejected.",
-        },
-        related: {
-          kind: "string",
-          description: "Comma-separated list of related RFC/ADR ids (e.g. RFC-0365,RFC-0001).",
-        },
+        execute: runAdrCreate,
       },
-      execute: runAdrCreate,
-    },
-    {
-      name: "adr.validate",
-      contract: "adr",
-      rules: [],
-      description:
-        "Validate ADR frontmatter schema, required markdown sections, " +
-        "referential integrity (supersedes/supersededBy), and id/filename consistency. " +
-        "Pass --id to validate a single file, or run without arguments for all.",
-      scope: "workspace",
-      flags: {
-        id: { kind: "string", description: "Target a single ADR by id (e.g. ADR-0003)." },
+      {
+        name: "adr.validate",
+        contract: "adr",
+        rules: [],
+        description:
+          "Validate ADR frontmatter schema, required markdown sections, " +
+          "referential integrity (supersedes/supersededBy), and id/filename consistency. " +
+          "Pass --id to validate a single file, or run without arguments for all.",
+        scope: "workspace",
+        flags: {
+          id: { kind: "string", description: "Target a single ADR by id (e.g. ADR-0003)." },
+        },
+        reads: ["docs/adrs/**/*.md"],
+        execute: runAdrValidate,
       },
-      reads: ["docs/adrs/**/*.md"],
-      execute: runAdrValidate,
-    },
-    {
-      name: "adr.archive",
-      description:
-        "Move terminal-status ADR files (implemented, rejected, superseded) into " +
-        "docs/adrs/archive/<status>/ subdirectories. Bidirectional: moves non-terminal " +
-        "files found in subdirectories back to root. Use --dry-run to preview. " +
-        "Use --status to filter to a single terminal status. " +
-        "Prefer the docs.archive umbrella command unless you need to archive only ADRs.",
-      scope: "workspace",
-      mutatesState: true,
-      writes: ["docs/adrs/*.md", "docs/adrs/archive/**"],
-      reads: ["docs/adrs/**/*.md"],
-      cacheable: false,
-      flags: {
-        "dry-run": {
-          kind: "boolean",
-          description: "Preview what would be moved without touching the filesystem.",
+      {
+        name: "adr.archive",
+        description:
+          "Move terminal-status ADR files (implemented, rejected, superseded) into " +
+          "docs/adrs/archive/<status>/ subdirectories. Bidirectional: moves non-terminal " +
+          "files found in subdirectories back to root. Use --dry-run to preview. " +
+          "Use --status to filter to a single terminal status. " +
+          "Prefer the docs.archive umbrella command unless you need to archive only ADRs.",
+        scope: "workspace",
+        mutatesState: true,
+        writes: ["docs/adrs/*.md", "docs/adrs/archive/**"],
+        reads: ["docs/adrs/**/*.md"],
+        cacheable: false,
+        flags: {
+          "dry-run": {
+            kind: "boolean",
+            description: "Preview what would be moved without touching the filesystem.",
+          },
+          status: {
+            kind: "string",
+            description: "Filter to a single terminal status (implemented, rejected, superseded).",
+          },
         },
-        status: {
-          kind: "string",
-          description: "Filter to a single terminal status (implemented, rejected, superseded).",
-        },
+        execute: runAdrArchive,
       },
-      execute: runAdrArchive,
-    },
-    {
-      name: "adr.implement.stamp",
-      description:
-        "Atomically transition an ADR from accepted/proposed to implemented. " +
-        "Validates preconditions (status, implementation commit, file cleanliness, " +
-        "concurrent safety) and mutates frontmatter in one atomic write. " +
-        "Use --dry-run to preview without mutating. Required flags: `--id`, `--implementation-commit`.",
-      scope: "workspace",
-      mutatesState: true,
-      writes: ["docs/adrs/*.md"],
-      reads: ["docs/adrs/**/*.md"],
-      cacheable: false,
-      flags: {
-        id: {
-          kind: "string",
-          required: true,
-          description: "Target ADR id (e.g. ADR-0003).",
+      {
+        name: "adr.implement.stamp",
+        description:
+          "Atomically transition an ADR from accepted/proposed to implemented. " +
+          "Validates preconditions (status, implementation commit, file cleanliness, " +
+          "concurrent safety) and mutates frontmatter in one atomic write. " +
+          "Use --dry-run to preview without mutating. Required flags: `--id`, `--implementation-commit`.",
+        scope: "workspace",
+        mutatesState: true,
+        writes: ["docs/adrs/*.md"],
+        reads: ["docs/adrs/**/*.md"],
+        cacheable: false,
+        flags: {
+          id: {
+            kind: "string",
+            required: true,
+            description: "Target ADR id (e.g. ADR-0003).",
+          },
+          "implementation-commit": {
+            kind: "string",
+            required: true,
+            description: "SHA of the implementation commit.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            description: "Preview without mutating the ADR file.",
+          },
         },
-        "implementation-commit": {
-          kind: "string",
-          required: true,
-          description: "SHA of the implementation commit.",
-        },
-        "dry-run": {
-          kind: "boolean",
-          description: "Preview without mutating the ADR file.",
-        },
+        execute: runAdrImplementStamp,
       },
-      execute: runAdrImplementStamp,
-    }
-  ],
-  pipelines: [
-
-  ]};
+    ],
+    pipelines: [],
+  };
 }
-;

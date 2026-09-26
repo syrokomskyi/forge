@@ -15,7 +15,6 @@ entries from all RFCs, and builds a bidirectional trace matrix.
 </CHANGE_SUMMARY>
 */
 
-
 import { join } from "node:path";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";

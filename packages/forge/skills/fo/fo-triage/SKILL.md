@@ -8,6 +8,7 @@ dependsOn: ['my-preferences', 'grilling']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["triage this issue", "categorize incoming bug report", "triage external pull request", "process feature request"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-triage skill — Move issues and external PRs through a triage state machine — categorize, verify, grill, write agent-ready briefs. Use for incoming bug reports and feature requests.</purpose>
@@ -21,7 +22,6 @@ triggers: ["triage this issue", "categorize incoming bug report", "triage extern
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-triage
 

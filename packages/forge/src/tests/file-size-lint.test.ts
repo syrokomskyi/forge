@@ -31,7 +31,10 @@ function mockContext(workspaceRoot: string): ForgeRuntimeContext {
   };
 }
 
-function input(flags: Record<string, unknown> = {}): { argv: string[]; flags: Record<string, unknown> } {
+function input(flags: Record<string, unknown> = {}): {
+  argv: string[];
+  flags: Record<string, unknown>;
+} {
   return { argv: [], flags };
 }
 
@@ -108,16 +111,10 @@ describe("runFileSizeLint (RFC-1088, command-level)", () => {
     const big = Array.from({ length: 700 }, (_, i) => `const x${i} = ${i};`).join("\n");
     await writeFile(join(tempDir, "packages", "some-pkg", "src", "big.ts"), big, "utf8");
 
-    const result = await runFileSizeLint(
-      input({ "write-baseline": true }),
-      mockContext(tempDir),
-    );
+    const result = await runFileSizeLint(input({ "write-baseline": true }), mockContext(tempDir));
     expect(result.exitCode ?? 0).toBe(0);
 
-    const baselineRaw = await readFile(
-      join(tempDir, "file-size-lint.baseline.yaml"),
-      "utf8",
-    );
+    const baselineRaw = await readFile(join(tempDir, "file-size-lint.baseline.yaml"), "utf8");
     expect(baselineRaw).toContain("schemaVersion");
     expect(baselineRaw).toContain("threshold: 600");
     expect(baselineRaw).toContain("big.ts");
@@ -155,9 +152,8 @@ describe("runFileSizeLint (RFC-1088, command-level)", () => {
     const result = await runFileSizeLint(input(), mockContext(tempDir));
     expect(result.exitCode ?? 0).toBe(0);
 
-    const diagnostics = (
-      result.data as { diagnostics: Array<{ ruleId: string; message: string }> }
-    ).diagnostics;
+    const diagnostics = (result.data as { diagnostics: Array<{ ruleId: string; message: string }> })
+      .diagnostics;
     const hit = diagnostics.find((d) => d.ruleId === "SIZE-01");
     expect(hit).toBeDefined();
     expect(hit!.message).toContain("grew from the baselined 700 to 800");

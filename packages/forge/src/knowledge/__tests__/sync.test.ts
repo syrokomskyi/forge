@@ -24,8 +24,7 @@ afterEach(() => {
 });
 
 function entry(id: string, title: string, body: string, layer = "L0"): string {
-  const confirmations =
-    layer === "L2" ? `lastConfirmedAt: 2026-08-03\nconfirmations: 1\n` : "";
+  const confirmations = layer === "L2" ? `lastConfirmedAt: 2026-08-03\nconfirmations: 1\n` : "";
   return `### ${id}: ${title}\n\n\`\`\`knowledge-entry\nid: ${id}\nlayer: ${layer}\ncreated: 2026-08-03\n${confirmations}status: active\n\`\`\`\n\n${body}\n`;
 }
 
@@ -99,11 +98,7 @@ test("merges: local entries preserved, new source entries appended", () => {
 test("merge into empty template appends all source entries", () => {
   const src = join(tempDir, "qa-log.md");
   const dest = join(tempDir, "dest.md");
-  writeFileSync(
-    src,
-    knowledgeFile("L0", [entry("K-0001", "First", "Body one.")]),
-    "utf8",
-  );
+  writeFileSync(src, knowledgeFile("L0", [entry("K-0001", "First", "Body one.")]), "utf8");
   // Destination is the shipped empty template (layer marker, no entries)
   writeFileSync(dest, `<!-- knowledge-layer: L0 -->\n\n# Q&A Log (L0)\n`, "utf8");
 

@@ -80,9 +80,7 @@ function planFileSync(srcPath: string, destPath: string): KnowledgeSyncPlan {
   if (isCumulative(srcParsed) && isCumulative(destParsed)) {
     const destIds = new Set(destParsed.entries.map((e) => e.meta.id));
     const appendedEntries = srcParsed.entries.filter((e) => !destIds.has(e.meta.id));
-    const conflicts = srcParsed.entries
-      .filter((e) => destIds.has(e.meta.id))
-      .map((e) => e.meta.id);
+    const conflicts = srcParsed.entries.filter((e) => destIds.has(e.meta.id)).map((e) => e.meta.id);
 
     const destLegacyTexts = new Set(destParsed.legacySections.map((l) => l.text.trim()));
     const appendedLegacy = srcParsed.legacySections.filter(

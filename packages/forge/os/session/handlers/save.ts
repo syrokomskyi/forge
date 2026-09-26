@@ -182,7 +182,9 @@ export async function runSessionSave(
       ? rawFileFlag
       : path.join(workspaceRoot, rawFileFlag);
     try {
-      await fs.exists(resolvedPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+      await fs.exists(resolvedPath).then((ok) => {
+        if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
     } catch {
       throw new Error(`Raw file not found: ${rawFileFlag}`);
     }
@@ -267,7 +269,9 @@ export async function runSessionSave(
     const outputRel = path.join(SESSION_DIR, outputFileName);
 
     try {
-      await fs.exists(outputPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+      await fs.exists(outputPath).then((ok) => {
+        if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+      });
       skipped.push({ rawFile: rawFileName, reason: "already converted" });
       if (outputFormat === "pretty") {
         logger.info(`Skipped ${rawFileName}: already converted to ${outputRel}`);

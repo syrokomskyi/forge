@@ -165,7 +165,9 @@ export async function runRfcCheck(
       if (!isLiteralFsPath(declaredPath)) continue;
       const absPath = path.join(workspaceRoot, declaredPath);
       try {
-        await fs.exists(absPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+        await fs.exists(absPath).then((ok) => {
+          if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        });
       } catch {
         violations.push({
           rfcId,

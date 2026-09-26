@@ -10,4 +10,3 @@ Concrete principles distilled from past grilling sessions. Each principle has a 
 - **confirmations:** <N>
 - **Added:** <date>
 -->
-

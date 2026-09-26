@@ -36,17 +36,13 @@ describe("validateAcceptanceShape — test probe", () => {
   });
 
   it("rejects a test probe missing file", () => {
-    const issues = validateAcceptanceShape([
-      { probe: "test", expect: { exitCode: 0 } },
-    ]);
+    const issues = validateAcceptanceShape([{ probe: "test", expect: { exitCode: 0 } }]);
     expect(issues).toHaveLength(1);
     expect(issues[0].message).toContain('requires a string "file"');
   });
 
   it("rejects a test probe missing expect.exitCode", () => {
-    const issues = validateAcceptanceShape([
-      { probe: "test", file: "src/test.ts" },
-    ]);
+    const issues = validateAcceptanceShape([{ probe: "test", file: "src/test.ts" }]);
     expect(issues).toHaveLength(1);
     expect(issues[0].message).toContain("requires expect: { exitCode");
   });
@@ -108,9 +104,7 @@ describe("validateAcceptanceShape — existing probe kinds (regression)", () => 
   });
 
   it("accepts well-formed file-exists probe", () => {
-    const issues = validateAcceptanceShape([
-      { probe: "file-exists", path: "src/index.ts" },
-    ]);
+    const issues = validateAcceptanceShape([{ probe: "file-exists", path: "src/index.ts" }]);
     expect(issues).toEqual([]);
   });
 
@@ -122,16 +116,12 @@ describe("validateAcceptanceShape — existing probe kinds (regression)", () => 
   });
 
   it("accepts well-formed command-registered probe", () => {
-    const issues = validateAcceptanceShape([
-      { probe: "command-registered", name: "rfc.validate" },
-    ]);
+    const issues = validateAcceptanceShape([{ probe: "command-registered", name: "rfc.validate" }]);
     expect(issues).toEqual([]);
   });
 
   it("accepts well-formed page probe", () => {
-    const issues = validateAcceptanceShape([
-      { probe: "page", path: "/about" },
-    ]);
+    const issues = validateAcceptanceShape([{ probe: "page", path: "/about" }]);
     expect(issues).toEqual([]);
   });
 });

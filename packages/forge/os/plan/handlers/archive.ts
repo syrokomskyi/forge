@@ -115,7 +115,9 @@ export async function runPlanArchive(
       }
 
       try {
-        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+        await fs.exists(targetPath).then((ok) => {
+          if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        });
         skipped.push({ id: rfcId, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -166,7 +168,9 @@ export async function runPlanArchive(
       }
 
       try {
-        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+        await fs.exists(targetPath).then((ok) => {
+          if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        });
         skipped.push({ id: rfcId, file: relFile, reason: "destination exists" });
         continue;
       } catch {

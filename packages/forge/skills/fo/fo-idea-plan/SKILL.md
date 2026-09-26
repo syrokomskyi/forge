@@ -11,6 +11,7 @@ bindings:
   optional: [paths.invariantsFile, paths.compassDocs]
 triggers: ["plan the implementation for this RFC", "create implementation plan", "map affected artifacts and draft steps"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea-plan skill — Plan RFC implementation — ensure audit/enhance done, map affected artifacts, draft a step-by-step plan with validation and evidence, and persist it. Use when an RFC needs an implementation plan.</purpose>
@@ -24,7 +25,6 @@ triggers: ["plan the implementation for this RFC", "create implementation plan",
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # Plan RFC Implementation
 

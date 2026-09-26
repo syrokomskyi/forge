@@ -20,7 +20,7 @@ export const forgeWerkstattModule: ForgeModule = {
   name: "forge-werkstatt",
   version: "0.1.0",
   runtime: "werkstatt-adapter",
-    declarations: [],
+  declarations: [],
   commands: [
     {
       name: "werkstatt.lock.status",
@@ -61,8 +61,7 @@ export const forgeWerkstattModule: ForgeModule = {
       flags: {},
       reads: ["packages/os/site-kernel-handoff/src/**/*.ts"],
       execute: runWerkstattOperationValidate,
-    }
+    },
   ],
-  pipelines: [
-
-  ]};
+  pipelines: [],
+};

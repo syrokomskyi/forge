@@ -50,7 +50,7 @@ describe("buildWorkspaceModel", () => {
   it("excludes node_modules, dist, .turbo and test files from parsing but records them in existingFiles", async () => {
     writePkg("packages/a", "@pkg/a");
     writeSrc("packages/a", "src/index.ts", "export const x = 1;\n");
-    writeSrc("packages/a", "src/index.test.ts", "import { x } from \"./index\";\n");
+    writeSrc("packages/a", "src/index.test.ts", 'import { x } from "./index";\n');
     writeSrc("packages/a", "dist/bundle.ts", "export const y = 2;\n");
     writeSrc("packages/a", ".turbo/cache.ts", "export const z = 3;\n");
     writeSrc("packages/a", "node_modules/dep/index.ts", "export const w = 4;\n");
@@ -114,11 +114,7 @@ describe("buildWorkspaceModel", () => {
 
   it("extracts anyRefs for annotations and as-casts", async () => {
     writePkg("packages/a", "@pkg/a");
-    writeSrc(
-      "packages/a",
-      "src/index.ts",
-      "const a: any = 1;\nconst b = foo as any;\n",
-    );
+    writeSrc("packages/a", "src/index.ts", "const a: any = 1;\nconst b = foo as any;\n");
 
     const model = await buildWorkspaceModel(root);
     const file = model.packages[0]!.sourceFiles[0]!;

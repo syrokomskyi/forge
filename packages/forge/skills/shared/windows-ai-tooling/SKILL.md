@@ -7,6 +7,7 @@ concerns: code-mutation
 dependsOn: []
 languagePolicy: ref(PREFERENCES.md)
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>windows-ai-tooling skill — Bootstrap a Windows project for AI agents. Installs verified tools, generates .gitattributes, and emits a command allow-list for agent prompts. Run when starting a new project or when agents fail.</purpose>
@@ -20,7 +21,6 @@ languagePolicy: ref(PREFERENCES.md)
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # Windows AI Tooling
 
