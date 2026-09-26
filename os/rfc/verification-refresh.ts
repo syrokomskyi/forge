@@ -17,7 +17,6 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 </CHANGE_SUMMARY>
 */
 
-
 import { join } from "node:path";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";

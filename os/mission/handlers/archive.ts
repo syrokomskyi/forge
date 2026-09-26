@@ -27,7 +27,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 */
 
 import { ambientIo as fs } from "../../../src/utils/io.ts";
-import {existsSync, lstatSync} from "../../../src/utils/sync-fs.ts";
+import { existsSync, lstatSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { execSync } from "../../../src/utils/sync-fs.ts";
 import { parse as parseYaml } from "yaml";
@@ -278,7 +278,10 @@ export async function runMissionArchive(
   // These symlinks break pnpm workspace resolution and mission number derivation.
   // Trash them before they can cause downstream issues.
   for (const e of rootEntries) {
-    if (lstatSync(path.join(missionsPath, e.name)).isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME) {
+    if (
+      lstatSync(path.join(missionsPath, e.name)).isSymbolicLink() &&
+      e.name !== ARCHIVE_DIR_NAME
+    ) {
       const symlinkPath = path.join(missionsPath, e.name);
       const sourceRel = `${MISSIONS_DIR}/${e.name}`;
       if (!dryRun) {
@@ -296,7 +299,12 @@ export async function runMissionArchive(
   }
 
   const rootDirs = rootEntries
-    .filter((e) => e.isDirectory && !lstatSync(path.join(missionsPath, e.name)).isSymbolicLink() && e.name !== ARCHIVE_DIR_NAME)
+    .filter(
+      (e) =>
+        e.isDirectory &&
+        !lstatSync(path.join(missionsPath, e.name)).isSymbolicLink() &&
+        e.name !== ARCHIVE_DIR_NAME,
+    )
     .map((e) => e.name);
 
   for (const missionId of rootDirs) {

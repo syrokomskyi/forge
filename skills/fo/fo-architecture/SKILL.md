@@ -8,6 +8,7 @@ dependsOn: ['my-preferences', 'grilling']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["analyze codebase architecture", "find deepening opportunities", "review code structure quality"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-architecture skill — Scan a codebase for deepening opportunities, present as HTML report, then grill through the chosen one. Uses deep-module vocabulary.</purpose>
@@ -21,7 +22,6 @@ triggers: ["analyze codebase architecture", "find deepening opportunities", "rev
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-architecture
 

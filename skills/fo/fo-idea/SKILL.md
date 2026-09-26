@@ -11,6 +11,7 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["I have an idea for a change", "analyze this idea and route it", "decompose this feature idea", "does this need an RFC", "should I write an ADR for this"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea skill — Classify an idea, split it when needed, and route it to an RFC, ADR, or direct implementation. Use when the required decision artifact is unclear.</purpose>
@@ -24,7 +25,6 @@ triggers: ["I have an idea for a change", "analyze this idea and route it", "dec
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # Idea → RFC, ADR, or direct implementation
 

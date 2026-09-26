@@ -16,14 +16,23 @@ result when no metrics files exist.
 </CHANGE_SUMMARY>
 */
 
-
 import { join } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { parse as yamlParse } from "yaml";
 
-import { METRICS_DIR, type MetricsAggregateResult, type SkillAggregate, type RfcMetrics, type SessionMetrics } from "../types.ts";
-import type { ForgeCommandInput, ForgeCommandResult, ForgeRuntimeContext } from "../../../src/types.ts";
+import {
+  METRICS_DIR,
+  type MetricsAggregateResult,
+  type SkillAggregate,
+  type RfcMetrics,
+  type SessionMetrics,
+} from "../types.ts";
+import type {
+  ForgeCommandInput,
+  ForgeCommandResult,
+  ForgeRuntimeContext,
+} from "../../../src/types.ts";
 
 // Ambient default for helper fns without a context param — handlers override
 // with `const io = resolveIo(context.io)` inside their own scope.
@@ -116,11 +125,14 @@ export async function runMetricsAggregate(
     }
   >();
 
-  function recordSkill(skill: string, data: Partial<{
-    findings: number;
-    fixIterations: number;
-    durationMs: number;
-  }>) {
+  function recordSkill(
+    skill: string,
+    data: Partial<{
+      findings: number;
+      fixIterations: number;
+      durationMs: number;
+    }>,
+  ) {
     let entry = skillData.get(skill);
     if (!entry) {
       entry = {
@@ -180,7 +192,8 @@ export async function runMetricsAggregate(
       skill,
       invocations: data.invocations,
       avgFindings: data.findingsCount > 0 ? data.findingsSum / data.findingsCount : null,
-      avgFixIterations: data.fixIterationsCount > 0 ? data.fixIterationsSum / data.fixIterationsCount : null,
+      avgFixIterations:
+        data.fixIterationsCount > 0 ? data.fixIterationsSum / data.fixIterationsCount : null,
       avgDurationMs: data.durationCount > 0 ? data.durationSum / data.durationCount : null,
     });
   }
@@ -204,7 +217,9 @@ export async function runMetricsAggregate(
   };
 
   if (outputFormat === "pretty") {
-    context.logger.info(`[metrics.aggregate] ${perSkill.length} skill(s), ${filteredRfcs.length} RFC(s), ${filteredSessions.length} session(s)`);
+    context.logger.info(
+      `[metrics.aggregate] ${perSkill.length} skill(s), ${filteredRfcs.length} RFC(s), ${filteredSessions.length} session(s)`,
+    );
   }
 
   return {

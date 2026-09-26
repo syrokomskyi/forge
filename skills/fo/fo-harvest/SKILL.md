@@ -10,6 +10,7 @@ dependsOn:
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["harvest portable patterns from code", "extract reusable code pattern to forge", "port this pattern to forge"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-harvest skill — Systematic self-growth loop — scan the whole project for forge-worthy patterns, grill the operator on portability, and port accepted candidates via port-to-forge / port.scaffold.</purpose>
@@ -23,7 +24,6 @@ triggers: ["harvest portable patterns from code", "extract reusable code pattern
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-harvest
 

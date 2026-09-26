@@ -13,33 +13,31 @@
 import type { ForgeModule } from "../../src/forge-module.ts";
 
 export async function createForgeNamingModule(): Promise<ForgeModule> {
-const { runNamingConventionLint } = await import("./naming-convention.ts");
+  const { runNamingConventionLint } = await import("./naming-convention.ts");
   return {
-  name: "forge-naming",
-  version: "0.1.0",
-  runtime: "autonomous",
+    name: "forge-naming",
+    version: "0.1.0",
+    runtime: "autonomous",
     declarations: [],
-  commands: [
-    {
-      name: "naming.convention.lint",
-      contract: "naming",
-      rules: [],
-      description:
-        "Validate all filenames use kebab-case (no underscores) across registered workspace roots.",
-      scope: "workspace",
-      supportsAllSites: true,
-      flags: {
-        "include-ignored": {
-          kind: "boolean",
-          description: "Also scan files ignored by .gitignore or .windsurfignore.",
+    commands: [
+      {
+        name: "naming.convention.lint",
+        contract: "naming",
+        rules: [],
+        description:
+          "Validate all filenames use kebab-case (no underscores) across registered workspace roots.",
+        scope: "workspace",
+        supportsAllSites: true,
+        flags: {
+          "include-ignored": {
+            kind: "boolean",
+            description: "Also scan files ignored by .gitignore or .windsurfignore.",
+          },
         },
+        reads: ["packages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "services/**/*.{ts,tsx}"],
+        execute: runNamingConventionLint,
       },
-      reads: ["packages/**/*.{ts,tsx}", "apps/**/*.{ts,tsx}", "services/**/*.{ts,tsx}"],
-      execute: runNamingConventionLint,
-    }
-  ],
-  pipelines: [
-
-  ]};
+    ],
+    pipelines: [],
+  };
 }
-;

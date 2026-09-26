@@ -14,47 +14,45 @@
 import type { ForgeModule } from "../../src/forge-module.ts";
 
 export async function createForgeMissionModule(): Promise<ForgeModule> {
-const { runMissionArchive } = await import("./handlers/archive.ts");
+  const { runMissionArchive } = await import("./handlers/archive.ts");
   return {
-  name: "forge-mission",
-  version: "0.1.0",
-  runtime: "autonomous",
+    name: "forge-mission",
+    version: "0.1.0",
+    runtime: "autonomous",
     declarations: [],
-  commands: [
-    {
-      name: "mission.archive",
-      description:
-        "Move terminal-state mission directories (state: closed or aborted in " +
-        "mission.yaml) into missions/archive/<state>/<missionId>/ subdirectories. " +
-        "Bidirectional: moves open missions found in archive subdirectories back " +
-        "to missions/. Use --dry-run to preview. Use --status to filter to a " +
-        "single terminal status (closed, aborted). " +
-        "Prefer the docs.archive umbrella command unless you need to archive only missions.",
-      scope: "workspace",
-      mutatesState: true,
-      writes: ["missions/*", "missions/archive/**"],
-      reads: ["missions/**"],
-      cacheable: false,
-      flags: {
-        "dry-run": {
-          kind: "boolean",
-          description: "Preview what would be moved without touching the filesystem.",
+    commands: [
+      {
+        name: "mission.archive",
+        description:
+          "Move terminal-state mission directories (state: closed or aborted in " +
+          "mission.yaml) into missions/archive/<state>/<missionId>/ subdirectories. " +
+          "Bidirectional: moves open missions found in archive subdirectories back " +
+          "to missions/. Use --dry-run to preview. Use --status to filter to a " +
+          "single terminal status (closed, aborted). " +
+          "Prefer the docs.archive umbrella command unless you need to archive only missions.",
+        scope: "workspace",
+        mutatesState: true,
+        writes: ["missions/*", "missions/archive/**"],
+        reads: ["missions/**"],
+        cacheable: false,
+        flags: {
+          "dry-run": {
+            kind: "boolean",
+            description: "Preview what would be moved without touching the filesystem.",
+          },
+          status: {
+            kind: "string",
+            description: "Filter to a single terminal status (closed, aborted).",
+          },
+          "clean-orphans": {
+            kind: "boolean",
+            description:
+              "Trash orphaned directories (no mission.yaml, only cache files) instead of archiving them.",
+          },
         },
-        status: {
-          kind: "string",
-          description: "Filter to a single terminal status (closed, aborted).",
-        },
-        "clean-orphans": {
-          kind: "boolean",
-          description:
-            "Trash orphaned directories (no mission.yaml, only cache files) instead of archiving them.",
-        },
+        execute: runMissionArchive,
       },
-      execute: runMissionArchive,
-    }
-  ],
-  pipelines: [
-
-  ]};
+    ],
+    pipelines: [],
+  };
 }
-;

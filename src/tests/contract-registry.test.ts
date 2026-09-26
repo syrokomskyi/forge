@@ -41,11 +41,15 @@ describe("contract-registry (RFC-0943)", () => {
 
   describe("fileMatchesGlobs", () => {
     test("matches a simple glob pattern", () => {
-      expect(fileMatchesGlobs("packages/my-pack/src/index.ts", ["packages/my-pack/**/*.ts"])).toBe(true);
+      expect(fileMatchesGlobs("packages/my-pack/src/index.ts", ["packages/my-pack/**/*.ts"])).toBe(
+        true,
+      );
     });
 
     test("does not match when glob does not match", () => {
-      expect(fileMatchesGlobs("packages/other-pack/src/index.ts", ["packages/my-pack/**/*.ts"])).toBe(false);
+      expect(
+        fileMatchesGlobs("packages/other-pack/src/index.ts", ["packages/my-pack/**/*.ts"]),
+      ).toBe(false);
     });
 
     test("matches any of multiple globs", () => {
@@ -58,7 +62,9 @@ describe("contract-registry (RFC-0943)", () => {
     });
 
     test("handles dot files with dot option", () => {
-      expect(fileMatchesGlobs("packages/my-pack/.env.example", ["packages/**/*.example"])).toBe(true);
+      expect(fileMatchesGlobs("packages/my-pack/.env.example", ["packages/**/*.example"])).toBe(
+        true,
+      );
     });
   });
 
@@ -86,7 +92,7 @@ describe("contract-registry (RFC-0943)", () => {
         const packDir = join(ws, "my-pack");
         writeManifest(
           packDir,
-          "id: my-pack\nversion: 1.0.0\nextensionPoints:\n  compass:\n    contract:\n      blocks:\n        - blockId: api-contract\n          requiredFor:\n            - \"packages/my-pack/**/*.ts\"\n          requiredTags:\n            - name: endpoints\n              minWords: 5\n",
+          'id: my-pack\nversion: 1.0.0\nextensionPoints:\n  compass:\n    contract:\n      blocks:\n        - blockId: api-contract\n          requiredFor:\n            - "packages/my-pack/**/*.ts"\n          requiredTags:\n            - name: endpoints\n              minWords: 5\n',
         );
 
         const config: ForgeConfig = {
@@ -111,11 +117,11 @@ describe("contract-registry (RFC-0943)", () => {
       try {
         writeManifest(
           join(ws, "pack-a"),
-          "id: pack-a\nversion: 1.0.0\nextensionPoints:\n  compass:\n    contract:\n      blocks:\n        - blockId: shared-block\n          requiredFor:\n            - \"packages/**/*.ts\"\n",
+          'id: pack-a\nversion: 1.0.0\nextensionPoints:\n  compass:\n    contract:\n      blocks:\n        - blockId: shared-block\n          requiredFor:\n            - "packages/**/*.ts"\n',
         );
         writeManifest(
           join(ws, "pack-b"),
-          "id: pack-b\nversion: 1.0.0\nextensionPoints:\n  compass:\n    contract:\n      blocks:\n        - blockId: shared-block\n          requiredFor:\n            - \"services/**/*.ts\"\n",
+          'id: pack-b\nversion: 1.0.0\nextensionPoints:\n  compass:\n    contract:\n      blocks:\n        - blockId: shared-block\n          requiredFor:\n            - "services/**/*.ts"\n',
         );
 
         const config: ForgeConfig = {

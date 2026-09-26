@@ -12,6 +12,7 @@ bindings:
   optional: []
 triggers: ["save this session", "enhance session transcript with annotations", "save session with quality checks"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-session-save skill — Enhance saved session transcripts with semantic annotations, summaries, and quality checks. Self-learning via knowledge files.</purpose>
@@ -25,7 +26,6 @@ triggers: ["save this session", "enhance session transcript with annotations", "
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-session-save
 

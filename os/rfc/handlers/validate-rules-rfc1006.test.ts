@@ -168,7 +168,10 @@ describe("V-38: document readiness completeness (RFC-1006)", () => {
     const body = BASE_BODY.replace(
       "DOCUMENT_READINESS_HERE",
       "## Document readiness\n\n- [ ] DR-1: alternatives listed",
-    ).replace("ACCEPTANCE_HERE", "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)");
+    ).replace(
+      "ACCEPTANCE_HERE",
+      "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)",
+    );
     const parsed = makeParsed("accepted", body);
     const violations = await runValidate(parsed);
     const v38 = filterRule(violations, "V-38");
@@ -180,7 +183,10 @@ describe("V-38: document readiness completeness (RFC-1006)", () => {
     const body = BASE_BODY.replace(
       "DOCUMENT_READINESS_HERE",
       "## Document readiness\n\n- [x] DR-1: alternatives listed (evidence: file: test.md:1)",
-    ).replace("ACCEPTANCE_HERE", "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)");
+    ).replace(
+      "ACCEPTANCE_HERE",
+      "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)",
+    );
     const parsed = makeParsed("accepted", body);
     const violations = await runValidate(parsed);
     const v38 = filterRule(violations, "V-38");
@@ -191,7 +197,10 @@ describe("V-38: document readiness completeness (RFC-1006)", () => {
     const body = BASE_BODY.replace(
       "DOCUMENT_READINESS_HERE",
       "## Document readiness\n\n- [ ] DR-1: alternatives listed",
-    ).replace("ACCEPTANCE_HERE", "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)");
+    ).replace(
+      "ACCEPTANCE_HERE",
+      "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)",
+    );
     const parsed = makeParsed("accepted", body, { createdAt: "2026-08-01" });
     const violations = await runValidate(parsed);
     const v38 = filterRule(violations, "V-38");
@@ -202,7 +211,10 @@ describe("V-38: document readiness completeness (RFC-1006)", () => {
     const body = BASE_BODY.replace(
       "DOCUMENT_READINESS_HERE",
       "## Document readiness\n\n- [ ] DR-1: alternatives listed",
-    ).replace("ACCEPTANCE_HERE", "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)");
+    ).replace(
+      "ACCEPTANCE_HERE",
+      "- [x] AC-1: test (evidence: test.ts:1)\n- [x] AC-2: test2 (evidence: test.ts:2)\n- [x] AC-3: test3 (evidence: test.ts:3)",
+    );
     const parsed = makeParsed("draft", body);
     const violations = await runValidate(parsed);
     const v38 = filterRule(violations, "V-38");
@@ -470,8 +482,8 @@ describe("Pre-cutoff exemption (RFC-1006)", () => {
     );
     const parsed = makeParsed("accepted", body, { createdAt: "2026-08-01" });
     const violations = await runValidate(parsed);
-    const newRules = violations.filter(
-      (v) => ["V-38", "V-39", "V-40", "V-41", "V-42"].includes(v.rule),
+    const newRules = violations.filter((v) =>
+      ["V-38", "V-39", "V-40", "V-41", "V-42"].includes(v.rule),
     );
     expect(newRules).toHaveLength(0);
   });

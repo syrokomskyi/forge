@@ -116,10 +116,7 @@ describe("deriveQueueItemStatus — derivation matrix (RFC-1140)", () => {
 
   test("audit file only → in-progress/enhance", async () => {
     await writeRfc("RFC-1107", "status: draft\n");
-    await fs.writeFile(
-      path.join(tmpDir, "docs/audits/audit-rfc-1107-test.md"),
-      "# audit\n",
-    );
+    await fs.writeFile(path.join(tmpDir, "docs/audits/audit-rfc-1107-test.md"), "# audit\n");
     const r = await deriveQueueItemStatus(tmpDir, "RFC-1107");
     expect(r?.status).toBe("in-progress");
     expect(r?.pipelineStep).toBe("enhance");

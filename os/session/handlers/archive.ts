@@ -131,7 +131,9 @@ export async function runSessionArchive(
       }
 
       try {
-        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+        await fs.exists(targetPath).then((ok) => {
+          if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        });
         skipped.push({ id, file: relFile, reason: "destination exists" });
         continue;
       } catch {
@@ -217,7 +219,9 @@ export async function runSessionArchive(
       }
 
       try {
-        await fs.exists(targetPath).then((ok) => { if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" }); });
+        await fs.exists(targetPath).then((ok) => {
+          if (!ok) throw Object.assign(new Error("ENOENT"), { code: "ENOENT" });
+        });
         skipped.push({ id, file: archRelFile, reason: "destination exists" });
         continue;
       } catch {

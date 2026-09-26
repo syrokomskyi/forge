@@ -15,6 +15,7 @@ knowledge:
   - project-narrative-template.md
   - milestone-gallery/
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>forge-bootstrap skill — Configure a freshly created forge project — greenfield or transplant — with a barrier-free, creator-facing onboarding experience.</purpose>
@@ -28,7 +29,6 @@ knowledge:
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # forge-bootstrap
 

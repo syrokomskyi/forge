@@ -11,6 +11,7 @@ bindings:
   optional: [paths.invariantsFile]
 triggers: ["enhance this RFC", "fix audit findings in RFC", "improve RFC based on audit"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea-enhance skill — Enhance RFCs by integrating audit findings. Fixes gaps, DNA misalignment, drift, and blind spots. May split out new RFCs. Use after fo-idea-audit or when asked to enhance an RFC.</purpose>
@@ -24,7 +25,6 @@ triggers: ["enhance this RFC", "fix audit findings in RFC", "improve RFC based o
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # RFC Enhance
 

@@ -24,7 +24,6 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-
 import { join, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";

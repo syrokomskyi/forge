@@ -18,7 +18,6 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </CHANGE_SUMMARY>
 */
 
-
 import { resolve, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { execFile, execFileSync } from "../../../src/utils/sync-fs.ts";

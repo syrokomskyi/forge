@@ -14,7 +14,6 @@
 </CHANGE_SUMMARY>
 */
 
-
 import { join, basename } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";

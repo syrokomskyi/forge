@@ -10,6 +10,7 @@ knowledge:
   - qa-log.md
   - learned-principles.md
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>grilling skill — Grill the user relentlessly about a plan or design. Use when the user wants to stress-test a plan before building, or uses any 'grill' trigger phrases.</purpose>
@@ -23,7 +24,6 @@ knowledge:
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 

@@ -8,6 +8,7 @@ dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 triggers: ["create a handoff document", "compact conversation for next agent", "prepare handoff for another agent"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-handoff skill — Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via ecosystem.commit.</purpose>
@@ -21,7 +22,6 @@ triggers: ["create a handoff document", "compact conversation for next agent", "
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-handoff
 

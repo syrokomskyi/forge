@@ -44,7 +44,9 @@ test("AC-1: content below the forge:custom marker is preserved byte-identical", 
   // Fresh head regenerated, tail below the marker verbatim
   expect(merged).toContain("fresh body v2");
   expect(merged).not.toContain("old body v1");
-  expect(merged!.endsWith(tail.trimStart() === tail ? tail : `\n${tail}`) || merged!.includes(tail)).toBe(true);
+  expect(
+    merged!.endsWith(tail.trimStart() === tail ? tail : `\n${tail}`) || merged!.includes(tail),
+  ).toBe(true);
   expect(merged).toContain(MD_MARKER);
 });
 

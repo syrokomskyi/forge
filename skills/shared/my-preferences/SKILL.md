@@ -7,6 +7,7 @@ concerns: document-only
 dependsOn: []
 languagePolicy: ref(PREFERENCES.md)
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>my-preferences skill — Read, create, or edit the operator's preferences file at the repository root. Run when the operator wants to change language settings for AI conversations, grilling, or project documentation.</purpose>
@@ -20,7 +21,6 @@ languagePolicy: ref(PREFERENCES.md)
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # my-preferences
 

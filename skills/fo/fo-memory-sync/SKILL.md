@@ -12,6 +12,7 @@ knowledge:
   - learned-principles.md
 triggers: ["sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-memory-sync skill — Sync memory and recent sessions from external AI coding tools (Codex CLI, Claude Code) into the current project. Cross-platform, local-only.</purpose>
@@ -25,7 +26,6 @@ triggers: ["sync memory from codex", "import external agent knowledge", "recall 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-memory-sync
 

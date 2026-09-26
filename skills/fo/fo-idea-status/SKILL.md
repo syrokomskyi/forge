@@ -11,6 +11,7 @@ bindings:
   optional: [commands.validateRfc, commands.validateAdr]
 triggers: ["show RFC and ADR status", "what is the status of this RFC", "list RFCs by status"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-idea-status skill — Show a concise table of RFCs and ADRs filtered by status or mentioned in the current session. Use when the operator wants a quick status overview.</purpose>
@@ -24,7 +25,6 @@ triggers: ["show RFC and ADR status", "what is the status of this RFC", "list RF
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # RFC and ADR Status
 

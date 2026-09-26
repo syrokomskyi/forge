@@ -26,7 +26,6 @@ Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, s
 </CHANGE_SUMMARY>
 */
 
-
 import { relative, resolve } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import {

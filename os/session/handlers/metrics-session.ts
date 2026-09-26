@@ -17,7 +17,6 @@ docs/metrics/sessions/<session-id>.metrics.yaml via writeFileAtomic.
 </CHANGE_SUMMARY>
 */
 
-
 import { join, dirname } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";

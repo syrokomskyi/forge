@@ -18,100 +18,98 @@ import type {
 } from "../../src/types.ts";
 
 export async function createForgeNotesModule(): Promise<ForgeModule> {
-const { runNoteLinkValidate } = await import("../../src/validators/note-link-validate.ts");
-    const { runNoteFrontmatterValidate } =
-      await import("../../src/validators/note-frontmatter-validate.ts");
-    const { runNoteOrphanDetect } = await import("../../src/validators/note-orphan-detect.ts");
+  const { runNoteLinkValidate } = await import("../../src/validators/note-link-validate.ts");
+  const { runNoteFrontmatterValidate } =
+    await import("../../src/validators/note-frontmatter-validate.ts");
+  const { runNoteOrphanDetect } = await import("../../src/validators/note-orphan-detect.ts");
 
-    const noteLinkValidateWrapper = async (
-      input: ForgeCommandInput,
-      context: ForgeRuntimeContext,
-    ): Promise<ForgeCommandResult> => {
-      return runNoteLinkValidate(input, context);
-    };
+  const noteLinkValidateWrapper = async (
+    input: ForgeCommandInput,
+    context: ForgeRuntimeContext,
+  ): Promise<ForgeCommandResult> => {
+    return runNoteLinkValidate(input, context);
+  };
 
-    const noteFrontmatterValidateWrapper = async (
-      input: ForgeCommandInput,
-      context: ForgeRuntimeContext,
-    ): Promise<ForgeCommandResult> => {
-      return runNoteFrontmatterValidate(input, context);
-    };
+  const noteFrontmatterValidateWrapper = async (
+    input: ForgeCommandInput,
+    context: ForgeRuntimeContext,
+  ): Promise<ForgeCommandResult> => {
+    return runNoteFrontmatterValidate(input, context);
+  };
 
-    const noteOrphanDetectWrapper = async (
-      input: ForgeCommandInput,
-      context: ForgeRuntimeContext,
-    ): Promise<ForgeCommandResult> => {
-      return runNoteOrphanDetect(input, context);
-    };
+  const noteOrphanDetectWrapper = async (
+    input: ForgeCommandInput,
+    context: ForgeRuntimeContext,
+  ): Promise<ForgeCommandResult> => {
+    return runNoteOrphanDetect(input, context);
+  };
   return {
-  name: "forge-notes",
-  version: "0.1.0",
-  runtime: "autonomous",
+    name: "forge-notes",
+    version: "0.1.0",
+    runtime: "autonomous",
     declarations: [],
-  commands: [
-    {
-      name: "note.link.validate",
-      contract: "note",
-      rules: [],
-      description:
-        "Validate wikilink integrity across a markdown note vault. Scans [[wikilinks]] and resolves each against the note graph.",
-      scope: "workspace",
-      supportsAllSites: false,
-      flags: {
-        "vault-dir": {
-          kind: "string",
-          description: "Vault directory relative to workspace root (default: vault).",
+    commands: [
+      {
+        name: "note.link.validate",
+        contract: "note",
+        rules: [],
+        description:
+          "Validate wikilink integrity across a markdown note vault. Scans [[wikilinks]] and resolves each against the note graph.",
+        scope: "workspace",
+        supportsAllSites: false,
+        flags: {
+          "vault-dir": {
+            kind: "string",
+            description: "Vault directory relative to workspace root (default: vault).",
+          },
+          path: {
+            kind: "string",
+            description: "Subdirectory within the vault to scope the scan to.",
+          },
         },
-        path: {
-          kind: "string",
-          description: "Subdirectory within the vault to scope the scan to.",
-        },
+        reads: ["vault/**/*.md"],
+        cacheable: false,
+        execute: noteLinkValidateWrapper,
       },
-      reads: ["vault/**/*.md"],
-      cacheable: false,
-      execute: noteLinkValidateWrapper,
-    },
-    {
-      name: "note.frontmatter.validate",
-      contract: "note",
-      rules: [],
-      description:
-        "Validate frontmatter consistency across a markdown note vault. Checks for required fields in YAML frontmatter.",
-      scope: "workspace",
-      supportsAllSites: false,
-      flags: {
-        "vault-dir": {
-          kind: "string",
-          description: "Vault directory relative to workspace root (default: vault).",
+      {
+        name: "note.frontmatter.validate",
+        contract: "note",
+        rules: [],
+        description:
+          "Validate frontmatter consistency across a markdown note vault. Checks for required fields in YAML frontmatter.",
+        scope: "workspace",
+        supportsAllSites: false,
+        flags: {
+          "vault-dir": {
+            kind: "string",
+            description: "Vault directory relative to workspace root (default: vault).",
+          },
+          fields: {
+            kind: "string",
+            description: "Comma-separated list of required fields (default: title).",
+          },
         },
-        fields: {
-          kind: "string",
-          description: "Comma-separated list of required fields (default: title).",
-        },
+        reads: ["vault/**/*.md"],
+        cacheable: false,
+        execute: noteFrontmatterValidateWrapper,
       },
-      reads: ["vault/**/*.md"],
-      cacheable: false,
-      execute: noteFrontmatterValidateWrapper,
-    },
-    {
-      name: "note.orphan.detect",
-      description:
-        "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
-      scope: "workspace",
-      supportsAllSites: false,
-      flags: {
-        "vault-dir": {
-          kind: "string",
-          description: "Vault directory relative to workspace root (default: vault).",
+      {
+        name: "note.orphan.detect",
+        description:
+          "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
+        scope: "workspace",
+        supportsAllSites: false,
+        flags: {
+          "vault-dir": {
+            kind: "string",
+            description: "Vault directory relative to workspace root (default: vault).",
+          },
         },
+        reads: ["vault/**/*.md"],
+        cacheable: false,
+        execute: noteOrphanDetectWrapper,
       },
-      reads: ["vault/**/*.md"],
-      cacheable: false,
-      execute: noteOrphanDetectWrapper,
-    }
-  ],
-  pipelines: [
-
-  ]};
+    ],
+    pipelines: [],
+  };
 }
-;

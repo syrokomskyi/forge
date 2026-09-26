@@ -11,6 +11,7 @@ bindings:
   optional: [commands.test, paths.invariantsFile]
 triggers: ["fix issues from review", "apply review findings and fix", "iterative fix workflow for code"]
 ---
+
 <!--
 <MODULE_CONTRACT>
 <purpose>fo-fix skill — Iterative fix workflow for AI-generated work. Calls fo-review if needed, applies findings, runs scoped typecheck, commits, and delegates doc updates to fo-doc-audit.</purpose>
@@ -24,7 +25,6 @@ triggers: ["fix issues from review", "apply review findings and fix", "iterative
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
 </CHANGE_SUMMARY>
 -->
-
 
 # fo-fix
 
