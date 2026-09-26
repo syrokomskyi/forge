@@ -25,6 +25,8 @@ import path from "node:path";
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { syncKnowledgeFile } from "../knowledge/index.ts";
+import { writeSkillMarkerSync } from "./skill-markers.ts";
+import { planPrettierignoreSync, applyPrettierignoreSync } from "./prettierignore.ts";
 import { defaultForgeConfig, loadForgeConfig, resolveForgeRoot, type ForgeConfig } from "../config/forge-config.ts";
 import { listStackProfiles, detectStack } from "../profiles/stack-profile.ts";
 
@@ -280,6 +282,11 @@ export function runInit(
     fs.writeFileSync(destPath, content, "utf8");
     created.push(`${config.paths.skillsDir}/${skillName}/SKILL.md`);
 
+    // RFC-1154: marker manifest lists SKILL.md + knowledge files whose content
+    // is purely forge's (copied/unchanged); merged/skipped files carry consumer
+    // entries and stay out of the manifest so prune never deletes them.
+    const markerFiles = ["SKILL.md"];
+
     // RFC-0524: sync declared knowledge files
     const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (fmMatch) {
@@ -298,6 +305,9 @@ export function runInit(
               if (syncResult.action === "copied" || syncResult.action === "merged") {
                 created.push(`${config.paths.skillsDir}/${skillName}/${kf}`);
               }
+              if (syncResult.action === "copied" || syncResult.action === "unchanged") {
+                markerFiles.push(kf);
+              }
             } else {
               errors.push(`Knowledge file '${kf}' declared in ${skillName} but not found in source`);
             }
@@ -307,6 +317,7 @@ export function runInit(
         // Frontmatter parse error — SKILL-01 will catch this in validation
       }
     }
+    writeSkillMarkerSync(destDir, markerFiles);
   }
 
   // RFC-0539: Copy declared pack skills to .agents/skills/<name>/ for IDE discovery
@@ -352,6 +363,9 @@ export function runInit(
     fs.writeFileSync(destPath, content, "utf8");
     created.push(`${config.paths.skillsDir}/${skillName}/SKILL.md`);
 
+    // RFC-1154: same marker rule as forge skills.
+    const markerFiles = ["SKILL.md"];
+
     // RFC-0524: sync declared knowledge files for pack skills
     const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (fmMatch) {
@@ -370,6 +384,9 @@ export function runInit(
               if (syncResult.action === "copied" || syncResult.action === "merged") {
                 created.push(`${config.paths.skillsDir}/${skillName}/${kf}`);
               }
+              if (syncResult.action === "copied" || syncResult.action === "unchanged") {
+                markerFiles.push(kf);
+              }
             } else {
               errors.push(`Knowledge file '${kf}' declared in ${skillName} but not found in source`);
             }
@@ -379,6 +396,7 @@ export function runInit(
         // Frontmatter parse error — SKILL-01 will catch this in validation
       }
     }
+    writeSkillMarkerSync(destDir, markerFiles);
   }
 
   // RFC-0663: Sync shared knowledge layer to .agents/skills/shared-knowledge/
@@ -391,7 +409,21 @@ export function runInit(
     if (syncResult.action === "copied" || syncResult.action === "merged") {
       created.push(`${config.paths.skillsDir}/shared-knowledge/learned-principles.md`);
     }
+    // RFC-1154: marker lists the file only when its content is purely forge's.
+    writeSkillMarkerSync(
+      sharedKnowledgeDestDir,
+      syncResult.action === "copied" || syncResult.action === "unchanged"
+        ? ["learned-principles.md"]
+        : [],
+    );
   }
+
+  // RFC-1154: reconcile the forge-managed .prettierignore block (prettier
+  // consumers only; additive + idempotent, no-op otherwise).
+  applyPrettierignoreSync(
+    workspaceRoot,
+    planPrettierignoreSync(workspaceRoot, config.paths.skillsDir),
+  );
 
   // 4. Create docs directories from config paths
   const dirsToCreate = [
