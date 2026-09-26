@@ -35,6 +35,11 @@ export {
   type StripGeneratedMarkerResult,
 } from "./generated-marker.ts";
 export { toKebabCase } from "./string-utils.ts";
+export {
+  alignMarkdownTable,
+  parseMarkdownTable,
+  type ParsedMarkdownTable,
+} from "./markdown-table.ts";
 export { collectFiles, fileExists, type CollectFilesOptions } from "./fs.ts";
 export { byteHash } from "./hash.ts";
 export { trashPath } from "./fs-trash.ts";

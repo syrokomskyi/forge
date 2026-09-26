@@ -28,7 +28,7 @@ import { parse as parseYaml } from "yaml";
 import { loadForgeConfig, resolveBinding, resolveForgePackageRoot, resolveForgeRoot } from "../config/forge-config.ts";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
-import { buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
+import { alignMarkdownTable, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
@@ -166,14 +166,19 @@ function extractTriggers(workspaceRoot: string): Array<{ name: string; triggers:
   return result;
 }
 
+// RFC-1154: emits the full aligned table (header + separator + rows) since
+// column widths depend on substituted trigger rows — the template carries only
+// the {{triggersTable}} placeholder, no static header lines.
 function generateTriggersTable(triggers: Array<{ name: string; triggers: string[] }>): string {
-  const rows: string[] = [];
+  const rows: string[][] = [];
   for (const { name, triggers: skillTriggers } of triggers) {
     if (skillTriggers.length === 0) continue;
     const display = skillTriggers.map((t) => `"${t}"`).join(", ");
-    rows.push(`| ${display} | \`${name}\` |`);
+    rows.push([display, `\`${name}\``]);
   }
-  return rows.length > 0 ? rows.join("\n") + "\n" : "";
+  return rows.length > 0
+    ? alignMarkdownTable(["Operator says something like", "Skill"], rows) + "\n"
+    : "";
 }
 
 function generateBehavioralLayer(
@@ -282,14 +287,15 @@ export async function runAgentsGenerate(
   // Build dynamic sections (skills table, capabilities, behavioral layer)
   const dynamicLines: string[] = [];
 
-  // Skills table
+  // Skills table (RFC-1154: emitted prettier-normal via alignMarkdownTable)
   dynamicLines.push("## Skills");
   dynamicLines.push("");
-  dynamicLines.push("| Name | Category | Invocation | Concerns |");
-  dynamicLines.push("| --- | --- | --- | --- |");
-  for (const skill of FORGE_SKILLS) {
-    dynamicLines.push(`| ${skill.name} | ${skill.category} | ${skill.invocation} | ${skill.concerns} |`);
-  }
+  dynamicLines.push(
+    alignMarkdownTable(
+      ["Name", "Category", "Invocation", "Concerns"],
+      FORGE_SKILLS.map((skill) => [skill.name, skill.category, skill.invocation, skill.concerns]),
+    ),
+  );
   dynamicLines.push("");
 
   // Capabilities section (RFC-0393)
@@ -298,8 +304,6 @@ export async function runAgentsGenerate(
     dynamicLines.push("");
     dynamicLines.push("Bindings resolved from `forge.yaml`:");
     dynamicLines.push("");
-    dynamicLines.push("| Key | Status | Value |");
-    dynamicLines.push("| --- | --- | --- |");
 
     const bindingKeys = [
       "commands.validateRfc",
@@ -315,20 +319,22 @@ export async function runAgentsGenerate(
       "paths.sessionsDir",
     ];
 
-    for (const key of bindingKeys) {
+    const capabilityRows: string[][] = bindingKeys.map((key) => {
       const value = resolveBinding(config, key);
       const status = value === null ? "absent" : "resolved";
       const display = value === null ? "—" : typeof value === "string" ? `\`${value}\`` : String(value);
-      dynamicLines.push(`| ${key} | ${status} | ${display} |`);
-    }
+      return [key, status, display];
+    });
 
     // compassDocs array
     const compassDocs = resolveBinding(config, "paths.compassDocs");
     if (Array.isArray(compassDocs) && compassDocs.length > 0) {
-      dynamicLines.push(`| paths.compassDocs | resolved | ${compassDocs.map((d) => `\`${d}\``).join(", ")} |`);
+      capabilityRows.push(["paths.compassDocs", "resolved", compassDocs.map((d) => `\`${d}\``).join(", ")]);
     } else {
-      dynamicLines.push(`| paths.compassDocs | absent | — |`);
+      capabilityRows.push(["paths.compassDocs", "absent", "—"]);
     }
+
+    dynamicLines.push(alignMarkdownTable(["Key", "Status", "Value"], capabilityRows));
 
     // terminology
     if (config.bindings.terminology && Object.keys(config.bindings.terminology).length > 0) {
