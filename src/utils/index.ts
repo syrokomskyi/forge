@@ -27,13 +27,25 @@ export { writeFileIfChanged } from "./fs-idempotent.ts";
 export {
   GENERATED_MARKER,
   EDITABLE_GENERATED_MARKER,
+  CUSTOM_BOUNDARY_TOKEN,
+  CUSTOM_BOUNDARY_MARKERS,
+  CUSTOM_BOUNDARY_HINTS,
   hasGeneratedMarker,
+  hasEditableGeneratedMarker,
   stripGeneratedMarker,
   buildGeneratedHeader,
+  commentStyleForPath,
   isGeneratedMarkerTextCandidate,
+  type GeneratedHeaderCommentStyle,
   type GeneratedHeaderInput,
   type StripGeneratedMarkerResult,
 } from "./generated-marker.ts";
+export {
+  splitEditableGenerated,
+  mergeEditableGenerated,
+  canonicalFooterOf,
+  type EditableRegionSplit,
+} from "./editable-region.ts";
 export { toKebabCase } from "./string-utils.ts";
 export {
   alignMarkdownTable,

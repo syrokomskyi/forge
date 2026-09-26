@@ -23,6 +23,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveIo } from "../utils/io.ts";
+import { hasEditableGeneratedMarker, mergeEditableGenerated } from "../utils/index.ts";
 import { readFileSync, existsSync } from "../utils/sync-fs.ts";
 import { join, relative, dirname, resolve } from "node:path";
 import { parse as parseYaml } from "yaml";
@@ -850,6 +851,7 @@ async function checkNestedAgentsMd(
   let missing = 0;
   let stale = 0;
   let handwritten = 0;
+  let unmapped = 0;
 
   for (const ws of workspaces) {
     if (!ws.hasAgentsMd) {
@@ -885,7 +887,18 @@ async function checkNestedAgentsMd(
       const wsType = workspaceTypes?.find((wt) => wt.id === ws.type);
       const expected = selectNestedTemplate(wsType, profile, terminology, fallback);
       const actual = await io.readFile(join(workspaceRoot, ws.path, "AGENTS.md"));
-      if (expected !== actual) {
+      // RFC-1153: boundary-aware staleness — merge(expected, actual) compares
+      // only the generated head; content below the forge:custom boundary (or
+      // the canonical footer fallback) is preserved, not drift. Files bearing
+      // the restrictive GENERATED marker are generator-owned (RFC-0081) — any
+      // divergence is plain staleness, never unmapped-customization.
+      const merged = mergeEditableGenerated(expected, actual, `${ws.path}/AGENTS.md`);
+      if (merged === null && hasEditableGeneratedMarker(actual)) {
+        unmapped++;
+        issues.push(
+          `${ws.path}/AGENTS.md has custom content but no resolvable boundary — add <!-- forge:custom --> manually`,
+        );
+      } else if (merged === null || merged !== actual.replace(/\r\n/g, "\n")) {
         stale++;
         issues.push(`${ws.path}/AGENTS.md stale — run 'forge agents generate'`);
       }
@@ -905,11 +918,12 @@ async function checkNestedAgentsMd(
   const parts: string[] = [];
   if (missing > 0) parts.push(`${missing} missing`);
   if (stale > 0) parts.push(`${stale} stale`);
+  if (unmapped > 0) parts.push(`${unmapped} unmapped-customization`);
   if (handwritten > 0) parts.push(`${handwritten} hand-written`);
 
   return {
     name: "nested-AGENTS.md",
-    status: stale > 0 ? "warn" : "pass",
+    status: stale > 0 || unmapped > 0 ? "warn" : "pass",
     message: `${parts.join(", ")} — ${issues.slice(0, 3).join("; ")}${issues.length > 3 ? ` (+${issues.length - 3} more)` : ""}`,
   };
 }

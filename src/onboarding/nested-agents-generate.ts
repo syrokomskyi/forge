@@ -25,7 +25,14 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 
 import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-import { writeFileIfChanged } from "../utils/index.ts";
+import {
+  canonicalFooterOf,
+  hasEditableGeneratedMarker,
+  mergeEditableGenerated,
+  splitEditableGenerated,
+  writeFileIfChanged,
+} from "../utils/index.ts";
+import { resolveIo } from "../utils/io.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd, selectNestedTemplate, type PackageInfo } from "./nested-agents-templates.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
@@ -37,6 +44,8 @@ import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 export interface NestedGenerateResult {
   generated: string[];
   skipped: string[];
+  /** RFC-1153: files merged with a carried custom tail below the boundary. */
+  preserved: string[];
   renderedFiles: { [relPath: string]: string };
   workspaceTypeMap?: { [relPath: string]: string };
 }
@@ -65,7 +74,9 @@ export async function generateNestedAgentsMd(
   );
   const generated: string[] = [];
   const skipped: string[] = [];
+  const preserved: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};
+  const fio = resolveIo(io);
   const workspaceTypeMap: { [relPath: string]: string } = {};
 
   // RFC-0643: resolve terminology from config + profile for nested template substitution
@@ -92,12 +103,40 @@ export async function generateNestedAgentsMd(
       continue;
     }
 
-    await writeFileIfChanged(agentsMdPath, content, io);
+    // RFC-1153: merge instead of overwrite — the `forge:custom` boundary marks
+    // the split between the generator-owned head and the preserved custom tail.
+    let existing: string | null = null;
+    if (ws.hasAgentsMd) {
+      try {
+        existing = await fio.readFile(agentsMdPath);
+      } catch {
+        // Unreadable — treat as absent; merge will emit a fresh file.
+      }
+    }
+    let merged = mergeEditableGenerated(content, existing, relPath);
+    if (merged === null && existing !== null && !hasEditableGeneratedMarker(existing)) {
+      // RFC-0081/RFC-1153: restrictive-marker file is fully generator-owned —
+      // upgrade it to the editable boundary contract (fresh render + marker).
+      merged = mergeEditableGenerated(content, null, relPath);
+    }
+    if (merged === null) {
+      skipped.push(`${relPath} (unmapped-customization)`);
+      continue;
+    }
+
+    await writeFileIfChanged(agentsMdPath, merged, fio);
     generated.push(relPath);
     workspaceTypeMap[relPath] = ws.type;
+    const footer = canonicalFooterOf(content);
+    if (
+      existing !== null &&
+      splitEditableGenerated(existing, relPath, footer ?? undefined).customTail !== null
+    ) {
+      preserved.push(relPath);
+    }
   }
 
-  return { generated, skipped, renderedFiles, workspaceTypeMap };
+  return { generated, skipped, preserved, renderedFiles, workspaceTypeMap };
 }
 
 export { discoverWorkspaces, type WorkspaceDir, type WorkspaceType } from "./workspace-discovery.ts";

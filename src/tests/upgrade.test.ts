@@ -9,12 +9,14 @@
 */
 
 import { test, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
+import { mkdtemp, mkdir, writeFile, rm, readFile, appendFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runUpgrade } from "../onboarding/upgrade.ts";
+import { generateNestedAgentsMd } from "../onboarding/nested-agents-generate.ts";
 import { ambientIo } from "../utils/io.ts";
+import { buildGeneratedHeader } from "../utils/index.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { runInit } from "../onboarding/init.ts";
 import {
@@ -165,7 +167,9 @@ test("forge.upgrade with syncedVersion matching installed version returns noop",
   expect(result.data?.status).toBe("noop");
   expect(result.data?.fromVersion).toBe("0.2.0");
   expect(result.data?.toVersion).toBe("0.2.0");
-  expect(result.data?.skillsUpdated).toEqual([]);
+  // RFC-1154: the reconcile pass still runs on a same-version noop — skills it
+  // re-synced are reported in skillsUpdated.
+  expect(result.data?.skillsUpdated).toContain("fo-idea");
   expect(result.exitCode).toBe(0);
 });
 
@@ -406,6 +410,72 @@ test("forge.upgrade without --update-npm does not attempt npm install", async ()
   expect(result.data?.status).toBe("pass");
   expect(result.data?.npmUpdated).toBe(false);
   expect(result.data?.npmUpdateSkipped).toBe(null);
+});
+
+// RFC-1153: dry-run preview of the nested-AGENTS.md merge --------------------
+
+test("AC-7: forge.upgrade --dry-run reports nestedAgentsPlanned and nestedAgentsSkipped", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  // Workspace with no AGENTS.md — merged output would be written → planned
+  await mkdir(join(tempDir, "packages", "newpkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "newpkg", "package.json"), '{"name":"newpkg"}', "utf8");
+
+  // Marker-bearing file that diverges with no resolvable boundary → skipped
+  await mkdir(join(tempDir, "packages", "unmapped"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "unmapped", "package.json"),
+    '{"name":"unmapped"}',
+    "utf8",
+  );
+  await writeFile(
+    join(tempDir, "packages", "unmapped", "AGENTS.md"),
+    `${buildGeneratedHeader({ filePath: "AGENTS.md", ownerCommand: "forge.agents.generate", editable: true })}\n# Hand-maintained\n\ndivergent body\n`,
+    "utf8",
+  );
+
+  const result = await runUpgrade(
+    { argv: [], flags: { "dry-run": true } },
+    makeContext(tempDir, true),
+  );
+
+  expect(result.data?.status).toBe("pass");
+  const planned = result.data?.nestedAgentsPlanned ?? [];
+  const skipped = result.data?.nestedAgentsSkipped ?? [];
+
+  expect(
+    planned,
+    "planned must contain exactly the guides whose merged output differs from disk",
+  ).toContain(join("packages", "newpkg", "AGENTS.md"));
+  expect(skipped.some((s) => s.includes("unmapped") && s.includes("unmapped-customization"))).toBe(
+    true,
+  );
+  // No files written under dry-run
+  expect(existsSync(join(tempDir, "packages", "newpkg", "AGENTS.md"))).toBe(false);
+});
+
+test("forge.upgrade executing path reports nestedAgentsPreserved for carried tails", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  // First run materializes the nested guide with the boundary marker
+  await mkdir(join(tempDir, "packages", "pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "pkg", "package.json"), '{"name":"pkg"}', "utf8");
+  const config = loadForgeConfig(tempDir);
+  await generateNestedAgentsMd(tempDir, config, false);
+  await appendFile(
+    join(tempDir, "packages", "pkg", "AGENTS.md"),
+    "\n## Custom rules\n\n- keep me\n",
+    "utf8",
+  );
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.nestedAgentsPreserved).toContain(join("packages", "pkg", "AGENTS.md"));
+  const merged = await readFile(join(tempDir, "packages", "pkg", "AGENTS.md"), "utf8");
+  expect(merged).toContain("- keep me");
 });
 
 function qaLog(entries: { id: string; title: string; body: string }[]): string {
