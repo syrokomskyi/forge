@@ -258,7 +258,7 @@ pnpm exec forge upgrade
 pnpm exec forge doctor
 ```
 
-`forge upgrade` is additive — it never overwrites operator-set bindings, never deletes files, and is idempotent. Use `--dry-run` to preview changes. Editable generated guides (`AGENTS.md`) are merged, not overwritten: content below the `<!-- forge:custom -->` boundary is preserved verbatim on regeneration (RFC-1153), and `--dry-run` reports `nestedAgentsPlanned` / `nestedAgentsPreserved` / `nestedAgentsSkipped`.
+`forge upgrade` is additive — it never overwrites operator-set bindings, is idempotent, and reconciles the generated surface on every run (including same-version noop): synced skill dirs get a `.forge-managed` manifest, stale marked dirs are pruned only when their contents match the manifest, and prettier consumers get a delimited forge-managed block in `.prettierignore` (RFC-1154). Use `--dry-run` to preview changes. Editable generated guides (`AGENTS.md`) are merged, not overwritten: content below the `<!-- forge:custom -->` boundary is preserved verbatim on regeneration (RFC-1153), and `--dry-run` reports `nestedAgentsPlanned` / `nestedAgentsPreserved` / `nestedAgentsSkipped`.
 
 ---
 
