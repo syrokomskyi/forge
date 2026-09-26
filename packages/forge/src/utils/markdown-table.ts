@@ -13,9 +13,10 @@ Also provides parseMarkdownTable so existing compact tables can be re-aligned
   <item>Do not do full grapheme segmentation — cell width uses String.length; generated tables are ASCII-heavy (documented limitation).</item>
 </non-goals>
 <KEY_DECISIONS>
-  <item>Separator cells are dashes repeated to the column width, matching observed prettier output; column width is max(3, widest cell) since prettier never emits a narrower separator.</item>
-  <item>An escaped pipe inside a cell is a literal (not a delimiter) and counts as 2 characters of width, matching the emitted bytes.</item>
+  <item>Separator = dashes repeated to column width (min 3), matching observed prettier output.</item>
+  <item>Escaped pipe inside a cell is a literal, counted as 2 characters of width.</item>
 </KEY_DECISIONS>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial implementation — alignMarkdownTable + parseMarkdownTable.</item>
 </CHANGE_SUMMARY>

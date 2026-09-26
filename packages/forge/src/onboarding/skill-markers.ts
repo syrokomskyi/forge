@@ -12,9 +12,10 @@ by the marker, not inferred from the name.
   <item>Do not delete dirs containing files outside the manifest — consumer additions keep the dir.</item>
 </non-goals>
 <KEY_DECISIONS>
-  <item>The marker is a per-dir JSON manifest ({ files: string[] }) — self-describing, per-dir atomic, and fail-safe (missing marker = no right to delete).</item>
-  <item>Prune deletes a marked stale dir only when its on-disk contents are a subset of manifest files plus the marker itself; anything extra keeps the dir and is reported for warning.</item>
+  <item>Marker is a per-dir JSON manifest ({ files: string[] }) — fail-safe: missing marker means no right to delete.</item>
+  <item>Prune only when on-disk contents ⊆ manifest files + marker; extras keep the dir and warn.</item>
 </KEY_DECISIONS>
+</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial implementation — SKILL_MARKER_FILE, writeSkillMarker, pruneStaleSkillDirs.</item>
 </CHANGE_SUMMARY>
