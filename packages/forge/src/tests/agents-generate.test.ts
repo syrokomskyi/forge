@@ -102,7 +102,8 @@ test("agents-generate includes intent-to-skill routing table", async () => {
 
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
   expect(agentsMd).toContain("### Intent-to-skill routing");
-  expect(agentsMd).toContain("| Operator says something like | Skill |");
+  // RFC-1154: header cells are padded to column width — match via regex
+  expect(agentsMd).toMatch(/\| Operator says something like +\| Skill +\|/);
   // Should contain at least one skill name from the registry
   expect(agentsMd).toContain("fo-");
 });
@@ -427,9 +428,10 @@ test("agents-generate nested renders entry points from exports map", async () =>
 
   const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
   expect(nested).toContain("## Entry points");
-  expect(nested).toContain("| `@test/my-pkg` | `./src/index.ts` |");
-  expect(nested).toContain("| `@test/my-pkg/port` | `./src/port.ts` |");
-  expect(nested).toContain("| `@test/my-pkg/client` | `./src/client.ts` |");
+  // RFC-1154: cells are padded to column width — match via regex
+  expect(nested).toMatch(/\| `@test\/my-pkg` +\| `\.\/src\/index\.ts` +\|/);
+  expect(nested).toMatch(/\| `@test\/my-pkg\/port` +\| `\.\/src\/port\.ts` +\|/);
+  expect(nested).toMatch(/\| `@test\/my-pkg\/client` +\| `\.\/src\/client\.ts` +\|/);
 });
 
 test("agents-generate nested separates workspace and external dependencies", async () => {

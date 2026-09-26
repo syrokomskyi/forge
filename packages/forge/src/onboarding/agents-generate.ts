@@ -28,7 +28,7 @@ import { parse as parseYaml } from "yaml";
 import { loadForgeConfig, resolveBinding, resolveForgePackageRoot, resolveForgeRoot } from "../config/forge-config.ts";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
-import { alignMarkdownTable, buildGeneratedHeader, hasGeneratedMarker, writeFileIfChanged } from "../utils/index.ts";
+import { alignMarkdownTable, buildGeneratedHeader, hasEditableGeneratedMarker, hasGeneratedMarker, mergeEditableGenerated, writeFileIfChanged } from "../utils/index.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
@@ -176,9 +176,9 @@ function generateTriggersTable(triggers: Array<{ name: string; triggers: string[
     const display = skillTriggers.map((t) => `"${t}"`).join(", ");
     rows.push([display, `\`${name}\``]);
   }
-  return rows.length > 0
-    ? alignMarkdownTable(["Operator says something like", "Skill"], rows) + "\n"
-    : "";
+  // Always emit the header + separator — even with zero trigger rows the
+  // section documents the routing contract (matches pre-RFC-1154 behavior).
+  return alignMarkdownTable(["Operator says something like", "Skill"], rows) + "\n";
 }
 
 function generateBehavioralLayer(
@@ -391,10 +391,37 @@ export async function runAgentsGenerate(
   } else if (rootSkipped) {
     skipped.push("AGENTS.md (hand-written)");
   } else {
-    await writeFileIfChanged(agentsMdPath, content);
-    generated.push("AGENTS.md");
-    if (outputFormat === "pretty") {
-      logger.success(`Generated ${path.relative(workspaceRoot, agentsMdPath)}`);
+    // RFC-1153: merge instead of overwrite — preserve the custom tail below
+    // the forge:custom boundary; fail-closed skip when no boundary resolves.
+    let existing: string | null = null;
+    if (await fio.exists(agentsMdPath)) {
+      try {
+        existing = await fio.readFile(agentsMdPath);
+      } catch {
+        // Unreadable — treat as absent; merge will emit a fresh file.
+      }
+    }
+    let merged = mergeEditableGenerated(content, existing, "AGENTS.md");
+    if (merged === null) {
+      if (existing !== null && !hasEditableGeneratedMarker(existing)) {
+        // RFC-0081/RFC-1153: restrictive-marker file is fully generator-owned —
+        // upgrade it to the editable boundary contract (fresh render + marker).
+        merged = mergeEditableGenerated(content, null, "AGENTS.md");
+      } else {
+        skipped.push("AGENTS.md (unmapped-customization)");
+        if (outputFormat === "pretty") {
+          logger.warn(
+            "AGENTS.md has custom content but no resolvable boundary — skipping root file (unmapped-customization). Add <!-- forge:custom --> to set the boundary.",
+          );
+        }
+      }
+    }
+    if (merged !== null) {
+      await writeFileIfChanged(agentsMdPath, merged, fio);
+      generated.push("AGENTS.md");
+      if (outputFormat === "pretty") {
+        logger.success(`Generated ${path.relative(workspaceRoot, agentsMdPath)}`);
+      }
     }
   }
 
@@ -419,7 +446,7 @@ export async function runAgentsGenerate(
       // forge root not resolvable — fallback to hardcoded detection
     }
   }
-  const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes);
+  const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes, fio);
   generated.push(...nestedResult.generated);
   skipped.push(...nestedResult.skipped);
   Object.assign(renderedFiles, nestedResult.renderedFiles);
