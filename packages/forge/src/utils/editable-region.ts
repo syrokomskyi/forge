@@ -87,7 +87,10 @@ export function splitEditableGenerated(
   }
 
   if (footerLine !== undefined) {
-    const idx = lines.indexOf(footerLine);
+    // lastIndexOf: the canonical footer is the template's last line — the
+    // trailingmost occurrence is the correct boundary even when an operator
+    // copied the line into a mid-file section.
+    const idx = lines.lastIndexOf(footerLine);
     if (idx >= 0) {
       const tail = lines.slice(idx + 1).join("\n");
       return {
