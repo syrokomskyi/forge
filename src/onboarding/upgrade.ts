@@ -27,6 +27,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 import * as fs from "../utils/sync-fs.ts";
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveIo } from "../utils/io.ts";
+import { hasGeneratedMarker, mergeEditableGenerated } from "../utils/index.ts";
 import path from "node:path";
 
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
@@ -42,6 +43,13 @@ import {
 } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { syncKnowledgeFile } from "../knowledge/index.ts";
+import { writeFileIfChanged } from "../utils/fs-idempotent.ts";
+import { writeSkillMarker, pruneStaleSkillDirs, type PruneResult } from "./skill-markers.ts";
+import {
+  planPrettierignore,
+  applyPrettierignore,
+  type PrettierignoreResult,
+} from "./prettierignore.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import type { SkippedSkill } from "./init.ts";
@@ -56,12 +64,22 @@ export interface UpgradeResult {
   bindingsAdded: { key: string; value: string }[];
   skippedSkills: SkippedSkill[];
   nestedAgentsGenerated: string[];
+  /** RFC-1153: dry-run only — nested guides whose merged output differs from disk. */
+  nestedAgentsPlanned: string[];
+  /** RFC-1153: files merged with a carried custom tail below the boundary. */
+  nestedAgentsPreserved: string[];
+  /** RFC-1153: hand-written or unmapped files skipped by the merge. */
+  nestedAgentsSkipped: string[];
   memoryScaffold: { created: string[]; gitignoreUpdated: boolean; skipped: string[] };
   npmUpdated: boolean;
   npmUpdateSkipped: string | null;
   latestNpmVersion: string | null;
   npmVersionWarning: string | null;
   doctorReport: unknown;
+  // RFC-1154: reconcile phase results (runs on every upgrade incl. noop).
+  skillsPruned: string[];
+  skillsKeptWithConsumerFiles: string[];
+  prettierignore: PrettierignoreResult;
 }
 
 async function isMonorepoForge(workspaceRoot: string, io: WorkspaceIO): Promise<boolean> {
@@ -165,7 +183,12 @@ async function syncForgeSkills(
     if (!dryRun) {
       await io.mkdir(destDir);
       const content = await io.readFile(srcPath);
-      await io.writeFile(destPath, content);
+      await writeFileIfChanged(destPath, content, io);
+
+      // RFC-1154: marker manifest lists SKILL.md + knowledge files that carry
+      // pure forge content. Merged/skipped knowledge files hold consumer
+      // entries — excluded so a stale dir is kept rather than deleted.
+      const markerFiles = ["SKILL.md"];
 
       // Sync knowledge files (append-only — never overwrite local entries)
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -184,6 +207,9 @@ async function syncForgeSkills(
                 for (const id of syncResult.conflicts) {
                   knowledgeConflicts.push(`${skillName}/${kf}#${id}`);
                 }
+                if (syncResult.action === "copied" || syncResult.action === "unchanged") {
+                  markerFiles.push(kf);
+                }
               }
             }
           }
@@ -191,6 +217,7 @@ async function syncForgeSkills(
           // Frontmatter parse error — SKILL-01 will catch in validation
         }
       }
+      await writeSkillMarker(destDir, markerFiles, io);
     }
     updated.push(skillName);
   }
@@ -219,6 +246,12 @@ async function syncSharedKnowledge(
     for (const id of syncResult.conflicts) {
       knowledgeConflicts.push(`shared-knowledge/learned-principles.md#${id}`);
     }
+    // RFC-1154: marker lists the file only when its content is purely forge's.
+    const markerFiles =
+      syncResult.action === "copied" || syncResult.action === "unchanged"
+        ? ["learned-principles.md"]
+        : [];
+    await writeSkillMarker(destDir, markerFiles, io);
   }
   updated.push("shared-knowledge");
   return { updated, knowledgeConflicts };
@@ -260,7 +293,11 @@ async function syncPackSkills(
     if (!dryRun) {
       await io.mkdir(destDir);
       const content = await io.readFile(srcPath);
-      await io.writeFile(destPath, content);
+      await writeFileIfChanged(destPath, content, io);
+
+      // RFC-1154: same marker rule as forge skills — merged/skipped knowledge
+      // files carry consumer entries and are excluded from the manifest.
+      const markerFiles = ["SKILL.md"];
 
       // Sync knowledge files (append-only — never overwrite local entries)
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
@@ -279,6 +316,9 @@ async function syncPackSkills(
                 for (const id of syncResult.conflicts) {
                   knowledgeConflicts.push(`${skillName}/${kf}#${id}`);
                 }
+                if (syncResult.action === "copied" || syncResult.action === "unchanged") {
+                  markerFiles.push(kf);
+                }
               }
             }
           }
@@ -286,11 +326,85 @@ async function syncPackSkills(
           // Frontmatter parse error
         }
       }
+      await writeSkillMarker(destDir, markerFiles, io);
     }
     updated.push(skillName);
   }
 
   return { updated, skipped, knowledgeConflicts };
+}
+
+/**
+ * RFC-1154 reconcile phase — runs on every forge upgrade, including the
+ * same-version noop path: markers for synced dirs, prune stale marked dirs,
+ * managed .prettierignore block. Idempotent; dry-run passes through.
+ */
+async function reconcileGeneratedSurface(
+  workspaceRoot: string,
+  forgeRoot: string,
+  config: ForgeConfig,
+  dryRun: boolean,
+  io: WorkspaceIO,
+): Promise<{
+  updated: string[];
+  knowledgeConflicts: string[];
+  skipped: SkippedSkill[];
+  prune: PruneResult;
+  prettierignore: PrettierignoreResult;
+}> {
+  const forgeSkillsResult = await syncForgeSkills(
+    workspaceRoot,
+    forgeRoot,
+    config.paths.skillsDir,
+    dryRun,
+    io,
+  );
+  const packResult = await syncPackSkills(workspaceRoot, config, config.paths.skillsDir, dryRun, io);
+  const sharedKnowledgeResult = await syncSharedKnowledge(
+    workspaceRoot,
+    forgeRoot,
+    config.paths.skillsDir,
+    dryRun,
+    io,
+  );
+
+  const currentSyncSet = new Set([
+    ...forgeSkillsResult.updated,
+    ...packResult.updated,
+    ...sharedKnowledgeResult.updated,
+  ]);
+
+  const prune = dryRun
+    ? { pruned: [], keptWithConsumerFiles: [] }
+    : await pruneStaleSkillDirs(
+        path.join(workspaceRoot, config.paths.skillsDir),
+        currentSyncSet,
+        io,
+      );
+
+  const prettierignore = dryRun
+    ? ("skipped" as const)
+    : await applyPrettierignore(
+        workspaceRoot,
+        await planPrettierignore(workspaceRoot, config.paths.skillsDir, io),
+        io,
+      );
+
+  return {
+    updated: [
+      ...forgeSkillsResult.updated,
+      ...packResult.updated,
+      ...sharedKnowledgeResult.updated,
+    ],
+    knowledgeConflicts: [
+      ...forgeSkillsResult.knowledgeConflicts,
+      ...packResult.knowledgeConflicts,
+      ...sharedKnowledgeResult.knowledgeConflicts,
+    ],
+    skipped: packResult.skipped,
+    prune,
+    prettierignore,
+  };
 }
 
 function addMissingBindingDefaults(
@@ -361,12 +475,18 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        nestedAgentsPlanned: [],
+        nestedAgentsPreserved: [],
+        nestedAgentsSkipped: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: false,
         npmUpdateSkipped: null,
         latestNpmVersion: null,
         npmVersionWarning: null,
         doctorReport: null,
+        skillsPruned: [],
+        skillsKeptWithConsumerFiles: [],
+        prettierignore: "skipped",
       },
       nextSteps: [{ action: "Run 'forge create' to create forge.yaml first", kind: "required" }],
       exitCode: 1,
@@ -406,12 +526,18 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        nestedAgentsPlanned: [],
+        nestedAgentsPreserved: [],
+        nestedAgentsSkipped: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: false,
         npmUpdateSkipped: null,
         latestNpmVersion: null,
         npmVersionWarning: null,
         doctorReport: null,
+        skillsPruned: [],
+        skillsKeptWithConsumerFiles: [],
+        prettierignore: "skipped",
       },
       nextSteps: [
         { action: "Install @warpgogol/forge first: npm install @warpgogol/forge", kind: "required" },
@@ -442,12 +568,18 @@ export async function runUpgrade(
         bindingsAdded: [],
         skippedSkills: [],
         nestedAgentsGenerated: [],
+        nestedAgentsPlanned: [],
+        nestedAgentsPreserved: [],
+        nestedAgentsSkipped: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: false,
         npmUpdateSkipped: null,
         latestNpmVersion: npmCheck.latest,
         npmVersionWarning: npmCheck.warning,
         doctorReport: null,
+        skillsPruned: [],
+        skillsKeptWithConsumerFiles: [],
+        prettierignore: "skipped",
       },
       nextSteps: [
         { action: `Fix forge.yaml: ${(err as Error).message}`, kind: "required" },
@@ -460,23 +592,40 @@ export async function runUpgrade(
   const fromVersion = config.forge?.syncedVersion ?? null;
 
   if (fromVersion === toVersion) {
-    // Noop — versions match
+    // Noop version-wise — but the RFC-1154 reconcile (markers, stale-dir prune,
+    // managed .prettierignore) still runs so a same-version upgrade fixes lint debt.
+    const reconcile = await reconcileGeneratedSurface(
+      workspaceRoot,
+      forgeRoot,
+      config,
+      isDryRun,
+      fio,
+    );
+    for (const kept of reconcile.prune.keptWithConsumerFiles) {
+      context.logger.warn(`forge.upgrade: kept stale skill dir ${kept}`);
+    }
     return {
       data: {
         command: "forge.upgrade",
         status: "noop",
         fromVersion,
         toVersion,
-        skillsUpdated: [],
+        skillsUpdated: reconcile.updated,
         bindingsAdded: [],
-        skippedSkills: [],
+        skippedSkills: reconcile.skipped,
         nestedAgentsGenerated: [],
+        nestedAgentsPlanned: [],
+        nestedAgentsPreserved: [],
+        nestedAgentsSkipped: [],
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: npmUpdated,
         npmUpdateSkipped: npmUpdateSkipped,
         latestNpmVersion: npmCheck.latest,
         npmVersionWarning: npmCheck.warning,
         doctorReport: null,
+        skillsPruned: reconcile.prune.pruned,
+        skillsKeptWithConsumerFiles: reconcile.prune.keptWithConsumerFiles,
+        prettierignore: reconcile.prettierignore,
       },
       nextSteps: npmCheck.warning
         ? [{ action: npmCheck.warning, kind: "optional" }]
@@ -488,43 +637,20 @@ export async function runUpgrade(
     };
   }
 
-  // Step 3: Sync forge skills
-  const forgeSkillsResult = await syncForgeSkills(
+  // Step 3: RFC-1154 reconcile — sync forge+pack skills + shared knowledge,
+  // write .forge-managed markers, prune stale marked dirs, reconcile the
+  // managed .prettierignore block.
+  const reconcile = await reconcileGeneratedSurface(
     workspaceRoot,
     forgeRoot,
-    config.paths.skillsDir,
-    isDryRun,
-    fio,
-  );
-
-  // Step 3b: Sync pack skills
-  const packResult = await syncPackSkills(
-    workspaceRoot,
     config,
-    config.paths.skillsDir,
     isDryRun,
     fio,
   );
 
-  // Step 3c: Sync shared knowledge layer (RFC-0663)
-  const sharedKnowledgeResult = await syncSharedKnowledge(
-    workspaceRoot,
-    forgeRoot,
-    config.paths.skillsDir,
-    isDryRun,
-    fio,
-  );
-
-  const skillsUpdated = [
-    ...forgeSkillsResult.updated,
-    ...packResult.updated,
-    ...sharedKnowledgeResult.updated,
-  ];
-  const knowledgeConflicts = [
-    ...forgeSkillsResult.knowledgeConflicts,
-    ...packResult.knowledgeConflicts,
-    ...sharedKnowledgeResult.knowledgeConflicts,
-  ];
+  const skillsUpdated = reconcile.updated;
+  const knowledgeConflicts = reconcile.knowledgeConflicts;
+  const packSkipped = reconcile.skipped;
   if (knowledgeConflicts.length > 0) {
     context.logger.warn(
       `forge.upgrade: ${knowledgeConflicts.length} knowledge entr${knowledgeConflicts.length === 1 ? "y" : "ies"} ` +
@@ -543,15 +669,44 @@ export async function runUpgrade(
     await updateSyncedVersion(workspaceRoot, config, toVersion, false, fio);
   }
 
-  // Step 5b: Generate nested AGENTS.md (RFC-0611)
+  // Step 5b: Generate nested AGENTS.md (RFC-0611). RFC-1153: the write path
+  // merges at the forge:custom boundary, and --dry-run previews which guides
+  // would be rewritten vs. skipped (the destructive step is no longer silent).
   let nestedAgentsGenerated: string[] = [];
-  if (!isDryRun) {
-    try {
-      const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, false, undefined, fio);
+  const nestedAgentsPlanned: string[] = [];
+  let nestedAgentsPreserved: string[] = [];
+  const nestedAgentsSkipped: string[] = [];
+  try {
+    const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, isDryRun, undefined, fio);
+    if (isDryRun) {
+      for (const [relPath, rendered] of Object.entries(nestedResult.renderedFiles)) {
+        const absPath = path.join(workspaceRoot, relPath);
+        let existing: string | null = null;
+        if (await fio.exists(absPath)) {
+          try {
+            existing = await fio.readFile(absPath);
+          } catch {
+            // Unreadable — treat as absent; merge will emit a fresh file.
+          }
+        }
+        if (existing !== null && !hasGeneratedMarker(existing)) {
+          nestedAgentsSkipped.push(`${relPath} (hand-written)`);
+          continue;
+        }
+        const merged = mergeEditableGenerated(rendered, existing, relPath);
+        if (merged === null) {
+          nestedAgentsSkipped.push(`${relPath} (unmapped-customization)`);
+        } else if (merged !== existing) {
+          nestedAgentsPlanned.push(relPath);
+        }
+      }
+    } else {
       nestedAgentsGenerated = nestedResult.generated;
-    } catch {
-      // Nested generation failure is non-fatal
+      nestedAgentsPreserved = nestedResult.preserved;
+      nestedAgentsSkipped.push(...nestedResult.skipped);
     }
+  } catch {
+    // Nested generation failure is non-fatal
   }
 
   // Step 6: Run doctor
@@ -590,19 +745,25 @@ export async function runUpgrade(
       toVersion,
       skillsUpdated,
       bindingsAdded,
-      skippedSkills: packResult.skipped,
+      skippedSkills: packSkipped,
       nestedAgentsGenerated,
+      nestedAgentsPlanned,
+      nestedAgentsPreserved,
+      nestedAgentsSkipped,
       memoryScaffold,
       npmUpdated,
       npmUpdateSkipped,
       latestNpmVersion: npmCheck.latest,
       npmVersionWarning: npmCheck.warning,
       doctorReport,
+      skillsPruned: reconcile.prune.pruned,
+      skillsKeptWithConsumerFiles: reconcile.prune.keptWithConsumerFiles,
+      prettierignore: reconcile.prettierignore,
     },
     nextSteps,
     exitCode: 0,
     summary: isDryRun
-      ? `[dry-run] forge.upgrade: would sync ${skillsUpdated.length} skill(s), add ${bindingsAdded.length} binding(s), update syncedVersion to ${toVersion}`
+      ? `[dry-run] forge.upgrade: would sync ${skillsUpdated.length} skill(s), add ${bindingsAdded.length} binding(s), update syncedVersion to ${toVersion}, rewrite ${nestedAgentsPlanned.length} nested AGENTS.md file(s)`
       : npmCheck.warning
         ? `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion} — ⚠ ${npmCheck.warning}`
         : `[forge.upgrade] OK — ${skillsUpdated.length} skill(s) synced, ${bindingsAdded.length} binding(s) added, syncedVersion → ${toVersion}` +
