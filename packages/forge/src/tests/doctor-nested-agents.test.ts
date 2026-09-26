@@ -9,10 +9,13 @@ workspace discovery exclusions via bindings.workspaces.skipDirs (RFC-1150).</pur
 */
 
 import { test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, appendFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctor } from "../onboarding/doctor.ts";
+import { generateNestedAgentsMd } from "../onboarding/nested-agents-generate.ts";
+import { buildGeneratedHeader } from "../utils/index.ts";
+import { loadForgeConfig } from "../config/forge-config.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../types.ts";
 
 let tempDir: string;
@@ -105,4 +108,53 @@ test("nested-AGENTS.md check reports artifact dir as missing without skipDirs", 
   const check = result.data!.checks.find((c) => c.name === "nested-AGENTS.md");
   expect(check).toBeDefined();
   expect(check!.message).toContain("builds");
+});
+
+// RFC-1153: boundary-aware staleness -----------------------------------------
+
+test("AC-8: custom content below the forge:custom boundary reports in-sync, not stale", async () => {
+  await writeFile(join(tempDir, "forge.yaml"), forgeYaml([]), "utf8");
+  await mkdir(join(tempDir, "packages", "pkg"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "pkg", "package.json"), '{"name":"pkg"}', "utf8");
+
+  const config = loadForgeConfig(tempDir);
+  await generateNestedAgentsMd(tempDir, config, false);
+
+  // Operator appends a custom section below the marker
+  await appendFile(
+    join(tempDir, "packages", "pkg", "AGENTS.md"),
+    "\n## Custom rules\n\n- workspace-specific note\n",
+    "utf8",
+  );
+
+  const input: ForgeCommandInput = { argv: [], flags: {} };
+  const result = await runDoctor(input, makeContext());
+
+  const check = result.data!.checks.find((c) => c.name === "nested-AGENTS.md");
+  expect(check).toBeDefined();
+  expect(
+    check!.message,
+    "Below-boundary divergence must not count as stale — merge(expected, actual) compares only the head",
+  ).not.toContain("stale");
+});
+
+test("AC-6: divergent file without a resolvable boundary reports unmapped-customization", async () => {
+  await writeFile(join(tempDir, "forge.yaml"), forgeYaml([]), "utf8");
+  await mkdir(join(tempDir, "packages", "legacy"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "legacy", "package.json"), '{"name":"legacy"}', "utf8");
+  // Marker-bearing (isGenerated) file that diverges and lacks footer/forge:custom
+  await writeFile(
+    join(tempDir, "packages", "legacy", "AGENTS.md"),
+    `${buildGeneratedHeader({ filePath: "AGENTS.md", ownerCommand: "forge.agents.generate", editable: true })}\n# Hand-maintained\n\ndivergent body\n`,
+    "utf8",
+  );
+
+  const input: ForgeCommandInput = { argv: [], flags: {} };
+  const result = await runDoctor(input, makeContext());
+
+  const check = result.data!.checks.find((c) => c.name === "nested-AGENTS.md");
+  expect(check).toBeDefined();
+  expect(check!.status).toBe("warn");
+  expect(check!.message).toContain("unmapped-customization");
+  expect(check!.message).not.toContain("stale");
 });

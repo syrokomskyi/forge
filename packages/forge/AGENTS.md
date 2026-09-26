@@ -80,6 +80,15 @@ Exclusion, layer, and risk globs match `relativePathWithinWorkspace`, not the re
 - **`compass.validate` is workspace-scoped — in mission pipelines it scans `packages/*`, not just the workpiece.** `execute-pipeline` injects `--site` for workspace-scoped commands, but `resolveCompassScanRoot` still resolves the platform scan root (`scanRoots`/`packages/`) — so platform compass debt blocks site missions even when the workpiece itself is clean. To scan only the workpiece, run `compass.validate --workpiece <path>` directly. When a mission fails on compass errors in `packages/*`, fix the platform files — the workpiece is not the problem. Discovered during warpgogol-m000142: 170 platform violations blocked a 1-file workpiece mission.
 - **`COMPASS-PURPOSE-02` requires a whole-word token match.** `deriveFileTokens` produces filename-stem segments, exported-symbol words, and (for generic stems like `index`/`helpers`) the parent directory name. The `<purpose>` text must contain at least one token as a standalone lowercase word — a camelCase symbol does not satisfy its own segments (`AuditService` does not satisfy `audit`). Write the token as a separate word in the purpose sentence. See `compass-inventory.ts` `deriveFileTokens` + the PURPOSE-02 check.
 
+## Prettier compatibility and skill markers (RFC-1154)
+
+Forge emitters produce prettier-normal output so consumer `prettier --check` passes without forge depending on prettier.
+
+- **All markdown tables go through `alignMarkdownTable`** (`src/utils/markdown-table.ts`) — cells padded so `|` delimiters align per column, separator row is dashes repeated to column width (min 3). Never hand-emit `| --- |` literals; a regression guard test scans `src/**/*.ts`. `parseMarkdownTable` + re-emit is byte-stable (idempotency probe). Prettier's own table normalization differs in one detail: it inserts empty cells for missing trailing cells — our emitter does the same, so `align(parse(emit))` holds.
+- **Managed `.prettierignore` block**: `applyPrettierignore`/`planPrettierignore` (`src/onboarding/prettierignore.ts`) reconcile a delimited block between `# forge-managed generated paths (RFC-1154)` and `# end forge-managed`. Content outside the markers is operator-owned and never touched. Unbalanced markers → the whole file is operator-owned (fresh block appended, no merge into a corrupt region). Detection is **root-only** (`prettier` in package.json deps or config key, a `.prettierrc*`/`prettier.config.*` at root, or an existing `.prettierignore`); nested-only configs are out of scope. Entries: per-skill `.agents/skills/<name>/` dirs carrying a `.forge-managed` marker, `**/*.generated.yaml`, `docs/sessions/`, `docs/metrics/`, `docs/queues/session-*.yaml`.
+- **`.forge-managed` marker manifests** (`src/onboarding/skill-markers.ts`): every skill-sync site writes a JSON `{ files: string[] }` marker into each synced `.agents/skills/<name>/` dir, listing exactly what forge wrote (SKILL.md + knowledge files that stayed purely forge-content — merged/skipped files are excluded since they hold consumer entries). `pruneStaleSkillDirs` deletes a stale dir only when it carries a marker AND its on-disk contents are a subset of `manifest.files ∪ {marker}` — extra consumer files or a corrupt marker keep the dir and surface a warning. **Unmarked dirs are never pruned** (pre-1154 syncs, consumer-authored skills). Prune runs inside `reconcileGeneratedSurface` on every `forge upgrade` — including the same-version noop path — so stale syncs from deleted skills get cleaned.
+- **`runInit` is sync; `runUpgrade` is async/io** — both paths wire the same contract via sync twins (`applyPrettierignoreSync`, `writeSkillMarkerSync`) vs the WorkspaceIO variants.
+
 ## Program packet control plane (RFC-0856)
 
 The program packet control plane governs sequential packet execution under `forge/program@1`. It validates boundaries; it does not execute implementation commands or commit on behalf of agents.
@@ -371,6 +380,17 @@ The edit guard skips hand-written nested `AGENTS.md` files (no generated marker)
 `forge.agents.generate` supports `dryRun` mode (RFC-0601 pattern): it renders content in memory without writing to disk, returning `renderedFiles` in the result. This is used by `doctor` for staleness detection.
 
 - **Doctor stale check MUST use the same rendering pipeline as `forge agents generate`.** The stale check in `checkNestedAgentsMd` (`src/onboarding/doctor.ts`) must call `readPackageInfo` → `buildNestedAgentsMd(ws, config, packageInfo)` → `selectNestedTemplate(wsType, profile, terminology, fallback)` — exactly matching `generateNestedAgentsMd` in `src/onboarding/nested-agents-generate.ts`. Any divergence (missing `packageInfo`, missing `selectNestedTemplate`, missing `resolveAllTerminology`) causes false-positive stale reports for all generated nested `AGENTS.md` files. When modifying either function, verify the other stays in sync.
+
+## Editable generated files: `forge:custom` boundary (RFC-1153)
+
+Editable generated files (root `AGENTS.md`, nested workspace `AGENTS.md`) are split by a preservation boundary. The generated head above the boundary is regenerated on every run; the custom tail below it is carried over verbatim.
+
+- **Marker** — a `forge:custom` line in the file's comment style (`<!-- forge:custom -->` for `.md`). The marker line belongs to the generated head; only the **first** occurrence splits the file. It is emitted by the merge — operators may place it deliberately, but emitters MUST NOT write `forge:custom` inside generated content itself.
+- **Hint line** — the generator emits `<!-- Add workspace-specific guidance below this line. Everything below is preserved on regeneration. -->` directly beneath the marker.
+- **Footer fallback** — legacy files without the marker resolve the boundary at the canonical template footer (the last non-empty line of the render). The fallback fires at most once per file; the merged output gains the explicit marker.
+- **Fail-closed** — when no boundary resolves and content diverges, the write is skipped (`unmapped-customization`), never overwritten. `doctor` reports the same diagnostic; the operator adds the marker to set the boundary.
+- **Merge rules** — `splitEditableGenerated` / `mergeEditableGenerated` live in `src/utils/editable-region.ts` (pure, no I/O); boundary matching normalizes `\r\n` → `\n` (DNA-58 rule). Existing-file reads MUST go through `WorkspaceIO` (`io.readFile`), not bare `fs`.
+- **Upgrade visibility** — `forge upgrade --dry-run` reports `nestedAgentsPlanned` (merged output differs from disk) and `nestedAgentsSkipped`; the executing path reports `nestedAgentsGenerated`/`nestedAgentsPreserved`/`nestedAgentsSkipped`.
 
 ## Extended behavioral layer (RFC-0549)
 
