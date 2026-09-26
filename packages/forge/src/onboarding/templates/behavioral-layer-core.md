@@ -8,8 +8,6 @@ This section defines the agent's core behavioral contract. It is generated from 
 
 When the operator expresses an intent in natural language, the agent routes to the matching skill. The routing table is generated from `triggers` fields in skill frontmatter.
 
-| Operator says something like | Skill |
-| --- | --- |
 {{triggersTable}}
 The agent uses judgment to calibrate routing — minor edits (typo fixes, small CSS changes) do not require skill invocation, while significant changes (new features, architectural decisions) do.
 

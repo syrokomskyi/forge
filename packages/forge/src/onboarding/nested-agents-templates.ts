@@ -19,7 +19,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import { buildGeneratedHeader } from "../utils/index.ts";
+import { alignMarkdownTable, buildGeneratedHeader } from "../utils/index.ts";
 import { resolveForgePackageRoot } from "../config/forge-config.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { WorkspaceDir, WorkspaceType } from "./workspace-discovery.ts";
@@ -99,11 +99,13 @@ function buildScriptsTable(scripts: Record<string, string> | undefined): string[
   const lines: string[] = [];
   lines.push("## Scripts");
   lines.push("");
-  lines.push("| Script | Command |");
-  lines.push("| --- | --- |");
-  for (const [name, cmd] of Object.entries(scripts)) {
-    lines.push(`| \`${name}\` | \`${cmd}\` |`);
-  }
+  // RFC-1154: emitted prettier-normal via alignMarkdownTable
+  lines.push(
+    alignMarkdownTable(
+      ["Script", "Command"],
+      Object.entries(scripts).map(([name, cmd]) => [`\`${name}\``, `\`${cmd}\``]),
+    ),
+  );
   lines.push("");
   return lines;
 }
@@ -222,12 +224,16 @@ export function buildNestedAgentsMd(
     if (entryPoints.length > 0) {
       lines.push("## Entry points");
       lines.push("");
-      lines.push("| Entry point | Module |");
-      lines.push("| --- | --- |");
-      for (const ep of entryPoints) {
-        const suffix = ep.name === "." ? "" : ep.name.replace(/^\.\//, "/");
-        lines.push(`| \`${displayName}${suffix}\` | \`${ep.module}\` |`);
-      }
+      // RFC-1154: emitted prettier-normal via alignMarkdownTable
+      lines.push(
+        alignMarkdownTable(
+          ["Entry point", "Module"],
+          entryPoints.map((ep) => {
+            const suffix = ep.name === "." ? "" : ep.name.replace(/^\.\//, "/");
+            return [`\`${displayName}${suffix}\``, `\`${ep.module}\``];
+          }),
+        ),
+      );
       lines.push("");
     }
   }
