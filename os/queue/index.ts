@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Barrel export for the forge queue module (RFC-1140).</purpose>
+<purpose>Barrel export for the forge queue module — re-exports queue.validate and its helpers (RFC-1140).</purpose>
 <non-goals>
   <item>Do not add logic here — re-exports only.</item>
 </non-goals>

@@ -12,7 +12,7 @@ the synced copy with the package version.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>2026-09-24: initial append-only knowledge sync — merge by entry-ID union, local wins conflicts, skip divergent non-cumulative files, recurse into declared directories.</item>
+  <item>RFC-0660: initial append-only knowledge sync — merge by entry-ID union, local wins conflicts, skip divergent non-cumulative files, recurse into declared directories.</item>
 </CHANGE_SUMMARY>
 */
 

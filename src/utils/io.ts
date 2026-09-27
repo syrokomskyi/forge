@@ -10,8 +10,9 @@ kernel context. Kernel callers (`forge/os` handlers) pass `context.io` through.
   <item>Do not record WriteIntents — forge CLI has no execution-report surface.</item>
   <item>Do not enforce sync parity — WorkspaceIO is async-only; sync helpers stay ambient.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>createDefaultIO from werkstatt-shared is deliberately NOT used — forge keeps its own minimal ambient adapter so the standalone CLI path stays ambient-by-default (plan step 3 constraint).</item>
+  <item>createDefaultIO is deliberately unused — forge keeps a minimal ambient adapter for the standalone CLI.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1152 Wave 2a: initial ambient adapter for forge standalone CLI.</item>

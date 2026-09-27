@@ -10,6 +10,7 @@ stays the default for the standalone forge CLI.
 <non-goals>
   <item>Do not add async variants — async codepaths use resolveIo from utils/io.ts.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>Sync helpers stay ambient — WorkspaceIO is async-only; forcing async would ripple signatures across the forge CLI surface.</item>
 </KEY_DECISIONS>

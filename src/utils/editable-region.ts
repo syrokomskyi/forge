@@ -10,6 +10,9 @@ generator-owned head; everything below it is carried over verbatim.</purpose>
   keep the RFC-0081 binary semantics (marker present = overwrite, absent = skip).</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>forge:custom marker bounds the generated head; canonical footer is the fallback boundary when absent.</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1153: initial — splitEditableGenerated + mergeEditableGenerated with
   forge:custom marker boundary and canonical-footer (last non-empty render line) fallback.</item>
