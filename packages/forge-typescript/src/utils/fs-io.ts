@@ -9,6 +9,10 @@ node:fs/promises directly (kernel-io-lint).
 <non-goals>
   <item>Port plumbing — workspace-model is a pure library surface with no kernel context; async fs here is ambient by design.</item>
 </non-goals>
+</MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>Ambient fs is structural — workspace-model helpers need Dirent semantics the port lacks.</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1152 Wave 4: initial ambient async fs shim.</item>
 </CHANGE_SUMMARY>
