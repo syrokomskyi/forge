@@ -93,7 +93,7 @@ Run:
 > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
 
 ```sh
-ref(forge.yaml bindings.commands.validateAdr) --create --title="<title>" --scope=<scope> --related=<related-ids>
+ref(forge.yaml bindings.commands.createAdr) --title="<title>" --scope=<scope> --related=<related-ids>
 ```
 
 ### 6. Fill every section

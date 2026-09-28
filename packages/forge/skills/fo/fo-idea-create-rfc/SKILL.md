@@ -87,7 +87,7 @@ Address every concern the grilling raises by adjusting the metadata, scope, or c
 Run:
 
 ```sh
-ref(forge.yaml bindings.commands.validateRfc) --create --title="<title>" --kind=<kind> --scope=<scope>
+ref(forge.yaml bindings.commands.createRfc) --title="<title>" --kind=<kind> --scope=<scope>
 ```
 
 ### 5. Fill every section
