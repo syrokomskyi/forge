@@ -74,6 +74,7 @@ export async function createForgeExplorationModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/explorations/*.md"],
+        generates: [],
         reads: ["docs/explorations/*.md"],
         cacheable: false,
         flags: {

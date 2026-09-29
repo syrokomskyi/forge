@@ -73,6 +73,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       scope: "workspace",
       mutatesState: true,
       writes: ["docs/rfcs/rfc-*.md", "docs/specs/*/forge-spec.yaml"],
+      generates: [],
       reads: ["docs/specs/**/*", "docs/rfcs/**/*.md"],
       flags: {
         spec: { kind: "string", required: true, description: "Spec id to materialize from." },
@@ -93,6 +94,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       scope: "workspace",
       mutatesState: true,
       writes: ["docs/specs/live/*.md"],
+      generates: [],
       reads: ["docs/rfcs/**/*.md", "docs/specs/live/*.md"],
       flags: {
         id: { kind: "string", required: true, description: "RFC id to merge (e.g. RFC-0711)." },

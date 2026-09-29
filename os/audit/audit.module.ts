@@ -32,6 +32,7 @@ export async function createForgeAuditModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/audits/*.md", "docs/audits/archive/**"],
+        generates: [],
         reads: ["docs/audits/**/*.md", "docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {
