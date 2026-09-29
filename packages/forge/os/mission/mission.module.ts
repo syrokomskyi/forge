@@ -33,6 +33,7 @@ export async function createForgeMissionModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["missions/*", "missions/archive/**"],
+        generates: [],
         reads: ["missions/**"],
         cacheable: false,
         flags: {

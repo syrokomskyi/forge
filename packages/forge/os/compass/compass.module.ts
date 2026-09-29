@@ -102,6 +102,7 @@ export const forgeCompassModule: ForgeModule = {
         "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
         "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
+      generates: [],
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -140,6 +141,7 @@ export const forgeCompassModule: ForgeModule = {
         "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
         "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
+      generates: [],
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -167,6 +169,7 @@ export const forgeCompassModule: ForgeModule = {
         "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
         "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
       ],
+      generates: [],
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -220,6 +223,7 @@ export const forgeCompassModule: ForgeModule = {
       mutatesState: true,
       supportsAllSites: true,
       writes: ["docs/compass-audit-ledger.generated.yaml"],
+      generates: [{ path: "docs/compass-audit-ledger.generated.yaml", phase: "on-demand" }],
       reads: ["docs/compass-audit-ledger.generated.yaml"],
       cacheable: false,
       flags: {
@@ -241,6 +245,7 @@ export const forgeCompassModule: ForgeModule = {
       mutatesState: true,
       supportsAllSites: true,
       writes: ["docs/compass-audit-ledger.generated.yaml"],
+      generates: [{ path: "docs/compass-audit-ledger.generated.yaml", phase: "on-demand" }],
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",

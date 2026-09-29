@@ -88,6 +88,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/RFC-*.md"],
+        generates: [],
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         // RFC-0260: typed flag schema.
@@ -251,6 +252,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/verification/*.generated.yaml"],
+        generates: [{ path: "docs/rfcs/verification/*.generated.yaml", phase: "on-demand" }],
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {
@@ -272,6 +274,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/verification/*.generated.yaml"],
+        generates: [{ path: "docs/rfcs/verification/*.generated.yaml", phase: "on-demand" }],
         reads: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
         cacheable: false,
         flags: {
@@ -351,6 +354,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/RFC-*.md"],
+        generates: [],
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {
@@ -384,6 +388,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/*.md", "docs/rfcs/archive/**"],
+        generates: [],
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {
@@ -423,6 +428,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/**/*.md"],
+        generates: [],
         reads: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
         cacheable: false,
         flags: {

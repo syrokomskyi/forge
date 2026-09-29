@@ -60,6 +60,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/adrs/adr-*.md"],
+        generates: [],
         reads: ["docs/adrs/**/*.md"],
         cacheable: false,
         flags: {
@@ -113,6 +114,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/adrs/*.md", "docs/adrs/archive/**"],
+        generates: [],
         reads: ["docs/adrs/**/*.md"],
         cacheable: false,
         flags: {
@@ -137,6 +139,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/adrs/*.md"],
+        generates: [],
         reads: ["docs/adrs/**/*.md"],
         cacheable: false,
         flags: {

@@ -48,6 +48,7 @@ export const forgeWerkstattModule: ForgeModule = {
         },
       },
       writes: [".werkstatt/locks/**", "systems/**", "missions/**", "releases/**"],
+      generates: [],
       reads: [".werkstatt/locks/**"],
       cacheable: false,
       execute: runWerkstattLockRecover,

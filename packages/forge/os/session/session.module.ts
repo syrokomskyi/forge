@@ -36,6 +36,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/sessions/*.md"],
+        generates: [],
         reads: ["docs/sessions/.raw/*"],
         cacheable: false,
         flags: {
@@ -66,6 +67,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/sessions/*.md", "docs/sessions/archive/**"],
+        generates: [],
         reads: ["docs/sessions/**/*.md"],
         cacheable: false,
         flags: {

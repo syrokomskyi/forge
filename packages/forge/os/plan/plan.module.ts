@@ -32,6 +32,7 @@ export async function createForgePlanModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/plans/*.md", "docs/plans/archive/**"],
+        generates: [],
         reads: ["docs/plans/**/*.md", "docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {

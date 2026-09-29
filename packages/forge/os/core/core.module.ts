@@ -324,6 +324,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           },
         },
         writes: [".agents/skills/**", "forge.yaml"],
+        generates: [],
         reads: ["forge.yaml", "packages/forge/skills/**", "packages/forge/package.json"],
         cacheable: false,
         execute: runUpgrade,
@@ -523,6 +524,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         },
         reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "dist/.determinism-cache.json"],
         writes: ["dist/.determinism-cache.json"],
+        generates: [],
         cacheable: false,
         execute: runDeterminismCheck,
       },
@@ -597,6 +599,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         },
         reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "dist/**"],
         writes: ["release/**"],
+        generates: [],
         cacheable: false,
         execute: runReleasePrepare,
       },
@@ -619,6 +622,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         },
         reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "release/**"],
         writes: ["release/published/**"],
+        generates: [],
         cacheable: false,
         execute: runReleasePublish,
       },
@@ -660,6 +664,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           },
         },
         writes: ["packages/forge/skills/**/*.md", "packages/forge/skills/**/*.archive.md"],
+        generates: [],
         reads: [
           "packages/forge/skills/**/*.md",
           "packages/forge/skills/**/*.archive.md",
@@ -681,6 +686,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         scope: "workspace",
         reads: [".forge/pinned.yaml", ".forge/pinned-audit.log"],
         writes: [".forge/pinned-audit.log"],
+        generates: [],
         cacheable: false,
         flags: {
           "allow-pinned-override": {
@@ -715,6 +721,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           ".gitignore",
           ".github/workflows/pinned-check.yml",
         ],
+        generates: [],
         reads: [".forge/pinned.yaml", ".git/hooks/pre-commit", ".gitignore"],
         cacheable: false,
         flags: {
@@ -792,6 +799,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         supportsAllSites: false,
         reads: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
         writes: ["file-size-lint.baseline.yaml"],
+        generates: [],
         cacheable: false,
         flags: {
           "write-baseline": {
@@ -830,6 +838,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "missions/*",
           "missions/archive/**",
         ],
+        generates: [],
         reads: [
           "docs/rfcs/**/*.md",
           "docs/adrs/**/*.md",
