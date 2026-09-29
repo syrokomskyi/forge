@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0537: initial forgeSessionModule registering session.save, session.archive, session.validate, session.list commands.</item>
   <item>RFC-1053: register metrics.aggregate command for skill effectiveness metrics aggregation.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -81,6 +82,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "session.validate",
+        mutatesState: false,
         contract: "session",
         rules: [],
         description:
@@ -98,6 +100,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "session.list",
+        mutatesState: false,
         description:
           "List all sessions. Filter with --date-from, --date-to, --rfc, --type flags. " +
           "Use --json for machine-readable output. Parses frontmatter on the fly. " +
@@ -127,6 +130,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "metrics.aggregate",
+        mutatesState: true,
         description:
           "Query and aggregate skill effectiveness metrics from docs/metrics/ files. " +
           "Returns per-skill statistics (invocations, avgFindings, avgFixIterations, avgDurationMs). " +

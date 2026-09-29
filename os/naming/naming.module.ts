@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial forgeNamingModule registering naming.convention.lint.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,7 @@ export async function createForgeNamingModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "naming.convention.lint",
+        mutatesState: false,
         contract: "naming",
         rules: [],
         description:

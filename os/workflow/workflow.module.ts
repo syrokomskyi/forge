@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0075: Add workflow command module.</item>
   <item>RFC-0374: Migrated from packages/os/site-kernel/src/workflow/ to packages/forge/os/workflow/.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +24,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "workflow.lint",
+        mutatesState: false,
         contract: "workflow",
         rules: [],
         description:
@@ -36,6 +38,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
       },
       {
         name: "workflow.list",
+        mutatesState: false,
         description:
           "List .agents/workflows entries with phase, IO summary, and next workflow (RFC-0075).",
         scope: "workspace",
@@ -46,6 +49,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
       },
       {
         name: "workflow-amend.list",
+        mutatesState: false,
         description:
           "List .agents/workflows-amend entries with phase, IO summary, and next workflow (RFC-0136).",
         scope: "workspace",

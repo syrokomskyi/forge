@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1088: register forge.file-size.lint command for portable SIZE-01 line-count validation.</item>
   <item>RFC-1088 fix: add writes field to forge.file-size.lint registration per fo-review.</item>
   <item>RFC-1089: rename forge.file-size.lint to file.size.lint (domain validator, no forge. prefix).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -15,7 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080</history>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088</history>
 </CHANGE_SUMMARY>
 */
 
@@ -213,6 +213,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "forge.doctor",
+        mutatesState: false,
         description: "Diagnose forge state in an existing project.",
         scope: "workspace",
         supportsAllSites: false,
@@ -231,6 +232,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.port.scaffold",
+        mutatesState: true,
         description: "Generate a skeleton for a new forge skill or command.",
         scope: "workspace",
         supportsAllSites: false,
@@ -243,6 +245,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.skill.validate",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -255,6 +258,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.skill.list",
+        mutatesState: false,
         description: "List all registered forge skills.",
         scope: "workspace",
         supportsAllSites: false,
@@ -264,6 +268,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.port.validate",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -278,6 +283,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.agents.generate",
+        mutatesState: true,
         description:
           "Regenerate AGENTS.md deterministically from forge.yaml and the skill registry.",
         scope: "workspace",
@@ -288,6 +294,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "memory.compact",
+        mutatesState: true,
         description:
           "Enforce the MEMORY.md character budget by removing oldest Environment notes bullets (RFC-1151).",
         scope: "workspace",
@@ -298,6 +305,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.upgrade",
+        mutatesState: true,
         description:
           "Additive sync for npm consumers: refresh .agents/skills/ from installed forge, add missing binding defaults, update forge.syncedVersion, run doctor.",
         scope: "workspace",
@@ -320,6 +328,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.scaffold",
+        mutatesState: true,
         description:
           "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory. Required flags: `--profile`, `--name`.",
         scope: "workspace",
@@ -342,6 +351,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.create",
+        mutatesState: true,
         description:
           "Create a forge project in-place: scaffold + init + binding defaults. The target directory must be empty (only .git/ tolerated). Usage: forge create --in-place --profile <profile-id> [--name <name>] [--package-manager pnpm]",
         scope: "workspace",
@@ -377,6 +387,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.init",
+        mutatesState: true,
         description:
           "Deploy forge into a project: create forge.yaml, PREFERENCES.md, copy skills, create docs dirs. Hidden recovery command — normally called by forge.create.",
         scope: "workspace",
@@ -398,6 +409,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.profile.validate",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -416,6 +428,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.dev",
+        mutatesState: true,
         description:
           "Start the dev/preview server declared in the active stack profile. Use --dry-run to print the resolved command without executing.",
         scope: "workspace",
@@ -437,6 +450,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.build",
+        mutatesState: true,
         description:
           "Execute produce commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
         scope: "workspace",
@@ -457,6 +471,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.validate",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -483,6 +498,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.determinism.check",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -510,6 +526,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.assets.list",
+        mutatesState: false,
         description:
           "List all assets declared in the active stack profile, grouped by type. Use --dry-run to skip hashing, --type to filter by asset type.",
         scope: "workspace",
@@ -534,6 +551,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.assets.check",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -560,6 +578,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.release.prepare",
+        mutatesState: true,
         description:
           "Bundle built artifacts into a release package with a manifest. Use --dry-run to preview without writing.",
         scope: "workspace",
@@ -581,6 +600,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.release.publish",
+        mutatesState: true,
         description:
           "Publish a prepared release to the declared target (local, R2, S3). Use --dry-run to preview without uploading.",
         scope: "workspace",
@@ -602,6 +622,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.skill.knowledge.compact",
+        mutatesState: true,
         description:
           "Compact skill knowledge files: archive expired/superseded/aged L0 entries, mark stale L2 principles. " +
           "Usage: forge.skill.knowledge.compact --all-skills [--dry-run] [--json] | --skill <name> [--dry-run] [--json]",
@@ -647,6 +668,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "pinned.validate",
+        mutatesState: false,
         contract: "pinned",
         rules: [],
         description:
@@ -703,6 +725,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.package.health",
+        mutatesState: false,
         description:
           "Validate all published packages (private: false) for standalone extraction readiness. " +
           "Checks engines.node, embedded .github/workflows/ci.yml, extract.config.yaml, " +
@@ -726,6 +749,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.autonomy.validate",
+        mutatesState: false,
         contract: "forge",
         rules: [],
         description:
@@ -741,6 +765,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.public-surface.validate",
+        mutatesState: false,
         description:
           "Check consistency between README.md, package.json, and docs/ structure. " +
           "Enforces SURFACE-01..05 rules: README length, Node version match, " +
@@ -756,6 +781,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "file.size.lint",
+        mutatesState: false,
         contract: "file",
         rules: ["SIZE-01"],
         description:
