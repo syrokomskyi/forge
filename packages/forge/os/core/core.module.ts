@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1088 fix: add writes field to forge.file-size.lint registration per fo-review.</item>
   <item>RFC-1089: rename forge.file-size.lint to file.size.lint (domain validator, no forge. prefix).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -15,6 +14,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1173: fixup: flip mutatesState to true on 19 commands that declare writes/generates — the codemod's name-suffix rules misclassified leitstand.dev-deploy, leitstand.certify, coverage.report and peers as read-only; declared writes imply mutation</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088</history>
 </CHANGE_SUMMARY>
 */
@@ -498,7 +498,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.determinism.check",
-        mutatesState: false,
+        mutatesState: true,
         contract: "forge",
         rules: [],
         description:
@@ -668,7 +668,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "pinned.validate",
-        mutatesState: false,
+        mutatesState: true,
         contract: "pinned",
         rules: [],
         description:
@@ -781,7 +781,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "file.size.lint",
-        mutatesState: false,
+        mutatesState: true,
         contract: "file",
         rules: ["SIZE-01"],
         description:
