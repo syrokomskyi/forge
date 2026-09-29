@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0941: initial forgePluginModule with forge.plugin.validate and forge.plugin.discover commands.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -237,6 +238,7 @@ export const forgePluginModule: ForgeModule = {
   commands: [
     {
       name: "forge.plugin.validate",
+      mutatesState: false,
       contract: "forge",
       rules: [],
       description:
@@ -250,6 +252,7 @@ export const forgePluginModule: ForgeModule = {
     },
     {
       name: "forge.plugin.discover",
+      mutatesState: false,
       description:
         "Enumerate all project-declared skill packs with valid forge.plugin.yaml manifests (RFC-0941). Returns pack id, version, prefix, and directory.",
       scope: "workspace",

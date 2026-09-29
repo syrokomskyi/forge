@@ -14,6 +14,7 @@ envelope for all six ts.*.validate commands (RFC-1099).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial check harness — replaces per-validator boilerplate (walk, read, envelope shaping) with one defineTsCheck seam.</item>
   <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,6 +56,9 @@ function parseGlobsFlag(raw: unknown): string[] {
 export function defineTsCheck(input: DefineTsCheckInput): KernelCommandDefinition<TsCheckData> {
   return {
     name: input.name,
+    // RFC-1173: ts checks are structurally read-only — the input contract has
+    // no writes and check() only produces diagnostics.
+    mutatesState: false,
     contract: input.contract,
     rules: input.rules,
     description: input.description,

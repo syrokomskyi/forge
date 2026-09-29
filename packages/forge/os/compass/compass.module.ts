@@ -6,13 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0374: initial forgeCompassModule registering 12 compass commands.</item>
   <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add.</item>
   <item>RFC-0556: removed dynamic import of @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/compass/handlers/.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <history>RFC-0374</history>
 </CHANGE_SUMMARY>
 */
 
@@ -59,6 +60,7 @@ export const forgeCompassModule: ForgeModule = {
   commands: [
     {
       name: "compass.inventory",
+      mutatesState: true,
       description: "Generate the repository-wide Compass source inventory XML report.",
       scope: "workspace",
       supportsAllSites: true,
@@ -72,6 +74,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.validate",
+      mutatesState: false,
       contract: "compass",
       rules: [],
       description:
@@ -189,6 +192,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.audit.plan",
+      mutatesState: false,
       description:
         "Emit a deterministic work-order of files whose revision has advanced past the threshold since their last Compass audit (RFC-0352). Read-only, no LLM.",
       scope: "workspace",
@@ -248,6 +252,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.audit.validate",
+      mutatesState: false,
       contract: "compass",
       rules: [],
       description:

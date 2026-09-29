@@ -15,6 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -51,6 +52,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "rfc.list",
+        mutatesState: false,
         description:
           "List all RFCs. Filter with --status, --kind, --owner flags. " +
           "Use --json for machine-readable output. " +
@@ -111,6 +113,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.next-id",
+        mutatesState: false,
         description:
           "Return the next free RFC number (max existing + 1) by scanning docs/rfcs/ recursively including archive/.",
         scope: "workspace",
@@ -120,6 +123,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.validate",
+        mutatesState: false,
         contract: "rfc",
         rules: [],
         description:
@@ -136,6 +140,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.command-lifecycle.validate",
+        mutatesState: false,
         contract: "rfc",
         rules: [],
         description:
@@ -151,6 +156,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.check",
+        mutatesState: false,
         contract: "rfc",
         rules: [],
         description:
@@ -170,6 +176,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.index.generate",
+        mutatesState: true,
         description:
           "Emit a machine-readable relationship index of all RFCs (id, status, dates, " +
           "supersedes/supersededBy/amends/amendedBy/related). Use --json, or --write to " +
@@ -188,6 +195,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.index.validate",
+        mutatesState: false,
         contract: "rfc",
         rules: [],
         description:
@@ -201,6 +209,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.graph",
+        mutatesState: false,
         description:
           "Print one RFC's relationship neighbours (supersedes/supersededBy/amends/" +
           "amendedBy/related). Pass --id RFC-0152.",
@@ -213,6 +222,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.acceptance.run",
+        mutatesState: true,
         description:
           "RFC-0268: execute the acceptance: probes declared in an RFC's frontmatter and report " +
           "pass/fail per probe (RFC-ACC-01 failed probe, RFC-ACC-02 accepted/implemented RFC with " +
@@ -277,6 +287,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.dna.trace.validate",
+        mutatesState: false,
         contract: "rfc",
         rules: [],
         description:
@@ -382,6 +393,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.pipeline.status",
+        mutatesState: false,
         description:
           "Report the pipeline status of RFCs — which steps (audit, enhance, plan, implement) " +
           "are complete or missing. Pass --id to check a single file, or run without " +

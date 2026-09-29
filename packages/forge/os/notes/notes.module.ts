@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0808: initial forgeNotesModule registering 3 note validation commands.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -51,6 +52,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "note.link.validate",
+        mutatesState: false,
         contract: "note",
         rules: [],
         description:
@@ -73,6 +75,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
       },
       {
         name: "note.frontmatter.validate",
+        mutatesState: false,
         contract: "note",
         rules: [],
         description:
@@ -95,6 +98,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
       },
       {
         name: "note.orphan.detect",
+        mutatesState: false,
         description:
           "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
         scope: "workspace",

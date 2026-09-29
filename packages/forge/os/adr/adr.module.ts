@@ -9,6 +9,7 @@
   <item>RFC-0366: register adr.create, adr.validate, and adr.list commands.</item>
   <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/ as forgeAdrModule.</item>
   <item>RFC-0727: register adr.implement.stamp command for atomic ADR status transition.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,6 +29,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "adr.list",
+        mutatesState: false,
         description:
           "List all ADRs. Filter with --status, --scope, --decider flags. " +
           "Use --json for machine-readable output. " +
@@ -86,6 +88,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
       },
       {
         name: "adr.validate",
+        mutatesState: false,
         contract: "adr",
         rules: [],
         description:

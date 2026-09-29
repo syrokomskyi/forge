@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0374: initial forgeWerkstattModule registering 3 werkstatt commands.</item>
   <item>RFC-0556: removed dynamic imports of @warpgogol/site-kernel-handoff and @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/werkstatt/handlers/.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +25,7 @@ export const forgeWerkstattModule: ForgeModule = {
   commands: [
     {
       name: "werkstatt.lock.status",
+      mutatesState: false,
       description: "Report all Werkstatt locks, their age, owner, and staleness (RFC-0362).",
       scope: "workspace",
       supportsAllSites: false,
@@ -52,6 +54,7 @@ export const forgeWerkstattModule: ForgeModule = {
     },
     {
       name: "werkstatt.operation.validate",
+      mutatesState: false,
       contract: "werkstatt",
       rules: [],
       description:

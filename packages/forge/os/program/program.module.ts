@@ -8,6 +8,7 @@ kernel registry (RFC-0856).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial program module registration.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +28,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "program.packet.validate",
+        mutatesState: false,
         contract: "program",
         rules: [],
         description:
@@ -102,6 +104,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
       },
       {
         name: "program.packet.lease",
+        mutatesState: true,
         description:
           "Manage the exclusive local executor lease for a sealed packet. " +
           "Actions: start, heartbeat, release, recover. " +

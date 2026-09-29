@@ -9,6 +9,7 @@
   <item>RFC-0394: initial forgeSpecModule registering spec.validate.</item>
   <item>RFC-0396: added spec.status and spec.materialize commands.</item>
   <item>RFC-0711: added spec.live.merge, spec.live.list, spec.live.show, spec.live.validate commands.</item>
+  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,6 +31,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
   commands: [
     {
       name: "spec.validate",
+      mutatesState: false,
       contract: "spec",
       rules: [],
       description:
@@ -49,6 +51,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.status",
+      mutatesState: false,
       description:
         "Show roadmap progress for vendored specs. " +
         "Without --spec, summarizes all specs; with it, full per-node table + computed front.",
@@ -99,6 +102,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.list",
+      mutatesState: false,
       description:
         "List all living feature specs in docs/specs/live/. " +
         "Returns domain, title, lastMergedRfc, updatedAt, and historyCount for each spec.",
@@ -109,6 +113,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.show",
+      mutatesState: false,
       description:
         "Show a single living feature spec by domain. " +
         "Requires --domain=<name>. Returns full frontmatter and body content.",
@@ -121,6 +126,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.validate",
+      mutatesState: false,
       contract: "spec",
       rules: [],
       description:
