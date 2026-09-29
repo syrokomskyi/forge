@@ -80,7 +80,6 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 export function createStrictModeValidateCommand(): KernelCommandDefinition<StrictModeValidateData> {
   return defineTsCheck({
     name: "ts.strict.mode.validate",
-    mutatesState: false,
     contract: "ts",
     rules: ["TS-STRICT-01", "TS-STRICT-02", "TS-STRICT-03"],
     description:

@@ -74,7 +74,6 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 export function createImportBoundariesValidateCommand(): KernelCommandDefinition<ImportBoundariesValidateData> {
   return defineTsCheck({
     name: "ts.import.boundaries.validate",
-    mutatesState: false,
     contract: "ts",
     rules: ["TS-IMPORT-01", "TS-IMPORT-02"],
     description:

@@ -120,7 +120,6 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 export function createTsconfigValidateCommand(): KernelCommandDefinition<TsconfigValidateData> {
   return defineTsCheck({
     name: "ts.tsconfig.validate",
-    mutatesState: false,
     contract: "ts",
     rules: [
       "TS-TSCONFIG-01",

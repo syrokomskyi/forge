@@ -94,7 +94,6 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 export function createPhantomDepsValidateCommand(): KernelCommandDefinition<PhantomDepsValidateData> {
   return defineTsCheck({
     name: "ts.phantom.deps.validate",
-    mutatesState: false,
     contract: "ts",
     rules: ["TS-PHANTOM-01"],
     description:

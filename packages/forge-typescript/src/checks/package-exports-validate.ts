@@ -97,7 +97,6 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 export function createPackageExportsValidateCommand(): KernelCommandDefinition<PackageExportsValidateData> {
   return defineTsCheck({
     name: "ts.package.exports.validate",
-    mutatesState: false,
     contract: "ts",
     rules: ["TS-EXPORTS-01"],
     description: "Validate package.json exports entries point to existing files (TS-004).",

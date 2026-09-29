@@ -76,7 +76,6 @@ function check(model: TsWorkspaceModel): Diagnostic[] {
 export function createBarrelValidateCommand(): KernelCommandDefinition<BarrelValidateData> {
   return defineTsCheck({
     name: "ts.barrel.validate",
-    mutatesState: false,
     contract: "ts",
     rules: ["TS-BARREL-01", "TS-BARREL-02"],
     description:
