@@ -100,6 +100,7 @@ class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
       flags: c.flags,
       reads: c.reads,
       writes: c.writes,
+      generates: c.generates,
     }));
   }
 

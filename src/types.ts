@@ -24,6 +24,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 // type` so helpers/contexts can receive the WorkspaceIO port without a runtime
 // dependency on @warpgogol/* packages.
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import type { GeneratedArtifactSpec } from "@warpgogol/werkstatt-shared/kernel/types";
 
 // ---------------------------------------------------------------------------
 // Command input / output
@@ -123,6 +124,8 @@ export interface ForgeRegisteredCommandInfo extends ForgeCommandMetadata {
   flags?: Record<string, ForgeFlagSpec>;
   reads?: string[];
   writes?: string[];
+  /** RFC-0960 generated-artifact declarations (on-demand generators). */
+  generates?: GeneratedArtifactSpec[];
   hidden?: boolean;
 }
 
@@ -131,6 +134,8 @@ export interface ForgeCommandDefinition<TData = unknown> extends ForgeCommandMet
   flags?: Record<string, ForgeFlagSpec>;
   reads?: string[];
   writes?: string[];
+  /** RFC-0960 generated-artifact declarations (on-demand generators). */
+  generates?: GeneratedArtifactSpec[];
   execute(
     input: ForgeCommandInput,
     context: ForgeRuntimeContext,

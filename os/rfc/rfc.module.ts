@@ -190,6 +190,8 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           },
         },
         reads: ["docs/rfcs/**/*.md"],
+        writes: ["docs/rfcs/index.yaml"],
+        generates: [],
         cacheable: false,
         execute: runRfcIndexGenerate,
       },
@@ -312,6 +314,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/dna-trace.generated.yaml"],
+        generates: [{ path: "docs/rfcs/dna-trace.generated.yaml", phase: "on-demand" }],
         reads: ["docs/rfcs/**/*.md", "docs/architecture-dna.md"],
         cacheable: false,
         flags: {},
@@ -326,6 +329,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/decision-log.generated.yaml", "docs/rfcs/decision-log.generated.md"],
+        generates: [
+          { path: "docs/rfcs/decision-log.generated.yaml", phase: "on-demand" },
+          { path: "docs/rfcs/decision-log.generated.md", phase: "on-demand" },
+        ],
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {

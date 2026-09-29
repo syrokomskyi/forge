@@ -289,6 +289,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         scope: "workspace",
         supportsAllSites: false,
         flags: {},
+        writes: ["AGENTS.md", "**/AGENTS.md"],
+        generates: [],
         cacheable: false,
         execute: runAgentsGenerate,
       },
