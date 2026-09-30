@@ -14,9 +14,10 @@ stripScopes:
 preservePackages:
   - "@warpgogol/forge"
 # NOTE: stubPackages and postProcess are NOT executed in standalone mode by
-# @warpgogol/repo-extract (<=1.3.0) — both are dead config here. Type-only
-# @warpgogol/werkstatt-shared imports are handled by @ts-ignore comments at
-# the import sites instead (see workspace-deps.ts convention, ADR-0019).
+# @warpgogol/repo-extract (<=1.3.0) — both are dead config here. Forge types
+# needed from werkstatt-shared are inlined in src/types.ts (ADR-0019); only
+# dynamic imports in os/werkstatt/handlers/workspace-deps.ts remain, guarded
+# by @ts-ignore.
 stubPackages:
   - "@warpgogol/werkstatt-engine"
 packageManager: pnpm
@@ -30,6 +31,7 @@ ci:
 ignoreDirs:
   - .turbo
   - .agents
+  - .coverage
   - node_modules
 
 excludePathSegments:
