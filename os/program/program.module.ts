@@ -29,6 +29,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
       {
         name: "program.packet.validate",
         mutatesState: false,
+        execOnReadOnly: true,
         contract: "program",
         rules: [],
         description:

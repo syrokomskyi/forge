@@ -78,6 +78,18 @@ export interface ForgeCommandMetadata {
   scope: ForgeCommandScope;
   mutatesState?: boolean;
   /**
+   * RFC-1176: permits `io.exec` on the read-only adapter — the command
+   * declares `mutatesState: false` but legitimately shells out for
+   * read-only probes. Structurally mirrors KernelCommandMetadata.
+   */
+  execOnReadOnly?: boolean;
+  /**
+   * RFC-1176: flag names whose truthy presence upgrades this invocation to
+   * a real (or `--dry-run` recording) adapter. Structurally mirrors
+   * KernelCommandMetadata.
+   */
+  mutatingFlags?: string[];
+  /**
    * RFC-0960/0810: repo-relative path to the implementing module file —
    * propagated into generator ownership entries (OWN-XCHECK-03 requires it
    * on every command that declares generates[]).
