@@ -17,9 +17,6 @@ entries from all RFCs, and builds a bidirectional trace matrix.
 
 import { join } from "node:path";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
@@ -193,7 +190,7 @@ export async function runRfcDnaTraceValidate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DnaTraceResult>> {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const dnaFilter = input.flags["dna"] as string | undefined;
 
@@ -249,7 +246,7 @@ export async function runRfcDnaTraceGenerate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DnaTraceResult>> {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
 
   const { entries, diagnostics, registryIds } = await buildDnaTrace(workspaceRoot);

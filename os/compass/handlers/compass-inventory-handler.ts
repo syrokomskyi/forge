@@ -26,7 +26,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 */
 
 import { resolve } from "node:path";
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { resolveIo } from "../../../src/utils/io.ts";
 
 import {
   createCompassInventoryEntries,
@@ -268,7 +268,7 @@ export async function runCompassInventory(
     policySource: CompassPolicySource;
   }>
 > {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context) ?? context.workspaceRoot;
   const policy = resolveCompassPolicy(scanRoot, context.forgeRoot);
   const entries = await createCompassInventoryEntries(scanRoot, input, undefined, policy);

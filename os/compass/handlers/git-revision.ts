@@ -15,7 +15,7 @@ with integrity-registry lookup and git-history fallback, plus getFileRevisionFro
 */
 
 import { execFile } from "../../../src/utils/sync-fs.ts";
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { ambientIo } from "../../../src/utils/io.ts";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 

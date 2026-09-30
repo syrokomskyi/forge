@@ -20,7 +20,7 @@
 */
 
 import { resolve } from "node:path";
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { resolveIo } from "../../../src/utils/io.ts";
 
 import { createCompassInventoryEntries } from "./compass-inventory.ts";
 import { resolveCompassPolicy } from "../policy.ts";

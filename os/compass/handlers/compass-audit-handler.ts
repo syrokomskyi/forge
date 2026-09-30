@@ -290,7 +290,7 @@ export async function runCompassAuditRecord(
     action: "recorded";
   }>
 > {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const rawFilePath = input.flags["file"] as string | undefined;
   const verdict = input.flags["verdict"] as CompassAuditVerdict | undefined;
   const agentFlag = input.flags["agent"] as string | undefined;
@@ -372,7 +372,7 @@ export async function runCompassAuditBaseline(
     total: number;
   }>
 > {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const scanRoot = resolveCompassScanRoot(input, context);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
   const entries = await createCompassInventoryEntries(
@@ -451,7 +451,7 @@ export async function runCompassAuditValidate(
     skippedPaths: string[];
   }>
 > {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const strict = input.flags["strict"] === true;
   const scanRoot = resolveCompassScanRoot(input, context);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);

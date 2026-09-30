@@ -19,9 +19,6 @@ collectFiles and diagnosticsResult. Ratcheted baseline at workspace root.
 
 import { join, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
 // Ambient default for helper fns without a context param — handlers override

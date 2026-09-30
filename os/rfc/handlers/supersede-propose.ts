@@ -22,9 +22,6 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 
 import { join, basename } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";

@@ -14,11 +14,8 @@ uses kebab-case (lowercase letters, digits, hyphens only), with documented exemp
 
 import { basename, join, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
-import { readdirSync, type Dirent, lstatSync } from "../../src/utils/sync-fs.ts";
+import { readdirSync, type Dirent } from "../../src/utils/sync-fs.ts";
 import { collectFiles } from "../../src/utils/fs.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -278,7 +275,7 @@ export async function runNamingConventionLint(
     unknownTopLevelDirs?: string[];
   }>
 > {
-  const io = resolveIo(context.io);
+  const _io = resolveIo(context.io);
   const workspaceRoot = context.workspaceRoot;
   const includeIgnored = input.flags["include-ignored"] === true;
 

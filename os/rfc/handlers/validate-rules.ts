@@ -20,10 +20,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 */
 
 import path from "node:path";
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { ambientIo } from "../../../src/utils/io.ts";
 
 import { execFile } from "../../../src/utils/sync-fs.ts";
 
