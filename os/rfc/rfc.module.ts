@@ -245,6 +245,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.verification.emit",
+        modulePath: "packages/forge/os/rfc/rfc.module.ts",
         description:
           "RFC-0330: execute acceptance probes for target RFC(s) and write per-RFC verification " +
           "evidence artifacts to docs/rfcs/verification/*.generated.yaml. Requires --id <rfc-id> " +
@@ -266,6 +267,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.verification.refresh",
+        modulePath: "packages/forge/os/rfc/rfc.module.ts",
         description:
           "RFC-0999: re-run acceptance probes for implemented RFC(s) and update verification " +
           "evidence envelopes in-place. Preserves emittedAt, adds lastRefreshedAt, replaces " +
@@ -311,6 +313,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.dna.trace.generate",
+        modulePath: "packages/forge/os/rfc/rfc.module.ts",
         description:
           "RFC-0331: generate docs/rfcs/dna-trace.generated.yaml — the machine-readable " +
           "requirements-traceability matrix of DNA invariants and satisfying RFCs.",
@@ -325,6 +328,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.decision-log.generate",
+        modulePath: "packages/forge/os/rfc/rfc.module.ts",
         description:
           "RFC-0329: generate docs/rfcs/decision-log.generated.yaml and .md aggregating every " +
           "rejected/superseded RFC and every non-empty Alternatives considered section. " +

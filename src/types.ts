@@ -77,6 +77,12 @@ export interface ForgeCommandMetadata {
   description: string;
   scope: ForgeCommandScope;
   mutatesState?: boolean;
+  /**
+   * RFC-0960/0810: repo-relative path to the implementing module file —
+   * propagated into generator ownership entries (OWN-XCHECK-03 requires it
+   * on every command that declares generates[]).
+   */
+  modulePath?: string;
   requiresNetwork?: boolean;
   supportsAllSites?: boolean;
   /** RFC-0963: validation contract this command belongs to (e.g. "content", "seo"). */
