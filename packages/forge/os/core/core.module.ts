@@ -213,7 +213,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "forge.doctor",
-        mutatesState: false,
+        mutatesState: true,
+        writes: [".agents/memory/**"],
+        generates: [],
         description: "Diagnose forge state in an existing project.",
         scope: "workspace",
         supportsAllSites: false,

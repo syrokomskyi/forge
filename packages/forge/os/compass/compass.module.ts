@@ -196,6 +196,7 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.audit.plan",
       mutatesState: false,
+      execOnReadOnly: true,
       description:
         "Emit a deterministic work-order of files whose revision has advanced past the threshold since their last Compass audit (RFC-0352). Read-only, no LLM.",
       scope: "workspace",
@@ -262,6 +263,7 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.audit.validate",
       mutatesState: false,
+      execOnReadOnly: true,
       contract: "compass",
       rules: [],
       description:
