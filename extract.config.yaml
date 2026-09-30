@@ -13,13 +13,12 @@ stripScopes:
   - "@warpgogol/"
 preservePackages:
   - "@warpgogol/forge"
-# NOTE: stubPackages and postProcess are NOT executed in standalone mode by
-# @warpgogol/repo-extract (<=1.3.0) — both are dead config here. Forge types
+# NOTE: stubPackages and postProcess are silently ignored in standalone mode
+# (@warpgogol/repo-extract <=1.3.0) — do not re-add them here; the effective
+# levers are ignoreDirs/excludePathSegments/preservePackages. Forge types
 # needed from werkstatt-shared are inlined in src/types.ts (ADR-0019); only
 # dynamic imports in os/werkstatt/handlers/workspace-deps.ts remain, guarded
 # by @ts-ignore.
-stubPackages:
-  - "@warpgogol/werkstatt-engine"
 packageManager: pnpm
 
 ci:
@@ -38,12 +37,8 @@ excludePathSegments:
   - .npmrc
   - pnpm-lock.yaml
   - lifecycle-handlers.test.ts
-
-postProcess:
-  - action: delete
-    path: AGENTS.md
-  - action: delete
-    path: pnpm-lock.yaml
+  # monorepo-scoped agent guide — not meaningful inside the standalone repo
+  - AGENTS.md
 
 git:
   remote: git@github.com:syrokomskyi/forge.git
