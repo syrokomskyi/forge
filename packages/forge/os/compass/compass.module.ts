@@ -217,6 +217,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.audit.record",
+      modulePath: "packages/forge/os/compass/compass.module.ts",
       description:
         "Stamp a file's audit verdict and current revision into the compass-audit ledger (RFC-0352). Mutating. Required flags: `--file`, `--verdict`.",
       scope: "workspace",
@@ -239,13 +240,16 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.audit.baseline",
+      modulePath: "packages/forge/os/compass/compass.module.ts",
       description:
         "Seed the compass-audit ledger for every authored file at its current revision with verdict=baseline (RFC-0352). One-time bootstrap.",
       scope: "workspace",
       mutatesState: true,
       supportsAllSites: true,
       writes: ["docs/compass-audit-ledger.generated.yaml"],
-      generates: [{ path: "docs/compass-audit-ledger.generated.yaml", phase: "on-demand" }],
+      // Artifact ownership is claimed by compass.audit.record (GENERATES-PATH-
+      // COLLISION forbids two owners on a non-glob path); baseline only writes it.
+      generates: [],
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
