@@ -67,9 +67,11 @@ const hasForgeWorkspace = fs.existsSync(path.join(workspaceRoot, "forge.yaml"));
 describe.runIf(hasForgeWorkspace)(
   ".agents/skills sync gate (forge.init/forge.upgrade parity)",
   () => {
-    const config = loadForgeConfig(workspaceRoot);
-    const skillsDir = path.join(workspaceRoot, config.paths.skillsDir);
-    const sources = collectSkillSources();
+    // describe callbacks still run during collection even when runIf is false,
+    // so initializers must tolerate the absent forge.yaml themselves.
+    const config = hasForgeWorkspace ? loadForgeConfig(workspaceRoot) : null;
+    const skillsDir = config ? path.join(workspaceRoot, config.paths.skillsDir) : "";
+    const sources = config ? collectSkillSources() : [];
 
     it("every forge + pack skill has a synced copy in .agents/skills/", () => {
       const missing = sources
