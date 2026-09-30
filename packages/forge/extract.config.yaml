@@ -13,9 +13,12 @@ stripScopes:
   - "@warpgogol/"
 preservePackages:
   - "@warpgogol/forge"
+  # kept as devDependency (workspace:* → *) so type-only imports and the
+  # workspace-deps dynamic-import bridge resolve in standalone CI; consumers
+  # never install it — devDeps are not published runtime deps (ADR-0019).
+  - "@warpgogol/werkstatt-shared"
 stubPackages:
   - "@warpgogol/werkstatt-engine"
-  - "@warpgogol/werkstatt-shared"
 packageManager: pnpm
 
 ci:
