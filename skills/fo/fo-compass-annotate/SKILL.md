@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [compass.fileExtensions, compass.testPatterns]
-triggers: ["manage Compass headers", "annotate source files with Compass", "audit Compass module contracts"]
+triggerPhrases: ["manage Compass headers", "annotate source files with Compass", "audit Compass module contracts"]
 ---
 
 <!--

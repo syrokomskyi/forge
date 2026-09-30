@@ -142,9 +142,11 @@ function readRegister(workspaceRoot: string): BehavioralRegister {
   return "business";
 }
 
-function extractTriggers(workspaceRoot: string): Array<{ name: string; triggers: string[] }> {
+function extractTriggerPhrases(
+  workspaceRoot: string,
+): Array<{ name: string; triggerPhrases: string[] }> {
   const forgeRoot = path.join(workspaceRoot, "packages", "forge");
-  const result: Array<{ name: string; triggers: string[] }> = [];
+  const result: Array<{ name: string; triggerPhrases: string[] }> = [];
   for (const skill of FORGE_SKILLS) {
     if (skill.category !== "fo") continue;
     const skillPath = path.join(forgeRoot, skill.path);
@@ -153,10 +155,12 @@ function extractTriggers(workspaceRoot: string): Array<{ name: string; triggers:
       const fmMatch = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       if (!fmMatch) continue;
       const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
-      if (Array.isArray(fm["triggers"])) {
+      if (Array.isArray(fm["triggerPhrases"])) {
         result.push({
           name: skill.name,
-          triggers: (fm["triggers"] as unknown[]).filter((v): v is string => typeof v === "string"),
+          triggerPhrases: (fm["triggerPhrases"] as unknown[]).filter(
+            (v): v is string => typeof v === "string",
+          ),
         });
       }
     } catch {
@@ -169,9 +173,11 @@ function extractTriggers(workspaceRoot: string): Array<{ name: string; triggers:
 // RFC-1154: emits the full aligned table (header + separator + rows) since
 // column widths depend on substituted trigger rows — the template carries only
 // the {{triggersTable}} placeholder, no static header lines.
-function generateTriggersTable(triggers: Array<{ name: string; triggers: string[] }>): string {
+function generateTriggersTable(
+  triggerPhrases: Array<{ name: string; triggerPhrases: string[] }>,
+): string {
   const rows: string[][] = [];
-  for (const { name, triggers: skillTriggers } of triggers) {
+  for (const { name, triggerPhrases: skillTriggers } of triggerPhrases) {
     if (skillTriggers.length === 0) continue;
     const display = skillTriggers.map((t) => `"${t}"`).join(", ");
     rows.push([display, `\`${name}\``]);
@@ -185,7 +191,7 @@ function generateBehavioralLayer(
   workspaceRoot: string,
   register: BehavioralRegister,
 ): string {
-  const triggers = extractTriggers(workspaceRoot);
+  const triggerPhrases = extractTriggerPhrases(workspaceRoot);
 
   let template: string;
   try {
@@ -194,7 +200,7 @@ function generateBehavioralLayer(
     return "";
   }
 
-  const triggersTable = generateTriggersTable(triggers);
+  const triggersTable = generateTriggersTable(triggerPhrases);
 
   let extendedLayer = "";
   if (register === "creative") {

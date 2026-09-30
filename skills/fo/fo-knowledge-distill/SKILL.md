@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: []
-triggers: ["distill knowledge", "compact skill knowledge", "knowledge lifecycle", "promote fix patterns"]
+triggerPhrases: ["distill knowledge", "compact skill knowledge", "knowledge lifecycle", "promote fix patterns"]
 ---
 
 <!--

@@ -6,7 +6,7 @@ category: fo
 concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["I just want to see the result", "run the full pipeline automatically", "implement this end-to-end without pauses"]
+triggerPhrases: ["I just want to see the result", "run the full pipeline automatically", "implement this end-to-end without pauses"]
 ---
 
 <!--

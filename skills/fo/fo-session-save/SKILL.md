@@ -10,7 +10,7 @@ knowledge: [qa-log.md, learned-principles.md, fix-patterns.md]
 bindings:
   requires: [paths.sessionsDir, commands.sessionSave]
   optional: []
-triggers: ["save this session", "enhance session transcript with annotations", "save session with quality checks"]
+triggerPhrases: ["save this session", "enhance session transcript with annotations", "save session with quality checks"]
 ---
 
 <!--

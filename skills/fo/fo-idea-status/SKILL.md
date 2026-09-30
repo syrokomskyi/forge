@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [commands.validateRfc, commands.validateAdr]
-triggers: ["show RFC and ADR status", "what is the status of this RFC", "list RFCs by status"]
+triggerPhrases: ["show RFC and ADR status", "what is the status of this RFC", "list RFCs by status"]
 ---
 
 <!--

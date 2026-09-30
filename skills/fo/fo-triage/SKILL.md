@@ -6,7 +6,7 @@ category: fo
 concerns: document-only
 dependsOn: ['my-preferences', 'grilling']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["triage this issue", "categorize incoming bug report", "triage external pull request", "process feature request"]
+triggerPhrases: ["triage this issue", "categorize incoming bug report", "triage external pull request", "process feature request"]
 ---
 
 <!--

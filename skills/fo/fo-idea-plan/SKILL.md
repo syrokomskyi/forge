@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc]
   optional: [paths.invariantsFile, paths.compassDocs]
-triggers: ["plan the implementation for this RFC", "create implementation plan", "map affected artifacts and draft steps"]
+triggerPhrases: ["plan the implementation for this RFC", "create implementation plan", "map affected artifacts and draft steps"]
 ---
 
 <!--

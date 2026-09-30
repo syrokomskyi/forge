@@ -78,14 +78,14 @@ describe("RFC-0539: Pack skill validation (SKILL-14, SKILL-15)", () => {
   });
 });
 
-describe("RFC-0548: SKILL-16 triggers field validation", () => {
-  test("SKILL-16: real workspace fo-skills have valid triggers (no violations)", () => {
+describe("RFC-0548: SKILL-16 triggerPhrases field validation", () => {
+  test("SKILL-16: real workspace fo-skills have valid triggerPhrases (no violations)", () => {
     const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
     const skill16Violations = result.violations.filter((v) => v.rule === "SKILL-16");
     expect(skill16Violations).toEqual([]);
   });
 
-  test("SKILL-16: triggers are only on fo-category skills", () => {
+  test("SKILL-16: triggerPhrases are only on fo-category skills", () => {
     const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
     const skill16Violations = result.violations.filter(
       (v) => v.rule === "SKILL-16" && v.message.includes("only allowed on fo-category"),
@@ -93,12 +93,19 @@ describe("RFC-0548: SKILL-16 triggers field validation", () => {
     expect(skill16Violations).toEqual([]);
   });
 
-  test("SKILL-16: no pack skills declare triggers", () => {
+  test("SKILL-16: no pack skills declare triggerPhrases", () => {
     const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
     const packTriggerViolations = result.violations.filter(
-      (v) => v.rule === "SKILL-16" && v.message.includes("pack skills may not declare triggers"),
+      (v) =>
+        v.rule === "SKILL-16" && v.message.includes("pack skills may not declare triggerPhrases"),
     );
     expect(packTriggerViolations).toEqual([]);
+  });
+
+  test("SKILL-22: no skill declares the reserved `triggers` key", () => {
+    const result = runSkillValidate({}, { workspaceRoot: process.cwd() });
+    const skill22Violations = result.violations.filter((v) => v.rule === "SKILL-22");
+    expect(skill22Violations).toEqual([]);
   });
 });
 

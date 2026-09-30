@@ -10,7 +10,7 @@ knowledge:
   - qa-log.md
   - fix-patterns.md
   - learned-principles.md
-triggers: ["sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"]
+triggerPhrases: ["sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"]
 ---
 
 <!--

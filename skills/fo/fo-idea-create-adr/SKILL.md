@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateAdr]
   optional: [paths.invariantsFile]
-triggers: ["record this architectural decision", "create an ADR", "document a local technical decision"]
+triggerPhrases: ["record this architectural decision", "create an ADR", "document a local technical decision"]
 ---
 
 <!--

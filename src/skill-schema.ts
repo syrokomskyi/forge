@@ -31,7 +31,10 @@ export const skillFrontmatterSchema = z.object({
     })
     .optional(),
   knowledge: z.array(z.string()).optional(),
-  triggers: z.array(z.string().min(5).max(100)).max(5).optional(),
+  // Named triggerPhrases, not triggers — agent-IDE skill loaders (Devin CLI,
+  // Windsurf) reserve `triggers` for invocation modes (user/model); a list of
+  // phrases parses to zero valid modes and the skill is dropped entirely.
+  triggerPhrases: z.array(z.string().min(5).max(100)).max(5).optional(),
 });
 
 export type SkillFrontmatter = z.infer<typeof skillFrontmatterSchema>;

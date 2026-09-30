@@ -6,7 +6,7 @@ category: fo
 concerns: document-only
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["create a handoff document", "compact conversation for next agent", "prepare handoff for another agent"]
+triggerPhrases: ["create a handoff document", "compact conversation for next agent", "prepare handoff for another agent"]
 ---
 
 <!--
