@@ -276,7 +276,15 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/verification/*.generated.yaml"],
-        generates: [{ path: "docs/rfcs/verification/*.generated.yaml", phase: "on-demand" }],
+        // Secondary writer — rfc.verification.emit owns these envelopes;
+        // conditional keeps OWN-DUP-01 from flagging the shared glob.
+        generates: [
+          {
+            path: "docs/rfcs/verification/*.generated.yaml",
+            phase: "on-demand",
+            conditional: true,
+          },
+        ],
         reads: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
         cacheable: false,
         flags: {
