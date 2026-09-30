@@ -8,7 +8,7 @@ dependsOn:
   - my-preferences
   - grilling
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["harvest portable patterns from code", "extract reusable code pattern to forge", "port this pattern to forge"]
+triggerPhrases: ["harvest portable patterns from code", "extract reusable code pattern to forge", "port this pattern to forge"]
 ---
 
 <!--

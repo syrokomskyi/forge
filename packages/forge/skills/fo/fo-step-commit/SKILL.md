@@ -9,7 +9,7 @@ category: fo
 concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-triggers:
+triggerPhrases:
   - "commit after request"
   - "auto-commit changes"
   - "step commit"

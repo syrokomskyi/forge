@@ -6,7 +6,7 @@ category: fo
 concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["write tests for this code", "add unit tests", "add property-based tests", "write test coverage for this function"]
+triggerPhrases: ["write tests for this code", "add unit tests", "add property-based tests", "write test coverage for this function"]
 ---
 
 <!--

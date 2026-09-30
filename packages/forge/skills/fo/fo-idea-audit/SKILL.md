@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc]
   optional: [paths.invariantsFile, paths.compassDocs]
-triggers: ["audit this RFC", "check RFC for ecosystem fit", "review RFC against DNA and forward-only rules"]
+triggerPhrases: ["audit this RFC", "check RFC for ecosystem fit", "review RFC against DNA and forward-only rules"]
 ---
 
 <!--

@@ -6,7 +6,7 @@ category: fo
 concerns: document-only
 dependsOn: ['my-preferences', 'grilling']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["analyze codebase architecture", "find deepening opportunities", "review code structure quality"]
+triggerPhrases: ["analyze codebase architecture", "find deepening opportunities", "review code structure quality"]
 ---
 
 <!--

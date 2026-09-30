@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc]
   optional: [paths.invariantsFile]
-triggers: ["extract DNA invariant", "discover architectural invariants", "formalize implicit architectural rules"]
+triggerPhrases: ["extract DNA invariant", "discover architectural invariants", "formalize implicit architectural rules"]
 ---
 
 <!--

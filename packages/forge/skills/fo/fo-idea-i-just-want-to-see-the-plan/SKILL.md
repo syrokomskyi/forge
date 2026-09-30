@@ -6,7 +6,7 @@ category: fo
 concerns: document-only
 dependsOn: ['my-preferences', 'fo-idea-i-just-want-to-see-the-result']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["I just want to see the plan", "plan this feature without implementing", "run idea to plan pipeline"]
+triggerPhrases: ["I just want to see the plan", "plan this feature without implementing", "run idea to plan pipeline"]
 ---
 
 <!--

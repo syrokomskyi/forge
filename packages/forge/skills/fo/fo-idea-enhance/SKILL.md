@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc]
   optional: [paths.invariantsFile]
-triggers: ["enhance this RFC", "fix audit findings in RFC", "improve RFC based on audit"]
+triggerPhrases: ["enhance this RFC", "fix audit findings in RFC", "improve RFC based on audit"]
 ---
 
 <!--

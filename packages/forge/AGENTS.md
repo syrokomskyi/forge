@@ -364,13 +364,13 @@ The `forge-bootstrap` skill step 0 silently checks `forge.syncedVersion` against
 
 `forge.agents.generate` now includes a **Core behavioral layer** section in generated `AGENTS.md` files. This section is wrapped in `<!-- forge:begin behavioral-layer -->` / `<!-- forge:end behavioral-layer -->` markers and contains:
 
-- **Intent-to-skill routing table** — generated from `triggers` fields in fo-skill frontmatter. Each row maps natural-language trigger phrases to the corresponding skill.
+- **Intent-to-skill routing table** — generated from `triggerPhrases` fields in fo-skill frontmatter. Each row maps natural-language trigger phrases to the corresponding skill.
 - **Fixed policy text** for 20 core behavioral areas: auto-grilling, auto-session-save, auto-review, context awareness, creator-facing communication, adaptive learning, proactive guidance, live operator feedback, register parameter, pushback policy, external capabilities (MCP), safety net, invisible quality, first creation moment, creative health, sharing and feedback, cultural awareness, indirect teaching, ownership, and commit policy (RFC-0551).
 - **Conditional extended behavioral layer** (RFC-0549) — included only when the register is `creative` (read from `PREFERENCES.md` `register` field). Contains ten sections: personal connection, creative memory, emotional rhythm (questions not declarations), gentle accountability, creative partnership, visual thinking, audience empathy, creative companion (companion mode, `saveCompanionSessions` flag, pull-only inspiration feed), creative confidence (outcome-based praise, never refuse creative direction), and always-next-step (RFC-0551, supersedes the "at most one per session" anticipatory suggestion limit). Content is loaded from `src/onboarding/templates/behavioral-layer-extended.md`.
 
 `create` auto-runs `forge.agents.generate` after `forge.init`, so newly created projects get the behavioral layer from day one. If generation fails, a warning is logged but the create command continues.
 
-The `triggers` field in skill frontmatter is validated by SKILL-16: optional array of 1-5 natural-language strings (each 5-100 characters), only allowed on fo-category skills. Pack skills may not declare triggers.
+The `triggerPhrases` field in skill frontmatter is validated by SKILL-16: optional array of 1-5 natural-language strings (each 5-100 characters), only allowed on fo-category skills. Pack skills may not declare triggerPhrases. The field is named `triggerPhrases`, not `triggers` — agent-IDE skill loaders (Devin CLI, Windsurf) reserve `triggers` for invocation modes (`user`/`model`), and a phrase list there silently drops the skill from discovery. SKILL-22 rejects a raw `triggers` key on both forge and pack skills.
 
 ## Nested AGENTS.md generation (RFC-0611)
 

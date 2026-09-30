@@ -38,7 +38,7 @@ export interface ForgeSkillEntry {
   dependsOn: string[];
   path: string;
   knowledge?: string[];
-  triggers?: string[];
+  triggerPhrases?: string[];
 }
 
 /**
@@ -191,9 +191,9 @@ function discoverForgeSkills(skillsRoot: string): ForgeSkillEntry[] {
               ),
             }
           : {}),
-        ...(Array.isArray(fm["triggers"])
+        ...(Array.isArray(fm["triggerPhrases"])
           ? {
-              triggers: (fm["triggers"] as unknown[]).filter(
+              triggerPhrases: (fm["triggerPhrases"] as unknown[]).filter(
                 (v): v is string => typeof v === "string",
               ),
             }

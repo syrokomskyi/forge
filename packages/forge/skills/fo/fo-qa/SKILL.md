@@ -6,7 +6,7 @@ category: fo
 concerns: document-only
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-triggers: ["I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"]
+triggerPhrases: ["I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"]
 ---
 
 <!--

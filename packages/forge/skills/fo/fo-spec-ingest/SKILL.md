@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.specValidate]
   optional: [paths.invariantsFile]
-triggers: ["ingest external specification", "vendor spec package into docs", "author spec skeleton"]
+triggerPhrases: ["ingest external specification", "vendor spec package into docs", "author spec skeleton"]
 ---
 
 <!--

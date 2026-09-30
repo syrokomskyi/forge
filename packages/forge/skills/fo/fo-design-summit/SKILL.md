@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [paths.invariantsFile]
   optional: []
-triggers: ["design summit", "multi-persona review", "party mode"]
+triggerPhrases: ["design summit", "multi-persona review", "party mode"]
 ---
 
 <!--

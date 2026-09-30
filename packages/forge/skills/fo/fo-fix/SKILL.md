@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.typecheck]
   optional: [commands.test, paths.invariantsFile]
-triggers: ["fix issues from review", "apply review findings and fix", "iterative fix workflow for code"]
+triggerPhrases: ["fix issues from review", "apply review findings and fix", "iterative fix workflow for code"]
 ---
 
 <!--

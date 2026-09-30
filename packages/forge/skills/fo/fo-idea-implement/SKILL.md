@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc, commands.typecheck, commands.implementStamp]
   optional: [commands.test, commands.scopedBuild, paths.invariantsFile, paths.compassDocs]
-triggers: ["implement this RFC", "execute the implementation plan", "realize this RFC end-to-end"]
+triggerPhrases: ["implement this RFC", "execute the implementation plan", "realize this RFC end-to-end"]
 ---
 
 <!--

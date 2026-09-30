@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forge.skill.validate — validates all forge skills and declared pack skills against frontmatter contract and invariants SKILL-01..SKILL-21.</purpose>
+<purpose>forge.skill.validate — validates all forge skills and declared pack skills against frontmatter contract and invariants SKILL-01..SKILL-22.</purpose>
 <non-goals>
   <item>Do not validate third-party skills — only forge-managed skills in packages/forge/skills/ and declared pack skills.</item>
 </non-goals>
@@ -135,6 +135,19 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
       continue;
     }
 
+    // SKILL-22: `triggers` is reserved by agent-IDE skill loaders (Devin CLI,
+    // Windsurf) for invocation modes — a phrase list parses to zero valid
+    // modes and the skill is dropped from discovery entirely. Intent-routing
+    // phrases belong in `triggerPhrases`.
+    if (fm["triggers"] !== undefined) {
+      violations.push({
+        skill: entry.name,
+        rule: "SKILL-22",
+        message:
+          "forbidden 'triggers' key — agent-IDE loaders reserve it for invocation modes (user/model); rename to 'triggerPhrases'",
+      });
+    }
+
     // SKILL-01: Frontmatter parses against Zod schema
     // SKILL-12: concerns must be one of the four-level enum (RFC-0523)
     const parsed = skillFrontmatterSchema.safeParse(fm);
@@ -253,29 +266,29 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
       warnings.push(...checkSkill21Budgets(parsedFiles, budgets, entry.name));
     }
 
-    // SKILL-16: triggers field format and category restriction (RFC-0548)
-    if (parsed.data.triggers) {
+    // SKILL-16: triggerPhrases field format and category restriction (RFC-0548)
+    if (parsed.data.triggerPhrases) {
       if (entry.category !== "fo") {
         violations.push({
           skill: entry.name,
           rule: "SKILL-16",
-          message: `triggers field is only allowed on fo-category skills (got '${entry.category}') — intent-to-skill routing is for fo-skills only`,
+          message: `triggerPhrases field is only allowed on fo-category skills (got '${entry.category}') — intent-to-skill routing is for fo-skills only`,
         });
       }
-      for (const trigger of parsed.data.triggers) {
-        if (trigger.length < 5 || trigger.length > 100) {
+      for (const phrase of parsed.data.triggerPhrases) {
+        if (phrase.length < 5 || phrase.length > 100) {
           violations.push({
             skill: entry.name,
             rule: "SKILL-16",
-            message: `triggers entry '${trigger.slice(0, 50)}' must be 5-100 characters (got ${trigger.length})`,
+            message: `triggerPhrases entry '${phrase.slice(0, 50)}' must be 5-100 characters (got ${phrase.length})`,
           });
         }
       }
-      if (parsed.data.triggers.length > 5) {
+      if (parsed.data.triggerPhrases.length > 5) {
         violations.push({
           skill: entry.name,
           rule: "SKILL-16",
-          message: `triggers array must have at most 5 entries (got ${parsed.data.triggers.length})`,
+          message: `triggerPhrases array must have at most 5 entries (got ${parsed.data.triggerPhrases.length})`,
         });
       }
     }
@@ -335,6 +348,18 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
         message: "Frontmatter is not valid YAML",
       });
       continue;
+    }
+
+    // SKILL-22: `triggers` is reserved by agent-IDE skill loaders — see the
+    // forge-skill path for rationale. Pack skills must use `triggerPhrases`.
+    if (fm["triggers"] !== undefined) {
+      violations.push({
+        skill: entry.name,
+        pack: entry.pack,
+        rule: "SKILL-22",
+        message:
+          "forbidden 'triggers' key — agent-IDE loaders reserve it for invocation modes (user/model); rename to 'triggerPhrases'",
+      });
     }
 
     const parsed = skillFrontmatterSchema.safeParse(fm);
@@ -437,14 +462,14 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
       warnings.push(...checkSkill21Budgets(parsedFiles, budgets, entry.name, entry.pack));
     }
 
-    // SKILL-16: triggers field format (RFC-0548) — pack skills may not use triggers
-    if (parsed.data.triggers) {
+    // SKILL-16: triggerPhrases field format (RFC-0548) — pack skills may not declare them
+    if (parsed.data.triggerPhrases) {
       violations.push({
         skill: entry.name,
         pack: entry.pack,
         rule: "SKILL-16",
         message:
-          "triggers field is only allowed on forge fo-category skills — pack skills may not declare triggers",
+          "triggerPhrases field is only allowed on forge fo-category skills — pack skills may not declare triggerPhrases",
       });
     }
 

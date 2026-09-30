@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile, paths.compassDocs]
-triggers: ["audit documentation sync", "update docs after code changes", "check AGENTS.md and README are in sync"]
+triggerPhrases: ["audit documentation sync", "update docs after code changes", "check AGENTS.md and README are in sync"]
 ---
 
 <!--

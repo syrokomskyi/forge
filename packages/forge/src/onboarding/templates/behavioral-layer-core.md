@@ -2,11 +2,11 @@
 
 ## Behavioral layer
 
-This section defines the agent's core behavioral contract. It is generated from skill `triggers` and fixed policy text. The agent MUST follow these behaviors in every session.
+This section defines the agent's core behavioral contract. It is generated from skill `triggerPhrases` and fixed policy text. The agent MUST follow these behaviors in every session.
 
 ### Intent-to-skill routing
 
-When the operator expresses an intent in natural language, the agent routes to the matching skill. The routing table is generated from `triggers` fields in skill frontmatter.
+When the operator expresses an intent in natural language, the agent routes to the matching skill. The routing table is generated from `triggerPhrases` fields in skill frontmatter.
 
 {{triggersTable}}
 The agent uses judgment to calibrate routing — minor edits (typo fixes, small CSS changes) do not require skill invocation, while significant changes (new features, architectural decisions) do.

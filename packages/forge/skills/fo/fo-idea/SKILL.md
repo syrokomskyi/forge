@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggers: ["I have an idea for a change", "analyze this idea and route it", "decompose this feature idea", "does this need an RFC", "should I write an ADR for this"]
+triggerPhrases: ["I have an idea for a change", "analyze this idea and route it", "decompose this feature idea", "does this need an RFC", "should I write an ADR for this"]
 ---
 
 <!--
