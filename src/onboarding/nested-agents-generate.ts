@@ -38,6 +38,8 @@ import { buildNestedAgentsMd, selectNestedTemplate, type PackageInfo } from "./n
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 

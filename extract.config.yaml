@@ -13,11 +13,11 @@ stripScopes:
   - "@warpgogol/"
 preservePackages:
   - "@warpgogol/forge"
+# NOTE: stubPackages and postProcess are NOT executed in standalone mode by
+# @warpgogol/repo-extract (<=1.3.0) — both are dead config here. Type-only
+# @warpgogol/werkstatt-shared imports are handled by @ts-ignore comments at
+# the import sites instead (see workspace-deps.ts convention, ADR-0019).
 stubPackages:
-  # NOTE: stubPackages is not implemented in @warpgogol/repo-extract (<=1.3.0)
-  # — it is dead config. Stubbing is done via the postProcess copy rule below,
-  # which injects extract-stubs/werkstatt-shared.d.ts (ambient module decls)
-  # so type-only imports compile without the real package (ADR-0019).
   - "@warpgogol/werkstatt-engine"
 packageManager: pnpm
 
@@ -38,9 +38,6 @@ excludePathSegments:
   - lifecycle-handlers.test.ts
 
 postProcess:
-  - action: copy
-    from: packages/forge/extract-stubs/werkstatt-shared.d.ts
-    to: src/werkstatt-shared-stubs.d.ts
   - action: delete
     path: AGENTS.md
   - action: delete

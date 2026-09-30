@@ -22,6 +22,8 @@ by the marker, not inferred from the name.
 */
 
 import path from "node:path";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveIo } from "../utils/io.ts";
 import { writeFileIfChanged } from "../utils/fs-idempotent.ts";

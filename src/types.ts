@@ -23,7 +23,11 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 // RFC-1152: type-only import — FORGE-AUTONOMY-01 (ADR-0019) exempts `import
 // type` so helpers/contexts can receive the WorkspaceIO port without a runtime
 // dependency on @warpgogol/* packages.
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
 import type { GeneratedArtifactSpec } from "@warpgogol/werkstatt-shared/kernel/types";
 
 // ---------------------------------------------------------------------------

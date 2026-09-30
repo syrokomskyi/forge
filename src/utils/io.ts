@@ -34,6 +34,8 @@ import {
 } from "node:fs/promises";
 import { spawn } from "node:child_process";
 import { dirname } from "node:path";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
 import type { ExecOptions, ExecResult, WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel";
 import { writeFileAtomic } from "./fs-atomic.ts";
 
