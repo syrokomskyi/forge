@@ -21,9 +21,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import type { WorkspaceIO } from "../types.ts";
 import { resolveIo } from "../utils/io.ts";
 import { hasEditableGeneratedMarker, mergeEditableGenerated } from "../utils/index.ts";
 import { readFileSync, existsSync } from "../utils/sync-fs.ts";
@@ -768,7 +766,7 @@ async function checkPackSkills(workspaceRoot: string, io: WorkspaceIO): Promise<
 // Pack manifest diagnostics (RFC-0941)
 // ---------------------------------------------------------------------------
 
-async function checkPackManifests(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
+async function checkPackManifests(workspaceRoot: string, _io: WorkspaceIO): Promise<DoctorCheck> {
   let config;
   try {
     config = loadForgeConfig(workspaceRoot);

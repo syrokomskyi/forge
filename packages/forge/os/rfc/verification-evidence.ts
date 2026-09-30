@@ -19,9 +19,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 
 import { execFile } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 
 import { join } from "node:path";
 import { performance } from "node:perf_hooks";

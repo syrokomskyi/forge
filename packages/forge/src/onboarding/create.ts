@@ -22,11 +22,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveIo } from "../utils/io.ts";
 import { stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";

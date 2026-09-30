@@ -27,7 +27,7 @@ Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, s
 */
 
 import { relative, resolve } from "node:path";
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { ambientIo } from "../../../src/utils/io.ts";
 import {
   createCompassInventoryEntries,
   detectRiskClass,

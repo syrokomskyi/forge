@@ -20,15 +20,100 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-// RFC-1152: type-only import — FORGE-AUTONOMY-01 (ADR-0019) exempts `import
-// type` so helpers/contexts can receive the WorkspaceIO port without a runtime
-// dependency on @warpgogol/* packages.
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { GeneratedArtifactSpec } from "@warpgogol/werkstatt-shared/kernel/types";
+// RFC-1152: WorkspaceIO port types — declared locally so the standalone npm
+// build needs no @warpgogol/* package (ADR-0019). Structurally identical to
+// @warpgogol/werkstatt-shared/kernel/workspace-io — kernel callers passing a
+// real WorkspaceIO (context.io) are assignable both ways.
+
+export interface ExecOptions {
+  cwd?: string;
+  timeoutMs?: number;
+  /** Extra environment variables merged over `process.env` for the child. */
+  env?: Record<string, string>;
+}
+
+export interface ExecResult {
+  exitCode: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/**
+ * A directory entry in a port-neutral shape — no `node:fs` `Dirent` leaks
+ * through the port, so command modules never need to import `node:fs` just to
+ * type a listing. `isFile`/`isDirectory` are plain booleans (not methods).
+ */
+export interface DirEntry {
+  name: string;
+  isFile: boolean;
+  isDirectory: boolean;
+}
+
+/** Port-neutral `stat` result — no `node:fs` `Stats` leaks through the port. */
+export interface FileStat {
+  isFile: boolean;
+  isDirectory: boolean;
+  mtimeMs: number;
+  size: number;
+}
+
+export interface WorkspaceIO {
+  readFile(path: string): Promise<string>;
+  readFileBytes(path: string): Promise<Uint8Array>;
+  exists(path: string): Promise<boolean>;
+  glob(pattern: string, opts?: { cwd?: string }): Promise<string[]>;
+  /** List a directory's immediate entries. Read-only; throws if the path is not a directory. */
+  readdir(path: string): Promise<DirEntry[]>;
+  /** File metadata in a port-neutral shape. Throws when the path does not exist. */
+  stat(path: string): Promise<FileStat>;
+  /** Resolve symlinks to the canonical absolute path. Read-only. */
+  realpath(path: string): Promise<string>;
+  /** Atomic by contract (rfc-0258). */
+  writeFile(path: string, content: string | Uint8Array): Promise<void>;
+  /** Append content to a file, creating it (and parent dirs) when absent. */
+  appendFile(path: string, content: string | Uint8Array): Promise<void>;
+  mkdir(path: string): Promise<void>;
+  rm(path: string, opts?: { recursive?: boolean }): Promise<void>;
+  rename(src: string, dst: string): Promise<void>;
+  copyFile(src: string, dst: string): Promise<void>;
+  /** Create a unique temporary directory under `prefix`; returns its path. */
+  mkdtemp(prefix: string): Promise<string>;
+  exec(command: string, args: string[], opts?: ExecOptions): Promise<ExecResult>;
+  /**
+   * RFC-1176: `true` only on the read-only adapter (`mutatesState: false`
+   * commands). Best-effort bookkeeping writes must be skipped with
+   * `if (!io.readonly)` instead of attempting a mutation that throws
+   * KERNEL-META-01 — the throw stays as the enforcement floor for
+   * undeclared mutations. Undefined on real and recording adapters.
+   */
+  readonly readonly?: boolean;
+}
+
+/**
+ * RFC-0960: Declared generated artifact specification on a kernel command.
+ * Lives on `ForgeCommandMetadata.generates[]` and is the source of truth
+ * for the derived generator ownership map.
+ */
+export interface GeneratedArtifactSpec {
+  /** Workpiece-relative path or glob, e.g. "src/content/system-health.generated.yaml". */
+  path: string;
+  /** Skip absence checks (RFC-0636 semantics) — e.g. produced only in build.post. */
+  conditional?: boolean;
+  /** Pipeline phase that produces it: informs which validator phase may assert existence. */
+  phase: "build.prepare" | "build.post" | "on-demand";
+  /**
+   * Override the default markerPolicy derivation. Default: public/** → "registry-only",
+   * everything else → "embedded". Set explicitly only for edge cases (e.g. .cache/pdf/**).
+   */
+  markerPolicy?: "embedded" | "registry-only";
+  /**
+   * Committed bytes contain non-deterministic fields (Ed25519 proofs, real-time
+   * created/generatedAt timestamps, build durations) — byte-compare against a
+   * dryRun render can never pass. generated.drift.validate skips volatile
+   * artifacts; existence/staleness/signature checks still apply elsewhere.
+   */
+  volatile?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Command input / output

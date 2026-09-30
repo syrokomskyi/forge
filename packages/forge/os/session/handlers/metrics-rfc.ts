@@ -18,10 +18,7 @@ Writes to docs/metrics/rfcs/<rfc-id>.metrics.yaml via writeFileAtomic.
 */
 
 import { execFile } from "../../../src/utils/sync-fs.ts";
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import { ambientIo } from "../../../src/utils/io.ts";
 
 import { join, dirname } from "node:path";
 
