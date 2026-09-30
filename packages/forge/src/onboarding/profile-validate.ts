@@ -12,6 +12,8 @@
 */
 
 import * as fs from "../utils/sync-fs.ts";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, absent in standalone npm install (ADR-0019)
 import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
 import { resolveIo } from "../utils/io.ts";
 import path from "node:path";
