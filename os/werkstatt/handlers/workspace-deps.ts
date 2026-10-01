@@ -9,7 +9,6 @@
 <CHANGE_SUMMARY>
   <item>RFC-0682: extract dynamic-import helper so forge publishes without workspace:* deps.</item>
   <item>RFC-0940: moved from os/core/handlers/ to os/werkstatt/handlers/ — this module imports @warpgogol/werkstatt-engine and belongs in the adapter directory.</item>
-  <item>2026-09-22: fingerprint import switched from @warpgogol/werkstatt-engine/fingerprint to @warpgogol/werkstatt-shared/fingerprint (canonical home since RFC-1104) — breaks the forge↔engine package cycle reported by turbo.</item>
 </CHANGE_SUMMARY>
 */
 
