@@ -13,7 +13,6 @@ and atomically mutates ADR frontmatter.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0727: initial implementation — mirrors rfc.implement.stamp for ADRs.</item>
-  <item>fix: add ADR-IMP-02 acceptance-criteria gate — block stamping post-cutoff ADRs with unchecked or evidence-less criteria (parity with rfc.implement.stamp RFC-IMP-02; prevents late adr.validate AV-17 failures).</item>
 </CHANGE_SUMMARY>
 */
 
