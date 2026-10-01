@@ -141,10 +141,22 @@ function readRegister(workspaceRoot: string): BehavioralRegister {
   return "business";
 }
 
+/** resolveForgeRoot throws when neither layout exists — routing-table
+ *  extraction is best-effort, so an unresolvable root yields an empty table. */
+function safeResolveForgeRoot(workspaceRoot: string): string | undefined {
+  try {
+    return resolveForgeRoot(workspaceRoot);
+  } catch {
+    return undefined;
+  }
+}
+
 function extractTriggerPhrases(
-  workspaceRoot: string,
+  forgeRoot: string | undefined,
 ): Array<{ name: string; triggerPhrases: string[] }> {
-  const forgeRoot = path.join(workspaceRoot, "packages", "forge");
+  // Consumer packages have no packages/forge — the root must come from the
+  // runtime context (or the installed package), never a hardcoded monorepo path.
+  if (!forgeRoot) return [];
   const result: Array<{ name: string; triggerPhrases: string[] }> = [];
   for (const skill of FORGE_SKILLS) {
     if (skill.category !== "fo") continue;
@@ -187,10 +199,10 @@ function generateTriggersTable(
 }
 
 function generateBehavioralLayer(
-  workspaceRoot: string,
   register: BehavioralRegister,
+  forgeRoot: string | undefined,
 ): string {
-  const triggerPhrases = extractTriggerPhrases(workspaceRoot);
+  const triggerPhrases = extractTriggerPhrases(forgeRoot);
 
   let template: string;
   try {
@@ -355,7 +367,10 @@ export async function runAgentsGenerate(
   }
 
   // Behavioral layer section (RFC-0548)
-  const behavioralLayer = generateBehavioralLayer(workspaceRoot, register);
+  const behavioralLayer = generateBehavioralLayer(
+    register,
+    context.forgeRoot ?? safeResolveForgeRoot(workspaceRoot),
+  );
   dynamicLines.push(behavioralLayer);
   dynamicLines.push("");
 
