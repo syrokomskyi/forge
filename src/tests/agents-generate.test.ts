@@ -10,7 +10,7 @@ routing table, conditional extended layer, markers, and idempotency (RFC-0548, R
 */
 
 import { test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, writeFile, mkdir, readFile } from "node:fs/promises";
+import { mkdtemp, rm, writeFile, mkdir, readFile, symlink } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -106,6 +106,27 @@ test("agents-generate includes intent-to-skill routing table", async () => {
   expect(agentsMd).toMatch(/\| Operator says something like +\| Skill +\|/);
   // Should contain at least one skill name from the registry
   expect(agentsMd).toContain("fo-");
+});
+
+test("agents-generate populates routing table rows in consumer layout (no packages/forge)", async () => {
+  await makeForgeYaml(tempDir);
+  // Consumer install: the package lives under node_modules — skills ship inside
+  // it. A symlinked node_modules/@warpgogol/forge mimics the npm layout.
+  const consumerPkg = join(tempDir, "node_modules", "@warpgogol", "forge");
+  await mkdir(join(consumerPkg, ".."), { recursive: true });
+  await symlink(FORGE_ROOT, consumerPkg, "junction");
+
+  // forgeRoot undefined → extraction must resolve via the consumer layout.
+  const result = await runAgentsGenerate(
+    { argv: [], flags: {} },
+    { ...makeContext(tempDir), forgeRoot: undefined },
+  );
+  expect(result.exitCode).toBe(0);
+
+  const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  // A quoted trigger phrase appears only in routing-table rows — the Skills
+  // table contains bare skill names, so this probes extraction end-to-end.
+  expect(agentsMd).toContain('"show RFC and ADR status"');
 });
 
 test("agents-generate includes fixed policy text sections", async () => {
