@@ -318,8 +318,14 @@ describe("mission.archive", () => {
   });
 
   test("RFC-0801: service folders deleted before move", async () => {
-    await writeMissionManifest(missionsDir, "test-m014", "closed");
+    // Mission carries a releaseId — already released, so the deferred-release
+    // guard does not apply and all service folders are cleaned.
     const missionDir = path.join(missionsDir, "test-m014");
+    await fs.mkdir(missionDir, { recursive: true });
+    await fs.writeFile(
+      path.join(missionDir, "mission.yaml"),
+      `missionId: test-m014\nstate: closed\nreleaseId: test-r000014\n`,
+    );
     const workpieceDir = path.join(missionDir, "workpiece");
     await fs.mkdir(workpieceDir, { recursive: true });
 
@@ -339,6 +345,37 @@ describe("mission.archive", () => {
     for (const folder of ["node_modules", "dist", ".astro", ".wrangler", ".cache", ".turbo"]) {
       expect(existsSync(path.join(archivedWorkpiece, folder))).toBe(false);
     }
+  });
+
+  test("deferred-release guard: closed mission without releaseId → node_modules preserved", async () => {
+    await writeMissionManifest(missionsDir, "test-m014b", "closed");
+    const missionDir = path.join(missionsDir, "test-m014b");
+    const workpieceDir = path.join(missionDir, "workpiece");
+    await fs.mkdir(workpieceDir, { recursive: true });
+
+    for (const folder of ["node_modules", "dist", ".astro"]) {
+      const folderPath = path.join(workpieceDir, folder);
+      await fs.mkdir(folderPath, { recursive: true });
+      await fs.writeFile(path.join(folderPath, "dummy.txt"), `content of ${folder}\n`);
+    }
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    const archivedWorkpiece = path.join(
+      missionsDir,
+      "archive",
+      "closed",
+      "test-m014b",
+      "workpiece",
+    );
+    // node_modules preserved so release.prepare can still run on the archived
+    // workpiece — archived dirs fall outside the pnpm-workspace glob.
+    expect(existsSync(path.join(archivedWorkpiece, "node_modules"))).toBe(true);
+    expect(existsSync(path.join(archivedWorkpiece, "node_modules", "dummy.txt"))).toBe(true);
+    // Other service folders still cleaned.
+    expect(existsSync(path.join(archivedWorkpiece, "dist"))).toBe(false);
+    expect(existsSync(path.join(archivedWorkpiece, ".astro"))).toBe(false);
   });
 
   test("RFC-0801: mission without workpiece — cleanup skipped gracefully", async () => {
