@@ -11,16 +11,11 @@ with `TypeError: targetId.toLowerCase is not a function`.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Standalone port of kernel argv resolution for the forge CLI: strict KERNEL-FLAG-01/02/03 + KERNEL-ARG-01 diagnostics for schema-carrying commands, legacy heuristic parse (with KERNEL-ARG-01) for schema-less commands; repeated single-value string flags diagnose instead of silently promoting to an array that crashes handlers.</item>
+  <item>Standalone port of kernel argv resolution for the forge CLI (RFC-0260 lineage): strict KERNEL-FLAG-01/02/03 + KERNEL-ARG-01 diagnostics for schema-carrying commands, legacy heuristic parse (with KERNEL-ARG-01) for schema-less commands; repeated single-value string flags diagnose instead of silently promoting to an array that crashes handlers; indexOf-based inline-value split preserves values containing "=" that split("=", 2) silently truncated.</item>
 </CHANGE_SUMMARY>
 */
 
-import type {
-  Diagnostic,
-  ForgeCommandDefinition,
-  ForgeFlagSpec,
-  ForgeFlagValue,
-} from "./types.ts";
+import type { Diagnostic, ForgeCommandDefinition, ForgeFlagSpec, ForgeFlagValue } from "./types.ts";
 
 /**
  * Flags every CLI command accepts regardless of its own declared schema —
@@ -142,7 +137,9 @@ export function parseCliArgs(argv: string[]): {
     }
 
     const withoutPrefix = entry.slice(2);
-    const [flagName, inlineValue] = withoutPrefix.split("=", 2);
+    const eqIndex = withoutPrefix.indexOf("=");
+    const flagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
+    const inlineValue = eqIndex === -1 ? undefined : withoutPrefix.slice(eqIndex + 1);
     if (!flagName) continue;
 
     if (inlineValue !== undefined) {
@@ -200,7 +197,9 @@ function resolveStrict(
     }
 
     const withoutPrefix = entry.slice(2);
-    const [flagName, inlineValue] = withoutPrefix.split("=", 2);
+    const eqIndex = withoutPrefix.indexOf("=");
+    const flagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
+    const inlineValue = eqIndex === -1 ? undefined : withoutPrefix.slice(eqIndex + 1);
     if (!flagName) continue;
 
     const spec = schema[flagName];
