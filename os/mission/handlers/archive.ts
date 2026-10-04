@@ -22,6 +22,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
+  <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
   <history>RFC-0573, RFC-0733, RFC-0801</history>
 </CHANGE_SUMMARY>
 */
@@ -56,9 +57,13 @@ const SERVICE_FOLDERS = [
   ".turbo",
 ] as const;
 
-async function cleanServiceFolders(workpieceDir: string): Promise<string[]> {
+async function cleanServiceFolders(
+  workpieceDir: string,
+  keep: readonly string[] = [],
+): Promise<string[]> {
   const removed: string[] = [];
   for (const folder of SERVICE_FOLDERS) {
+    if (keep.includes(folder)) continue;
     const target = path.join(workpieceDir, folder);
     if (existsSync(target)) {
       await fs.rm(target);
@@ -185,10 +190,26 @@ async function moveMissionDir(
     // Aborted missions may not have a workpiece/ directory — skip gracefully.
     const workpieceDir = path.join(sourcePath, "workpiece");
     if (existsSync(workpieceDir)) {
+      // Deferred-release guard: a closed mission without a releaseId still
+      // needs release.prepare (ADR-0085 closed-workpiece rebuild path), and
+      // archived dirs fall outside the pnpm-workspace `missions/*/workpiece`
+      // glob — node_modules cannot be reinstalled in place. Keep it so the
+      // archived workpiece stays release-ready.
+      const keepFolders =
+        direction === "into-archive" &&
+        state === "closed" &&
+        !(await readMissionReleaseId(sourcePath))
+          ? ["node_modules"]
+          : [];
       try {
-        const removed = await cleanServiceFolders(workpieceDir);
+        const removed = await cleanServiceFolders(workpieceDir, keepFolders);
         if (removed.length > 0 && logger) {
           logger.info(`    cleaned service folders: ${removed.join(", ")}`);
+        }
+        if (keepFolders.length > 0 && logger) {
+          logger.info(
+            "    kept node_modules — mission has no releaseId; release.prepare can still run on the archived workpiece",
+          );
         }
       } catch (cleanupErr) {
         // Non-fatal: log warning and continue with move
@@ -364,12 +385,14 @@ export async function runMissionArchive(
 
     // Warn when archiving a closed mission without a release — operator likely
     // forgot to run release.prepare before archiving. Non-blocking: some missions
-    // (e.g. aborted, content-only) legitimately have no release.
+    // (e.g. aborted, content-only) legitimately have no release. The workpiece
+    // node_modules are preserved in this case so the archived mission stays
+    // release-ready (see deferred-release guard in moveMissionDir).
     if (state === "closed" && !dryRun) {
       const releaseId = await readMissionReleaseId(missionDir);
       if (!releaseId && outputFormat === "pretty") {
         logger.warn(
-          `  ⚠ ${missionId}: closed mission has no releaseId — run release.prepare before archiving if this mission needs deployment`,
+          `  ⚠ ${missionId}: closed mission has no releaseId — keeping workpiece node_modules so release.prepare can still run on the archived workpiece`,
         );
       }
     }

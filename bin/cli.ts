@@ -11,12 +11,13 @@ registers forge modules and dispatches commands. Works autonomously without
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Initial CLI bin entrypoint for forge autonomy refactor.</item>
-  <item>RFC-0542: self-documenting output contract — renderNextSteps, renderIdeRecommendation, generateHelp, --help <command> flag.</item>
   <item>RFC-0543: source VERSION from package.json at runtime instead of hardcoded constant.</item>
   <item>Register all 16 forge modules in CLI registry — add adr, plan, audit, mission, spec, program, plugin (previously only 9 of 16 were reachable via `forge <cmd>`).</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>Schema-driven flag resolution via src/cli-flags.ts — a value-less declared flag (e.g. `forge rfc.validate --id`) now exits with KERNEL-FLAG-02 instead of crashing on `flags.id === true`; per-command --help renders printCommandHelp.</item>
+  <history>RFC-0542</history>
 </CHANGE_SUMMARY>
 */
 
@@ -62,11 +63,11 @@ import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
-  ForgeFlagValue,
   CommandRegistry,
   ForgeRegisteredCommandInfo,
 } from "../src/types.ts";
 import { renderNextSteps, renderIdeRecommendation, generateHelp } from "../src/cli-output.ts";
+import { resolveCliFlags } from "../src/cli-flags.ts";
 import type { ForgeModule, ForgeModuleRegistry, ForgePipelineStep } from "../src/forge-module.ts";
 
 class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
@@ -110,37 +111,8 @@ class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
 }
 
 // ---------------------------------------------------------------------------
-// Flag parsing
+// Flag parsing — schema-driven, in src/cli-flags.ts (RFC-0260 kernel parity)
 // ---------------------------------------------------------------------------
-
-function parseArgs(argv: string[]): { flags: Record<string, ForgeFlagValue> } {
-  const flags: Record<string, ForgeFlagValue> = {};
-
-  for (let i = 0; i < argv.length; i++) {
-    const arg = argv[i];
-    if (arg.startsWith("--")) {
-      const eqIndex = arg.indexOf("=");
-      if (eqIndex > 0) {
-        const key = arg.slice(2, eqIndex);
-        const value = arg.slice(eqIndex + 1);
-        flags[key] = value;
-      } else {
-        const key = arg.slice(2);
-        const next = argv[i + 1];
-        if (next && !next.startsWith("--")) {
-          flags[key] = next;
-          i++;
-        } else {
-          flags[key] = true;
-        }
-      }
-    } else {
-      // RFC-0609: positional arguments are no longer collected; ignore them
-    }
-  }
-
-  return { flags };
-}
 
 // ---------------------------------------------------------------------------
 // Module registration
@@ -289,7 +261,6 @@ async function main(): Promise<void> {
 
   const commandName = argv[0];
   const rest = argv.slice(1);
-  const { flags } = parseArgs(rest);
 
   const registry = await buildRegistry();
   const resolved = resolveCommandName(commandName, registry);
@@ -299,6 +270,26 @@ async function main(): Promise<void> {
     logger.error(`Unknown command: ${commandName}`);
     logger.info(`Run 'forge --help' for available commands.`);
     process.exit(1);
+  }
+
+  const { flags, diagnostics } = resolveCliFlags(rest, command);
+  const flagErrors = diagnostics.filter((d) => d.severity === "error");
+  if (flagErrors.length > 0) {
+    logger.error(
+      `[${command.name}] ${flagErrors.length} flag error${flagErrors.length === 1 ? "" : "s"}`,
+    );
+    for (const diagnostic of diagnostics) {
+      logger.error(`  ${diagnostic.ruleId} · ${diagnostic.message}`);
+      if (diagnostic.fixHint) {
+        logger.error(`  fix: ${diagnostic.fixHint}`);
+      }
+    }
+    process.exit(1);
+  }
+
+  if (flags["help"] === true) {
+    printCommandHelp(registry, commandName);
+    return;
   }
 
   const workspaceRoot = resolve(process.cwd());
