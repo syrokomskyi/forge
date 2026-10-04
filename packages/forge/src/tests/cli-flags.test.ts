@@ -57,6 +57,12 @@ describe("resolveCliFlags — strict (schema-carrying) path", () => {
     }
   });
 
+  test("inline value containing = is preserved verbatim", () => {
+    const { flags, diagnostics } = resolveCliFlags(["--id=RFC=0609"], rfcValidate);
+    expect(flags["id"]).toBe("RFC=0609");
+    expect(errorRuleIds(diagnostics)).toEqual([]);
+  });
+
   test("repeated single-value string flag errors instead of promoting to an array", () => {
     const { flags, diagnostics } = resolveCliFlags(["--id", "RFC-1", "--id", "RFC-2"], rfcValidate);
     expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-FLAG-02"]);
