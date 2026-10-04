@@ -6,14 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add.</item>
   <item>RFC-0556: removed dynamic import of @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/compass/handlers/.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
-  <history>RFC-0374</history>
+  <item>Declare compass --root as kind "string[]" — resolveScanRoots reads it as multi-value via getFlagValues, so repeated --root stays legal now that repeated kind-"string" flags are rejected at flag resolution.</item>
+  <history>RFC-0374, RFC-0538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -43,6 +43,11 @@ const compassScanFlags = {
     kind: "string",
     description:
       "Scan a mission workpiece directory (RFC-0617). Mutually exclusive with --packages and --site.",
+  },
+  root: {
+    kind: "string[]",
+    description:
+      "Scan root directory (repeatable — overrides the universal --root workspace override on scan commands).",
   },
 } satisfies Record<string, ForgeFlagSpec>;
 
