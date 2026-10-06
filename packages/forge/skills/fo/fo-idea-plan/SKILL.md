@@ -182,15 +182,26 @@ The grilling checks:
 
 Address every concern the grilling raises by revising the draft. Do not persist until the grilling is satisfied.
 
-### 5b. Summit suggestion
+### 5b. Summit decision (autonomous)
 
-If the RFC meets summit criteria (any of: `kind: architecture` AND `scope: workspace`, `satisfies[]` includes 2+ DNA invariants, introduces a new package/command/lifecycle, supersedes an implemented RFC), suggest using `fo-design-summit` before acceptance. Use `ask_user_question`:
+Decide yourself whether to run `fo-design-summit` before persisting the plan. **Do not ask the operator** — the planning agent holds the full context and is best placed to judge. The operator can always request a summit explicitly.
 
-> "This RFC is complex (architecture, workspace scope, 2+ DNA invariants). Should I run a multi-persona design summit before acceptance?"
+Eligibility — the RFC meets **any** of:
 
-Recommended option: "Run summit" — because complex RFCs benefit from multi-perspective review.
+- `kind: architecture` AND `scope: workspace`
+- `satisfies[]` includes 2+ DNA invariants
+- Introduces a new package, command family, or lifecycle
+- Supersedes an implemented RFC
 
-If the operator declines, proceed to step 6. If the operator accepts, invoke `fo-design-summit` via the `skill` tool, wait for it to complete, then proceed to step 6.
+Eligibility alone is not sufficient — most RFCs meet at least one criterion mechanically. Run the summit only when multi-perspective review is likely to surface findings that the audit, enhance, and grilling steps did not:
+
+- The design holds genuinely contested trade-offs or more than one viable architecture.
+- There is cross-cutting risk a single-perspective pass misses (security or privacy surface, migration of already-implemented behavior, multi-workspace blast radius).
+- Step 3 or the grilling left material questions unresolved.
+
+Skip the summit when the change is additive, follows an established pattern, or the plan converged cleanly — meeting a criterion only technically (e.g. listing 2 DNA invariants on a routine change) is a skip. When in doubt, skip: a missed summit is recoverable, operator attention is not.
+
+If you run it, announce in one line (`Running design summit — <reason>`), invoke `fo-design-summit` via the `skill` tool, wait for it to complete, then proceed to step 6. If you skip, emit one line (`Design summit skipped — <reason>`) and proceed directly to step 6.
 
 ### 6. Persist the plan
 
