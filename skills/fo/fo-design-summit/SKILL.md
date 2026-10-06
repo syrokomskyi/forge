@@ -34,7 +34,7 @@ See `_shared/fo-pipeline-conventions.md` §Language policy.
 
 A multi-persona design review for complex RFCs. The summit simulates five professional perspectives — Architect, Security Engineer, QA Engineer, Product Manager, and Developer Advocate — to surface issues that a single-perspective review misses. Each persona reviews the RFC from its professional lens and raises concerns. The operator sees all perspectives and makes the final decision.
 
-The summit is **optional** — invoked manually by the operator or suggested by `fo-idea-plan` for RFCs that meet complexity criteria. It is not part of the default pipeline.
+The summit is **optional** — invoked manually by the operator or auto-invoked by `fo-idea-plan` (step 5b) when the planning agent judges multi-perspective review genuinely useful. It is not part of the default pipeline.
 
 The summit is `concern: document-only` — it writes a summit report to `docs/summits/` and does not modify the RFC or any source code.
 
@@ -229,7 +229,7 @@ Do not modify the RFC or any other file. Do not run `/fo-idea-enhance` or `/fo-i
 
 ## Invocation criteria
 
-`fo-design-summit` is invoked explicitly by the operator or suggested by `fo-idea-plan` when the RFC meets **any** of these criteria:
+`fo-design-summit` is invoked explicitly by the operator or auto-invoked by `fo-idea-plan` (step 5b). The criteria below are eligibility gates, not triggers — `fo-idea-plan` runs the summit only when it also judges multi-perspective review genuinely useful, without asking the operator:
 
 - `kind: architecture` AND `scope: workspace`
 - `satisfies[]` includes 2+ DNA invariants
@@ -241,7 +241,7 @@ Do not modify the RFC or any other file. Do not run `/fo-idea-enhance` or `/fo-i
 
 - **RFC not found:** The skill errors if the target RFC does not exist.
 - **Audit not run yet:** The skill proceeds without the audit report — persona findings may overlap with future audit findings. The skill notes this in the report.
-- **RFC is too small for a summit:** If the RFC body is less than 500 words, the skill warns that a summit may be overkill and proceeds only if the operator confirms.
+- **RFC is too small for a summit:** If the RFC body is less than 500 words, the skill warns that a summit may be overkill. When invoked explicitly by the operator, it proceeds only on operator confirmation. When auto-invoked by `fo-idea-plan`, it stops without running — the caller proceeds to its next step.
 - **Persona findings overlap:** Multiple personas may raise the same concern. The synthesis step deduplicates and marks consensus findings.
 
 ## Constraints
