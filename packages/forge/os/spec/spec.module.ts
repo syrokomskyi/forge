@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0711: added spec.live.merge, spec.live.list, spec.live.show, spec.live.validate commands.</item>
   <item>RFC-1230: added spec.live.rebuild command + --force flag on spec.live.merge (idempotent merge design).</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
@@ -16,7 +15,12 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
-  <history>RFC-0394, RFC-0396</history>
+  <item>RFC-1234: add V-LS-09 content-drift gate to spec.live.validate (RFC-1234)
+
+Extract projectLiveSpec — the pure replay projection — from rebuildOneSpec so the validator reuses the same dedupe + Design replay + serialize pipeline rebuild writes. spec.live.validate emits V-LS-09 error when committed bytes diverge from the projection modulo updatedAt, and a warning-severity diagnostic for history RFCs unreadable during replay. LivingSpecViolation gains severity field (absent = error; errors drive exit code). uniqueRfcs contract comment states the deduplicated-history semantics exactly.
+
+Severity decision per RFC rollout: error on introduction — the pre-flight reconciliation rebuild left a verified-clean baseline.</item>
+  <history>RFC-0394, RFC-0396, RFC-0711</history>
 </CHANGE_SUMMARY>
 */
 
@@ -146,7 +150,8 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "Checks V-LS-01 (frontmatter), V-LS-02 (domain/filename match), " +
         "V-LS-03 (lastMergedRfc is archived), V-LS-04 (history entries are archived), " +
         "V-LS-05 (no duplicate domains), V-LS-06 (no duplicate RFC-namespaced headings), " +
-        "V-LS-07 (no duplicate history RFCs), V-LS-08 (merged-history coverage is complete). " +
+        "V-LS-07 (no duplicate history RFCs), V-LS-08 (merged-history coverage is complete), " +
+        "V-LS-09 (spec content matches the deterministic replay of its history). " +
         "Repair path: spec.live.rebuild.",
       scope: "workspace",
       flags: {},
