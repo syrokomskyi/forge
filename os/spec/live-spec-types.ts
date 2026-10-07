@@ -9,13 +9,7 @@ merge results, and validation (RFC-0711).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0711: initial living spec types — LivingSpec, DeltaOperation, DeltaConflict, merge/list/show/validate result types.</item>
   <item>RFC-1230: added already-merged to SpecLiveMergeResult.operation; added SpecLiveRebuildResult for spec.live.rebuild.</item>
-  <item>RFC-1230: step 1 — idempotent spec.live.merge with --force
-
-Add the already-merged gate (history[] membership → no-op, byte-identical file) and --force surgical re-merge (drop all (RFC-XXXX) sections + history entries, replay the RFC, append one entry). Shared parsing/serialization helpers extracted to live-spec-shared.ts; operation enum gains "already-merged". PBT covers merge∘merge ≡ merge.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 

@@ -10,13 +10,7 @@ force∘force ≡ force — a forced re-merge stabilizes after one application.<
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial PBT for the merge idempotency law.</item>
-  <item>RFC-1230: step 1 — idempotent spec.live.merge with --force
-
-Add the already-merged gate (history[] membership → no-op, byte-identical file) and --force surgical re-merge (drop all (RFC-XXXX) sections + history entries, replay the RFC, append one entry). Shared parsing/serialization helpers extracted to live-spec-shared.ts; operation enum gains "already-merged". PBT covers merge∘merge ≡ merge.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 

@@ -11,13 +11,7 @@ no-op cases (RFC-0711, RFC-1230).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0711: initial unit tests for spec.live.merge.</item>
   <item>RFC-1230: updated re-merge expectations to already-merged; added --force surgical re-merge and byte-identity cases.</item>
-  <item>RFC-1230: step 1 — idempotent spec.live.merge with --force
-
-Add the already-merged gate (history[] membership → no-op, byte-identical file) and --force surgical re-merge (drop all (RFC-XXXX) sections + history entries, replay the RFC, append one entry). Shared parsing/serialization helpers extracted to live-spec-shared.ts; operation enum gains "already-merged". PBT covers merge∘merge ≡ merge.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 
@@ -404,5 +398,21 @@ describe("spec.live.merge", () => {
     expect(result.data?.dryRun).toBe(true);
     const after = await fs.readFile(specFile, "utf-8");
     expect(after).toBe(before);
+  });
+
+  it("fails instead of overwriting a spec with unparseable frontmatter", async () => {
+    const specFile = path.join(tmpDir, "docs/specs/live/forge.md");
+    await fs.mkdir(path.dirname(specFile), { recursive: true });
+    const corrupt = "# Living Spec: forge\n\nno frontmatter — orphaned content\n";
+    await fs.writeFile(specFile, corrupt);
+
+    const result = await runSpecLiveMerge(
+      { argv: [], flags: { id: "RFC-9001" } },
+      makeContext(tmpDir),
+    );
+
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("valid frontmatter");
+    expect(await fs.readFile(specFile, "utf-8")).toBe(corrupt);
   });
 });

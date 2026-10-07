@@ -12,14 +12,8 @@ present in spec history[] is skipped as already-merged unless --force re-merges 
 <CHANGE_SUMMARY>
   <item>RFC-0711: initial spec.live.merge handler with delta extraction, classification, and atomic writes.</item>
   <item>RFC-0957: namespace headings by RFC ID, remove conflict detection (structurally impossible with namespacing).</item>
-  <item>RFC-1230: idempotent merge — already-merged gate keyed on spec history[], --force surgical re-merge via removeNamespacedSections; pure helpers moved to live-spec-shared.ts.</item>
-  <item>RFC-1230: step 1 — idempotent spec.live.merge with --force
-
-Add the already-merged gate (history[] membership → no-op, byte-identical file) and --force surgical re-merge (drop all (RFC-XXXX) sections + history entries, replay the RFC, append one entry). Shared parsing/serialization helpers extracted to live-spec-shared.ts; operation enum gains "already-merged". PBT covers merge∘merge ≡ merge.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: idempotent merge — already-merged gate keyed on spec history[], --force surgical re-merge via removeNamespacedSections, fail-fast on spec file with unparseable frontmatter; pure helpers moved to live-spec-shared.ts.</item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 
@@ -157,6 +151,22 @@ export async function runSpecLiveMerge(
   if (existsSync(specFilePath)) {
     const specContent = await fs.readFile(specFilePath);
     existingSpec = parseLivingSpec(specContent);
+    // A spec file whose frontmatter cannot be parsed must not be silently
+    // overwritten by the creation path — that would discard its history[].
+    if (!existingSpec) {
+      return {
+        data: {
+          command: "spec.live.merge",
+          domain,
+          operation: "modified",
+          deltas: [],
+          conflicts: [],
+          dryRun,
+        },
+        exitCode: 1,
+        summary: `spec.live.merge: ${domain}.md exists but has no valid frontmatter — inspect or repair via spec.live.rebuild`,
+      };
+    }
   }
 
   // RFC-1230: idempotency gate — an RFC already in history[] is a no-op unless

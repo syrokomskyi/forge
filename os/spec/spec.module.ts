@@ -10,13 +10,7 @@
   <item>RFC-0711: added spec.live.merge, spec.live.list, spec.live.show, spec.live.validate commands.</item>
   <item>RFC-1230: added spec.live.rebuild command + --force flag on spec.live.merge (idempotent merge design).</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
-  <item>RFC-1230: step 2 — spec.live.rebuild command
-
-New workspace command deduplicates history[] and replays source RFCs deterministically (namespace headings, preserve first mergedAt/operation and createdAt, unchanged → no write, empty history → skipped). Missing/unreadable/non-implemented/design-less RFCs warn into unreadableRfcs and never abort. --domain selects one spec; absent selector (or kernel-consumed --all via supportsAllSites) rebuilds all.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <history>RFC-0394</history>
 </CHANGE_SUMMARY>
 */

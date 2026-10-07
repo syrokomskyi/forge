@@ -9,13 +9,7 @@ synthetic living-spec fixtures (RFC-1230).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial unit tests for V-LS-06/07/08.</item>
-  <item>RFC-1230: step 3 — V-LS-06/07/08 living-spec rules
-
-V-LS-06 flags duplicated (RFC-XXXX) headings, V-LS-07 duplicated history[].rfc entries — both repair via spec.live.rebuild. V-LS-08 flags implemented liveSpec RFCs under archive/implemented/ absent from the domain spec's history (or missing spec file) — repair via spec.live.merge --id. Validator stays read-only.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 
