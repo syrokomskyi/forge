@@ -9,6 +9,8 @@ the named-config-error contract.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1096: initial coverage for resolveCompassPolicy (AC-1..AC-5).</item>
+  <item>RFC-1220: step 1 — widen governance-ID tail regex</item>
+  <item>RFC-1220: fo-review — F-1 shared forge-yaml fixture, F-2 temp-dir cleanup</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +25,7 @@ import {
   parseGovernanceIdParts,
 } from "../../policy.ts";
 import { runCompassInventory } from "../compass-inventory-handler.ts";
+import { forgeYaml } from "./forge-yaml-fixture.ts";
 import type { ForgeRuntimeContext } from "../../../../src/types.ts";
 
 // packages/forge — real forge root so `profile:` resolution finds shipped profiles.
@@ -30,24 +33,7 @@ const FORGE_ROOT = fileURLToPath(new URL("../../../../", import.meta.url));
 // os/compass directory — scanned by the AC-4 literal check.
 const COMPASS_DIR = fileURLToPath(new URL("../../", import.meta.url));
 
-const FORGE_YAML = (bindings: string) => `
-schema: forge/config@1
-project:
-  name: test-ws
-  stack: [typescript]
-  packageManager: pnpm
-paths:
-  rfcsDir: docs/rfcs
-  adrsDir: docs/adrs
-  plansDir: docs/plans
-  auditsDir: docs/audits
-  specsDir: docs/specs
-  skillsDir: .agents/skills
-bindings:
-  schema: forge/bindings@1
-  commands: {}
-  paths: {}
-${bindings}`;
+const FORGE_YAML = forgeYaml;
 
 const FORGE_YAML_WITH_PROFILE = `
 schema: forge/config@1
@@ -244,6 +230,17 @@ describe("resolveCompassPolicy (RFC-1096)", () => {
       namespace: "COMPASS-CS",
       numeric: 7,
     });
+    expect(parseGovernanceIdParts("no-number")).toBeNull();
+  });
+
+  it("parseGovernanceIdParts accepts mission-format tails (RFC-1220)", () => {
+    expect(parseGovernanceIdParts("acme-m000175")).toEqual({
+      namespace: "acme",
+      numeric: 175,
+    });
+    expect(parseGovernanceIdParts("acme-m1")).toEqual({ namespace: "acme", numeric: 1 });
+    // Bare "m" without digits is not a numeric tail.
+    expect(parseGovernanceIdParts("acme-m")).toBeNull();
     expect(parseGovernanceIdParts("no-number")).toBeNull();
   });
 });

@@ -5,6 +5,8 @@
 <CHANGE_SUMMARY>
   <item>RFC-0543: initial upgrade handler and VERSION sourcing tests.</item>
   <item>RFC-0552: add test for Forge-vs-pack skill name conflict detection in upgrade.</item>
+  <item>RFC-1224: forge.yaml preservation test — consumer keys, comments, and unknown sections survive upgrade rewrites.</item>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +23,7 @@ import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-i
 import { runInit } from "../onboarding/init.ts";
 import {
   loadForgeConfig,
+  resolveBinding,
   FORGE_CLI_BINDING_DEFAULTS,
   resolvePmRunner,
 } from "../config/forge-config.ts";
@@ -206,6 +209,63 @@ test("forge.upgrade never overwrites a non-null operator-set binding", async () 
   expect(addedKeys).toContain("commands.implementStamp");
   expect(addedKeys).toContain("commands.specValidate");
   expect(addedKeys).toContain("commands.sessionSave");
+  expect(addedKeys).toContain("commands.adrImplementStamp");
+});
+
+test("RFC-1224: forge.upgrade preserves consumer-owned keys and comments in forge.yaml", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  // Hand-write forge.yaml the way an operator would: a consumer-defined command
+  // binding, a schema-unknown top-level section, and comments.
+  const yaml = `schema: forge/config@1
+# operator comment — must survive upgrade
+project:
+  name: consumer-project
+  stack: []
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+  sessionsDir: docs/sessions
+bindings:
+  schema: forge/bindings@1
+  commands:
+    validateRfc: pnpm exec forge rfc.validate --id {id} --json  # inline comment
+    customRegistryCmd: custom registry command
+  paths:
+    invariantsFile: null
+    compassDocs: []
+    reviewsDir: null
+    handoffsDir: null
+    sessionsDir: null
+plugins:
+  - name: my-plugin
+forge:
+  syncedVersion: 0.1.0
+`;
+  await writeFile(join(tempDir, "forge.yaml"), yaml, "utf8");
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  const written = await readFile(join(tempDir, "forge.yaml"), "utf8");
+  // Synced version updated, operator content untouched
+  expect(written).toContain("syncedVersion: 0.2.0");
+  expect(written).toContain("customRegistryCmd: custom registry command");
+  expect(written).toContain("plugins:");
+  expect(written).toContain("my-plugin");
+  expect(written).toContain("# operator comment — must survive upgrade");
+  expect(written).toContain("# inline comment");
+  // Newly promoted forge default is added in place
+  expect(written).toContain("adrImplementStamp:");
+
+  const config = loadForgeConfig(tempDir);
+  expect(config.forge?.syncedVersion).toBe("0.2.0");
+  // Consumer-defined keys stay resolvable after passthrough parsing
+  expect(resolveBinding(config, "commands.customRegistryCmd")).toBe("custom registry command");
 });
 
 test("forge.upgrade refuses when forge.yaml is missing", async () => {

@@ -6,6 +6,8 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1225: forgeRoot resolves via resolveForgeRoot (monorepo or npm-installed package); unresolvable root returns a single SKILL-00; pack discovery loads forge.yaml from workspaceRoot.</item>
+  <item>RFC-1227: SKILL-17 exempts HTML comment regions (file metadata written by the platform's own changelog tooling); pack-skill loop drops SKILL-17 (RFC-0553 scoped it to shipped canonical skills only).</item>
   <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
   <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
   <item>RFC-0661: added SKILL-21 (knowledge layer token budget warnings), refactored warning handling — warnings go to separate `warnings` array, not `violations`.</item>
@@ -67,14 +69,35 @@ const PREFERENCES_PATTERN = /Read `PREFERENCES\.md`/i;
 export function runSkillValidate(_input: unknown, context: unknown): SkillValidateResult {
   const ctx = context as { workspaceRoot?: string };
   const workspaceRoot = ctx?.workspaceRoot ?? process.cwd();
-  const forgeRoot = path.join(workspaceRoot, "packages", "forge");
+
+  // RFC-1225: skill sources live under the forge package root — monorepo
+  // packages/forge or the consumer's node_modules/@warpgogol/forge — while
+  // forge.yaml lives under the workspace root. An unresolvable forge root
+  // surfaces as a single SKILL-00, never N cascading SKILL-01 ghosts.
+  let forgeRoot: string;
+  try {
+    forgeRoot = resolveForgeRoot(workspaceRoot);
+  } catch (err) {
+    return {
+      command: "forge.skill.validate",
+      status: "fail",
+      violations: [
+        {
+          skill: "*",
+          rule: "SKILL-00",
+          message: `forge root not resolvable: ${(err as Error).message}`,
+        },
+      ],
+      warnings: [],
+    };
+  }
   const skillsDir = path.join(forgeRoot, "skills");
 
-  // RFC-0539: Load config to discover declared skill packs
+  // RFC-0539: Load config to discover declared skill packs — from the
+  // workspace root, where forge.yaml actually lives (RFC-1225).
   let packSkills: PackSkillEntry[] = [];
   try {
-    const forgeConfigRoot = resolveForgeRoot(workspaceRoot);
-    const config = loadForgeConfig(forgeConfigRoot);
+    const config = loadForgeConfig(workspaceRoot, forgeRoot);
     packSkills = discoverPackSkills(workspaceRoot, config);
   } catch {
     // Config not found or invalid — skip pack skill validation
@@ -493,14 +516,10 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
       });
     }
 
-    // SKILL-17: No internal platform RFC/ADR id references or platform names (RFC-0553)
-    {
-      const skill17Violations = checkSkill17(entry.name, content);
-      for (const v of skill17Violations) {
-        v.pack = entry.pack;
-      }
-      violations.push(...skill17Violations);
-    }
+    // SKILL-17 is intentionally absent here: RFC-0553 scopes the rule to
+    // shipped canonical skills (packages/forge/skills) — pack skills are
+    // project-domain by design (same asymmetry as SKILL-18). The check was
+    // dead code until RFC-1225 enabled pack validation.
   }
 
   // Check: every SKILL.md on disk has a registry entry
@@ -642,12 +661,20 @@ function checkSkill17(skillName: string, content: string): Violation[] {
     return result;
   }
 
-  const lines = content.split(/\r?\n/);
+  const rawLines = content.split(/\r?\n/);
+  // RFC-1227: HTML comment regions (MODULE_CONTRACT, CHANGE_SUMMARY, inline
+  // notes) are file metadata, not agent instructions — the platform's own
+  // change-summarizer writes RFC ids there by convention. Blank them
+  // line-stably so instruction text keeps full enforcement and reported
+  // line numbers stay correct.
+  const stripped = content.replace(/<!--[\s\S]*?-->/g, (m) => m.replace(/[^\n]/g, " "));
+  const lines = stripped.split(/\r?\n/);
 
-  for (const line of lines) {
-    if (line.includes(SKILL17_DISABLE_MARKER)) {
+  for (let i = 0; i < lines.length; i++) {
+    if (rawLines[i].includes(SKILL17_DISABLE_MARKER)) {
       continue;
     }
+    const line = lines[i];
 
     for (const pattern of SKILL17_ID_PATTERNS) {
       const re = new RegExp(pattern.source, pattern.flags);

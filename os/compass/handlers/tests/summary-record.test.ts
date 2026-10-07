@@ -12,6 +12,7 @@ import {
   CHANGE_SUMMARY_WINDOW,
 } from "../summary-record.ts";
 import { resolveCompassPolicy } from "../../policy.ts";
+import { policyWithIdPattern, cleanupForgeYamlFixtures } from "./forge-yaml-fixture.ts";
 import type { ForgeRuntimeContext } from "../../../../src/types.ts";
 
 // Generic policy — this path has no forge.yaml, so resolution falls back to
@@ -213,6 +214,30 @@ describe("summary-record helpers", () => {
       "ADR-0001",
       "RFC-0002",
       "RFC-0005",
+    ]);
+  });
+
+  afterEach(() => {
+    cleanupForgeYamlFixtures();
+  });
+
+  it("mergeHistoryIds sorts mission-format tokens under their namespace (RFC-1220)", () => {
+    const missionPolicy = policyWithIdPattern(
+      "\\b(?:[A-Z][A-Z0-9]*-)+\\d+\\b|\\b[a-z][a-z0-9-]*-m\\d{6}\\b",
+    );
+    expect(mergeHistoryIds(["acme-m000003"], ["acme-m000001", "RFC-0002"], missionPolicy)).toEqual([
+      "acme-m000001",
+      "acme-m000003",
+      "RFC-0002",
+    ]);
+  });
+
+  it("mergeHistoryIds appends unparseable admitted tokens last (RFC-1220)", () => {
+    const driftPolicy = policyWithIdPattern("\\b(?:[A-Z][A-Z0-9]*-)+\\d+\\b|\\b[A-Z]+-[A-Z]+\\b");
+    expect(mergeHistoryIds(["FOO-BAR"], ["RFC-0002", "RFC-0001"], driftPolicy)).toEqual([
+      "RFC-0001",
+      "RFC-0002",
+      "FOO-BAR",
     ]);
   });
 

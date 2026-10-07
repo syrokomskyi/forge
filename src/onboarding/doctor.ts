@@ -8,7 +8,6 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
   <item>RFC-0704: added independent-version-packages check — validates that paths in independentVersionPackages exist and contain package.json.</item>
   <item>RFC-0941: added pack-manifests advisory check — validates forge.plugin.yaml existence and schema for each declared skill pack.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -17,7 +16,9 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0675</history>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <item>RFC-1226: skills-unmanaged check — warn on SKILL.md-bearing dirs without .forge-managed marker</item>
+  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -54,6 +55,7 @@ import { compactMemoryMd } from "./memory-compact.ts";
 import { checkInvariants } from "./invariant-engine.ts";
 import type { InvariantViolation } from "./invariant-engine.ts";
 import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
+import { SKILL_MARKER_FILE } from "./skill-markers.ts";
 import { execSync } from "../utils/sync-fs.ts";
 import * as fs from "../utils/sync-fs.ts";
 import type { ProfilePrerequisite } from "../profiles/profile-schema.ts";
@@ -142,6 +144,7 @@ const BINDING_COMMAND_KEYS = [
   "commands.validateRfc",
   "commands.validateAdr",
   "commands.implementStamp",
+  "commands.adrImplementStamp",
   "commands.typecheck",
   "commands.test",
   "commands.scopedBuild",
@@ -759,6 +762,49 @@ async function checkPackSkills(workspaceRoot: string, io: WorkspaceIO): Promise<
       issues.length === 0
         ? `${packSkills.length} pack skill(s) in sync`
         : `${issues.length} issue(s): ${issues.join(", ")} — run 'forge create' to sync`,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Unmanaged skill directories (RFC-1226)
+// ---------------------------------------------------------------------------
+
+// Visibility only: a dir bearing SKILL.md without .forge-managed is
+// consumer-owned per RFC-1154 — report it, never prune or block.
+async function checkUnmanagedSkillDirs(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return { name: "skills-unmanaged", status: "pass", message: "No forge.yaml — unmanaged skill dir check skipped" };
+  }
+
+  const skillsDir = join(workspaceRoot, config.paths.skillsDir);
+  let entries;
+  try {
+    entries = await io.readdir(skillsDir);
+  } catch {
+    return { name: "skills-unmanaged", status: "pass", message: "skillsDir absent — nothing to scan" };
+  }
+
+  const unmanaged: string[] = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory) continue;
+    const dir = join(skillsDir, entry.name);
+    // Support dirs (_shared/, knowledge-only dirs) are not skills — skip.
+    if (!(await io.exists(join(dir, "SKILL.md")))) continue;
+    if (await io.exists(join(dir, SKILL_MARKER_FILE))) continue;
+    unmanaged.push(entry.name);
+  }
+
+  if (unmanaged.length === 0) {
+    return { name: "skills-unmanaged", status: "pass", message: "all skill dirs forge-managed" };
+  }
+
+  return {
+    name: "skills-unmanaged",
+    status: "warn",
+    message: `${unmanaged.length} unmanaged skill dir(s): ${unmanaged.join(", ")} — consumer-owned (no ${SKILL_MARKER_FILE} marker). Port into a declared skillPacks pack to make them forge-managed, or leave as-is.`,
   };
 }
 
@@ -1454,6 +1500,9 @@ export async function runDoctor(
   // RFC-0941: Check pack manifests — forge.plugin.yaml existence and validity
   const packManifestCheck = await checkPackManifests(workspaceRoot, fio);
   checks.push(packManifestCheck);
+
+  // RFC-1226: List unmanaged skill dirs under skillsDir (visibility only)
+  checks.push(await checkUnmanagedSkillDirs(workspaceRoot, fio));
 
   // RFC-0704: Check independent version packages — paths must exist and contain package.json
   const independentCheck = await checkIndependentVersionPackages(workspaceRoot, fio);

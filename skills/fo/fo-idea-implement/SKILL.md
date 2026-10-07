@@ -7,7 +7,7 @@ concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 bindings:
-  requires: [commands.validateRfc, commands.typecheck, commands.implementStamp]
+  requires: [commands.validateRfc, commands.typecheck, commands.implementStamp, commands.adrImplementStamp]
   optional: [commands.test, commands.scopedBuild, paths.invariantsFile, paths.compassDocs]
 triggerPhrases: ["implement this RFC", "execute the implementation plan", "realize this RFC end-to-end"]
 ---
@@ -23,6 +23,7 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -187,10 +188,10 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 1. **Verify the criterion is met semantically** — check the code does what the criterion says, run the relevant command, or inspect the artifact. Mechanical existence (command registered, test passes) is NOT sufficient. The criterion must describe observable behavior that the RFC defines, not just that a command exists.
 2. **Check for stubs** — if the code contains TODO, stub, not-implemented, or placeholder logic in the path the criterion covers, the criterion is NOT met. Implement the real logic before marking it.
 3. **If a criterion is not met**, implement the missing work, commit it, and re-verify.
-4. **Annotate every `[x]` with inline evidence** — add `(evidence: ...)` to each checked criterion, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by V-27 (RFC-0996 evidence discipline).
+4. **Annotate every `[x]` with inline evidence** — add `(evidence: ...)` to each checked criterion, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by the V-27 evidence discipline.
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
 6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
-7. **Check document readiness** (RFC-1006) — if the RFC has a `## Document readiness` section, verify every `DR-N` checkbox is checked `[x]`. Unchecked `DR-N` items block `accepted`/`implemented` status via V-38. Document readiness criteria cover document quality (sections present, risks described, alternatives considered), not system behavior — they are checked by inspecting the RFC itself, not by running code.
+7. **Check document readiness** — if the RFC has a `## Document readiness` section, verify every `DR-N` checkbox is checked `[x]`. Unchecked `DR-N` items block `accepted`/`implemented` status via V-38. Document readiness criteria cover document quality (sections present, risks described, alternatives considered), not system behavior — they are checked by inspecting the RFC itself, not by running code.
 
 Do not proceed to step 4.7 until every acceptance criterion checkbox AND every document readiness checkbox is checked with evidence.
 

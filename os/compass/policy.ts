@@ -12,6 +12,7 @@ are authored, how risky they are, and what counts as a governance ID
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1096: initial policy resolver — generic defaults + profile compass section + bindings.compass overrides.</item>
+  <item>RFC-1220: step 1 — widen governance-ID tail regex</item>
 </CHANGE_SUMMARY>
 */
 
@@ -212,9 +213,14 @@ function compilePattern(key: string, pattern: string, flags?: string): RegExp {
   }
 }
 
-/** Split a `NAMESPACE-NUMBER` governance ID on its last dash. */
+/**
+ * Split a `NAMESPACE-NUMBER` governance ID on its last dash.
+ * Mission-format tails (`slug-mNNNNNN`) parse as `{ namespace: slug, numeric: N }`.
+ * The `m` stays outside the digit capture — `-(m?\d+)$` would capture `m000175`
+ * into the numeric group and produce `NaN` (RFC-1220).
+ */
 export function parseGovernanceIdParts(id: string): { namespace: string; numeric: number } | null {
-  const match = id.match(/^(.*)-(\d+)$/);
+  const match = id.match(/^(.*)-m?(\d+)$/);
   if (!match) return null;
   return { namespace: match[1]!, numeric: Number(match[2]) };
 }

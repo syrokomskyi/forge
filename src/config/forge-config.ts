@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0661: added optional knowledge.budgets binding for hot/warm layer character budget overrides.</item>
   <item>RFC-0662: added optional knowledge.retentionDays and knowledge.staleDays bindings for compaction overrides.</item>
   <item>RFC-0704: added optional independentVersionPackages field to forgeConfigSchema for packages with autonomous npm versions.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -15,14 +14,15 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643</history>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
 import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { z } from "zod";
-import { parse as parseYaml } from "yaml";
+import { parse as parseYaml, parseDocument } from "yaml";
 import {
   TERMINOLOGY_DEFAULTS,
   compassPolicyOverridesSchema,
@@ -36,22 +36,27 @@ import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.
 
 export const forgeBindingsSchema = z.object({
   schema: z.literal("forge/bindings@1"),
-  commands: z.object({
-    validateRfc: z.string().nullable().default(null),
-    validateAdr: z.string().nullable().default(null),
-    implementStamp: z.string().nullable().default(null),
-    typecheck: z.string().nullable().default(null),
-    test: z.string().nullable().default(null),
-    scopedBuild: z.string().nullable().default(null),
-    specValidate: z.string().nullable().default(null),
-    sessionSave: z.string().nullable().default(null),
-    // Semantic keys (RFC-0639) — domain-neutral, optional
-    validate: z.string().nullable().default(null),
-    produce: z.string().nullable().default(null),
-    verify: z.string().nullable().default(null),
-    preview: z.string().nullable().default(null),
-    lint: z.string().nullable().default(null),
-  }),
+  commands: z
+    .object({
+      validateRfc: z.string().nullable().default(null),
+      validateAdr: z.string().nullable().default(null),
+      implementStamp: z.string().nullable().default(null),
+      adrImplementStamp: z.string().nullable().default(null),
+      typecheck: z.string().nullable().default(null),
+      test: z.string().nullable().default(null),
+      scopedBuild: z.string().nullable().default(null),
+      specValidate: z.string().nullable().default(null),
+      sessionSave: z.string().nullable().default(null),
+      // Semantic keys (RFC-0639) — domain-neutral, optional
+      validate: z.string().nullable().default(null),
+      produce: z.string().nullable().default(null),
+      verify: z.string().nullable().default(null),
+      preview: z.string().nullable().default(null),
+      lint: z.string().nullable().default(null),
+      // RFC-1224: consumer-defined command keys (e.g. createRfc) stay in the
+      // parsed config so resolveBinding can resolve them.
+    })
+    .passthrough(),
   paths: z.object({
     invariantsFile: z.string().nullable().default(null),
     compassDocs: z.array(z.string()).default([]),
@@ -98,6 +103,7 @@ export interface ForgeBindings {
     validateRfc: string | null;
     validateAdr: string | null;
     implementStamp: string | null;
+    adrImplementStamp: string | null;
     typecheck: string | null;
     test: string | null;
     scopedBuild: string | null;
@@ -177,44 +183,48 @@ export interface ForgeMigrationAdapter {
 // Schema (forge/config@1)
 // ---------------------------------------------------------------------------
 
-export const forgeConfigSchema = z.object({
-  schema: z.literal("forge/config@1"),
-  project: z.object({
-    name: z.string().min(1),
-    stack: z.array(z.string()).default([]),
-    packageManager: z.enum(["pnpm", "npm", "yarn", "bun", "none"]).default("pnpm"),
-    // RFC-0640: optional domain field — absent means software-domain fallback
-    domain: z.string().optional(),
-  }),
-  paths: z.object({
-    rfcsDir: z.string().default("docs/rfcs"),
-    adrsDir: z.string().default("docs/adrs"),
-    plansDir: z.string().default("docs/plans"),
-    auditsDir: z.string().default("docs/audits"),
-    specsDir: z.string().default("docs/specs"),
-    skillsDir: z.string().default(".agents/skills"),
-    sessionsDir: z.string().default("docs/sessions"),
-  }),
-  /** Bindings contract (RFC-0393). Optional — absent means no bindings. */
-  bindings: forgeBindingsSchema.optional(),
-  /** Skill packs (RFC-0539). Optional — absent means no project-local packs. */
-  skillPacks: z.array(forgeSkillPackSchema).optional(),
-  /** Migration adapters (RFC-0546). Optional — absent means built-in adapters only. */
-  migrationAdapters: z.array(forgeMigrationAdapterSchema).optional(),
-  /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */
-  forge: z
-    .object({
-      syncedVersion: z.string().nullable().default(null),
-    })
-    .optional(),
-  /** RFC-0643: profile id — when present, loadForgeConfig loads the corresponding profiles/<id>.yaml */
-  // RFC-1118: accept the corrupted object form (whole StackProfile written by a
-  // previous buggy serialize) so loadForgeConfig can recover the declared id —
-  // a hard schema throw here would deadlock `forge upgrade`, the healing path.
-  profile: z.union([z.string(), z.object({ id: z.string().min(1) }).passthrough()]).optional(),
-  /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
-  independentVersionPackages: z.array(z.string()).optional(),
-});
+export const forgeConfigSchema = z
+  .object({
+    schema: z.literal("forge/config@1"),
+    project: z.object({
+      name: z.string().min(1),
+      stack: z.array(z.string()).default([]),
+      packageManager: z.enum(["pnpm", "npm", "yarn", "bun", "none"]).default("pnpm"),
+      // RFC-0640: optional domain field — absent means software-domain fallback
+      domain: z.string().optional(),
+    }),
+    paths: z.object({
+      rfcsDir: z.string().default("docs/rfcs"),
+      adrsDir: z.string().default("docs/adrs"),
+      plansDir: z.string().default("docs/plans"),
+      auditsDir: z.string().default("docs/audits"),
+      specsDir: z.string().default("docs/specs"),
+      skillsDir: z.string().default(".agents/skills"),
+      sessionsDir: z.string().default("docs/sessions"),
+    }),
+    /** Bindings contract (RFC-0393). Optional — absent means no bindings. */
+    bindings: forgeBindingsSchema.optional(),
+    /** Skill packs (RFC-0539). Optional — absent means no project-local packs. */
+    skillPacks: z.array(forgeSkillPackSchema).optional(),
+    /** Migration adapters (RFC-0546). Optional — absent means built-in adapters only. */
+    migrationAdapters: z.array(forgeMigrationAdapterSchema).optional(),
+    /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */
+    forge: z
+      .object({
+        syncedVersion: z.string().nullable().default(null),
+      })
+      .optional(),
+    /** RFC-0643: profile id — when present, loadForgeConfig loads the corresponding profiles/<id>.yaml */
+    // RFC-1118: accept the corrupted object form (whole StackProfile written by a
+    // previous buggy serialize) so loadForgeConfig can recover the declared id —
+    // a hard schema throw here would deadlock `forge upgrade`, the healing path.
+    profile: z.union([z.string(), z.object({ id: z.string().min(1) }).passthrough()]).optional(),
+    /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
+    independentVersionPackages: z.array(z.string()).optional(),
+    // RFC-1224: consumer-owned top-level sections (e.g. `plugins:`) stay in the
+    // parsed config so full-serialization writes do not silently drop them.
+  })
+  .passthrough();
 
 export interface ForgeConfig {
   schema: "forge/config@1";
@@ -268,6 +278,10 @@ export const FORGE_CLI_BINDING_DEFAULTS: ForgeCliBindingDefault[] = [
     key: "commands.implementStamp",
     template: "forge rfc.implement.stamp --id {id} --implementation-commit {commit}",
   },
+  {
+    key: "commands.adrImplementStamp",
+    template: "forge adr.implement.stamp --id {id} --implementation-commit {commit}",
+  },
   { key: "commands.specValidate", template: "forge spec.validate --spec={id} --json" },
   { key: "commands.sessionSave", template: "forge session.save --json" },
 ];
@@ -302,6 +316,7 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     validateRfc: null,
     validateAdr: null,
     implementStamp: null,
+    adrImplementStamp: null,
     typecheck: null,
     test: null,
     scopedBuild: null,
@@ -469,6 +484,36 @@ export function serializeForgeConfig(config: ForgeConfig): Record<string, unknow
     delete out["profile"];
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// YAML document patching — RFC-1224
+// ---------------------------------------------------------------------------
+
+/**
+ * A single targeted write into forge.yaml: a dotted key path expressed as
+ * segments plus the value to set. `applyForgeYamlPatches` creates missing
+ * intermediate maps and preserves comments/formatting elsewhere in the file.
+ */
+export interface ForgeYamlPatch {
+  path: string[];
+  value: unknown;
+}
+
+/**
+ * Apply targeted patches to a forge.yaml document without rewriting it.
+ * Returns the patched YAML text, or null when the document cannot be parsed —
+ * callers should fall back to full serialization in that case.
+ */
+export function applyForgeYamlPatches(rawYaml: string, patches: ForgeYamlPatch[]): string | null {
+  const doc = parseDocument(rawYaml);
+  if (doc.errors.length > 0) {
+    return null;
+  }
+  for (const patch of patches) {
+    doc.setIn(patch.path, patch.value);
+  }
+  return doc.toString();
 }
 
 // ---------------------------------------------------------------------------
