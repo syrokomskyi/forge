@@ -10,13 +10,7 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial tests for collectLiveMergeTargets.</item>
-  <item>RFC-1230: step 4 — docs.archive merges only this-run moves
-
-Post-loop derives merge targets via collectLiveMergeTargets from the rfc.archive result's moved[] (direction into-archive, status implemented), resolving 'to' with 'from' fallback for dry-run moves. Recursive re-scan of all archived RFCs is gone — repeat runs no-op (AC-3). Merge failures stay non-fatal; V-LS-08 detects resulting coverage gaps.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 
@@ -51,9 +45,7 @@ describe("docs.archive collectLiveMergeTargets (AC-3)", () => {
   });
 
   it("ignores out-of-archive moves entirely", () => {
-    const selection = collectLiveMergeTargets([
-      move("RFC-1001", "implemented", "out-of-archive"),
-    ]);
+    const selection = collectLiveMergeTargets([move("RFC-1001", "implemented", "out-of-archive")]);
     expect(selection.candidates).toEqual([]);
     expect(selection.rejected).toEqual([]);
   });

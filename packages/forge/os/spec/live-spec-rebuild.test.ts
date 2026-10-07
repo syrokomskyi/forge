@@ -8,13 +8,7 @@ unreadable-RFC tolerance, unchanged/skipped operations, dry-run (RFC-1230).</pur
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial unit tests for spec.live.rebuild.</item>
-  <item>RFC-1230: step 2 — spec.live.rebuild command
-
-New workspace command deduplicates history[] and replays source RFCs deterministically (namespace headings, preserve first mergedAt/operation and createdAt, unchanged → no write, empty history → skipped). Missing/unreadable/non-implemented/design-less RFCs warn into unreadableRfcs and never abort. --domain selects one spec; absent selector (or kernel-consumed --all via supportsAllSites) rebuilds all.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 

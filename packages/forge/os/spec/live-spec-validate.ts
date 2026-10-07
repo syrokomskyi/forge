@@ -11,13 +11,7 @@ to spec.live.rebuild (V-LS-06/07) or spec.live.merge --id (V-LS-08), never hand-
 <CHANGE_SUMMARY>
   <item>RFC-0711: initial spec.live.validate handler with V-LS-01..05 rules.</item>
   <item>RFC-1230: added V-LS-06 (duplicate namespaced headings), V-LS-07 (duplicate history RFCs), V-LS-08 (archive coverage — implemented liveSpec RFC absent from spec history).</item>
-  <item>RFC-1230: step 3 — V-LS-06/07/08 living-spec rules
-
-V-LS-06 flags duplicated (RFC-XXXX) headings, V-LS-07 duplicated history[].rfc entries — both repair via spec.live.rebuild. V-LS-08 flags implemented liveSpec RFCs under archive/implemented/ absent from the domain spec's history (or missing spec file) — repair via spec.live.merge --id. Validator stays read-only.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 

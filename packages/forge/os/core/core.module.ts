@@ -12,13 +12,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1173: fixup: flip mutatesState to true on 19 commands that declare writes/generates — the codemod's name-suffix rules misclassified leitstand.dev-deploy, leitstand.certify, coverage.report and peers as read-only; declared writes imply mutation</item>
   <item>RFC-1230: docs.archive post-loop merges only RFCs moved this run (collectLiveMergeTargets on rfc.archive moved[] instead of a full-tree rescan); declared docs/specs/live/*.md in writes/reads.</item>
-  <item>RFC-1230: step 4 — docs.archive merges only this-run moves
-
-Post-loop derives merge targets via collectLiveMergeTargets from the rfc.archive result's moved[] (direction into-archive, status implemented), resolving 'to' with 'from' fallback for dry-run moves. Recursive re-scan of all archived RFCs is gone — repeat runs no-op (AC-3). Merge failures stay non-fatal; V-LS-08 detects resulting coverage gaps.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097</history>
 </CHANGE_SUMMARY>
 */

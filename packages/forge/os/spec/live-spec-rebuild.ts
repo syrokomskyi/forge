@@ -12,13 +12,7 @@ order yields the canonical spec; hand-applied edits are dropped by design.</purp
 </non-goals>
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial spec.live.rebuild handler — dedupe history, single RFC scan, replay via shared section mechanics, unchanged-detection modulo updatedAt.</item>
-  <item>RFC-1230: step 2 — spec.live.rebuild command
-
-New workspace command deduplicates history[] and replays source RFCs deterministically (namespace headings, preserve first mergedAt/operation and createdAt, unchanged → no write, empty history → skipped). Missing/unreadable/non-implemented/design-less RFCs warn into unreadableRfcs and never abort. --domain selects one spec; absent selector (or kernel-consumed --all via supportsAllSites) rebuilds all.
-
-Generated with [Devin](https://devin.ai)
-
-Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
 </CHANGE_SUMMARY>
 */
 
@@ -80,6 +74,7 @@ async function rebuildOneSpec(
 
   const content = await fs.readFile(specFilePath).catch(() => null);
   if (content === null) {
+    logger.warn(`spec.live.rebuild: ${domain} unreadable at ${specFilePath} — skipping`);
     return { result: base, exitCode: 1 };
   }
   const spec = parseLivingSpec(content);
@@ -99,10 +94,13 @@ async function rebuildOneSpec(
     normalizedHistory.push(entry);
   }
 
+  // Count only namespaced duplicates — the metric is "duplicate (RFC-XXXX)
+  // sections removed"; non-namespaced heading repeats are out of contract.
   const existingHeadings = parseHeadings(spec.body);
   const seenTexts = new Set<string>();
   let droppedSections = 0;
   for (const h of existingHeadings) {
+    if (!/\(RFC-\d{4}\)$/.test(h.text)) continue;
     if (seenTexts.has(h.text)) droppedSections++;
     else seenTexts.add(h.text);
   }
