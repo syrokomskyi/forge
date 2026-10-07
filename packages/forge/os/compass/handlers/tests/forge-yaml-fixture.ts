@@ -7,7 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1220: extract shared forge.yaml fixture from triplicated test copies — schema-required paths section included; mkdtemp roots tracked for afterEach cleanup.</item>
-  <item>RFC-1220: fo-review — F-1 shared forge-yaml fixture, F-2 temp-dir cleanup</item>
+  <item>RFC-1220: dedupe auto-stamped CHANGE_SUMMARY item in forge-yaml fixture</item>
 </CHANGE_SUMMARY>
 */
 
