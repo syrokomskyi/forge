@@ -51,6 +51,32 @@ const MEDIUM_FILE = "packages/fixture-pkg/src/components/mission-widget.ts";
 // Low-risk path: bare src/** maps to layer "source" → riskClass low.
 const LOW_FILE = "packages/fixture-pkg/src/mission-notes.ts";
 
+const FORGE_YAML = (bindings: string) => `
+schema: forge/config@1
+project:
+  name: test-ws
+  stack: [typescript]
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+bindings:
+  schema: forge/bindings@1
+  commands: {}
+  paths: {}
+${bindings}`;
+
+// Generic NS-NNN alternative plus a mission-tail alternative (RFC-1220).
+// Single-quoted YAML keeps backslashes literal — JS "\\b" emits regex "\b".
+const MISSION_ID_PATTERN = "\\b(?:[A-Z][A-Z0-9]*-)+\\d+\\b|\\b[a-z][a-z0-9-]*-m\\d{6}\\b";
+// Admits a no-digit-tail token that passes idPatternFull yet cannot parse —
+// simulates future policy/parser drift (RFC-1220 fail-closed path).
+const DRIFT_ID_PATTERN = "\\b(?:[A-Z][A-Z0-9]*-)+\\d+\\b|\\b[A-Z]+-[A-Z]+\\b";
+
 describe("compass v2 contract (RFC-1094)", () => {
   let tempDir: string;
 
@@ -212,6 +238,42 @@ describe("compass v2 contract (RFC-1094)", () => {
       dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-07"),
       "CS-07 must fire on descending per-namespace order",
     ).toBeDefined();
+  });
+
+  it("CS-07: mission-format history token validates without crash (RFC-1220)", async () => {
+    writeFileSync(
+      join(tempDir, "forge.yaml"),
+      FORGE_YAML(`  compass:\n    idPattern: '${MISSION_ID_PATTERN}'`),
+    );
+    writeFixture(
+      MEDIUM_FILE,
+      wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS([CS_ITEM], "acme-m000175")),
+    );
+
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
+    const cs07 = dataOf(result).diagnostics.filter((d) => d.ruleId === "COMPASS-CS-07");
+    expect(
+      cs07,
+      `mission-format token must be a legal history ID: ${JSON.stringify(cs07)}`,
+    ).toHaveLength(0);
+  });
+
+  it("CS-07: token passing idPatternFull but unparseable emits diagnostic, no crash (RFC-1220)", async () => {
+    writeFileSync(
+      join(tempDir, "forge.yaml"),
+      FORGE_YAML(`  compass:\n    idPattern: '${DRIFT_ID_PATTERN}'`),
+    );
+    writeFixture(
+      MEDIUM_FILE,
+      wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS([CS_ITEM], "FOO-BAR")),
+    );
+
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
+    const cs07 = dataOf(result).diagnostics.find(
+      (d) => d.ruleId === "COMPASS-CS-07" && d.message.includes("unparseable"),
+    );
+    expect(cs07, "unparseable token must produce a CS-07 diagnostic").toBeDefined();
+    expect(result.exitCode).toBeDefined();
   });
 
   it("empty CHANGE_SUMMARY (no items, no history) is legal", async () => {

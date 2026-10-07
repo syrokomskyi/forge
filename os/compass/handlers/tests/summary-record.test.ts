@@ -18,6 +18,35 @@ import type { ForgeRuntimeContext } from "../../../../src/types.ts";
 // GENERIC defaults.
 const policy = resolveCompassPolicy(join(tmpdir(), "summary-record-no-forge-yaml"));
 
+// Resolve a policy whose bindings.compass.idPattern is the given union —
+// used for mission-format and policy/parser-drift coverage (RFC-1220).
+async function policyWithIdPattern(idPattern: string) {
+  const root = await mkdtemp(join(tmpdir(), "summary-record-pattern-"));
+  await writeFile(
+    join(root, "forge.yaml"),
+    `schema: forge/config@1
+project:
+  name: test-ws
+  stack: [typescript]
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+bindings:
+  schema: forge/bindings@1
+  commands: {}
+  paths: {}
+  compass:
+    idPattern: '${idPattern}'
+`,
+  );
+  return resolveCompassPolicy(root);
+}
+
 const logger = {
   section() {},
   info() {},
@@ -213,6 +242,28 @@ describe("summary-record helpers", () => {
       "ADR-0001",
       "RFC-0002",
       "RFC-0005",
+    ]);
+  });
+
+  it("mergeHistoryIds sorts mission-format tokens under their namespace (RFC-1220)", async () => {
+    const missionPolicy = await policyWithIdPattern(
+      "\\b(?:[A-Z][A-Z0-9]*-)+\\d+\\b|\\b[a-z][a-z0-9-]*-m\\d{6}\\b",
+    );
+    expect(mergeHistoryIds(["acme-m000003"], ["acme-m000001", "RFC-0002"], missionPolicy)).toEqual([
+      "acme-m000001",
+      "acme-m000003",
+      "RFC-0002",
+    ]);
+  });
+
+  it("mergeHistoryIds appends unparseable admitted tokens last (RFC-1220)", async () => {
+    const driftPolicy = await policyWithIdPattern(
+      "\\b(?:[A-Z][A-Z0-9]*-)+\\d+\\b|\\b[A-Z]+-[A-Z]+\\b",
+    );
+    expect(mergeHistoryIds(["FOO-BAR"], ["RFC-0002", "RFC-0001"], driftPolicy)).toEqual([
+      "RFC-0001",
+      "RFC-0002",
+      "FOO-BAR",
     ]);
   });
 
