@@ -8,6 +8,7 @@ import {
   mergeHistoryIds,
   buildChangeSummaryBlock,
   stripConventionalPrefix,
+  stripGitTrailers,
   isValidGovernanceId,
   CHANGE_SUMMARY_WINDOW,
 } from "../summary-record.ts";
@@ -191,6 +192,65 @@ describe("compass.summary.record", () => {
     expect(source).toContain("<item>RFC-1095: record command</item>");
     expect(source).not.toContain("RFC-1095: RFC-1095");
   });
+
+  it("strips Generated-with/Co-Authored-By trailer blocks from the recorded item (RFC-1233 AC-1)", async () => {
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1233",
+        files: ["src/a.ts"],
+        text: "trailer stripping\n\nGenerated with [Devin](https://devin.ai)\nCo-Authored-By: Devin <bot@users.noreply.github.com>",
+      }),
+      makeContext(root),
+    );
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).toContain("<item>RFC-1233: trailer stripping</item>");
+    expect(source).not.toContain("Co-Authored-By");
+    expect(source).not.toContain("Generated with");
+    expect(source).not.toContain("devin.ai");
+  });
+
+  it("neutralizes a literal star-slash in --text so the item cannot terminate the block comment (RFC-1233 AC-2)", async () => {
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1233",
+        files: ["src/a.ts"],
+        text: "glob src" + "/**/*.ts in comments",
+      }),
+      makeContext(root),
+    );
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).toContain("RFC-1233: glob src");
+    expect(source.match(CS_BLOCK_RE)).not.toBeNull();
+    // The neutralized form keeps both characters readable but cannot close /*.
+    expect(source).toContain("glob src/**" + "∕*.ts in comments");
+  });
+
+  it("keeps a single-line subject identical — negative regression (RFC-1233 AC-3)", async () => {
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    await runCompassSummaryRecord(
+      makeInput({ id: "RFC-1233", files: ["src/a.ts"], text: "plain subject line" }),
+      makeContext(root),
+    );
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).toContain("<item>RFC-1233: plain subject line</item>");
+  });
+
+  it("preserves a Key: value-shaped line when it is not in the trailing block (RFC-1233 AC-4)", async () => {
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1233",
+        files: ["src/a.ts"],
+        text: "fix the parser\n\nNote: this line is prose about the fix\nfinal summary line",
+      }),
+      makeContext(root),
+    );
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).toContain("Note: this line is prose about the fix");
+    expect(source).toContain("final summary line");
+  });
 });
 
 describe("summary-record helpers", () => {
@@ -245,5 +305,20 @@ describe("summary-record helpers", () => {
     const block = buildChangeSummaryBlock(["RFC-1: a"], [], "x.ts");
     expect(block).not.toContain("<history>");
     expect(block).toContain("<item>RFC-1: a</item>");
+  });
+
+  it("stripGitTrailers strips a Token:-shaped tail block (RFC-1233)", () => {
+    expect(
+      stripGitTrailers("subject\n\nbody line\nCo-Authored-By: Devin <bot@x>\nX-RFC: RFC-1233"),
+    ).toBe("subject\n\nbody line");
+  });
+
+  it("stripGitTrailers keeps a lone markdown-link tail (no strict trailer line)", () => {
+    const msg = "subject\n\nsee [the docs](https://example.com)";
+    expect(stripGitTrailers(msg)).toBe(msg);
+  });
+
+  it("stripGitTrailers on a trailer-only message returns empty", () => {
+    expect(stripGitTrailers("Co-Authored-By: Devin <bot@x>")).toBe("");
   });
 });

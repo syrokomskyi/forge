@@ -28,6 +28,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
   <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
+  <item>RFC-1233: stripGitTrailers at the record point + sanitizeItemText star-slash guard — commit-message trailers (Token: value / Token #value, plus markdown-link attribution lines like "Generated with [X](url)") no longer pollute injected items.</item>
   <history>RFC-1095</history>
 </CHANGE_SUMMARY>
 */
@@ -167,6 +168,40 @@ export function stripConventionalPrefix(subject: string): string {
   return subject.replace(CONVENTIONAL_PREFIX_RE, "").trim();
 }
 
+// RFC-1233: git-trailer tail block — strict `Token: value` / `Token #value`
+// lines (interpret-trailers shape), plus lines ending in a markdown link
+// (the observed "Generated with [X](url)" attribution boilerplate has no
+// separator). A link-shaped line is admitted only when the block also
+// contains at least one strict trailer line — a lone link tail is prose.
+const TRAILER_LINE_RE = /^[A-Za-z0-9-]+(:| #)\s*.+$/;
+const MARKDOWN_LINK_TAIL_RE = /^.*\[[^\]]*\]\([^)]+\)\s*$/;
+
+/**
+ * Remove a trailing git-trailer block: the contiguous tail of strict
+ * trailer lines and admitted markdown-link lines. A blank line ends the
+ * tail paragraph. Returns the message without the block; when the tail
+ * holds no strict trailer line the message is returned unchanged.
+ */
+export function stripGitTrailers(message: string): string {
+  const lines = message.trimEnd().split("\n");
+  let start = lines.length;
+  let sawStrict = false;
+  while (start > 0) {
+    const line = lines[start - 1]!.trim();
+    if (line === "") break;
+    if (TRAILER_LINE_RE.test(line)) {
+      sawStrict = true;
+      start--;
+    } else if (MARKDOWN_LINK_TAIL_RE.test(line)) {
+      start--;
+    } else {
+      break;
+    }
+  }
+  if (!sawStrict || start === lines.length) return message;
+  return lines.slice(0, start).join("\n").trimEnd();
+}
+
 // Literal Compass block tags inside an item corrupt block parsing — a commit
 // message saying "collapsed into history" would be matched by HISTORY_RE and
 // produce phantom non-ID tokens (CS-07). Strip the angle brackets on record.
@@ -174,7 +209,14 @@ const COMPASS_TAG_LITERAL_RE =
   /<\/?(?:CHANGE_SUMMARY|MODULE_CONTRACT|KEY_DECISIONS|history|item|purpose|non-goals)>/g;
 
 export function sanitizeItemText(text: string): string {
-  return text.replace(COMPASS_TAG_LITERAL_RE, (tag) => tag.replace(/[<>]/g, ""));
+  return (
+    text
+      .replace(COMPASS_TAG_LITERAL_RE, (tag) => tag.replace(/[<>]/g, ""))
+      // RFC-1233: a literal star-slash sequence would terminate the
+      // surrounding block comment when the item lands in /* ... */ headers.
+      // ∕ (U+2215) is visually near-identical, idempotent, and never re-forms.
+      .replace(/\*\//g, "*\u2215")
+  );
 }
 
 export function isValidGovernanceId(id: string, policy: CompassPolicy): boolean {
@@ -278,7 +320,10 @@ export async function runCompassSummaryRecord(
       : [];
 
   const rawText = input.flags["text"];
-  const text = typeof rawText === "string" && rawText.trim().length > 0 ? rawText.trim() : id;
+  // RFC-1233: strip the git-trailer block at the single injection point —
+  // ecosystem.commit and mission.git.commit both pipe the raw message here.
+  const stripped = typeof rawText === "string" ? stripGitTrailers(rawText).trim() : "";
+  const text = stripped.length > 0 ? stripped : id;
 
   const result: SummaryRecordResult = {
     command: "compass.summary.record",
