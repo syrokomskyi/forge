@@ -6,16 +6,20 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1089: rename forge.file-size.lint to file.size.lint (domain validator, no forge. prefix).</item>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1173: fixup: flip mutatesState to true on 19 commands that declare writes/generates — the codemod's name-suffix rules misclassified leitstand.dev-deploy, leitstand.certify, coverage.report and peers as read-only; declared writes imply mutation</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088</history>
+  <item>RFC-1230: docs.archive post-loop merges only RFCs moved this run (collectLiveMergeTargets on rfc.archive moved[] instead of a full-tree rescan); declared docs/specs/live/*.md in writes/reads.</item>
+  <item>RFC-1230: step 4 — docs.archive merges only this-run moves
+
+Post-loop derives merge targets via collectLiveMergeTargets from the rfc.archive result's moved[] (direction into-archive, status implemented), resolving 'to' with 'from' fallback for dry-run moves. Recursive re-scan of all archived RFCs is gone — repeat runs no-op (AC-3). Merge failures stay non-fatal; V-LS-08 detects resulting coverage gaps.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
@@ -839,6 +843,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "docs/sessions/archive/**",
           "missions/*",
           "missions/archive/**",
+          "docs/specs/live/*.md",
         ],
         generates: [],
         reads: [
@@ -847,6 +852,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "docs/plans/**/*.md",
           "docs/audits/**/*.md",
           "docs/sessions/**/*.md",
+          "docs/specs/live/*.md",
           "missions/**",
         ],
         cacheable: false,
@@ -902,13 +908,29 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             }
           }
 
-          // ── RFC-0711: post-loop spec.live.merge for implemented RFCs with liveSpec ──
-          const { listRfcFiles, readAndParseRfc } = await import("../rfc/frontmatter-io.ts");
+          // ── RFC-0711 + RFC-1230: post-loop spec.live.merge — only RFCs moved
+          // into archive/implemented/ this run. Re-scanning the whole tree on
+          // every invocation is what produced duplicate sections/history.
+          // Merge failure stays non-fatal; V-LS-08 detects any coverage gap. ──
+          const { readAndParseRfc } = await import("../rfc/frontmatter-io.ts");
           const { RFC_DIR } = await import("../rfc/types.ts");
           const { runSpecLiveMerge } = await import("../spec/live-spec-merge.ts");
+          const { collectLiveMergeTargets } = await import("../spec/live-spec-shared.ts");
           const rfcDirPath = path.join(context.workspaceRoot, RFC_DIR);
-          const statusFilter = input.flags["status"] as string | undefined;
-          const allRfcFiles = await listRfcFiles(rfcDirPath);
+          const rfcArchiveData = results["rfc.archive"] as
+            | {
+                moved?: Array<{
+                  id: string;
+                  status: string;
+                  direction: string;
+                  from: string;
+                  to: string;
+                }>;
+              }
+            | undefined;
+          const thisRunMoved = Array.isArray(rfcArchiveData?.moved) ? rfcArchiveData.moved : [];
+          const movedById = new Map(thisRunMoved.map((m) => [m.id, m]));
+          const selection = collectLiveMergeTargets(thisRunMoved);
           const liveMergeResults: Array<{
             id: string;
             domain: string;
@@ -917,24 +939,34 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           }> = [];
           let liveMergeSkipped = 0;
 
-          for (const rfcFile of allRfcFiles) {
-            const parsed = await readAndParseRfc(rfcDirPath, rfcFile);
-            if (!parsed || "error" in parsed) continue;
-            const fm = parsed.parsed.frontmatter;
-            const rfcStatus = String(fm["status"] ?? "").trim();
-            const liveSpec = fm["liveSpec"];
-            const rfcId = String(fm["id"] ?? "");
-
-            if (!liveSpec || rfcStatus !== "implemented") {
-              if (liveSpec && rfcStatus === "rejected") {
-                liveMergeSkipped++;
-                if (outputFormat === "pretty") {
-                  logger.info(`  spec.live.merge: skipping ${rfcId} (status: rejected)`);
-                }
-              }
-              continue;
+          const parseMovedRfc = async (id: string) => {
+            const move = movedById.get(id);
+            if (!move) return undefined;
+            const rel = (p: string) =>
+              p.startsWith(`${RFC_DIR}/`) ? p.slice(RFC_DIR.length + 1) : p;
+            // Under --dry-run the file was not renamed — `to` does not exist yet,
+            // so fall back to `from` (the still-current location).
+            for (const candidate of [rel(move.to), rel(move.from)]) {
+              const parsed = await readAndParseRfc(rfcDirPath, candidate);
+              if (parsed && "parsed" in parsed) return parsed;
             }
-            if (statusFilter && rfcStatus !== statusFilter) continue;
+            return undefined;
+          };
+
+          for (const rfcId of selection.rejected) {
+            const parsed = await parseMovedRfc(rfcId);
+            if (parsed?.parsed.frontmatter["liveSpec"]) {
+              liveMergeSkipped++;
+              if (outputFormat === "pretty") {
+                logger.info(`  spec.live.merge: skipping ${rfcId} (status: rejected)`);
+              }
+            }
+          }
+
+          for (const rfcId of selection.candidates) {
+            const parsed = await parseMovedRfc(rfcId);
+            if (!parsed) continue;
+            if (!parsed.parsed.frontmatter["liveSpec"]) continue;
 
             try {
               const mergeInput: ForgeCommandInput = {
