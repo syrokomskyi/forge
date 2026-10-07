@@ -1,13 +1,23 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Unit tests for spec.live.merge handler — covers creation, modification,
-conflict detection, dry-run, no-op cases (RFC-0711).</purpose>
+idempotent already-merged skip, --force re-merge, conflict detection, dry-run,
+no-op cases (RFC-0711, RFC-1230).</purpose>
 <non-goals>
   <item>Do not test docs.archive integration — covered separately.</item>
+  <item>Do not test spec.live.rebuild — covered by live-spec-rebuild.test.ts.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0711: initial unit tests for spec.live.merge.</item>
+  <item>RFC-1230: updated re-merge expectations to already-merged; added --force surgical re-merge and byte-identity cases.</item>
+  <item>RFC-1230: step 1 — idempotent spec.live.merge with --force
+
+Add the already-merged gate (history[] membership → no-op, byte-identical file) and --force surgical re-merge (drop all (RFC-XXXX) sections + history entries, replay the RFC, append one entry). Shared parsing/serialization helpers extracted to live-spec-shared.ts; operation enum gains "already-merged". PBT covers merge∘merge ≡ merge.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
 </CHANGE_SUMMARY>
 */
 
@@ -243,18 +253,61 @@ describe("spec.live.merge", () => {
     expect(content).toContain("lastMergedRfc: RFC-9001");
   });
 
-  it("modifies an existing living spec", async () => {
+  it("skips an already-merged RFC and leaves the spec byte-identical (AC-1)", async () => {
     // First merge creates the spec
     const input1: ForgeCommandInput = { argv: [], flags: { id: "RFC-9001" } };
     await runSpecLiveMerge(input1, makeContext(tmpDir));
 
-    // Second merge modifies it
+    const specFile = path.join(tmpDir, "docs/specs/live/forge.md");
+    const before = await fs.readFile(specFile, "utf-8");
+
+    // Second merge of the same RFC is a no-op
     const input2: ForgeCommandInput = { argv: [], flags: { id: "RFC-9001" } };
     const result = await runSpecLiveMerge(input2, makeContext(tmpDir));
 
     expect(result.exitCode).toBe(0);
-    expect(result.data?.operation).toBe("modified");
+    expect(result.data?.operation).toBe("already-merged");
     expect(result.data?.domain).toBe("forge");
+    expect(result.data?.deltas).toEqual([]);
+
+    const after = await fs.readFile(specFile, "utf-8");
+    expect(after).toBe(before);
+  });
+
+  it("re-merges an already-merged RFC surgically with --force (AC-2)", async () => {
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, makeContext(tmpDir));
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9004" } }, makeContext(tmpDir));
+
+    const specFile = path.join(tmpDir, "docs/specs/live/forge.md");
+
+    // Simulate prior corruption: a duplicated RFC-9001 section + history entry.
+    const corrupted = (await fs.readFile(specFile, "utf-8"))
+      .replace(
+        "### TypeScript contracts (RFC-9001)\n\nSome types.",
+        "### TypeScript contracts (RFC-9001)\n\nSome types.\n\n### CLI surface (RFC-9001)\n\nDuplicated stale section.",
+      )
+      .replace(
+        "  - rfc: RFC-9004",
+        "  - rfc: RFC-9001\n    mergedAt: 2026-08-07\n    operation: modified\n  - rfc: RFC-9004",
+      );
+    await fs.writeFile(specFile, corrupted);
+
+    const result = await runSpecLiveMerge(
+      { argv: [], flags: { id: "RFC-9001", force: true } },
+      makeContext(tmpDir),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.operation).toBe("modified");
+
+    const after = await fs.readFile(specFile, "utf-8");
+    // Exactly one section set for RFC-9001 remains; stale duplicate is gone.
+    expect(after.match(/\(RFC-9001\)/g)?.length).toBe(3);
+    expect(after).not.toContain("Duplicated stale section.");
+    // Exactly one history entry for RFC-9001.
+    expect(after.match(/rfc: RFC-9001/g)?.length).toBe(1);
+    // RFC-9004 sections untouched.
+    expect(after).toContain("CLI surface (RFC-9004)");
   });
 
   it("skips RFCs without liveSpec field (no-op)", async () => {
@@ -323,15 +376,33 @@ describe("spec.live.merge", () => {
     expect(content).toContain("CLI surface (RFC-9004)");
   });
 
-  it("re-merges namespaced headings without conflicts on subsequent docs.archive runs", async () => {
+  it("reports already-merged on re-run instead of duplicating sections (RFC-1230)", async () => {
     // Initial merges
     await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, makeContext(tmpDir));
     await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9004" } }, makeContext(tmpDir));
 
-    // Re-merge RFC-9001 (simulates docs.archive re-running all merges)
+    // Re-merge RFC-9001 (simulates a repeated caller) — idempotent no-op
     const result = await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, makeContext(tmpDir));
 
     expect(result.exitCode).toBe(0);
-    expect(result.data?.conflicts.length).toBe(0);
+    expect(result.data?.operation).toBe("already-merged");
+    expect(result.data?.deltas).toEqual([]);
+  });
+
+  it("writes nothing under --dry-run on an existing spec (AC-9)", async () => {
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, makeContext(tmpDir));
+    const specFile = path.join(tmpDir, "docs/specs/live/forge.md");
+    const before = await fs.readFile(specFile, "utf-8");
+
+    const ctx = makeContext(tmpDir);
+    ctx.dryRun = true;
+    const result = await runSpecLiveMerge(
+      { argv: [], flags: { id: "RFC-9001", force: true, "dry-run": true } },
+      ctx,
+    );
+
+    expect(result.data?.dryRun).toBe(true);
+    const after = await fs.readFile(specFile, "utf-8");
+    expect(after).toBe(before);
   });
 });
