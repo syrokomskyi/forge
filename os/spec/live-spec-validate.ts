@@ -1,8 +1,8 @@
 /*
 <MODULE_CONTRACT>
 <purpose>spec.live.validate handler — validates all living specs in docs/specs/live/
-with rules V-LS-01..08 (RFC-0711, RFC-1230). Detection layer only — repair routes
-to spec.live.rebuild (V-LS-06/07) or spec.live.merge --id (V-LS-08), never hand-edits.</purpose>
+with rules V-LS-01..09 (RFC-0711, RFC-1230, RFC-1234). Detection layer only — repair routes
+to spec.live.rebuild (V-LS-06/07/09) or spec.live.merge --id (V-LS-08), never hand-edits.</purpose>
 <non-goals>
   <item>Do not merge or list — use spec.live.merge / spec.live.list.</item>
   <item>Do not repair — validators are read-only; spec.live.rebuild is the repair path.</item>
@@ -12,6 +12,12 @@ to spec.live.rebuild (V-LS-06/07) or spec.live.merge --id (V-LS-08), never hand-
   <item>RFC-0711: initial spec.live.validate handler with V-LS-01..05 rules.</item>
   <item>RFC-1230: added V-LS-06 (duplicate namespaced headings), V-LS-07 (duplicate history RFCs), V-LS-08 (archive coverage — implemented liveSpec RFC absent from spec history).</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
+  <item>RFC-1234: V-LS-09 content-drift rule — replays each spec's deduplicated history via the extracted projectLiveSpec core and compares committed bytes modulo updatedAt; LivingSpecViolation gains a severity channel (error findings drive the exit code, warning findings report unreadable history RFCs without failing the run).</item>
+  <item>RFC-1234: add V-LS-09 content-drift gate to spec.live.validate (RFC-1234)
+
+Extract projectLiveSpec — the pure replay projection — from rebuildOneSpec so the validator reuses the same dedupe + Design replay + serialize pipeline rebuild writes. spec.live.validate emits V-LS-09 error when committed bytes diverge from the projection modulo updatedAt, and a warning-severity diagnostic for history RFCs unreadable during replay. LivingSpecViolation gains severity field (absent = error; errors drive exit code). uniqueRfcs contract comment states the deduplicated-history semantics exactly.
+
+Severity decision per RFC rollout: error on introduction — the pre-flight reconciliation rebuild left a verified-clean baseline.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +38,7 @@ import type {
   LivingSpecHistoryEntry,
 } from "./live-spec-types.ts";
 import { deriveDomain, parseHeadings } from "./live-spec-shared.ts";
+import { projectLiveSpec } from "./live-spec-rebuild.ts";
 
 const LIVE_SPECS_DIR = "docs/specs/live";
 
@@ -92,6 +99,8 @@ export async function runSpecLiveValidate(
 
   const files = (await fs.readdir(liveSpecsDir)).map((e) => e.name);
   const specFiles = files.filter((f) => f.endsWith(".md") && f !== "README.md");
+
+  const parsedSpecPaths: Array<{ file: string; filePath: string; domain: string }> = [];
 
   for (const file of specFiles) {
     specsChecked++;
@@ -192,6 +201,7 @@ export async function runSpecLiveValidate(
         });
       }
       domains.add(domain);
+      parsedSpecPaths.push({ file, filePath, domain });
     }
   }
 
@@ -215,7 +225,32 @@ export async function runSpecLiveValidate(
     }
   }
 
-  const hasFailures = violations.length > 0;
+  // V-LS-09 (content drift): replay each spec's deduplicated history via the
+  // same projection core rebuild uses, compare against committed bytes modulo
+  // updatedAt (RFC-1234 — DNA-58 closure for living specs). Specs that failed
+  // frontmatter parse are already fail-closed via V-LS-01 and skip here.
+  for (const { file, filePath, domain } of parsedSpecPaths) {
+    const proj = await projectLiveSpec(filePath, domain, rfcFiles, rfcDir);
+    if (proj.kind !== "projected") continue;
+    for (const rfcId of proj.unreadableRfcs) {
+      violations.push({
+        rule: "V-LS-09",
+        severity: "warning",
+        message: `${file}: history entry "${rfcId}" unreadable, not implemented, or lacks ## Design — excluded from replay`,
+        domain,
+      });
+    }
+    if (proj.projection !== proj.content) {
+      violations.push({
+        rule: "V-LS-09",
+        severity: "error",
+        message: `${file}: spec content diverges from replay of history[] — repair via spec.live.rebuild --domain ${domain}`,
+        domain,
+      });
+    }
+  }
+
+  const hasFailures = violations.some((v) => v.severity !== "warning");
   const result: SpecLiveValidateResult = {
     command: "spec.live.validate",
     status: hasFailures ? "fail" : "pass",

@@ -10,6 +10,12 @@ synthetic living-spec fixtures (RFC-1230).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial unit tests for V-LS-06/07/08.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
+  <item>RFC-1234: V-LS-09 drift fixtures (AC-1..3); clean/fence fixtures now produced by runSpecLiveMerge so spec bytes are canonical under replay comparison.</item>
+  <item>RFC-1234: add V-LS-09 content-drift gate to spec.live.validate (RFC-1234)
+
+Extract projectLiveSpec — the pure replay projection — from rebuildOneSpec so the validator reuses the same dedupe + Design replay + serialize pipeline rebuild writes. spec.live.validate emits V-LS-09 error when committed bytes diverge from the projection modulo updatedAt, and a warning-severity diagnostic for history RFCs unreadable during replay. LivingSpecViolation gains severity field (absent = error; errors drive exit code). uniqueRfcs contract comment states the deduplicated-history semantics exactly.
+
+Severity decision per RFC rollout: error on introduction — the pre-flight reconciliation rebuild left a verified-clean baseline.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,6 +24,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 import { runSpecLiveValidate } from "./live-spec-validate.ts";
+import { runSpecLiveMerge } from "./live-spec-merge.ts";
 import type { ForgeRuntimeContext } from "../../src/types.ts";
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
@@ -35,7 +42,7 @@ function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   };
 }
 
-function archivedRfc(id: string, liveSpec = true) {
+function archivedRfc(id: string, liveSpec = true, design = "### Section\n\nBody.") {
   return `---
 id: ${id}
 title: "Archived RFC ${id}"
@@ -66,9 +73,7 @@ nonGoals: []
 
 ## Design
 
-### Section
-
-Body.
+${design}
 `;
 }
 
@@ -189,24 +194,37 @@ describe("spec.live.validate (V-LS-06/07/08)", () => {
   });
 
   it("does not emit V-LS-06 for ### (RFC-NNNN) lines inside fenced blocks (RFC-1232 AC-2)", async () => {
+    // The spec is produced by the real merge writer so V-LS-09 sees a
+    // byte-canonical file — fence-interior ### lines come from RFC-9001's
+    // Design and replay identically.
+    const fencedDesign = [
+      "### Alpha",
+      "",
+      "a.",
+      "",
+      "```md",
+      "### Alpha (RFC-9001)",
+      "### Alpha (RFC-9001)",
+      "```",
+      "",
+      "~~~",
+      "### Beta (RFC-9002)",
+      "~~~",
+    ].join("\n");
     await fs.writeFile(
-      path.join(tmpDir, "docs/specs/live/forge.md"),
-      specFixture({
-        domain: "forge",
-        lastMergedRfc: "RFC-9002",
-        historyEntries:
-          ENTRY_9001 +
-          "  - rfc: RFC-9002\n    mergedAt: 2026-08-07\n    operation: modified\n",
-        sections: [
-          "### Alpha (RFC-9001)\n\na.",
-          "```md\n### Alpha (RFC-9001)\n### Alpha (RFC-9001)\n```",
-          "~~~\n### Beta (RFC-9002)\n~~~",
-          "### Beta (RFC-9002)\n\nb.",
-        ].join("\n\n"),
-      }),
+      path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9001-merged.md"),
+      archivedRfc("RFC-9001", true, fencedDesign),
+    );
+    await fs.writeFile(
+      path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9002-unmerged.md"),
+      archivedRfc("RFC-9002", true, "### Beta\n\nb."),
     );
 
-    const result = await runSpecLiveValidate({ argv: [], flags: {} }, makeContext(tmpDir));
+    const ctx = makeContext(tmpDir);
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, ctx);
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9002" } }, ctx);
+
+    const result = await runSpecLiveValidate({ argv: [], flags: {} }, ctx);
     const v6 = result.data?.violations.filter((v) => v.rule === "V-LS-06") ?? [];
     // Fence-interior occurrences do not count — both real headings are unique.
     expect(v6).toEqual([]);
@@ -215,22 +233,90 @@ describe("spec.live.validate (V-LS-06/07/08)", () => {
 
   it("produces no V-LS-06/07/08 on a clean spec", async () => {
     await fs.writeFile(
-      path.join(tmpDir, "docs/specs/live/forge.md"),
-      specFixture({
-        domain: "forge",
-        lastMergedRfc: "RFC-9002",
-        historyEntries:
-          "  - rfc: RFC-9001\n    mergedAt: 2026-08-06\n    operation: created\n" +
-          "  - rfc: RFC-9002\n    mergedAt: 2026-08-07\n    operation: modified\n",
-        sections: "### Alpha (RFC-9001)\n\na.\n\n### Beta (RFC-9002)\n\nb.",
-      }),
+      path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9001-merged.md"),
+      archivedRfc("RFC-9001", true, "### Alpha\n\na."),
     );
+    await fs.writeFile(
+      path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9002-unmerged.md"),
+      archivedRfc("RFC-9002", true, "### Beta\n\nb."),
+    );
+    const ctx = makeContext(tmpDir);
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, ctx);
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9002" } }, ctx);
 
-    const result = await runSpecLiveValidate({ argv: [], flags: {} }, makeContext(tmpDir));
+    const result = await runSpecLiveValidate({ argv: [], flags: {} }, ctx);
     const dupOrGap = result.data?.violations.filter((v) =>
       ["V-LS-06", "V-LS-07", "V-LS-08"].includes(v.rule),
     ) ?? [];
     expect(dupOrGap).toEqual([]);
     expect(result.exitCode).toBe(0);
+  });
+});
+
+describe("spec.live.validate (V-LS-09 content drift — RFC-1234)", () => {
+  let tmpDir: string;
+
+  beforeEach(async () => {
+    tmpDir = await setupWorkspace();
+    await fs.writeFile(
+      path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9001-merged.md"),
+      archivedRfc("RFC-9001", true, "### Alpha\n\na."),
+    );
+    await fs.writeFile(
+      path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9002-unmerged.md"),
+      archivedRfc("RFC-9002", true, "### Beta\n\nb."),
+    );
+  });
+
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
+  async function mergedSpec(): Promise<string> {
+    const ctx = makeContext(tmpDir);
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9001" } }, ctx);
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9002" } }, ctx);
+    return path.join(tmpDir, "docs/specs/live/forge.md");
+  }
+
+  it("AC-1: emits a V-LS-09 error naming the domain and repair path on drift", async () => {
+    const specPath = await mergedSpec();
+    await fs.appendFile(specPath, "\nStale hand edit.\n");
+
+    const result = await runSpecLiveValidate({ argv: [], flags: {} }, makeContext(tmpDir));
+    const v9 = result.data?.violations.filter((v) => v.rule === "V-LS-09") ?? [];
+    expect(v9.length).toBe(1);
+    expect(v9[0]?.severity).toBe("error");
+    expect(v9[0]?.message).toContain("forge.md");
+    expect(v9[0]?.message).toContain("spec.live.rebuild --domain forge");
+    expect(result.exitCode).toBe(1);
+  });
+
+  it("AC-2: emits no V-LS-09 when the spec matches its replay", async () => {
+    await mergedSpec();
+    const result = await runSpecLiveValidate({ argv: [], flags: {} }, makeContext(tmpDir));
+    const v9 = result.data?.violations.filter((v) => v.rule === "V-LS-09") ?? [];
+    expect(v9).toEqual([]);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("AC-3: warns on an unreadable history RFC and still runs the drift comparison", async () => {
+    await mergedSpec();
+    // Deleting the RFC file leaves history[] pointing at an unreadable id —
+    // replay skips it, so the spec's RFC-9002 sections are unreproducible.
+    await fs.rm(path.join(tmpDir, "docs/rfcs/archive/implemented/rfc-9002-unmerged.md"));
+
+    const result = await runSpecLiveValidate({ argv: [], flags: {} }, makeContext(tmpDir));
+    const v9warn = result.data?.violations.filter(
+      (v) => v.rule === "V-LS-09" && v.severity === "warning",
+    ) ?? [];
+    expect(v9warn.length).toBe(1);
+    expect(v9warn[0]?.message).toContain("RFC-9002");
+    // The drift comparison still ran — the un-replayable body diverges.
+    const v9err = result.data?.violations.filter(
+      (v) => v.rule === "V-LS-09" && v.severity === "error",
+    ) ?? [];
+    expect(v9err.length).toBe(1);
+    expect(result.exitCode).toBe(1);
   });
 });
