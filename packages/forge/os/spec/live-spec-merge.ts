@@ -2,185 +2,57 @@
 <MODULE_CONTRACT>
 <purpose>spec.live.merge handler — extracts deltas from an RFC's ## Design section,
 classifies them as ADDED/MODIFIED/REMOVED, applies to a living spec with RFC-namespaced
-headings, and writes atomically (RFC-0711).</purpose>
+headings, and writes atomically (RFC-0711). Idempotent since RFC-1230: an RFC already
+present in spec history[] is skipped as already-merged unless --force re-merges it.</purpose>
 <non-goals>
   <item>Do not handle docs.archive integration — that is in core.module.ts.</item>
   <item>Do not validate living specs — that is spec.live.validate.</item>
+  <item>Do not repair corrupted specs — that is spec.live.rebuild.</item>
 </non-goals>
-</MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0711: initial spec.live.merge handler with delta extraction, classification, and atomic writes.</item>
   <item>RFC-0957: namespace headings by RFC ID, remove conflict detection (structurally impossible with namespacing).</item>
+  <item>RFC-1230: idempotent merge — already-merged gate keyed on spec history[], --force surgical re-merge via removeNamespacedSections; pure helpers moved to live-spec-shared.ts.</item>
+  <item>RFC-1230: step 1 — idempotent spec.live.merge with --force
+
+Add the already-merged gate (history[] membership → no-op, byte-identical file) and --force surgical re-merge (drop all (RFC-XXXX) sections + history entries, replay the RFC, append one entry). Shared parsing/serialization helpers extracted to live-spec-shared.ts; operation enum gains "already-merged". PBT covers merge∘merge ≡ merge.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo as fs } from "../../src/utils/io.ts";
 import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
-import YAML from "yaml";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import { writeFileIfChanged, buildGeneratedHeader } from "../../src/utils/index.ts";
-import { parseRfcFile, listRfcFiles } from "../rfc/frontmatter-io.ts";
+import { parseRfcFile } from "../rfc/frontmatter-io.ts";
 import { RFC_DIR } from "../rfc/types.ts";
 import type {
   LivingSpec,
-  LivingSpecHistoryEntry,
   DeltaOperation,
   SpecLiveMergeResult,
 } from "./live-spec-types.ts";
-
-const LIVE_SPECS_DIR = "docs/specs/live";
-
-interface ParsedHeading {
-  level: number;
-  text: string;
-  body: string;
-}
-
-function extractDesignSection(rfcBody: string): string {
-  const designMatch = rfcBody.match(/^##\s+Design\s*$/m);
-  if (!designMatch) return "";
-  const startIndex = designMatch.index! + designMatch[0].length;
-  const nextH2Match = rfcBody.slice(startIndex).match(/^##\s+/m);
-  if (!nextH2Match) {
-    return rfcBody.slice(startIndex).trim();
-  }
-  return rfcBody.slice(startIndex, startIndex + nextH2Match.index!).trim();
-}
-
-function parseHeadings(content: string): ParsedHeading[] {
-  const lines = content.split("\n");
-  const headings: ParsedHeading[] = [];
-  let currentHeading: ParsedHeading | null = null;
-  let currentBody: string[] = [];
-
-  for (const line of lines) {
-    const headingMatch = line.match(/^(#{3,})\s+(.+)$/);
-    if (headingMatch) {
-      if (currentHeading) {
-        currentHeading.body = currentBody.join("\n").trim();
-        headings.push(currentHeading);
-      }
-      currentHeading = {
-        level: headingMatch[1].length,
-        text: headingMatch[2].trim(),
-        body: "",
-      };
-      currentBody = [];
-    } else if (currentHeading) {
-      currentBody.push(line);
-    }
-  }
-  if (currentHeading) {
-    currentHeading.body = currentBody.join("\n").trim();
-    headings.push(currentHeading);
-  }
-  return headings;
-}
-
-function deriveDomain(frontmatter: Record<string, unknown>): string | null {
-  const liveSpec = frontmatter["liveSpec"];
-  if (typeof liveSpec === "string" && liveSpec.length > 0) {
-    return liveSpec;
-  }
-  if (liveSpec === true) {
-    const packagesImpacted = frontmatter["packagesImpacted"];
-    if (Array.isArray(packagesImpacted) && packagesImpacted.length > 0) {
-      const firstPkg = String(packagesImpacted[0]);
-      return firstPkg.replace(/^packages\//, "").replace(/^@[^/]+\//, "");
-    }
-    return null;
-  }
-  return null;
-}
-
-function parseLivingSpec(content: string): LivingSpec | null {
-  const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---\r?\n?([\s\S]*)$/);
-  if (!match) return null;
-  const fm = (YAML.parse(match[1]!) ?? {}) as Record<string, unknown>;
-  return {
-    domain: String(fm["domain"] ?? ""),
-    title: String(fm["title"] ?? ""),
-    lastMergedRfc: String(fm["lastMergedRfc"] ?? ""),
-    updatedAt: String(fm["updatedAt"] ?? ""),
-    createdAt: String(fm["createdAt"] ?? ""),
-    history: (Array.isArray(fm["history"]) ? fm["history"] : []) as LivingSpecHistoryEntry[],
-    body: match[2] ?? "",
-  };
-}
-
-function serializeLivingSpec(spec: LivingSpec): string {
-  const fm: Record<string, unknown> = {
-    domain: spec.domain,
-    title: spec.title,
-    lastMergedRfc: spec.lastMergedRfc,
-    updatedAt: spec.updatedAt,
-    createdAt: spec.createdAt,
-    history: spec.history,
-  };
-  const fmStr = YAML.stringify(fm).trimEnd();
-  return `---\n${fmStr}\n---\n\n${spec.body}`;
-}
-
-function findHeadingInSpec(spec: LivingSpec, headingText: string): ParsedHeading | null {
-  const headings = parseHeadings(spec.body);
-  return headings.find((h) => h.text === headingText) ?? null;
-}
-
-function applyDeltasToSpecBody(
-  specBody: string,
-  deltas: ParsedHeading[],
-  operations: DeltaOperation[],
-): string {
-  let body = specBody;
-  for (const delta of deltas) {
-    const op = operations.find((o) => o.heading === delta.text);
-    if (!op) continue;
-
-    if (op.type === "added") {
-      body = `${body}\n\n${"#".repeat(delta.level)} ${delta.text}\n\n${delta.body}`;
-    } else if (op.type === "modified") {
-      const headingRegex = new RegExp(
-        `(${"#".repeat(delta.level)}\\s+${escapeRegex(delta.text)}\\s*\\n)([\\s\\S]*?)(?=#{3,}|$)`,
-      );
-      body = body.replace(headingRegex, `$1\n${delta.body}\n`);
-    } else if (op.type === "removed") {
-      const headingRegex = new RegExp(
-        `\\n*${"#".repeat(delta.level)}\\s+${escapeRegex(delta.text)}\\s*\\n[\\s\\S]*?(?=#{3,}|$)`,
-      );
-      body = body.replace(headingRegex, "\n");
-    }
-  }
-  return body.trim();
-}
-
-function escapeRegex(str: string): string {
-  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-}
-
-function namespaceHeadings(content: string, rfcId: string): string {
-  return content.replace(/^(#{3,})\s+(.+)$/gm, (_match, hashes: string, text: string) => {
-    if (/\(RFC-\d{4}\)$/.test(text)) return `${hashes} ${text}`;
-    return `${hashes} ${text} (${rfcId})`;
-  });
-}
-
-function findRfcFile(rfcDir: string, rfcId: string): Promise<string | null> {
-  return (async () => {
-    const files = await listRfcFiles(rfcDir);
-    for (const file of files) {
-      const basename = path.basename(file);
-      if (basename.toLowerCase().startsWith(rfcId.toLowerCase())) {
-        return file;
-      }
-    }
-    return null;
-  })();
-}
+import {
+  LIVE_SPECS_DIR,
+  extractDesignSection,
+  parseHeadings,
+  deriveDomain,
+  parseLivingSpec,
+  serializeLivingSpec,
+  findHeadingInSpec,
+  applyDeltasToSpecBody,
+  namespaceHeadings,
+  removeNamespacedSections,
+  findRfcFile,
+  seedSpecPrefix,
+} from "./live-spec-shared.ts";
 
 export async function runSpecLiveMerge(
   input: ForgeCommandInput,
@@ -188,6 +60,7 @@ export async function runSpecLiveMerge(
 ): Promise<ForgeCommandResult<SpecLiveMergeResult>> {
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcId = String(input.flags["id"] ?? "");
+  const force = input.flags["force"] === true;
   const dryRun = context.dryRun || input.flags["dry-run"] === true;
 
   if (!rfcId) {
@@ -286,6 +159,39 @@ export async function runSpecLiveMerge(
     existingSpec = parseLivingSpec(specContent);
   }
 
+  // RFC-1230: idempotency gate — an RFC already in history[] is a no-op unless
+  // --force surgically re-merges (strips its namespaced sections + old entries).
+  if (existingSpec) {
+    const alreadyMerged = existingSpec.history.some((h) => h.rfc === rfcId);
+    if (alreadyMerged && !force) {
+      const result: SpecLiveMergeResult = {
+        command: "spec.live.merge",
+        domain,
+        operation: "already-merged",
+        deltas: [],
+        conflicts: [],
+        dryRun,
+      };
+      if (outputFormat === "pretty") {
+        logger.info(
+          `spec.live.merge: ${rfcId} already merged into "${domain}" — skipping (use --force to re-merge)`,
+        );
+      }
+      return {
+        data: result,
+        exitCode: 0,
+        summary: `spec.live.merge: ${rfcId} already merged into ${domain}`,
+      };
+    }
+    if (force) {
+      existingSpec = {
+        ...existingSpec,
+        body: removeNamespacedSections(existingSpec.body, rfcId),
+        history: existingSpec.history.filter((h) => h.rfc !== rfcId),
+      };
+    }
+  }
+
   const operations: DeltaOperation[] = [];
   const today = new Date().toISOString().slice(0, 10);
 
@@ -307,7 +213,7 @@ export async function runSpecLiveMerge(
       updatedAt: today,
       createdAt: today,
       history: [{ rfc: rfcId, mergedAt: today, operation: "created" }],
-      body: `${header}# Living Spec: ${domain}\n\n## Overview\n\n${designSection}`,
+      body: `${seedSpecPrefix(domain, header)}${designSection}`,
     };
 
     if (!dryRun) {
