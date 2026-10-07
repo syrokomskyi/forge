@@ -10,6 +10,7 @@ this-run merge-target selection (RFC-0711, RFC-0957, RFC-1230).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1230: extracted shared helpers from live-spec-merge.ts; added removeNamespacedSections, seedSpecPrefix, and collectLiveMergeTargets for the idempotent-merge + rebuild design.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
+  <item>RFC-1232: fence-aware heading mechanics — private fencedLineIndexes (CommonMark-subset ``` / ~~~ map) consumed by parseHeadings, extractDesignSection, namespaceHeadings, removeNamespacedSections, and applyDeltasToSpecBody (regex lookaheads replaced with line-slice boundaries).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,25 +30,66 @@ export interface ParsedHeading {
   body: string;
 }
 
-export function extractDesignSection(rfcBody: string): string {
-  const designMatch = rfcBody.match(/^##\s+Design\s*$/m);
-  if (!designMatch) return "";
-  const startIndex = designMatch.index! + designMatch[0].length;
-  const nextH2Match = rfcBody.slice(startIndex).match(/^##\s+/m);
-  if (!nextH2Match) {
-    return rfcBody.slice(startIndex).trim();
+// RFC-1232: CommonMark-subset fence map — line indexes inside fenced code
+// blocks. A run of ` or ~ of length >=3 with <=3 leading spaces opens a fence;
+// the same-or-longer run of the same character closes it. Opener and closer
+// lines count as interior. An unterminated fence makes the rest of the input
+// interior (CommonMark behavior). Indented code blocks are out of scope.
+const FENCE_OPEN_REGEX = /^ {0,3}(`{3,}|~{3,})/;
+function fencedLineIndexes(lines: string[]): ReadonlySet<number> {
+  const inside = new Set<number>();
+  let fenceChar: "`" | "~" | null = null;
+  let fenceLength = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const match = lines[i]!.match(FENCE_OPEN_REGEX);
+    if (fenceChar === null) {
+      if (match) {
+        fenceChar = match[1]![0] as "`" | "~";
+        fenceLength = match[1]!.length;
+        inside.add(i);
+      }
+      continue;
+    }
+    inside.add(i);
+    if (match && match[1]![0] === fenceChar && match[1]!.length >= fenceLength) {
+      fenceChar = null;
+      fenceLength = 0;
+    }
   }
-  return rfcBody.slice(startIndex, startIndex + nextH2Match.index!).trim();
+  return inside;
+}
+
+export function extractDesignSection(rfcBody: string): string {
+  const lines = rfcBody.split("\n");
+  const fenced = fencedLineIndexes(lines);
+  let startLine = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (!fenced.has(i) && /^##\s+Design\s*$/.test(lines[i]!)) {
+      startLine = i;
+      break;
+    }
+  }
+  if (startLine === -1) return "";
+  let endLine = lines.length;
+  for (let i = startLine + 1; i < lines.length; i++) {
+    if (!fenced.has(i) && /^##\s/.test(lines[i]!)) {
+      endLine = i;
+      break;
+    }
+  }
+  return lines.slice(startLine + 1, endLine).join("\n").trim();
 }
 
 export function parseHeadings(content: string): ParsedHeading[] {
   const lines = content.split("\n");
+  const fenced = fencedLineIndexes(lines);
   const headings: ParsedHeading[] = [];
   let currentHeading: ParsedHeading | null = null;
   let currentBody: string[] = [];
 
-  for (const line of lines) {
-    const headingMatch = line.match(/^(#{3,})\s+(.+)$/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const headingMatch = fenced.has(i) ? null : line.match(/^(#{3,})\s+(.+)$/);
     if (headingMatch) {
       if (currentHeading) {
         currentHeading.body = currentBody.join("\n").trim();
@@ -124,26 +166,46 @@ export function applyDeltasToSpecBody(
   deltas: ParsedHeading[],
   operations: DeltaOperation[],
 ): string {
-  let body = specBody;
+  const lines = specBody.split("\n");
   for (const delta of deltas) {
     const op = operations.find((o) => o.heading === delta.text);
     if (!op) continue;
 
     if (op.type === "added") {
-      body = `${body}\n\n${"#".repeat(delta.level)} ${delta.text}\n\n${delta.body}`;
-    } else if (op.type === "modified") {
-      const headingRegex = new RegExp(
-        `(${"#".repeat(delta.level)}\\s+${escapeRegex(delta.text)}\\s*\\n)([\\s\\S]*?)(?=#{3,}|$)`,
-      );
-      body = body.replace(headingRegex, `$1\n${delta.body}\n`);
-    } else if (op.type === "removed") {
-      const headingRegex = new RegExp(
-        `\\n*${"#".repeat(delta.level)}\\s+${escapeRegex(delta.text)}\\s*\\n[\\s\\S]*?(?=#{3,}|$)`,
-      );
-      body = body.replace(headingRegex, "\n");
+      lines.push("", `${"#".repeat(delta.level)} ${delta.text}`, "", ...delta.body.split("\n"));
+      continue;
+    }
+
+    // RFC-1232: line-slice boundaries instead of `(?=#{3,}|$)` regex lookaheads —
+    // those were unanchored and matched `###` inside fenced code blocks.
+    const fenced = fencedLineIndexes(lines);
+    let start = -1;
+    let next = lines.length;
+    for (let i = 0; i < lines.length; i++) {
+      if (fenced.has(i)) continue;
+      const m = lines[i]!.match(/^(#{3,})\s+(.+)$/);
+      if (!m) continue;
+      if (start === -1) {
+        if (m[1]!.length === delta.level && m[2]!.trim() === delta.text) start = i;
+      } else {
+        next = i;
+        break;
+      }
+    }
+    if (start === -1) continue;
+
+    if (op.type === "modified") {
+      lines.splice(start + 1, next - start - 1, "", ...delta.body.split("\n"));
+    } else {
+      // removed — absorb the blank lines separating the heading from the
+      // preceding content (old `\n*` regex prefix), then collapse the section
+      // to a single empty line.
+      let removeFrom = start;
+      while (removeFrom > 0 && lines[removeFrom - 1]!.trim() === "") removeFrom--;
+      lines.splice(removeFrom, next - removeFrom, "");
     }
   }
-  return body.trim();
+  return lines.join("\n").trim();
 }
 
 export function escapeRegex(str: string): string {
@@ -151,13 +213,20 @@ export function escapeRegex(str: string): string {
 }
 
 export function namespaceHeadings(content: string, rfcId: string): string {
-  return content.replace(/^(#{3,})\s+(.+)$/gm, (_match, hashes: string, text: string) => {
-    // parseHeadings trims heading text — normalize here too so a heading like
-    // "### Foo " round-trips to "### Foo (RFC-XXXX)", not "### Foo  (RFC-XXXX)".
-    const normalized = text.trim();
-    if (/\(RFC-\d{4}\)$/.test(normalized)) return `${hashes} ${normalized}`;
-    return `${hashes} ${normalized} (${rfcId})`;
-  });
+  const lines = content.split("\n");
+  const fenced = fencedLineIndexes(lines);
+  return lines
+    .map((line, i) => {
+      if (fenced.has(i)) return line;
+      const m = line.match(/^(#{3,})\s+(.+)$/);
+      if (!m) return line;
+      // parseHeadings trims heading text — normalize here too so a heading like
+      // "### Foo " round-trips to "### Foo (RFC-XXXX)", not "### Foo  (RFC-XXXX)".
+      const normalized = m[2]!.trim();
+      if (/\(RFC-\d{4}\)$/.test(normalized)) return `${m[1]} ${normalized}`;
+      return `${m[1]} ${normalized} (${rfcId})`;
+    })
+    .join("\n");
 }
 
 // RFC-1230: strip every ###+ section whose heading carries the ` (RFC-XXXX)`
@@ -166,12 +235,14 @@ export function namespaceHeadings(content: string, rfcId: string): string {
 export function removeNamespacedSections(body: string, rfcId: string): string {
   const suffix = ` (${rfcId})`;
   const lines = body.split("\n");
+  const fenced = fencedLineIndexes(lines);
   const out: string[] = [];
   let skipping = false;
-  for (const line of lines) {
-    const headingMatch = line.match(/^(#{3,})\s+(.+)$/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    const headingMatch = fenced.has(i) ? null : line.match(/^(#{3,})\s+(.+)$/);
     if (headingMatch) {
-      skipping = headingMatch[2].trim().endsWith(suffix);
+      skipping = headingMatch[2]!.trim().endsWith(suffix);
     }
     if (!skipping) out.push(line);
   }

@@ -188,6 +188,31 @@ describe("spec.live.validate (V-LS-06/07/08)", () => {
     expect(v8[0]?.message).toContain("does not exist");
   });
 
+  it("does not emit V-LS-06 for ### (RFC-NNNN) lines inside fenced blocks (RFC-1232 AC-2)", async () => {
+    await fs.writeFile(
+      path.join(tmpDir, "docs/specs/live/forge.md"),
+      specFixture({
+        domain: "forge",
+        lastMergedRfc: "RFC-9002",
+        historyEntries:
+          ENTRY_9001 +
+          "  - rfc: RFC-9002\n    mergedAt: 2026-08-07\n    operation: modified\n",
+        sections: [
+          "### Alpha (RFC-9001)\n\na.",
+          "```md\n### Alpha (RFC-9001)\n### Alpha (RFC-9001)\n```",
+          "~~~\n### Beta (RFC-9002)\n~~~",
+          "### Beta (RFC-9002)\n\nb.",
+        ].join("\n\n"),
+      }),
+    );
+
+    const result = await runSpecLiveValidate({ argv: [], flags: {} }, makeContext(tmpDir));
+    const v6 = result.data?.violations.filter((v) => v.rule === "V-LS-06") ?? [];
+    // Fence-interior occurrences do not count — both real headings are unique.
+    expect(v6).toEqual([]);
+    expect(result.exitCode).toBe(0);
+  });
+
   it("produces no V-LS-06/07/08 on a clean spec", async () => {
     await fs.writeFile(
       path.join(tmpDir, "docs/specs/live/forge.md"),
