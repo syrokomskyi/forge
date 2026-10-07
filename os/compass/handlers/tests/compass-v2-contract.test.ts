@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { runCompassValidation, runCompassInventory } from "../compass-inventory-handler.ts";
+import { writeForgeYaml } from "./forge-yaml-fixture.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -50,25 +51,6 @@ const CS_ITEM = "RFC-1094: initial v2 fixture.";
 const MEDIUM_FILE = "packages/fixture-pkg/src/components/mission-widget.ts";
 // Low-risk path: bare src/** maps to layer "source" → riskClass low.
 const LOW_FILE = "packages/fixture-pkg/src/mission-notes.ts";
-
-const FORGE_YAML = (bindings: string) => `
-schema: forge/config@1
-project:
-  name: test-ws
-  stack: [typescript]
-  packageManager: pnpm
-paths:
-  rfcsDir: docs/rfcs
-  adrsDir: docs/adrs
-  plansDir: docs/plans
-  auditsDir: docs/audits
-  specsDir: docs/specs
-  skillsDir: .agents/skills
-bindings:
-  schema: forge/bindings@1
-  commands: {}
-  paths: {}
-${bindings}`;
 
 // Generic NS-NNN alternative plus a mission-tail alternative (RFC-1220).
 // Single-quoted YAML keeps backslashes literal — JS "\\b" emits regex "\b".
@@ -241,10 +223,7 @@ describe("compass v2 contract (RFC-1094)", () => {
   });
 
   it("CS-07: mission-format history token validates without crash (RFC-1220)", async () => {
-    writeFileSync(
-      join(tempDir, "forge.yaml"),
-      FORGE_YAML(`  compass:\n    idPattern: '${MISSION_ID_PATTERN}'`),
-    );
+    writeForgeYaml(tempDir, `  compass:\n    idPattern: '${MISSION_ID_PATTERN}'`);
     writeFixture(
       MEDIUM_FILE,
       wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS([CS_ITEM], "acme-m000175")),
@@ -259,10 +238,7 @@ describe("compass v2 contract (RFC-1094)", () => {
   });
 
   it("CS-07: token passing idPatternFull but unparseable emits diagnostic, no crash (RFC-1220)", async () => {
-    writeFileSync(
-      join(tempDir, "forge.yaml"),
-      FORGE_YAML(`  compass:\n    idPattern: '${DRIFT_ID_PATTERN}'`),
-    );
+    writeForgeYaml(tempDir, `  compass:\n    idPattern: '${DRIFT_ID_PATTERN}'`);
     writeFixture(
       MEDIUM_FILE,
       wrap(MC(PURPOSE_WITH_TOKEN), KD([KD_ITEM]), CS([CS_ITEM], "FOO-BAR")),
