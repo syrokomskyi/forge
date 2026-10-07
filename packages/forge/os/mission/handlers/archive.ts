@@ -13,7 +13,6 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0804: auto-refresh pnpm-lock.yaml after directory moves.</item>
   <item>RFC-0982: fallback state detection for orphaned workpiece dirs (no mission.yaml) via .closed marker and cache-only heuristic; --clean-orphans flag; improved skip reasons.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -23,7 +22,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
-  <history>RFC-0573, RFC-0733, RFC-0801</history>
+  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804</history>
 </CHANGE_SUMMARY>
 */
 
