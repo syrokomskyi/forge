@@ -15,7 +15,6 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1095: header-region guard in summary.record, restore test fixture with dynamic tags</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
@@ -28,6 +27,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1097: AC-4 banned literal in os/compass handlers
 
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
+  <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
   <history>RFC-1095</history>
 </CHANGE_SUMMARY>
 */
@@ -111,7 +111,12 @@ function leadingGovernanceId(item: string, policy: CompassPolicy): string | null
   return match && match.index === 0 ? match[0] : null;
 }
 
-/** Merge existing + new history IDs: dedupe, per-namespace ascending numeric order. */
+/**
+ * Merge existing + new history IDs: dedupe, per-namespace ascending numeric order.
+ * Tokens that pass `idPatternFull` yet fail `parseGovernanceIdParts` (policy/parser
+ * drift) are kept appended after the sorted parseable tokens in encounter order —
+ * provenance is preserved and the next `compass.validate` emits CS-07 (RFC-1220).
+ */
 export function mergeHistoryIds(
   existing: string[],
   incoming: string[],
@@ -120,12 +125,16 @@ export function mergeHistoryIds(
   const all = [...new Set([...existing, ...incoming])].filter((id) =>
     policy.idPatternFull.test(id),
   );
-  return all.sort((a, b) => {
-    const pa = parseGovernanceIdParts(a)!;
-    const pb = parseGovernanceIdParts(b)!;
+  const partsById = new Map(all.map((id) => [id, parseGovernanceIdParts(id)]));
+  const parseable = all.filter((id) => partsById.get(id) !== null);
+  const unparseable = all.filter((id) => partsById.get(id) === null);
+  parseable.sort((a, b) => {
+    const pa = partsById.get(a)!;
+    const pb = partsById.get(b)!;
     const ns = pa.namespace.localeCompare(pb.namespace);
     return ns !== 0 ? ns : pa.numeric - pb.numeric;
   });
+  return [...parseable, ...unparseable];
 }
 
 export function getLineCommentPrefix(filePath: string): string | null {
