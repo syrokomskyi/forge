@@ -8,6 +8,12 @@ renderNextSteps, renderIdeRecommendation, generateHelp.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0542: initial CLI output rendering tests.</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,7 +47,7 @@ class MockRegistry implements CommandRegistry, ForgeModuleRegistry {
       provider: "workspace" as const,
       mutatesState: c.mutatesState,
       requiresNetwork: c.requiresNetwork,
-      supportsAllSites: c.supportsAllSites,
+      acceptsAllFlag: c.acceptsAllFlag,
       timeoutMs: c.timeoutMs,
       expectedDurationMs: c.expectedDurationMs,
       longRunning: c.longRunning,
@@ -112,7 +118,7 @@ describe("generateHelp", () => {
       name: "forge.init",
       description: "Deploy forge into a project.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       cacheable: false,
       execute: async () => ({ exitCode: 0 }),
@@ -121,7 +127,7 @@ describe("generateHelp", () => {
       name: "forge.doctor",
       description: "Diagnose forge state in an existing project.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       cacheable: false,
       execute: async () => ({ exitCode: 0 }),
@@ -138,7 +144,7 @@ describe("generateHelp", () => {
       name: "forge.doctor",
       description: "Diagnose forge state.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       cacheable: false,
       execute: async () => ({ exitCode: 0 }),
@@ -147,7 +153,7 @@ describe("generateHelp", () => {
       name: "forge.init",
       description: "Deploy forge.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       cacheable: false,
       execute: async () => ({ exitCode: 0 }),
@@ -167,7 +173,7 @@ describe("generateHelp", () => {
       name: "forge.init",
       description: "Deploy forge.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       cacheable: false,
       execute: async () => ({ exitCode: 0 }),
@@ -184,7 +190,7 @@ describe("generateHelp", () => {
       name: "forge.init",
       description: "Deploy forge.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       cacheable: false,
       execute: async () => ({ exitCode: 0 }),

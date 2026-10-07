@@ -15,6 +15,12 @@ envelope for all six ts.*.validate commands (RFC-1099).</purpose>
   <item>RFC-1099: initial check harness — replaces per-validator boilerplate (walk, read, envelope shaping) with one defineTsCheck seam.</item>
   <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -64,7 +70,7 @@ export function defineTsCheck(input: DefineTsCheckInput): KernelCommandDefinitio
     description: input.description,
     scope: "workspace",
     cacheable: true,
-    supportsAllSites: false,
+    acceptsAllFlag: false,
     reads: input.reads,
     flags: {
       globs: {

@@ -9,6 +9,12 @@ kernel registry (RFC-0856).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial program module registration.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -37,7 +43,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
           "and state machine rules. Read-only. " +
           "Usage: program.packet.validate --program=RFC-XXXX --packet=NNN-foo --phase=draft --json",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           program: {
             kind: "string",
@@ -71,7 +77,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
           "Usage: program.packet.seal --program=RFC-XXXX --packet=NNN-foo " +
           "--steward=human:id --idempotency-key=<key> --json",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         mutatesState: true,
         flags: {
           program: {
@@ -114,7 +120,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
           "Usage: program.packet.lease --program=RFC-XXXX --packet=NNN-foo " +
           "--action=start --executor=agent:id --json",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           program: {
             kind: "string",
@@ -167,7 +173,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
           "Usage: program.packet.complete --program=RFC-XXXX --packet=NNN-foo " +
           "--steward=human:id --lease-token=<token> --implementation-head=<sha> --json",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         mutatesState: true,
         flags: {
           program: {

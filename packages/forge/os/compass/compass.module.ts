@@ -6,14 +6,19 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: removed dynamic import of @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/compass/handlers/.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>KERNEL-FLAG-02: Declare compass --root as kind "string[]" — resolveScanRoots reads it as multi-value via getFlagValues, so repeated --root stays legal now that repeated kind-"string" flags are rejected at flag resolution.</item>
-  <history>RFC-0374, RFC-0538</history>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
+  <history>RFC-0374, RFC-0538, RFC-0556</history>
 </CHANGE_SUMMARY>
 */
 
@@ -68,7 +73,7 @@ export const forgeCompassModule: ForgeModule = {
       mutatesState: true,
       description: "Generate the repository-wide Compass source inventory XML report.",
       scope: "workspace",
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       flags: { ...compassScanFlags },
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -85,7 +90,7 @@ export const forgeCompassModule: ForgeModule = {
       description:
         "Validate authored source files against current Compass scaffolding requirements.",
       scope: "workspace",
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       flags: { ...compassScanFlags, mode: compassModeFlag },
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -101,7 +106,7 @@ export const forgeCompassModule: ForgeModule = {
         "Append a governance-referencing item to each target file's CHANGE_SUMMARY and collapse the 5-item window into <history> (RFC-1095). Invoked by commit commands when a commit carries an RFC/ADR reference. Required flags: `--id`.",
       scope: "workspace",
       mutatesState: true,
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       writes: [
         "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
         "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -140,7 +145,7 @@ export const forgeCompassModule: ForgeModule = {
         "Repair CHANGE_SUMMARY blocks to the v2 shape: collapse described items past 5 into <history>, remove ID-less items, normalize <history> (RFC-1095).",
       scope: "workspace",
       mutatesState: true,
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       writes: [
         "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
         "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -168,7 +173,7 @@ export const forgeCompassModule: ForgeModule = {
         "Rewrite authored file headers to the Compass v2 shape (RFC-1097): collapse CHANGE_SUMMARY into <history>, strip forbidden v1 blocks, seed KEY_DECISIONS from @ai-invariant comments, reorder blocks canonically. Refuses a dirty git tree unless --force.",
       scope: "workspace",
       mutatesState: true,
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       writes: [
         "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
         "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
@@ -205,7 +210,7 @@ export const forgeCompassModule: ForgeModule = {
       description:
         "Emit a deterministic work-order of files whose revision has advanced past the threshold since their last Compass audit (RFC-0352). Read-only, no LLM.",
       scope: "workspace",
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       flags: {
         ...compassScanFlags,
         threshold: {
@@ -228,7 +233,7 @@ export const forgeCompassModule: ForgeModule = {
         "Stamp a file's audit verdict and current revision into the compass-audit ledger (RFC-0352). Mutating. Required flags: `--file`, `--verdict`.",
       scope: "workspace",
       mutatesState: true,
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       writes: ["docs/compass-audit-ledger.generated.yaml"],
       generates: [{ path: "docs/compass-audit-ledger.generated.yaml", phase: "on-demand" }],
       reads: ["docs/compass-audit-ledger.generated.yaml"],
@@ -251,7 +256,7 @@ export const forgeCompassModule: ForgeModule = {
         "Seed the compass-audit ledger for every authored file at its current revision with verdict=baseline (RFC-0352). One-time bootstrap.",
       scope: "workspace",
       mutatesState: true,
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       writes: ["docs/compass-audit-ledger.generated.yaml"],
       // Artifact ownership is claimed by compass.audit.record (GENERATES-PATH-
       // COLLISION forbids two owners on a non-glob path); baseline only writes it.
@@ -274,7 +279,7 @@ export const forgeCompassModule: ForgeModule = {
       description:
         "Validate that no authored file is audit-overdue per the revision threshold (RFC-0352). Warns by default, fails with --strict.",
       scope: "workspace",
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       flags: {
         ...compassScanFlags,
         strict: {
