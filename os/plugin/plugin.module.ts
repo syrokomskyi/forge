@@ -9,6 +9,12 @@
 <CHANGE_SUMMARY>
   <item>RFC-0941: initial forgePluginModule with forge.plugin.validate and forge.plugin.discover commands.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -244,7 +250,7 @@ export const forgePluginModule: ForgeModule = {
       description:
         "Validate forge.plugin.yaml manifests for all declared skill packs (RFC-0941). Checks manifest schema (id: kebab-case, version: semver) and reports missing or invalid manifests.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       reads: ["forge.yaml", "**/forge.plugin.yaml"],
       cacheable: false,
@@ -256,7 +262,7 @@ export const forgePluginModule: ForgeModule = {
       description:
         "Enumerate all project-declared skill packs with valid forge.plugin.yaml manifests (RFC-0941). Returns pack id, version, prefix, and directory.",
       scope: "workspace",
-      supportsAllSites: false,
+      acceptsAllFlag: false,
       flags: {},
       reads: ["forge.yaml", "**/forge.plugin.yaml"],
       cacheable: false,

@@ -6,12 +6,17 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0396: added spec.status and spec.materialize commands.</item>
   <item>RFC-0711: added spec.live.merge, spec.live.list, spec.live.show, spec.live.validate commands.</item>
   <item>RFC-1230: added spec.live.rebuild command + --force flag on spec.live.merge (idempotent merge design).</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
-  <history>RFC-0394</history>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
+  <history>RFC-0394, RFC-0396</history>
 </CHANGE_SUMMARY>
 */
 
@@ -150,7 +155,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.rebuild",
-      supportsAllSites: true,
+      acceptsAllFlag: true,
       description:
         "Rebuild a living feature spec by replaying its deduplicated history[] — " +
         "the repair path for duplicated (RFC-XXXX) sections and duplicate history entries " +

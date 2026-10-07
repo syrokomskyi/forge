@@ -10,13 +10,18 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial CLI bin entrypoint for forge autonomy refactor.</item>
   <item>RFC-0543: source VERSION from package.json at runtime instead of hardcoded constant.</item>
   <item>Register all 16 forge modules in CLI registry — add adr, plan, audit, mission, spec, program, plugin (previously only 9 of 16 were reachable via `forge <cmd>`).</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
   <item>Schema-driven flag resolution via src/cli-flags.ts — a value-less declared flag (e.g. `forge rfc.validate --id`) now exits with KERNEL-FLAG-02 instead of crashing on `flags.id === true`; per-command --help renders printCommandHelp.</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <history>RFC-0542</history>
 </CHANGE_SUMMARY>
 */
@@ -93,7 +98,7 @@ class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
       provider: "workspace" as const,
       mutatesState: c.mutatesState,
       requiresNetwork: c.requiresNetwork,
-      supportsAllSites: c.supportsAllSites,
+      acceptsAllFlag: c.acceptsAllFlag,
       timeoutMs: c.timeoutMs,
       expectedDurationMs: c.expectedDurationMs,
       longRunning: c.longRunning,

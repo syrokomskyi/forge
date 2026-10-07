@@ -9,6 +9,12 @@
   <item>RFC-0075: Add workflow command module.</item>
   <item>RFC-0374: Migrated from packages/os/site-kernel/src/workflow/ to packages/forge/os/workflow/.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +38,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
           "and per-chain phase links (RFC-0075 + RFC-0136).",
         scope: "workspace",
         flags: {},
-        supportsAllSites: true,
+        acceptsAllFlag: true,
         reads: [".agents/workflows/**/*.md", ".windsurf/workflows/**/*.md"],
         execute: runWorkflowLint,
       },
@@ -43,7 +49,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
           "List .agents/workflows entries with phase, IO summary, and next workflow (RFC-0075).",
         scope: "workspace",
         flags: {},
-        supportsAllSites: true,
+        acceptsAllFlag: true,
         reads: [".agents/workflows/**/*.md", ".windsurf/workflows/**/*.md"],
         execute: runWorkflowList,
       },
@@ -54,7 +60,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
           "List .agents/workflows-amend entries with phase, IO summary, and next workflow (RFC-0136).",
         scope: "workspace",
         flags: {},
-        supportsAllSites: true,
+        acceptsAllFlag: true,
         reads: [".agents/workflows-amend/**/*.md"],
         execute: runWorkflowAmendList,
       },

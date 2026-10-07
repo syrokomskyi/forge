@@ -9,6 +9,12 @@ unreadable-RFC tolerance, unchanged/skipped operations, dry-run (RFC-1230).</pur
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial unit tests for spec.live.rebuild.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -230,7 +236,7 @@ describe("spec.live.rebuild", () => {
 
   it("defaults to all specs when no selector is given; rejects --domain + --all", async () => {
     // Under `werkstatt run` the kernel consumes --all as its site selector —
-    // "no --domain" is therefore the all-specs signal there (supportsAllSites).
+    // "no --domain" is therefore the all-specs signal there (acceptsAllFlag).
     const bare = await runSpecLiveRebuild({ argv: [], flags: {} }, makeContext(tmpDir));
     expect(bare.exitCode).toBe(0);
     expect((bare.data as { domains: unknown[] }).domains.length).toBe(1);

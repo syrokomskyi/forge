@@ -13,6 +13,12 @@ order yields the canonical spec; hand-applied edits are dropped by design.</purp
 <CHANGE_SUMMARY>
   <item>RFC-1230: initial spec.live.rebuild handler — dedupe history, single RFC scan, replay via shared section mechanics, unchanged-detection modulo updatedAt.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -203,7 +209,7 @@ export async function runSpecLiveRebuild(
   const dryRun = context.dryRun || input.flags["dry-run"] === true;
 
   // The kernel consumes `--all` as its own site-selector before argv reaches
-  // the command (supportsAllSites: true lets it through). Under `werkstatt run`
+  // the command (acceptsAllFlag: true lets it through). Under `werkstatt run`
   // the flag never lands in input.flags — so "no --domain" IS the kernel-level
   // --all signal. The explicit flag still works via the standalone forge CLI.
   const explicitAll = input.flags["all"] === true;

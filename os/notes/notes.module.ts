@@ -8,6 +8,12 @@
 <CHANGE_SUMMARY>
   <item>RFC-0808: initial forgeNotesModule registering 3 note validation commands.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,7 +64,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
         description:
           "Validate wikilink integrity across a markdown note vault. Scans [[wikilinks]] and resolves each against the note graph.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "vault-dir": {
             kind: "string",
@@ -81,7 +87,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
         description:
           "Validate frontmatter consistency across a markdown note vault. Checks for required fields in YAML frontmatter.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "vault-dir": {
             kind: "string",
@@ -102,7 +108,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
         description:
           "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "vault-dir": {
             kind: "string",

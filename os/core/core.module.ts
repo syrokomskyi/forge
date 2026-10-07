@@ -6,13 +6,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1173: fixup: flip mutatesState to true on 19 commands that declare writes/generates — the codemod's name-suffix rules misclassified leitstand.dev-deploy, leitstand.certify, coverage.report and peers as read-only; declared writes imply mutation</item>
   <item>RFC-1230: docs.archive post-loop merges only RFCs moved this run (collectLiveMergeTargets on rfc.archive moved[] instead of a full-tree rescan); declared docs/specs/live/*.md in writes/reads.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
+  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
+
+Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
+follows the parsed selector. Guard renamed assertAllSitesAllowed ->
+assertAllFlagAccepted, message updated. 417 declaration sites + type
+surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -216,7 +219,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         generates: [],
         description: "Diagnose forge state in an existing project.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           strict: {
             kind: "boolean",
@@ -235,7 +238,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         mutatesState: true,
         description: "Generate a skeleton for a new forge skill or command.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           name: { kind: "string", description: "Skill or command name (kebab-case)." },
           type: { kind: "string", description: "Type: 'skill' or 'command' (default: skill)." },
@@ -251,7 +254,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Validate all forge skills against frontmatter contract and invariants SKILL-01..SKILL-20.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {},
         reads: ["packages/forge/src/**/*.ts", "packages/forge/os/**/*.ts"],
         execute: skillValidateWrapper,
@@ -261,7 +264,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         mutatesState: false,
         description: "List all registered forge skills.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {},
         reads: ["packages/forge/src/registry.ts"],
         execute: skillListWrapper,
@@ -274,7 +277,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Validate a single ported skill or command for compliance with forge contracts.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           name: { kind: "string", description: "Skill or command name to validate." },
         },
@@ -287,7 +290,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Regenerate AGENTS.md deterministically from forge.yaml and the skill registry.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {},
         writes: ["AGENTS.md", "**/AGENTS.md"],
         generates: [],
@@ -300,7 +303,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Enforce the MEMORY.md character budget by removing oldest Environment notes bullets (RFC-1151).",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {},
         cacheable: false,
         execute: runMemoryCompact,
@@ -311,7 +314,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Additive sync for npm consumers: refresh .agents/skills/ from installed forge, add missing binding defaults, update forge.syncedVersion, run doctor.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -335,7 +338,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory. Required flags: `--profile`, `--name`.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           profile: {
             kind: "string",
@@ -358,7 +361,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Create a forge project in-place: scaffold + init + binding defaults. The target directory must be empty (only .git/ tolerated). Usage: forge create --in-place --profile <profile-id> [--name <name>] [--package-manager pnpm]",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "in-place": {
             kind: "boolean",
@@ -394,7 +397,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Deploy forge into a project: create forge.yaml, PREFERENCES.md, copy skills, create docs dirs. Hidden recovery command — normally called by forge.create.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         hidden: true,
         flags: {
           "ai-language": {
@@ -418,7 +421,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Validate profile YAML files under packages/forge/profiles/ against the stack-profile schema (RFC-0640).",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           id: {
             kind: "string",
@@ -435,7 +438,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Start the dev/preview server declared in the active stack profile. Use --dry-run to print the resolved command without executing.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         longRunning: true,
         flags: {
           "dry-run": {
@@ -457,7 +460,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Execute produce commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -480,7 +483,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Execute validate commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands. Use --artifact to validate a single artifact.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -507,7 +510,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Verify artifact determinism by building twice and comparing output hashes. Reads determinism.inputs glob patterns from the active stack profile. Use --dry-run to print resolved inputs, --artifact to check a single artifact.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -534,7 +537,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "List all assets declared in the active stack profile, grouped by type. Use --dry-run to skip hashing, --type to filter by asset type.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -561,7 +564,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Check for missing, orphaned, and unreferenced assets. Use --strict to fail on orphaned assets, --dry-run to skip hashing.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -586,7 +589,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Bundle built artifacts into a release package with a manifest. Use --dry-run to preview without writing.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -609,7 +612,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Publish a prepared release to the declared target (local, R2, S3). Use --dry-run to preview without uploading.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           "dry-run": {
             kind: "boolean",
@@ -633,7 +636,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "Compact skill knowledge files: archive expired/superseded/aged L0 entries, mark stale L2 principles. " +
           "Usage: forge.skill.knowledge.compact --all-skills [--dry-run] [--json] | --skill <name> [--dry-run] [--json]",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         flags: {
           skill: {
             kind: "string",
@@ -741,7 +744,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "and devDependencies completeness (no hoisted tool deps). " +
           "Exits non-zero on errors. Use --json for machine-readable output.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         reads: [
           "packages/*/package.json",
           "packages/*/.github/workflows/ci.yml",
@@ -766,7 +769,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "Enforces FORGE-AUTONOMY-01 (RFC-0940, DNA-64). @warpgogol/werkstatt-shared is exempt. " +
           "Type-only imports (import type) are exempt.",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         reads: ["packages/forge/os/**/*.ts"],
         cacheable: false,
         flags: {},
@@ -782,7 +785,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         contract: "forge",
         rules: ["SURFACE-01", "SURFACE-02", "SURFACE-03", "SURFACE-04", "SURFACE-05"],
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         reads: ["README.md", "package.json", "docs/**"],
         cacheable: false,
         flags: {},
@@ -796,7 +799,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "SIZE-01: flags a packages/** .ts/.tsx source file exceeding a 600-line threshold (warning 601-1200, error 1200+), against a shrink-only ratchet baseline. Pass --write-baseline to regenerate the baseline. Pass --baseline-path to override the default baseline location (RFC-1088).",
         scope: "workspace",
-        supportsAllSites: false,
+        acceptsAllFlag: false,
         reads: ["packages/*/src/**/*.ts", "packages/*/src/**/*.tsx"],
         writes: ["file-size-lint.baseline.yaml"],
         generates: [],
