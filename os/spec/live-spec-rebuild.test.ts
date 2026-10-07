@@ -24,6 +24,7 @@ import path from "node:path";
 import os from "node:os";
 import { runSpecLiveMerge } from "./live-spec-merge.ts";
 import { runSpecLiveRebuild } from "./live-spec-rebuild.ts";
+import { removeNamespacedSections } from "./live-spec-shared.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../src/types.ts";
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
@@ -246,6 +247,48 @@ describe("spec.live.rebuild", () => {
       makeContext(tmpDir),
     );
     expect(both.exitCode).toBe(1);
+  });
+
+  it("removeNamespacedSections removes nothing when only ### matches are fence-interior (RFC-1232 AC-3)", () => {
+    const body = [
+      "## Overview",
+      "",
+      "Some prose.",
+      "",
+      "```md",
+      "### Looks like a heading (RFC-9004)",
+      "### Also looks like one (RFC-9004)",
+      "```",
+    ].join("\n");
+    expect(removeNamespacedSections(body, "RFC-9004")).toBe(body);
+  });
+
+  it("treats content after an unterminated fence as interior (RFC-1232)", () => {
+    const body = "## Overview\n\n```\n### Hidden (RFC-9004)\n### Also hidden (RFC-9004)\n";
+    expect(removeNamespacedSections(body, "RFC-9004")).toBe(body.trim());
+  });
+
+  it("replays RFC Design containing fenced ### lines without corrupting them (RFC-1232)", async () => {
+    await fs.writeFile(
+      path.join(tmpDir, "docs/rfcs/rfc-9007-fenced-design.md"),
+      rfcFixture(
+        "RFC-9007",
+        "",
+        "### CLI surface\n\n```sh\n### a comment inside the fence\nwerkstatt run spec.live.rebuild\n```\n",
+      ),
+    );
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9007" } }, makeContext(tmpDir));
+
+    const result = await runSpecLiveRebuild(
+      { argv: [], flags: { domain: "forge" } },
+      makeContext(tmpDir),
+    );
+
+    expect(result.exitCode).toBe(0);
+    const content = await fs.readFile(path.join(tmpDir, SPEC_FILE), "utf-8");
+    expect(content).toContain("### a comment inside the fence\n");
+    expect(content).not.toContain("a comment inside the fence (RFC-9007)");
+    expect(content).toContain("### CLI surface (RFC-9007)");
   });
 
   it("exits 1 when --domain names a nonexistent spec", async () => {

@@ -205,6 +205,57 @@ Different types from RFC-9004.
 Some rollout.
 `;
 
+const SAMPLE_RFC_FENCED = `---
+id: RFC-9005
+title: "RFC with fenced heading-like lines"
+status: implemented
+kind: architecture
+scope: workspace
+owners:
+  - architecture
+reviewers:
+  - human:test
+createdAt: 2026-08-06
+updatedAt: 2026-08-06
+implementedAt: 2026-08-06
+versionBump: patch
+liveSpec: true
+packagesImpacted:
+  - packages/forge
+commands:
+  proposed: []
+  added: []
+  changed: []
+  removed: []
+appsImpacted: []
+successSignals: []
+nonGoals: []
+---
+
+# RFC-9005: RFC with fenced heading-like lines
+
+## Design
+
+### CLI surface
+
+\`\`\`sh
+### this is a shell comment, not a heading
+werkstatt run spec.live.merge --id RFC-9005
+\`\`\`
+
+### TypeScript contracts
+
+~~~text
+### markdown-looking line inside tilde fence
+~~~
+
+Real text.
+
+## Rollout
+
+Done.
+`;
+
 async function setupWorkspace(): Promise<string> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "spec-live-test-"));
   const rfcDir = path.join(tmpDir, "docs/rfcs");
@@ -213,6 +264,7 @@ async function setupWorkspace(): Promise<string> {
   await fs.writeFile(path.join(rfcDir, "rfc-9002-test-rfc-without-livespec.md"), SAMPLE_RFC_NO_LIVE_SPEC);
   await fs.writeFile(path.join(rfcDir, "rfc-9003-rejected-rfc-with-livespec.md"), SAMPLE_RFC_REJECTED);
   await fs.writeFile(path.join(rfcDir, "rfc-9004-second-rfc-with-same-headings.md"), SAMPLE_RFC_9004);
+  await fs.writeFile(path.join(rfcDir, "rfc-9005-rfc-with-fenced-heading-like-lines.md"), SAMPLE_RFC_FENCED);
   return tmpDir;
 }
 
@@ -398,6 +450,53 @@ describe("spec.live.merge", () => {
     expect(result.data?.dryRun).toBe(true);
     const after = await fs.readFile(specFile, "utf-8");
     expect(after).toBe(before);
+  });
+
+  it("does not namespace-rewrite ### lines inside ``` and ~~~ fences (RFC-1232 AC-1/AC-5)", async () => {
+    const result = await runSpecLiveMerge(
+      { argv: [], flags: { id: "RFC-9005" } },
+      makeContext(tmpDir),
+    );
+
+    expect(result.exitCode).toBe(0);
+
+    const content = await fs.readFile(path.join(tmpDir, "docs/specs/live/forge.md"), "utf-8");
+    // Fence-interior ### lines pass through verbatim — no namespacing suffix.
+    expect(content).toContain("### this is a shell comment, not a heading\n");
+    expect(content).toContain("### markdown-looking line inside tilde fence\n");
+    expect(content).not.toContain("shell comment, not a heading (RFC-9005)");
+    expect(content).not.toContain("inside tilde fence (RFC-9005)");
+    // Real headings still get namespaced.
+    expect(content).toContain("### CLI surface (RFC-9005)");
+    expect(content).toContain("### TypeScript contracts (RFC-9005)");
+  });
+
+  it("--force re-merge preserves fence-interior ### (RFC-NNNN) lines outside the RFC's sections", async () => {
+    await runSpecLiveMerge({ argv: [], flags: { id: "RFC-9005" } }, makeContext(tmpDir));
+
+    const specFile = path.join(tmpDir, "docs/specs/live/forge.md");
+    const before = await fs.readFile(specFile, "utf-8");
+    // A fenced block carrying a phantom namespaced heading inside Overview —
+    // the pre-RFC-1232 scanner would slice from this line to the next real
+    // heading, deleting Overview tail content and leaving a stray fence.
+    await fs.writeFile(
+      specFile,
+      before.replace(
+        "## Overview\n",
+        "## Overview\n\n```md\n### Phantom (RFC-9005)\n```\n",
+      ),
+    );
+
+    const result = await runSpecLiveMerge(
+      { argv: [], flags: { id: "RFC-9005", force: true } },
+      makeContext(tmpDir),
+    );
+
+    expect(result.exitCode).toBe(0);
+    const after = await fs.readFile(specFile, "utf-8");
+    expect(after).toContain("### Phantom (RFC-9005)");
+    expect(after.match(/### CLI surface \(RFC-9005\)/g)?.length).toBe(1);
+    expect(after.match(/### TypeScript contracts \(RFC-9005\)/g)?.length).toBe(1);
   });
 
   it("fails instead of overwriting a spec with unparseable frontmatter", async () => {
