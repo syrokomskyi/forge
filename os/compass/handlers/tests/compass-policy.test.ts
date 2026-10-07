@@ -9,6 +9,7 @@ the named-config-error contract.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1096: initial coverage for resolveCompassPolicy (AC-1..AC-5).</item>
+  <item>RFC-1220: step 1 — widen governance-ID tail regex</item>
 </CHANGE_SUMMARY>
 */
 
@@ -244,6 +245,17 @@ describe("resolveCompassPolicy (RFC-1096)", () => {
       namespace: "COMPASS-CS",
       numeric: 7,
     });
+    expect(parseGovernanceIdParts("no-number")).toBeNull();
+  });
+
+  it("parseGovernanceIdParts accepts mission-format tails (RFC-1220)", () => {
+    expect(parseGovernanceIdParts("acme-m000175")).toEqual({
+      namespace: "acme",
+      numeric: 175,
+    });
+    expect(parseGovernanceIdParts("acme-m1")).toEqual({ namespace: "acme", numeric: 1 });
+    // Bare "m" without digits is not a numeric tail.
+    expect(parseGovernanceIdParts("acme-m")).toBeNull();
     expect(parseGovernanceIdParts("no-number")).toBeNull();
   });
 });
