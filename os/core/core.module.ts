@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
-  <item>RFC-1173: fixup: flip mutatesState to true on 19 commands that declare writes/generates — the codemod's name-suffix rules misclassified leitstand.dev-deploy, leitstand.certify, coverage.report and peers as read-only; declared writes imply mutation</item>
   <item>RFC-1230: docs.archive post-loop merges only RFCs moved this run (collectLiveMergeTargets on rfc.archive moved[] instead of a full-tree rescan); declared docs/specs/live/*.md in writes/reads.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
@@ -16,7 +14,11 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097</history>
+  <item>RFC-1235: docs.archive post-loop records merge outcomes by exit code — exit-nonzero merges (incl. RFC-1230 fail-fast with populated data) land in failed[] with the merge summary as error, thrown errors record via liveMergeFailureEntry, and the spec.live.merge result block emits whenever anything was attempted; top-level result gains liveSpecFailures.</item>
+  <item>RFC-1235: record failed live-spec merges in docs.archive results (RFC-1235)
+
+The post-loop pushed mergeData into merged[] without checking mergeResult.exitCode — an exit-1-with-data merge (RFC-1230 fail-fast on corrupt spec frontmatter) was reported as merged. Outcome recording is extracted to live-spec-shared.ts (classifyLiveMergeOutcome / liveMergeFailureEntry / formatLiveMergeFailure / buildLiveMergeBlock): exit-nonzero and thrown merges land in failed[] with the reason, the spec.live.merge block emits whenever anything was attempted, and the top-level result gains liveSpecFailures. Archive stays non-fatal — failed[] is data, V-LS-08 reports the coverage gap.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173</history>
 </CHANGE_SUMMARY>
 */
 
@@ -912,7 +914,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           const { readAndParseRfc } = await import("../rfc/frontmatter-io.ts");
           const { RFC_DIR } = await import("../rfc/types.ts");
           const { runSpecLiveMerge } = await import("../spec/live-spec-merge.ts");
-          const { collectLiveMergeTargets } = await import("../spec/live-spec-shared.ts");
+          const {
+            collectLiveMergeTargets,
+            classifyLiveMergeOutcome,
+            liveMergeFailureEntry,
+            formatLiveMergeFailure,
+            buildLiveMergeBlock,
+          } = await import("../spec/live-spec-shared.ts");
           const rfcDirPath = path.join(context.workspaceRoot, RFC_DIR);
           const rfcArchiveData = results["rfc.archive"] as
             | {
@@ -933,6 +941,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             domain: string;
             operation: string;
             conflicts: number;
+          }> = [];
+          // RFC-1235: exit-nonzero merges land in failed[] — merged[] must mean
+          // "the spec was written". Thrown and exit-1-with-data paths both record.
+          const liveMergeFailures: Array<{
+            id: string;
+            exitCode?: number;
+            error: string;
           }> = [];
           let liveMergeSkipped = 0;
 
@@ -971,31 +986,32 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 flags: { id: rfcId, "dry-run": dryRun },
               };
               const mergeResult = await runSpecLiveMerge(mergeInput, context);
-              const mergeData = mergeResult.data as
-                { domain?: string; operation?: string; conflicts?: unknown[] } | undefined;
-              if (mergeData) {
-                liveMergeResults.push({
-                  id: rfcId,
-                  domain: String(mergeData.domain ?? ""),
-                  operation: String(mergeData.operation ?? ""),
-                  conflicts: Array.isArray(mergeData.conflicts) ? mergeData.conflicts.length : 0,
-                });
+              const outcome = classifyLiveMergeOutcome(rfcId, mergeResult);
+              if (outcome.kind === "merged") {
+                liveMergeResults.push(outcome.entry);
+              } else {
+                liveMergeFailures.push(outcome.entry);
+                if (outputFormat === "pretty") {
+                  logger.error(`  ${formatLiveMergeFailure(outcome.entry)}`);
+                }
               }
             } catch (err) {
+              const failure = liveMergeFailureEntry(rfcId, err);
+              liveMergeFailures.push(failure);
               if (outputFormat === "pretty") {
-                logger.error(
-                  `  spec.live.merge: failed for ${rfcId}: ${String((err as Error).message)}`,
-                );
+                logger.error(`  ${formatLiveMergeFailure(failure)}`);
               }
             }
           }
 
-          if (liveMergeResults.length > 0 || liveMergeSkipped > 0) {
-            results["spec.live.merge"] = {
-              merged: liveMergeResults,
-              skipped: liveMergeSkipped,
-              dryRun,
-            };
+          const liveMergeBlock = buildLiveMergeBlock(
+            liveMergeResults,
+            liveMergeFailures,
+            liveMergeSkipped,
+            dryRun,
+          );
+          if (liveMergeBlock) {
+            results["spec.live.merge"] = liveMergeBlock;
             if (outputFormat === "pretty") {
               for (const r of liveMergeResults) {
                 logger.info(
@@ -1061,6 +1077,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               dryRun,
               liveSpecMerges: liveMergeResults.length,
               liveSpecSkipped: liveMergeSkipped,
+              liveSpecFailures: liveMergeFailures.length,
             },
             summary: dryRun
               ? `[dry-run] Would move ${totalMoved} file(s), skip ${totalSkipped}`

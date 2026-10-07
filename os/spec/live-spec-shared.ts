@@ -11,6 +11,10 @@ this-run merge-target selection (RFC-0711, RFC-0957, RFC-1230).</purpose>
   <item>RFC-1230: extracted shared helpers from live-spec-merge.ts; added removeNamespacedSections, seedSpecPrefix, and collectLiveMergeTargets for the idempotent-merge + rebuild design.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1232: fence-aware heading mechanics — private fencedLineIndexes (CommonMark-subset ``` / ~~~ map) consumed by parseHeadings, extractDesignSection, namespaceHeadings, removeNamespacedSections, and applyDeltasToSpecBody (regex lookaheads replaced with line-slice boundaries).</item>
+  <item>RFC-1235: extracted docs.archive merge-outcome accounting — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock — so exit-nonzero merges record to failed[] instead of merged[].</item>
+  <item>RFC-1235: record failed live-spec merges in docs.archive results (RFC-1235)
+
+The post-loop pushed mergeData into merged[] without checking mergeResult.exitCode — an exit-1-with-data merge (RFC-1230 fail-fast on corrupt spec frontmatter) was reported as merged. Outcome recording is extracted to live-spec-shared.ts (classifyLiveMergeOutcome / liveMergeFailureEntry / formatLiveMergeFailure / buildLiveMergeBlock): exit-nonzero and thrown merges land in failed[] with the reason, the spec.live.merge block emits whenever anything was attempted, and the top-level result gains liveSpecFailures. Archive stays non-fatal — failed[] is data, V-LS-08 reports the coverage gap.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -296,4 +300,75 @@ export function collectLiveMergeTargets(
     else if (m.status === "rejected") rejected.push(m.id);
   }
   return { candidates, rejected };
+}
+
+// ── RFC-1235: docs.archive post-loop merge-outcome accounting ────────────────
+// spec.live.merge can return exitCode !== 0 with a populated data object
+// (RFC-1230 fail-fast on corrupt spec frontmatter) — the post-loop must record
+// those distinctly instead of inflating merged[]. Helper-local shapes only;
+// spec.live.merge's own result contract is untouched.
+
+export interface LiveMergeEntry {
+  id: string;
+  domain: string;
+  operation: string;
+  conflicts: number;
+}
+
+export interface LiveMergeFailure {
+  id: string;
+  exitCode?: number;
+  error: string;
+}
+
+export type LiveMergeOutcome =
+  | { kind: "merged"; entry: LiveMergeEntry }
+  | { kind: "failed"; entry: LiveMergeFailure };
+
+export function classifyLiveMergeOutcome(
+  rfcId: string,
+  result: { exitCode: number; data?: unknown; summary?: string },
+): LiveMergeOutcome {
+  const data = result.data as
+    | { domain?: unknown; operation?: unknown; conflicts?: unknown }
+    | undefined;
+  if (result.exitCode === 0 && data) {
+    return {
+      kind: "merged",
+      entry: {
+        id: rfcId,
+        domain: String(data.domain ?? ""),
+        operation: String(data.operation ?? ""),
+        conflicts: Array.isArray(data.conflicts) ? data.conflicts.length : 0,
+      },
+    };
+  }
+  return {
+    kind: "failed",
+    entry: {
+      id: rfcId,
+      exitCode: result.exitCode,
+      error: result.summary ?? `spec.live.merge exited ${result.exitCode}`,
+    },
+  };
+}
+
+export function liveMergeFailureEntry(rfcId: string, error: unknown): LiveMergeFailure {
+  return { id: rfcId, error: String(error instanceof Error ? error.message : error) };
+}
+
+export function formatLiveMergeFailure(entry: LiveMergeFailure): string {
+  return `spec.live.merge: failed for ${entry.id}: ${entry.error}`;
+}
+
+/** Emission gate + block assembly for results["spec.live.merge"] — undefined
+ * when nothing was attempted, so an all-failed run still surfaces. */
+export function buildLiveMergeBlock(
+  merged: LiveMergeEntry[],
+  failed: LiveMergeFailure[],
+  skipped: number,
+  dryRun: boolean,
+): { merged: LiveMergeEntry[]; failed: LiveMergeFailure[]; skipped: number; dryRun: boolean } | undefined {
+  if (merged.length === 0 && failed.length === 0 && skipped === 0) return undefined;
+  return { merged, failed, skipped, dryRun };
 }
