@@ -274,6 +274,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "probes[] with fresh results. Requires --id <rfc-id> or --all. Use --dry-run to " +
           "run probes without writing envelope files.",
         scope: "workspace",
+        acceptsAllFlag: true,
         mutatesState: true,
         writes: ["docs/rfcs/verification/*.generated.yaml"],
         // Secondary writer — rfc.verification.emit owns these envelopes;
