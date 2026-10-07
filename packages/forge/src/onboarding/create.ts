@@ -9,7 +9,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0643: pass profileId to runInit so forge.yaml gets a `profile` field.</item>
   <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
   <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, strict empty-directory check (only .git/ tolerated).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -18,7 +17,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640</history>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +32,7 @@ import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import {
   loadForgeConfig,
   serializeForgeConfig,
+  applyForgeYamlPatches,
   resolveForgeRoot,
   resolvePackageManager,
   applyCliBindingDefaults,
@@ -346,15 +347,30 @@ export async function runCreate(
     const forgeYamlPath = path.join(targetDir, "forge.yaml");
     if (await fio.exists(forgeYamlPath)) {
       try {
-        const config = loadForgeConfig(targetDir);
         const pm = resolvePackageManager(packageManager);
-        config.project.packageManager = pm;
-        if (config.bindings) {
-          config.bindings.commands = applyCliBindingDefaults(pm);
+        const commandDefaults = applyCliBindingDefaults(pm);
+        // RFC-1224: patch the document init just wrote instead of re-serializing —
+        // preserves comments/formatting and any schema-unknown sections.
+        const raw = await fio.readFile(forgeYamlPath);
+        const patched = applyForgeYamlPatches(raw, [
+          { path: ["project", "packageManager"], value: pm },
+          ...Object.entries(commandDefaults).map(([key, value]) => ({
+            path: ["bindings", "commands", key],
+            value,
+          })),
+        ]);
+        if (patched !== null) {
+          await fio.writeFile(forgeYamlPath, patched);
+        } else {
+          const config = loadForgeConfig(targetDir);
+          config.project.packageManager = pm;
+          if (config.bindings) {
+            config.bindings.commands = commandDefaults;
+          }
+          // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
+          // never the resolved StackProfile object, never drops an unresolvable id.
+          await fio.writeFile(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)));
         }
-        // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
-        // never the resolved StackProfile object, never drops an unresolvable id.
-        await fio.writeFile(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)));
       } catch {
         // Post-processing is best-effort — init already wrote a valid config
       }

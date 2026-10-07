@@ -7,7 +7,7 @@ concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 bindings:
-  requires: [commands.validateRfc, commands.typecheck, commands.implementStamp]
+  requires: [commands.validateRfc, commands.typecheck, commands.implementStamp, commands.adrImplementStamp]
   optional: [commands.test, commands.scopedBuild, paths.invariantsFile, paths.compassDocs]
 triggerPhrases: ["implement this RFC", "execute the implementation plan", "realize this RFC end-to-end"]
 ---
@@ -23,6 +23,7 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
 </CHANGE_SUMMARY>
 -->
 

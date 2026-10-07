@@ -6,6 +6,8 @@
   <item>RFC-0391: initial config tests.</item>
   <item>RFC-0538: added compass binding section tests.</item>
   <item>RFC-0540: added CLI binding defaults, pm-runner, and package-manager-aware defaultForgeConfig tests.</item>
+  <item>RFC-1224: adrImplementStamp binding, schema passthrough retention, applyForgeYamlPatches tests.</item>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,6 +22,7 @@ import {
   forgeConfigSchema,
   forgeBindingsSchema,
   resolveBinding,
+  applyForgeYamlPatches,
   FORGE_CLI_BINDING_DEFAULTS,
   resolvePmRunner,
   applyCliBindingDefaults,
@@ -63,12 +66,13 @@ test("resolvePmRunner falls back to npx for unknown", () => {
   expect(resolvePmRunner("")).toBe("npx");
 });
 
-test("FORGE_CLI_BINDING_DEFAULTS has 5 entries with correct keys", () => {
-  expect(FORGE_CLI_BINDING_DEFAULTS).toHaveLength(5);
+test("FORGE_CLI_BINDING_DEFAULTS has 6 entries with correct keys", () => {
+  expect(FORGE_CLI_BINDING_DEFAULTS).toHaveLength(6);
   const keys = FORGE_CLI_BINDING_DEFAULTS.map((e) => e.key);
   expect(keys).toContain("commands.validateRfc");
   expect(keys).toContain("commands.validateAdr");
   expect(keys).toContain("commands.implementStamp");
+  expect(keys).toContain("commands.adrImplementStamp");
   expect(keys).toContain("commands.specValidate");
   expect(keys).toContain("commands.sessionSave");
 });
@@ -134,6 +138,9 @@ test("applyCliBindingDefaults returns forge-CLI bindings non-null and stack bind
   expect(commands.validateRfc).not.toBeNull();
   expect(commands.validateAdr).not.toBeNull();
   expect(commands.implementStamp).not.toBeNull();
+  expect(commands.adrImplementStamp).toBe(
+    "pnpm exec forge adr.implement.stamp --id {id} --implementation-commit {commit}",
+  );
   expect(commands.specValidate).not.toBeNull();
   expect(commands.sessionSave).not.toBeNull();
   expect(commands.typecheck).toBeNull();
@@ -417,4 +424,101 @@ bindings:
   expect(config.bindings?.compass).toBeDefined();
   expect(config.bindings?.compass?.fileExtensions).toEqual([".ts", ".astro"]);
   expect(config.bindings?.compass?.testPatterns).toEqual(["*.test.ts", "*.spec.ts"]);
+});
+
+// ---------------------------------------------------------------------------
+// RFC-1224: schema passthrough + forge.yaml document patching
+// ---------------------------------------------------------------------------
+
+test("RFC-1224: schema retains adrImplementStamp and consumer-defined command keys", async () => {
+  const yaml = `schema: forge/config@1
+project:
+  name: consumer-project
+  stack: []
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+  sessionsDir: docs/sessions
+bindings:
+  schema: forge/bindings@1
+  commands:
+    validateRfc: null
+    adrImplementStamp: pnpm exec forge adr.implement.stamp --id {id} --implementation-commit {commit}
+    createRfc: pnpm exec forge rfc.create
+    manifestGenerate: pnpm exec forge manifest.generate
+  paths:
+    invariantsFile: null
+    compassDocs: []
+    reviewsDir: null
+    handoffsDir: null
+    sessionsDir: null
+plugins:
+  - name: my-plugin
+`;
+  await writeFile(join(tempDir, "forge.yaml"), yaml, "utf8");
+  const config = loadForgeConfig(tempDir);
+
+  // Promoted key resolves through the typed interface
+  expect(config.bindings?.commands.adrImplementStamp).toBe(
+    "pnpm exec forge adr.implement.stamp --id {id} --implementation-commit {commit}",
+  );
+  // Consumer-defined keys stay resolvable via passthrough
+  expect(resolveBinding(config, "commands.createRfc")).toBe("pnpm exec forge rfc.create");
+  expect(resolveBinding(config, "commands.manifestGenerate")).toBe(
+    "pnpm exec forge manifest.generate",
+  );
+  // Unknown top-level sections survive the schema parse
+  expect((config as unknown as Record<string, unknown>)["plugins"]).toEqual([
+    { name: "my-plugin" },
+  ]);
+});
+
+test("RFC-1224: applyForgeYamlPatches preserves comments and consumer content", () => {
+  const raw = `schema: forge/config@1
+# operator comment — must survive
+project:
+  name: consumer-project
+bindings:
+  schema: forge/bindings@1
+  commands:
+    validateRfc: null  # inline comment
+    customKey: keep-me
+plugins:
+  - name: my-plugin
+forge:
+  syncedVersion: 0.1.0
+`;
+  const patched = applyForgeYamlPatches(raw, [
+    { path: ["forge", "syncedVersion"], value: "0.2.0" },
+    { path: ["bindings", "commands", "adrImplementStamp"], value: "forge adr.implement.stamp" },
+  ]);
+
+  expect(patched).not.toBeNull();
+  expect(patched).toContain("syncedVersion: 0.2.0");
+  expect(patched).toContain("adrImplementStamp: forge adr.implement.stamp");
+  expect(patched).toContain("customKey: keep-me");
+  expect(patched).toContain("# operator comment — must survive");
+  expect(patched).toContain("# inline comment");
+  expect(patched).toContain("my-plugin");
+});
+
+test("RFC-1224: applyForgeYamlPatches creates missing intermediate maps", () => {
+  const patched = applyForgeYamlPatches("schema: forge/config@1\n", [
+    { path: ["forge", "syncedVersion"], value: "0.2.0" },
+    { path: ["bindings", "commands", "adrImplementStamp"], value: "x" },
+  ]);
+  expect(patched).toContain("syncedVersion: 0.2.0");
+  expect(patched).toContain("adrImplementStamp: x");
+});
+
+test("RFC-1224: applyForgeYamlPatches returns null on invalid YAML", () => {
+  const patched = applyForgeYamlPatches("a: [unclosed\n  : :", [
+    { path: ["a"], value: 1 },
+  ]);
+  expect(patched).toBeNull();
 });
