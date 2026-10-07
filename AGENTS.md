@@ -248,6 +248,7 @@ RFC-1006 adds five validation rules for post-cutoff RFCs and ADRs (createdAt >= 
 V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-cutoff RFCs and ADRs are exempt. The reject checklist is conservative — it uses closed trigger lists, not semantic analysis. See `packages/forge/skills/fo/fo-idea-create-rfc/acceptance-criteria-standard.md` for the canonical authoring guide.
 
 - **Section extractors in `validate-rules.ts` MUST call `stripFencedCodeBlocks(body)` before regex-matching markdown sections.** RFC documents contain fenced code blocks with example headings and checklists. Without stripping, extractors like `extractDocumentReadinessSection` and `extractAcceptanceCriteriaSection` match headings inside code blocks, producing false-positive validation errors (e.g. V-38 reporting unchecked criteria from a code block example). The `stripFencedCodeBlocks` helper removes all ` ```...``` ` blocks before extraction. Any new section extractor added to `validate-rules.ts` must follow this pattern.
+- **Living-spec heading mechanics use `fencedLineIndexes`, not `stripFencedCodeBlocks`** (RFC-1232): `os/spec/live-spec-shared.ts` masks fence-interior lines for heading detection while keeping them byte-present for section mechanics — merge/rebuild must preserve fence content verbatim, so stripping (which removes blocks) is the wrong tool there. Every `#{3,}`/`## ` scan in that module consumes the fence map; new heading-sensitive helpers must too.
 
 ## Re-entrant werkstatt locks (RFC-0616)
 
