@@ -6,10 +6,18 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0394: initial forgeSpecModule registering spec.validate.</item>
   <item>RFC-0396: added spec.status and spec.materialize commands.</item>
   <item>RFC-0711: added spec.live.merge, spec.live.list, spec.live.show, spec.live.validate commands.</item>
+  <item>RFC-1230: added spec.live.rebuild command + --force flag on spec.live.merge (idempotent merge design).</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1230: step 2 — spec.live.rebuild command
+
+New workspace command deduplicates history[] and replays source RFCs deterministically (namespace headings, preserve first mergedAt/operation and createdAt, unchanged → no write, empty history → skipped). Missing/unreadable/non-implemented/design-less RFCs warn into unreadableRfcs and never abort. --domain selects one spec; absent selector (or kernel-consumed --all via supportsAllSites) rebuilds all.
+
+Generated with [Devin](https://devin.ai)
+
+Co-Authored-By: Devin <158243242+devin-ai-integration[bot]@users.noreply.github.com></item>
+  <history>RFC-0394</history>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +31,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     const { runSpecLiveList } = await import("./live-spec-list.ts");
     const { runSpecLiveShow } = await import("./live-spec-show.ts");
     const { runSpecLiveValidate } = await import("./live-spec-validate.ts");
+    const { runSpecLiveRebuild } = await import("./live-spec-rebuild.ts");
   return {
   name: "forge-spec",
   version: "0.2.0",
@@ -89,7 +98,8 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "under docs/specs/live/<domain>.md. Requires --id=<RFC-XXXX>. " +
         "Domain is auto-derived from packagesImpacted[0] when liveSpec: true, or uses " +
         "the string value when liveSpec: <domain>. " +
-        "All-or-nothing: aborts on any heading conflict without writing. " +
+        "Idempotent: an RFC already in spec history[] is skipped as already-merged; " +
+        "use --force to re-merge (replaces that RFC's namespaced sections). " +
         "Use --dry-run to preview deltas without writing.",
       scope: "workspace",
       mutatesState: true,
@@ -98,6 +108,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       reads: ["docs/rfcs/**/*.md", "docs/specs/live/*.md"],
       flags: {
         id: { kind: "string", required: true, description: "RFC id to merge (e.g. RFC-0711)." },
+        force: { kind: "boolean", description: "Re-merge an already-merged RFC — strips its (RFC-XXXX) sections and old history entries first." },
         "dry-run": { kind: "boolean", description: "Preview deltas without writing files." },
       },
       execute: runSpecLiveMerge,
@@ -135,11 +146,35 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "Validate all living feature specs in docs/specs/live/. " +
         "Checks V-LS-01 (frontmatter), V-LS-02 (domain/filename match), " +
         "V-LS-03 (lastMergedRfc is archived), V-LS-04 (history entries are archived), " +
-        "V-LS-05 (no duplicate domains).",
+        "V-LS-05 (no duplicate domains), V-LS-06 (no duplicate RFC-namespaced headings), " +
+        "V-LS-07 (no duplicate history RFCs), V-LS-08 (merged-history coverage is complete). " +
+        "Repair path: spec.live.rebuild.",
       scope: "workspace",
       flags: {},
       reads: ["docs/specs/live/*.md", "docs/rfcs/**/*.md"],
       execute: runSpecLiveValidate,
+    },
+    {
+      name: "spec.live.rebuild",
+      supportsAllSites: true,
+      description:
+        "Rebuild a living feature spec by replaying its deduplicated history[] — " +
+        "the repair path for duplicated (RFC-XXXX) sections and duplicate history entries " +
+        "reported by spec.live.validate (V-LS-06/V-LS-07). " +
+        "Each unique RFC's current ## Design is re-applied in first-occurrence order; " +
+        "unreadable or unimplemented RFCs are skipped with a warning. " +
+        "With no --domain (or --all) every spec is rebuilt. Use --dry-run to preview.",
+      scope: "workspace",
+      mutatesState: true,
+      writes: ["docs/specs/live/*.md"],
+      generates: [],
+      reads: ["docs/specs/live/*.md", "docs/rfcs/**/*.md"],
+      flags: {
+        domain: { kind: "string", description: "Rebuild a single living spec by domain (filename without .md)." },
+        all: { kind: "boolean", description: "Rebuild every living spec in docs/specs/live/ (default when --domain is omitted)." },
+        "dry-run": { kind: "boolean", description: "Preview rebuild without writing files." },
+      },
+      execute: runSpecLiveRebuild,
     }
   ],
   pipelines: [
