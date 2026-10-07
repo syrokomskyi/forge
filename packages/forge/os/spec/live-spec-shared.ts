@@ -36,6 +36,10 @@ export interface ParsedHeading {
 // lines count as interior. An unterminated fence makes the rest of the input
 // interior (CommonMark behavior). Indented code blocks are out of scope.
 const FENCE_OPEN_REGEX = /^ {0,3}(`{3,}|~{3,})/;
+// CommonMark: a closing fence carries no info string — only trailing
+// whitespace. A same-char run followed by text is interior content, so the
+// map over-masks rather than exposing a would-be heading (safe direction).
+const FENCE_CLOSE_REGEX = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 function fencedLineIndexes(lines: string[]): ReadonlySet<number> {
   const inside = new Set<number>();
   let fenceChar: "`" | "~" | null = null;
@@ -51,7 +55,8 @@ function fencedLineIndexes(lines: string[]): ReadonlySet<number> {
       continue;
     }
     inside.add(i);
-    if (match && match[1]![0] === fenceChar && match[1]!.length >= fenceLength) {
+    const closeMatch = lines[i]!.match(FENCE_CLOSE_REGEX);
+    if (closeMatch && closeMatch[1]![0] === fenceChar && closeMatch[1]!.length >= fenceLength) {
       fenceChar = null;
       fenceLength = 0;
     }
