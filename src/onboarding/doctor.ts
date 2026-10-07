@@ -8,7 +8,6 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0664: added memory-layer health check (budget usage, gitignore coverage, daily-file leak risk).</item>
   <item>RFC-0704: added independent-version-packages check — validates that paths in independentVersionPackages exist and contain package.json.</item>
   <item>RFC-0941: added pack-manifests advisory check — validates forge.plugin.yaml existence and schema for each declared skill pack.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -17,7 +16,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0675</history>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -142,6 +142,7 @@ const BINDING_COMMAND_KEYS = [
   "commands.validateRfc",
   "commands.validateAdr",
   "commands.implementStamp",
+  "commands.adrImplementStamp",
   "commands.typecheck",
   "commands.test",
   "commands.scopedBuild",

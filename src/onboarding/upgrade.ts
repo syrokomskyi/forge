@@ -11,7 +11,6 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0611: added nested AGENTS.md generation after skill sync.</item>
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0664: added scaffoldMemoryLayer step to scaffold .agents/memory/ and .gitignore block.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -20,7 +19,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
-  <history>RFC-0543</history>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <history>RFC-0543, RFC-0611, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -35,10 +35,12 @@ import {
   resolveForgeRoot,
   loadForgeConfig,
   serializeForgeConfig,
+  applyForgeYamlPatches,
   resolvePmRunner,
   resolvePmInstall,
   type ForgeConfig,
   type ForgeBindings,
+  type ForgeYamlPatch,
 } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { syncKnowledgeFile } from "../knowledge/index.ts";
@@ -452,18 +454,38 @@ async function updateSyncedVersion(
   workspaceRoot: string,
   config: ForgeConfig,
   version: string,
+  bindingsAdded: { key: string; value: string }[],
   dryRun: boolean,
   io: WorkspaceIO,
+  warn: (msg: string) => void,
 ): Promise<void> {
   if (dryRun) return;
 
-  // Set the syncedVersion on the in-memory config (bindings already updated)
+  // Keep the in-memory config truthful for downstream steps (doctor).
   config.forge = { syncedVersion: version };
 
-  // Write the full config back to forge.yaml
+  // RFC-1224: patch the existing document — syncedVersion plus newly added
+  // binding defaults — instead of re-serializing, so consumer-owned keys,
+  // sections, comments and ordering survive the rewrite.
+  const patches: ForgeYamlPatch[] = [
+    { path: ["forge", "syncedVersion"], value: version },
+    ...bindingsAdded.map((b) => ({
+      path: ["bindings", ...b.key.split(".")],
+      value: b.value,
+    })),
+  ];
+  const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
+  const raw = await io.readFile(forgeYamlPath).catch(() => null);
+  const patched = raw === null ? null : applyForgeYamlPatches(raw, patches);
+  if (patched !== null) {
+    await io.writeFile(forgeYamlPath, patched);
+    return;
+  }
+  warn(
+    "forge.upgrade: forge.yaml patch failed — falling back to full serialization (schema-unknown keys may be dropped)",
+  );
   // RFC-1118: serializeForgeConfig writes the declared profile id verbatim —
   // never the resolved StackProfile object, never drops an unresolvable id.
-  const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
   await io.writeFile(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)));
 }
 
@@ -689,7 +711,15 @@ export async function runUpgrade(
 
   // Step 5: Update forge.syncedVersion
   if (!isDryRun) {
-    await updateSyncedVersion(workspaceRoot, config, toVersion, false, fio);
+    await updateSyncedVersion(
+      workspaceRoot,
+      config,
+      toVersion,
+      bindingsAdded,
+      false,
+      fio,
+      (msg) => context.logger.warn(msg),
+    );
   }
 
   // Step 5b: Generate nested AGENTS.md (RFC-0611). RFC-1153: the write path

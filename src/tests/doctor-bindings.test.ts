@@ -4,6 +4,8 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0540: initial doctor binding notices tests.</item>
+  <item>RFC-1224: adrImplementStamp added to notice inventory and fixtures.</item>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,7 +60,7 @@ async function setupMinimalProject(dir: string): Promise<void> {
   await writeFile(join(dir, "PREFERENCES.md"), "# Test", "utf8");
 }
 
-test("doctor emits defaultable-binding-null notices for all 5 forge-CLI bindings when null", async () => {
+test("doctor emits defaultable-binding-null notices for all 6 forge-CLI bindings when null", async () => {
   await setupMinimalProject(tempDir);
   await writeForgeYaml(
     tempDir,
@@ -96,11 +98,12 @@ bindings:
 
   const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
   const notices = result.data?.bindings?.notices ?? [];
-  expect(notices).toHaveLength(5);
+  expect(notices).toHaveLength(6);
   const keys = notices.map((n) => n.key);
   expect(keys).toContain("commands.validateRfc");
   expect(keys).toContain("commands.validateAdr");
   expect(keys).toContain("commands.implementStamp");
+  expect(keys).toContain("commands.adrImplementStamp");
   expect(keys).toContain("commands.specValidate");
   expect(keys).toContain("commands.sessionSave");
   for (const notice of notices) {
@@ -131,6 +134,7 @@ bindings:
     validateRfc: "custom rfc validate command"
     validateAdr: "custom adr validate command"
     implementStamp: "custom stamp command"
+    adrImplementStamp: "custom adr stamp command"
     typecheck: null
     test: null
     scopedBuild: null
@@ -172,6 +176,7 @@ bindings:
     validateRfc: "npx forge rfc.validate --id {id} --json"
     validateAdr: "npx forge adr.validate --id {id} --json"
     implementStamp: "npx forge rfc.implement.stamp --id {id} --implementation-commit {commit}"
+    adrImplementStamp: "npx forge adr.implement.stamp --id {id} --implementation-commit {commit}"
     typecheck: null
     test: null
     scopedBuild: null

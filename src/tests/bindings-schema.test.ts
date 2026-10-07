@@ -7,6 +7,8 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0639: initial test suite for semantic command keys, terminology resolution, and applyCliBindingDefaults.</item>
+  <item>RFC-1224: adrImplementStamp schema/default coverage; consumer-defined command key passthrough.</item>
+  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
 </CHANGE_SUMMARY>
 */
 
@@ -174,12 +176,14 @@ describe("RFC-0639: Terminology schema change", () => {
 });
 
 describe("RFC-0639: applyCliBindingDefaults", () => {
-  test("returns 13 keys with semantic keys as null", () => {
+  test("returns 14 keys with semantic keys as null", () => {
     const commands = applyCliBindingDefaults("pnpm");
     // CLI-backed keys are non-null
     expect(commands.validateRfc).not.toBeNull();
     expect(commands.validateAdr).not.toBeNull();
     expect(commands.implementStamp).not.toBeNull();
+    // RFC-1224: adr.implement.stamp promoted to a first-class default binding
+    expect(commands.adrImplementStamp).not.toBeNull();
     expect(commands.specValidate).not.toBeNull();
     expect(commands.sessionSave).not.toBeNull();
     // Software-domain keys are null
@@ -310,5 +314,53 @@ describe("RFC-0639: resolveTerminology", () => {
     const config = defaultForgeConfig("test-project", "pnpm");
     expect(resolveTerminology(config, undefined, "artifact")).toBe("artifact");
     expect(resolveTerminology(config, undefined, "source")).toBe("source file");
+  });
+});
+
+describe("RFC-1224: promoted + consumer-defined command keys", () => {
+  test("forgeBindingsSchema accepts adrImplementStamp", () => {
+    const result = forgeBindingsSchema.safeParse({
+      schema: "forge/bindings@1",
+      commands: {
+        adrImplementStamp:
+          "pnpm exec forge adr.implement.stamp --id {id} --implementation-commit {commit}",
+      },
+      paths: {
+        invariantsFile: null,
+        compassDocs: [],
+        reviewsDir: null,
+        handoffsDir: null,
+        sessionsDir: null,
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.commands.adrImplementStamp).toBe(
+        "pnpm exec forge adr.implement.stamp --id {id} --implementation-commit {commit}",
+      );
+    }
+  });
+
+  test("forgeBindingsSchema retains consumer-defined command keys", () => {
+    const result = forgeBindingsSchema.safeParse({
+      schema: "forge/bindings@1",
+      commands: {
+        validateRfc: null,
+        createRfc: "pnpm exec forge rfc.create",
+      },
+      paths: {
+        invariantsFile: null,
+        compassDocs: [],
+        reviewsDir: null,
+        handoffsDir: null,
+        sessionsDir: null,
+      },
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect((result.data.commands as Record<string, unknown>)["createRfc"]).toBe(
+        "pnpm exec forge rfc.create",
+      );
+    }
   });
 });
