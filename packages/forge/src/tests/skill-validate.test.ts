@@ -259,3 +259,183 @@ describe("SKILL-21: knowledge layer token budget warnings (RFC-0661)", () => {
     expect(skill21Warnings).toEqual([]);
   });
 });
+
+describe("RFC-1225: forge root + workspace config resolution", () => {
+  function createConsumerWorkspace(): { tmpDir: string; forgePkg: string } {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "forge-skill-consumer-"));
+    const forgePkg = path.join(tmpDir, "node_modules", "@warpgogol", "forge");
+    fs.mkdirSync(forgePkg, { recursive: true });
+    fs.writeFileSync(
+      path.join(forgePkg, "package.json"),
+      JSON.stringify({ name: "@warpgogol/forge", version: "9.9.9" }),
+      "utf8",
+    );
+    return { tmpDir, forgePkg };
+  }
+
+  test("AC-1: consumer layout validates skills under node_modules/@warpgogol/forge", async () => {
+    const { FORGE_SKILLS } = await import("../registry.ts");
+    const { tmpDir, forgePkg } = createConsumerWorkspace();
+    try {
+      // Materialize one registry skill inside the installed package copy —
+      // the others stay absent and produce SKILL-01, which is honest.
+      const entry = FORGE_SKILLS.find((s) => !(s.knowledge && s.knowledge.length > 0))!;
+      const skillPath = path.join(forgePkg, entry.path);
+      fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+      fs.writeFileSync(
+        skillPath,
+        `---\nname: ${entry.name}\ndescription: Fixture skill for consumer root resolution\ninvocation: ${entry.invocation}\ncategory: ${entry.category}\nconcerns: ${entry.concerns}\ndependsOn: []\nlanguagePolicy: ref(PREFERENCES.md)\n---\n\nBefore starting, read \`PREFERENCES.md\` at the repository root.\n`,
+        "utf8",
+      );
+
+      const result = runSkillValidate({}, { workspaceRoot: tmpDir });
+      // The materialized skill was found → no SKILL-01 for it. Under the old
+      // hardcoded <workspaceRoot>/packages/forge path it could never exist.
+      const skill01 = result.violations.filter(
+        (v) => v.rule === "SKILL-01" && v.skill === entry.name,
+      );
+      expect(skill01).toEqual([]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("AC-2: unresolvable forge root fails with a single SKILL-00", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "forge-skill-noroot-"));
+    try {
+      const result = runSkillValidate({}, { workspaceRoot: tmpDir });
+      expect(result.status).toBe("fail");
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0].rule).toBe("SKILL-00");
+      expect(result.violations[0].message).toContain("forge root not resolvable");
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("AC-3: pack discovery reads forge.yaml from the workspace root", () => {
+    const { tmpDir } = createConsumerWorkspace();
+    try {
+      fs.writeFileSync(
+        path.join(tmpDir, "forge.yaml"),
+        `schema: forge/config@1
+project:
+  name: consumer
+  stack: []
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+  sessionsDir: docs/sessions
+skillPacks:
+  - prefix: wg
+    dir: packs/wg-skills
+`,
+        "utf8",
+      );
+      const packDir = path.join(tmpDir, "packs", "wg-skills");
+      fs.mkdirSync(path.join(packDir, "wg-broken"), { recursive: true });
+      fs.writeFileSync(path.join(packDir, "forge.plugin.yaml"), "id: wg-skills\nversion: 1.0.0\n");
+      // Deliberately invalid pack skill — discovery proves itself by flagging it.
+      fs.writeFileSync(path.join(packDir, "wg-broken", "SKILL.md"), "# no frontmatter\n");
+
+      const result = runSkillValidate({}, { workspaceRoot: tmpDir });
+      const packViolations = result.violations.filter(
+        (v) => v.pack === "wg" && v.skill === "wg-broken",
+      );
+      expect(packViolations.length).toBeGreaterThan(0);
+      expect(packViolations.some((v) => v.rule === "SKILL-01")).toBe(true);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("AC-4: monorepo invocation resolves the real forge package root — no SKILL-01", async () => {
+    const { resolveForgeRoot } = await import("../config/forge-config.ts");
+    const root = process.cwd();
+    // cwd may be the repo root (packages/forge layout) or packages/forge
+    // itself (scoped test runs) — both must resolve to a root with skills/.
+    const forgeRoot = resolveForgeRoot(root);
+    expect(fs.existsSync(path.join(forgeRoot, "skills"))).toBe(true);
+    const result = runSkillValidate({}, { workspaceRoot: root });
+    const skill01 = result.violations.filter((v) => v.rule === "SKILL-01" && !v.pack);
+    expect(skill01).toEqual([]);
+  });
+});
+
+describe("RFC-1227: SKILL-17 comment-region exemption", () => {
+  // Access the checker through a fabricated skill on disk? checkSkill17 is not
+  // exported — exercise it via a consumer fixture containing a registry skill
+  // whose SKILL.md carries the content under test.
+  async function fixtureRun(bodyLines: string[]): Promise<ReturnType<typeof runSkillValidate>> {
+    const { FORGE_SKILLS } = await import("../registry.ts");
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "forge-skill17-"));
+    const forgePkg = path.join(tmpDir, "node_modules", "@warpgogol", "forge");
+    fs.mkdirSync(forgePkg, { recursive: true });
+    fs.writeFileSync(
+      path.join(forgePkg, "package.json"),
+      JSON.stringify({ name: "@warpgogol/forge", version: "9.9.9" }),
+      "utf8",
+    );
+    const entry = FORGE_SKILLS.find((s) => !(s.knowledge && s.knowledge.length > 0))!;
+    const skillPath = path.join(forgePkg, entry.path);
+    fs.mkdirSync(path.dirname(skillPath), { recursive: true });
+    fs.writeFileSync(
+      skillPath,
+      [
+        "---",
+        `name: ${entry.name}`,
+        "description: Fixture skill for SKILL-17 scope tests",
+        `invocation: ${entry.invocation}`,
+        `category: ${entry.category}`,
+        `concerns: ${entry.concerns}`,
+        "dependsOn: []",
+        "languagePolicy: ref(PREFERENCES.md)",
+        "---",
+        ...bodyLines,
+        "Before starting, read `PREFERENCES.md` at the repository root.",
+      ].join("\n"),
+      "utf8",
+    );
+    try {
+      return runSkillValidate({}, { workspaceRoot: tmpDir });
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  }
+
+  test("AC-1: RFC ids inside HTML comment regions produce no SKILL-17 violation", async () => {
+    const result = await fixtureRun([
+      "<!--",
+      "<CHANGE_SUMMARY>",
+      "  <item>RFC-1097: sweep — SKILL.md headers + classification fixes</item>",
+      "</CHANGE_SUMMARY>",
+      "-->",
+      "Run `forge doctor` to inspect bindings. <!-- operator note: see RFC-0553 -->",
+    ]);
+    const idViolations = result.violations.filter((v) => v.rule === "SKILL-17");
+    expect(idViolations).toEqual([]);
+  });
+
+  test("AC-2: RFC ids in instruction text still violate SKILL-17", async () => {
+    const result = await fixtureRun([
+      "Stamp the implementation via `rfc.implement.stamp` (RFC-0756).",
+    ]);
+    const idViolations = result.violations.filter((v) => v.rule === "SKILL-17");
+    expect(idViolations.length).toBeGreaterThan(0);
+    expect(idViolations[0].message).toContain("RFC-0756");
+  });
+
+  test("AC-4: the file-level disable marker still suppresses all SKILL-17 violations", async () => {
+    const result = await fixtureRun([
+      "<!-- skill-lint-disable SKILL-17 -->",
+      "Referencing RFC-0996 in body text is suppressed by the marker.",
+    ]);
+    const idViolations = result.violations.filter((v) => v.rule === "SKILL-17");
+    expect(idViolations).toEqual([]);
+  });
+});
