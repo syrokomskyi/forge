@@ -7,8 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0260: declare typed `flags` schemas for the whole rfc.* command family; unknown/malformed flags now fail with KERNEL-FLAG-01/02/03 instead of being silently ignored.</item>
-  <item>RFC-0795: add `--batch` flag to `rfc.list` for filtering by batch slug.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -17,6 +15,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: rfc.verification.refresh gains acceptsAllFlag: true — the declared --all flag is now reachable via werkstatt run (consumed selector re-injected as flags.all after the gate).</item>
+  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
+  <history>RFC-0260, RFC-0795</history>
 </CHANGE_SUMMARY>
 */
 
@@ -250,7 +250,8 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         description:
           "RFC-0330: execute acceptance probes for target RFC(s) and write per-RFC verification " +
           "evidence artifacts to docs/rfcs/verification/*.generated.yaml. Requires --id <rfc-id> " +
-          "or --status <status>. Reuses runProbe from RFC-0268. Writes via writeFileAtomic.",
+          "or --status <status>. Reuses runProbe from RFC-0268. Writes via the WorkspaceIO port " +
+          "(io.writeFile); --dry-run runs probes and reports without writing (RFC-1237).",
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/verification/*.generated.yaml"],
@@ -262,6 +263,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           status: {
             kind: "string",
             description: "Target every RFC with this status (e.g. implemented).",
+          },
+          "dry-run": {
+            kind: "boolean",
+            description: "Run probes and report results without writing envelope files.",
           },
         },
         execute: runRfcVerificationEmit,

@@ -105,13 +105,42 @@ async function setupWorkspace(opts: {
   };
 }
 
-function makeContext(workspaceRoot: string) {
+function makeContext(workspaceRoot: string, overrides: Record<string, unknown> = {}) {
   return {
     workspaceRoot,
     logger: { info: () => {} },
     outputFormat: "json" as const,
     commandRegistry: undefined,
+    dryRun: false,
+    ...overrides,
   };
+}
+
+/**
+ * RFC-1237: a minimal recording-style WorkspaceIO — writes land in `writes`,
+ * never on disk. Lets tests assert which writes the handler attempted through
+ * the port without touching fs.
+ */
+function makeSpyIo() {
+  const writes: string[] = [];
+  const io = {
+    readFile: (p: string) => fs.readFile(p, "utf8"),
+    writeFile: async (p: string) => {
+      writes.push(p);
+    },
+    mkdir: async (p: string) => {
+      writes.push(`mkdir:${p}`);
+    },
+    exists: async (p: string) => {
+      try {
+        await fs.stat(p);
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  };
+  return { io, writes };
 }
 
 beforeEach(() => {
@@ -252,6 +281,151 @@ describe("rfc.verification.refresh — AC-4: --dry-run does not write files", ()
         "verification",
         "rfc-0100.generated.yaml",
       );
+      const raw = await fs.readFile(envelopePath, "utf-8");
+      expect(raw).not.toContain("lastRefreshedAt");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("rfc.verification.refresh — RFC-1237 AC-1: context.dryRun (the real CLI path)", () => {
+  test("werkstatt run --dry-run consumes --dry-run into context.dryRun — zero writes", async () => {
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [{ id: "RFC-0100", status: "implemented" }],
+      envelopes: [{ id: "RFC-0100", emittedAt: "2026-01-01T00:00:00.000Z" }],
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+      const envelopePath = path.join(
+        workspaceRoot,
+        "docs",
+        "rfcs",
+        "verification",
+        "rfc-0100.generated.yaml",
+      );
+      const before = await fs.readFile(envelopePath, "utf-8");
+
+      // The real CLI path: consumeCommonFlags strips --dry-run from argv into
+      // context.dryRun — input.flags carries no "dry-run" key at all.
+      const result = await runRfcVerificationRefresh(
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot, { dryRun: true }) as unknown as ForgeRuntimeContext,
+      );
+
+      expect(result.data!.refreshed).toHaveLength(1);
+      expect(await fs.readFile(envelopePath, "utf-8")).toBe(before);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("recording-IO port sees zero write intents under context.dryRun", async () => {
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [{ id: "RFC-0100", status: "implemented" }],
+      envelopes: [{ id: "RFC-0100" }],
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+      const { io, writes } = makeSpyIo();
+
+      await runRfcVerificationRefresh(
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot, { dryRun: true, io }) as unknown as ForgeRuntimeContext,
+      );
+
+      expect(
+        writes,
+        "dry-run refresh must issue zero io writes — check the dryRun guard in runRfcVerificationRefresh",
+      ).toEqual([]);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("rfc.verification.refresh — RFC-1237 AC-2: emit-canonical header", () => {
+  test("writes the emit-owned structured marker header, not a refresh-owned one", async () => {
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [{ id: "RFC-0100", status: "implemented" }],
+      envelopes: [{ id: "RFC-0100" }],
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+
+      await runRfcVerificationRefresh(
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
+      );
+
+      const raw = await fs.readFile(
+        path.join(workspaceRoot, "docs", "rfcs", "verification", "rfc-0100.generated.yaml"),
+        "utf-8",
+      );
+      // Structured marker keys — identical-by-construction to what emit writes.
+      expect(raw).toMatch(/^generatedMarker: GENERATED\./);
+      expect(raw).toContain("ownerCommand: rfc.verification.emit");
+      expect(raw).toContain("regenerateCommand: pnpm exec werkstatt run rfc.verification.emit");
+      // Refresh never stamps itself as owner — it is a conditional secondary writer.
+      expect(raw).not.toContain("rfc.verification.refresh");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("legacy '#'-comment input header normalizes to the canonical key format", async () => {
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [{ id: "RFC-0100", status: "implemented" }],
+      envelopes: [{ id: "RFC-0100" }],
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+      await runRfcVerificationRefresh(
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
+      );
+
+      const raw = await fs.readFile(
+        path.join(workspaceRoot, "docs", "rfcs", "verification", "rfc-0100.generated.yaml"),
+        "utf-8",
+      );
+      // setupWorkspace wrote the legacy `# Generated by ...` comment header —
+      // refresh output must carry no comment lines at all.
+      expect(raw.split("\n").every((line) => !line.startsWith("#"))).toBe(true);
+      expect(raw).toMatch(/^generatedMarker: GENERATED\./);
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("writes route through the resolved io port, not ambient fs", async () => {
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [{ id: "RFC-0100", status: "implemented" }],
+      envelopes: [{ id: "RFC-0100", emittedAt: "2026-01-01T00:00:00.000Z" }],
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+      const { io, writes } = makeSpyIo();
+      const envelopePath = path.join(
+        workspaceRoot,
+        "docs",
+        "rfcs",
+        "verification",
+        "rfc-0100.generated.yaml",
+      );
+
+      await runRfcVerificationRefresh(
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot, { io }) as unknown as ForgeRuntimeContext,
+      );
+
+      expect(writes).toEqual([envelopePath]);
+      // The spy io never touches disk — the on-disk file keeps its old content.
       const raw = await fs.readFile(envelopePath, "utf-8");
       expect(raw).not.toContain("lastRefreshedAt");
     } finally {
