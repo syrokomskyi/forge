@@ -153,6 +153,53 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("rfc.verification.refresh — sweep delta report", () => {
+  test("reports recovered (fail→pass) and regressed (pass→fail) transitions", async () => {
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [
+        { id: "RFC-0100", status: "implemented" },
+        { id: "RFC-0101", status: "implemented" },
+        { id: "RFC-0102", status: "implemented" },
+      ],
+      envelopes: [
+        { id: "RFC-0100", overall: "fail" },
+        { id: "RFC-0101", overall: "pass" },
+        { id: "RFC-0102", overall: "fail" },
+      ],
+    });
+
+    try {
+      // RFC-0100: fail → pass (recovered); RFC-0101: pass → fail (regressed);
+      // RFC-0102: fail → fail (still failing — not a regression).
+      mockRunProbe
+        .mockResolvedValueOnce({ probe: PROBE, ok: true, detail: "exists" })
+        .mockResolvedValueOnce({ probe: PROBE, ok: false, detail: "missing" })
+        .mockResolvedValueOnce({ probe: PROBE, ok: false, detail: "missing" });
+
+      const result = await runRfcVerificationRefresh(
+        { flags: { all: true } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
+      );
+
+      expect(result.data!.delta).toEqual({
+        recovered: ["RFC-0100"],
+        regressed: ["RFC-0101"],
+      });
+      const entries = Object.fromEntries(result.data!.refreshed.map((r) => [r.rfcId, r]));
+      expect(entries["RFC-0100"]?.previousOverall).toBe("fail");
+      expect(entries["RFC-0101"]?.previousOverall).toBe("pass");
+      expect(entries["RFC-0102"]?.previousOverall).toBe("fail");
+      const r101Diag = result.data!.diagnostics.find((d) => d.file?.includes("rfc-0101"));
+      expect(r101Diag?.message).toContain("regressed: was pass");
+      const r102Diag = result.data!.diagnostics.find((d) => d.file?.includes("rfc-0102"));
+      expect(r102Diag?.message).not.toContain("regressed");
+      expect(result.summary).toContain("1 regressed, 1 recovered");
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
 describe("rfc.verification.refresh — AC-1: single-RFC refresh", () => {
   test("updates lastRefreshedAt, replaces probes[], preserves emittedAt", async () => {
     const { workspaceRoot, cleanup } = await setupWorkspace({

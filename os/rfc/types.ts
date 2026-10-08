@@ -21,6 +21,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <item>Session-retro 2026-10-08: VerificationDelta + previousOverall on emit/refresh result entries — sweep-level recovered/regressed transition reporting.</item>
   <history>RFC-0465, RFC-0478, RFC-0480</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -338,12 +339,25 @@ export interface VerificationEvidence {
   filesModified?: string[];
 }
 
+export interface VerificationDelta {
+  /** Envelopes that flipped fail → pass since the committed version. */
+  recovered: string[];
+  /** Envelopes that flipped pass → fail since the committed version. */
+  regressed: string[];
+}
+
 export interface RfcVerificationEmitResult {
   command: "rfc.verification.emit";
   status: "pass" | "fail";
-  emitted: Array<{ rfcId: string; file: string; overall: "pass" | "fail" }>;
+  emitted: Array<{
+    rfcId: string;
+    file: string;
+    overall: "pass" | "fail";
+    previousOverall?: "pass" | "fail";
+  }>;
   skipped: Array<{ rfcId: string; reason: "no-probes" }>;
   diagnostics: Diagnostic[];
+  delta?: VerificationDelta;
 }
 
 export interface RfcVerificationRefreshResult {
@@ -353,11 +367,13 @@ export interface RfcVerificationRefreshResult {
     rfcId: string;
     file: string;
     overall: "pass" | "fail";
+    previousOverall?: "pass" | "fail";
     probesTotal: number;
     probesFailed: number;
   }>;
   skipped: Array<{ rfcId: string; reason: "no evidence envelope" | "not implemented" }>;
   diagnostics: Diagnostic[];
+  delta?: VerificationDelta;
   summary: { total: number; passed: number; failed: number; skipped: number };
 } // ─── Validation ──────────────────────────────────────────────────────────────
 export interface RfcValidationViolation {

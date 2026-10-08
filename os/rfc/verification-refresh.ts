@@ -18,6 +18,9 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 io.writeFile port routing, emit-canonical generated header — refresh owns
 content freshness, never envelope identity (ownerCommand stays
 rfc.verification.emit).</item>
+  <item>Session-retro 2026-10-08: sweep delta report — previousOverall per
+envelope + recovered/regressed lists separate still-failing drift from fresh
+regressions without manual triage.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -167,10 +170,12 @@ export async function runRfcVerificationRefresh(
     }
 
     const probesFailed = probeRecords.filter((r) => !r.ok).length;
+    const previousOverall = existingEnvelope.overall;
     refreshed.push({
       rfcId,
       file: evidenceRelPath,
       overall: envelope.overall,
+      previousOverall,
       probesTotal: probeRecords.length,
       probesFailed,
     });
@@ -180,13 +185,14 @@ export async function runRfcVerificationRefresh(
         ruleId: "RFC-REFRESH-01",
         severity: "error",
         file: evidenceRelPath,
-        message: `${rfcId}: refresh overall is "fail" — ${probesFailed}/${probeRecords.length} probe(s) failed.`,
+        message: `${rfcId}: refresh overall is "fail" — ${probesFailed}/${probeRecords.length} probe(s) failed${previousOverall === "pass" ? " (regressed: was pass)" : ""}.`,
       });
     }
 
     if (outputFormat === "pretty") {
+      const drift = previousOverall !== envelope.overall ? `, was ${previousOverall}` : "";
       logger.info(
-        `[refresh] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${dryRun ? ", dry-run" : ""})`,
+        `[refresh] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${drift}${dryRun ? ", dry-run" : ""})`,
       );
     }
   }
@@ -196,6 +202,18 @@ export async function runRfcVerificationRefresh(
   const hasFailures = failed > 0;
   const hasSkippedNoEnvelope = skipped.some((s) => s.reason === "no evidence envelope");
   const status: RfcVerificationRefreshResult["status"] = hasFailures ? "fail" : "pass";
+  const delta = {
+    recovered: refreshed
+      .filter((r) => r.previousOverall === "fail" && r.overall === "pass")
+      .map((r) => r.rfcId),
+    regressed: refreshed
+      .filter((r) => r.previousOverall === "pass" && r.overall === "fail")
+      .map((r) => r.rfcId),
+  };
+  const deltaSummary =
+    delta.recovered.length + delta.regressed.length > 0
+      ? `, ${delta.regressed.length} regressed, ${delta.recovered.length} recovered`
+      : "";
 
   return {
     data: {
@@ -204,6 +222,7 @@ export async function runRfcVerificationRefresh(
       refreshed,
       skipped,
       diagnostics,
+      delta,
       summary: {
         total: refreshed.length,
         passed,
@@ -212,6 +231,6 @@ export async function runRfcVerificationRefresh(
       },
     },
     exitCode: hasFailures || hasSkippedNoEnvelope ? 1 : 0,
-    summary: `rfc.verification.refresh: ${refreshed.length} refreshed, ${skipped.length} skipped`,
+    summary: `rfc.verification.refresh: ${refreshed.length} refreshed, ${skipped.length} skipped${deltaSummary}`,
   };
 }

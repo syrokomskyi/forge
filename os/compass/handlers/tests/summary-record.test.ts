@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import {
   runCompassSummaryRecord,
   parseChangeSummary,
@@ -159,6 +160,51 @@ describe("compass.summary.record", () => {
       makeContext(root),
     );
     expect(missing.exitCode).toBe(1);
+  });
+
+  it("skips auto-inject when the worktree diff already adds a same-ID item (id-in-diff)", async () => {
+    execFileSync("git", ["init"], { cwd: root });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: root });
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER(["RFC-0001: existing item."]));
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "baseline"], { cwd: root });
+    // The pending change carries a hand-authored descriptive item for the ID.
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER(["RFC-0001: existing item.", "RFC-1095: descriptive hand-written entry"]),
+    );
+
+    const result = await runCompassSummaryRecord(
+      makeInput({ id: "RFC-1095", files: ["src/a.ts"], text: "generic subject line" }),
+      makeContext(root),
+    );
+
+    expect(result.data?.skipped).toEqual([{ file: "src/a.ts", reason: "id-in-diff" }]);
+    expect(result.data?.recorded).toEqual([]);
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).not.toContain("generic subject line");
+  });
+
+  it("still records when the same-ID item already exists at HEAD (consecutive-commit stack)", async () => {
+    execFileSync("git", ["init"], { cwd: root });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: root });
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER(["RFC-1095: step 1 — recorded by the previous commit"]),
+    );
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "baseline"], { cwd: root });
+
+    const result = await runCompassSummaryRecord(
+      makeInput({ id: "RFC-1095", files: ["src/a.ts"], text: "step 2" }),
+      makeContext(root),
+    );
+
+    expect(result.data?.recorded).toEqual(["src/a.ts"]);
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).toContain("<item>RFC-1095: step 2</item>");
   });
 
   it("defaults item text to the bare ID when --text is absent", async () => {
