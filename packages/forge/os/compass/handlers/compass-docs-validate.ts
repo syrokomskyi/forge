@@ -11,6 +11,7 @@
   <item>DOC-03 link targets resolve to declared node ids OR file/dir conventions — dangling-by-convention stays a warning, never an error.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
+  <item>RFC-1242: review fixes — self-close detection strips quoted attr values first (a="foo/" no longer fakes a self-close), non-backticked path tokens get the same ellipsis strip, docs.* link slugs keep their basename prefix (docs.plans.plan-rfc-* resolves).</item>
   <item>RFC-1242: created — scan docs/*.xml for unresolvable paths, workspace ids, and link targets (COMPASS-DOC-00..03).</item>
 </CHANGE_SUMMARY>
 */
@@ -90,7 +91,8 @@ function checkWellFormed(file: string, source: string): { line: number; message:
       }
       continue;
     }
-    if (selfClose !== "/" && !attrs.trimEnd().endsWith("/")) {
+    const attrsUnquoted = attrs.replace(/"[^"]*"|'[^']*'/g, "");
+    if (selfClose !== "/" && !attrsUnquoted.trimEnd().endsWith("/")) {
       stack.push({ name, line });
     }
   }
@@ -143,7 +145,12 @@ function pathTokens(raw: string): string[] {
   if (fragments.length === 0) {
     return raw
       .split(/[\s,]+/)
-      .map((t) => t.trim())
+      .map((t) =>
+        t
+          .trim()
+          .replace(/(?:…|\.\.\.).*$/, "")
+          .replace(/\/+$/, ""),
+      )
       .filter((t) => t.length > 0 && !t.startsWith("<") && t !== "…" && t !== "+");
   }
   const joinsWithEllipsis = raw.replace(/`[^`]*`/g, "").includes("…");
@@ -200,13 +207,13 @@ async function linkTargetResolves(
   if (/^dna-\d+$/.test(target)) {
     return (await io.exists(resolve(docsDir, "architecture-dna.md"))) ? "file" : "none";
   }
-  const docsId = /^docs\.([a-z-]+)\..*?([a-z]+-\d{3,}.*)$/.exec(target);
+  const docsId = /^docs\.([a-z-]+)\.(.+)$/.exec(target);
   if (docsId) {
     const [, dir, slug] = docsId;
-    const hits = await io.glob(`${docsId[1]}/**/${slug}*.md`, { cwd: docsDir }).catch(() => []);
+    const hits = await io.glob(`${docsId[1]}/**/*${slug}*.md`, { cwd: docsDir }).catch(() => []);
     if (hits.length > 0) return "file";
-    // generic fallback: any file whose basename starts with the slug under docs/
-    const broad = await io.glob(`**/${slug}*`, { cwd: docsDir }).catch(() => []);
+    // generic fallback: any file whose basename contains the slug under docs/
+    const broad = await io.glob(`**/*${slug}*`, { cwd: docsDir }).catch(() => []);
     if (broad.length > 0) return "file";
     return "none";
   }

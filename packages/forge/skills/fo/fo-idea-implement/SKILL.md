@@ -290,7 +290,7 @@ Stage only the regenerated `AGENTS.md` files. If no agent-facing contracts chang
 
 #### 4.9. Documentation audit (fo-doc-audit)
 
-After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, architecture-dna.md, templates, generated artifacts, COMMANDS.md/PACKAGE_GRAPH.md), applies needed updates, and commits them separately. Wait for it to complete.
+After implementation is complete and all checks pass, invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, architecture-dna.md, templates, generated artifacts, generated command docs (COMMANDS.md, ecosystem.generated.yaml)), applies needed updates, and commits them separately. Wait for it to complete.
 
 If `fo-doc-audit` reports that no updates are needed, proceed to the next step.
 

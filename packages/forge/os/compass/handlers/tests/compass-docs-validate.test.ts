@@ -16,11 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCompassDocsValidate } from "../compass-docs-validate.ts";
 import { ambientIo } from "../../../../src/utils/io.ts";
-import type {
-  Diagnostic,
-  ForgeCommandInput,
-  ForgeRuntimeContext,
-} from "../../../../src/types.ts";
+import type { Diagnostic, ForgeCommandInput, ForgeRuntimeContext } from "../../../../src/types.ts";
 
 const logger = {
   section() {},
@@ -112,11 +108,7 @@ describe("compass.docs.validate — RFC-1242", () => {
   });
 
   it("dead workspace id emits COMPASS-DOC-02 error", async () => {
-    await writeFile(
-      join(root, "docs", "a.xml"),
-      `<root><workspace id="pkg-gone"/></root>`,
-      "utf8",
-    );
+    await writeFile(join(root, "docs", "a.xml"), `<root><workspace id="pkg-gone"/></root>`, "utf8");
     const result = await runCompassDocsValidate(makeInput(), makeContext(root));
     const diagnostics = (result.data as { diagnostics: Diagnostic[] }).diagnostics;
     expect(
@@ -164,16 +156,37 @@ describe("compass.docs.validate — RFC-1242", () => {
   });
 
   it("malformed XML emits COMPASS-DOC-00 and skips ref checks for that file", async () => {
-    await writeFile(
-      join(root, "docs", "a.xml"),
-      `<root><name>oops</root>`,
-      "utf8",
-    );
+    await writeFile(join(root, "docs", "a.xml"), `<root><name>oops</root>`, "utf8");
     const result = await runCompassDocsValidate(makeInput(), makeContext(root));
     const diagnostics = (result.data as { diagnostics: Diagnostic[] }).diagnostics;
     expect(diagnostics.some((d) => d.ruleId === "COMPASS-DOC-00")).toBe(true);
     expect(diagnostics.some((d) => d.ruleId === "COMPASS-DOC-01")).toBe(false);
     expect(result.exitCode).toBe(1);
+  });
+
+  it("quoted attribute value ending in / is not misread as self-closing", async () => {
+    await writeFile(
+      join(root, "docs", "a.xml"),
+      `<root><node id="x" type="compass-doc" path="docs/"><link rel="binds-to" target="x" /></node></root>`,
+      "utf8",
+    );
+    const result = await runCompassDocsValidate(makeInput(), makeContext(root));
+    const diagnostics = (result.data as { diagnostics: Diagnostic[] }).diagnostics;
+    expect(diagnostics.some((d) => d.ruleId === "COMPASS-DOC-00")).toBe(false);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("docs.plans.plan-rfc-* link target resolves to a plan-*.md basename", async () => {
+    await mkdir(join(root, "docs", "plans"), { recursive: true });
+    await writeFile(join(root, "docs", "plans", "plan-rfc-1242-x.md"), "x", "utf8");
+    await writeFile(
+      join(root, "docs", "a.xml"),
+      `<root><node id="x"><link rel="binds-to" target="docs.plans.plan-rfc-1242-x" /></node></root>`,
+      "utf8",
+    );
+    const result = await runCompassDocsValidate(makeInput(), makeContext(root));
+    const diagnostics = (result.data as { diagnostics: Diagnostic[] }).diagnostics;
+    expect(diagnostics.some((d) => d.ruleId === "COMPASS-DOC-03")).toBe(false);
   });
 
   it("AC-1: result data carries command-shaped payload fields", async () => {
