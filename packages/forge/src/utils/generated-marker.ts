@@ -7,6 +7,9 @@ source (dependency inversion).</purpose>
   <item>Do not perform file I/O — operates on in-memory content strings only.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>RFC-1237: generatedHeaderFields emits marker data as leading YAML keys (not comment lines) so the emit-canonical envelope header survives yamlParse round-trips — comment headers could not express ownerCommand/regenerateCommand in parsed form.</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>Moved from @warpgogol/site-kernel/generated-marker to forge as canonical source.</item>
   <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec werkstatt run".</item>
