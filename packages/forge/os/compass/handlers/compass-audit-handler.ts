@@ -10,6 +10,7 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1242: compass.audit.validate --prune — drops ledger entries whose path no longer exists via mutatingFlags upgrade; saveLedger routes writes through the injected io adapter so dry-run recording intercepts them.</item>
   <item>RFC-0352: initial implementation of compass.audit.plan, compass.audit.record, compass.audit.baseline, compass.audit.validate.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
@@ -27,7 +28,7 @@ import { resolveCompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { getRevisionByPath } from "./git-revision.ts";
 import type { CompassInventoryEntry } from "./compass-inventory.ts";
-import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
+
 import { buildGeneratedHeader } from "../../../src/utils/generated-marker.ts";
 import type {
   ForgeCommandInput,
@@ -104,17 +105,23 @@ async function loadLedger(workspaceRoot: string): Promise<CompassAuditLedger> {
   }
 }
 
-async function saveLedger(workspaceRoot: string, ledger: CompassAuditLedger): Promise<void> {
+// RFC-1242: writes route through the injected adapter so --dry-run recording
+// IO (mutatingFlags: ["prune"]) intercepts them — ambient writeFileAtomic would
+// bypass the recording adapter entirely (DNA-110).
+async function saveLedger(
+  workspaceRoot: string,
+  ledger: CompassAuditLedger,
+  ledgerIo = io,
+): Promise<void> {
   const normalized = withLedgerAdvisory(ledger);
   normalized.entries.sort((a, b) => a.path.localeCompare(b.path));
   const abs = resolve(workspaceRoot, LEDGER_PATH);
-  await io.mkdir(resolve(abs, ".."));
   const header = buildGeneratedHeader({
     ownerCommand: "compass.audit.record",
     filePath: LEDGER_PATH,
   });
   const yaml = header + yamlStringify(normalized) + "\n";
-  await writeFileAtomic(abs, yaml);
+  await ledgerIo.writeFile(abs, yaml);
 }
 
 function extractBlock(source: string, tagName: string): string {
@@ -343,7 +350,7 @@ export async function runCompassAuditRecord(
   }
 
   if (!context.dryRun) {
-    await saveLedger(context.workspaceRoot, ledger);
+    await saveLedger(context.workspaceRoot, ledger, _io);
   }
 
   context.logger.info(
@@ -419,7 +426,7 @@ export async function runCompassAuditBaseline(
   ledger.entries.sort((a, b) => a.path.localeCompare(b.path));
 
   if (!context.dryRun) {
-    await saveLedger(context.workspaceRoot, ledger);
+    await saveLedger(context.workspaceRoot, ledger, _io);
   }
 
   context.logger.info(
@@ -449,10 +456,13 @@ export async function runCompassAuditValidate(
     }>;
     skippedIneligible: number;
     skippedPaths: string[];
+    pruned: number;
+    prunedPaths: string[];
   }>
 > {
   const _io = resolveIo(context.io);
   const strict = input.flags["strict"] === true;
+  const prune = input.flags["prune"] === true;
   const scanRoot = resolveCompassScanRoot(input, context);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
   const entries = await createCompassInventoryEntries(
@@ -464,6 +474,27 @@ export async function runCompassAuditValidate(
   );
   const authored = getAuthoredEntries(entries);
   const ledger = await loadLedger(context.workspaceRoot);
+
+  // RFC-1242: --prune drops ledger entries whose path no longer exists.
+  // Opt-in only — verdict history for live paths is preserved untouched.
+  const prunedPaths: string[] = [];
+  if (prune) {
+    const kept: CompassAuditLedgerEntry[] = [];
+    for (const entry of ledger.entries) {
+      if (await _io.exists(resolve(context.workspaceRoot, entry.path))) {
+        kept.push(entry);
+      } else {
+        prunedPaths.push(entry.path);
+      }
+    }
+    ledger.entries = kept;
+    if (prunedPaths.length > 0 && !context.dryRun) {
+      await saveLedger(context.workspaceRoot, ledger, _io);
+    }
+    context.logger.info(
+      `[compass.audit.validate] pruned=${prunedPaths.length} ledger entr${prunedPaths.length === 1 ? "y" : "ies"} for non-existent paths${context.dryRun ? " (dry-run — not written)" : ""}`,
+    );
+  }
 
   // RFC-1143: drop ledger-ineligible authored paths (missions/, gitignored)
   // before the per-entry revision loop — baseline is forbidden to seed them,
@@ -532,6 +563,8 @@ export async function runCompassAuditValidate(
       diagnostics,
       skippedIneligible,
       skippedPaths: skippedPaths.slice(0, SKIPPED_PATHS_CAP),
+      pruned: prunedPaths.length,
+      prunedPaths: prunedPaths.slice(0, SKIPPED_PATHS_CAP),
     },
     exitCode: hasErrors ? 1 : 0,
     summary: dueCount > 0 ? undefined : `[compass.audit.validate] OK (0 files overdue)`,
