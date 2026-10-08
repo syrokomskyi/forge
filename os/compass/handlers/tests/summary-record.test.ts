@@ -321,4 +321,10 @@ describe("summary-record helpers", () => {
   it("stripGitTrailers on a trailer-only message returns empty", () => {
     expect(stripGitTrailers("Co-Authored-By: Devin <bot@x>")).toBe("");
   });
+
+  it("stripGitTrailers strips empty-value trailers (Token:) — interpret-trailers allows them", () => {
+    expect(stripGitTrailers("subject\n\nReviewed-by:\nSigned-off-by: Devin <bot@x>")).toBe(
+      "subject",
+    );
+  });
 });

@@ -12,9 +12,6 @@ this-run merge-target selection (RFC-0711, RFC-0957, RFC-1230).</purpose>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1232: fence-aware heading mechanics — private fencedLineIndexes (CommonMark-subset ``` / ~~~ map) consumed by parseHeadings, extractDesignSection, namespaceHeadings, removeNamespacedSections, and applyDeltasToSpecBody (regex lookaheads replaced with line-slice boundaries).</item>
   <item>RFC-1235: extracted docs.archive merge-outcome accounting — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock — so exit-nonzero merges record to failed[] instead of merged[].</item>
-  <item>RFC-1235: record failed live-spec merges in docs.archive results (RFC-1235)
-
-The post-loop pushed mergeData into merged[] without checking mergeResult.exitCode — an exit-1-with-data merge (RFC-1230 fail-fast on corrupt spec frontmatter) was reported as merged. Outcome recording is extracted to live-spec-shared.ts (classifyLiveMergeOutcome / liveMergeFailureEntry / formatLiveMergeFailure / buildLiveMergeBlock): exit-nonzero and thrown merges land in failed[] with the reason, the spec.live.merge block emits whenever anything was attempted, and the top-level result gains liveSpecFailures. Archive stays non-fatal — failed[] is data, V-LS-08 reports the coverage gap.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,6 +40,9 @@ const FENCE_OPEN_REGEX = /^ {0,3}(`{3,}|~{3,})/;
 // CommonMark: a closing fence carries no info string — only trailing
 // whitespace. A same-char run followed by text is interior content, so the
 // map over-masks rather than exposing a would-be heading (safe direction).
+// CRLF note: `[ \t]*$` deliberately excludes \r, so a CRLF closer never
+// matches and the tail stays interior — over-masking is the safe direction
+// and repo content is LF-normalized.
 const FENCE_CLOSE_REGEX = /^ {0,3}(`{3,}|~{3,})[ \t]*$/;
 function fencedLineIndexes(lines: string[]): ReadonlySet<number> {
   const inside = new Set<number>();
@@ -327,7 +327,7 @@ export type LiveMergeOutcome =
 
 export function classifyLiveMergeOutcome(
   rfcId: string,
-  result: { exitCode: number; data?: unknown; summary?: string },
+  result: { exitCode?: number; data?: unknown; summary?: string },
 ): LiveMergeOutcome {
   const data = result.data as
     | { domain?: unknown; operation?: unknown; conflicts?: unknown }
@@ -348,7 +348,11 @@ export function classifyLiveMergeOutcome(
     entry: {
       id: rfcId,
       exitCode: result.exitCode,
-      error: result.summary ?? `spec.live.merge exited ${result.exitCode}`,
+      error:
+        result.summary ??
+        (result.exitCode === undefined
+          ? "spec.live.merge returned no exit code"
+          : `spec.live.merge exited ${result.exitCode}`),
     },
   };
 }

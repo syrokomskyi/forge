@@ -15,11 +15,7 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
-  <item>RFC-1234: add V-LS-09 content-drift gate to spec.live.validate (RFC-1234)
-
-Extract projectLiveSpec — the pure replay projection — from rebuildOneSpec so the validator reuses the same dedupe + Design replay + serialize pipeline rebuild writes. spec.live.validate emits V-LS-09 error when committed bytes diverge from the projection modulo updatedAt, and a warning-severity diagnostic for history RFCs unreadable during replay. LivingSpecViolation gains severity field (absent = error; errors drive exit code). uniqueRfcs contract comment states the deduplicated-history semantics exactly.
-
-Severity decision per RFC rollout: error on introduction — the pre-flight reconciliation rebuild left a verified-clean baseline.</item>
+  <item>RFC-1234: spec.live.validate description lists V-LS-09 drift rule.</item>
   <history>RFC-0394, RFC-0396, RFC-0711</history>
 </CHANGE_SUMMARY>
 */
@@ -144,7 +140,17 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       name: "spec.live.validate",
       mutatesState: false,
       contract: "spec",
-      rules: [],
+      rules: [
+        "V-LS-01",
+        "V-LS-02",
+        "V-LS-03",
+        "V-LS-04",
+        "V-LS-05",
+        "V-LS-06",
+        "V-LS-07",
+        "V-LS-08",
+        "V-LS-09",
+      ],
       description:
         "Validate all living feature specs in docs/specs/live/. " +
         "Checks V-LS-01 (frontmatter), V-LS-02 (domain/filename match), " +
