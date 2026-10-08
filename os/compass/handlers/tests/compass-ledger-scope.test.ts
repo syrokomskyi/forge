@@ -16,6 +16,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { parse as yamlParse } from "yaml";
 import { runCompassAuditBaseline } from "../compass-audit-handler.ts";
+import { ambientIo } from "../../../../src/utils/io.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../../src/types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -39,7 +40,7 @@ function makeContext(workspaceRoot: string): ForgeRuntimeContext {
     logger: logger as never,
     dryRun: false,
     outputFormat: "json",
-    io: {} as never,
+    io: ambientIo,
     actualState: undefined as never,
     fileIntents: [],
   } as unknown as ForgeRuntimeContext;

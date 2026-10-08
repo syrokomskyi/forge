@@ -6,6 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1242: compass.docs.validate (docs/*.xml path/id/link-target gate, COMPASS-DOC-00..03) + compass.audit.validate --prune via mutatingFlags.</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
@@ -34,6 +35,7 @@ import {
 import { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler.ts";
 import { runCompassSummaryRecord } from "./handlers/summary-record.ts";
 import { runCompassMigrate } from "./handlers/compass-migrate-handler.ts";
+import { runCompassDocsValidate } from "./handlers/compass-docs-validate.ts";
 
 const compassScanFlags = {
   packages: {
@@ -273,11 +275,12 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.audit.validate",
       mutatesState: false,
+      mutatingFlags: ["prune"],
       execOnReadOnly: true,
       contract: "compass",
       rules: [],
       description:
-        "Validate that no authored file is audit-overdue per the revision threshold (RFC-0352). Warns by default, fails with --strict.",
+        "Validate that no authored file is audit-overdue per the revision threshold (RFC-0352). Warns by default, fails with --strict. --prune drops ledger entries for paths that no longer exist (RFC-1242).",
       scope: "workspace",
       acceptsAllFlag: true,
       flags: {
@@ -285,6 +288,11 @@ export const forgeCompassModule: ForgeModule = {
         strict: {
           kind: "boolean",
           description: "Fail when audit-overdue authored files are found.",
+        },
+        prune: {
+          kind: "boolean",
+          description:
+            "Drop ledger entries whose path no longer exists (RFC-1242). Mutating; honors --dry-run.",
         },
       },
       reads: [
@@ -302,6 +310,24 @@ export const forgeCompassModule: ForgeModule = {
           ref: "--strict",
           description: "Warns by default, fails with --strict",
         },
+      },
+    },
+    {
+      name: "compass.docs.validate",
+      modulePath: "packages/forge/os/compass/compass.module.ts",
+      mutatesState: false,
+      contract: "compass",
+      rules: ["COMPASS-DOC-00", "COMPASS-DOC-01", "COMPASS-DOC-02", "COMPASS-DOC-03"],
+      description:
+        "Validate that the live docs/*.xml corpus resolves every path, workspace id, and knowledge-graph link target it references (RFC-1242). Read-only.",
+      scope: "workspace",
+      acceptsAllFlag: true,
+      flags: {},
+      reads: ["docs/*.xml", "docs/command-manifest.generated.yaml", "docs/architecture-dna.md"],
+      execute: runCompassDocsValidate,
+      gate: {
+        severity: "mixed",
+        phase: "workspace",
       },
     },
   ],

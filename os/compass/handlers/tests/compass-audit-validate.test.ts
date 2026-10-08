@@ -16,6 +16,7 @@ import { join } from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { runCompassAuditValidate } from "../compass-audit-handler.ts";
+import { ambientIo } from "../../../../src/utils/io.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../../src/types.ts";
 
 const execFileAsync = promisify(execFile);
@@ -31,15 +32,15 @@ const logger = {
   },
 };
 
-function makeContext(workspaceRoot: string): ForgeRuntimeContext {
+function makeContext(workspaceRoot: string, dryRun = false): ForgeRuntimeContext {
   return {
     workspaceRoot,
     site: undefined,
     siteExplicit: false,
     logger: logger as never,
-    dryRun: false,
+    dryRun,
     outputFormat: "json",
-    io: {} as never,
+    io: ambientIo,
     actualState: undefined as never,
     fileIntents: [],
   } as unknown as ForgeRuntimeContext;
@@ -129,5 +130,93 @@ describe("compass.audit.validate — RFC-1143 ledger-ineligible skips", () => {
     const data = result.data as { dueCount: number; skippedIneligible: number };
     expect(data.dueCount).toBe(0);
     expect(data.skippedIneligible).toBeGreaterThan(0);
+  });
+});
+
+// RFC-1242 AC-5/AC-6: --prune drops ledger entries for paths that no longer
+// exist while preserving every surviving entry's verdict fields.
+const DEAD_PATH = "packages/gone/deleted.ts";
+const LEDGER_ENTRY = (path: string) =>
+  `  - path: ${path}\n    entityId: "eid-${path}"\n    auditedRevision: 7\n    auditedHash: "hash-${path}"\n    auditedAt: "2026-01-01T00:00:00Z"\n    verdict: pass\n    agent: human:test\n`;
+
+describe("compass.audit.validate --prune — RFC-1242", () => {
+  let root: string;
+
+  beforeEach(async () => {
+    root = await mkdtemp(join(tmpdir(), "compass-prune-"));
+    await mkdir(join(root, "packages", "foo"), { recursive: true });
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "packages", "foo", "index.ts"), "export const x = 1;\n", "utf8");
+    await writeFile(
+      join(root, "docs", "compass-audit-ledger.generated.yaml"),
+      `entries:\n${LEDGER_ENTRY(ELIGIBLE_FILE)}${LEDGER_ENTRY(DEAD_PATH)}`,
+      "utf8",
+    );
+    await execFileAsync("git", ["init"], { cwd: root });
+    await execFileAsync("git", ["config", "user.email", "test@test.com"], { cwd: root });
+    await execFileAsync("git", ["config", "user.name", "Test"], { cwd: root });
+    await execFileAsync("git", ["add", "."], { cwd: root });
+    await execFileAsync("git", ["commit", "-m", "init"], { cwd: root });
+  });
+
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  it("AC-5: ledger contains no entry whose path does not exist after prune", async () => {
+    const result = await runCompassAuditValidate(
+      makeInput({ prune: true, root: ["packages"] }),
+      makeContext(root),
+    );
+    const data = result.data as { pruned: number; prunedPaths: string[] };
+    expect(data.pruned).toBe(1);
+    expect(data.prunedPaths).toEqual([DEAD_PATH]);
+    const { readFile } = await import("node:fs/promises");
+    const ledgerText = await readFile(
+      join(root, "docs", "compass-audit-ledger.generated.yaml"),
+      "utf8",
+    );
+    expect(ledgerText).not.toContain(DEAD_PATH);
+    expect(ledgerText).toContain(ELIGIBLE_FILE);
+  });
+
+  it("AC-6: surviving entries keep their verdict fields unchanged", async () => {
+    await runCompassAuditValidate(
+      makeInput({ prune: true, root: ["packages"] }),
+      makeContext(root),
+    );
+    const { readFile } = await import("node:fs/promises");
+    const { parse } = await import("yaml");
+    const ledger = parse(
+      await readFile(join(root, "docs", "compass-audit-ledger.generated.yaml"), "utf8"),
+    ) as { entries: Array<Record<string, unknown>> };
+    const survivor = ledger.entries.find((e) => e.path === ELIGIBLE_FILE);
+    expect(
+      survivor,
+      "surviving ledger entry must keep its verdict fields — check the keep/drop partition",
+    ).toMatchObject({
+      entityId: `eid-${ELIGIBLE_FILE}`,
+      auditedRevision: 7,
+      auditedHash: `hash-${ELIGIBLE_FILE}`,
+      auditedAt: "2026-01-01T00:00:00Z",
+      verdict: "pass",
+      agent: "human:test",
+    });
+  });
+
+  it("--prune --dry-run reports the drop set without rewriting the ledger", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const ledgerPath = join(root, "docs", "compass-audit-ledger.generated.yaml");
+    const before = await readFile(ledgerPath, "utf8");
+    const result = await runCompassAuditValidate(
+      makeInput({ prune: true, root: ["packages"] }),
+      makeContext(root, true),
+    );
+    const data = result.data as { pruned: number };
+    expect(data.pruned).toBe(1);
+    expect(
+      await readFile(ledgerPath, "utf8"),
+      "dry-run must not rewrite the ledger — writes must route through context.io honoring context.dryRun",
+    ).toBe(before);
   });
 });
