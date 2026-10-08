@@ -141,6 +141,10 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
             kind: "string",
             description: "Executor actor id (required for --action=start).",
           },
+          phase: {
+            kind: "string",
+            description: "Lease phase: preparation or execution (default: execution).",
+          },
           steward: {
             kind: "string",
             description: "Steward actor id (required for --action=recover).",
