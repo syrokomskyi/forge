@@ -14,6 +14,12 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 <CHANGE_SUMMARY>
   <item>RFC-0330: initial implementation.</item>
   <item>RFC-0999: exported captureGitContext, getKernelVersion, byteHashHex, VERIFICATION_DIR for reuse by verification-refresh.ts.</item>
+  <item>RFC-1237: dual-read dry-run (context.dryRun || flags["dry-run"]),
+io.writeFile port routing, dry-run summary marker; serializeEvidenceEnvelope —
+shared emit-canonical serializer restoring the structured YAML marker-key
+header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
+with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
+  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,8 +32,7 @@ import { byteHash } from "../../src/utils/hash.ts";
 
 import { runProbe } from "./acceptance.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
-import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
-import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
+import { generatedHeaderFields } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
 import { RFC_DIR } from "./types.ts";
 
@@ -90,6 +95,23 @@ export function byteHashHex(content: string): string {
   return byteHash(content).slice(HASH_PREFIX.length);
 }
 
+/**
+ * RFC-1237: the emit-canonical envelope serialization — structured marker keys
+ * (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand) as
+ * leading YAML fields, then the envelope body. emit and refresh MUST share
+ * this serializer: refresh owns content freshness, never envelope identity
+ * (OWN-DUP-01), so refresh output is identical-by-construction.
+ */
+export function serializeEvidenceEnvelope(envelope: VerificationEvidence): string {
+  return `${yamlStringify({
+    ...generatedHeaderFields({
+      ownerCommand: "rfc.verification.emit",
+      commandPrefix: "pnpm exec werkstatt run",
+    }),
+    ...envelope,
+  })}\n`;
+}
+
 function normalizeProbes(probes: AcceptanceProbe[]): string {
   return JSON.stringify(probes, Object.keys(probes[0] ?? {}).sort());
 }
@@ -130,6 +152,9 @@ export async function runRfcVerificationEmit(
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;
   const targetStatus = input.flags["status"] as string | undefined;
+  // RFC-1237: consumeCommonFlags strips --dry-run into context.dryRun before
+  // dispatch — the input.flags read stays for direct/programmatic callers.
+  const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
 
   if (!targetId && !targetStatus) {
     return {
@@ -161,7 +186,7 @@ export async function runRfcVerificationEmit(
   }
   const kernelVersion = await getKernelVersion(workspaceRoot);
   const verificationDirAbs = join(workspaceRoot, VERIFICATION_DIR);
-  await io.mkdir(verificationDirAbs);
+  if (!dryRun) await io.mkdir(verificationDirAbs);
 
   for (const fileName of allFiles) {
     const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
@@ -213,8 +238,9 @@ export async function runRfcVerificationEmit(
     const evidenceFileName = `${slug}.generated.yaml`;
     const evidenceRelPath = join(VERIFICATION_DIR, evidenceFileName);
     const evidenceAbsPath = join(workspaceRoot, evidenceRelPath);
-    const jsonContent = `${buildGeneratedHeader({ filePath: evidenceRelPath, ownerCommand: "rfc.verification.emit" })}${yamlStringify(envelope)}\n`;
-    await writeFileAtomic(evidenceAbsPath, jsonContent);
+    // RFC-1237: port write — the recording IO adapter intercepts under kernel
+    // --dry-run even if the explicit guard regresses.
+    if (!dryRun) await io.writeFile(evidenceAbsPath, serializeEvidenceEnvelope(envelope));
 
     emitted.push({ rfcId, file: evidenceRelPath, overall: envelope.overall });
 
@@ -229,7 +255,7 @@ export async function runRfcVerificationEmit(
 
     if (outputFormat === "pretty") {
       logger.info(
-        `[evidence] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes)`,
+        `[evidence] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${dryRun ? ", dry-run" : ""})`,
       );
     }
   }
@@ -246,6 +272,6 @@ export async function runRfcVerificationEmit(
       diagnostics,
     },
     exitCode: hasFailures ? 1 : 0,
-    summary: `rfc.verification.emit: ${emitted.length} emitted, ${skipped.length} skipped`,
+    summary: `rfc.verification.emit: ${emitted.length} emitted, ${skipped.length} skipped${dryRun ? ", dry-run" : ""}`,
   };
 }

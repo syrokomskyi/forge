@@ -11,6 +11,8 @@ source (dependency inversion).</purpose>
   <item>Moved from @warpgogol/site-kernel/generated-marker to forge as canonical source.</item>
   <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec werkstatt run".</item>
   <item>Added editable flag to GeneratedHeaderInput — when true, emits a permissive marker and advisory that encourages agents to edit the file. AGENTS.md files use editable: true; other generated files keep the restrictive marker.</item>
+  <item>RFC-1237: added generatedHeaderFields — structured marker keys for generated YAML files (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand), the emit-canonical envelope header format.</item>
+  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
 </CHANGE_SUMMARY>
 */
 
@@ -164,6 +166,30 @@ export function commentStyleForPath(filePath: string): GeneratedHeaderCommentSty
   if (base.endsWith(".md")) return "block-html";
   if (base.endsWith(".css")) return "block-css";
   return "line-slash";
+}
+
+/**
+ * RFC-1237: structured marker fields for generated YAML files — the key-format
+ * counterpart of buildGeneratedHeader's comment rendering. Generators whose
+ * output is YAML prepend these as leading top-level keys; consumers strip them
+ * (e.g. loadInternalManifest drops generatedMarker/doNotEdit/ownerCommand/
+ * editInstead/regenerateCommand before parsing the payload).
+ */
+export function generatedHeaderFields(
+  input: Pick<GeneratedHeaderInput, "ownerCommand" | "commandPrefix" | "site" | "editable">,
+): Record<string, string> {
+  const prefix = input.commandPrefix ?? "forge";
+  const editable = input.editable ?? false;
+  const regenerateCommand = input.site
+    ? `${prefix} ${input.ownerCommand} --site ${input.site}`
+    : `${prefix} ${input.ownerCommand}`;
+  return {
+    generatedMarker: editable ? EDITABLE_GENERATED_MARKER : GENERATED_MARKER,
+    doNotEdit: editable ? SAFE_TO_EDIT_LINE : DO_NOT_EDIT_LINE,
+    ownerCommand: input.ownerCommand,
+    editInstead: `the ${input.ownerCommand} generator source (not this file).`,
+    regenerateCommand,
+  };
 }
 
 export function buildGeneratedHeader(input: GeneratedHeaderInput): string {

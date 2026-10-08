@@ -14,6 +14,11 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0999: initial implementation.</item>
+  <item>RFC-1237: dual-read dry-run (context.dryRun || flags["dry-run"]),
+io.writeFile port routing, emit-canonical generated header — refresh owns
+content freshness, never envelope identity (ownerCommand stays
+rfc.verification.emit).</item>
+  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,14 +29,12 @@ import { parse as yamlParse } from "yaml";
 
 import { runProbe } from "./acceptance.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
-import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
-import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
-import { stringify as yamlStringify } from "yaml";
 import {
   captureGitContext,
   getKernelVersion,
   VERIFICATION_DIR,
   buildEvidenceEnvelope,
+  serializeEvidenceEnvelope,
 } from "./verification-evidence.ts";
 import { RFC_DIR } from "./types.ts";
 import type {
@@ -57,7 +60,9 @@ export async function runRfcVerificationRefresh(
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;
   const allMode = input.flags["all"] === true;
-  const dryRun = input.flags["dry-run"] === true;
+  // RFC-1237: consumeCommonFlags strips --dry-run into context.dryRun before
+  // dispatch — the input.flags read stays for direct/programmatic callers.
+  const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
 
   if (!targetId && !allMode) {
     return {
@@ -156,8 +161,10 @@ export async function runRfcVerificationRefresh(
     envelope.lastRefreshedAt = now;
 
     if (!dryRun) {
-      const yamlContent = `${buildGeneratedHeader({ filePath: evidenceRelPath, ownerCommand: "rfc.verification.refresh" })}${yamlStringify(envelope)}\n`;
-      await writeFileAtomic(evidenceAbsPath, yamlContent);
+      // RFC-1237: emit-canonical serialization — emit owns these envelopes;
+      // refresh owns content freshness, never file identity (OWN-DUP-01).
+      // Port write routes through recording IO under kernel --dry-run.
+      await io.writeFile(evidenceAbsPath, serializeEvidenceEnvelope(envelope));
     }
 
     const probesFailed = probeRecords.filter((r) => !r.ok).length;
