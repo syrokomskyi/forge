@@ -20,11 +20,6 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1234: extracted projectLiveSpec — the pure projection core (dedupe history, replay Design sections, serialize modulo updatedAt) — consumable without writes or logging; spec.live.validate V-LS-09 reuses it so the validator sees exactly what rebuild would write.</item>
-  <item>RFC-1234: add V-LS-09 content-drift gate to spec.live.validate (RFC-1234)
-
-Extract projectLiveSpec — the pure replay projection — from rebuildOneSpec so the validator reuses the same dedupe + Design replay + serialize pipeline rebuild writes. spec.live.validate emits V-LS-09 error when committed bytes diverge from the projection modulo updatedAt, and a warning-severity diagnostic for history RFCs unreadable during replay. LivingSpecViolation gains severity field (absent = error; errors drive exit code). uniqueRfcs contract comment states the deduplicated-history semantics exactly.
-
-Severity decision per RFC rollout: error on introduction — the pre-flight reconciliation rebuild left a verified-clean baseline.</item>
 </CHANGE_SUMMARY>
 */
 

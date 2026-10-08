@@ -11,11 +11,6 @@ synthetic living-spec fixtures (RFC-1230).</purpose>
   <item>RFC-1230: initial unit tests for V-LS-06/07/08.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1234: V-LS-09 drift fixtures (AC-1..3); clean/fence fixtures now produced by runSpecLiveMerge so spec bytes are canonical under replay comparison.</item>
-  <item>RFC-1234: add V-LS-09 content-drift gate to spec.live.validate (RFC-1234)
-
-Extract projectLiveSpec — the pure replay projection — from rebuildOneSpec so the validator reuses the same dedupe + Design replay + serialize pipeline rebuild writes. spec.live.validate emits V-LS-09 error when committed bytes diverge from the projection modulo updatedAt, and a warning-severity diagnostic for history RFCs unreadable during replay. LivingSpecViolation gains severity field (absent = error; errors drive exit code). uniqueRfcs contract comment states the deduplicated-history semantics exactly.
-
-Severity decision per RFC rollout: error on introduction — the pre-flight reconciliation rebuild left a verified-clean baseline.</item>
 </CHANGE_SUMMARY>
 */
 

@@ -15,9 +15,6 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1235: docs.archive post-loop records merge outcomes by exit code — exit-nonzero merges (incl. RFC-1230 fail-fast with populated data) land in failed[] with the merge summary as error, thrown errors record via liveMergeFailureEntry, and the spec.live.merge result block emits whenever anything was attempted; top-level result gains liveSpecFailures.</item>
-  <item>RFC-1235: record failed live-spec merges in docs.archive results (RFC-1235)
-
-The post-loop pushed mergeData into merged[] without checking mergeResult.exitCode — an exit-1-with-data merge (RFC-1230 fail-fast on corrupt spec frontmatter) was reported as merged. Outcome recording is extracted to live-spec-shared.ts (classifyLiveMergeOutcome / liveMergeFailureEntry / formatLiveMergeFailure / buildLiveMergeBlock): exit-nonzero and thrown merges land in failed[] with the reason, the spec.live.merge block emits whenever anything was attempted, and the top-level result gains liveSpecFailures. Archive stays non-fatal — failed[] is data, V-LS-08 reports the coverage gap.</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173</history>
 </CHANGE_SUMMARY>
 */

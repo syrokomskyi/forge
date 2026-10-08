@@ -12,9 +12,6 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
   <item>RFC-1230: initial tests for collectLiveMergeTargets.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1235: failed-merge accounting tests — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock (AC-1..4).</item>
-  <item>RFC-1235: record failed live-spec merges in docs.archive results (RFC-1235)
-
-The post-loop pushed mergeData into merged[] without checking mergeResult.exitCode — an exit-1-with-data merge (RFC-1230 fail-fast on corrupt spec frontmatter) was reported as merged. Outcome recording is extracted to live-spec-shared.ts (classifyLiveMergeOutcome / liveMergeFailureEntry / formatLiveMergeFailure / buildLiveMergeBlock): exit-nonzero and thrown merges land in failed[] with the reason, the spec.live.merge block emits whenever anything was attempted, and the top-level result gains liveSpecFailures. Archive stays non-fatal — failed[] is data, V-LS-08 reports the coverage gap.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -74,7 +71,8 @@ describe("docs.archive failed-merge accounting (RFC-1235)", () => {
         conflicts: [],
         dryRun: false,
       },
-      summary: "spec.live.merge: forge.md exists but has no valid frontmatter — inspect or repair via spec.live.rebuild",
+      summary:
+        "spec.live.merge: forge.md exists but has no valid frontmatter — inspect or repair via spec.live.rebuild",
     });
 
     expect(outcome.kind).toBe("failed");
@@ -108,7 +106,10 @@ describe("docs.archive failed-merge accounting (RFC-1235)", () => {
       entry: { id: "RFC-1230", domain: "forge", operation: "modified", conflicts: 0 },
     });
     expect(outcome.kind).toBe("merged");
-    const entry = outcome.kind === "merged" ? outcome.entry : liveMergeFailureEntry("RFC-1230", new Error("unreachable"));
+    const entry =
+      outcome.kind === "merged"
+        ? outcome.entry
+        : liveMergeFailureEntry("RFC-1230", new Error("unreachable"));
 
     const block = buildLiveMergeBlock([entry], [], 0, false);
     expect(block).toEqual({

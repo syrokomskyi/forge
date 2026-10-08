@@ -169,11 +169,12 @@ export function stripConventionalPrefix(subject: string): string {
 }
 
 // RFC-1233: git-trailer tail block — strict `Token: value` / `Token #value`
-// lines (interpret-trailers shape), plus lines ending in a markdown link
-// (the observed "Generated with [X](url)" attribution boilerplate has no
-// separator). A link-shaped line is admitted only when the block also
-// contains at least one strict trailer line — a lone link tail is prose.
-const TRAILER_LINE_RE = /^[A-Za-z0-9-]+(:| #)\s*.+$/;
+// lines (interpret-trailers shape, empty value allowed), plus lines ending
+// in a markdown link (the observed "Generated with [X](url)" attribution
+// boilerplate has no separator). A link-shaped line is admitted only when
+// the block also contains at least one strict trailer line — a lone link
+// tail is prose.
+const TRAILER_LINE_RE = /^[A-Za-z0-9-]+(:| #)\s*.*$/;
 const MARKDOWN_LINK_TAIL_RE = /^.*\[[^\]]*\]\([^)]+\)\s*$/;
 
 /**
