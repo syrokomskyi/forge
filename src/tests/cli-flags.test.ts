@@ -143,6 +143,26 @@ describe("resolveCliFlags — strict (schema-carrying) path", () => {
     expect(flags["files"]).toEqual(["a", "b"]);
     expect(errorRuleIds(diagnostics)).toEqual([]);
   });
+
+  test("string[] flag consumes consecutive bare tokens as a value list", () => {
+    const cmd = command({
+      files: { kind: "string[]", description: "Files." },
+      id: { kind: "string", description: "Id." },
+    });
+    const { flags, diagnostics } = resolveCliFlags(["--files", "a", "b", "c", "--id", "x"], cmd);
+    expect(flags["files"]).toEqual(["a", "b", "c"]);
+    expect(flags["id"]).toBe("x");
+    expect(errorRuleIds(diagnostics)).toEqual([]);
+  });
+
+  test("string[] flag with no value still emits KERNEL-FLAG-02", () => {
+    const cmd = command({
+      files: { kind: "string[]", description: "Files." },
+      json2: { kind: "boolean", description: "Switch." },
+    });
+    const { diagnostics } = resolveCliFlags(["--files", "--json2"], cmd);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-FLAG-02"]);
+  });
 });
 
 describe("resolveCliFlags — legacy (schema-less) path", () => {

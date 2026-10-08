@@ -21,6 +21,10 @@ rfc.verification.emit).</item>
   <item>Session-retro 2026-10-08: sweep delta report — previousOverall per
 envelope + recovered/regressed lists separate still-failing drift from fresh
 regressions without manual triage.</item>
+  <item>Session-retro 2026-10-08: --concurrency flag (default 1, garbage values
+warn + fall back to 1, >16 clamps) fans refresh out across RFC units via
+mapWithConcurrency while probes inside one RFC stay sequential — envelope
+ordering stays deterministic.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +38,8 @@ import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import {
   captureGitContext,
   getKernelVersion,
+  mapWithConcurrency,
+  resolveConcurrency,
   VERIFICATION_DIR,
   buildEvidenceEnvelope,
   serializeEvidenceEnvelope,
@@ -65,6 +71,7 @@ export async function runRfcVerificationRefresh(
   // RFC-1237: consumeCommonFlags strips --dry-run into context.dryRun before
   // dispatch — the input.flags read stays for direct/programmatic callers.
   const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
+  const concurrency = resolveConcurrency(input.flags["concurrency"], (m) => logger.warn(m));
 
   if (!targetId && !allMode) {
     return {
@@ -89,19 +96,24 @@ export async function runRfcVerificationRefresh(
   const gitContext = await captureGitContext(workspaceRoot);
   const kernelVersion = await getKernelVersion(workspaceRoot);
 
-  for (const fileName of allFiles) {
+  const processFile = async (
+    fileName: string,
+  ): Promise<{
+    refreshedEntry?: NonNullable<RfcVerificationRefreshResult["refreshed"]>[number];
+    skippedEntry?: NonNullable<RfcVerificationRefreshResult["skipped"]>[number];
+    diagnostic?: Diagnostic;
+  }> => {
     const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
-    if (!parsedFile) continue;
-    if ("error" in parsedFile) continue;
+    if (!parsedFile) return {};
+    if ("error" in parsedFile) return {};
     const fm = parsedFile.parsed.frontmatter;
     const rfcId = String(fm["id"] ?? "");
     const status = String(fm["status"] ?? "");
 
-    if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) continue;
+    if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) return {};
 
     if (status !== "implemented") {
-      skipped.push({ rfcId, reason: "not implemented" });
-      continue;
+      return { skippedEntry: { rfcId, reason: "not implemented" } };
     }
 
     const slug = rfcId.toLowerCase();
@@ -120,15 +132,9 @@ export async function runRfcVerificationRefresh(
       // file doesn't exist or can't be parsed
     }
 
-    if (!existingEnvelope) {
-      skipped.push({ rfcId, reason: "no evidence envelope" });
-      continue;
-    }
-
     const acceptance = fm["acceptance"];
-    if (!Array.isArray(acceptance) || acceptance.length === 0) {
-      skipped.push({ rfcId, reason: "no evidence envelope" });
-      continue;
+    if (!existingEnvelope || !Array.isArray(acceptance) || acceptance.length === 0) {
+      return { skippedEntry: { rfcId, reason: "no evidence envelope" } };
     }
 
     const probes = acceptance as AcceptanceProbe[];
@@ -171,23 +177,6 @@ export async function runRfcVerificationRefresh(
 
     const probesFailed = probeRecords.filter((r) => !r.ok).length;
     const previousOverall = existingEnvelope.overall;
-    refreshed.push({
-      rfcId,
-      file: evidenceRelPath,
-      overall: envelope.overall,
-      previousOverall,
-      probesTotal: probeRecords.length,
-      probesFailed,
-    });
-
-    if (envelope.overall === "fail") {
-      diagnostics.push({
-        ruleId: "RFC-REFRESH-01",
-        severity: "error",
-        file: evidenceRelPath,
-        message: `${rfcId}: refresh overall is "fail" — ${probesFailed}/${probeRecords.length} probe(s) failed${previousOverall === "pass" ? " (regressed: was pass)" : ""}.`,
-      });
-    }
 
     if (outputFormat === "pretty") {
       const drift = previousOverall !== envelope.overall ? `, was ${previousOverall}` : "";
@@ -195,6 +184,34 @@ export async function runRfcVerificationRefresh(
         `[refresh] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${drift}${dryRun ? ", dry-run" : ""})`,
       );
     }
+
+    return {
+      refreshedEntry: {
+        rfcId,
+        file: evidenceRelPath,
+        overall: envelope.overall,
+        previousOverall,
+        probesTotal: probeRecords.length,
+        probesFailed,
+      },
+      ...(envelope.overall === "fail"
+        ? {
+            diagnostic: {
+              ruleId: "RFC-REFRESH-01",
+              severity: "error",
+              file: evidenceRelPath,
+              message: `${rfcId}: refresh overall is "fail" — ${probesFailed}/${probeRecords.length} probe(s) failed${previousOverall === "pass" ? " (regressed: was pass)" : ""}.`,
+            } satisfies Diagnostic,
+          }
+        : {}),
+    };
+  };
+
+  const results = await mapWithConcurrency(allFiles, concurrency, processFile);
+  for (const r of results) {
+    if (r.refreshedEntry) refreshed.push(r.refreshedEntry);
+    if (r.skippedEntry) skipped.push(r.skippedEntry);
+    if (r.diagnostic) diagnostics.push(r.diagnostic);
   }
 
   const passed = refreshed.filter((r) => r.overall === "pass").length;

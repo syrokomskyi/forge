@@ -5,7 +5,11 @@ import path from "node:path";
 import os from "node:os";
 import { stringify as yamlStringify } from "yaml";
 
-import { runRfcVerificationEmit } from "./verification-evidence.ts";
+import {
+  runRfcVerificationEmit,
+  mapWithConcurrency,
+  resolveConcurrency,
+} from "./verification-evidence.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../src/types.ts";
 
 const { mockRunProbe } = vi.hoisted(() => ({
@@ -240,6 +244,60 @@ describe("rfc.verification.emit — RFC-1237 AC-6: dry-run", () => {
       expect(result.data!.emitted[0]?.overall).toBe("fail");
       expect(result.exitCode).toBe(1);
       await expect(fs.stat(envelopePath(workspaceRoot, "RFC-0100"))).rejects.toThrow();
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("verification sweep — --concurrency", () => {
+  test("mapWithConcurrency preserves input order and bounds parallelism", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const items = Array.from({ length: 10 }, (_, i) => i);
+    const results = await mapWithConcurrency(items, 3, async (n) => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, Math.random() * 5));
+      inFlight -= 1;
+      return n * 2;
+    });
+    expect(results).toEqual(items.map((n) => n * 2));
+    expect(maxInFlight).toBeLessThanOrEqual(3);
+    expect(maxInFlight).toBeGreaterThan(1);
+  });
+
+  test("resolveConcurrency: absent→1, garbage→1+warn, >16→clamped", () => {
+    const warnings: string[] = [];
+    const warn = (m: string) => warnings.push(m);
+    expect(resolveConcurrency(undefined)).toBe(1);
+    expect(resolveConcurrency("abc", warn)).toBe(1);
+    expect(resolveConcurrency("0", warn)).toBe(1);
+    expect(resolveConcurrency("4", warn)).toBe(4);
+    expect(resolveConcurrency("99", warn)).toBe(16);
+    expect(warnings).toHaveLength(3);
+  });
+
+  test("--concurrency 3 emits identical results to sequential", async () => {
+    const ids = ["RFC-0201", "RFC-0202", "RFC-0203", "RFC-0204"];
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: ids.map((id) => ({ id, status: "implemented" })),
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+
+      const result = await runRfcVerificationEmit(
+        { flags: { status: "implemented", concurrency: "3" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
+      );
+
+      expect(result.data!.emitted.map((e) => e.rfcId)).toEqual(ids);
+      expect(result.data!.emitted.every((e) => e.overall === "pass")).toBe(true);
+      expect(result.exitCode).toBe(0);
+      for (const id of ids) {
+        await expect(fs.stat(envelopePath(workspaceRoot, id))).resolves.toBeDefined();
+      }
     } finally {
       await cleanup();
     }
