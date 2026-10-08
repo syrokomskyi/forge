@@ -18,7 +18,6 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 io.writeFile port routing, emit-canonical generated header — refresh owns
 content freshness, never envelope identity (ownerCommand stays
 rfc.verification.emit).</item>
-  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
 </CHANGE_SUMMARY>
 */
 

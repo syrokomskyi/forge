@@ -15,7 +15,6 @@ source (dependency inversion).</purpose>
   <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec werkstatt run".</item>
   <item>Added editable flag to GeneratedHeaderInput — when true, emits a permissive marker and advisory that encourages agents to edit the file. AGENTS.md files use editable: true; other generated files keep the restrictive marker.</item>
   <item>RFC-1237: added generatedHeaderFields — structured marker keys for generated YAML files (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand), the emit-canonical envelope header format.</item>
-  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
 </CHANGE_SUMMARY>
 */
 
