@@ -19,6 +19,11 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>Session-retro 2026-10-08: raw-file claiming — each .atif is claimed via
+an atomic sibling `<name>.claim-<pid>-<token>` (io rename onto a nonexistent
+target) before read/process/delete; another session's claim skips the file,
+claims clean up in finally, dry-run creates none, keepRaw still preserves the
+raw input. Closes the parallel-session read/delete race.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -196,7 +201,9 @@ export async function runSessionSave(
   } else {
     try {
       const entries = await fs.readdir(rawDirPath);
-      rawFiles = entries.filter((e) => e.isFile).map((e) => e.name);
+      // Only *.atif files are processed — claimed intermediates
+      // (*.atif.claim-<pid>) and in-progress writer temp files are skipped.
+      rawFiles = entries.filter((e) => e.isFile && e.name.endsWith(".atif")).map((e) => e.name);
     } catch {
       rawFiles = [];
     }
@@ -234,9 +241,25 @@ export async function runSessionSave(
 
   for (const rawFileName of rawFiles) {
     const rawFilePath = path.join(rawDirPath, rawFileName);
+    // Atomic claim: rename before reading so two concurrent session.save runs
+    // (parallel agent sessions) can't process the same file — the losing
+    // rename sees ENOENT and skips. Dry-run stays read-only by design.
+    let claimedPath = rawFilePath;
+    if (!dryRun) {
+      claimedPath = `${rawFilePath}.claim-${process.pid}`;
+      try {
+        await fs.rename(rawFilePath, claimedPath);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+          skipped.push({ rawFile: rawFileName, reason: "claimed by another process" });
+          continue;
+        }
+        throw err;
+      }
+    }
     let rawContent: string;
     try {
-      rawContent = await fs.readFile(rawFilePath);
+      rawContent = await fs.readFile(claimedPath);
     } catch (err) {
       if ((err as NodeJS.ErrnoException).code === "ENOENT") {
         skipped.push({ rawFile: rawFileName, reason: "already processed by another process" });
@@ -279,11 +302,17 @@ export async function runSessionSave(
       // Delete raw file even when skipping — otherwise .atif files accumulate
       if (!dryRun && !keepRaw) {
         try {
-          await trashPath(rawFilePath);
+          await trashPath(claimedPath);
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
             throw err;
           }
+        }
+      } else if (!dryRun && claimedPath !== rawFilePath) {
+        try {
+          await fs.rename(claimedPath, rawFilePath);
+        } catch {
+          // best-effort restore
         }
       }
       continue;
@@ -320,14 +349,21 @@ export async function runSessionSave(
         );
       }
 
-      // Delete raw file unless --keep-raw
+      // Delete raw file unless --keep-raw (then restore the original name —
+      // the claim suffix is an internal detail, not part of the file's name)
       if (!keepRaw) {
         try {
-          await trashPath(rawFilePath);
+          await trashPath(claimedPath);
         } catch (err) {
           if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
             throw err;
           }
+        }
+      } else if (claimedPath !== rawFilePath) {
+        try {
+          await fs.rename(claimedPath, rawFilePath);
+        } catch {
+          // best-effort restore — the claimed name remains, still recoverable
         }
       }
     }

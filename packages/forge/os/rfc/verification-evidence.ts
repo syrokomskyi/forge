@@ -22,6 +22,10 @@ with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
   <item>Session-retro 2026-10-08: sweep delta report — reads the committed
 envelope baseline (previousOverall) and reports recovered/regressed
 transitions so a fail-heavy sweep needs no manual pass/fail triage.</item>
+  <item>Session-retro 2026-10-08: --concurrency flag (default 1, garbage values
+warn + fall back to 1, >16 clamps) fans emit out across RFC units via
+mapWithConcurrency while probes inside one RFC stay sequential — envelope
+ordering stays deterministic.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -98,6 +102,54 @@ export function byteHashHex(content: string): string {
 }
 
 /**
+ * Bounded-parallel map preserving input order — one in-flight worker per slot,
+ * results land in the same positions as their inputs. Used by the emit/refresh
+ * sweeps so `--concurrency N` overlaps probe subprocesses across RFCs.
+ */
+export async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  const lanes = Array.from({ length: Math.min(Math.max(concurrency, 1), items.length) }, () =>
+    (async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await worker(items[index]!, index);
+      }
+    })(),
+  );
+  await Promise.all(lanes);
+  return results;
+}
+
+/**
+ * Resolve the `--concurrency` flag (string flag; the kernel schema has no
+ * number kind). Garbage/NaN/non-positive degrades to 1 with a warning;
+ * clamped to 16 — probe workers spawn vitest/site-kernel children and wider
+ * fan-out starves CPU rather than speeding the sweep.
+ */
+export function resolveConcurrency(flag: unknown, warn?: (message: string) => void): number {
+  if (flag === undefined) return 1;
+  const raw = Array.isArray(flag) ? flag[0] : flag;
+  const parsed = Number.parseInt(String(raw), 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    warn?.(`--concurrency "${String(raw)}" is not a positive integer — falling back to 1.`);
+    return 1;
+  }
+  if (parsed > 16) {
+    warn?.(
+      `--concurrency ${parsed} exceeds the 16 cap — clamped (probe workers spawn subprocesses).`,
+    );
+    return 16;
+  }
+  return parsed;
+}
+
+/**
  * RFC-1237: the emit-canonical envelope serialization — structured marker keys
  * (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand) as
  * leading YAML fields, then the envelope body. emit and refresh MUST share
@@ -157,6 +209,7 @@ export async function runRfcVerificationEmit(
   // RFC-1237: consumeCommonFlags strips --dry-run into context.dryRun before
   // dispatch — the input.flags read stays for direct/programmatic callers.
   const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
+  const concurrency = resolveConcurrency(input.flags["concurrency"], (m) => logger.warn(m));
 
   if (!targetId && !targetStatus) {
     return {
@@ -190,20 +243,25 @@ export async function runRfcVerificationEmit(
   const verificationDirAbs = join(workspaceRoot, VERIFICATION_DIR);
   if (!dryRun) await io.mkdir(verificationDirAbs);
 
-  for (const fileName of allFiles) {
+  const processFile = async (
+    fileName: string,
+  ): Promise<{
+    emittedEntry?: NonNullable<RfcVerificationEmitResult["emitted"]>[number];
+    skippedEntry?: NonNullable<RfcVerificationEmitResult["skipped"]>[number];
+    diagnostic?: Diagnostic;
+  }> => {
     const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
-    if (!parsedFile) continue;
-    if ("error" in parsedFile) continue;
+    if (!parsedFile) return {};
+    if ("error" in parsedFile) return {};
     const fm = parsedFile.parsed.frontmatter;
     const rfcId = String(fm["id"] ?? "");
 
-    if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) continue;
-    if (targetStatus && String(fm["status"] ?? "") !== targetStatus) continue;
+    if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) return {};
+    if (targetStatus && String(fm["status"] ?? "") !== targetStatus) return {};
 
     const acceptance = fm["acceptance"];
     if (!Array.isArray(acceptance) || acceptance.length === 0) {
-      skipped.push({ rfcId, reason: "no-probes" });
-      continue;
+      return { skippedEntry: { rfcId, reason: "no-probes" } };
     }
 
     const probes = acceptance as AcceptanceProbe[];
@@ -257,22 +315,6 @@ export async function runRfcVerificationEmit(
     // --dry-run even if the explicit guard regresses.
     if (!dryRun) await io.writeFile(evidenceAbsPath, serializeEvidenceEnvelope(envelope));
 
-    emitted.push({
-      rfcId,
-      file: evidenceRelPath,
-      overall: envelope.overall,
-      ...(previousOverall !== undefined ? { previousOverall } : {}),
-    });
-
-    if (envelope.overall === "fail") {
-      diagnostics.push({
-        ruleId: "RFC-EVID-02",
-        severity: "error",
-        file: evidenceRelPath,
-        message: `${rfcId}: evidence overall is "fail" — ${probeRecords.filter((r) => !r.ok).length} probe(s) failed${previousOverall === "pass" ? " (regressed: was pass)" : ""}.`,
-      });
-    }
-
     if (outputFormat === "pretty") {
       const drift =
         previousOverall !== undefined && previousOverall !== envelope.overall
@@ -282,6 +324,32 @@ export async function runRfcVerificationEmit(
         `[evidence] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${drift}${dryRun ? ", dry-run" : ""})`,
       );
     }
+
+    return {
+      emittedEntry: {
+        rfcId,
+        file: evidenceRelPath,
+        overall: envelope.overall,
+        ...(previousOverall !== undefined ? { previousOverall } : {}),
+      },
+      ...(envelope.overall === "fail"
+        ? {
+            diagnostic: {
+              ruleId: "RFC-EVID-02",
+              severity: "error",
+              file: evidenceRelPath,
+              message: `${rfcId}: evidence overall is "fail" — ${probeRecords.filter((r) => !r.ok).length} probe(s) failed${previousOverall === "pass" ? " (regressed: was pass)" : ""}.`,
+            } satisfies Diagnostic,
+          }
+        : {}),
+    };
+  };
+
+  const results = await mapWithConcurrency(allFiles, concurrency, processFile);
+  for (const r of results) {
+    if (r.emittedEntry) emitted.push(r.emittedEntry);
+    if (r.skippedEntry) skipped.push(r.skippedEntry);
+    if (r.diagnostic) diagnostics.push(r.diagnostic);
   }
 
   const hasFailures = emitted.some((e) => e.overall === "fail");

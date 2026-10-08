@@ -12,6 +12,10 @@ with `TypeError: targetId.toLowerCase is not a function`.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Standalone port of kernel argv resolution for the forge CLI (RFC-0260 lineage): strict KERNEL-FLAG-01/02/03 + KERNEL-ARG-01 diagnostics for schema-carrying commands, legacy heuristic parse (with KERNEL-ARG-01) for schema-less commands; repeated single-value string flags diagnose instead of silently promoting to an array that crashes handlers; indexOf-based inline-value split preserves values containing "=" that split("=", 2) silently truncated.</item>
+  <item>Session-retro 2026-10-08: string[] flags greedily consume consecutive
+bare tokens until the next --flag (`--files a b` → ["a","b"]), matching the
+kernel argv parser; bare positionals without a preceding string[] flag still
+emit KERNEL-ARG-01.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -227,11 +231,25 @@ function resolveStrict(
       continue;
     }
 
-    const next = rawArgv[index + 1];
-    if (typeof next === "string" && !next.startsWith("--")) {
-      addFlagValue(flags, flagName, next);
-      index += 1;
-      continue;
+    // string[] flags consume every following bare token — mirrors the kernel's
+    // resolveCommandFlags: positional args are never valid (KERNEL-ARG-01),
+    // so `--files a b` unambiguously means the value list [a, b].
+    if (spec.kind === "string[]") {
+      let consumed = 0;
+      while (index + 1 < rawArgv.length && !rawArgv[index + 1]!.startsWith("--")) {
+        addFlagValue(flags, flagName, rawArgv[index + 1]!);
+        index += 1;
+        consumed += 1;
+      }
+      if (consumed > 0) continue;
+      // fall through to the missing-value diagnostic
+    } else {
+      const next = rawArgv[index + 1];
+      if (typeof next === "string" && !next.startsWith("--")) {
+        addFlagValue(flags, flagName, next);
+        index += 1;
+        continue;
+      }
     }
 
     diagnostics.push({

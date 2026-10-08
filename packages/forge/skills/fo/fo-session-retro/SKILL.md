@@ -85,7 +85,7 @@ The agent reconstructs the current session's conversation from its context windo
 3. Reconstruct the conversation from context — include every user message and assistant response you can recall from the current session, in chronological order. This is a best-effort reconstruction: the agent's context window is the source, not an external export tool.
 4. **Redact sensitive information** — remove API keys, passwords, PII, and secret values before writing. Replace with `<redacted>`.
 5. **Truncate very long tool outputs** — if a tool call produced thousands of lines of output, summarize it as `<tool output truncated, N lines>` in the content field. Keep the tool call name and key results.
-6. Write the file using `write_to_file` to `docs/sessions/.raw/<timestamp>-session.atif`.
+6. Write the file **atomically**: `write_to_file` to `docs/sessions/.raw/<timestamp>-session.atif.tmp`, then `mv` it to the same path without `.tmp` (rename is atomic). A parallel agent's `session.save` claims any `.atif` the moment it appears — this ordering guarantees it never sees a half-written transcript.
 
 ### 0c. Run session.save
 

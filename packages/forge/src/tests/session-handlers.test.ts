@@ -99,6 +99,39 @@ describe("session.save", () => {
     expect(data2.skipped[0]).toHaveProperty("reason", "already converted");
   });
 
+  test("ignores non-.atif files — claim intermediates and writer temp files are skipped", async () => {
+    const rawDir = join(dir, "docs/sessions/.raw");
+    await writeFile(join(rawDir, "orphan.atif.claim-999"), SAMPLE_ATIF, "utf-8");
+    await writeFile(join(rawDir, "half-written.atif.tmp"), SAMPLE_ATIF, "utf-8");
+
+    const result = await runSessionSave(makeInput(), makeContext(dir));
+    const data = result.data as SessionSaveResult & { skipped: Array<{ rawFile: string }> };
+
+    // Neither junk file was converted, claimed, or deleted.
+    const touched = data.skipped.map((s) => s.rawFile);
+    expect(touched).not.toContain("orphan.atif.claim-999");
+    expect(touched).not.toContain("half-written.atif.tmp");
+    const remaining = await readdir(rawDir);
+    expect(remaining).toContain("orphan.atif.claim-999");
+    expect(remaining).toContain("half-written.atif.tmp");
+  });
+
+  test("--keep-raw restores the original filename after the atomic claim", async () => {
+    const rawDir = join(dir, "docs/sessions/.raw");
+    const uniqueAtif = `2026-07-28T10:00:00+02:00
+User: keep-raw claim restore test.
+Assistant: Done.
+Commands: session.save`;
+    await writeFile(join(rawDir, "keepraw-claim.atif"), uniqueAtif, "utf-8");
+
+    const result = await runSessionSave(makeInput({ "keep-raw": true }), makeContext(dir));
+    expect(result.data.id).not.toBe("");
+
+    const remaining = await readdir(rawDir);
+    expect(remaining).toContain("keepraw-claim.atif");
+    expect(remaining.filter((n) => n.startsWith("keepraw-claim.atif.claim-"))).toHaveLength(0);
+  });
+
   test("deletes raw file on skip when --keep-raw is not set (idempotency cleanup)", async () => {
     const uniqueAtif = `2026-07-27T09:15:00+02:00
 User: Fix the session.save idempotency bug in save.ts.
