@@ -233,6 +233,8 @@ export async function runCompassDocsValidate(
   context: ForgeRuntimeContext,
 ): Promise<
   ForgeCommandResult<{
+    command: "compass.docs.validate";
+    status: "pass" | "fail";
     scanned: { xmlFiles: number; pathsChecked: number; idsChecked: number };
     diagnostics: Diagnostic[];
   }>
@@ -343,6 +345,8 @@ export async function runCompassDocsValidate(
 
   return {
     data: {
+      command: "compass.docs.validate",
+      status: errors.length === 0 ? "pass" : "fail",
       scanned: { xmlFiles: xmlFiles.length, pathsChecked, idsChecked },
       diagnostics,
     },

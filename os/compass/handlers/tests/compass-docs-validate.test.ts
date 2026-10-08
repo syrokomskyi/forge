@@ -194,6 +194,8 @@ describe("compass.docs.validate — RFC-1242", () => {
     await writeFile(join(root, "docs", "other.xml"), "<root/>", "utf8");
     const result = await runCompassDocsValidate(makeInput(), makeContext(root));
     const data = result.data as Record<string, unknown>;
+    expect(data).toHaveProperty("command", "compass.docs.validate");
+    expect(data).toHaveProperty("status", "pass");
     expect(data).toHaveProperty("scanned");
     expect(data).toHaveProperty("diagnostics");
     expect(Array.isArray(data.diagnostics)).toBe(true);
