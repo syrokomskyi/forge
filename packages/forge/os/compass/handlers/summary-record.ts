@@ -29,11 +29,12 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
   <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
   <item>RFC-1233: stripGitTrailers at the record point + sanitizeItemText star-slash guard — commit-message trailers (Token: value / Token #value, plus markdown-link attribution lines like "Generated with [X](url)") no longer pollute injected items.</item>
+  <item>Session-retro 2026-10-08: id-in-diff dedup — auto-inject skips when the worktree diff already carries a same-ID item (HEAD-vs-worktree via git show HEAD:path), closing the descriptive+generic duplicate class seen on RFC-1237.</item>
   <history>RFC-1095</history>
 </CHANGE_SUMMARY>
 */
 
-import { existsSync } from "../../../src/utils/sync-fs.ts";
+import { execFile, existsSync } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
 import { resolve, relative } from "node:path";
@@ -70,7 +71,7 @@ export interface SummaryRecordInput {
   workpiece?: string;
 }
 
-export type SummaryRecordSkipReason = "no-block" | "duplicate" | "unparseable";
+export type SummaryRecordSkipReason = "no-block" | "duplicate" | "unparseable" | "id-in-diff";
 
 export interface SummaryRecordResult {
   command: "compass.summary.record";
@@ -233,6 +234,8 @@ interface RecordOutcome {
 /**
  * Append `ID: text` to one file's CHANGE_SUMMARY and collapse the window.
  * Returns the outcome; writes the file only when mutated and not dry-run.
+ * `headSource` is the file's content at HEAD (when resolvable) — it enables
+ * the id-in-diff dedup; pass undefined outside git workspaces.
  */
 export async function recordSummaryItem(
   absPath: string,
@@ -241,6 +244,7 @@ export async function recordSummaryItem(
   text: string,
   dryRun: boolean,
   policy: CompassPolicy,
+  headSource?: string,
 ): Promise<RecordOutcome> {
   const source = await io.readFile(absPath);
   const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
@@ -271,6 +275,22 @@ export async function recordSummaryItem(
     return { recorded: false, collapsed: false, skipReason: "duplicate" };
   }
 
+  // A same-ID item already in the worktree but absent from HEAD means the
+  // pending change already carries a hand-authored record for this governance
+  // ID — the auto-injected subject-derived item would duplicate it at lower
+  // specificity (observed 2026-10-08: 27 files carried descriptive + generic
+  // RFC-1237 items). HEAD-resident same-ID items do NOT suppress: consecutive
+  // commits under one RFC legitimately stack step items.
+  if (headSource !== undefined) {
+    const headBlock = headSource.match(CHANGE_SUMMARY_BLOCK_RE);
+    const headItems = headBlock ? parseChangeSummary(headBlock[0]).items : [];
+    const idInWorktree = items.some((item) => leadingGovernanceId(item, policy) === id);
+    const idInHead = headItems.some((item) => leadingGovernanceId(item, policy) === id);
+    if (idInWorktree && !idInHead) {
+      return { recorded: false, collapsed: false, skipReason: "id-in-diff" };
+    }
+  }
+
   const nextItems = [...items, newItem];
   const collapsedIds: string[] = [];
   while (nextItems.length > CHANGE_SUMMARY_WINDOW) {
@@ -287,6 +307,27 @@ export async function recordSummaryItem(
     await writeFileIfChanged(absPath, transformed);
   }
   return { recorded: true, collapsed };
+}
+
+function execGit(cwd: string, args: string[]): Promise<string | null> {
+  return new Promise((resolve) => {
+    execFile("git", args, { cwd, timeout: 5000 }, (err, stdout) => {
+      resolve(err ? null : stdout);
+    });
+  });
+}
+
+/**
+ * Read `path`'s content at HEAD — the baseline for the id-in-diff dedup.
+ * Returns undefined when the file is untracked or the workspace is not a git
+ * repo (the dedup then falls back to exact-text matching only).
+ */
+async function readHeadSource(gitTop: string | null, absPath: string): Promise<string | undefined> {
+  if (!gitTop) return undefined;
+  const rel = relative(gitTop, absPath).replace(/\\/g, "/");
+  if (rel === "" || rel.startsWith("..")) return undefined;
+  const source = await execGit(gitTop, ["show", `HEAD:${rel}`]);
+  return source ?? undefined;
 }
 
 function riskReminderNeeded(relPath: string, source: string, policy: CompassPolicy): boolean {
@@ -335,6 +376,9 @@ export async function runCompassSummaryRecord(
     keyDecisionsReminders: [],
   };
 
+  const gitTopRaw = await execGit(baseRoot, ["rev-parse", "--show-toplevel"]);
+  const gitTop = gitTopRaw?.trim() || null;
+
   for (const file of files) {
     const absPath = resolve(baseRoot, file);
     const relPath = relative(baseRoot, absPath).replace(/\\/g, "/");
@@ -344,7 +388,16 @@ export async function runCompassSummaryRecord(
       continue;
     }
     try {
-      const outcome = await recordSummaryItem(absPath, relPath, id, text, context.dryRun, policy);
+      const headSource = await readHeadSource(gitTop, absPath);
+      const outcome = await recordSummaryItem(
+        absPath,
+        relPath,
+        id,
+        text,
+        context.dryRun,
+        policy,
+        headSource,
+      );
       if (outcome.skipReason) {
         result.skipped.push({ file, reason: outcome.skipReason });
         continue;

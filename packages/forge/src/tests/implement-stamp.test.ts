@@ -429,6 +429,44 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.violations).toEqual([]);
   });
 
+  it("auto-selects the sole implement/feat-prefixed commit among multiple candidates", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
+    await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
+    await commitAll(workspaceRoot, "docs: audit RFC-0001");
+    await writeFile(join(workspaceRoot, "src.txt"), "impl");
+    const implCommit = await commitAll(workspaceRoot, "implement: RFC-0001 — the change");
+    await writeFile(join(workspaceRoot, "src.txt"), "evidence");
+    await commitAll(workspaceRoot, "docs: RFC-0001 evidence sweep");
+
+    const result = await runRfcImplementStamp(
+      makeInputAutoDetect("RFC-0001"),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    expect(implCommit.startsWith(result.data?.data?.implementationCommit ?? "")).toBe(true);
+  });
+
+  it("still blocks with annotated candidates when several implement-prefixed commits exist", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
+    await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
+    await commitAll(workspaceRoot, "implement: RFC-0001 step 1");
+    await writeFile(join(workspaceRoot, "src.txt"), "step 2");
+    await commitAll(workspaceRoot, "implement: RFC-0001 step 2");
+
+    const result = await runRfcImplementStamp(
+      makeInputAutoDetect("RFC-0001"),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const imp03 = result.data?.violations.find((v) => v.rule === "RFC-IMP-03");
+    expect(imp03?.message).toContain("Multiple commits reference RFC-0001");
+    expect(imp03?.message).toContain("[implementation-shaped]");
+    expect(imp03?.message).toContain("Likely:");
+  });
+
   // ── RFC-0795: RFC-IMP-07 dependsOn dependency gate tests ──────────────────
 
   it("blocks stamping when a dependsOn RFC is not implemented (RFC-IMP-07)", async () => {

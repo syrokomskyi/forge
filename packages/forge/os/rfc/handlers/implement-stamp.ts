@@ -21,6 +21,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <item>Session-retro 2026-10-08: auto-detect picks the sole implement/feat-prefixed candidate among multi-commit references (RFC-IMP-03 no longer blocks full pipelines); ambiguous sets keep blocking with annotated candidate list + earliest-candidate suggestion.</item>
   <history>RFC-0268, RFC-0476, RFC-0756</history>
 </CHANGE_SUMMARY>
 */
@@ -57,6 +58,11 @@ import type {
 const VERIFICATION_DIR = join(RFC_DIR, "verification");
 
 // ─── Git helpers ─────────────────────────────────────────────────────────────
+
+// Pipeline convention: the implementation commit's subject carries an
+// `implement:` (or `feat:`) conventional prefix — audit/enhance/plan/docs/
+// review/fix/chore commits referencing the same RFC id never claim it.
+const IMPLEMENTATION_SUBJECT_RE = /^(implement|feat)(\([^)]*\))?!?:/i;
 
 function execGit(workspaceRoot: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
@@ -347,11 +353,35 @@ export async function runRfcImplementStamp(
         message: `No commit referencing ${targetId} found in git history. Pass --implementation-commit <SHA> explicitly.`,
       });
     } else {
-      const candidateList = detected.multiple.map((c) => `  ${c.sha} — ${c.message}`).join("\n");
-      violations.push({
-        rule: "RFC-IMP-03",
-        message: `Multiple commits reference ${targetId}:\n${candidateList}\nPass --implementation-commit <SHA> to specify which one.`,
-      });
+      // Auto-resolve when exactly one candidate looks like an implementation
+      // commit — a multi-commit RFC pipeline (audit → plan → implement → docs →
+      // review) references the id at every step, but only one step implements.
+      const implCandidates = detected.multiple.filter((c) =>
+        IMPLEMENTATION_SUBJECT_RE.test(c.message),
+      );
+      if (implCandidates.length === 1) {
+        implementationCommit = implCandidates[0]!.sha;
+        logger.info(
+          `[rfc.implement.stamp] auto-selected implementation commit ${implCandidates[0]!.sha} (sole implement/feat-prefixed candidate)`,
+        );
+      } else {
+        const candidateList = detected.multiple
+          .map(
+            (c) =>
+              `  ${c.sha} — ${c.message}${IMPLEMENTATION_SUBJECT_RE.test(c.message) ? "  [implementation-shaped]" : ""}`,
+          )
+          .join("\n");
+        // git log lists newest first — the earliest implementation-shaped
+        // commit is the most likely canonical pick for a step-wise wave.
+        const earliest = implCandidates[implCandidates.length - 1];
+        const suggestion = earliest
+          ? `\nLikely: ${earliest.sha} (earliest implementation-shaped commit).`
+          : "";
+        violations.push({
+          rule: "RFC-IMP-03",
+          message: `Multiple commits reference ${targetId}:\n${candidateList}\nPass --implementation-commit <SHA> to specify which one.${suggestion}`,
+        });
+      }
     }
   }
 

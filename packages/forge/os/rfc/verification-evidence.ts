@@ -19,6 +19,9 @@ io.writeFile port routing, dry-run summary marker; serializeEvidenceEnvelope —
 shared emit-canonical serializer restoring the structured YAML marker-key
 header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
 with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
+  <item>Session-retro 2026-10-08: sweep delta report — reads the committed
+envelope baseline (previousOverall) and reports recovered/regressed
+transitions so a fail-heavy sweep needs no manual pass/fail triage.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +35,7 @@ import { byteHash } from "../../src/utils/hash.ts";
 import { runProbe } from "./acceptance.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { generatedHeaderFields } from "../../src/utils/generated-marker.ts";
-import { stringify as yamlStringify } from "yaml";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { RFC_DIR } from "./types.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -237,30 +240,64 @@ export async function runRfcVerificationEmit(
     const evidenceFileName = `${slug}.generated.yaml`;
     const evidenceRelPath = join(VERIFICATION_DIR, evidenceFileName);
     const evidenceAbsPath = join(workspaceRoot, evidenceRelPath);
+
+    // Committed-envelope baseline for the sweep delta — lets a fail-heavy run
+    // separate still-failing drift from fresh regressions without git diff.
+    let previousOverall: "pass" | "fail" | undefined;
+    try {
+      const existing = yamlParse(await io.readFile(evidenceAbsPath)) as VerificationEvidence | null;
+      if (existing && (existing.overall === "pass" || existing.overall === "fail")) {
+        previousOverall = existing.overall;
+      }
+    } catch {
+      // No committed envelope — first emission for this RFC.
+    }
+
     // RFC-1237: port write — the recording IO adapter intercepts under kernel
     // --dry-run even if the explicit guard regresses.
     if (!dryRun) await io.writeFile(evidenceAbsPath, serializeEvidenceEnvelope(envelope));
 
-    emitted.push({ rfcId, file: evidenceRelPath, overall: envelope.overall });
+    emitted.push({
+      rfcId,
+      file: evidenceRelPath,
+      overall: envelope.overall,
+      ...(previousOverall !== undefined ? { previousOverall } : {}),
+    });
 
     if (envelope.overall === "fail") {
       diagnostics.push({
         ruleId: "RFC-EVID-02",
         severity: "error",
         file: evidenceRelPath,
-        message: `${rfcId}: evidence overall is "fail" — ${probeRecords.filter((r) => !r.ok).length} probe(s) failed.`,
+        message: `${rfcId}: evidence overall is "fail" — ${probeRecords.filter((r) => !r.ok).length} probe(s) failed${previousOverall === "pass" ? " (regressed: was pass)" : ""}.`,
       });
     }
 
     if (outputFormat === "pretty") {
+      const drift =
+        previousOverall !== undefined && previousOverall !== envelope.overall
+          ? `, was ${previousOverall}`
+          : "";
       logger.info(
-        `[evidence] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${dryRun ? ", dry-run" : ""})`,
+        `[evidence] ${rfcId} → ${evidenceRelPath} (${envelope.overall}, ${probeRecords.length} probes${drift}${dryRun ? ", dry-run" : ""})`,
       );
     }
   }
 
   const hasFailures = emitted.some((e) => e.overall === "fail");
   const status: RfcVerificationEmitResult["status"] = hasFailures ? "fail" : "pass";
+  const delta = {
+    recovered: emitted
+      .filter((e) => e.previousOverall === "fail" && e.overall === "pass")
+      .map((e) => e.rfcId),
+    regressed: emitted
+      .filter((e) => e.previousOverall === "pass" && e.overall === "fail")
+      .map((e) => e.rfcId),
+  };
+  const deltaSummary =
+    delta.recovered.length + delta.regressed.length > 0
+      ? `, ${delta.regressed.length} regressed, ${delta.recovered.length} recovered`
+      : "";
 
   return {
     data: {
@@ -269,8 +306,9 @@ export async function runRfcVerificationEmit(
       emitted,
       skipped,
       diagnostics,
+      delta,
     },
     exitCode: hasFailures ? 1 : 0,
-    summary: `rfc.verification.emit: ${emitted.length} emitted, ${skipped.length} skipped${dryRun ? ", dry-run" : ""}`,
+    summary: `rfc.verification.emit: ${emitted.length} emitted, ${skipped.length} skipped${deltaSummary}${dryRun ? ", dry-run" : ""}`,
   };
 }
