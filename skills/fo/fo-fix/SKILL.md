@@ -155,7 +155,7 @@ If no source files were touched, skip this step.
 
 This step is **always** performed — it is not optional and must not be skipped.
 
-Invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, `ref(forge.yaml bindings.paths.invariantsFile)`, templates, generated artifacts, COMMANDS.md/PACKAGE_GRAPH.md), applies needed updates, and commits them separately. Wait for it to complete.
+Invoke `fo-doc-audit` via the `skill` tool. It analyzes the session's changes, checks all documentation surfaces (AGENTS.md, README, Compass XML, `ref(forge.yaml bindings.paths.invariantsFile)`, templates, generated artifacts, generated command docs (COMMANDS.md, ecosystem.generated.yaml)), applies needed updates, and commits them separately. Wait for it to complete.
 
 If `fo-doc-audit` reports that no updates are needed, state this explicitly and move on — the check itself is the mandatory part, not the outcome.
 

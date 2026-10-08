@@ -49,7 +49,7 @@ The ecosystem has seven documentation surfaces. Each has a different audience an
 | **architecture-dna.md** | `ref(forge.yaml bindings.paths.invariantsFile)` | AI agents + humans | New DNA invariant, invariant amendment, or invariant retirement |
 | **Templates** | `packages/werkstatt-site/src/onboarding/templates/`, `packages/werkstatt-site/src/codegen/templates/` | Future apps/packages (scaffold time) | Change to what a new app or package should look like at creation time |
 | **Generated artifacts** | `docs/ecosystem.generated.json`, `docs/command-manifest.generated.yaml`, `fleet/*.generated.yaml`, `*.generated.css` | AI agents (read-only projection) | **Never edit directly** — update the generator or registry, then regenerate |
-| **COMMANDS / PACKAGE_GRAPH** | `docs/COMMANDS.md`, `docs/PACKAGE_GRAPH.md` | Humans + AI agents | New command, removed command, package graph change |
+| **Command / ecosystem docs** | `docs/COMMANDS.md`, `docs/ecosystem.generated.yaml` | Humans + AI agents | New command, removed command, package graph change — regenerate via `docs.commands.generate` / `ecosystem.manifest.generate`, never hand-edit |
 
 ## Process
 
@@ -147,12 +147,12 @@ ref(forge.yaml bindings.commands.produce) --workspace=command.manifest.generate
 
 Note: if the regeneration command is expensive or unavailable in the current session, document the need to regenerate in the session summary and move on.
 
-#### 2g. COMMANDS.md / PACKAGE_GRAPH.md
+#### 2g. Command / ecosystem doc surfaces
 
 - Were **commands** added, removed, or renamed?
 - Did the **package graph** change (new package, removed package, new dependency)?
 
-If yes, update `docs/COMMANDS.md` and/or `docs/PACKAGE_GRAPH.md`. If these are generated, update the generator instead (see 2f).
+If yes, regenerate the owned projections — `docs.commands.generate` refreshes `docs/command-manifest.generated.yaml` + `docs/COMMANDS.md`; `ecosystem.manifest.generate` refreshes `docs/ecosystem.generated.yaml` (the successor of the retired `docs/PACKAGE_GRAPH.md`, RFC-1242). Never hand-edit generated files — update the generator or registry (see 2f).
 
 ### 3. Present analysis to the operator
 
