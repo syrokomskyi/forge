@@ -19,7 +19,6 @@ io.writeFile port routing, dry-run summary marker; serializeEvidenceEnvelope —
 shared emit-canonical serializer restoring the structured YAML marker-key
 header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
 with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
-  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
 </CHANGE_SUMMARY>
 */
 
