@@ -457,16 +457,9 @@ Living feature specs are mutable markdown documents under `docs/specs/live/<doma
 
 ## NPM publish workflow
 
-To publish a new version of `@warpgogol/forge` to NPM:
+`pnpm run publish:forge <patch|minor|major>` (RFC-1252) is the **only supported forge publish path** — it bumps `packages/forge/package.json` + `forge.yaml` `syncedVersion`, commits the bump into `HEAD`, exports committed `HEAD` content via `repo-extract --from-head --no-push`, verifies the extracted repo against the same scripts standalone CI runs, and pushes with an automatic ours-merge reconcile on non-fast-forward. Major requires `ALLOW_MAJOR_BUMP=1`. CI on the extracted repo publishes to npm with provenance.
 
-1. Bump `version` in `packages/forge/package.json` (semver: minor for new skills/features, patch for fixes).
-2. Bump `forge.syncedVersion` in `forge.yaml` to match.
-3. Run `pnpm --filter @warpgogol/forge publish --access public --no-git-checks` — publishes to `@warpgogol/forge` on npmjs.org.
-4. Commit version bumps: `git add packages/forge/package.json forge.yaml && git commit -m "release: @warpgogol/forge@<version>"`.
-
-The `prepublishOnly` script runs `clean → build → publish-check → strip-workspace-deps` automatically. **`strip-workspace-deps.mjs`** removes `@warpgogol/*` `workspace:*` dependencies from `package.json` before publish — these packages are not on npm and would make the published package uninstallable. The `postpublish` script restores the original `package.json` via `git checkout -- ./package.json`.
-
-**Do NOT use `npm publish`** — it fails during `prepublishOnly` because `tsc` cannot resolve workspace dependencies (`@warpgogol/werkstatt-site/share/fs`, `@warpgogol/werkstatt-engine/fingerprint`) outside the pnpm workspace context. `pnpm publish` handles workspace dependencies correctly.
+Do NOT use `npm publish`/`pnpm publish`/`git commit` for forge releases — direct repo-extract runs bypass clean-source verification, and manual `git commit` on `packages/**` is blocked by `hooks/pre-commit`.
 
 **Workspace deps must use dynamic imports.** `@warpgogol/*` packages that are not published to npm MUST be imported via dynamic `import()` (see `os/core/handlers/workspace-deps.ts`), never static `import`. Static imports would fail at runtime when forge is installed standalone from npm. The `workspace-deps.ts` helper caches the dynamic import and throws a clear error message if the packages are missing.
 
