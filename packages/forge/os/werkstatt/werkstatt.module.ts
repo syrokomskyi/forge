@@ -32,6 +32,7 @@ export const forgeWerkstattModule: ForgeModule = {
   commands: [
     {
       name: "werkstatt.lock.status",
+      coverage: "operator" as const,
       mutatesState: false,
       description: "Report all Werkstatt locks, their age, owner, and staleness (RFC-0362).",
       scope: "workspace",
@@ -42,6 +43,7 @@ export const forgeWerkstattModule: ForgeModule = {
     },
     {
       name: "werkstatt.lock.recover",
+      coverage: "operator" as const,
       description:
         "Classify and clean stale locks and staging artifacts (RFC-0362). Flags: --scope, --purge.",
       scope: "workspace",

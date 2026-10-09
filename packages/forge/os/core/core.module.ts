@@ -235,6 +235,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.port.scaffold",
+        coverage: "operator" as const,
         mutatesState: true,
         description: "Generate a skeleton for a new forge skill or command.",
         scope: "workspace",
@@ -261,6 +262,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.skill.list",
+        coverage: "operator" as const,
         mutatesState: false,
         description: "List all registered forge skills.",
         scope: "workspace",
@@ -271,6 +273,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.port.validate",
+        coverage: "operator" as const,
+        coverageNote: "requires --name",
         mutatesState: false,
         contract: "forge",
         rules: [],
@@ -286,6 +290,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.agents.generate",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Regenerate AGENTS.md deterministically from forge.yaml and the skill registry.",
@@ -299,7 +304,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "memory.compact",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "agent memory compaction",
         mutatesState: true,
         description:
@@ -336,6 +341,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.scaffold",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory. Required flags: `--profile`, `--name`.",
@@ -436,6 +442,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.dev",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Start the dev/preview server declared in the active stack profile. Use --dry-run to print the resolved command without executing.",
@@ -458,6 +465,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.build",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Execute produce commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
@@ -479,6 +487,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.validate",
+        coverage: "operator" as const,
+        coverageNote: "artifact validator — typescript profile declares no artifacts by design",
         mutatesState: false,
         contract: "forge",
         rules: [],
@@ -506,7 +516,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.determinism.check",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "forge determinism audit",
         mutatesState: true,
         contract: "forge",
@@ -537,7 +547,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.assets.list",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "asset listing for asset-declaring forge profiles",
         mutatesState: false,
         description:
@@ -564,7 +574,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.assets.check",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "asset check for asset-declaring forge profiles",
         mutatesState: false,
         contract: "forge",
@@ -593,7 +603,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.release.prepare",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "forge release front door",
         mutatesState: true,
         description:
@@ -618,7 +628,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.release.publish",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "forge release publish step",
         mutatesState: true,
         description:
@@ -643,6 +653,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.skill.knowledge.compact",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Compact skill knowledge files: archive expired/superseded/aged L0 entries, mark stale L2 principles. " +
@@ -690,7 +701,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "pinned.validate",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "pin-file hygiene",
         mutatesState: true,
         contract: "pinned",
@@ -726,7 +737,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "pinned.init",
-        coverage: "operator",
+        coverage: "operator" as const,
         coverageNote: "pin-file bootstrap for mission pinning",
         description:
           "Initialize .forge/pinned.yaml with default foundation entries, " +
@@ -835,6 +846,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "docs.archive",
+        coverage: "operator" as const,
         description:
           "Umbrella command that runs rfc.archive, adr.archive, plan.archive, " +
           "audit.archive, session.archive, and mission.archive in sequence. " +

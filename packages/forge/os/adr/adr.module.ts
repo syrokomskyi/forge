@@ -29,6 +29,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "adr.list",
+        coverage: "operator" as const,
         mutatesState: false,
         description:
           "List all ADRs. Filter with --status, --scope, --decider flags. " +
@@ -105,6 +106,7 @@ export async function createForgeAdrModule(): Promise<ForgeModule> {
       },
       {
         name: "adr.archive",
+        coverage: "operator" as const,
         description:
           "Move terminal-status ADR files (implemented, rejected, superseded) into " +
           "docs/adrs/archive/<status>/ subdirectories. Bidirectional: moves non-terminal " +

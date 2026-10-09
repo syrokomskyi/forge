@@ -258,6 +258,7 @@ export const forgePluginModule: ForgeModule = {
     },
     {
       name: "forge.plugin.discover",
+      coverage: "operator" as const,
       mutatesState: false,
       description:
         "Enumerate all project-declared skill packs with valid forge.plugin.yaml manifests (RFC-0941). Returns pack id, version, prefix, and directory.",

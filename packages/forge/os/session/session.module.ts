@@ -57,6 +57,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "session.archive",
+        coverage: "operator" as const,
         description:
           "Move session files older than --max-age-days (default 7) from " +
           "docs/sessions/ to docs/sessions/archive/. Bidirectional: files in " +
@@ -84,6 +85,8 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "session.validate",
+        coverage: "operator" as const,
+        coverageNote: "retrospective session-doc audit — pre-existing frontmatter debt",
         mutatesState: false,
         contract: "session",
         rules: [],
@@ -102,6 +105,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "session.list",
+        coverage: "operator" as const,
         mutatesState: false,
         description:
           "List all sessions. Filter with --date-from, --date-to, --rfc, --type flags. " +
@@ -132,6 +136,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "metrics.aggregate",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Query and aggregate skill effectiveness metrics from docs/metrics/ files. " +

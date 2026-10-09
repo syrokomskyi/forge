@@ -27,6 +27,7 @@ export async function createForgeExplorationModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "exploration.list",
+        coverage: "operator" as const,
         description:
           "List all exploration notes in docs/explorations/. Returns id, title, status, and createdAt for each note. " +
           "Use --status <status> to filter by status (open, explored, archived). " +
@@ -46,6 +47,7 @@ export async function createForgeExplorationModule(): Promise<ForgeModule> {
       },
       {
         name: "exploration.show",
+        coverage: "operator" as const,
         description:
           "Show the full content of a single exploration note. Use --id <slug> to specify the note slug " +
           "(kebab-case, lowercase, latin-only). Returns the note's frontmatter and body. " +
@@ -66,6 +68,7 @@ export async function createForgeExplorationModule(): Promise<ForgeModule> {
       },
       {
         name: "exploration.archive",
+        coverage: "operator" as const,
         description:
           "Archive an exploration note by setting its status to 'archived'. Use --id <slug> to specify the note. " +
           "Use --rfc <RFC-XXXX> to add an RFC id to the note's 'related' field. " +
