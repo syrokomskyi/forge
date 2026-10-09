@@ -43,3 +43,8 @@ excludePathSegments:
 git:
   remote: git@github.com:syrokomskyi/forge.git
   autoPush: true
+  # RFC-1252 / repo-extract >=1.4.0: a non-fast-forward push (diverged remote
+  # history after history transfer) reconciles itself via fetch +
+  # merge -s ours + one push retry. Local tree stays the authoritative export;
+  # remote history is preserved. Never force-pushes.
+  autoReconcile: true
