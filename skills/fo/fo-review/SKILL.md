@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc]
   optional: [paths.invariantsFile, paths.compassDocs]
-triggerPhrases: ["review this code diff", "check code against Forge standards", "fitness check on code changes"]
+triggerPhrases: ["проверим всё ли сделали правильно", "проверь изменения", "review this session", "review this code diff", "check code against Forge standards"]
 ---
 
 <!--

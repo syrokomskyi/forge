@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [paths.invariantsFile]
   optional: []
-triggerPhrases: ["explore this idea", "let me think about this", "what are the options for", "what if we"]
+triggerPhrases: ["нам надо закрыть открытые вопросы", "explore this idea", "let me think about this", "what are the options for", "what if we"]
 ---
 
 <!--

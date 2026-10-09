@@ -10,6 +10,7 @@ concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 triggerPhrases:
+  - "закоммитим"
   - "commit after request"
   - "auto-commit changes"
   - "step commit"
