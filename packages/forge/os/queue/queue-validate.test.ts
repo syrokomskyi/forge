@@ -367,6 +367,42 @@ describe("runQueueValidate — decision ledger (RFC-1250)", () => {
     expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-08")).toBe(true);
   });
 
+  test("QUEUE-07-blocked item cascades exclusion to dependsOn dependents", async () => {
+    await writeRfc("RFC-1550", "status: accepted\n");
+    await writeRfc("RFC-1551", "status: draft\ndependsOn:\n  - RFC-1550\n");
+    await writeRfc("RFC-1552");
+    const file = await writeManifest(
+      "block-q7-cascade",
+      "id: block-q7-cascade\ncreatedAt: 2026-10-09\nitems:\n  - id: RFC-1550\n  - id: RFC-1551\n  - id: RFC-1552\n",
+    );
+    await writeLedger(
+      "block-q7-cascade",
+      `${LEDGER_HEADER("block-q7-cascade")}items:\n  - id: Q-1\n    doc: RFC-1550\n    stage: plan\n    question: unresolved\n    resolutionPath: none\n    status: open\n`,
+    );
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("fail");
+    // RFC-1551 is pending and has no open decisions, but it depends on a
+    // QUEUE-07-blocked item — it must not execute before its dependency.
+    expect(result?.data?.next).toBe("RFC-1552");
+  });
+
+  test("broken manifest + valid ledger → no spurious QUEUE-02/QUEUE-08 noise", async () => {
+    await writeRfc("RFC-1560", "status: accepted\n");
+    const file = await writeManifest("block-broken", "id: [\n"); // unparseable YAML
+    await writeLedger(
+      "block-broken",
+      `${LEDGER_HEADER("block-broken")}items:\n  - id: Q-1\n    doc: RFC-1560\n    stage: plan\n    question: q\n    resolutionPath: none\n    status: open\n`,
+    );
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("fail");
+    expect(result?.data?.errors.some((e) => e.ruleId === "QUEUE-02")).toBe(false);
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-08")).toBe(false);
+  });
+
   test("unreadable ledger (non-ENOENT) → QUEUE-01 error, never fails open", async () => {
     await writeRfc("RFC-1545", "status: accepted\n");
     const file = await writeManifest(

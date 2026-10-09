@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: QUEUE-07 registered (non-parked opens only — parked entries are
-  already execution-gated); QUEUE-08 ledger-hygiene warnings; reads gains the
-  decisions-ledger glob.</item>
   <item>RFC-1140: initial forgeQueueModule registering queue.validate.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -28,6 +25,8 @@ items; top-level decision totals added. Orchestrator pre-flight treats
 QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
+  <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 
@@ -67,7 +66,6 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
         mutatesState: false,
         reads: [
           "docs/queues/*.yaml",
-          "docs/queues/*.decisions.yaml",
           "docs/rfcs/**/*.md",
           "docs/adrs/**/*.md",
           "docs/audits/*.md",
