@@ -81,6 +81,8 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
       },
       {
         name: "note.frontmatter.validate",
+        coverage: "operator",
+        coverageNote: "notes vault frontmatter hygiene (vault workshops)",
         mutatesState: false,
         contract: "note",
         rules: [],
@@ -104,6 +106,8 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
       },
       {
         name: "note.orphan.detect",
+        coverage: "operator",
+        coverageNote: "notes vault orphan detection (vault workshops)",
         mutatesState: false,
         description:
           "Detect orphan notes in a markdown note vault — notes with zero inbound wikilinks. Always exits zero (warnings, not errors).",

@@ -298,6 +298,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "memory.compact",
+        coverage: "operator",
+        coverageNote: "agent memory compaction",
         mutatesState: true,
         description:
           "Enforce the MEMORY.md character budget by removing oldest Environment notes bullets (RFC-1151).",
@@ -503,6 +505,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.determinism.check",
+        coverage: "operator",
+        coverageNote: "forge determinism audit",
         mutatesState: true,
         contract: "forge",
         rules: [],
@@ -532,6 +536,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.assets.list",
+        coverage: "operator",
+        coverageNote: "asset listing for asset-declaring forge profiles",
         mutatesState: false,
         description:
           "List all assets declared in the active stack profile, grouped by type. Use --dry-run to skip hashing, --type to filter by asset type.",
@@ -557,6 +563,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.assets.check",
+        coverage: "operator",
+        coverageNote: "asset check for asset-declaring forge profiles",
         mutatesState: false,
         contract: "forge",
         rules: [],
@@ -584,6 +592,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.release.prepare",
+        coverage: "operator",
+        coverageNote: "forge release front door",
         mutatesState: true,
         description:
           "Bundle built artifacts into a release package with a manifest. Use --dry-run to preview without writing.",
@@ -607,6 +617,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.release.publish",
+        coverage: "operator",
+        coverageNote: "forge release publish step",
         mutatesState: true,
         description:
           "Publish a prepared release to the declared target (local, R2, S3). Use --dry-run to preview without uploading.",
@@ -677,6 +689,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "pinned.validate",
+        coverage: "operator",
+        coverageNote: "pin-file hygiene",
         mutatesState: true,
         contract: "pinned",
         rules: [],
@@ -711,6 +725,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "pinned.init",
+        coverage: "operator",
+        coverageNote: "pin-file bootstrap for mission pinning",
         description:
           "Initialize .forge/pinned.yaml with default foundation entries, " +
           "install pre-commit hook, and add audit log to .gitignore. " +
