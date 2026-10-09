@@ -31,6 +31,7 @@ items; top-level decision totals added. Orchestrator pre-flight treats
 QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
+  <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
 </CHANGE_SUMMARY>
 */
 
@@ -86,6 +87,26 @@ function summarizeDecisions(ledger: DecisionLedger | null): Map<string, Decision
   return summaries;
 }
 
+/** Fixed-point `dependsOn` cascade: a dependent of an excluded root is excluded. */
+function cascadeDependents(
+  roots: ReadonlySet<string>,
+  dependsOn: Map<string, string[]>,
+): Set<string> {
+  const excluded = new Set(roots);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const [itemId, deps] of dependsOn) {
+      if (excluded.has(itemId)) continue;
+      if (deps.some((dep) => excluded.has(dep))) {
+        excluded.add(itemId);
+        changed = true;
+      }
+    }
+  }
+  return excluded;
+}
+
 /**
  * RFC-1250 parking: an item is parked when its ledger carries `deferred`
  * entries (operator parked it at a window) or `open` entries with
@@ -97,23 +118,12 @@ function computeParkedDocIds(
   dependsOn: Map<string, string[]>,
   summaries: Map<string, DecisionSummary>,
 ): Set<string> {
-  const parked = new Set<string>();
+  const roots = new Set<string>();
   for (const id of itemIds) {
     const s = summaries.get(id.toUpperCase());
-    if (s && (s.deferred > 0 || s.parked)) parked.add(id.toUpperCase());
+    if (s && (s.deferred > 0 || s.parked)) roots.add(id.toUpperCase());
   }
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const [itemId, deps] of dependsOn) {
-      if (parked.has(itemId)) continue;
-      if (deps.some((dep) => parked.has(dep))) {
-        parked.add(itemId);
-        changed = true;
-      }
-    }
-  }
-  return parked;
+  return cascadeDependents(roots, dependsOn);
 }
 
 /** QUEUE-07: an item derivable to the implement stage must not carry open decisions. */
@@ -176,7 +186,10 @@ export async function runQueueValidate(
     }
   }
 
-  const excludedFromNext = new Set([...parkedIds, ...blockedIds]);
+  // Excluded from `next`: parked items, QUEUE-07-blocked items, and the
+  // dependsOn dependents of either — a dependent must not execute while its
+  // dependency sits unresolved behind the window.
+  const excludedFromNext = new Set([...parkedIds, ...cascadeDependents(blockedIds, dependsOn)]);
   const report = {
     items: derivable.items,
     next:

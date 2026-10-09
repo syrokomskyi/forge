@@ -34,7 +34,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeNotesModule` | `note.link.validate`, `note.frontmatter.validate`, `note.orphan.detect` | `os/notes/` |
 | `forgeProgramModule` | `program.packet.validate`, `program.packet.seal`, `program.packet.lease`, `program.packet.complete` | `os/program/` |
 | `forgePluginModule` | `forge.plugin.validate`, `forge.plugin.discover` | `os/plugin/` |
-| `forgeQueueModule` | `queue.validate` — validates `docs/queues/*.yaml` manifests and reports derived per-item pipeline status (RFC-1140). Loads the sibling `<stem>.decisions.yaml` ledger (RFC-1250): QUEUE-07 blocks implement-stage items carrying `open` decisions, `next` skips `deferred`/parked items with `dependsOn` cascade. Shared resolver lives in `src/pipeline-status.ts`. | `os/queue/` |
+| `forgeQueueModule` | `queue.validate` — validates `docs/queues/*.yaml` manifests and reports derived per-item pipeline status (RFC-1140). Loads the sibling `<stem>.decisions.yaml` ledger (RFC-1250): QUEUE-07 blocks implement-stage items carrying un-parked `open` decisions (the ledger also gains QUEUE-02 binding, QUEUE-05 id-uniqueness, QUEUE-08 hygiene warnings), `next` skips `deferred`/parked/QUEUE-07-blocked items with `dependsOn` cascade. Shared resolver lives in `src/pipeline-status.ts`. | `os/queue/` |
 
 ## RFC-1053: Skill effectiveness metrics
 

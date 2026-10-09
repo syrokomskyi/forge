@@ -32,6 +32,7 @@ items; top-level decision totals added. Orchestrator pre-flight treats
 QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
+  <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
 </CHANGE_SUMMARY>
 */
 
@@ -308,17 +309,24 @@ export async function loadDecisionLedger(
 
   const ledger = parsed.data;
 
+  // Binding and hygiene checks require a successfully loaded manifest — when
+  // the manifest itself failed, the stub (empty id, no items) would blame a
+  // healthy ledger for a broken queue (QUEUE-02 against "") and flag every
+  // entry as foreign (QUEUE-08). The manifest failure already blocks.
+  const manifestId = manifest?.id ?? "";
+  const manifestReady = manifestId !== "";
+
   // QUEUE-02-family binding: the ledger belongs to exactly one manifest —
   // `queue` names the manifest id and `id` names the ledger filename stem
   // (`<manifest-stem>.decisions`). A misplaced or copy-pasted ledger must not
   // silently apply foreign decisions to this queue.
   const ledgerStem = path.basename(absolutePath).replace(/\.(ya?ml)$/i, "");
-  if (manifest && ledger.queue !== manifest.id) {
+  if (manifestReady && ledger.queue !== manifestId) {
     errors.push(
       diag(
         "QUEUE-02",
         "error",
-        `Decision ledger queue "${ledger.queue}" does not match manifest id "${manifest.id}"`,
+        `Decision ledger queue "${ledger.queue}" does not match manifest id "${manifestId}"`,
         displayPath,
       ),
     );
@@ -354,7 +362,7 @@ export async function loadDecisionLedger(
         ),
       );
     }
-    if (manifest && !manifestDocs.has(entry.doc.toUpperCase())) {
+    if (manifestReady && !manifestDocs.has(entry.doc.toUpperCase())) {
       warnings.push(
         diag(
           "QUEUE-08",
