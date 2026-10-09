@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [6.0.0] — 2026-10-09
+
+### Changed (breaking)
+
+- **RFC-1250: front-loaded operator decisions.** Orchestrated document runs are restructured into four phases — maturation → decision window → resolution → execution. Every run materializes a queue manifest (a single document is a one-item queue), all operator-facing questions are collected into a durable append-only ledger `docs/queues/<id>.decisions.yaml` instead of asked inline, and answers are applied in a single consolidated decision window that doubles as the batch acceptance ceremony (`draft→accepted` moves to the resolution phase). There is no compatibility mode for per-item inline asking inside orchestrator runs.
+- `queue.validate` gains **QUEUE-07** (blocking: implementable item with un-parked `open` decisions), **QUEUE-08** (ledger hygiene warnings), ledger↔manifest binding checks (QUEUE-02 family) and `Q-N` uniqueness (QUEUE-05); `next` skips deferred/parked/QUEUE-07-blocked items with a transitive `dependsOn` cascade; JSON output gains per-item and top-level `decisions` totals.
+- Pipeline skills gain a `collect`/`finalize` contract (`interview` stays for standalone invocations); `grilling` gains `emit` mode; emergent execution questions auto-resolve with ledger logging — only the closed hard-stop class (DNA, security/privacy, external contracts, irreversible ops, exhausted hard-block) parks an item.
+
 ## [5.1.1] — 2026-09-18
 
 ### Fixed
