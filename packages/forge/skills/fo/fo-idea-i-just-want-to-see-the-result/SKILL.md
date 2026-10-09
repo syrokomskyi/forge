@@ -17,6 +17,10 @@ triggerPhrases: ["по полному пайплайну", "на результ�
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: four-phase queue model — maturation / decision window /
+  resolution / execution; every run materializes a manifest (single doc =
+  one-item queue); collect/finalize contract replaces inline asking;
+  stopAfter: plan remapped to phases 1-3.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -42,12 +46,12 @@ This skill is a **pure orchestrator** — it delegates every step to the appropr
 
 This orchestrator supports a `stopAfter` parameter that limits how far the pipeline runs:
 
-- **`stopAfter: plan`** — execute steps 0–3 only (idea, audit, enhance, plan). Do not run implement (step 4), which now includes review and fix. After step 3 completes, report the summary and stop.
+- **`stopAfter: plan`** — run phases 1–3 of the queue model (maturation, decision window, resolution; see §Queue mode — the four-phase model). Do not run execution (implement, which includes review and fix). After resolution completes, report the summary and stop.
 - **`stopAfter: null` (default)** — run the full pipeline through implement (which includes review and fix).
 
-When `stopAfter: plan` is set and the document is an **ADR**, the ADR pipeline skips audit/enhance/plan. Stop after step 0 (idea creation) with the message: "ADR does not require a plan. Run `/fo-idea-implement` to implement."
+When `stopAfter: plan` is set and the document is an **ADR**, the ADR pipeline skips audit/enhance/plan — it contributes no maturation questions and joins the decision window only if ledger entries exist for it. Stop after the resolution phase with the message: "ADR does not require a plan. Re-invoke `/fo-idea-i-just-want-to-see-the-result` with the same manifest to execute."
 
-When resuming with `stopAfter: plan`, if the plan file already exists in `docs/plans/plan-rfc-XXXX-*.md`, stop immediately — do not proceed to implement.
+When resuming with `stopAfter: plan`, if the plan file already exists in `docs/plans/plan-rfc-XXXX-*.md` and carries no `PENDING DECISION` markers, stop immediately — do not proceed to execution.
 
 ## Preconditions
 
@@ -75,13 +79,14 @@ The operator may provide either:
 
 - **A raw idea** — natural-language description of a feature, change, or decision. The skill will invoke `fo-idea` as step 0 to create the RFC/ADR first.
 - **An existing RFC/ADR id** — e.g. `RFC-XXXX` or `ADR-XXXX`. The skill skips idea creation and starts the pipeline from the appropriate step.
-- **A queue manifest** — `--queue <path>` or a `docs/queues/*.yaml` path in the invocation text. The skill enters queue mode (see §Queue mode) and processes the manifest's `items[]` in order.
-- **A pasted document list** — >=2 `RFC-XXXX`/`ADR-XXXX` ids in the invocation text (e.g. another agent's ordered implementation plan). The skill materializes a session manifest (see §Queue mode → Manifest materialization) and enters queue mode.
+- **A queue manifest** — `--queue <path>` or a `docs/queues/*.yaml` path in the invocation text. The skill loads it as the run's manifest (see §Queue mode — the four-phase model) and processes the manifest's `items[]` in order.
+- **A pasted document list** — >=2 `RFC-XXXX`/`ADR-XXXX` ids in the invocation text (e.g. another agent's ordered implementation plan). The skill materializes a session manifest (see §Queue mode → Manifest materialization).
+- **A single document id** — materializes a one-item manifest; the same four-phase model applies (the decision window still fires, usually small).
 - **Nothing** — if neither is provided, check session context and IDE for a recently created document. If none found, ask the operator: "Какую идею реализуем? Опишите идею или укажите RFC-XXXX / ADR-XXXX."
 
-## Queue mode
+## Queue mode — the four-phase model
 
-The orchestrator runs in **queue mode** when the invocation carries `--queue <path>`, a `docs/queues/*.yaml` path, OR a pasted document list (>=2 `RFC-XXXX`/`ADR-XXXX` ids — e.g. another agent's ordered implementation plan).
+**Every orchestrator run is a queue run.** The invocation carrying `--queue <path>`, a `docs/queues/*.yaml` path, a pasted document list, or a single `RFC-XXXX`/`ADR-XXXX` id all enter the same four-phase model; a single document materializes a one-item manifest. There is exactly one execution model — operator decisions are front-loaded into a single decision window, then execution runs uninterrupted.
 
 **Manifest materialization (mandatory when no manifest path is given):** Build the manifest from the invocation text before anything else:
 
@@ -100,27 +105,48 @@ The orchestrator runs in **queue mode** when the invocation carries `--queue <pa
 
 3. If the paste mixes ids with prose, ignore the prose — only the id sequence matters. Do not invent items that are not in the text.
 
-**Pre-flight (mandatory):** Run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. If the command exits non-zero (schema errors, unknown ids, duplicates, id↔filename mismatch), do NOT start the batch — report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
+**Decision ledger:** the queue owns `docs/queues/<id>.decisions.yaml` — the durable, append-only record of every operator-facing decision (`_shared/fo-pipeline-conventions.md` §Decision ledger). Create it when maturation emits its first question. The rendered `docs/queues/<id>.briefing.md` is generated from the ledger for the decision window.
+
+**Pre-flight (mandatory):** Run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. If the command exits non-zero (schema errors, unknown ids, duplicates, id↔filename mismatch, ledger load errors, QUEUE-07), do NOT start the batch — report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
 
 **Batch plan preview:** Emit the existing batch plan preview per `_shared/fo-pipeline-conventions.md` §Batch plan preview, listing items in manifest order.
 
-**Loop semantics:** Process `items[]` in manifest order with no pauses between items:
+### Phase 1 — Maturation (no operator)
+
+Process `items[]` in manifest order. Per item, run the existing per-doc pipeline up to but not including implementation, with every skill in **collect mode** (`_shared/fo-pipeline-conventions.md` §Collect and finalize contract):
 
 1. **Skip terminal items** — items whose derived status is `implemented` or `skipped` (rejected/superseded frontmatter) are recorded in the batch summary and skipped.
 2. **Resume mid-pipeline items** — an `in-progress` item resumes at its derived `pipelineStep`, not from step 1.
-3. **Run the existing per-doc pipeline** — RFC items run audit → enhance → plan → implement; ADR items run implement only. All skill-internal interactions (grilling) stay inside the invoked skills.
+3. **Run the collect-mode pipeline** — RFC items run audit → enhance(collect) → plan(collect); ADR items skip maturation stages. Questions emit into the ledger as `open` entries carrying `resolutionPath` and recommended options; autonomous work applies and commits; `enhancedAt` stamps only when zero `open` entries remain for the document; the plan persists as a draft carrying `> PENDING DECISION: Q-N` markers. No `ask_user_question` calls inside any pipeline step — every question materializes in the ledger first.
 4. **Batch-item checkpoint** — after each item, emit the context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items.
 5. **Clean-tree gate** — before starting the next item, verify the working tree has no uncommitted leftovers from the completed item; warn and stop if dirty.
 
-**Failure:** If an item fails after its error checkpoint, stop the batch. The report names the blocked item id and the remaining item count. `blocked` is in-session report language only — never persist it into frontmatter, manifests, or files. Resume = re-invoke with the same manifest; `queue.validate` derives where to continue.
+### Phase 2 — Decision window (the single operator interaction)
+
+Render `docs/queues/<id>.briefing.md` from the ledger per `_shared/fo-pipeline-conventions.md` §Decision window and present it: batch policies, per-document decision blocks with recommended options, the resolved-by-inference list, parked items. The operator answers in one batch — free-text codes (`Q-03: B`, `all — per recommendations`, `Q-07: defer`); `ask_user_question` is legal only for ≤4 highest-risk decisions. The answered window IS the batch acceptance act.
+
+### Phase 3 — Resolution (no operator)
+
+Apply answers to the ledger (`status: answered`, `answeredAt`), then finalize each document in manifest order: integrate answers into the RFC/plan body, lift `PENDING DECISION` markers, stamp `enhancedAt` where pending, and commit the `draft → accepted` transition per document (`fo-idea-plan` owns the transition mechanics). One bounded follow-up window is permitted only when an answer invalidates a drafted plan and surfaces a genuinely new trade-off — then proceed.
+
+### Phase 4 — Execution (no operator)
+
+Process items in manifest order — RFC items run `implement` (which includes review → fix), ADR items run `implement` only:
+
+1. **Skip terminal and parked items** — `implemented`/`skipped`, items with `deferred` ledger entries, items with `open`+`parked: true` entries, and items whose `dependsOn` target is parked. `queue.validate`'s `next` encodes the same skipping.
+2. **Ledger-bound implementation** — `fo-idea-implement` reads the ledger at prerequisites: `answered` entries bind; emergent questions auto-resolve and append `auto-resolved` entries; only the enumerated hard-stop class parks the item (§Auto-resolve and log).
+3. **Batch-item checkpoint** — after each item, emit the context checkpoint; **clean-tree gate** before the next item.
+4. **`stopAfter: plan`** — run phases 1–3 (maturation + window + resolution), stop before execution.
+
+**Failure:** If an item fails after its error checkpoint, stop the batch. The report names the blocked item id and the remaining item count. `blocked` is in-session report language only — never persist it into frontmatter, manifests, or files. Resume = re-invoke with the same manifest; `queue.validate` derives where to continue and the ledger carries answered decisions across sessions.
 
 **Blocking review verdicts:** when a review inside an item's pipeline returns a blocking verdict —
 
-- `blockLevel: soft-block` — **pause only the current item**: record it in the batch summary as `awaiting operator arbitration` together with the review's open question, then continue with the next item. Never auto-resolve an arbitration question. A parked item resumes by re-invoking the orchestrator with the same manifest — `queue.validate` derives the continuation point from document status; parking never strands an item without a defined re-entry path.
-- `blockLevel: hard-block` — **stop the item before stamping and record it as blocked in the batch report; the batch continues.** A parked hard-block item requires the fix and then a **full** re-review on resume (not a delta re-check); at most two fix→re-review cycles, then escalate to the operator.
-- The batch summary MUST list every paused/blocked item with its arbitration question — accumulation is visible, never silent.
+- `blockLevel: soft-block` — **pause only the current item**: record it in the batch summary as `awaiting operator arbitration`, append the arbitration question to the ledger (`status: open`, `stage: review`), then continue with the next item. Never auto-resolve an arbitration question. A parked item resumes by re-invoking the orchestrator with the same manifest — parking never strands an item without a defined re-entry path.
+- `blockLevel: hard-block` — **stop the item before stamping and record it as blocked in the batch report; the batch continues.** A parked hard-block item requires the fix and then a **full** re-review on resume (not a delta re-check); at most two fix→re-review cycles, then the hard-stop class escalates the item for arbitration (§Auto-resolve and log).
+- The batch summary MUST list every paused/blocked item with its ledger question ids — accumulation is visible, never silent.
 
-**Manifest immutability:** Do not edit `items[]` or the manifest during a queue run. Reordering requires stopping the batch and re-validating.
+**Manifest immutability:** Do not edit `items[]` or the manifest during a queue run. The ledger — not the manifest — carries decision state. Reordering requires stopping the batch and re-validating.
 
 ## Process
 
@@ -142,7 +168,7 @@ Before starting the pipeline, perform a pre-pipeline checkpoint per `_shared/fo-
 
 ### 2. Run the pipeline
 
-For each document, run the full pipeline inline. The pipeline differs for RFCs and ADRs.
+For each document, run the full pipeline inline — under the four-phase queue model (§Queue mode), per-document steps run in collect/finalize phases. The pipeline differs for RFCs and ADRs.
 
 **Between batch items:** After completing one document's pipeline and before starting the next, perform a context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items. Emit the checkpoint block, release completed-item context, and start the next item with a fresh read phase. This does not pause for operator input — the checkpoint is an agent-internal context management step, not a user interaction.
 
@@ -258,7 +284,7 @@ If the session was interrupted (agent stopped, context limit, crash, checkpoint 
 
 - **Pure orchestrator.** Delegate every step to the appropriate skill — this orchestrator does not implement code, write RFCs/ADRs, or run validation commands directly.
 - **No pauses between pipeline steps.** The operator's invocation is the instruction to run the entire pipeline. Proceed automatically.
-- **Interactive steps within skills.** Some skills (enhance, plan) have interactive sub-steps (grilling, resolving open questions). Those interactions happen inside the invoked skill.
+- **No inline questions inside orchestrated steps.** Under the four-phase model, pipeline steps run in collect mode — every operator-facing question materializes in the queue's decision ledger (`_shared/fo-pipeline-conventions.md` §Collect and finalize contract), and the single decision window is the only scheduled interaction. Standalone skill invocations keep interview behavior.
 - **Review and fix are inside implement.** `fo-idea-implement` runs `fo-review` and `fo-fix` internally. Do not invoke them as separate orchestrator steps.
 - **Fallback verification is MANDATORY.** After `fo-idea-implement` returns, always check that a review report exists in `docs/reviews/code/` for this session. If missing, invoke `fo-review` and `fo-fix` as a fallback. This ensures review and fix are never skipped.
 - **Commit only your own files** — see `_shared/fo-pipeline-conventions.md` §Commit discipline. Each invoked skill stages only its own files.

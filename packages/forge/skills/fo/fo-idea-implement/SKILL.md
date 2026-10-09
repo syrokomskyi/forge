@@ -20,6 +20,9 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: ledger-bound implementation — answered entries bind at
+  prerequisites; emergent questions auto-resolve with auto-resolved log
+  entries; closed hard-stop enumeration parks the item (dependsOn cascade).</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -78,11 +81,23 @@ Before running the implementation on each RFC, perform these checks **in order**
 
 If all checks pass, proceed to step 4.2.
 
+**Decision-ledger read:** when this skill runs inside an orchestrator-driven queue run (the caller passes a queue manifest / ledger path), first load `docs/queues/<id>.decisions.yaml` — every `answered` entry for this document binds the implementation (apply the recorded answer, never re-ask). An `open` entry that survived to execution means the gate was bypassed — treat it as an error checkpoint, not a question.
+
 #### 4.2. Read the RFC and related context
 
 Read the RFC fully and all RFCs listed in its `amends[]`, `related[]`, and `supersedes[]`. Read the plan fully. Read the closest `AGENTS.md` for each impacted package. Read `ref(forge.yaml bindings.paths.invariantsFile)` entries for every DNA invariant in `satisfies[]`.
 
 If the plan or RFC has genuine ambiguities that would cause wrong implementation, ask the user **before starting implementation**. Use `ask_user_question` with a recommended option first. Once implementation begins, stop asking — make autonomous decisions.
+
+**Orchestrated runs — auto-resolve and log:** under a queue manifest, never call `ask_user_question` for pipeline questions. An emergent question that survives the self-resolution ladder (§Self-resolution ladder) is auto-resolved: apply the recommended option and append a ledger entry `status: auto-resolved` (append-only evidence, disputable post-factum). Only the **hard-stop** class parks the item instead — a closed enumeration:
+
+1. DNA-invariant changes or conflicts.
+2. Security or privacy impact.
+3. External-contract changes (Verbund, third-party APIs, published interfaces).
+4. Irreversible or data-destructive operations.
+5. Hard-block review verdicts surviving two fix→re-review cycles.
+
+A hard-stop appends `status: open` + `parked: true`, parks the item (and cascade-parks `dependsOn` dependents), and execution continues with the next item — the parked item surfaces in the batch report for arbitration.
 
 #### 4.3. Implement step by step
 

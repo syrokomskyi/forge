@@ -42,7 +42,7 @@ Reviews fire on mandatory triggers across the pipeline lifecycle, not only at de
 `fo-review` verdicts carry `blockLevel` (`pass | warning | soft-block | hard-block`), mapped to `verdict` for backward compatibility (`fo-fix` consumes `verdict` unchanged).
 
 - **`hard-block` (`rejected`)** — the item must be corrected and then undergo a **full** re-review (not a delta on the flagged point) before it may proceed to stamping. At most two fix→re-review cycles inside one pipeline run; a third failure escalates to the operator regardless of mode. In queue mode the item stops before stamping and is recorded as blocked in the batch report; the batch continues.
-- **`soft-block` (`needs-revision` + `escalation: operator`)** — interactive mode: the pipeline pauses and escalates to the operator via a structured question (`acknowledge and continue` / `redirect` / `abort`), presenting stop/redirect as first-class options to counter the continue-bias. Queue mode: the item is paused, recorded in the batch summary as `awaiting operator arbitration`, and the batch continues with the next item.
+- **`soft-block` (`needs-revision` + `escalation: operator`)** — interactive mode: the pipeline pauses and escalates to the operator via a structured question (`acknowledge and continue` / `redirect` / `abort`), presenting stop/redirect as first-class options to counter the continue-bias. Queue mode: the item is paused, recorded in the batch summary as `awaiting operator arbitration`, the arbitration question is appended to the queue's decision ledger (§Decision ledger), and the batch continues with the next item.
 - **`warning` (`needs-revision`)** — findings are recorded as tracked observations; unresolved warnings at T3 escalate to `soft-block`.
 - **`pass` (`approved`)** — no fracture signals; zero findings.
 
@@ -379,3 +379,71 @@ When the orchestrator skill processes multiple documents (>=2), emit a batch pla
 The preview is informational — it does not pause for operator approval unless the operator explicitly requests confirmation. The operator's invocation of the orchestrator is the instruction to proceed.
 
 The preview text must use `aiLanguage` per the language policy.
+
+## Decision ledger
+
+Every orchestrator run materializes a queue manifest (single-document runs are a one-item queue) and owns a **decision ledger** sibling: `docs/queues/<id>.decisions.yaml`. The ledger is the durable record of "what requires operator judgment" for that queue — committed, append-only, survives sessions, isolated per manifest so parallel batches in different sessions never share mutable decision state.
+
+The ledger's `id` field equals the filename stem (same convention as queue manifests). Schema lives in `packages/forge/os/queue/types.ts` (`decisionLedgerSchema`).
+
+Status vocabulary for `items[]` entries:
+
+- `open` — awaiting the decision window; blocks execution (QUEUE-07).
+- `answered` — decided by the operator at the window.
+- `auto-resolved` — the agent applied its recommended option during execution; disputable post-factum, never hidden.
+- `deferred` — the operator deferred; the item is parked for this run.
+
+Parking vocabulary: `parked: true` on an `open` entry means the *system* hard-stopped the item during execution (§Auto-resolve and log). `deferred` means the *operator* parked it at a window. Both make the item non-executable this run; `queue.validate`'s `next` skips them, and an item whose `dependsOn` target is parked is itself parked (cascade). QUEUE-07 is an error: an item derivable to the implement stage (RFC `pipelineStep: implement`, or a non-terminal ADR) carrying ≥1 `open` entry blocks `queue.validate` — the only suppression is resolving the entries.
+
+The rendered human view is `docs/queues/<id>.briefing.md` — generated from the ledger, never the source of truth.
+
+**Pending-decision markers.** Documents carry `> PENDING DECISION: Q-N — <one-line question>` blockquote markers at the point where an answer matters (RFC section, plan step). A document with open markers cannot transition to `accepted`, and an implementable document with open markers trips QUEUE-07. Markers lift during the resolution phase when the answer lands.
+
+The ledger is append-only: changing an `answered` entry is forbidden. A disputed or superseded decision gets a new entry referencing the old `Q-N` — never an in-place edit. `blocked`, `parked`, and `deferred` are report/ledger vocabulary — never persisted into RFC frontmatter or queue manifests.
+
+## Collect and finalize contract
+
+Pipeline steps that produce operator-facing questions run in one of two modes:
+
+- **`interview`** (standalone skill invocations — the operator is at the keyboard): ask inline, one question at a time, as today.
+- **`collect`** (orchestrator-driven runs with a queue manifest): never call `ask_user_question` for pipeline questions. Emit each unresolved question as a ledger entry with `status: open`, a `resolutionPath`, and recommended options; apply all autonomous work; leave `PENDING DECISION` markers where an answer is required.
+- **`finalize`** (the resolution phase after the window): consume `answered` entries, integrate them into the document, lift markers, complete the stage's stamps and commits. Finalize per document is atomic — a crash mid-document leaves markers intact and the next run re-finalizes idempotently.
+
+Mode trigger: collect/finalize activate only under an orchestrator run carrying a manifest + ledger path. Everything else is `interview`.
+
+## Decision window
+
+The decision window is the single scheduled operator interaction of a queue run — placed after maturation, before execution. It doubles as the batch acceptance act: `draft → accepted` transitions happen in the resolution phase that follows the window, so the operator signs off having seen every trade-off at once.
+
+Window mechanics:
+
+- The orchestrator renders the ledger into `docs/queues/<id>.briefing.md`: batch header, batch policies, per-document decision blocks (question, `resolutionPath`, options with `recommended`, consequences), the resolved-by-inference list (disputable at a glance), and the parked-items section.
+- The operator answers in free text — codes like `Q-03: B`, `all — per recommendations`, `Q-07: defer`. `ask_user_question` is legal only for ≤4 highest-risk decisions (it cannot carry open-ended answers).
+- Batch `policies[]` collapse identical questions across documents — answer once, items inherit unless overridden.
+- One bounded follow-up round is permitted only when an answer invalidates a drafted plan and surfaces a genuinely new trade-off; then the batch proceeds.
+
+## Self-resolution ladder
+
+Before any question reaches the ledger, the emitting skill MUST exhaust these rungs in order — a fact is looked up, never asked:
+
+1. **codebase** — the answer is a fact in the repository; find it.
+2. **convention** — derivable from DNA invariants, AGENTS.md rules, established patterns; record as inference.
+3. **profile** — covered by `PREFERENCES.md`, `.agents/operator-profile.md`, or grilling `learned-principles.md` (`status: active`).
+4. **policy** — already answered by a batch-level `policies[]` entry or an identical earlier question.
+5. **none** — a genuine trade-off only the operator can settle → ledger entry.
+
+Every ledger entry records which rung produced it (`resolutionPath`) — this disciplines the agent and gives the operator audit context. Inferences land in the ledger too (as briefing-visible "resolved-by-inference" rows) — the operator reviews them at the window but answers only genuine `none`-rung trade-offs.
+
+## Auto-resolve and log
+
+Questions discovered during execution (emergent questions) do not interrupt the operator. The agent applies its recommended option and appends a ledger entry with `status: auto-resolved` — append-only evidence, disputable post-factum via a follow-up document, never silently decided.
+
+Only the **hard-stop** class parks an item instead of auto-resolving:
+
+1. DNA-invariant changes or conflicts.
+2. Security or privacy impact.
+3. External-contract changes (Verbund, third-party APIs, published interfaces).
+4. Irreversible or data-destructive operations.
+5. Hard-block review verdicts surviving two fix→re-review cycles.
+
+A hard-stopped question lands in the ledger as `status: open` + `parked: true`; the item parks, `dependsOn` dependents cascade-park, and the batch continues. These items surface for arbitration in the final batch report — or at the start of the next session with the same manifest.

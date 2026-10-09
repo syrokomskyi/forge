@@ -20,6 +20,9 @@ triggerPhrases: ["enhance this RFC", "fix audit findings in RFC", "improve RFC b
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: collect/finalize contract — step 5 emits ledger entries +
+  PENDING DECISION markers under orchestrated runs; grilling runs in emit mode;
+  enhancedAt gated on zero open ledger entries.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -62,6 +65,8 @@ If all checks pass, proceed to step 2 for this RFC.
 When multiple RFCs are identified, **loop through each one** and run the full enhance (steps 2–11) for each RFC sequentially **without pauses between RFCs**. Do not stop, present a summary, or ask the user between RFCs — once the enhancement for one RFC is committed (or it is skipped), immediately proceed to the next RFC. **Do not emit transition messages such as "Moving to RFC-XXXX next" or per-RFC status reports during the loop.** Internal status is fine, but nothing is shown to the user until the very end. Only after all RFCs are enhanced, print a single final batch summary.
 
 **Exception:** Step 5 (resolve audit questions and grill the design) is inherently interactive — it may require user responses for questions the AI could not answer itself. This is not a "pause between RFCs" but a required step within one RFC's enhancement. Resolve all questions for the current RFC before proceeding to step 6, then continue to the next RFC without additional pauses.
+
+**Collect mode:** when this skill runs inside an orchestrator-driven queue run (the caller passes a queue manifest / ledger path), step 5 runs in `collect` mode per `_shared/fo-pipeline-conventions.md` §Collect and finalize contract — questions emit into `docs/queues/<id>.decisions.yaml` as `open` entries instead of `ask_user_question` calls, and `PENDING DECISION: Q-N` markers mark the unresolved spots. The single decision window happens later, orchestrated. Standalone invocations keep `interview` behavior.
 
 Read the full RFC file at `docs/rfcs/rfc-XXXX-*.md` for the first RFC to process.
 
@@ -106,7 +111,7 @@ Record the classification for every finding — the summary in step 8 reports it
 
 ### 5. Resolve audit questions and grill the design
 
-This step is **blocking** — the enhance skill must not proceed to step 6 until all audit questions are resolved and grilling is complete. Skipping unresolved audit questions defeats the purpose of the audit and is **not permitted**.
+This step is **blocking** — the enhance skill must not proceed to step 6 until all audit questions are resolved and grilling is complete. Skipping unresolved audit questions defeats the purpose of the audit and is **not permitted**. In **collect mode** (orchestrated runs), "resolved" means emitted to the decision ledger — no inline asking; the questions are consumed at the decision window and finalized in the resolution phase.
 
 #### 5a. Extract and resolve audit questions
 
@@ -114,7 +119,7 @@ Read the "Questions for the author" section from the audit report. For each ques
 
 1. **Search the ecosystem** — explore existing code, DNA invariants, AGENTS.md rules, existing RFCs, package contracts, and command surfaces. If the answer is determined by existing artifacts, use it. Note it as "resolved from ecosystem: <explanation>" in the summary. Do not ask the user what can be found by exploring.
 2. **Reason from existing patterns** — if the answer is not directly stated but follows unambiguously from existing conventions, architecture decisions, or established patterns in the codebase, derive it. Note it as "resolved by inference: <explanation>" in the summary.
-3. **Ask only if you could not find a confident answer** — if after a genuine attempt you cannot find or derive the answer, ask the user via `ask_user_question`. Present the question with a recommended option first, marked "(recommended)". Ask one question at a time, waiting for the answer before continuing to the next question.
+3. **Ask only if you could not find a confident answer** — if after a genuine attempt you cannot find or derive the answer, ask the user via `ask_user_question`. Present the question with a recommended option first, marked "(recommended)". Ask one question at a time, waiting for the answer before continuing to the next question. **Collect mode:** instead of asking, append a ledger entry (`id: Q-N`, `doc`, `stage: enhance`, `question`, `resolutionPath` = the last rung exhausted per §Self-resolution ladder, `options` with `recommended`, `status: open`) and leave a `> PENDING DECISION: Q-N — <question>` marker where the answer matters.
 
 Do not ask the user a question you could have answered yourself. Do not skip a question you genuinely could not answer — that defeats the audit.
 
@@ -122,7 +127,7 @@ If the audit has no "Questions for the author" section or the section is empty, 
 
 #### 5b. Grill the design
 
-After all audit questions are answered, invoke the `grilling` skill to stress-test the RFC's design beyond the audit questions. Use the `skill` tool with `SkillName: "grilling"` to load the grilling instructions, then follow them: ask questions one at a time, provide a recommended answer for each, and wait for the user's response before continuing.
+After all audit questions are answered, invoke the `grilling` skill to stress-test the RFC's design beyond the audit questions. Use the `skill` tool with `SkillName: "grilling"` to load the grilling instructions, then follow them: ask questions one at a time, provide a recommended answer for each, and wait for the user's response before continuing. **Collect mode:** run grilling in `emit` mode — generated questions land in the ledger with recommended answers, no interview.
 
 The grilling questions should probe the RFC's design decisions, edge cases, and integration points that the audit may not have covered. Focus on areas the audit flagged as "Needs revision" or where the answers to 5a revealed uncertainty.
 
@@ -165,6 +170,8 @@ For findings classified as **Out of scope**, add entries to the `nonGoals` front
 Set the `enhancedAt` field in the RFC's frontmatter to today's date (YYYY-MM-DD). This is the persistent marker that downstream skills (`fo-idea-plan`, `fo-idea-implement`) check to determine whether enhance has been run. Also update `updatedAt` to today's date.
 
 This step is mandatory even if the audit verdict was "Approved" and zero direct fixes were applied — the stamp confirms the audit was reviewed and no changes were needed, which is distinct from "enhance was never run".
+
+**Collect mode gate:** under an orchestrated run, stamp `enhancedAt` only when the decision ledger carries zero `open` entries for this document. If open entries remain, leave `enhancedAt` unset — the resolution phase finalizes enhance and stamps after the answers land.
 
 ### 8. Validate
 

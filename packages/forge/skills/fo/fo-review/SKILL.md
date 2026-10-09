@@ -20,6 +20,8 @@ triggerPhrases: ["проверим всё ли сделали правильно
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: soft-block arbitration appends to the queue decision ledger
+  (open / stage: review) under orchestrated runs.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -279,7 +281,7 @@ Every verdict carries a `blockLevel` — the blocking semantics downstream pipel
 | --- | --- | --- |
 | `pass` | `approved` | Zero findings across all axes — no fracture signals |
 | `warning` | `needs-revision` | Findings recorded as tracked observations; they must be answered, and unresolved warnings at T3 escalate to `soft-block` |
-| `soft-block` | `needs-revision` + `escalation: operator` | Directional deviation or process violation — suspends the item for operator arbitration (queue mode: item parked, batch continues) |
+| `soft-block` | `needs-revision` + `escalation: operator` | Directional deviation or process violation — suspends the item for operator arbitration (queue mode: item parked, arbitration question appended to the decision ledger as `open`/`stage: review`, batch continues) |
 | `hard-block` | `rejected` | Fundamental flaw — fix, then **full** re-review (not a delta on the flagged point) before the item may proceed to stamping |
 
 - **Approved (`pass`)** — zero findings across all eight axes. Any finding, no matter how minor or cosmetic, disqualifies Approved and forces Needs revision. The rationale: downstream agents treat Approved as a stop signal and stop reading the findings — so even a trivial finding left under Approved gets silently ignored. If there is anything to fix, the verdict must say so.

@@ -20,6 +20,10 @@ triggerPhrases: ["plan the implementation for this RFC", "create implementation 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: collect-mode contract — open questions and grilling emit to
+  the decision ledger; draft plan carries PENDING DECISION markers;
+  draft-to-accepted transition deferred to the resolution phase (window =
+  acceptance act).</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -71,7 +75,11 @@ If all checks pass, proceed to step 0.3.
 
 #### 0.3. Transition draft → accepted
 
-If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruction to plan IS the architecture acceptance. Transition the RFC to `accepted`:
+If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruction to plan IS the architecture acceptance. Transition the RFC to `accepted`.
+
+**Collect mode exception:** inside an orchestrator-driven queue run the `draft → accepted` transition moves to the resolution phase — the answered decision window IS the acceptance act. In collect mode this skill persists the plan as a draft carrying `PENDING DECISION` markers and does NOT transition the RFC; the orchestrator's resolution phase finalizes (integrate answers, lift markers, transition + commit) after the window.
+
+Standalone/interview-mode flow:
 
 1. Set `status: accepted`.
 2. Set `reviewers` — if the operator specified a reviewer at invocation, use that. Otherwise, read the default reviewer(s) from the `reviewers` field comment in `docs/rfcs/rfc-0000-template.md`. Set all listed default reviewers.
@@ -125,13 +133,15 @@ Verify the RFC's claims about affected artifacts. Check:
 
 After exploring, identify decisions the RFC leaves open — ambiguities, trade-offs, unspecified boundaries, conflicting constraints. These are **decisions**, not facts: if a fact can be found by exploring the codebase, look it up instead of asking.
 
-Walk the user through each question **one at a time**. For each:
+**Collect mode:** under an orchestrated run, never call `ask_user_question` — climb the self-resolution ladder (`_shared/fo-pipeline-conventions.md` §Self-resolution ladder); genuine trade-offs append to the queue's decision ledger as `open` entries (`stage: plan`) with recommended options, and `> PENDING DECISION: Q-N` markers land in the draft plan at the steps that depend on the answer.
+
+Interview mode: walk the user through each question **one at a time**. For each:
 
 1. **Short context** — what the question is, why the plan needs it resolved, what changes depending on the answer.
 2. **Options** — list 2-4 concrete options, **recommended option first**. Mark it with "(recommended)". Each option is a short label plus one line explaining the trade-off.
 3. **Wait** — present the question and stop. Do not batch multiple questions; asking several at once is bewildering.
 
-Use the `ask_user_question` tool when available, with the recommended option as the first entry. Otherwise, present the question inline and wait for the answer.
+Use the `ask_user_question` tool when available (interview mode only), with the recommended option as the first entry. Otherwise, present the question inline and wait for the answer.
 
 Typical questions that arise:
 
@@ -168,7 +178,7 @@ Mark **human review points** on steps that:
 
 ### 5. Grill the plan
 
-Invoke the `/grilling` skill to stress-test the draft plan before persisting. This is **mandatory**, not optional — every plan goes through grilling.
+Invoke the `/grilling` skill to stress-test the draft plan before persisting. This is **mandatory**, not optional — every plan goes through grilling. **Collect mode:** grilling runs in `emit` mode — questions land in the ledger (`stage: plan`) with recommended answers; no interview.
 
 The grilling checks:
 

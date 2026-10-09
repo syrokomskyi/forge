@@ -22,10 +22,22 @@ knowledge:
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1250: two modes — interview (standalone, interactive) and emit
+  (orchestrated runs: questions land in the queue decision ledger with
+  recommended answers, no interview).</item>
 </CHANGE_SUMMARY>
 -->
 
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
+
+## Modes
+
+Grilling runs in one of two modes — the caller selects:
+
+- **`interview`** (default — standalone, operator-invoked runs): the interactive behavior below, one question at a time.
+- **`emit`** (inside an orchestrator-driven queue run — `fo-idea-i-just-want-to-see-the-result` queue mode): never ask the operator. Generate the same questions you would have asked, climb the self-resolution ladder (`_shared/fo-pipeline-conventions.md` §Self-resolution ladder), and append each surviving question to the queue's decision ledger `docs/queues/<id>.decisions.yaml` as an `open` entry (`id: Q-N`, `doc`, `stage`, `question`, `resolutionPath`, `options` with `recommended: true` on your recommended answer, `status: open`). Branching questions are written conditionally ("if Q-3 resolves to X, then…"). The pipeline's decision window consumes the emitted entries.
+
+Mode trigger: `emit` activates only when the invoking skill passes a queue manifest / ledger path; otherwise `interview`.
 
 Read `learned-principles.md` (L2) at the start of each session to improve recommended answers. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`. Principles with `confirmations >= 3` may be applied autonomously — but re-evaluate if context changes.
 
