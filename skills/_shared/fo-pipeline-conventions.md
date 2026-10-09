@@ -250,6 +250,7 @@ When the orchestrator skill processes multiple documents (>=2), perform a contex
    - `commits`: list of commit SHAs produced for this document
    - `lessons`: 1-3 short freeform sentences capturing key errors, root causes, patterns discovered, or validator quirks encountered during this document's pipeline run
    - `dependencies`: cross-RFC dependency notes (e.g., "RFC-YYYY depends on RFC-XXXX for schema field Z") — empty if none
+   - `unclosed`: list of `{ item, state: closed | unclosed | undecidable }` — mandatory when the item carried a checklist structure (§Tri-state closure marking); required in particular when `status` is `failed` or the item was parked
    - `next`: id of the next document to process, or `null` if this was the last
 2. **Release context** — explicitly treat all detailed context from the completed document as no longer actionable: file contents, search results, edit operations, intermediate reasoning. Retain only the checkpoint block. Release means treat as no longer actionable for reasoning, not delete or undo.
 3. **Fresh start** — begin the next document with a fresh read phase: re-read the RFC file and all related documents (amends, supersedes, related RFCs, DNA invariants, AGENTS.md sections).
@@ -292,7 +293,7 @@ The beacon text must use `aiLanguage` per the language policy.
 
 When a pipeline step fails and cannot be auto-fixed within 2 attempts (per §Command execution timeout discipline), emit a structured error checkpoint block in conversation output:
 
-1. **Emit error checkpoint** — output a YAML block with: rfc, step, planStep (if within implement phase), error (command, exitCode, summary, attempts), partialState (filesModified, commits, rfcStatus), resumePoint.
+1. **Emit error checkpoint** — output a YAML block with: rfc, step, planStep (if within implement phase), error (command, exitCode, summary, attempts), partialState (filesModified, commits, rfcStatus), resumePoint, unclosed (tri-state list per §Tri-state closure marking — mandatory here because a failing step always carries an implicit checklist of attempted sub-items).
 2. **Stop the pipeline** — do not continue to the next pipeline step. The error is not auto-fixable; continuing would compound the problem. This is an **explicit exception** to the orchestrator's "no pauses between pipeline steps" constraint. The "no pauses" directive assumes the pipeline can proceed; when an error is unfixable after 2 attempts, continuing is impossible and the exception is justified. The pause is for error reporting, not for optional operator input.
 3. **Report to operator** — present the error checkpoint in `aiLanguage` and ask the operator how to proceed: fix manually, skip the step, or abort the RFC.
 
@@ -313,9 +314,15 @@ Plan files (`docs/plans/plan-*.md`) MAY carry a `## Falsified routes` section �
 Rules for `fo-idea-implement` and `fo-fix`:
 
 - **Append on abandon** — when an approach is abandoned after a real attempt (not merely considered and skipped), append a row with the route, the root cause discovered, and falsified-at evidence (commit SHA or date). Never write prose instead of rows.
-- **Consult before proposing** — before proposing an alternative route, read the plan's `## Falsified routes` section. A `Forbidden retry: yes` row rejects a matching proposal unless the proposal states a new fact that invalidates the recorded root cause.
-- **Rows are never deleted** — a superseded route gets a `revivedAt` annotation, matching criterion-versioning discipline. An empty or absent section is legal: the ledger is required only when an approach was actually abandoned.
+- **Consult before proposing** — before proposing an alternative route, read the plan's `## Falsified routes` section. A `Forbidden retry: yes` row rejects a matching proposal unless the proposal states a new fact that invalidates the recorded root cause. A plan-prescribed route that matches a forbidden row counts as an approach change for this rule — consult applies even when the route was chosen by a previous session.
+- **Rows are never deleted** — a superseded route gets a `revivedAt` annotation: annotate the row's Route cell as `<route> (revived <date>: <new fact that invalidates the root cause>)`, matching criterion-versioning discipline. An empty or absent section is legal: the ledger is required only when an approach was actually abandoned.
 - `blocked` and `falsified` are report and ledger vocabulary — never persist them into RFC frontmatter or queue manifests.
+
+### Blind-spot pass
+
+After **two failed attempts on the same approach** within one work item — whether during step execution or the fix loop — and before the next retry or pivot, dispatch a clean-context re-examination using the same artifacts-only contract as `fo-review` `independent` mode: the problem statement, the falsified-routes table, the raw failing-run evidence, and the settled conclusion phrased as a question — never the executor's session narrative or self-assessment. The pass answers one question: _is the settled conclusion ("dead end", "impossible", "only option left") actually supported by evidence?_ Where no subagent primitive exists, degrade to an `isolated-inline` re-derive-from-artifacts pass and record that mode. The record lands in the session output and in the next step checkpoint's `decisions` field.
+
+The pass runs once per approach — it never chains recursively. It answers a different question than the T2 checkpoint review (conclusion validity vs. implementation quality), so neither de-duplicates against the other.
 
 ## Tri-state closure marking
 

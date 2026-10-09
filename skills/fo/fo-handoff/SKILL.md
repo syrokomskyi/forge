@@ -52,7 +52,7 @@ Include:
   - **Change** — what was done (the key changes made during the session)
   - **After** — state N+1 after the session (what the system looks like now)
 - **Resulting Architecture** — optional Mermaid diagram of the system state AFTER changes, following the diagram selection rules from `_shared/fo-session-summary.md`. If no diagram is warranted, state: "No diagram: this session did not change system structure."
-- **Unclosed items** — mandatory tri-state list of open items, each `{ item, state: closed | unclosed | undecidable }`, or an explicit "none". An item absent from the list is treated as `undecidable` — absence is never read as success. Three or more `undecidable` entries escalate to the operator before the handoff is written. See `_shared/fo-pipeline-conventions.md` §Tri-state closure marking.
+- **Unclosed items** — mandatory tri-state list of open items, each `{ item, state: closed | unclosed | undecidable }`, or an explicit "none". An item absent from the list is treated as `undecidable` — absence is never read as success. If three or more entries would be `undecidable`, escalate to the operator instead of writing the handoff. See `_shared/fo-pipeline-conventions.md` §Tri-state closure marking.
 - **Continuation entry point** — mandatory: the exact file, command, or skill the next agent starts from (e.g. `docs/plans/plan-rfc-xxxx.md` step 3, `werkstatt run <command>`, `/fo-fix`). Never leave the re-entry point implicit.
 - **Next steps** — concrete, actionable items the next agent should pick up.
 - **Memory layer pointer** — tell the next agent to read `.agents/memory/MEMORY.md` and recent `.agents/memory/daily/` files for project context.
