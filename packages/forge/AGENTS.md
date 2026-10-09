@@ -439,9 +439,9 @@ When an RFC transitions to `implemented`, `rfc.validate` enforces command lifecy
 External specification packages are vendored as immutable snapshots under `docs/specs/<spec-id>/` with an integrity manifest and `forge-spec.yaml` projection.
 
 - `forgeSpecModule` (in `os/spec/`) registers `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate`.
-- `spec.validate` enforces SPEC-01..07: integrity, schema, cycles, references, waves, duplicates, materializedAs.
-- `spec.materialize` scaffolds RFC files for front nodes with `specRef` traceability and writes `materializedAs` back to `forge-spec.yaml`.
-- `spec.status` projects per-node states, blockers, and progress.
+- `spec.validate` enforces SPEC-01..13: integrity, schema, cycles, references, waves, duplicates, materializedAs, amendments, consumers hygiene (SPEC-12) and consumer-identity warning (SPEC-13, non-blocking).
+- `spec.materialize` scaffolds RFC files for locally-owned front nodes with `specRef` traceability and writes `materializedAs` back to `forge-spec.yaml`. RFC-1240: `consumers:`-bearing nodes not matching `project.consumer` (or the `--consumer` flag) are foreign-owned — excluded from the front and satisfying dependents; result carries `foreignOwned`.
+- `spec.status` projects per-node states, blockers, progress, and the `foreignOwned` list.
 - Spec amendments (`docs/specs/<id>/amendments/amd-NNN-*.md`) are the only correction channel — snapshot files are never modified.
 
 ### Living feature specs (RFC-0711)

@@ -10,6 +10,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0394: initial spec.validate handler with SPEC-01..07 rules.</item>
   <item>Gap fix: resolve materialized RFCs recursively so terminal RFC archival does not invalidate accepted specs.</item>
+  <item>RFC-1240: SPEC-12 consumers list hygiene, SPEC-13 consumer-identity warning; warnings no longer fail validation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -281,6 +282,45 @@ async function checkMaterializedAs(
 }
 
 // ---------------------------------------------------------------------------
+// SPEC-12: consumers list hygiene / SPEC-13: consumer identity configured (RFC-1240)
+// ---------------------------------------------------------------------------
+
+function checkConsumers(
+  spec: ForgeSpec,
+  localConsumer: string | undefined,
+  violations: SpecViolation[],
+): void {
+  const identityNodes: string[] = [];
+  for (const node of spec.rfcs) {
+    if (!node.consumers) continue;
+    if (node.consumers.length === 0) {
+      violations.push({
+        rule: "SPEC-12",
+        message: `node ${node.id} declares an empty consumers list`,
+      });
+    }
+    const seen = new Set<string>();
+    for (const consumer of node.consumers) {
+      if (seen.has(consumer)) {
+        violations.push({
+          rule: "SPEC-12",
+          message: `node ${node.id} declares duplicate consumer '${consumer}'`,
+        });
+      }
+      seen.add(consumer);
+    }
+    if (localConsumer == null) identityNodes.push(node.id);
+  }
+  if (identityNodes.length > 0) {
+    violations.push({
+      rule: "SPEC-13",
+      severity: "warning",
+      message: `consumer identity not configured — nodes declaring consumers cannot be owned locally: ${identityNodes.join(", ")} (set project.consumer in forge.yaml or pass --consumer)`,
+    });
+  }
+}
+
+// ---------------------------------------------------------------------------
 // SPEC-08..11: Amendment validation (RFC-0397)
 // ---------------------------------------------------------------------------
 
@@ -401,12 +441,16 @@ export async function runSpecValidate(
 
   // Resolve specs directory from forge.yaml
   let specsDir = "docs/specs";
+  let configConsumer: string | undefined;
   try {
     const config = loadForgeConfig(workspaceRoot);
     specsDir = config.paths.specsDir;
+    configConsumer = config.project.consumer;
   } catch {
     // Use default
   }
+  // RFC-1240: --consumer flag wins; otherwise forge.yaml project.consumer; else no identity.
+  const localConsumer = (input.flags["consumer"] as string | undefined) ?? configConsumer;
 
   const specsRoot = path.join(workspaceRoot, specsDir);
   const filterSpec = input.flags["spec"] as string | undefined;
@@ -471,6 +515,9 @@ export async function runSpecValidate(
     // SPEC-07: materializedAs
     await checkMaterializedAs(spec, rfcDir, violations);
 
+    // SPEC-12/13: consumers hygiene + identity warning (RFC-1240)
+    checkConsumers(spec, localConsumer, violations);
+
     // SPEC-08..11: Amendments (RFC-0397)
     const amendments = await loadAmendments(specDir);
     checkAmendments(spec, amendments, violations);
@@ -482,20 +529,27 @@ export async function runSpecValidate(
     });
   }
 
-  const hasFailures = results.some((r) => r.violations.length > 0);
+  const hasFailures = results.some((r) =>
+    r.violations.some((v) => v.severity !== "warning"),
+  );
 
   if (outputFormat === "pretty") {
     if (results.length === 0) {
       logger.info("No vendored specs found.");
     } else {
       for (const result of results) {
-        if (result.violations.length === 0) {
-          logger.success(`spec.validate: ${result.id} — pass`);
+        const errors = result.violations.filter((v) => v.severity !== "warning");
+        const warnings = result.violations.filter((v) => v.severity === "warning");
+        if (errors.length === 0) {
+          logger.success(`spec.validate: ${result.id} — pass${warnings.length > 0 ? ` (${warnings.length} warning${warnings.length === 1 ? "" : "s"})` : ""}`);
         } else {
-          logger.error(`spec.validate: ${result.id} — ${result.violations.length} violation${result.violations.length === 1 ? "" : "s"}`);
-          for (const v of result.violations) {
-            logger.error(`  ${v.rule}: ${v.message}`);
-          }
+          logger.error(`spec.validate: ${result.id} — ${errors.length} violation${errors.length === 1 ? "" : "s"}`);
+        }
+        for (const v of errors) {
+          logger.error(`  ${v.rule}: ${v.message}`);
+        }
+        for (const v of warnings) {
+          logger.warn(`  ${v.rule}: ${v.message}`);
         }
       }
     }
@@ -509,7 +563,7 @@ export async function runSpecValidate(
     },
     exitCode: hasFailures ? 1 : 0,
     summary: hasFailures
-      ? `spec.validate: ${results.filter((r) => r.violations.length > 0).length} spec(s) with violations`
+      ? `spec.validate: ${results.filter((r) => r.violations.some((v) => v.severity !== "warning")).length} spec(s) with violations`
       : `spec.validate: all ${results.length} spec(s) pass`,
   };
 }
