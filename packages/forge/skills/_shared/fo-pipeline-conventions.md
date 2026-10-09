@@ -384,16 +384,16 @@ The preview text must use `aiLanguage` per the language policy.
 
 Every orchestrator run materializes a queue manifest (single-document runs are a one-item queue) and owns a **decision ledger** sibling: `docs/queues/<id>.decisions.yaml`. The ledger is the durable record of "what requires operator judgment" for that queue — committed, append-only, survives sessions, isolated per manifest so parallel batches in different sessions never share mutable decision state.
 
-The ledger's `id` field equals the filename stem (same convention as queue manifests). Schema lives in `packages/forge/os/queue/types.ts` (`decisionLedgerSchema`).
+The ledger's `id` field equals the filename stem `<manifest-id>.decisions`, and its `queue` field equals the manifest `id` — `queue.validate` enforces both bindings (QUEUE-02) plus `Q-N` uniqueness (QUEUE-05), so a misplaced or copy-pasted ledger can never apply foreign decisions to this queue. `answered` and `auto-resolved` entries MUST carry `answer`, and every entry's `doc` MUST be a manifest item — violations surface as non-blocking QUEUE-08 warnings. Schema lives in `packages/forge/os/queue/types.ts` (`decisionLedgerSchema`).
 
 Status vocabulary for `items[]` entries:
 
-- `open` — awaiting the decision window; blocks execution (QUEUE-07).
-- `answered` — decided by the operator at the window.
-- `auto-resolved` — the agent applied its recommended option during execution; disputable post-factum, never hidden.
+- `open` — awaiting the decision window; blocks execution (QUEUE-07) unless the entry is `parked`.
+- `answered` — decided by the operator at the window; carries `answer` + `answeredAt`.
+- `auto-resolved` — the agent applied its recommended option and logged it. Covers both resolved-by-inference rows emitted during maturation (shown at the window for dispute) and emergent questions auto-resolved during execution; carries `answer` + `answeredAt`.
 - `deferred` — the operator deferred; the item is parked for this run.
 
-Parking vocabulary: `parked: true` on an `open` entry means the *system* hard-stopped the item during execution (§Auto-resolve and log). `deferred` means the *operator* parked it at a window. Both make the item non-executable this run; `queue.validate`'s `next` skips them, and an item whose `dependsOn` target is parked is itself parked (cascade). QUEUE-07 is an error: an item derivable to the implement stage (RFC `pipelineStep: implement`, or a non-terminal ADR) carrying ≥1 `open` entry blocks `queue.validate` — the only suppression is resolving the entries.
+Parking vocabulary: `parked: true` on an `open` entry means the _system_ parked the item pending arbitration — written only by the enumerated parking paths (execution hard-stop per §Auto-resolve and log, soft-block review arbitration). `deferred` means the _operator_ parked it at a window. Both make the item non-executable this run; `queue.validate`'s `next` skips them, and an item whose `dependsOn` target is parked is itself parked (cascade). QUEUE-07 is an error: an item derivable to the implement stage (RFC `pipelineStep: implement`, or a non-terminal ADR) that is NOT parked and carries ≥1 un-parked `open` entry blocks `queue.validate`. A parked entry never fires QUEUE-07 — the park is already the containment; it surfaces in the briefing's parked section and waits for the next window's arbitration. An un-parked `open` on an implementable item means "collected but never resolved" — its presence routes the run into the decision window rather than halting it, and the only suppression is resolving the entries.
 
 The rendered human view is `docs/queues/<id>.briefing.md` — generated from the ledger, never the source of truth.
 

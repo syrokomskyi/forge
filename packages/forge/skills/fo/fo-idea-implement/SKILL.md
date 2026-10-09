@@ -27,6 +27,18 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -559,7 +571,7 @@ Before stamping `implemented`, verify that the ADR is mentioned in the codebase 
 
    - Proceed to step 5.10.
 
-4. **If the relevant file(s) cannot be identified** — ask the operator: `ADR-XXXX was implemented but no code mention was found. Please point to the file(s) where this ADR's decision was applied so I can add a trace reference.` After the operator provides the file(s), add the trace as described in step 3, commit, and proceed.
+4. **If the relevant file(s) cannot be identified** — ask the operator: `ADR-XXXX was implemented but no code mention was found. Please point to the file(s) where this ADR's decision was applied so I can add a trace reference.` After the operator provides the file(s), add the trace as described in step 3, commit, and proceed. **Orchestrated runs:** never ask — the codebase rung of the self-resolution ladder is already exhausted by reaching this step, so append an `auto-resolved` ledger entry (`stage: implement`, `resolutionPath: codebase`, `answer: "no code site found — trace omitted"`) recording that the ADR's decision has no identifiable code surface, and continue. The omission is disputable post-factum via the ledger, never silent.
 
 **For already-implemented ADRs** (if this step is reached for an ADR that was already `implemented`): this check is informational — attempt to find the trace and add it if missing, but do not block on it.
 

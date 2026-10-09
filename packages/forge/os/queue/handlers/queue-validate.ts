@@ -12,12 +12,25 @@ queued batch.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1250: decision-ledger wiring — QUEUE-07 open-decision gate on
-  implementable items, per-item decisions counts, deferred/parked-aware `next`
-  with dependsOn cascade.</item>
+  executable items (un-parked opens only; parked items are already gated),
+  per-item decisions counts plus top-level totals, `next` excludes parked and
+  QUEUE-07-blocked items with dependsOn cascade.</item>
   <item>RFC-1140: initial queue.validate handler.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +45,9 @@ import type { DecisionEntry, DecisionLedger, QueueValidateResult } from "../type
 
 interface DecisionSummary {
   open: number;
+  /** Open entries WITHOUT parked: true — the QUEUE-07 blocking subset. */
+  openUnparked: number;
+  answered: number;
   deferred: number;
   autoResolved: number;
   /** true when an open entry carries parked: true (hard-stop during execution). */
@@ -43,10 +59,23 @@ function summarizeDecisions(ledger: DecisionLedger | null): Map<string, Decision
   if (!ledger) return summaries;
   for (const entry of ledger.items as DecisionEntry[]) {
     const doc = entry.doc.toUpperCase();
-    const s = summaries.get(doc) ?? { open: 0, deferred: 0, autoResolved: 0, parked: false };
+    const s = summaries.get(doc) ?? {
+      open: 0,
+      openUnparked: 0,
+      answered: 0,
+      deferred: 0,
+      autoResolved: 0,
+      parked: false,
+    };
     if (entry.status === "open") {
       s.open += 1;
-      if (entry.parked === true) s.parked = true;
+      if (entry.parked === true) {
+        s.parked = true;
+      } else {
+        s.openUnparked += 1;
+      }
+    } else if (entry.status === "answered") {
+      s.answered += 1;
     } else if (entry.status === "deferred") {
       s.deferred += 1;
     } else if (entry.status === "auto-resolved") {
@@ -106,8 +135,13 @@ export async function runQueueValidate(
   const { manifest, errors, warnings, dependsOn } = await loadQueueManifest(workspaceRoot, file);
 
   // The ledger is part of the queue's durable state — its load errors block.
-  const { ledger, errors: ledgerErrors } = await loadDecisionLedger(workspaceRoot, file);
+  const {
+    ledger,
+    errors: ledgerErrors,
+    warnings: ledgerWarnings,
+  } = await loadDecisionLedger(workspaceRoot, file, manifest);
   errors.push(...ledgerErrors);
+  warnings.push(...ledgerWarnings);
 
   const summaries = summarizeDecisions(ledger);
   const parkedIds = computeParkedDocIds(
@@ -116,15 +150,41 @@ export async function runQueueValidate(
     summaries,
   );
 
-  const report =
+  // QUEUE-07: an executable item — implementable and not already parked —
+  // must not carry un-parked open decisions. Parked items are already
+  // excluded from execution by the park itself; their opens surface through
+  // the decision window's arbitration, not a second gate.
+  const derivable =
     errors.length === 0
       ? await deriveQueueReport(
           workspaceRoot,
           manifest.items.map((i) => i.id),
-          undefined,
-          parkedIds,
         )
       : { items: [], next: null };
+
+  const blockedIds = new Set<string>();
+  for (const item of derivable.items) {
+    const s = summaries.get(item.id);
+    if (isImplementable(item) && !parkedIds.has(item.id) && s && s.openUnparked > 0) {
+      blockedIds.add(item.id);
+      errors.push({
+        ruleId: "QUEUE-07",
+        severity: "error",
+        message: `Item "${item.id}" is implementable but carries ${s.openUnparked} open decision(s) — resolve the decision window first`,
+        file,
+      });
+    }
+  }
+
+  const excludedFromNext = new Set([...parkedIds, ...blockedIds]);
+  const report = {
+    items: derivable.items,
+    next:
+      derivable.items.find(
+        (i) =>
+          (i.status === "pending" || i.status === "in-progress") && !excludedFromNext.has(i.id),
+      )?.id ?? null,
+  };
 
   for (const item of report.items) {
     const s = summaries.get(item.id);
@@ -137,19 +197,16 @@ export async function runQueueValidate(
     }
   }
 
-  for (const item of report.items) {
-    const s = summaries.get(item.id);
-    if (isImplementable(item) && s && s.open > 0) {
-      errors.push({
-        ruleId: "QUEUE-07",
-        severity: "error",
-        message: `Item "${item.id}" is implementable but carries ${s.open} open decision(s) — resolve the decision window first`,
-        file,
-      });
-    }
-  }
-
   const status = errors.length === 0 ? "pass" : "fail";
+
+  const decisionTotals = ledger
+    ? {
+        open: ledger.items.filter((e) => e.status === "open").length,
+        answered: ledger.items.filter((e) => e.status === "answered").length,
+        deferred: ledger.items.filter((e) => e.status === "deferred").length,
+        autoResolved: ledger.items.filter((e) => e.status === "auto-resolved").length,
+      }
+    : undefined;
 
   if (outputFormat === "pretty") {
     logger.section(`Queue: ${manifest.id || file}`);
@@ -161,6 +218,11 @@ export async function runQueueValidate(
       logger.info(`  ${item.id}: ${item.status}${step}${decisions}`);
     }
     logger.info(`next: ${report.next ?? "—"}`);
+    if (decisionTotals) {
+      logger.info(
+        `decisions: ${decisionTotals.open} open, ${decisionTotals.answered} answered, ${decisionTotals.autoResolved} auto-resolved, ${decisionTotals.deferred} deferred`,
+      );
+    }
     for (const w of warnings) {
       logger.warn(`  ${w.ruleId}: ${w.message}`);
     }
@@ -177,6 +239,7 @@ export async function runQueueValidate(
       file,
       items: report.items,
       next: report.next,
+      decisions: decisionTotals,
       errors,
       warnings,
     },

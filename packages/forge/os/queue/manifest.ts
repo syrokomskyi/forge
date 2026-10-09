@@ -11,12 +11,27 @@ Also loads the decision-ledger sibling (RFC-1250).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1250: loadDecisionLedger — sibling stem.decisions.yaml resolution,
-  schema check on the QUEUE-01 load path; LoadedQueueManifest exposes resolved
-  dependsOn edges for the parking cascade.</item>
+  ENOENT-only absence (other read errors are QUEUE-01 blocking), schema check,
+  ledger↔manifest binding (queue/id stem QUEUE-02, duplicate Q-N QUEUE-05),
+  hygiene warnings QUEUE-08 (missing answers, foreign doc ids);
+  LoadedQueueManifest exposes resolved dependsOn edges for the parking
+  cascade.</item>
   <item>RFC-1140: initial manifest loader and validator.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -211,6 +226,7 @@ export async function loadQueueManifest(
 export interface LoadedDecisionLedger {
   ledger: DecisionLedger | null;
   errors: Diagnostic[];
+  warnings: Diagnostic[];
 }
 
 /** Manifest `docs/queues/<id>.yaml` → sibling ledger `docs/queues/<id>.decisions.yaml`. */
@@ -227,8 +243,10 @@ export function decisionLedgerPath(manifestPath: string): string {
 export async function loadDecisionLedger(
   workspaceRoot: string,
   filePath: string,
+  manifest?: QueueManifest,
 ): Promise<LoadedDecisionLedger> {
   const errors: Diagnostic[] = [];
+  const warnings: Diagnostic[] = [];
   const ledgerPath = decisionLedgerPath(filePath);
   const absolutePath = path.isAbsolute(ledgerPath)
     ? ledgerPath
@@ -240,8 +258,22 @@ export async function loadDecisionLedger(
   let source: string;
   try {
     source = await fs.readFile(absolutePath);
-  } catch {
-    return { ledger: null, errors };
+  } catch (e) {
+    // ENOENT = legal absence (zero recorded decisions). Any other read
+    // failure (EACCES, EISDIR, …) is an unreadable durable artifact — the
+    // ledger must never fail open into "no decisions" or QUEUE-07 disarms.
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") {
+      return { ledger: null, errors, warnings };
+    }
+    errors.push(
+      diag(
+        "QUEUE-01",
+        "error",
+        `Cannot read decision ledger: ${e instanceof Error ? e.message : String(e)}`,
+        displayPath,
+      ),
+    );
+    return { ledger: null, errors, warnings };
   }
 
   let raw: unknown;
@@ -256,7 +288,7 @@ export async function loadDecisionLedger(
         displayPath,
       ),
     );
-    return { ledger: null, errors };
+    return { ledger: null, errors, warnings };
   }
 
   const parsed = decisionLedgerSchema.safeParse(raw);
@@ -271,8 +303,68 @@ export async function loadDecisionLedger(
         ),
       );
     }
-    return { ledger: null, errors };
+    return { ledger: null, errors, warnings };
   }
 
-  return { ledger: parsed.data, errors };
+  const ledger = parsed.data;
+
+  // QUEUE-02-family binding: the ledger belongs to exactly one manifest —
+  // `queue` names the manifest id and `id` names the ledger filename stem
+  // (`<manifest-stem>.decisions`). A misplaced or copy-pasted ledger must not
+  // silently apply foreign decisions to this queue.
+  const ledgerStem = path.basename(absolutePath).replace(/\.(ya?ml)$/i, "");
+  if (manifest && ledger.queue !== manifest.id) {
+    errors.push(
+      diag(
+        "QUEUE-02",
+        "error",
+        `Decision ledger queue "${ledger.queue}" does not match manifest id "${manifest.id}"`,
+        displayPath,
+      ),
+    );
+  }
+  if (ledger.id !== ledgerStem) {
+    errors.push(
+      diag(
+        "QUEUE-02",
+        "error",
+        `Decision ledger id "${ledger.id}" does not match filename stem "${ledgerStem}"`,
+        displayPath,
+      ),
+    );
+  }
+
+  // QUEUE-05-family: decision ids are queue-global — window codes and
+  // PENDING DECISION markers address them, so duplicates corrupt arbitration.
+  const seenDecisions = new Set<string>();
+  const manifestDocs = new Set((manifest?.items ?? []).map((i) => i.id.trim().toUpperCase()));
+  for (const entry of ledger.items) {
+    if (seenDecisions.has(entry.id)) {
+      errors.push(diag("QUEUE-05", "error", `Duplicate decision id "${entry.id}"`, displayPath));
+      continue;
+    }
+    seenDecisions.add(entry.id);
+    if ((entry.status === "answered" || entry.status === "auto-resolved") && !entry.answer) {
+      warnings.push(
+        diag(
+          "QUEUE-08",
+          "warning",
+          `Decision "${entry.id}" is ${entry.status} but carries no answer — implement has nothing to bind`,
+          displayPath,
+        ),
+      );
+    }
+    if (manifest && !manifestDocs.has(entry.doc.toUpperCase())) {
+      warnings.push(
+        diag(
+          "QUEUE-08",
+          "warning",
+          `Decision "${entry.id}" targets "${entry.doc}" which is not a manifest item — invisible to this queue`,
+          displayPath,
+        ),
+      );
+    }
+  }
+
+  return { ledger, errors, warnings };
 }

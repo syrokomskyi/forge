@@ -27,6 +27,18 @@ triggerPhrases: ["plan the implementation for this RFC", "create implementation 
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -101,7 +113,7 @@ Then proceed to step 1.
 **Inherited acceptance.** If the RFC has a `specRef` frontmatter field pointing to a spec with `status: accepted`, the acceptance inheritance path applies:
 
 1. Check the audit report for this RFC — if the audit verdict is `approved`, the RFC MAY transition `draft → accepted` without a separate human acceptance ceremony. Record `reviewers` from the spec's `reviewers` field and note `via spec acceptance <spec-id>` in the commit message.
-2. If the audit verdict is `needs-revision` or `rejected`, inheritance is void — a human decision is required. Do not transition; ask the operator.
+2. If the audit verdict is `needs-revision` or `rejected`, inheritance is void — a human decision is required. Do not transition; ask the operator. **Collect mode:** instead of asking, append an `open` ledger entry (`stage: plan`) recording the audit verdict and the inheritance question, leave a `> PENDING DECISION: Q-N` marker in the draft plan, and do not transition — the window arbitrates whether the RFC proceeds or returns to enhance.
 3. If the `specRef` points to a spec with `status: vendored` (not yet accepted), the RFC cannot progress past `draft` — V-SPEC-03 blocks it.
 
 ### 1. Read the RFC
