@@ -42,7 +42,21 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       name: "spec.validate",
       mutatesState: false,
       contract: "spec",
-      rules: [],
+      rules: [
+        "SPEC-01",
+        "SPEC-02",
+        "SPEC-03",
+        "SPEC-04",
+        "SPEC-05",
+        "SPEC-06",
+        "SPEC-07",
+        "SPEC-08",
+        "SPEC-09",
+        "SPEC-10",
+        "SPEC-11",
+        "SPEC-12",
+        "SPEC-13",
+      ],
       description:
         "Validate vendored spec packages under docs/specs/. " +
         "Checks integrity (SHA-256), schema, dependency graph (acyclic), " +

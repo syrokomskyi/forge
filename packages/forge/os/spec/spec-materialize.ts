@@ -30,6 +30,9 @@ import {
   type ForgeSpec,
   type SpecRfcNode,
   type SpecAmendment,
+  ownsSpecNode,
+  isForeignOwnedNode,
+  isForeignConsumerDep,
   resolveAmendedNode,
 } from "./spec-schema.ts";
 import { listRfcFiles } from "../rfc/frontmatter-io.ts";
@@ -236,20 +239,14 @@ export async function runSpecMaterialize(
   // consumer-declared node is treated as not locally owned.
   const nodeById = new Map(spec.rfcs.map((n) => [n.id, n]));
   const ownsNode = (node: SpecRfcNode): boolean =>
-    !node.consumers ||
-    (localConsumer != null && node.consumers.includes(localConsumer));
+    ownsSpecNode(node, localConsumer);
   const depSatisfied = (depId: string): boolean => {
     if (nodeState.get(depId) === "implemented") return true;
-    const depNode = nodeById.get(depId);
     // Foreign-consumer dependency: an implementation duty of another consumer.
-    return (
-      depNode?.consumers != null &&
-      localConsumer != null &&
-      !depNode.consumers.includes(localConsumer)
-    );
+    return isForeignConsumerDep(nodeById.get(depId), localConsumer);
   };
   const foreignOwned = spec.rfcs
-    .filter((n) => n.consumers != null && !ownsNode(n))
+    .filter((n) => isForeignOwnedNode(n, localConsumer))
     .map((n) => n.id);
 
   // Compute front: unmaterialized, locally-owned nodes whose deps are all
@@ -275,10 +272,11 @@ export async function runSpecMaterialize(
       if (!node) {
         skipped.push({ node: nodeId, reason: "node not found in spec" });
       } else if (!isFront(node)) {
-        if (node.consumers != null && localConsumer == null) {
-          skipped.push({ node: nodeId, reason: "consumer identity not configured" });
-        } else if (!ownsNode(node)) {
-          skipped.push({ node: nodeId, reason: `foreign-owned by ${node.consumers!.join(", ")}` });
+        if (!ownsSpecNode(node, localConsumer)) {
+          const reason = localConsumer == null
+            ? "consumer identity not configured"
+            : `foreign-owned by ${(node.consumers ?? []).join(", ")}`;
+          skipped.push({ node: nodeId, reason });
         } else {
           const blockers = node.dependsOn.filter((d) => !depSatisfied(d));
           skipped.push({ node: nodeId, reason: `blocked by ${blockers.join(", ")}` });

@@ -24,6 +24,8 @@ import type {
 import {
   forgeSpecSchema,
   specAmendmentSchema,
+  isForeignConsumerDep,
+  isForeignOwnedNode,
   type ForgeSpec,
   type SpecAmendment,
 } from "./spec-schema.ts";
@@ -211,21 +213,13 @@ export async function runSpecStatus(
 
       // RFC-1240: a node with `consumers` not containing the local consumer
       // identity (or any `consumers` when identity is absent) is foreign-owned.
-      const foreignOwned =
-        node.consumers != null &&
-        (localConsumer == null || !node.consumers.includes(localConsumer));
+      const foreignOwned = isForeignOwnedNode(node, localConsumer);
 
       const blockedBy = node.dependsOn.filter((dep) => {
         const depNode = spec.rfcs.find((n) => n.id === dep);
         if (!depNode) return false;
         // RFC-1240: a dependency owned by other consumers is not a local blocker.
-        if (
-          depNode.consumers != null &&
-          localConsumer != null &&
-          !depNode.consumers.includes(localConsumer)
-        ) {
-          return false;
-        }
+        if (isForeignConsumerDep(depNode, localConsumer)) return false;
         if (!depNode.materializedAs) return true;
         const depStatus = rfcStatuses.get(depNode.materializedAs);
         return depStatus !== "implemented";
