@@ -14,6 +14,7 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
+  <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -75,7 +76,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
             description: "Subdirectory within the vault to scope the scan to.",
           },
         },
-        reads: ["vault/**/*.md"],
+        reads: ["vault/**/*.md"], // scan-coverage: consumer-vault root — vault/ exists in knowledge-profile workshops
         cacheable: false,
         execute: noteLinkValidateWrapper,
       },
@@ -100,7 +101,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
             description: "Comma-separated list of required fields (default: title).",
           },
         },
-        reads: ["vault/**/*.md"],
+        reads: ["vault/**/*.md"], // scan-coverage: consumer-vault root — vault/ exists in knowledge-profile workshops
         cacheable: false,
         execute: noteFrontmatterValidateWrapper,
       },
@@ -119,7 +120,7 @@ export async function createForgeNotesModule(): Promise<ForgeModule> {
             description: "Vault directory relative to workspace root (default: vault).",
           },
         },
-        reads: ["vault/**/*.md"],
+        reads: ["vault/**/*.md"], // scan-coverage: consumer-vault root — vault/ exists in knowledge-profile workshops
         cacheable: false,
         execute: noteOrphanDetectWrapper,
       },

@@ -15,6 +15,7 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1235: docs.archive post-loop records merge outcomes by exit code — exit-nonzero merges (incl. RFC-1230 fail-fast with populated data) land in failed[] with the merge summary as error, thrown errors record via liveMergeFailureEntry, and the spec.live.merge result block emits whenever anything was attempted; top-level result gains liveSpecFailures.</item>
+  <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173</history>
 </CHANGE_SUMMARY>
 */
@@ -528,8 +529,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             description: "Check only the specified artifact id.",
           },
         },
-        reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "dist/.determinism-cache.json"],
-        writes: ["dist/.determinism-cache.json"],
+        reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "dist/.determinism-cache.json"], // scan-coverage: post-build artifact — dist/ exists only after forge build
+        writes: ["dist/.determinism-cache.json"], // scan-coverage: post-build artifact — dist/ exists only after forge build
         generates: [],
         cacheable: false,
         execute: runDeterminismCheck,
@@ -557,7 +558,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             description: "Filter assets by type id (e.g. video, audio, image).",
           },
         },
-        reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"],
+        reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"], // scan-coverage: consumer-workshop root — assets/ declared by stack profiles
         cacheable: false,
         execute: runAssetsList,
       },
@@ -586,7 +587,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             description: "Override the active profile id.",
           },
         },
-        reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"],
+        reads: ["forge.yaml", "packages/forge/profiles/*.yaml", "assets/**"], // scan-coverage: consumer-workshop root — assets/ declared by stack profiles
         cacheable: false,
         execute: runAssetsCheck,
       },
