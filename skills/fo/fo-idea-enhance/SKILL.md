@@ -26,6 +26,18 @@ triggerPhrases: ["enhance this RFC", "fix audit findings in RFC", "improve RFC b
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -105,7 +117,7 @@ Read every finding from the audit report. For each, classify it as one of:
 - **Direct fix** — the RFC text can be edited to address it: fill a placeholder section, add a missing edge case, fix a DNA reference, tighten a contract, add a failure mode, etc.
 - **New RFC** — the finding reveals a topic that is too large or too distinct for this RFC. Examples: a new package, a new DNA invariant, a new governance policy, a new external contract. Splitting it out keeps the RFC focused and follows the ecosystem's one-decision-per-RFC principle.
 - **Out of scope** — the finding is valid but belongs to a different RFC or a future effort. Add it to this RFC's `nonGoals` with a brief explanation and, if applicable, a `related` reference to where it will be addressed.
-- **NC (Needs Clarification)** — Unresolved `NEEDS CLARIFICATION` markers in the RFC body. Resolution: ask the operator the question, replace the marker line with the operator's answer in the RFC body. If the operator defers, the marker remains and the RFC cannot transition to `reviewing`.
+- **NC (Needs Clarification)** — Unresolved `NEEDS CLARIFICATION` markers in the RFC body. Resolution: ask the operator the question, replace the marker line with the operator's answer in the RFC body. If the operator defers, the marker remains and the RFC cannot transition to `reviewing`. **Collect mode:** each NC marker emits a ledger entry (`stage: enhance`, `status: open`, recommended option) instead of asking — the marker stays until the resolution phase integrates the window's answer.
 
 Record the classification for every finding — the summary in step 8 reports it.
 

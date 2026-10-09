@@ -17,10 +17,6 @@ triggerPhrases: ["по полному пайплайну", "на результ�
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: four-phase queue model — maturation / decision window /
-  resolution / execution; every run materializes a manifest (single doc =
-  one-item queue); collect/finalize contract replaces inline asking;
-  stopAfter: plan remapped to phases 1-3.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -31,6 +27,19 @@ Add Queue mode section (pre-flight queue.validate, loop semantics, failure handl
 
 When the invocation carries >=2 RFC/ADR ids without a manifest path, the orchestrator builds docs/queues/session-<timestamp>.yaml from the pasted order, runs queue.validate, then processes queue mode. Unresolvable ids are named explicitly.</item>
   <item>RFC-1247: regen agents-generate golden fixture, add fo-handoff route row, PREFERENCES pipeline-intent caveat (RFC-1247)</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -107,7 +116,13 @@ The operator may provide either:
 
 **Decision ledger:** the queue owns `docs/queues/<id>.decisions.yaml` — the durable, append-only record of every operator-facing decision (`_shared/fo-pipeline-conventions.md` §Decision ledger). Create it when maturation emits its first question. The rendered `docs/queues/<id>.briefing.md` is generated from the ledger for the decision window.
 
-**Pre-flight (mandatory):** Run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. If the command exits non-zero (schema errors, unknown ids, duplicates, id↔filename mismatch, ledger load errors, QUEUE-07), do NOT start the batch — report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
+**Pre-flight (mandatory):** Run `pnpm exec werkstatt run queue.validate --file <manifest> --json`. Interpret diagnostics by kind:
+
+- **Structural errors** (QUEUE-01..06 — schema, unknown ids, duplicates, id↔filename mismatches, ledger load/binding failures) — do NOT start the batch; report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
+- **QUEUE-07 diagnostics** — implementable items carrying un-parked `open` decisions. This is NOT a stop signal: those entries are precisely the decision window's agenda. The run proceeds — phase 1 finishes any incomplete maturation, then phase 2 arbitrates them. This is the designed resume path after a crash between collect and window, and after runs that parked items for arbitration.
+- **QUEUE-08 warnings** — ledger hygiene (resolved entries missing `answer`, decisions targeting foreign doc ids); report them in the batch summary, continue.
+
+Re-run `queue.validate` between resolution and execution: items still carrying un-parked `open` entries after the window are excluded from `next`, skipped by execution, and listed in the report — never implemented.
 
 **Batch plan preview:** Emit the existing batch plan preview per `_shared/fo-pipeline-conventions.md` §Batch plan preview, listing items in manifest order.
 
@@ -115,7 +130,7 @@ The operator may provide either:
 
 Process `items[]` in manifest order. Per item, run the existing per-doc pipeline up to but not including implementation, with every skill in **collect mode** (`_shared/fo-pipeline-conventions.md` §Collect and finalize contract):
 
-1. **Skip terminal items** — items whose derived status is `implemented` or `skipped` (rejected/superseded frontmatter) are recorded in the batch summary and skipped.
+1. **Skip terminal and parked items** — items whose derived status is `implemented` or `skipped` (rejected/superseded frontmatter), and items parked by `deferred` entries or `open`+`parked: true` entries (plus their `dependsOn` dependents) are recorded in the batch summary and skipped — maturation never re-collects questions for a parked item.
 2. **Resume mid-pipeline items** — an `in-progress` item resumes at its derived `pipelineStep`, not from step 1.
 3. **Run the collect-mode pipeline** — RFC items run audit → enhance(collect) → plan(collect); ADR items skip maturation stages. Questions emit into the ledger as `open` entries carrying `resolutionPath` and recommended options; autonomous work applies and commits; `enhancedAt` stamps only when zero `open` entries remain for the document; the plan persists as a draft carrying `> PENDING DECISION: Q-N` markers. No `ask_user_question` calls inside any pipeline step — every question materializes in the ledger first.
 4. **Batch-item checkpoint** — after each item, emit the context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items.
@@ -123,7 +138,7 @@ Process `items[]` in manifest order. Per item, run the existing per-doc pipeline
 
 ### Phase 2 — Decision window (the single operator interaction)
 
-Render `docs/queues/<id>.briefing.md` from the ledger per `_shared/fo-pipeline-conventions.md` §Decision window and present it: batch policies, per-document decision blocks with recommended options, the resolved-by-inference list, parked items. The operator answers in one batch — free-text codes (`Q-03: B`, `all — per recommendations`, `Q-07: defer`); `ask_user_question` is legal only for ≤4 highest-risk decisions. The answered window IS the batch acceptance act.
+Render `docs/queues/<id>.briefing.md` from the ledger per `_shared/fo-pipeline-conventions.md` §Decision window and present it: batch policies, per-document decision blocks with recommended options, the resolved-by-inference list, and the parked-items section — every `open`+`parked: true` entry is arbitration the operator owes here. The operator answers in one batch — free-text codes (`Q-03: B`, `all — per recommendations`, `Q-07: defer`); `ask_user_question` is legal only for ≤4 highest-risk decisions. The answered window IS the batch acceptance act.
 
 ### Phase 3 — Resolution (no operator)
 
@@ -133,7 +148,7 @@ Apply answers to the ledger (`status: answered`, `answeredAt`), then finalize ea
 
 Process items in manifest order — RFC items run `implement` (which includes review → fix), ADR items run `implement` only:
 
-1. **Skip terminal and parked items** — `implemented`/`skipped`, items with `deferred` ledger entries, items with `open`+`parked: true` entries, and items whose `dependsOn` target is parked. `queue.validate`'s `next` encodes the same skipping.
+1. **Skip terminal, parked, and blocked items** — `implemented`/`skipped`, items with `deferred` ledger entries or `open`+`parked: true` entries, items whose `dependsOn` target is parked, and QUEUE-07-blocked items (un-parked `open` entries surviving the window). `queue.validate`'s `next` encodes the same skipping.
 2. **Ledger-bound implementation** — `fo-idea-implement` reads the ledger at prerequisites: `answered` entries bind; emergent questions auto-resolve and append `auto-resolved` entries; only the enumerated hard-stop class parks the item (§Auto-resolve and log).
 3. **Batch-item checkpoint** — after each item, emit the context checkpoint; **clean-tree gate** before the next item.
 4. **`stopAfter: plan`** — run phases 1–3 (maturation + window + resolution), stop before execution.
@@ -142,7 +157,7 @@ Process items in manifest order — RFC items run `implement` (which includes re
 
 **Blocking review verdicts:** when a review inside an item's pipeline returns a blocking verdict —
 
-- `blockLevel: soft-block` — **pause only the current item**: record it in the batch summary as `awaiting operator arbitration`, append the arbitration question to the ledger (`status: open`, `stage: review`), then continue with the next item. Never auto-resolve an arbitration question. A parked item resumes by re-invoking the orchestrator with the same manifest — parking never strands an item without a defined re-entry path.
+- `blockLevel: soft-block` — **pause only the current item**: record it in the batch summary as `awaiting operator arbitration`, append the arbitration question to the ledger (`status: open`, `stage: review`, `parked: true` — the system parked it, so QUEUE-07 treats it as contained rather than a gate violation), then continue with the next item. Never auto-resolve an arbitration question. A parked item resumes by re-invoking the orchestrator with the same manifest — parking never strands an item without a defined re-entry path.
 - `blockLevel: hard-block` — **stop the item before stamping and record it as blocked in the batch report; the batch continues.** A parked hard-block item requires the fix and then a **full** re-review on resume (not a delta re-check); at most two fix→re-review cycles, then the hard-stop class escalates the item for arbitration (§Auto-resolve and log).
 - The batch summary MUST list every paused/blocked item with its ledger question ids — accumulation is visible, never silent.
 

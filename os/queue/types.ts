@@ -12,6 +12,18 @@ block consumed by queue.validate and the pipeline orchestrator's queue mode.</pu
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -83,8 +95,10 @@ export interface QueueValidateResult {
   queue: string;
   file: string;
   items: QueueItemReport[];
-  /** First item whose derived status is pending or in-progress; null when fully terminal. */
+  /** First actionable item — pending/in-progress, not parked or QUEUE-07-blocked; null when none. */
   next: string | null;
+  /** Aggregate decision counts across the ledger (present when a sibling ledger exists). */
+  decisions?: { open: number; answered: number; deferred: number; autoResolved: number };
   errors: Diagnostic[];
   warnings: Diagnostic[];
 }

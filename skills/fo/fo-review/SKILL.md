@@ -26,6 +26,18 @@ triggerPhrases: ["проверим всё ли сделали правильно
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -281,7 +293,7 @@ Every verdict carries a `blockLevel` — the blocking semantics downstream pipel
 | --- | --- | --- |
 | `pass` | `approved` | Zero findings across all axes — no fracture signals |
 | `warning` | `needs-revision` | Findings recorded as tracked observations; they must be answered, and unresolved warnings at T3 escalate to `soft-block` |
-| `soft-block` | `needs-revision` + `escalation: operator` | Directional deviation or process violation — suspends the item for operator arbitration (queue mode: item parked, arbitration question appended to the decision ledger as `open`/`stage: review`, batch continues) |
+| `soft-block` | `needs-revision` + `escalation: operator` | Directional deviation or process violation — suspends the item for operator arbitration (queue mode: item parked, arbitration question appended to the decision ledger as `open`/`stage: review`/`parked: true`, batch continues) |
 | `hard-block` | `rejected` | Fundamental flaw — fix, then **full** re-review (not a delta on the flagged point) before the item may proceed to stamping |
 
 - **Approved (`pass`)** — zero findings across all eight axes. Any finding, no matter how minor or cosmetic, disqualifies Approved and forces Needs revision. The rationale: downstream agents treat Approved as a stop signal and stop reading the findings — so even a trivial finding left under Approved gets silently ignored. If there is anything to fix, the verdict must say so.

@@ -20,11 +20,23 @@ os/ or kernel imports.</purpose>
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
   <item>RFC-1250: decision-aware queue report — QueueItemReport gains kind +
-  decisions counts; deriveQueueReport accepts a parkedIds set so `next` never
-  selects a deferred or hard-stopped item.</item>
+  decisions counts; `next` exclusion of parked/blocked items is computed by
+  the queue.validate caller (the resolver stays ledger-agnostic).</item>
   <item>RFC-1140: step 6 — cover shared resolver and queue.validate
 
 Add pipeline-status.test.ts (derivation matrix, order, next selection, ADR, skipped) and queue-validate.test.ts (schema errors, unknown/dup ids, id-filename mismatch, empty items, dependsOn warning, JSON shape). Fix queue derivation: pipelineStep is the stage after the last completed stage, not first incomplete — handles non-contiguous artifacts.</item>
+  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
+
+REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
+(the park is the containment — a parked queue stays resumable and the
+decision window arbitrates it); loader fails open only on ENOENT —
+other read errors are QUEUE-01; ledger gains queue/id-stem binding
+(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
+(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
+items; top-level decision totals added. Orchestrator pre-flight treats
+QUEUE-07 as the window agenda — structural errors still stop the batch;
+maturation skips parked/deferred items; uncovered imperative ask sites
+gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -325,15 +337,15 @@ export interface QueueReport {
 }
 
 /**
- * Derive the full queue report, preserving manifest order.
- * `parkedIds` (RFC-1250) excludes deferred/hard-stopped items from `next`
- * selection — a parked item is not actionable this run.
+ * Derive the full queue report, preserving manifest order. `next` selects
+ * the first pending/in-progress item; callers that need ledger-aware
+ * exclusion (RFC-1250 parked/QUEUE-07-blocked items) re-filter the returned
+ * items — the resolver itself stays ledger-agnostic.
  */
 export async function deriveQueueReport(
   workspaceRoot: string,
   itemIds: string[],
   io?: WorkspaceIO,
-  parkedIds?: ReadonlySet<string>,
 ): Promise<QueueReport> {
   const fio = resolveIo(io);
   const items: QueueItemReport[] = [];
@@ -343,9 +355,6 @@ export async function deriveQueueReport(
     // skips them here so a partial report stays usable.
     if (report) items.push(report);
   }
-  const nextItem = items.find(
-    (i) =>
-      (i.status === "pending" || i.status === "in-progress") && !(parkedIds?.has(i.id) ?? false),
-  );
+  const nextItem = items.find((i) => i.status === "pending" || i.status === "in-progress");
   return { items, next: nextItem?.id ?? null };
 }
