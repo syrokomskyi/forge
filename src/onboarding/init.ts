@@ -461,9 +461,9 @@ export function runInit(
     }
   }
 
-  // 5. Copy neutral RFC and ADR templates into the project's docs directories.
-  // Templates are copied from the forge package so new projects can create
-  // RFCs and ADRs without falling back to the forge package's internal copy.
+  // 5. Copy neutral RFC, ADR, and plan templates into the project's docs
+  // directories. Templates are copied from the forge package so new projects
+  // can create documents without falling back to the package's internal copy.
   // Existing templates are never overwritten.
   const templatesToCopy = [
     {
