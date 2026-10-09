@@ -103,6 +103,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.summary.record",
+      coverage: "operator" as const,
       description:
         "Append a governance-referencing item to each target file's CHANGE_SUMMARY and collapse the 5-item window into <history> (RFC-1095). Invoked by commit commands when a commit carries an RFC/ADR reference. Required flags: `--id`.",
       scope: "workspace",
@@ -142,6 +143,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.summary.trim",
+      coverage: "operator" as const,
       description:
         "Repair CHANGE_SUMMARY blocks to the v2 shape: collapse described items past 5 into <history>, remove ID-less items, normalize <history> (RFC-1095).",
       scope: "workspace",
@@ -206,6 +208,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.audit.plan",
+      coverage: "operator" as const,
       mutatesState: false,
       execOnReadOnly: true,
       description:
@@ -229,6 +232,7 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.audit.record",
+      coverage: "operator" as const,
       modulePath: "packages/forge/os/compass/compass.module.ts",
       description:
         "Stamp a file's audit verdict and current revision into the compass-audit ledger (RFC-0352). Mutating. Required flags: `--file`, `--verdict`.",

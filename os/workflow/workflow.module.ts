@@ -45,6 +45,7 @@ export async function createForgeWorkflowModule(): Promise<ForgeModule> {
       },
       {
         name: "workflow.list",
+        coverage: "operator" as const,
         mutatesState: false,
         description:
           "List .agents/workflows entries with phase, IO summary, and next workflow (RFC-0075).",

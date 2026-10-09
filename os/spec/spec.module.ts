@@ -79,6 +79,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.status",
+      coverage: "operator" as const,
       mutatesState: false,
       description:
         "Show roadmap progress for vendored specs. " +
@@ -99,6 +100,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.materialize",
+      coverage: "operator" as const,
       description:
         "Scaffold RFC files for the next N front nodes of a spec roadmap. " +
         "Requires --spec=<id>. Optional: --next=<N> (default 8, max 12), --nodes=<id,id> explicit selection.",
@@ -139,6 +141,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.list",
+      coverage: "operator" as const,
       mutatesState: false,
       description:
         "List all living feature specs in docs/specs/live/. " +
@@ -150,6 +153,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.show",
+      coverage: "operator" as const,
       mutatesState: false,
       description:
         "Show a single living feature spec by domain. " +
@@ -163,6 +167,8 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.validate",
+      coverage: "operator" as const,
+      coverageNote: "spec.live drift audit — current debt repaired via spec.live.rebuild",
       mutatesState: false,
       contract: "spec",
       rules: [
@@ -191,6 +197,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
     },
     {
       name: "spec.live.rebuild",
+      coverage: "operator" as const,
       acceptsAllFlag: true,
       description:
         "Rebuild a living feature spec by replaying its deduplicated history[] — " +

@@ -34,6 +34,8 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "program.packet.validate",
+        coverage: "operator" as const,
+        coverageNote: "requires --program",
         mutatesState: false,
         execOnReadOnly: true,
         contract: "program",
@@ -70,6 +72,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
       },
       {
         name: "program.packet.seal",
+        coverage: "operator" as const,
         description:
           "Steward finalizes a packet against the predecessor's completion commit, " +
           "updates packet state from draft to sealed, and records the seal in the " +
@@ -112,6 +115,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
       },
       {
         name: "program.packet.lease",
+        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Manage the exclusive local executor lease for a sealed packet. " +
@@ -170,6 +174,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
       },
       {
         name: "program.packet.complete",
+        coverage: "operator" as const,
         description:
           "Steward validates the implementation range, writes the completion report, " +
           "and updates the program manifest. Supports --bootstrap for packet 000. " +

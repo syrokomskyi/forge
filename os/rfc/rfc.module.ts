@@ -118,6 +118,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.next-id",
+        coverage: "operator" as const,
         mutatesState: false,
         description:
           "Return the next free RFC number (max existing + 1) by scanning docs/rfcs/ recursively including archive/.",
@@ -216,6 +217,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.graph",
+        coverage: "operator" as const,
         mutatesState: false,
         description:
           "Print one RFC's relationship neighbours (supersedes/supersededBy/amends/" +
@@ -341,6 +343,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.dna.trace.generate",
+        coverage: "operator" as const,
         modulePath: "packages/forge/os/rfc/rfc.module.ts",
         description:
           "RFC-0331: generate docs/rfcs/dna-trace.generated.yaml — the machine-readable " +
@@ -380,6 +383,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.supersede.propose",
+        coverage: "operator" as const,
         description:
           "RFC-0334: escalate a blocked implementation by creating a draft superseding RFC " +
           "with the conflict stated and TODO sections for the proposed alternative.",
@@ -411,6 +415,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.archive",
+        coverage: "operator" as const,
         description:
           "Move terminal-status RFC files (implemented, rejected, superseded) into " +
           "docs/rfcs/archive/<status>/ subdirectories. Bidirectional: moves non-terminal " +
@@ -437,6 +442,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.pipeline.status",
+        coverage: "operator" as const,
         mutatesState: false,
         description:
           "Report the pipeline status of RFCs — which steps (audit, enhance, plan, implement) " +
