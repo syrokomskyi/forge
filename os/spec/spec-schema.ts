@@ -81,6 +81,50 @@ export const forgeSpecSchema = z.object({
 export type ForgeSpec = z.infer<typeof forgeSpecSchema>;
 
 // ---------------------------------------------------------------------------
+// Consumer ownership predicates (RFC-1240)
+// ---------------------------------------------------------------------------
+
+/**
+ * True when the node may materialize for this workspace's consumer identity.
+ * A node without `consumers` is owned by every consumer.
+ */
+export function ownsSpecNode(
+  node: SpecRfcNode,
+  localConsumer: string | undefined,
+): boolean {
+  return (
+    !node.consumers ||
+    (localConsumer != null && node.consumers.includes(localConsumer))
+  );
+}
+
+/**
+ * True when the node declares `consumers` but is not locally owned —
+ * either the local identity is absent or it is not a member.
+ */
+export function isForeignOwnedNode(
+  node: SpecRfcNode,
+  localConsumer: string | undefined,
+): boolean {
+  return node.consumers != null && !ownsSpecNode(node, localConsumer);
+}
+
+/**
+ * True when a dependency node's implementation duty belongs to other
+ * consumers — it satisfies dependents without a local implementation.
+ */
+export function isForeignConsumerDep(
+  depNode: SpecRfcNode | undefined,
+  localConsumer: string | undefined,
+): boolean {
+  return (
+    depNode?.consumers != null &&
+    localConsumer != null &&
+    !depNode.consumers.includes(localConsumer)
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Integrity manifest (forge/spec-integrity@1)
 // ---------------------------------------------------------------------------
 

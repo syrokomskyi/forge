@@ -515,12 +515,12 @@ export async function runSpecValidate(
     // SPEC-07: materializedAs
     await checkMaterializedAs(spec, rfcDir, violations);
 
-    // SPEC-12/13: consumers hygiene + identity warning (RFC-1240)
-    checkConsumers(spec, localConsumer, violations);
-
     // SPEC-08..11: Amendments (RFC-0397)
     const amendments = await loadAmendments(specDir);
     checkAmendments(spec, amendments, violations);
+
+    // SPEC-12/13: consumers hygiene + identity warning (RFC-1240)
+    checkConsumers(spec, localConsumer, violations);
 
     results.push({
       id: spec.id,
