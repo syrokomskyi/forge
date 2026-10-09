@@ -476,6 +476,11 @@ export function runInit(
       destRel: `${config.paths.adrsDir}/adr-0000-template.md`,
       label: "docs/adrs/adr-0000-template.md",
     },
+    {
+      src: path.join(forgeRoot, "os", "plan", "plan-0000-template.md"),
+      destRel: `${config.paths.plansDir}/plan-0000-template.md`,
+      label: "docs/plans/plan-0000-template.md",
+    },
   ];
   for (const { src, destRel, label } of templatesToCopy) {
     const destPath = path.join(workspaceRoot, destRel);
