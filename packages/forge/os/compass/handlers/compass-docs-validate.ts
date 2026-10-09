@@ -210,7 +210,7 @@ async function linkTargetResolves(
   const docsId = /^docs\.([a-z-]+)\.(.+)$/.exec(target);
   if (docsId) {
     const [, dir, slug] = docsId;
-    const hits = await io.glob(`${docsId[1]}/**/*${slug}*.md`, { cwd: docsDir }).catch(() => []);
+    const hits = await io.glob(`${dir}/**/*${slug}*.md`, { cwd: docsDir }).catch(() => []);
     if (hits.length > 0) return "file";
     // generic fallback: any file whose basename contains the slug under docs/
     const broad = await io.glob(`**/*${slug}*`, { cwd: docsDir }).catch(() => []);

@@ -25,7 +25,7 @@ import os from "node:os";
 import { runSpecLiveMerge } from "./live-spec-merge.ts";
 import { runSpecLiveRebuild } from "./live-spec-rebuild.ts";
 import { removeNamespacedSections } from "./live-spec-shared.ts";
-import type { ForgeCommandInput, ForgeRuntimeContext } from "../../src/types.ts";
+import type { ForgeRuntimeContext } from "../../src/types.ts";
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {
