@@ -6,6 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: QUEUE-07 registered; reads gains the decisions-ledger glob.</item>
   <item>RFC-1140: initial forgeQueueModule registering queue.validate.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -29,15 +30,18 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
       {
         name: "queue.validate",
         description:
-          "Validate a queue manifest (docs/queues/*.yaml) and report derived " +
-          "per-item pipeline status plus the next actionable item. Read-only — " +
-          "the pipeline orchestrator runs this before starting a queued batch (RFC-1140). Required flags: `--file`.",
+          "Validate a queue manifest (docs/queues/*.yaml) and its decision " +
+          "ledger sibling, report derived per-item pipeline status plus the " +
+          "next actionable item. QUEUE-07 blocks implementable items with open " +
+          "decisions (RFC-1250). Read-only — the pipeline orchestrator runs " +
+          "this before starting a queued batch (RFC-1140). Required flags: `--file`.",
         scope: "workspace",
         contract: "queue",
-        rules: ["QUEUE-01", "QUEUE-02", "QUEUE-03", "QUEUE-04", "QUEUE-05", "QUEUE-06"],
+        rules: ["QUEUE-01", "QUEUE-02", "QUEUE-03", "QUEUE-04", "QUEUE-05", "QUEUE-06", "QUEUE-07"],
         mutatesState: false,
         reads: [
           "docs/queues/*.yaml",
+          "docs/queues/*.decisions.yaml",
           "docs/rfcs/**/*.md",
           "docs/adrs/**/*.md",
           "docs/audits/*.md",
