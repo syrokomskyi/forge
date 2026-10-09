@@ -300,9 +300,9 @@ After the documentation audit, invoke `fo-review` via the `skill` tool. It perfo
 
 1. Determine the diff range: `git diff <merge-base-of-session>...HEAD` — where merge-base is the commit before the first `implement:` commit for this RFC.
 2. Invoke `fo-review` with the diff range **in `independent` mode** (pipeline-invoked reviews default to clean-context dispatch; artifacts-only inputs). Wait for it to complete (persist + commit the review report in `docs/reviews/code/`).
-3. Read the review report. If the verdict is `approved` **and** the report contains zero findings across all axes, proceed to step 4.12.
-4. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 4.11 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding, including ones labelled "minor" or "cosmetic".
-5. **Blocking verdicts:** a `blockLevel: hard-block` report requires the fix and then a **full** re-review before stamping — not a delta re-check of the flagged point. A `blockLevel: soft-block` report pauses the item for operator arbitration (interactive: structured question; queue mode: park + continue, per `_shared/fo-pipeline-conventions.md` §Review blocking semantics).
+3. Read the review report. **Check `blockLevel` first, before the generic findings→fix routing:** a `blockLevel: hard-block` report requires the fix and then a **full** re-review before stamping — not a delta re-check of the flagged point; a `blockLevel: soft-block` report pauses the item for operator arbitration (interactive: structured question; queue mode: park + continue, per `_shared/fo-pipeline-conventions.md` §Review blocking semantics).
+4. If the verdict is `approved` (`blockLevel: pass`) **and** the report contains zero findings across all axes, proceed to step 4.12.
+5. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 4.11 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding, including ones labelled "minor" or "cosmetic".
 
 **This step is MANDATORY.** Do not skip it, even if the implementation seems clean. The review is the quality gate that catches DNA misalignment, forward-only violations, Compass drift, and agent clarity issues that implementation authors miss.
 
@@ -498,9 +498,10 @@ Stage only the regenerated `AGENTS.md` files. If no agent-facing contracts chang
 After the documentation audit, invoke `fo-review` via the `skill` tool. It performs a cross-session fitness check of the code diff against Forge standards. The review covers all code changes made in this session.
 
 1. Determine the diff range: `git diff <merge-base-of-session>...HEAD`.
-2. Invoke `fo-review` with the diff range. Wait for it to complete (persist + commit the review report).
-3. Read the review report. If the verdict is `approved` **and** the report contains zero findings across all axes, proceed to step 5.9.
-4. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 5.8 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding.
+2. Invoke `fo-review` with the diff range **in `independent` mode** (pipeline-invoked reviews default to clean-context dispatch; artifacts-only inputs). Wait for it to complete (persist + commit the review report).
+3. Read the review report. **Check `blockLevel` first, before the generic findings→fix routing:** `hard-block` → fix then **full** re-review (2-cycle cap, then escalate); `soft-block` → pause for operator arbitration per `_shared/fo-pipeline-conventions.md` §Review blocking semantics.
+4. If the verdict is `approved` (`blockLevel: pass`) **and** the report contains zero findings across all axes, proceed to step 5.9.
+5. If the review has **any** findings — even a single cosmetic observation on any axis — proceed to step 5.8 (fix). Do not interpret an `approved` verdict as "no findings" — read the axis sections and count every finding.
 
 **This step is MANDATORY.** Do not skip it.
 
@@ -510,7 +511,7 @@ If `fo-review` (step 5.7) reported **any** findings (even cosmetic ones), invoke
 
 1. Invoke `fo-fix` with the review report. Wait for it to complete.
 2. After `fo-fix` returns, re-run `fo-review` to confirm all findings are resolved.
-3. If new findings appear, repeat the fix cycle. Maximum 3 iterations.
+3. If new findings appear, repeat the fix cycle. Maximum 3 iterations (2 for `hard-block`, then escalate to the operator).
 4. If findings persist after 3 iterations, stop and report to the operator.
 
 If `fo-review` reported truly zero findings (the report explicitly states "No issues." on every axis), skip this step. An `approved` verdict with any finding text on any axis does NOT qualify as zero findings.

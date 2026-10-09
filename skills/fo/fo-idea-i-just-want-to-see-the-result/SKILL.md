@@ -96,7 +96,7 @@ The orchestrator runs in **queue mode** when the invocation carries `--queue <pa
 **Blocking review verdicts:** when a review inside an item's pipeline returns a blocking verdict —
 
 - `blockLevel: soft-block` — **pause only the current item**: record it in the batch summary as `awaiting operator arbitration` together with the review's open question, then continue with the next item. Never auto-resolve an arbitration question. A parked item resumes by re-invoking the orchestrator with the same manifest — `queue.validate` derives the continuation point from document status; parking never strands an item without a defined re-entry path.
-- `blockLevel: hard-block` — the item must be fixed and pass a **full** re-review before stamping. If the fix path is not immediately clear, park the item the same way and continue; the batch report names it blocked.
+- `blockLevel: hard-block` — **stop the item before stamping and record it as blocked in the batch report; the batch continues.** A parked hard-block item requires the fix and then a **full** re-review on resume (not a delta re-check); at most two fix→re-review cycles, then escalate to the operator.
 - The batch summary MUST list every paused/blocked item with its arbitration question — accumulation is visible, never silent.
 
 **Manifest immutability:** Do not edit `items[]` or the manifest during a queue run. Reordering requires stopping the batch and re-validating.

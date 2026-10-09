@@ -225,7 +225,7 @@ Present the findings in this structure in `aiLanguage`. **Translate all labels, 
 ```
 ## <Code Review in aiLanguage>: <diff range or file list>
 
-### Verdict: <Approved | Needs revision | Rejected>
+### Verdict: <Approved | Needs revision | Rejected> (blockLevel: <pass | warning | soft-block | hard-block>)
 
 <2-3 sentence justification grounded in the most serious findings.>
 
@@ -252,6 +252,9 @@ Present the findings in this structure in `aiLanguage`. **Translate all labels, 
 <Findings or "No issues.">
 
 ### Axis G — Blind spots
+<Findings or "No issues.">
+
+### Axis H — Fracture inference
 <Findings or "No issues.">
 
 ### Spec compliance
