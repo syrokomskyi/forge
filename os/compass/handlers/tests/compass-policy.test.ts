@@ -11,6 +11,7 @@ the named-config-error contract.</purpose>
   <item>RFC-1096: initial coverage for resolveCompassPolicy (AC-1..AC-5).</item>
   <item>RFC-1220: step 1 — widen governance-ID tail regex</item>
   <item>RFC-1220: fo-review — F-1 shared forge-yaml fixture, F-2 temp-dir cleanup</item>
+  <item>RFC-1252: harden export pipeline — CI-parity verify-extract, --from-head publish-forge, EC-20 staged lint gate</item>
 </CHANGE_SUMMARY>
 */
 
@@ -163,8 +164,13 @@ describe("resolveCompassPolicy (RFC-1096)", () => {
     const inventoryFile = join(COMPASS_DIR, "handlers", "compass-inventory.ts");
 
     const offenders: string[] = [];
+    // Compass contract blocks are mechanical governance metadata — a recorded
+    // item text may name a consumer command and still be a name, not a path
+    // literal. The documented exemption above only holds if those blocks are
+    // stripped before the substring scan.
+    const compassBlockRe = /<(MODULE_CONTRACT|KEY_DECISIONS|CHANGE_SUMMARY)>[\s\S]*?<\/\1>/g;
     for (const file of collectTsFiles(COMPASS_DIR)) {
-      const source = readFileSync(file, "utf8");
+      const source = readFileSync(file, "utf8").replace(compassBlockRe, "");
       const banned = file === inventoryFile ? bannedInInventory : bannedPathLiterals;
       for (const literal of banned) {
         if (source.includes(literal)) {
