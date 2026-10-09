@@ -27,6 +27,27 @@ Stage only the files this skill produces or modifies. Another agent may be worki
 - **RFC pipeline**: create → audit → enhance → plan → implement (includes review → fix)
 - **ADR pipeline**: create → implement (includes review → fix)
 
+## Review triggers (T1/T2/T3)
+
+Reviews fire on mandatory triggers across the pipeline lifecycle, not only at delivery.
+
+| Trigger | Point | Covered by |
+| --- | --- | --- |
+| T1 — plan review | Before implementation starts | `fo-idea-audit` + `fo-idea-enhance` + `fo-idea-plan` grilling (existing — declared, unchanged) |
+| T2 — checkpoint review | A step checkpoint that records an approach change vs. the plan, or a plan step that consumed >2 fix iterations | `fo-review` invocation scoped to the step diff, `independent` mode preferred |
+| T3 — pre-delivery review | End of `fo-idea-implement` | Existing; `independent` mode by default in the full pipeline |
+
+## Review blocking semantics
+
+`fo-review` verdicts carry `blockLevel` (`pass | warning | soft-block | hard-block`), mapped to `verdict` for backward compatibility (`fo-fix` consumes `verdict` unchanged).
+
+- **`hard-block` (`rejected`)** — the item must be corrected and then undergo a **full** re-review (not a delta on the flagged point) before it may proceed to stamping. At most two fix→re-review cycles inside one pipeline run; a third failure escalates to the operator regardless of mode. In queue mode the item stops before stamping and is recorded as blocked in the batch report; the batch continues.
+- **`soft-block` (`needs-revision` + `escalation: operator`)** — interactive mode: the pipeline pauses and escalates to the operator via a structured question (`acknowledge and continue` / `redirect` / `abort`), presenting stop/redirect as first-class options to counter the continue-bias. Queue mode: the item is paused, recorded in the batch summary as `awaiting operator arbitration`, and the batch continues with the next item.
+- **`warning` (`needs-revision`)** — findings are recorded as tracked observations; unresolved warnings at T3 escalate to `soft-block`.
+- **`pass` (`approved`)** — no fracture signals; zero findings.
+
+**Queue-mode resume:** a parked item resumes by re-invoking the orchestrator with the same manifest — `queue.validate` derives the continuation point from document status (the queue resume contract). Parking never leaves an item stranded without a defined re-entry path. `blocked` remains report language only — never persisted into RFC frontmatter or queue manifests.
+
 ## Minimality ladder
 
 Before writing implementation code, climb the minimality ladder. Stop at the first rung that holds — that is your implementation. The ladder runs after you understand the problem (read the code, trace the flow), not instead of it.

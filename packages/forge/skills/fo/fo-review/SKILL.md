@@ -41,6 +41,23 @@ This skill reviews **code** — `.ts`, `.js`, `.tsx`, `.astro`, `.css`, `.json`,
 - For **RFCs, ADRs, architecture docs, or plans**, use `/fo-idea-audit` instead.
 - For **iterative fix-then-build-then-commit**, use `/fo-fix`.
 
+## Review modes: `inline` vs `independent`
+
+`fo-review` accepts an `independent` flag. **Default: `true` when invoked from a pipeline orchestrator (`fo-idea-i-just-want-to-see-the-result`, `fo-idea-implement`), `false` for ad-hoc in-session review.**
+
+In `independent` mode the reviewing pass executes in a **clean agent context** — a subagent dispatch where the platform provides one — carrying only artifacts:
+
+- the diff range or file list to review;
+- the rubric paths (this skill file, `_shared/fo-pipeline-conventions.md`);
+- the anchor paths (AGENTS.md files, DNA invariants file, relevant specs);
+- raw evidence (command output, failing logs, mechanical floor results).
+
+**Never pass the executor's session narrative, self-assessment, or settled conclusions** — passing them defeats the isolation the mode exists for (veil-of-ignorance contract, shared with the falsified-routes blind-spot pass). The dispatched reviewer's prompt contains artifact paths and the rubric, not the executor's story.
+
+Where the platform exposes no subagent primitive (or policy forbids dispatch), run an `isolated-inline` pass instead: re-derive conclusions only from the artifacts, deliberately ignoring the session's accumulated narrative, and record the fallback. **Never claim `subagent` isolation that did not happen** — the persisted report's `reviewer.isolation` field records the mode actually used (`subagent` | `isolated-inline` | `inline`), so independence is auditable rather than asserted.
+
+An executor that narrows the reviewer's inputs — passing a self-authored summary instead of artifact paths — commits a scope-narrowing violation, itself reportable as a `soft-block` on the review process.
+
 ## Process
 
 ### 1. Identify the diff
@@ -99,7 +116,7 @@ Read the context the diff claims to fit into:
 
 Do not read every file in the repo — only the standards relevant to the diff.
 
-### 4. Run the seven review axes
+### 4. Run the eight review axes
 
 For each axis, check every item. An item either **passes**, **fails** (specific finding with evidence), or is **not applicable** (state why). Skip N/A items silently — do not pad the report.
 
@@ -177,6 +194,15 @@ If the invariants file is absent or the optional binding is unresolvable, state 
 - **Migration path**: existing apps' path to compliance is documented.
 - **Security / privacy**: if the diff touches user data, PII, or external services, it addresses GDPR/privacy and secret management. No cookies (`document.cookie`, `Set-Cookie`). Client-side persistence is `localStorage` only; server-side is `unstorage`.
 
+#### Axis H — Fracture inference
+
+Will this output collapse at the next step? Judge the diff not only for what it is, but for whether the _process that produced it_ is honest:
+
+- **Goal-closure authenticity** — claims of completion vs. verifiable evidence. A marked-done criterion whose checkable trace is absent or hand-waved is a fracture signal.
+- **Ordering-constraint compliance** — skipped preconditions: plan steps executed out of order, dependencies implemented after their dependents, gates bypassed to reach a green run.
+- **Unclosed-marking truthfulness** — deferred or open items actually declared as such; nothing silently dropped from the plan, todo list, or spec.
+- **State-transmission completeness** — would a fresh agent recover this work without the conversation? Checkpoints, persisted reports, and committed artifacts carry the state — not session memory.
+
 ### 5. Check spec compliance
 
 If an original request, spec, PRD, issue, or brief is available (from commit messages, linked issues, or session context), build a gap table:
@@ -239,11 +265,22 @@ Present the findings in this structure in `aiLanguage`. **Translate all labels, 
 3. <Hard question.>
 ```
 
-**Verdict criteria:**
+**Verdict criteria (blocking model):**
 
-- **Approved** — zero findings across all seven axes. Any finding, no matter how minor or cosmetic, disqualifies Approved and forces Needs revision. The rationale: downstream agents treat Approved as a stop signal and stop reading the findings — so even a trivial finding left under Approved gets silently ignored. If there is anything to fix, the verdict must say so.
-- **Needs revision** — one or more findings on any axis, regardless of severity. A one-line cosmetic rename is enough. The agent must not downgrade to Approved based on severity — a finding is a finding.
-- **Rejected** — fundamental flaw: the diff contradicts a DNA invariant, introduces a backward compatibility layer, or bypasses the storage policy.
+Every verdict carries a `blockLevel` — the blocking semantics downstream pipeline skills act on. `verdict` is retained and **derived** from it for backward compatibility (`fo-fix` consumes `verdict` unchanged):
+
+| `blockLevel` | `verdict` | Semantics |
+| --- | --- | --- |
+| `pass` | `approved` | Zero findings across all axes — no fracture signals |
+| `warning` | `needs-revision` | Findings recorded as tracked observations; they must be answered, and unresolved warnings at T3 escalate to `soft-block` |
+| `soft-block` | `needs-revision` + `escalation: operator` | Directional deviation or process violation — suspends the item for operator arbitration (queue mode: item parked, batch continues) |
+| `hard-block` | `rejected` | Fundamental flaw — fix, then **full** re-review (not a delta on the flagged point) before the item may proceed to stamping |
+
+- **Approved (`pass`)** — zero findings across all eight axes. Any finding, no matter how minor or cosmetic, disqualifies Approved and forces Needs revision. The rationale: downstream agents treat Approved as a stop signal and stop reading the findings — so even a trivial finding left under Approved gets silently ignored. If there is anything to fix, the verdict must say so.
+- **Needs revision (`warning` | `soft-block`)** — one or more findings on any axis, regardless of severity. A one-line cosmetic rename is enough (`warning`). Escalate to `soft-block` when the deviation is directional or the review process itself was compromised (e.g. narrowed inputs). The agent must not downgrade to Approved based on severity — a finding is a finding.
+- **Rejected (`hard-block`)** — fundamental flaw: the diff contradicts a DNA invariant, introduces a backward compatibility layer, or bypasses the storage policy.
+
+The `blockLevel` → pipeline semantics (full re-review on `hard-block`, queue parking on `soft-block`, warning escalation at T3) are declared in `_shared/fo-pipeline-conventions.md` §Review blocking semantics.
 
 ### 7. Persist the review
 
@@ -265,8 +302,12 @@ reviewId: REVIEW-CODE-<YYYY-MM-DD>-<NN>
 date: YYYY-MM-DD
 reviewer:
   skill: fo-review
+  isolation: <subagent | isolated-inline | inline>   # the isolation mode actually used
   model: <AI model identifier>
-verdict: <approved | needs-revision | rejected>
+blockLevel: <pass | warning | soft-block | hard-block>  # blocking semantics
+verdict: <approved | needs-revision | rejected>          # derived from blockLevel
+escalation: <none | operator>                            # set when blockLevel = soft-block
+observations: []                                          # tracked warnings carried to T3
 diffRange: <fixed-point>...HEAD
 filesReviewed:
   - <file path>

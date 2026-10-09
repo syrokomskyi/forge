@@ -93,6 +93,12 @@ The orchestrator runs in **queue mode** when the invocation carries `--queue <pa
 
 **Failure:** If an item fails after its error checkpoint, stop the batch. The report names the blocked item id and the remaining item count. `blocked` is in-session report language only — never persist it into frontmatter, manifests, or files. Resume = re-invoke with the same manifest; `queue.validate` derives where to continue.
 
+**Blocking review verdicts:** when a review inside an item's pipeline returns a blocking verdict —
+
+- `blockLevel: soft-block` — **pause only the current item**: record it in the batch summary as `awaiting operator arbitration` together with the review's open question, then continue with the next item. Never auto-resolve an arbitration question. A parked item resumes by re-invoking the orchestrator with the same manifest — `queue.validate` derives the continuation point from document status; parking never strands an item without a defined re-entry path.
+- `blockLevel: hard-block` — the item must be fixed and pass a **full** re-review before stamping. If the fix path is not immediately clear, park the item the same way and continue; the batch report names it blocked.
+- The batch summary MUST list every paused/blocked item with its arbitration question — accumulation is visible, never silent.
+
 **Manifest immutability:** Do not edit `items[]` or the manifest during a queue run. Reordering requires stopping the batch and re-validating.
 
 ## Process
