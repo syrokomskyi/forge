@@ -17,9 +17,6 @@ triggerPhrases: ["по полному пайплайну", "на результ�
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: step 5 — queue-mode section in orchestrator SKILL.md
-
-Add Queue mode section (pre-flight queue.validate, loop semantics, failure handling, manifest immutability) to fo-idea-i-just-want-to-see-the-result SKILL.md, sync .agents copy, add forgeQueueModule row to forge AGENTS.md.</item>
   <item>RFC-1140: queue mode — materialize manifest at invocation from pasted doc list
 
 When the invocation carries >=2 RFC/ADR ids without a manifest path, the orchestrator builds docs/queues/session-<timestamp>.yaml from the pasted order, runs queue.validate, then processes queue mode. Unresolvable ids are named explicitly.</item>
@@ -37,7 +34,8 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
-  <history>RFC-1097, RFC-1250</history>
+  <item>RFC-1250: re-review round 3 — transitive skip wording, cascade test hardening</item>
+  <history>RFC-1097, RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -146,7 +144,7 @@ Apply answers to the ledger (`status: answered`, `answeredAt`), then finalize ea
 
 Process items in manifest order — RFC items run `implement` (which includes review → fix), ADR items run `implement` only:
 
-1. **Skip terminal, parked, and blocked items** — `implemented`/`skipped`, items with `deferred` ledger entries or `open`+`parked: true` entries, QUEUE-07-blocked items (un-parked `open` entries surviving the window), and items whose `dependsOn` target is parked or QUEUE-07-blocked. `queue.validate`'s `next` encodes the same skipping.
+1. **Skip terminal, parked, and blocked items** — `implemented`/`skipped`, items with `deferred` ledger entries or `open`+`parked: true` entries, QUEUE-07-blocked items (un-parked `open` entries surviving the window), and items with any excluded item upstream in their `dependsOn` chain (transitive cascade). `queue.validate`'s `next` encodes the same skipping.
 2. **Ledger-bound implementation** — `fo-idea-implement` reads the ledger at prerequisites: `answered` entries bind; emergent questions auto-resolve and append `auto-resolved` entries; only the enumerated hard-stop class parks the item (§Auto-resolve and log).
 3. **Batch-item checkpoint** — after each item, emit the context checkpoint; **clean-tree gate** before the next item.
 4. **`stopAfter: plan`** — run phases 1–3 (maturation + window + resolution), stop before execution.
