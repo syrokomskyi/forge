@@ -264,7 +264,7 @@ Skills that delegate to `fo-doc-audit`:
 - **`fo-fix`** step 5 ("Documentation audit") — invokes `fo-doc-audit`.
 - **`fo-fix`** merge conflict resolution step 4 ("Documentation audit") — invokes `fo-doc-audit`.
 - **`fo-idea-implement`** step 4.9 ("Documentation audit") — invokes `fo-doc-audit`.
-- **`fo-idea-implement`** ADR-FLOW step 5.6 ("Documentation audit") — invokes `fo-doc-audit`.
+- **`fo-idea-implement`** step 5.6 ("Documentation audit", ADR path) — invokes `fo-doc-audit`.
 
 ## Constraints
 
