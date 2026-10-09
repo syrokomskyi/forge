@@ -59,6 +59,8 @@ Where the platform exposes no subagent primitive (or policy forbids dispatch), r
 
 An executor that narrows the reviewer's inputs — passing a self-authored summary instead of artifact paths — commits a scope-narrowing violation, itself reportable as a `soft-block` on the review process.
 
+**Report persistence is the dispatcher's duty in `independent` mode.** A clean-context reviewer may be read-only and never writes files — it returns findings and verdict. The skill run that dispatched it performs steps 6–7 itself: it assembles the report, builds the YAML frontmatter (`reviewer.isolation` records the mode actually used), and writes the file to `docs/reviews/code/`. A persisted review report without the frontmatter block is a contract violation regardless of which side produced the prose.
+
 ## Process
 
 ### 1. Identify the diff

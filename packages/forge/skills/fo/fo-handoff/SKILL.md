@@ -69,11 +69,7 @@ If the operator passed arguments, treat them as a description of what the next s
 
 ### 4. Commit
 
-Commit the handoff document via `ecosystem.commit` so it survives stash operations and is available to the next session.
-
-```sh
-rtk pnpm exec werkstatt run ecosystem.commit --message "docs: add handoff document"
-```
+Commit the handoff document so it survives stash operations and is available to the next session. Delegate the commit mechanics to `fo-step-commit` (it resolves the project's commit command and staging rules); where the project has no such skill, use its declared ecosystem commit command.
 
 ### 5. Report
 
@@ -82,7 +78,7 @@ Tell the operator the absolute path of the handoff document and suggest opening 
 ## Constraints
 
 - **Save to `docs/handoffs/`** (or the directory resolved from `forge.yaml` `paths.handoffsDir`). Never save to `/tmp/` or other temporary directories.
-- **Commit the handoff document** via `ecosystem.commit` after saving.
+- **Commit the handoff document** after saving (via `fo-step-commit` or the project's ecosystem commit command).
 - **Do not duplicate existing artifacts.** Reference them by path or URL.
 - **Redact sensitive information.** API keys, passwords, PII.
 - **Stage only the handoff file.** See `_shared/fo-pipeline-conventions.md` §Commit discipline.
