@@ -2,13 +2,17 @@
 <MODULE_CONTRACT>
 <purpose>Queue manifest loading and validation (RFC-1140) — YAML parse, zod
 schema, id↔filename stem check, item id pattern, document resolution across
-active and archive dirs, duplicate detection, and dependsOn order warnings.</purpose>
+active and archive dirs, duplicate detection, and dependsOn order warnings.
+Also loads the decision-ledger sibling (RFC-1250).</purpose>
 <non-goals>
   <item>Do not derive item status — that is src/pipeline-status.ts.</item>
   <item>Do not mutate the manifest file.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: loadDecisionLedger — sibling stem.decisions.yaml resolution,
+  schema check on the QUEUE-01 load path; LoadedQueueManifest exposes resolved
+  dependsOn edges for the parking cascade.</item>
   <item>RFC-1140: initial manifest loader and validator.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -22,13 +26,15 @@ import YAML from "yaml";
 
 import type { Diagnostic } from "../../src/types.ts";
 import { resolveDocument } from "../../src/pipeline-status.ts";
-import { QUEUE_ITEM_ID_PATTERN, queueManifestSchema } from "./types.ts";
-import type { QueueManifest } from "./types.ts";
+import { QUEUE_ITEM_ID_PATTERN, decisionLedgerSchema, queueManifestSchema } from "./types.ts";
+import type { DecisionLedger, QueueManifest } from "./types.ts";
 
 export interface LoadedQueueManifest {
   manifest: QueueManifest;
   errors: Diagnostic[];
   warnings: Diagnostic[];
+  /** In-queue dependsOn edges resolved from document frontmatter (RFC-1250 parking cascade). */
+  dependsOn: Map<string, string[]>;
 }
 
 function diag(
@@ -66,7 +72,12 @@ export async function loadQueueManifest(
         displayPath,
       ),
     );
-    return { manifest: { id: "", createdAt: "", items: [] }, errors, warnings };
+    return {
+      manifest: { id: "", createdAt: "", items: [] },
+      errors,
+      warnings,
+      dependsOn: new Map(),
+    };
   }
 
   let raw: unknown;
@@ -81,7 +92,12 @@ export async function loadQueueManifest(
         displayPath,
       ),
     );
-    return { manifest: { id: "", createdAt: "", items: [] }, errors, warnings };
+    return {
+      manifest: { id: "", createdAt: "", items: [] },
+      errors,
+      warnings,
+      dependsOn: new Map(),
+    };
   }
 
   const parsed = queueManifestSchema.safeParse(raw);
@@ -96,7 +112,12 @@ export async function loadQueueManifest(
         ),
       );
     }
-    return { manifest: { id: "", createdAt: "", items: [] }, errors, warnings };
+    return {
+      manifest: { id: "", createdAt: "", items: [] },
+      errors,
+      warnings,
+      dependsOn: new Map(),
+    };
   }
 
   const manifest = parsed.data;
@@ -180,5 +201,78 @@ export async function loadQueueManifest(
     }
   }
 
-  return { manifest, errors, warnings };
+  return { manifest, errors, warnings, dependsOn: resolvedDependsOn };
+}
+
+// ---------------------------------------------------------------------------
+// Decision ledger (RFC-1250) — sibling <stem>.decisions.yaml of the manifest
+// ---------------------------------------------------------------------------
+
+export interface LoadedDecisionLedger {
+  ledger: DecisionLedger | null;
+  errors: Diagnostic[];
+}
+
+/** Manifest `docs/queues/<id>.yaml` → sibling ledger `docs/queues/<id>.decisions.yaml`. */
+export function decisionLedgerPath(manifestPath: string): string {
+  return manifestPath.replace(/\.(ya?ml)$/i, ".decisions.yaml");
+}
+
+/**
+ * Load the decision ledger sibling of a queue manifest. An absent ledger is
+ * legal — it means zero recorded decisions. An unreadable or schema-invalid
+ * ledger joins the manifest load path as a QUEUE-01 blocking error: the ledger
+ * is part of the queue's durable state.
+ */
+export async function loadDecisionLedger(
+  workspaceRoot: string,
+  filePath: string,
+): Promise<LoadedDecisionLedger> {
+  const errors: Diagnostic[] = [];
+  const ledgerPath = decisionLedgerPath(filePath);
+  const absolutePath = path.isAbsolute(ledgerPath)
+    ? ledgerPath
+    : path.join(workspaceRoot, ledgerPath);
+  const displayPath = path.isAbsolute(ledgerPath)
+    ? path.relative(workspaceRoot, ledgerPath)
+    : ledgerPath;
+
+  let source: string;
+  try {
+    source = await fs.readFile(absolutePath);
+  } catch {
+    return { ledger: null, errors };
+  }
+
+  let raw: unknown;
+  try {
+    raw = YAML.parse(source);
+  } catch (e) {
+    errors.push(
+      diag(
+        "QUEUE-01",
+        "error",
+        `Decision ledger YAML parse error: ${e instanceof Error ? e.message : String(e)}`,
+        displayPath,
+      ),
+    );
+    return { ledger: null, errors };
+  }
+
+  const parsed = decisionLedgerSchema.safeParse(raw);
+  if (!parsed.success) {
+    for (const issue of parsed.error.issues) {
+      errors.push(
+        diag(
+          "QUEUE-01",
+          "error",
+          `Decision ledger schema violation at ${issue.path.join(".") || "<root>"}: ${issue.message}`,
+          displayPath,
+        ),
+      );
+    }
+    return { ledger: null, errors };
+  }
+
+  return { ledger: parsed.data, errors };
 }

@@ -19,6 +19,9 @@ os/ or kernel imports.</purpose>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
+  <item>RFC-1250: decision-aware queue report — QueueItemReport gains kind +
+  decisions counts; deriveQueueReport accepts a parkedIds set so `next` never
+  selects a deferred or hard-stopped item.</item>
   <item>RFC-1140: step 6 — cover shared resolver and queue.validate
 
 Add pipeline-status.test.ts (derivation matrix, order, next selection, ADR, skipped) and queue-validate.test.ts (schema errors, unknown/dup ids, id-filename mismatch, empty items, dependsOn warning, JSON shape). Fix queue derivation: pipelineStep is the stage after the last completed stage, not first incomplete — handles non-contiguous artifacts.</item>
@@ -244,6 +247,10 @@ export interface QueueItemReport {
   status: QueueItemStatus;
   /** First incomplete pipeline stage — present only when in-progress. */
   pipelineStep?: PipelineStage;
+  /** Document kind — needed by queue.validate for QUEUE-07 (any non-terminal ADR is implementable). */
+  kind?: QueueDocumentKind;
+  /** Decision-ledger counts (RFC-1250) — present when the queue carries a sibling ledger. */
+  decisions?: { open: number; deferred: number; autoResolved: number };
 }
 
 /**
@@ -266,20 +273,20 @@ export async function deriveQueueItemStatus(
   const implementedAt = fm["implementedAt"] ? String(fm["implementedAt"]) : undefined;
 
   if (status === "implemented" || implementedAt) {
-    return { id: doc.id, status: "implemented" };
+    return { id: doc.id, status: "implemented", kind: doc.kind };
   }
   if (status === "rejected" || status === "superseded") {
-    return { id: doc.id, status: "skipped" };
+    return { id: doc.id, status: "skipped", kind: doc.kind };
   }
 
   // ADR pipeline is create → implement — no intermediate artifacts exist.
   if (doc.kind === "adr") {
-    return { id: doc.id, status: "pending" };
+    return { id: doc.id, status: "pending", kind: doc.kind };
   }
 
   // RFC accepted means the plan step is done by definition.
   if (status === "accepted") {
-    return { id: doc.id, status: "in-progress", pipelineStep: "implement" };
+    return { id: doc.id, status: "in-progress", pipelineStep: "implement", kind: doc.kind };
   }
 
   const enhancedAt = fm["enhancedAt"] ? String(fm["enhancedAt"]) : undefined;
@@ -302,13 +309,13 @@ export async function deriveQueueItemStatus(
     if (stages[i]!.done) lastDone = i;
   }
   if (lastDone === -1) {
-    return { id: doc.id, status: "pending" };
+    return { id: doc.id, status: "pending", kind: doc.kind };
   }
   const nextStage = stages[lastDone + 1];
   if (!nextStage) {
-    return { id: doc.id, status: "pending" };
+    return { id: doc.id, status: "pending", kind: doc.kind };
   }
-  return { id: doc.id, status: "in-progress", pipelineStep: nextStage.stage };
+  return { id: doc.id, status: "in-progress", pipelineStep: nextStage.stage, kind: doc.kind };
 }
 
 export interface QueueReport {
@@ -317,11 +324,16 @@ export interface QueueReport {
   next: string | null;
 }
 
-/** Derive the full queue report, preserving manifest order. */
+/**
+ * Derive the full queue report, preserving manifest order.
+ * `parkedIds` (RFC-1250) excludes deferred/hard-stopped items from `next`
+ * selection — a parked item is not actionable this run.
+ */
 export async function deriveQueueReport(
   workspaceRoot: string,
   itemIds: string[],
   io?: WorkspaceIO,
+  parkedIds?: ReadonlySet<string>,
 ): Promise<QueueReport> {
   const fio = resolveIo(io);
   const items: QueueItemReport[] = [];
@@ -331,6 +343,9 @@ export async function deriveQueueReport(
     // skips them here so a partial report stays usable.
     if (report) items.push(report);
   }
-  const nextItem = items.find((i) => i.status === "pending" || i.status === "in-progress");
+  const nextItem = items.find(
+    (i) =>
+      (i.status === "pending" || i.status === "in-progress") && !(parkedIds?.has(i.id) ?? false),
+  );
   return { items, next: nextItem?.id ?? null };
 }
