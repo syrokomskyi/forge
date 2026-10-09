@@ -383,6 +383,7 @@ describe("runQueueValidate — decision ledger (RFC-1250)", () => {
     const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
 
     expect(result?.data?.status).toBe("fail");
+    expect(result?.data?.errors.some((e) => e.ruleId === "QUEUE-07")).toBe(true);
     // RFC-1551 is pending and has no open decisions, but it depends on a
     // QUEUE-07-blocked item — it must not execute before its dependency.
     expect(result?.data?.next).toBe("RFC-1552");
