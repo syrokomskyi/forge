@@ -91,6 +91,10 @@ For each finding:
 - Do not delete or weaken existing tests without explicit direction.
 - Prefer minimal upstream fixes over downstream workarounds.
 
+**Falsified-routes ledger** — before choosing a fix approach for a finding, read the plan's `## Falsified routes` section when the work item carries a plan file: a `Forbidden retry: yes` row rejects the approach unless you can state a new fact that invalidates its root cause. When a fix approach is abandoned after a real attempt, append a row (route, root cause, falsified-at evidence) before moving on. See `_shared/fo-pipeline-conventions.md` §Falsified-routes ledger.
+
+**Blind-spot pass after two failures on one approach** — after two failed attempts on the same fix approach, and before the next retry or pivot, dispatch a clean-context re-examination using the same artifacts-only contract as `fo-review` `independent` mode: the problem statement, the falsified-routes table, the raw failing-run evidence, and the settled conclusion phrased as a question — never the session narrative or self-assessment. The pass answers one question: is the settled conclusion actually supported by evidence? Where no subagent primitive exists, degrade to an `isolated-inline` re-derive-from-artifacts pass and record that mode. The pass runs once per approach — it never chains recursively.
+
 After applying fixes, update any tests that should cover the change, then run the relevant package tests before the full build when that saves time.
 
 ### 3. Run scoped typecheck verification

@@ -112,6 +112,7 @@ Stage only the files touched by this step. Do not stage unrelated changes — an
   - For oversized new files, decompose into focused modules and import them.
   - Retry the operation with the adjusted approach immediately. The operator's default answer to "Shall I proceed?" is always "yes" — so proceed without asking.
 - **Commit only your own work.** If the working tree has changes from another session or agent, stage only the files relevant to the current step.
+- **Falsified-routes ledger.** Before choosing or changing a step's approach, read the plan's `## Falsified routes` section — a `Forbidden retry: yes` row rejects the approach unless you can state a new fact that invalidates its root cause. When an approach is abandoned after a real attempt, append a row (route, root cause, falsified-at evidence) before moving on. See `_shared/fo-pipeline-conventions.md` §Falsified-routes ledger.
 - **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology.** Use Compass (not GRACE) in all new code, documentation, and log messages.
 
@@ -178,6 +179,8 @@ If any check in step 4.4 fails, fix every error:
    ```
 
 6. If the error is pre-existing (not caused by this RFC's implementation) and is in an impacted workspace, fix it. If the error is in an unimpacted workspace, skip it — it is not this RFC's responsibility.
+7. **Ledger on abandon** — if the failure kills the current approach, append a `## Falsified routes` row to the plan file before switching approaches (route, root cause, falsified-at evidence).
+8. **Blind-spot pass after two failures on one approach** — after two failed attempts on the same approach within this work item, and before the next retry or pivot, dispatch a clean-context re-examination using the same artifacts-only contract as `fo-review` `independent` mode: the problem statement, the falsified-routes table, the raw failing-run evidence, and the settled conclusion phrased as a question — never the session narrative or self-assessment. The pass answers one question: is the settled conclusion ("dead end", "impossible", "only option left") actually supported by evidence? Where no subagent primitive exists, degrade to an `isolated-inline` re-derive-from-artifacts pass and record that mode. The pass runs once per approach — it never chains recursively.
 
 Continue until all impacted checks pass.
 
@@ -464,6 +467,8 @@ If any check fails, fix every error:
 
    <one-line description of the root cause and fix>.
    ```
+
+The falsified-routes ledger and blind-spot rules from step 4.3/4.5 apply identically here: consult the plan's `## Falsified routes` before switching approaches, append a row on abandon, and run the clean-context blind-spot pass after two failures on one approach (when the work item carries a plan file — otherwise record falsified routes in the session output).
 
 Continue until all impacted checks pass.
 

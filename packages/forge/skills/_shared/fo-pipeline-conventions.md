@@ -269,6 +269,7 @@ When the orchestrator skill implements a single RFC with >=5 plan steps, perform
    - `commit`: SHA of the commit produced by this step
    - `decisions`: 1-3 short freeform sentences capturing key micro-decisions made during this step (e.g., "used flag instead of new command", "skipped validator X because it's in package Y, not in scope")
    - `errors`: list of errors encountered and fixed during this step — empty if none
+   - `unclosed`: list of `{ item, state: closed | unclosed | undecidable }` for every multi-item checklist the step carried — mandatory when a checklist exists (§Tri-state closure marking); three or more `undecidable` entries escalate to the operator
    - `nextStep`: number of the next plan step, or `null` if this was the last
 2. **Release step context** — treat all detailed context from the completed step as no longer actionable: codebase search results, file reads, edit operations, validation output. Retain only the step-checkpoint block and the RFC's plan file.
 3. **Fresh start** — begin the next plan step with a fresh read of the plan file and the specific files the next step touches.
@@ -296,6 +297,34 @@ When a pipeline step fails and cannot be auto-fixed within 2 attempts (per §Com
 3. **Report to operator** — present the error checkpoint in `aiLanguage` and ask the operator how to proceed: fix manually, skip the step, or abort the RFC.
 
 The error checkpoint doubles as a resume marker: when resuming an interrupted session, scan for the last error checkpoint. If found, resume from the failed step using the partialState and resumePoint fields.
+
+## Falsified-routes ledger
+
+Plan files (`docs/plans/plan-*.md`) MAY carry a `## Falsified routes` section — the negative-knowledge ledger for the work item:
+
+```markdown
+## Falsified routes
+
+| Route | Root cause | Falsified at | Forbidden retry |
+| --- | --- | --- | --- |
+| <approach tried> | <why it cannot work — the evidence, not the vibe> | <commit-sha or date> | yes \| no |
+```
+
+Rules for `fo-idea-implement` and `fo-fix`:
+
+- **Append on abandon** — when an approach is abandoned after a real attempt (not merely considered and skipped), append a row with the route, the root cause discovered, and falsified-at evidence (commit SHA or date). Never write prose instead of rows.
+- **Consult before proposing** — before proposing an alternative route, read the plan's `## Falsified routes` section. A `Forbidden retry: yes` row rejects a matching proposal unless the proposal states a new fact that invalidates the recorded root cause.
+- **Rows are never deleted** — a superseded route gets a `revivedAt` annotation, matching criterion-versioning discipline. An empty or absent section is legal: the ledger is required only when an approach was actually abandoned.
+- `blocked` and `falsified` are report and ledger vocabulary — never persist them into RFC frontmatter or queue manifests.
+
+## Tri-state closure marking
+
+Checkpoint blocks and handoff documents declare their open items with a tri-state value — `closed | unclosed | undecidable` — so that "silently forgotten" is distinguishable from "done".
+
+- **Mandatory-if-any:** wherever a checkpoint or handoff carries a multi-item checklist or unclosed-items structure, the `unclosed` list is mandatory and must state every item: `unclosed: [{ item, state: closed | unclosed | undecidable }]`. Where the anchor is a simple declare/verify with no checklist structure, `unclosed` may be absent entirely — the mandate binds the structure, not every anchor.
+- **Absence is never success:** an item absent from `unclosed` after the checkpoint executes is treated as `undecidable`.
+- **`undecidable` is explicit and legal:** an executor that cannot determine closure records `undecidable` — never silence.
+- **Escalation:** a checkpoint carrying three or more `undecidable` items escalates to the operator instead of continuing — the tri-state exists to surface uncertainty, not to warehouse it.
 
 ## Pipeline continuation
 
