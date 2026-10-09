@@ -5,6 +5,7 @@ sets, symlink skip, and AST fact extraction per kind (RFC-1099).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial model tests at the public buildWorkspaceModel seam.</item>
+  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
 </CHANGE_SUMMARY>
 */
 
@@ -86,7 +87,7 @@ describe("buildWorkspaceModel", () => {
         'import { x } from "react";',
         'import type { T } from "./types";',
         'import "reflect-metadata";',
-        'const m = await import("./lazy");',
+        'const m = await import("./lazy.ts");',
         'const r = require("./cjs");',
       ].join("\n"),
     );
@@ -98,7 +99,7 @@ describe("buildWorkspaceModel", () => {
       ["react", "static"],
       ["./types", "type-only"],
       ["reflect-metadata", "side-effect"],
-      ["./lazy", "dynamic"],
+      ["./lazy.ts", "dynamic"],
       ["./cjs", "require"],
     ]);
   });

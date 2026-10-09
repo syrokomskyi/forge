@@ -19,13 +19,7 @@ io.writeFile port routing, dry-run summary marker; serializeEvidenceEnvelope —
 shared emit-canonical serializer restoring the structured YAML marker-key
 header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
 with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
-  <item>Session-retro 2026-10-08: sweep delta report — reads the committed
-envelope baseline (previousOverall) and reports recovered/regressed
-transitions so a fail-heavy sweep needs no manual pass/fail triage.</item>
-  <item>Session-retro 2026-10-08: --concurrency flag (default 1, garbage values
-warn + fall back to 1, >16 clamps) fans emit out across RFC units via
-mapWithConcurrency while probes inside one RFC stay sequential — envelope
-ordering stays deterministic.</item>
+  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
 </CHANGE_SUMMARY>
 */
 

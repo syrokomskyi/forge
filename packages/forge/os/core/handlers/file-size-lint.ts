@@ -14,6 +14,7 @@ collectFiles and diagnosticsResult. Ratcheted baseline at workspace root.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1088: initial implementation — ported from packages/werkstatt-site/src/checks/file-size-lint.ts to forge for autonomy.</item>
+  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
 </CHANGE_SUMMARY>
 */
 
@@ -53,6 +54,7 @@ export function countLines(source: string): number {
 async function collectSourceFiles(root: string): Promise<string[]> {
   const results: string[] = [];
 
+  // fs.walk.lint: allow — walks via WorkspaceIO abstraction (io.readdir), not node fs — collectFiles has no io contract
   async function walk(dir: string): Promise<void> {
     let entries;
     try {

@@ -6,13 +6,15 @@
   <item>Do not validate markdown link targets — only the XML semantic layer is gated (markdown sweep is manual).</item>
   <item>Do not mutate anything — this handler is read-only; pruning lives on compass.audit.validate --prune.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Tag-stack tokenizer instead of an XML dependency — the corpus is small authored XML; a balance check catches the literal-tag breakage class (COMPASS-DOC-00) without pulling fast-xml-parser.</item>
-  <item>DOC-03 link targets resolve to declared node ids OR file/dir conventions — dangling-by-convention stays a warning, never an error.</item>
+  <item>Tag-stack tokenizer over an XML dependency — small authored corpus; a balance check catches literal-tag breakage (COMPASS-DOC-00).</item>
+  <item>Link targets resolve to declared node ids OR file/dir conventions (DOC-03) — dangling-by-convention stays a warning, never an error.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1242: review fixes — self-close detection strips quoted attr values first (a="foo/" no longer fakes a self-close), non-backticked path tokens get the same ellipsis strip, docs.* link slugs keep their basename prefix (docs.plans.plan-rfc-* resolves).</item>
   <item>RFC-1242: created — scan docs/*.xml for unresolvable paths, workspace ids, and link targets (COMPASS-DOC-00..03).</item>
+  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
 </CHANGE_SUMMARY>
 */
 
@@ -210,7 +212,7 @@ async function linkTargetResolves(
   const docsId = /^docs\.([a-z-]+)\.(.+)$/.exec(target);
   if (docsId) {
     const [, dir, slug] = docsId;
-    const hits = await io.glob(`${dir}/**/*${slug}*.md`, { cwd: docsDir }).catch(() => []);
+    const hits = await io.glob(`${docsId[1]}/**/*${slug}*.md`, { cwd: docsDir }).catch(() => []);
     if (hits.length > 0) return "file";
     // generic fallback: any file whose basename contains the slug under docs/
     const broad = await io.glob(`**/*${slug}*`, { cwd: docsDir }).catch(() => []);

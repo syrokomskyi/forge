@@ -21,6 +21,7 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
+  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
 </CHANGE_SUMMARY>
 */
 
@@ -46,6 +47,7 @@ export interface DefineTsCheckInput {
   reads: string[];
   contract: string;
   rules: string[];
+  modulePath: string;
   check: (model: TsWorkspaceModel) => Diagnostic[];
 }
 
@@ -67,6 +69,7 @@ export function defineTsCheck(input: DefineTsCheckInput): KernelCommandDefinitio
     mutatesState: false,
     contract: input.contract,
     rules: input.rules,
+    modulePath: input.modulePath,
     description: input.description,
     scope: "workspace",
     cacheable: true,
