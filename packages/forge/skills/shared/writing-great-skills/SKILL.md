@@ -19,6 +19,7 @@ languagePolicy: ref(PREFERENCES.md)
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1247: close RFC-1247 review r2 — CHANGE_SUMMARY items on six touched skills, fo-handoff in AGENTS enumeration, glossary applied-instance pointer, recorded per-skill phrase split</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -37,7 +38,7 @@ Two choices, trading different costs:
 
 Pick model-invocation only when the agent must reach the skill on its own, or another skill must. If it only ever fires by hand, make it user-invoked and pay no context load.
 
-When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each.
+When user-invoked skills multiply past what you can remember, that piled-up cognitive load is cured by a **router skill**: one user-invoked skill that names the others and when to reach for each. (Applied instance: `fo-idea-i-just-want-to-see-the-result` — see GLOSSARY.md.)
 
 ## Writing the description
 
