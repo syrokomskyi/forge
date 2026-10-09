@@ -12,6 +12,7 @@ helper module (RFC-0362 §6).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0362: initial operation.validate command handler.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode. Uses node:fs/promises directly instead of context.io.</item>
+  <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,8 +26,8 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
-const SCAN_DIR = "packages/os/site-kernel-handoff/src";
-const ALLOWLIST_DIR = "packages/os/site-kernel-handoff/src/werkstatt";
+const SCAN_DIR = "packages/werkstatt-engine/src/handoff";
+const ALLOWLIST_DIR = "packages/werkstatt-engine/src/werkstatt";
 
 const DIRECT_WRITE_PATTERNS: Array<{ regex: RegExp; label: string }> = [
   { regex: /\bwriteFile\s*\(/g, label: "writeFile" },
@@ -56,10 +57,15 @@ export async function runWerkstattOperationValidate(
 
   const violations: Array<{ file: string; line: number; pattern: string }> = [];
 
-  const PRE_EXISTING_ALLOWLIST = new Set(["handoff-pack.ts", "materialize.ts", "bundle-io.ts"]);
+  const PRE_EXISTING_ALLOWLIST = new Set([
+    "handoff-pack.ts",
+    "materialize.ts",
+    "bundle-io.ts",
+    "platform-consistency.ts",
+  ]);
 
   for (const filePath of files) {
-    if (filePath.startsWith(allowlistPath) || filePath.includes("werkstatt")) continue;
+    if (filePath.startsWith(allowlistPath)) continue;
 
     const fileName = basename(filePath);
     if (fileName.endsWith(".test.ts") || fileName.endsWith(".spec.ts")) continue;

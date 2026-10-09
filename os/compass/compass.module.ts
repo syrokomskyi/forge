@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1242: compass.docs.validate (docs/*.xml path/id/link-target gate, COMPASS-DOC-00..03) + compass.audit.validate --prune via mutatingFlags.</item>
-  <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
@@ -19,7 +17,8 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
-  <history>RFC-0374, RFC-0538, RFC-0556</history>
+  <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
+  <history>RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
@@ -96,7 +95,7 @@ export const forgeCompassModule: ForgeModule = {
       flags: { ...compassScanFlags, mode: compassModeFlag },
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
-        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}", // scan-coverage: consumer-workshop root — apps/ exists in consumer workshops, not this monorepo
         "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "docs/source-markup.xml",
       ],
@@ -297,7 +296,7 @@ export const forgeCompassModule: ForgeModule = {
       },
       reads: [
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
-        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}", // scan-coverage: consumer-workshop root — apps/ exists in consumer workshops, not this monorepo
         "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "docs/compass-audit-ledger.generated.yaml",
       ],
