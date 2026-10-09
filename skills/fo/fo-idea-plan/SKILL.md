@@ -146,7 +146,7 @@ If exploration surfaces no open questions, skip this step and proceed directly t
 
 ### 4. Draft the plan
 
-Copy `docs/plans/plan-0000-template.md` and fill it, incorporating the user's answers from step 3. Each step must have a **completion criterion** — a checkable condition that tells the agent the step is done.
+Copy `docs/plans/plan-0000-template.md` and fill it, incorporating the user's answers from step 3. Each step must have a **completion criterion** — a checkable condition that tells the agent the step is done. Keep the template's `## Falsified routes` ledger section — implementing skills append to it when an approach is abandoned after a real attempt (see `_shared/fo-pipeline-conventions.md` §Falsified-routes ledger).
 
 Step ordering follows the contract-first pattern:
 
