@@ -206,6 +206,12 @@ export interface ForgeCommandMetadata {
    * with GateMetadata from @warpgogol/site-kernel. Does NOT affect execution.
    */
   gate?: GateMetadata;
+  /**
+   * RFC-1243: coverage declaration for commands with no mechanical invocation
+   * record. Structurally mirrors KernelCommandMetadata.
+   */
+  coverage?: "operator" | "ci" | "delegated";
+  coverageNote?: string;
 }
 
 // ---------------------------------------------------------------------------

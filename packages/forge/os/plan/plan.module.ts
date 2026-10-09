@@ -22,6 +22,8 @@ export async function createForgePlanModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "plan.archive",
+        coverage: "delegated",
+        coverageNote: "dispatched by docs.archive as a function call",
         description:
           "Move plan files whose parent RFC has terminal status " +
           "(implemented, rejected, superseded) into docs/plans/archive/<status>/ " +

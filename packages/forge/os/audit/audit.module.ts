@@ -22,6 +22,8 @@ export async function createForgeAuditModule(): Promise<ForgeModule> {
     commands: [
       {
         name: "audit.archive",
+        coverage: "delegated",
+        coverageNote: "dispatched by docs.archive as a function call",
         description:
           "Move audit files whose parent RFC has terminal status " +
           "(implemented, rejected, superseded) into docs/audits/archive/<status>/ " +
