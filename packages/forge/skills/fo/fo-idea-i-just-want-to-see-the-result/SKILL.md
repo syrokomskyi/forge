@@ -26,6 +26,7 @@ Add Queue mode section (pre-flight queue.validate, loop semantics, failure handl
   <item>RFC-1140: queue mode — materialize manifest at invocation from pasted doc list
 
 When the invocation carries >=2 RFC/ADR ids without a manifest path, the orchestrator builds docs/queues/session-<timestamp>.yaml from the pasted order, runs queue.validate, then processes queue mode. Unresolvable ids are named explicitly.</item>
+  <item>RFC-1247: regen agents-generate golden fixture, add fo-handoff route row, PREFERENCES pipeline-intent caveat (RFC-1247)</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -61,6 +62,7 @@ This skill is the operator's single front door. Before document-id detection, cl
 | «исправим», "fix all", persisted review findings | `fo-fix`; do not enter implement |
 | Session-end phrases («завершаем сессию», «протокол завершения») | `fo-session-retro` contract — never a pipeline |
 | Commit intent («закоммитим», "commit this", staged-step commit requests) | `fo-step-commit` |
+| Handoff intent ("create a handoff", "compact conversation", "prepare handoff") | `fo-handoff` |
 | Open-mission / Sternsystem work («работаем над миссией», `wg-*` names) | the named `wg-*` skill |
 | «нам надо закрыть открытые вопросы», exploratory ideas | `fo-explore` or `fo-idea` (existing step 0) |
 | Ambiguous | ask the operator — never default to implement on ambiguity |

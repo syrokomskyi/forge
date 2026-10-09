@@ -110,29 +110,29 @@ When the operator expresses an intent in natural language, the agent routes to t
 | "manage Compass headers", "annotate source files with Compass", "audit Compass module contracts"                                                          | `fo-compass-annotate`                   |
 | "design summit", "multi-persona review", "party mode"                                                                                                     | `fo-design-summit`                      |
 | "audit documentation sync", "update docs after code changes", "check AGENTS.md and README are in sync"                                                    | `fo-doc-audit`                          |
-| "explore this idea", "let me think about this", "what are the options for", "what if we"                                                                  | `fo-explore`                            |
+| "нам надо закрыть открытые вопросы", "explore this idea", "let me think about this", "what are the options for", "what if we"                             | `fo-explore`                            |
 | "extract DNA invariant", "discover architectural invariants", "formalize implicit architectural rules"                                                    | `fo-extract-dna`                        |
-| "fix issues from review", "apply review findings and fix", "iterative fix workflow for code"                                                              | `fo-fix`                                |
+| "исправим", "примени findings", "fix all", "fix issues from review", "apply review findings and fix"                                                      | `fo-fix`                                |
 | "create a handoff document", "compact conversation for next agent", "prepare handoff for another agent"                                                   | `fo-handoff`                            |
 | "harvest portable patterns from code", "extract reusable code pattern to forge", "port this pattern to forge"                                             | `fo-harvest`                            |
 | "I have an idea for a change", "analyze this idea and route it", "decompose this feature idea", "does this need an RFC", "should I write an ADR for this" | `fo-idea`                               |
 | "audit this RFC", "check RFC for ecosystem fit", "review RFC against DNA and forward-only rules"                                                          | `fo-idea-audit`                         |
 | "record this architectural decision", "create an ADR", "document a local technical decision"                                                              | `fo-idea-create-adr`                    |
-| "draft an RFC", "create a full RFC", "scaffold an RFC from template"                                                                                      | `fo-idea-create-rfc`                    |
+| "подготовим RFC", "draft an RFC", "create a full RFC", "scaffold an RFC from template"                                                                    | `fo-idea-create-rfc`                    |
 | "enhance this RFC", "fix audit findings in RFC", "improve RFC based on audit"                                                                             | `fo-idea-enhance`                       |
 | "I just want to see the plan", "plan this feature without implementing", "run idea to plan pipeline"                                                      | `fo-idea-i-just-want-to-see-the-plan`   |
-| "I just want to see the result", "run the full pipeline automatically", "implement this end-to-end without pauses"                                        | `fo-idea-i-just-want-to-see-the-result` |
+| "по полному пайплайну", "на результат", "реализуй RFC", "I just want to see the result", "implement this end-to-end without pauses"                       | `fo-idea-i-just-want-to-see-the-result` |
 | "implement this RFC", "execute the implementation plan", "realize this RFC end-to-end"                                                                    | `fo-idea-implement`                     |
 | "plan the implementation for this RFC", "create implementation plan", "map affected artifacts and draft steps"                                            | `fo-idea-plan`                          |
 | "show RFC and ADR status", "what is the status of this RFC", "list RFCs by status"                                                                        | `fo-idea-status`                        |
 | "distill knowledge", "compact skill knowledge", "knowledge lifecycle", "promote fix patterns"                                                             | `fo-knowledge-distill`                  |
 | "sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"                           | `fo-memory-sync`                        |
 | "I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"                                            | `fo-qa`                                 |
-| "review this code diff", "check code against Forge standards", "fitness check on code changes"                                                            | `fo-review`                             |
-| "session retrospective", "triage session discoveries", "Завершаем эту сессию", "End session", "/session-end"                                              | `fo-session-retro`                      |
+| "проверим всё ли сделали правильно", "проверь изменения", "review this session", "review this code diff", "check code against Forge standards"            | `fo-review`                             |
+| "завершаем", "протокол завершения", "Завершаем эту сессию", "session retrospective", "End session"                                                        | `fo-session-retro`                      |
 | "save this session", "enhance session transcript with annotations", "save session with quality checks"                                                    | `fo-session-save`                       |
 | "ingest external specification", "vendor spec package into docs", "author spec skeleton"                                                                  | `fo-spec-ingest`                        |
-| "commit after request", "auto-commit changes", "step commit"                                                                                              | `fo-step-commit`                        |
+| "закоммитим", "commit after request", "auto-commit changes", "step commit"                                                                                | `fo-step-commit`                        |
 | "triage this issue", "categorize incoming bug report", "triage external pull request", "process feature request"                                          | `fo-triage`                             |
 
 The agent uses judgment to calibrate routing — minor edits (typo fixes, small CSS changes) do not require skill invocation, while significant changes (new features, architectural decisions) do.
