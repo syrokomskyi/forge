@@ -20,6 +20,9 @@ triggerPhrases: ["исправим", "примени findings", "fix all", "fix 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1250: orchestrated-run contract — ambiguous findings auto-resolve
+  with auto-resolved ledger entries; hard-stop class parks the item instead of
+  asking.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -88,7 +91,7 @@ If the review used the legacy format (`[Critical errors]`, `[Warnings]`, `[Concr
 For each finding:
 
 - If it includes a concrete line range or code snippet, apply the change directly.
-- If it is ambiguous, ask the user before changing.
+- If it is ambiguous, ask the user before changing — **except under an orchestrated queue run**: never call `ask_user_question` there. Auto-resolve the ambiguity with the recommended option and append a ledger entry `status: auto-resolved`; if the ambiguity falls in the hard-stop class (§Auto-resolve and log), append `status: open` + `parked: true` and park the item instead.
 - Do not delete or weaken existing tests without explicit direction.
 - Prefer minimal upstream fixes over downstream workarounds.
 
