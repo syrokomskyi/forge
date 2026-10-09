@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0394: initial spec schema — forge/spec@1, integrity manifest, decision/rfc/wave types.</item>
+  <item>RFC-1240: consumers field on roadmap nodes (consumer ownership filtering); severity field on SpecViolation for warning diagnostics.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,6 +39,8 @@ export const specRfcNodeSchema = z.object({
   wave: z.number().int().min(1),
   sources: z.array(z.string()).default([]),
   materializedAs: z.string().optional(),
+  /** RFC-1240: consumer ownership — absent means the node materializes everywhere. */
+  consumers: z.array(z.string().min(1)).optional(),
 });
 
 export type SpecRfcNode = z.infer<typeof specRfcNodeSchema>;
@@ -95,6 +98,8 @@ export type SpecIntegrity = z.infer<typeof specIntegritySchema>;
 export interface SpecViolation {
   rule: string;
   message: string;
+  /** RFC-1240: warnings (e.g. missing consumer identity) do not fail validation. */
+  severity?: "error" | "warning";
 }
 
 export interface SpecValidateResult {

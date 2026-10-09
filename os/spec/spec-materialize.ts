@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0396: initial spec.materialize handler — front computation, scaffold via rfc.create, materializedAs write-back.</item>
+  <item>RFC-1240: consumer-aware front — consumers ownership gate, foreign-dep satisfaction, foreignOwned result field, --consumer flag resolution.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,6 +56,8 @@ interface SpecMaterializeResult {
   created: MaterializedNode[];
   skipped: SkippedNode[];
   front: string[];
+  /** RFC-1240: nodes excluded from the front by consumer ownership. */
+  foreignOwned: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +97,7 @@ export async function runSpecMaterialize(
         created: [],
         skipped: [],
         front: [],
+        foreignOwned: [],
       },
       exitCode: 1,
       summary: "spec.materialize: --spec=<id> is required",
@@ -101,12 +105,16 @@ export async function runSpecMaterialize(
   }
 
   let specsDir = "docs/specs";
+  let configConsumer: string | undefined;
   try {
     const config = loadForgeConfig(workspaceRoot);
     specsDir = config.paths.specsDir;
+    configConsumer = config.project.consumer;
   } catch {
     // Use default
   }
+  // RFC-1240: --consumer flag wins; otherwise forge.yaml project.consumer; else no identity.
+  const localConsumer = (input.flags["consumer"] as string | undefined) ?? configConsumer;
 
   const specDir = path.join(workspaceRoot, specsDir, specId);
   const forgeSpecPath = path.join(specDir, "forge-spec.yaml");
@@ -120,6 +128,7 @@ export async function runSpecMaterialize(
         created: [],
         skipped: [],
         front: [],
+        foreignOwned: [],
       },
       exitCode: 1,
       summary: `spec.materialize: forge-spec.yaml not found for spec '${specId}'`,
@@ -136,6 +145,7 @@ export async function runSpecMaterialize(
         created: [],
         skipped: [],
         front: [],
+        foreignOwned: [],
       },
       exitCode: 1,
       summary: `spec.materialize: forge-spec.yaml schema violation for spec '${specId}'`,
@@ -153,6 +163,7 @@ export async function runSpecMaterialize(
         created: [],
         skipped: [],
         front: [],
+        foreignOwned: [],
       },
       exitCode: 1,
       summary: `spec.materialize: spec '${specId}' is not accepted (status: ${spec.status}). Run /fo-spec-ingest to complete acceptance.`,
@@ -220,10 +231,33 @@ export async function runSpecMaterialize(
     }
   }
 
-  // Compute front: unmaterialized nodes whose deps are all implemented
+  // RFC-1240: consumer ownership — a node with `consumers` is ours only when the
+  // resolved local consumer identity is a member. Without local identity every
+  // consumer-declared node is treated as not locally owned.
+  const nodeById = new Map(spec.rfcs.map((n) => [n.id, n]));
+  const ownsNode = (node: SpecRfcNode): boolean =>
+    !node.consumers ||
+    (localConsumer != null && node.consumers.includes(localConsumer));
+  const depSatisfied = (depId: string): boolean => {
+    if (nodeState.get(depId) === "implemented") return true;
+    const depNode = nodeById.get(depId);
+    // Foreign-consumer dependency: an implementation duty of another consumer.
+    return (
+      depNode?.consumers != null &&
+      localConsumer != null &&
+      !depNode.consumers.includes(localConsumer)
+    );
+  };
+  const foreignOwned = spec.rfcs
+    .filter((n) => n.consumers != null && !ownsNode(n))
+    .map((n) => n.id);
+
+  // Compute front: unmaterialized, locally-owned nodes whose deps are all
+  // implemented or foreign-owned (RFC-1240).
   function isFront(node: SpecRfcNode): boolean {
     if (node.materializedAs) return false;
-    return node.dependsOn.every((dep) => nodeState.get(dep) === "implemented");
+    if (!ownsNode(node)) return false;
+    return node.dependsOn.every(depSatisfied);
   }
 
   const frontNodes = spec.rfcs.filter(isFront);
@@ -241,8 +275,14 @@ export async function runSpecMaterialize(
       if (!node) {
         skipped.push({ node: nodeId, reason: "node not found in spec" });
       } else if (!isFront(node)) {
-        const blockers = node.dependsOn.filter((d) => nodeState.get(d) !== "implemented");
-        skipped.push({ node: nodeId, reason: `blocked by ${blockers.join(", ")}` });
+        if (node.consumers != null && localConsumer == null) {
+          skipped.push({ node: nodeId, reason: "consumer identity not configured" });
+        } else if (!ownsNode(node)) {
+          skipped.push({ node: nodeId, reason: `foreign-owned by ${node.consumers!.join(", ")}` });
+        } else {
+          const blockers = node.dependsOn.filter((d) => !depSatisfied(d));
+          skipped.push({ node: nodeId, reason: `blocked by ${blockers.join(", ")}` });
+        }
       } else {
         toMaterialize.push(node);
       }
@@ -256,6 +296,7 @@ export async function runSpecMaterialize(
           created: [],
           skipped,
           front: frontNodes.map((n) => n.id),
+          foreignOwned,
         },
         exitCode: 1,
         summary: `spec.materialize: all requested nodes blocked or not found`,
@@ -293,6 +334,7 @@ export async function runSpecMaterialize(
         created: [],
         skipped: [],
         front: frontNodes.map((n) => n.id),
+        foreignOwned,
       },
       exitCode: 1,
       summary: `spec.materialize: RFC template not found at ${templatePath}`,
@@ -373,6 +415,9 @@ export async function runSpecMaterialize(
     if (remainingFront.length > 0) {
       logger.info(`Remaining front: ${remainingFront.join(", ")}`);
     }
+    if (foreignOwned.length > 0) {
+      logger.info(`Foreign-owned nodes (excluded from front): ${foreignOwned.join(", ")}`);
+    }
   }
 
   return {
@@ -383,6 +428,7 @@ export async function runSpecMaterialize(
       created,
       skipped,
       front: remainingFront,
+      foreignOwned,
     },
     exitCode: 0,
     summary: `spec.materialize: created ${created.length} RFC(s) from spec '${specId}'`,

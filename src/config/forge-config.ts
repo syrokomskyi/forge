@@ -192,6 +192,8 @@ export const forgeConfigSchema = z
       packageManager: z.enum(["pnpm", "npm", "yarn", "bun", "none"]).default("pnpm"),
       // RFC-0640: optional domain field — absent means software-domain fallback
       domain: z.string().optional(),
+      /** RFC-1240: local consumer identity — absent means no consumer-aware spec filtering. */
+      consumer: z.string().optional(),
     }),
     paths: z.object({
       rfcsDir: z.string().default("docs/rfcs"),
@@ -234,6 +236,8 @@ export interface ForgeConfig {
     packageManager: "pnpm" | "npm" | "yarn" | "bun" | "none";
     /** RFC-0640: optional domain field — absent means software-domain fallback */
     domain?: string;
+    /** RFC-1240: local consumer identity — absent means no consumer-aware spec filtering */
+    consumer?: string;
   };
   paths: {
     rfcsDir: string;

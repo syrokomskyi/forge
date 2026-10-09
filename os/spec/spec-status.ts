@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0396: initial spec.status handler — per-node states, blockers, front, progress.</item>
+  <item>RFC-1240: consumer-aware front — foreignOwned flag/list, foreign deps are not local blockers, --consumer flag resolution.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -37,6 +38,8 @@ interface SpecNodeStatus {
   materializedAs?: string;
   wave: number;
   blockedBy: string[];
+  /** RFC-1240: true when the node is owned by other consumers (excluded from front). */
+  foreignOwned: boolean;
 }
 
 interface SpecProgress {
@@ -49,6 +52,8 @@ interface SpecStatusEntry {
   status: string;
   nodes: SpecNodeStatus[];
   front: string[];
+  /** RFC-1240: nodes excluded from the front by consumer ownership. */
+  foreignOwned: string[];
   progress: SpecProgress;
   amendments?: {
     proposed: number;
@@ -138,6 +143,8 @@ function computeFront(
 ): string[] {
   return nodes
     .filter((n) => n.state === "unmaterialized")
+    // RFC-1240: foreign-owned nodes are never on the local front.
+    .filter((n) => !n.foreignOwned)
     .filter((n) => n.blockedBy.every((dep) => {
       const depNode = nodeMap.get(dep);
       return depNode?.state === "implemented";
@@ -156,12 +163,16 @@ export async function runSpecStatus(
   const { workspaceRoot, logger, outputFormat } = context;
 
   let specsDir = "docs/specs";
+  let configConsumer: string | undefined;
   try {
     const config = loadForgeConfig(workspaceRoot);
     specsDir = config.paths.specsDir;
+    configConsumer = config.project.consumer;
   } catch {
     // Use default
   }
+  // RFC-1240: --consumer flag wins; otherwise forge.yaml project.consumer; else no identity.
+  const localConsumer = (input.flags["consumer"] as string | undefined) ?? configConsumer;
 
   const specsRoot = path.join(workspaceRoot, specsDir);
   const rfcDir = path.join(workspaceRoot, "docs", "rfcs");
@@ -198,9 +209,23 @@ export async function runSpecStatus(
         else state = "draft";
       }
 
+      // RFC-1240: a node with `consumers` not containing the local consumer
+      // identity (or any `consumers` when identity is absent) is foreign-owned.
+      const foreignOwned =
+        node.consumers != null &&
+        (localConsumer == null || !node.consumers.includes(localConsumer));
+
       const blockedBy = node.dependsOn.filter((dep) => {
         const depNode = spec.rfcs.find((n) => n.id === dep);
         if (!depNode) return false;
+        // RFC-1240: a dependency owned by other consumers is not a local blocker.
+        if (
+          depNode.consumers != null &&
+          localConsumer != null &&
+          !depNode.consumers.includes(localConsumer)
+        ) {
+          return false;
+        }
         if (!depNode.materializedAs) return true;
         const depStatus = rfcStatuses.get(depNode.materializedAs);
         return depStatus !== "implemented";
@@ -212,6 +237,7 @@ export async function runSpecStatus(
         materializedAs: node.materializedAs,
         wave: node.wave,
         blockedBy,
+        foreignOwned,
       };
       nodes.push(nodeStatus);
       nodeMap.set(node.id, nodeStatus);
@@ -240,6 +266,7 @@ export async function runSpecStatus(
       status: spec.status,
       nodes,
       front,
+      foreignOwned: nodes.filter((n) => n.foreignOwned).map((n) => n.id),
       progress,
       amendments: {
         proposed: amendments.filter((a) => a.status === "proposed").length,
@@ -261,6 +288,9 @@ export async function runSpecStatus(
           `Progress: ${entry.progress.implemented}/${entry.progress.total} implemented`,
         );
         logger.info(`Front: ${entry.front.join(", ") || "(none)"}`);
+        if (entry.foreignOwned.length > 0) {
+          logger.info(`Foreign-owned: ${entry.foreignOwned.join(", ")}`);
+        }
         for (const node of entry.nodes) {
           const blocked = node.blockedBy.length > 0
             ? ` [blocked by ${node.blockedBy.join(", ")}]`

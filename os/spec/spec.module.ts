@@ -16,6 +16,7 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1234: spec.live.validate description lists V-LS-09 drift rule.</item>
+  <item>RFC-1240: --consumer flag on spec.validate/spec.status/spec.materialize; SPEC-12/13 rules in spec.validate description.</item>
   <history>RFC-0394, RFC-0396, RFC-0711</history>
 </CHANGE_SUMMARY>
 */
@@ -45,13 +46,18 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       description:
         "Validate vendored spec packages under docs/specs/. " +
         "Checks integrity (SHA-256), schema, dependency graph (acyclic), " +
-        "reference resolution, wave coverage, duplicate ids, and materializedAs links. " +
+        "reference resolution, wave coverage, duplicate ids, materializedAs links, " +
+        "and consumer hygiene (SPEC-12 duplicates/empty, SPEC-13 identity warning). " +
         "Use --spec=<id> to validate a single spec.",
       scope: "workspace",
       flags: {
         spec: {
           kind: "string",
           description: "Validate only the named spec.",
+        },
+        consumer: {
+          kind: "string",
+          description: "Local consumer identity override (default: forge.yaml project.consumer).",
         },
       },
       reads: ["docs/specs/**/*"],
@@ -68,6 +74,10 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         spec: {
           kind: "string",
           description: "Show status for a single spec.",
+        },
+        consumer: {
+          kind: "string",
+          description: "Local consumer identity override (default: forge.yaml project.consumer).",
         },
       },
       reads: ["docs/specs/**/*", "docs/rfcs/**/*.md"],
@@ -87,6 +97,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         spec: { kind: "string", required: true, description: "Spec id to materialize from." },
         next: { kind: "string", description: "Number of front nodes to materialize (default 8, max 12)." },
         nodes: { kind: "string", description: "Comma-separated explicit node ids to materialize." },
+        consumer: { kind: "string", description: "Local consumer identity override (default: forge.yaml project.consumer)." },
       },
       execute: runSpecMaterialize,
     },

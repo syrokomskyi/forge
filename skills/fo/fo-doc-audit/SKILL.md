@@ -152,7 +152,7 @@ Note: if the regeneration command is expensive or unavailable in the current ses
 - Were **commands** added, removed, or renamed?
 - Did the **package graph** change (new package, removed package, new dependency)?
 
-If yes, regenerate the owned projections — `docs.commands.generate` refreshes `docs/command-manifest.generated.yaml` + `docs/COMMANDS.md`; `ecosystem.manifest.generate` refreshes `docs/ecosystem.generated.yaml` (the successor of the retired `docs/PACKAGE_GRAPH.md`, RFC-1242). Never hand-edit generated files — update the generator or registry (see 2f).
+If yes, regenerate the owned projections — `docs.commands.generate` refreshes `docs/command-manifest.generated.yaml` + `docs/COMMANDS.md`; `ecosystem.manifest.generate` refreshes `docs/ecosystem.generated.yaml` (the successor of the retired `docs/PACKAGE_GRAPH.md`). Never hand-edit generated files — update the generator or registry (see 2f).
 
 ### 3. Present analysis to the operator
 
