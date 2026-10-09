@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: [commands.validateRfc]
   optional: [paths.invariantsFile]
-triggerPhrases: ["draft an RFC", "create a full RFC", "scaffold an RFC from template"]
+triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC", "scaffold an RFC from template"]
 ---
 
 <!--

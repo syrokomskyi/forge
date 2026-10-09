@@ -6,7 +6,7 @@ category: fo
 concerns: code-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-triggerPhrases: ["I just want to see the result", "run the full pipeline automatically", "implement this end-to-end without pauses"]
+triggerPhrases: ["по полному пайплайну", "на результат", "реализуй RFC", "I just want to see the result", "implement this end-to-end without pauses"]
 ---
 
 <!--
@@ -49,6 +49,25 @@ When `stopAfter: plan` is set and the document is an **ADR**, the ADR pipeline s
 When resuming with `stopAfter: plan`, if the plan file already exists in `docs/plans/plan-rfc-XXXX-*.md`, stop immediately — do not proceed to implement.
 
 ## Preconditions
+
+### Intent routing (front door)
+
+This skill is the operator's single front door. Before document-id detection, classify the invocation — not every first message is a pipeline request:
+
+| Intent signal (examples) | Route |
+| --- | --- |
+| RFC/ADR ids, queue manifest, plan list, «реализуй», «по полному пайплайну», «на результат» | the existing pipeline flow below (unchanged) |
+| «проверим всё ли сделали», «проверь изменения», "review this session" | `fo-review` → optional `fo-fix`; do not enter implement |
+| «исправим», "fix all", persisted review findings | `fo-fix`; do not enter implement |
+| Session-end phrases («завершаем сессию», «протокол завершения») | `fo-session-retro` contract — never a pipeline |
+| Commit intent («закоммитим», "commit this", staged-step commit requests) | `fo-step-commit` |
+| Open-mission / Sternsystem work («работаем над миссией», `wg-*` names) | the named `wg-*` skill |
+| «нам надо закрыть открытые вопросы», exploratory ideas | `fo-explore` or `fo-idea` (existing step 0) |
+| Ambiguous | ask the operator — never default to implement on ambiguity |
+
+**Misroute guard:** once classified as a non-pipeline intent, do NOT silently re-enter the pipeline; if the routed skill's output reveals the request was actually a pipeline intent, surface that in the report instead. Phrase collisions resolve by intent described, not single-word match — a collision that cannot be resolved asks the operator, never guesses into a mutating skill.
+
+### Accepted inputs
 
 The operator may provide either:
 

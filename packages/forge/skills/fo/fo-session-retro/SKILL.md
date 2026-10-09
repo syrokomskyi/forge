@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggerPhrases: ["session retrospective", "triage session discoveries", "Завершаем эту сессию", "End session", "/session-end"]
+triggerPhrases: ["завершаем", "протокол завершения", "Завершаем эту сессию", "session retrospective", "End session"]
 ---
 
 <!--

@@ -58,6 +58,8 @@ A **user-invoked** skill whose job is to point at your other user-invoked skills
 
 _Avoid_: dispatcher, menu, registry, index, router procedure
 
+_Applied instance_: `fo-idea-i-just-want-to-see-the-result` is the forge pipeline's router skill — the operator's single front door. Its Preconditions carry an intent-routing table that maps non-pipeline intents (review, fix, session-end, commit, mission work, exploration) to their standing skills before document-id detection; pipeline intents flow through unchanged, and the escape hatches stay directly invocable.
+
 ### Granularity
 
 How finely you divide skills. Finer division spends one of the two loads: more **model-invoked** skills spend **context load** (more descriptions crowding the window and competing for attention); more **user-invoked** skills spend **cognitive load** (more for the human to remember and reach for). Two cuts guide the division. By **invocation**, split off a model-invoked skill where you have a distinct **leading word** to trigger it — a trigger word you actually use in your prompts. By **sequence**, split a run of **steps** where a step's **post-completion steps** need hiding, since isolating it in its own context clears what follows. Beware the reverse: merging sequences exposes each step's post-completion steps to what follows, inviting premature completion.
