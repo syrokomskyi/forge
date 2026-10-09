@@ -34,6 +34,7 @@ import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
+  WorkspaceIO,
 } from "../../../src/types.ts";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
@@ -105,23 +106,30 @@ async function loadLedger(workspaceRoot: string): Promise<CompassAuditLedger> {
   }
 }
 
-// RFC-1242: writes route through the injected adapter so --dry-run recording
-// IO (mutatingFlags: ["prune"]) intercepts them — ambient writeFileAtomic would
-// bypass the recording adapter entirely (DNA-110).
-async function saveLedger(
-  workspaceRoot: string,
-  ledger: CompassAuditLedger,
-  ledgerIo = io,
-): Promise<void> {
+function serializeLedger(ledger: CompassAuditLedger): string {
   const normalized = withLedgerAdvisory(ledger);
   normalized.entries.sort((a, b) => a.path.localeCompare(b.path));
-  const abs = resolve(workspaceRoot, LEDGER_PATH);
   const header = buildGeneratedHeader({
     ownerCommand: "compass.audit.record",
     filePath: LEDGER_PATH,
   });
-  const yaml = header + yamlStringify(normalized) + "\n";
-  await ledgerIo.writeFile(abs, yaml);
+  return header + yamlStringify(normalized) + "\n";
+}
+
+// RFC-1242: writes route through the injected adapter so --dry-run recording
+// IO (mutatingFlags: ["prune"]) intercepts them — ambient writeFileAtomic would
+// bypass the recording adapter entirely (DNA-110). The param is named `io` so
+// the workspace-write-boundary lint recognizes the io.writeFile port call
+// (WS-WRITE-02 matches io.writeFile/context.io.writeFile member expressions).
+// Callers under a mutating-flag gate (compass.audit.validate --prune) write
+// via io.writeFile directly inside the gated block — registry-integrity sees
+// mutations in shared callees but not the caller's flag condition.
+async function saveLedger(
+  workspaceRoot: string,
+  ledger: CompassAuditLedger,
+  io: WorkspaceIO = ambientIo,
+): Promise<void> {
+  await io.writeFile(resolve(workspaceRoot, LEDGER_PATH), serializeLedger(ledger));
 }
 
 function extractBlock(source: string, tagName: string): string {
@@ -460,7 +468,7 @@ export async function runCompassAuditValidate(
     prunedPaths: string[];
   }>
 > {
-  const _io = resolveIo(context.io);
+  const io = resolveIo(context.io);
   const strict = input.flags["strict"] === true;
   const prune = input.flags["prune"] === true;
   const scanRoot = resolveCompassScanRoot(input, context);
@@ -481,7 +489,7 @@ export async function runCompassAuditValidate(
   if (prune) {
     const kept: CompassAuditLedgerEntry[] = [];
     for (const entry of ledger.entries) {
-      if (await _io.exists(resolve(context.workspaceRoot, entry.path))) {
+      if (await io.exists(resolve(context.workspaceRoot, entry.path))) {
         kept.push(entry);
       } else {
         prunedPaths.push(entry.path);
@@ -489,7 +497,7 @@ export async function runCompassAuditValidate(
     }
     ledger.entries = kept;
     if (prunedPaths.length > 0 && !context.dryRun) {
-      await saveLedger(context.workspaceRoot, ledger, _io);
+      await io.writeFile(resolve(context.workspaceRoot, LEDGER_PATH), serializeLedger(ledger));
     }
     context.logger.info(
       `[compass.audit.validate] pruned=${prunedPaths.length} ledger entr${prunedPaths.length === 1 ? "y" : "ies"} for non-existent paths${context.dryRun ? " (dry-run — not written)" : ""}`,
