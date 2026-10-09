@@ -76,6 +76,9 @@ const NAMING_CONVENTION_IGNORED_TOP_LEVEL = new Set([
   "storage",
   ".check-warpgogol",
   ".coverage-report-html",
+  // Local-only operator dirs (gitignored): Ed25519 signing keys (RFC-0966) and scratch output.
+  ".keys",
+  ".scratch",
 ]);
 
 // Tool-mandated filenames exempt from kebab-case (Docker, Caddy use these exact names).
@@ -101,7 +104,13 @@ const NAMING_CONVENTION_IGNORED_DIRS = new Set([
   // RFC-0186) — the numeric-underscore prefix is required for ordering and is not authored prose.
   "migrations",
 ]);
-const NAMING_CONVENTION_EXEMPT_KEYWORDS = ["config", "module"] as const;
+const NAMING_CONVENTION_EXEMPT_KEYWORDS = [
+  "config",
+  "module",
+  // xrepo-<from>-to-<to>-<increment> handoff artifacts carry externally-referenced
+  // contract version pins (V01/V04/V05) — the uppercase token is the version id, not prose.
+  "xrepo",
+] as const;
 
 // Set of directory paths that are exempt from naming convention (generated files)
 const NAMING_CONVENTION_EXEMPT_DIRS = new Set([

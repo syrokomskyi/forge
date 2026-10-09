@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1225: forgeRoot resolves via resolveForgeRoot (monorepo or npm-installed package); unresolvable root returns a single SKILL-00; pack discovery loads forge.yaml from workspaceRoot.</item>
-  <item>RFC-1227: SKILL-17 exempts HTML comment regions (file metadata written by the platform's own changelog tooling); pack-skill loop drops SKILL-17 (RFC-0553 scoped it to shipped canonical skills only).</item>
   <item>RFC-0642: added SKILL-18 — forge skill instruction lines must not reference software-specific binding keys (typecheck, scopedBuild, test); use semantic keys (validate, produce, verify) instead.</item>
   <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
   <item>RFC-0661: added SKILL-21 (knowledge layer token budget warnings), refactored warning handling — warnings go to separate `warnings` array, not `violations`.</item>
@@ -17,7 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553</history>
+  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553, RFC-1225, RFC-1227, SKILL-00, SKILL-17</history>
 </CHANGE_SUMMARY>
 */
 

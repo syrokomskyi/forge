@@ -16,9 +16,6 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: rfc.verification.refresh gains acceptsAllFlag: true — the declared --all flag is now reachable via werkstatt run (consumed selector re-injected as flags.all after the gate).</item>
   <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
-  <item>Session-retro 2026-10-08: rfc.verification.emit/refresh declare
-`concurrency` (1-16, default 1) — bounded parallelism across RFCs for sweep
-runs while probe order within each RFC stays sequential.</item>
   <history>RFC-0260, RFC-0795</history>
 </CHANGE_SUMMARY>
 */

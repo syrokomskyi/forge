@@ -10,12 +10,12 @@ mode (RFC-0556). Drives per-file semantic-truth auditing on a revision cadence (
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1242: compass.audit.validate --prune — drops ledger entries whose path no longer exists via mutatingFlags upgrade; saveLedger routes writes through the injected io adapter so dry-run recording intercepts them.</item>
   <item>RFC-0352: initial implementation of compass.audit.plan, compass.audit.record, compass.audit.baseline, compass.audit.validate.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: audit work orders now carry the KEY_DECISIONS block alongside MODULE_CONTRACT and CHANGE_SUMMARY.</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1143: validate/plan/record apply filterLedgerEligiblePaths — ledger-ineligible authored paths (missions/, gitignored) are skipped with skippedIneligible diagnostics instead of failing COMPASS-AUDIT-01; record warns but still writes.</item>
+  <history>RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 

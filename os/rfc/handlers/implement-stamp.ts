@@ -12,7 +12,6 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0795: add RFC-IMP-07 dependsOn dependency gate — blocks stamping when any dependsOn entry is not implemented.</item>
   <item>RFC-0997: add RFC-IMP-08 minimum-one-probe gate — blocks stamping for post-cutoff architecture/contract/command RFCs with no acceptance probes.</item>
   <item>RFC-1053: integrate generateRfcMetrics after successful stamp (non-fatal, guarded by !isDryRun).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -22,7 +21,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>Session-retro 2026-10-08: auto-detect picks the sole implement/feat-prefixed candidate among multi-commit references (RFC-IMP-03 no longer blocks full pipelines); ambiguous sets keep blocking with annotated candidate list + earliest-candidate suggestion.</item>
-  <history>RFC-0268, RFC-0476, RFC-0756</history>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 

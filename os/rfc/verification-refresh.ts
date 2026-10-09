@@ -18,13 +18,6 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 io.writeFile port routing, emit-canonical generated header — refresh owns
 content freshness, never envelope identity (ownerCommand stays
 rfc.verification.emit).</item>
-  <item>Session-retro 2026-10-08: sweep delta report — previousOverall per
-envelope + recovered/regressed lists separate still-failing drift from fresh
-regressions without manual triage.</item>
-  <item>Session-retro 2026-10-08: --concurrency flag (default 1, garbage values
-warn + fall back to 1, >16 clamps) fans refresh out across RFC units via
-mapWithConcurrency while probes inside one RFC stay sequential — envelope
-ordering stays deterministic.</item>
 </CHANGE_SUMMARY>
 */
 

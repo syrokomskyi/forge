@@ -53,6 +53,7 @@ export function countLines(source: string): number {
 async function collectSourceFiles(root: string): Promise<string[]> {
   const results: string[] = [];
 
+  // fs.walk.lint: allow — walks via WorkspaceIO abstraction (io.readdir), not node fs — collectFiles has no io contract
   async function walk(dir: string): Promise<void> {
     let entries;
     try {

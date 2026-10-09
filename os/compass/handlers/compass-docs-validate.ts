@@ -6,9 +6,10 @@
   <item>Do not validate markdown link targets — only the XML semantic layer is gated (markdown sweep is manual).</item>
   <item>Do not mutate anything — this handler is read-only; pruning lives on compass.audit.validate --prune.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Tag-stack tokenizer instead of an XML dependency — the corpus is small authored XML; a balance check catches the literal-tag breakage class (COMPASS-DOC-00) without pulling fast-xml-parser.</item>
-  <item>DOC-03 link targets resolve to declared node ids OR file/dir conventions — dangling-by-convention stays a warning, never an error.</item>
+  <item>Tag-stack tokenizer over an XML dependency — small authored corpus; a balance check catches literal-tag breakage (COMPASS-DOC-00).</item>
+  <item>Link targets resolve to declared node ids OR file/dir conventions (DOC-03) — dangling-by-convention stays a warning, never an error.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1242: review fixes — self-close detection strips quoted attr values first (a="foo/" no longer fakes a self-close), non-backticked path tokens get the same ellipsis strip, docs.* link slugs keep their basename prefix (docs.plans.plan-rfc-* resolves).</item>
