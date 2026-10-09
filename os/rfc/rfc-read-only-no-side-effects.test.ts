@@ -37,6 +37,7 @@ function makeInput(flags: Record<string, unknown> = {}): ForgeCommandInput {
 
 async function snapshotTree(root: string): Promise<Map<string, string>> {
   const snapshot = new Map<string, string>();
+  // fs.walk.lint: allow — test snapshot helper collects file contents into a Map, not a path list — collectFiles does not read contents
   async function walk(dir: string): Promise<void> {
     for (const entry of await fs.readdir(dir, { withFileTypes: true })) {
       const full = path.join(dir, entry.name);

@@ -12,7 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-0795: added dependsOn, batch fields to RfcFrontmatter and RFC_KNOWN_KEYS; added RFC-IMP-07 to RfcImplementStampRule; added batch/dependsOn to RfcListEntry.</item>
   <item>RFC-0998: added TestProbe and JsonSchemaProbe to AcceptanceProbe union for test and json-schema acceptance probe kinds.</item>
   <item>RFC-0999: added lastRefreshedAt to VerificationEvidence; added RfcVerificationRefreshResult interface.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -21,8 +20,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <item>Session-retro 2026-10-08: VerificationDelta + previousOverall on emit/refresh result entries — sweep-level recovered/regressed transition reporting.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480</history>
+  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
