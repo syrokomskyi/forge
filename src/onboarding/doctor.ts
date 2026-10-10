@@ -181,13 +181,31 @@ async function validateBindings(workspaceRoot: string, io: WorkspaceIO): Promise
 
   const compassDocs = resolveBinding(config, "paths.compassDocs");
   if (Array.isArray(compassDocs) && compassDocs.length > 0) {
+    let anyMissing = false;
     for (const docPath of compassDocs) {
       const exists = await pathExists(join(workspaceRoot, docPath), io);
       if (exists) {
         result.resolved.push(`paths.compassDocs[${docPath}]`);
       } else {
         result.invalid.push(`paths.compassDocs[${docPath}] (path not found)`);
+        anyMissing = true;
       }
+      // RFC-1253: convention notice — corpus docs belong under docs/
+      if (typeof docPath === "string" && !docPath.startsWith("docs/")) {
+        result.notices.push({
+          key: `paths.compassDocs[${docPath}]`,
+          rule: "compass-docs-outside-docs",
+          suggestion: "Corpus documents conventionally live under docs/ — custom layouts work but drift from scaffold defaults.",
+        });
+      }
+    }
+    // RFC-1253: scaffold remediation hint — scaffold creates only missing docs
+    if (anyMissing) {
+      result.notices.push({
+        key: "paths.compassDocs",
+        rule: "compass-docs-scaffoldable",
+        suggestion: `${resolvePmRunner(config.project.packageManager)} forge compass.docs.scaffold — creates missing corpus docs without overwriting authored ones.`,
+      });
     }
   } else {
     result.absent.push("paths.compassDocs");
