@@ -1,6 +1,6 @@
 ---
 name: fo-handoff
-description: Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via the project's commit command (ecosystem.commit where registered).
+description: Compact the conversation into a handoff document for another agent. Saves to docs/handoffs/ (paths.handoffsDir) and commits via the project's commit command (ecosystem.commit where registered).
 invocation: user
 category: fo
 concerns: document-only

@@ -462,25 +462,16 @@ workspace:
     - path: tools/kernel.config.ts
       content: |
         import { defineKernelConfig } from "@warpgogol/werkstatt-engine/kernel/types";
+        import { forgeModuleLoaders } from "@warpgogol/werkstatt-engine/kernel/module-map";
 
         export default defineKernelConfig({
           name: "__PROJECT_NAME__",
           description: "__PROJECT_NAME__ TypeScript TurboRepo workshop",
           moduleLoaders: {
-            "forge-core": async () => (await import("@warpgogol/forge/os/core")).forgeCoreModule,
-            "forge-rfc": async () => (await import("@warpgogol/forge/os/rfc-module")).forgeRfcModule,
-            "forge-adr": async () => (await import("@warpgogol/forge/os/adr-module")).forgeAdrModule,
-            "forge-plan": async () => (await import("@warpgogol/forge/os/plan-module")).forgePlanModule,
-            "forge-audit": async () => (await import("@warpgogol/forge/os/audit-module")).forgeAuditModule,
-            "forge-compass": async () => (await import("@warpgogol/forge/os/compass")).forgeCompassModule,
-            "forge-naming": async () => (await import("@warpgogol/forge/os/naming-module")).forgeNamingModule,
-            "forge-workflow": async () => (await import("@warpgogol/forge/os/workflow-module")).forgeWorkflowModule,
-            "forge-session": async () => (await import("@warpgogol/forge/os/session-module")).forgeSessionModule,
-            "forge-mission": async () => (await import("@warpgogol/forge/os/mission-module")).forgeMissionModule,
-            "forge-spec": async () => (await import("@warpgogol/forge/os/spec-module")).forgeSpecModule,
-            "forge-exploration": async () => (await import("@warpgogol/forge/os/exploration")).forgeExplorationModule,
-            "forge-program": async () => (await import("@warpgogol/forge/os/program")).forgeProgramModule,
-            "forge-werkstatt": async () => (await import("@warpgogol/forge/os/werkstatt")).forgeWerkstattModule,
+            // Forge governance modules — single-sourced in
+            // @warpgogol/werkstatt-engine/kernel/module-map (WORKSHOP_MODULE_MAP.forge).
+            // Do not add forge loaders here; new forge modules join the map once.
+            ...forgeModuleLoaders(),
             "typescript-checks": async () => (await import("@warpgogol/werkstatt-typescript/checks/module")).createTypescriptCheckModule(),
           },
         });
