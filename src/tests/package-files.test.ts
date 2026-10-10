@@ -17,6 +17,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -58,6 +59,8 @@ test("root AGENTS.md templates exist and are readable", () => {
   expect(templateFiles).toContain("behavioral-layer-extended.md");
 
   for (const file of templateFiles) {
+    // RFC-1253: templates/ now nests the compass-docs/ template directory — read files only
+    if (!statSync(join(templatesDir, file)).isFile()) continue;
     const content = readFileSync(join(templatesDir, file), "utf8");
     expect(content.length).toBeGreaterThan(0);
   }
