@@ -64,8 +64,17 @@ test("passes when all published packages are healthy", async () => {
     private: false,
     type: "module",
     engines: { node: ">=24 <25" },
-    scripts: { build: "tsc --noEmit" },
-    devDependencies: { typescript: "^5.0.0" },
+    scripts: {
+      build: "tsc --noEmit",
+      lint: "eslint src",
+      typecheck: "tsc --noEmit",
+      test: "vitest run",
+    },
+    devDependencies: {
+      typescript: "^5.0.0",
+      eslint: "^9.0.0",
+      vitest: "^4.0.0",
+    },
   });
   mkdirSync(join(pkgDir, ".github", "workflows"), { recursive: true });
   writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
@@ -155,7 +164,8 @@ test("accepts generated CI — extractable package with ci: provider needs no in
     private: false,
     type: "module",
     engines: { node: ">=24 <25" },
-    scripts: {},
+    scripts: { build: "tsc", lint: "eslint src", typecheck: "tsc --noEmit", test: "vitest run" },
+    devDependencies: { eslint: "^9.0.0", typescript: "^5.0.0", vitest: "^4.0.0" },
   });
   // No .github/workflows/ci.yml — repo-extract generates it from the ci: block.
   writeFileSync(
@@ -294,6 +304,192 @@ test("reports PKG-HEALTH-04 when script tool is not in devDependencies", async (
   const depNames = v04s?.map((v) => v.message.match(/"([^"]+)"/)?.[1]);
   expect(depNames).toContain("eslint");
   expect(depNames).toContain("vitest");
+});
+
+test("reports PKG-HEALTH-07 when generated CI invokes a missing script", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "missing-scripts");
+  mkdirSync(pkgDir, { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/missing-scripts",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: { build: "tsc", test: "vitest run" },
+    devDependencies: { typescript: "^5.0.0", vitest: "^4.0.0" },
+  });
+  writeFileSync(
+    join(pkgDir, "extract.config.yaml"),
+    "source: .\nci:\n  provider: github-actions\n",
+  );
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  const v07 = result.data?.violations
+    .filter((v) => v.ruleId === "PKG-HEALTH-07")
+    .map((v) => v.message);
+  expect(v07?.some((m) => m.includes('"lint"'))).toBe(true);
+  expect(v07?.some((m) => m.includes('"typecheck"'))).toBe(true);
+  expect(v07?.some((m) => m.includes('"build"'))).toBe(false);
+  expect(v07?.some((m) => m.includes('"test"'))).toBe(false);
+});
+
+test("PKG-HEALTH-07 respects ci.skipBuild for the build script", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "skip-build");
+  mkdirSync(pkgDir, { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/skip-build",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: { lint: "eslint src", typecheck: "tsc --noEmit", test: "vitest run" },
+    devDependencies: { eslint: "^9.0.0", typescript: "^5.0.0", vitest: "^4.0.0" },
+  });
+  writeFileSync(
+    join(pkgDir, "extract.config.yaml"),
+    "source: .\nci:\n  provider: github-actions\n  skipBuild: true\n",
+  );
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  expect(result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-07")).toBeUndefined();
+});
+
+test("reports PKG-HEALTH-08 when repository.url is missing or mismatched under ci.publish", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const scripts = {
+    build: "tsc",
+    lint: "eslint src",
+    typecheck: "tsc --noEmit",
+    test: "vitest run",
+  };
+  const devDependencies = { eslint: "^9.0.0", typescript: "^5.0.0", vitest: "^4.0.0" };
+
+  const missingDir = join(tmpDir, "packages", "no-repo-field");
+  mkdirSync(missingDir, { recursive: true });
+  writePkgJson(missingDir, {
+    name: "@test/no-repo-field",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts,
+    devDependencies,
+  });
+  writeFileSync(
+    join(missingDir, "extract.config.yaml"),
+    "source: .\nci:\n  provider: github-actions\n  publish: true\ngit:\n  remote: git@github.com:owner/no-repo-field.git\n",
+  );
+
+  const mismatchDir = join(tmpDir, "packages", "bad-repo-field");
+  mkdirSync(mismatchDir, { recursive: true });
+  writePkgJson(mismatchDir, {
+    name: "@test/bad-repo-field",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts,
+    devDependencies,
+    repository: { type: "git", url: "git+https://github.com/someone-else/other.git" },
+  });
+  writeFileSync(
+    join(mismatchDir, "extract.config.yaml"),
+    "source: .\nci:\n  provider: github-actions\n  publish: true\ngit:\n  remote: git@github.com:owner/bad-repo-field.git\n",
+  );
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  const v08 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-08");
+  expect(v08).toHaveLength(2);
+  expect(v08?.map((v) => v.packageName).sort()).toEqual([
+    "@test/bad-repo-field",
+    "@test/no-repo-field",
+  ]);
+});
+
+test("reports PKG-HEALTH-09 when files[] omits a reachable src file", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "files-gap");
+  mkdirSync(join(pkgDir, "src"), { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/files-gap",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    files: ["dist/", "src/index.ts"],
+    scripts: { build: "tsc", lint: "eslint src", typecheck: "tsc --noEmit", test: "vitest run" },
+    devDependencies: { eslint: "^9.0.0", typescript: "^5.0.0", vitest: "^4.0.0" },
+  });
+  writeFileSync(join(pkgDir, "src", "index.ts"), 'export * from "./helper.ts";\n');
+  writeFileSync(join(pkgDir, "src", "helper.ts"), "export const x = 1;\n");
+  writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  const v09 = result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-09");
+  expect(v09).toBeDefined();
+  expect(v09?.message).toContain("src/helper.ts");
+});
+
+test('"extractable": false suppresses extract-dependent checks', async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "opted-out");
+  mkdirSync(pkgDir, { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/opted-out",
+    version: "1.0.0",
+    private: false,
+    extractable: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: {},
+  });
+  // No extract.config.yaml, no CI — all extract checks suppressed.
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.violations).toHaveLength(0);
 });
 
 test("handles no packages/ directory gracefully", async () => {
