@@ -8,7 +8,7 @@
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>Schema id is versioned (`@1`) so a future format bump can gate migration without reparsing content.</item>
-  <item>Corpus membership = canonical six names ∪ binding-declared paths — DOC-04 marker checks key off this set, not filename shape alone.</item>
+  <item>Corpus membership = canonical six ∪ binding paths — DOC-04 checks key off this set, not filename shape.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1253: created — schema id, six-name corpus list, default binding paths.</item>

@@ -8,8 +8,8 @@
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Canonical docs map onto declared binding paths by basename; unmapped docs fall back to docs/&lt;name&gt;.xml — consumer layouts are honored, never rewritten.</item>
-  <item>Final binding = declared set ∪ resolved doc paths — subset declarations gain only the missing canonical paths; an absent binding gets the default six.</item>
+  <item>Canonical docs map onto binding paths by basename; unmapped docs fall back to docs/&lt;name&gt;.xml — consumer layouts never rewritten.</item>
+  <item>Final binding = declared set ∪ resolved doc paths; absent binding gets the default six.</item>
   <item>forge.yaml write goes through applyForgeYamlPatches with the serializeForgeConfig fallback + warning — same comment-preserving contract as forge.upgrade.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
