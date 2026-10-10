@@ -45,7 +45,13 @@ forge adr.implement.stamp --id <adr-id> --implementation-commit <sha>
 forge compass.inventory
 forge compass.validate
 forge compass.summary.trim
+forge compass.docs.scaffold [--dry-run]
+forge compass.docs.validate
 ```
+
+The docs-corpus pair manages the six-document Compass semantic layer — `scaffold` materializes/merges it from repository state and writes `bindings.paths.compassDocs`; `validate` gates path/id/link resolution plus the `forge/compass-docs@1` schema marker. See [compass-docs.md](compass-docs.md).
+
+Lifecycle opt-in: `forge create`, `forge init`, and `forge upgrade` accept `--compass-docs` to run the scaffold after the primary operation.
 
 ## Naming
 

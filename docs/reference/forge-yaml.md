@@ -65,7 +65,22 @@ Additional path bindings that the agent can reference:
 bindings:
   paths:
     invariantsFile: docs/architecture-dna.md
+    compassDocs:
+      - docs/requirements.xml
+      - docs/technology.xml
+      - docs/development-plan.xml
+      - docs/knowledge-graph.xml
+      - docs/verification-plan.xml
+      - docs/source-markup.xml
 ```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `invariantsFile` | string | Invariant document (e.g. `docs/architecture-dna.md`) |
+| `reviewsDir` | string | Review reports directory |
+| `handoffsDir` | string | Cross-repo handoff documents directory |
+| `sessionsDir` | string | Session records directory |
+| `compassDocs` | string[] | Compass docs corpus paths (RFC-1253) — see [compass-docs.md](compass-docs.md). Written by `compass.docs.scaffold` |
 
 ## bindings.terminology
 
