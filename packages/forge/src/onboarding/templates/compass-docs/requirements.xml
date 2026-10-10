@@ -1,0 +1,28 @@
+<requirements>
+  <meta>
+    <document-id>requirements</document-id>
+    <version>1.0.0</version>
+    <status>draft</status>
+    <schema>forge/compass-docs@1</schema>
+    <scope>repository-root</scope>
+  </meta>
+
+  <!-- TODO: authored-intent document — scaffold cannot invent your goals.
+       Fill vision, operating-principles, and requirements before relying on
+       this document for agent work. -->
+
+  <vision>
+    <statement>TODO — describe what this repository exists to do and what "correct" means for it.</statement>
+  </vision>
+
+  <operating-principles>
+    <!-- TODO: 3–6 durable principles that constrain HOW work happens here
+         (e.g. generated artifacts are never hand-edited; contracts before code). -->
+    <principle id="gp-01">TODO</principle>
+  </operating-principles>
+
+  <requirements-list>
+    <!-- TODO: one <requirement id="REQ-NN"> per durable requirement, each with
+         <statement>, <rationale>, and <links> to knowledge-graph nodes. -->
+  </requirements-list>
+</requirements>

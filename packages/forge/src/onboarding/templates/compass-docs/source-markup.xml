@@ -1,0 +1,121 @@
+<source-markup>
+  <meta>
+    <document-id>source-markup</document-id>
+    <version>1.0.0</version>
+    <status>active</status>
+    <schema>forge/compass-docs@1</schema>
+    <scope>repository-root</scope>
+  </meta>
+
+  <purpose>
+    Define the canonical Compass source-file markup contract for authored code in this
+    workspace. This document specifies the three-block contract (MODULE_CONTRACT,
+    KEY_DECISIONS, CHANGE_SUMMARY), the inline invariant format, the forbidden set,
+    the resolved scan policy, and the coverage modes — as enforced by `compass.validate`.
+  </purpose>
+
+  <markup-model>
+    <required-header-blocks>
+      <block name="MODULE_CONTRACT">
+        <purpose>State what the file is for and what it must NOT do.</purpose>
+        <required-inner>
+          <inner name="purpose">
+            <rule>At least 10 words (COMPASS-PURPOSE-01) and at least one standalone lowercase token derived from the file name or exported symbols (COMPASS-PURPOSE-02).</rule>
+          </inner>
+          <inner name="non-goals">
+            <rule>At least one `&lt;item>` stating what the file must NOT do (COMPASS-CONTRACT-03).</rule>
+          </inner>
+        </required-inner>
+      </block>
+      <block name="KEY_DECISIONS">
+        <purpose>Record current-state design truths of the file — invariants, chosen mechanisms, forbidden approaches. Current truth, not history; rewritten in place when behavior changes.</purpose>
+        <required-inner>
+          <inner name="item">
+            <rule>Required on medium/high riskClass files (COMPASS-KD-01), optional on low. 1–7 items (COMPASS-KD-04), each ≤ 20 words (COMPASS-KD-03). Items MUST NOT start with a governance-ID prefix (COMPASS-KD-05). Empty or TODO-only blocks are COMPASS-KD-02.</rule>
+          </inner>
+        </required-inner>
+      </block>
+      <block name="CHANGE_SUMMARY">
+        <purpose>Capture the latest COMPASS-relevant changes to the file, compressed.</purpose>
+        <required-inner>
+          <inner name="item">
+            <rule>At most 5 `&lt;item>` entries (COMPASS-CS-05), each carrying a governance ID matching the resolved idPattern (COMPASS-CS-06). The retained items are the 5 newest. An empty block is legal.</rule>
+          </inner>
+          <inner name="history">
+            <rule>Optional single `&lt;history>` element: comma-separated governance IDs collapsed from older items — deduplicated, per-namespace ascending numeric order (COMPASS-CS-07). IDs only, no descriptions, no length cap.</rule>
+          </inner>
+        </required-inner>
+      </block>
+    </required-header-blocks>
+
+    <block-order>
+      <rule>Blocks MUST appear in canonical order: MODULE_CONTRACT → KEY_DECISIONS → CHANGE_SUMMARY (COMPASS-ORDER-01).</rule>
+    </block-order>
+
+    <local-invariants>
+      <format>// @ai-invariant: ...</format>
+      <rules>
+        <rule>Required for files with risk class `high` (blast-radius boundaries such as middleware, discovery/runtime cores, registries).</rule>
+        <rule>Keep invariants short, durable, and directly relevant to failure prevention.</rule>
+        <rule>Optional for non-high-risk files but encouraged when a non-obvious constraint exists.</rule>
+      </rules>
+    </local-invariants>
+
+    <forbidden-blocks>
+      <forbidden name="MODULE_MAP" reason="Restates export names already visible in the code." />
+      <forbidden name="keywords" reason="Restates the filename and purpose." />
+      <forbidden name="responsibilities" reason="Restates what the code does; purpose + non-goals carry the non-derivable signal." />
+      <forbidden name="COMPASS_BLOCK" reason="No downstream consumer; presence is a validation error." />
+    </forbidden-blocks>
+  </markup-model>
+
+  <scan-policy source="resolveCompassPolicy — generic defaults → stack profile → bindings.compass">
+    <file-extensions>
+{{fileExtensions}}
+    </file-extensions>
+    <scan-roots>
+{{scanRoots}}
+    </scan-roots>
+    <test-patterns>
+{{testPatterns}}
+    </test-patterns>
+    <ignored-dirs>
+{{ignoredDirs}}
+    </ignored-dirs>
+    <ignored-dir-prefixes>
+{{ignoredDirPrefixes}}
+    </ignored-dir-prefixes>
+    <high-risk-paths>
+{{highRiskPaths}}
+    </high-risk-paths>
+    <excluded-paths>
+{{excludedPaths}}
+    </excluded-paths>
+    <governance-id-pattern>{{idPattern}}</governance-id-pattern>
+    <layer-rules first-match="true">
+{{layerRules}}
+    </layer-rules>
+  </scan-policy>
+
+  <coverage-modes>
+    <mode name="standard">
+      <applies-to>
+        <item>Every authored, non-excluded source file under the resolved scan roots.</item>
+      </applies-to>
+      <requirements>
+        <item>`MODULE_CONTRACT` with `&lt;purpose>` (>= 10 words, >= 1 file-derived token) and at least one `&lt;non-goals>&lt;item>`.</item>
+        <item>`KEY_DECISIONS` when the file's risk class is `medium` or `high`.</item>
+        <item>`CHANGE_SUMMARY` with at most 5 governance-ID items plus optional `&lt;history>`.</item>
+        <item>`@ai-invariant` when the file's risk class is `high`.</item>
+      </requirements>
+    </mode>
+    <mode name="none">
+      <applies-to>
+        <item>Files matched by `excludedPaths` or `ignoredDirs` — generated, vendored, fixture, or tool-owned surfaces.</item>
+      </applies-to>
+      <requirements>
+        <item>No Compass markup required; presence of contract blocks is tolerated but not enforced.</item>
+      </requirements>
+    </mode>
+  </coverage-modes>
+</source-markup>
