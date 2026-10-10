@@ -289,3 +289,82 @@ bindings:
   const bindingsCheck = checks.find((c) => c.name === "bindings");
   expect(bindingsCheck?.status).toBe("pass");
 });
+
+test("doctor emits compass-docs-scaffoldable notice when bound corpus docs are missing (RFC-1253)", async () => {
+  await setupMinimalProject(tempDir);
+  await writeForgeYaml(
+    tempDir,
+    `schema: forge/config@1
+project:
+  name: test
+  stack: []
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+bindings:
+  schema: forge/bindings@1
+  commands: {}
+  paths:
+    invariantsFile: null
+    compassDocs:
+      - docs/requirements.xml
+      - docs/missing-doc.xml
+    reviewsDir: null
+    handoffsDir: null
+    sessionsDir: null
+`,
+  );
+  await writeFile(join(tempDir, "docs", "requirements.xml"), "<root />", "utf8");
+
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
+  const bindings = result.data?.bindings;
+  expect(bindings?.invalid.some((e) => e.includes("missing-doc.xml"))).toBe(true);
+  const hint = bindings?.notices.find((n) => n.rule === "compass-docs-scaffoldable");
+  expect(hint).toBeDefined();
+  expect(hint?.suggestion).toContain("compass.docs.scaffold");
+});
+
+test("doctor emits compass-docs-outside-docs notice for bound paths outside docs/ (RFC-1253)", async () => {
+  await setupMinimalProject(tempDir);
+  await mkdir(join(tempDir, "corpus"), { recursive: true });
+  await writeFile(join(tempDir, "corpus", "requirements.xml"), "<root />", "utf8");
+  await writeForgeYaml(
+    tempDir,
+    `schema: forge/config@1
+project:
+  name: test
+  stack: []
+  packageManager: pnpm
+paths:
+  rfcsDir: docs/rfcs
+  adrsDir: docs/adrs
+  plansDir: docs/plans
+  auditsDir: docs/audits
+  specsDir: docs/specs
+  skillsDir: .agents/skills
+bindings:
+  schema: forge/bindings@1
+  commands: {}
+  paths:
+    invariantsFile: null
+    compassDocs:
+      - corpus/requirements.xml
+    reviewsDir: null
+    handoffsDir: null
+    sessionsDir: null
+`,
+  );
+
+  const result = await runDoctor({ argv: [], flags: {} }, mockContext(tempDir));
+  const bindings = result.data?.bindings;
+  expect(bindings?.resolved.some((e) => e.includes("corpus/requirements.xml"))).toBe(true);
+  const notice = bindings?.notices.find((n) => n.rule === "compass-docs-outside-docs");
+  expect(notice).toBeDefined();
+  // resolved — no scaffold hint
+  expect(bindings?.notices.find((n) => n.rule === "compass-docs-scaffoldable")).toBeUndefined();
+});
