@@ -6,6 +6,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [6.3.2] — 2026-10-10
+
+### Added
+
+- `forge.package.health` publish-readiness gates (RFC-1255): PKG-HEALTH-07 generated-CI script contract (`build`/`lint`/`typecheck`/`test` must exist when `ci.provider` is set), PKG-HEALTH-08 `repository.url` vs `git.remote` slug match for npm provenance, PKG-HEALTH-09 `files[]` src-reachability coverage; `"extractable": false` package.json opt-out for consciously non-extractable published packages
+- verify-extract changelog gate — publish flow requires a `CHANGELOG.md` section for the target version
+- `resolveWorkspaceTypes` shared helper — prettierignore plan enumerates generated AGENTS.md paths; `forge.doctor` emits severity-aware next-steps and a forge-version-sync warning
+
+### Fixed
+
+- Scaffold `kernel.config.ts` via `forgeModuleLoaders` — stale `forgeXModule` consts silently dropped every module (masked as command-not-found)
+- Sync `skills/_shared/` convention docs to npm consumers on `forge init`/`upgrade` — `fo-*` SKILL.md references no longer dangle
+- Generated-header `Regenerate` hint dedupes the command-prefix namespace (`forge forge.agents.generate` → `forge agents.generate`); single blank line after generated headers (doctor stale-check ping-pong)
+- `forge.package.health` — `WorkspaceIO` type import routed through the inlined ADR-0019 copy (standalone typecheck green)
+- Test suite covered by typecheck — tsconfig split into noEmit base + `tsconfig.build.json`, 23 latent type errors drained
+- Bump `@warpgogol/repo-extract` to `^1.5.0` — RFC-0132 self-healing standalone manifests + NPM_TOKEN bootstrap
+
 ## [6.3.1] — 2026-10-10
 
 ### Fixed
