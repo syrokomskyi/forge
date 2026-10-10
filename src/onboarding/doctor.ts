@@ -8,16 +8,14 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1226: skills-unmanaged check — warn on SKILL.md-bearing dirs without .forge-managed marker</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
-  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1224</history>
+  <item>forge-version-sync check — warns when the installed @warpgogol/forge version diverges from forge.yaml syncedVersion (pnpm up drifts it silently); nested wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
+  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -35,7 +33,7 @@ import type {
 } from "../types.ts";
 import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
-import { discoverWorkspaces } from "./workspace-discovery.ts";
+import { discoverWorkspaces, resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd, selectNestedTemplate } from "./nested-agents-templates.ts";
 import { readPackageInfo, generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
@@ -877,6 +875,66 @@ async function checkPackManifests(workspaceRoot: string, _io: WorkspaceIO): Prom
 }
 
 // ---------------------------------------------------------------------------
+// Forge version sync — installed package vs forge.yaml syncedVersion
+// ---------------------------------------------------------------------------
+
+/**
+ * `pnpm up`/`npm update` bumps the installed @warpgogol/forge package but never
+ * touches forge.yaml — syncedVersion goes stale silently and the next
+ * `forge.upgrade` (or stale-skill sync) runs against a wrong baseline. Warn so
+ * the drift surfaces; pass when either side is unreadable (first init,
+ * source checkout without forge.yaml).
+ */
+function checkForgeVersionSync(workspaceRoot: string, forgeRoot: string): DoctorCheck {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return {
+      name: "forge-version-sync",
+      status: "pass",
+      message: "forge.yaml not loadable — version sync check skipped",
+    };
+  }
+
+  const synced = config.forge?.syncedVersion ?? null;
+  if (synced === null) {
+    return {
+      name: "forge-version-sync",
+      status: "pass",
+      message: "no syncedVersion recorded — version sync check skipped",
+    };
+  }
+
+  let installed: string | null = null;
+  try {
+    const pkg = JSON.parse(readFileSync(join(forgeRoot, "package.json"), "utf8")) as {
+      version?: unknown;
+    };
+    if (typeof pkg.version === "string") installed = pkg.version;
+  } catch {
+    // package.json unreadable — treated as unresolvable below
+  }
+
+  if (installed === null) {
+    return {
+      name: "forge-version-sync",
+      status: "pass",
+      message: "installed forge version unreadable — version sync check skipped",
+    };
+  }
+
+  const inSync = installed === synced;
+  return {
+    name: "forge-version-sync",
+    status: inSync ? "pass" : "warn",
+    message: inSync
+      ? `syncedVersion matches installed v${installed}`
+      : `installed @warpgogol/forge v${installed} ≠ forge.yaml syncedVersion ${synced} — run 'forge upgrade'`,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Nested AGENTS.md diagnostics (RFC-0611)
 // ---------------------------------------------------------------------------
 
@@ -1484,6 +1542,10 @@ export async function runDoctor(
         : `Bindings: ${bindingsResult.invalid.length} invalid — ${bindingsResult.invalid.join(", ")}`,
   });
 
+  // Installed forge version vs forge.yaml syncedVersion — `pnpm up` bumps the
+  // package without running forge.upgrade, leaving syncedVersion stale.
+  checks.push(checkForgeVersionSync(workspaceRoot, forgeRoot));
+
   // Check stale knowledge files (RFC-0524, RFC-0539)
   const staleCheck = await checkStaleKnowledgeFiles(workspaceRoot, forgeRoot, fio);
   checks.push(staleCheck);
@@ -1531,28 +1593,14 @@ export async function runDoctor(
   // entirely for non-software domains. Now runs for all domains — profile-driven
   // wsTypes replace hardcoded detection when present.
   let wsTypes: ProfileWorkspaceType[] | undefined;
-  {
-    try {
-      const config = loadForgeConfig(workspaceRoot);
-      // RFC-0643: prefer config.profile (loaded by loadForgeConfig)
-      if (config.profile?.workspaceTypes && config.profile.workspaceTypes.length > 0) {
-        wsTypes = config.profile.workspaceTypes;
-      } else {
-        const profiles = listStackProfiles(forgeRoot);
-        for (const stackId of config.project.stack) {
-          const profile = profiles.find((p) => p.id === stackId);
-          if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
-            wsTypes = profile.workspaceTypes;
-            break;
-          }
-        }
-      }
-    } catch {
-      // profiles not loadable
-    }
-    const nestedCheck = await checkNestedAgentsMd(workspaceRoot, wsTypes, fio);
-    checks.push(nestedCheck);
+  try {
+    // RFC-0643: resolveWorkspaceTypes prefers config.profile (loaded by
+    // loadForgeConfig), falls back to the stack-based catalog lookup.
+    wsTypes = resolveWorkspaceTypes(loadForgeConfig(workspaceRoot), forgeRoot);
+  } catch {
+    // config/profiles not loadable — nested check runs without profile types
   }
+  checks.push(await checkNestedAgentsMd(workspaceRoot, wsTypes, fio));
 
   // RFC-0640: --strict flag elevates warn to fail for domain-related checks
   const finalChecks = strict

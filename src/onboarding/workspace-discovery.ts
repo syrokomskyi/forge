@@ -12,6 +12,7 @@ workspace type (app, service, package) by content markers.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0611: initial workspace discovery and type auto-detection.</item>
   <item>RFC-0640: accept optional workspaceTypes from profile for profile-driven detection, falling back to hardcoded detection when absent.</item>
+  <item>Extracted shared resolveWorkspaceTypes — config.profile wins, then stack-catalog lookup; deduplicates the resolution inlined in runAgentsGenerate/runDoctor and reused by the prettierignore plan.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,6 +20,8 @@ import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { hasGeneratedMarker } from "../utils/index.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
+import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
+import type { ForgeConfig } from "../config/forge-config.ts";
 
 export type WorkspaceType = "app" | "service" | "package" | string;
 
@@ -44,6 +47,36 @@ const SKIP_DIRS = new Set([
   // Stryker mutation-testing sandboxes — transient temp dirs.
   ".stryker-tmp",
 ]);
+
+/**
+ * Resolve the effective workspace-type catalog for discovery/nested-AGENTS.md:
+ * the loaded `config.profile` wins, then the first `project.stack` id whose
+ * profile declares workspaceTypes, else undefined (hardcoded fallback).
+ * Previously inlined in runAgentsGenerate/runDoctor — shared so every
+ * discoverWorkspaces consumer classifies workspaces identically.
+ */
+export function resolveWorkspaceTypes(
+  config: ForgeConfig,
+  forgeRoot: string | undefined,
+): ProfileWorkspaceType[] | undefined {
+  const profile = config.profile as StackProfile | undefined;
+  if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
+    return profile.workspaceTypes;
+  }
+  if (!forgeRoot) return undefined;
+  try {
+    const profiles = listStackProfiles(forgeRoot);
+    for (const stackId of config.project.stack) {
+      const stackProfile = profiles.find((p) => p.id === stackId);
+      if (stackProfile?.workspaceTypes && stackProfile.workspaceTypes.length > 0) {
+        return stackProfile.workspaceTypes;
+      }
+    }
+  } catch {
+    // profile catalog not loadable — hardcoded detection applies
+  }
+  return undefined;
+}
 
 export function detectWorkspaceType(
   dirPath: string,

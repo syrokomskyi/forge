@@ -11,8 +11,6 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
-  <item>RFC-0664: added scaffoldMemoryLayer step to scaffold .agents/memory/ and .gitignore block.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -21,7 +19,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>fix: sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-* SKILL.md references dangled for npm consumers</item>
-  <history>RFC-0543, RFC-0611, RFC-1224</history>
+  <item>Knowledge conflicts land in .forge/knowledge-conflicts.txt (summary + path in console instead of a 60+ entry dump); exposed as knowledgeConflicts/knowledgeConflictsReport on UpgradeResult. Prettierignore plan now enumerates generated AGENTS.md paths.</item>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -58,6 +57,7 @@ import {
   type PrettierignoreResult,
 } from "./prettierignore.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
+import { resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
 import type { SkippedSkill } from "./init.ts";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeNextStep, ForgeRuntimeContext } from "../types.ts";
@@ -87,6 +87,10 @@ export interface UpgradeResult {
   skillsPruned: string[];
   skillsKeptWithConsumerFiles: string[];
   prettierignore: PrettierignoreResult;
+  /** Knowledge entries diverging between package and project — local kept. */
+  knowledgeConflicts?: string[];
+  /** Repo-relative path of the written conflicts report, when any. */
+  knowledgeConflictsReport?: string | null;
 }
 
 async function isMonorepoForge(workspaceRoot: string, io: WorkspaceIO): Promise<boolean> {
@@ -442,7 +446,10 @@ async function reconcileGeneratedSurface(
     try {
       prettierignore = await applyPrettierignore(
         workspaceRoot,
-        await planPrettierignore(workspaceRoot, config.paths.skillsDir, io),
+        await planPrettierignore(workspaceRoot, config.paths.skillsDir, io, {
+          workspaceTypes: resolveWorkspaceTypes(config, forgeRoot),
+          workspaceSkipDirs: config.bindings?.workspaces?.skipDirs,
+        }),
         io,
       );
     } catch (err) {
@@ -467,6 +474,52 @@ async function reconcileGeneratedSurface(
     prettierignore,
     warnings,
   };
+}
+
+/**
+ * Knowledge-conflict report — the full divergence list lands in
+ * `.forge/knowledge-conflicts.txt` (overwritten each run, no churn); the
+ * console keeps a one-line summary + path instead of a 60+ entry dump.
+ */
+async function writeKnowledgeConflictsReport(
+  workspaceRoot: string,
+  conflicts: string[],
+  io: WorkspaceIO,
+): Promise<string | null> {
+  const rel = ".forge/knowledge-conflicts.txt";
+  try {
+    await io.writeFile(
+      path.join(workspaceRoot, rel),
+      [
+        "# forge.upgrade knowledge conflicts — local project versions were kept.",
+        "# Review and merge the package entries manually, then delete this file.",
+        `# generated: ${new Date().toISOString()}`,
+        "",
+        ...conflicts.map((c) => `- ${c}`),
+        "",
+      ].join("\n"),
+    );
+    return rel;
+  } catch {
+    return null;
+  }
+}
+
+async function reportKnowledgeConflicts(
+  workspaceRoot: string,
+  conflicts: string[],
+  isDryRun: boolean,
+  io: WorkspaceIO,
+  logger: ForgeRuntimeContext["logger"],
+): Promise<string | null> {
+  if (conflicts.length === 0) return null;
+  const reportPath = isDryRun ? null : await writeKnowledgeConflictsReport(workspaceRoot, conflicts, io);
+  logger.warn(
+    `forge.upgrade: ${conflicts.length} knowledge entr${conflicts.length === 1 ? "y" : "ies"} ` +
+      `diverge between package and project — local versions kept` +
+      (reportPath ? `; list: ${reportPath}` : ""),
+  );
+  return reportPath;
 }
 
 function addMissingBindingDefaults(
@@ -689,6 +742,13 @@ export async function runUpgrade(
     for (const warn of reconcile.warnings) {
       context.logger.warn(`forge.upgrade: ${warn}`);
     }
+    const noopConflictsReport = await reportKnowledgeConflicts(
+      workspaceRoot,
+      reconcile.knowledgeConflicts,
+      isDryRun,
+      fio,
+      context.logger,
+    );
     return {
       data: {
         command: "forge.upgrade",
@@ -711,6 +771,8 @@ export async function runUpgrade(
         skillsPruned: reconcile.prune.pruned,
         skillsKeptWithConsumerFiles: reconcile.prune.keptWithConsumerFiles,
         prettierignore: reconcile.prettierignore,
+        knowledgeConflicts: reconcile.knowledgeConflicts,
+        knowledgeConflictsReport: noopConflictsReport,
       },
       nextSteps: npmCheck.warning
         ? [{ action: npmCheck.warning, kind: "optional" }]
@@ -742,12 +804,13 @@ export async function runUpgrade(
   for (const warn of reconcile.warnings) {
     context.logger.warn(`forge.upgrade: ${warn}`);
   }
-  if (knowledgeConflicts.length > 0) {
-    context.logger.warn(
-      `forge.upgrade: ${knowledgeConflicts.length} knowledge entr${knowledgeConflicts.length === 1 ? "y" : "ies"} ` +
-        `diverge between package and project — local versions kept: ${knowledgeConflicts.join(", ")}`,
-    );
-  }
+  const knowledgeConflictsReport = await reportKnowledgeConflicts(
+    workspaceRoot,
+    knowledgeConflicts,
+    isDryRun,
+    fio,
+    context.logger,
+  );
 
   // Step 3d: Scaffold memory layer (RFC-0664)
   const memoryScaffold = isDryRun ? { created: [], gitignoreUpdated: false, skipped: [] } : scaffoldMemoryLayer(workspaceRoot);
@@ -858,6 +921,8 @@ export async function runUpgrade(
       skillsPruned: reconcile.prune.pruned,
       skillsKeptWithConsumerFiles: reconcile.prune.keptWithConsumerFiles,
       prettierignore: reconcile.prettierignore,
+      knowledgeConflicts,
+      knowledgeConflictsReport,
     },
     nextSteps,
     exitCode: 0,

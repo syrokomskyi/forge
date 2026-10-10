@@ -142,5 +142,5 @@ forge package.health
 ## Autonomy
 
 ```sh
-forge forge.autonomy.validate
+forge autonomy.validate
 ```

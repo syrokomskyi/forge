@@ -23,6 +23,7 @@ import {
   PRETTIERIGNORE_BLOCK_END,
 } from "../onboarding/prettierignore.ts";
 import { SKILL_MARKER_FILE } from "../onboarding/skill-markers.ts";
+import { buildGeneratedHeader } from "../utils/index.ts";
 
 let tmpDir: string;
 
@@ -97,6 +98,35 @@ test("skill entries enumerate only marker-carrying dirs (AC-9)", async () => {
   const plan = await planPrettierignore(tmpDir);
   expect(plan.entries).toContain(".agents/skills/fo-idea/");
   expect(plan.entries).not.toContain(".agents/skills/my-own-skill/");
+});
+
+test("generated AGENTS.md entries — root + marker-bearing nested, hand-written excluded", async () => {
+  await withPrettier(tmpDir);
+  const header = buildGeneratedHeader({
+    filePath: "AGENTS.md",
+    ownerCommand: "agents.generate",
+    editable: true,
+  });
+  // Root generated AGENTS.md
+  await writeFile(join(tmpDir, "AGENTS.md"), `${header}\n# Guide\n`);
+  // Nested workspace with a generated AGENTS.md
+  const genDir = join(tmpDir, "packages", "gen");
+  await mkdir(genDir, { recursive: true });
+  await writeFile(join(genDir, "package.json"), JSON.stringify({ name: "gen" }));
+  await writeFile(join(genDir, "AGENTS.md"), `${header}\n# Gen\n`);
+  // Hand-written nested AGENTS.md — stays operator-owned, prettier-covered
+  const ownDir = join(tmpDir, "packages", "own");
+  await mkdir(ownDir, { recursive: true });
+  await writeFile(join(ownDir, "package.json"), JSON.stringify({ name: "own" }));
+  await writeFile(join(ownDir, "AGENTS.md"), "# Hand-written\n");
+
+  const plan = await planPrettierignore(tmpDir);
+  expect(plan.entries).toContain("/AGENTS.md");
+  expect(plan.entries).toContain("packages/gen/AGENTS.md");
+  expect(plan.entries).not.toContain("packages/own/AGENTS.md");
+  // A bare "AGENTS.md" entry would ignore hand-written nested guides too —
+  // the root entry must stay anchored.
+  expect(plan.entries).not.toContain("AGENTS.md");
 });
 
 test("reconcile preserves operator content outside the block", async () => {

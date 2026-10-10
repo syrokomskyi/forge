@@ -87,6 +87,23 @@ describe("buildGeneratedHeader", () => {
     expect(header.endsWith("\n")).toBe(true);
   });
 
+  test("regenerate hint dedupes the commandPrefix namespace", () => {
+    const header = buildGeneratedHeader({
+      filePath: "AGENTS.md",
+      ownerCommand: "forge.agents.generate",
+      editable: true,
+    });
+    expect(header).toContain("Regenerate:   forge agents.generate");
+    expect(header).not.toContain("forge forge.agents.generate");
+    // Non-prefixed commands pass through unchanged
+    const plain = buildGeneratedHeader({
+      filePath: "AGENTS.md",
+      ownerCommand: "agents.generate",
+      editable: true,
+    });
+    expect(plain).toContain("Regenerate:   forge agents.generate");
+  });
+
   test("line-hash style for .yml files", () => {
     const header = buildGeneratedHeader({
       filePath: "config/generated.yml",
