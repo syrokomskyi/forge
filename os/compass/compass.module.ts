@@ -35,6 +35,7 @@ import { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler
 import { runCompassSummaryRecord } from "./handlers/summary-record.ts";
 import { runCompassMigrate } from "./handlers/compass-migrate-handler.ts";
 import { runCompassDocsValidate } from "./handlers/compass-docs-validate.ts";
+import { runCompassDocsScaffold } from "./handlers/compass-docs-scaffold.ts";
 
 const compassScanFlags = {
   packages: {
@@ -332,6 +333,32 @@ export const forgeCompassModule: ForgeModule = {
         severity: "mixed",
         phase: "workspace",
       },
+    },
+    {
+      name: "compass.docs.scaffold",
+      modulePath: "packages/forge/os/compass/compass.module.ts",
+      mutatesState: true,
+      description:
+        "Scaffold the six-document Compass corpus (requirements, technology, development-plan, knowledge-graph, verification-plan, source-markup) from real repository state and write/merge bindings.paths.compassDocs (RFC-1253). Idempotent — existing files are preserved; knowledge-graph only gains missing workspace nodes.",
+      scope: "workspace",
+      acceptsAllFlag: true,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print the action manifest without writing any file.",
+        },
+      },
+      generates: [{ path: "docs/*.xml", phase: "on-demand" }],
+      reads: [
+        "forge.yaml",
+        "package.json",
+        "packages/*/package.json",
+        "apps/*/package.json",
+        "services/*/package.json",
+        "docs/*.xml",
+      ],
+      writes: ["docs/*.xml", "forge.yaml"],
+      execute: runCompassDocsScaffold,
     },
   ],
   pipelines: [],
