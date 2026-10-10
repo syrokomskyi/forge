@@ -1,12 +1,12 @@
 {
   "name": "@warpgogol/werkstatt-typescript",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "private": false,
   "type": "module",
   "engines": {
     "node": ">=24 <25"
   },
-  "description": "Werkstatt TypeScript plugin — generic TypeScript TurboRepo stack with best-practice validators.",
+  "description": "Werkstatt TypeScript plugin \u2014 generic TypeScript TurboRepo stack with best-practice validators.",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/syrokomskyi/werkstatt-typescript.git"
@@ -31,7 +31,9 @@
       "default": "./src/checks/module.ts"
     }
   },
-  "files": ["src"],
+  "files": [
+    "src"
+  ],
   "scripts": {
     "lint": "pnpm exec eslint \"src/**/*.ts\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
