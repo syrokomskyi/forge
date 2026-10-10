@@ -532,3 +532,131 @@ test("agents-generate omits the read-first block when compassDocs is absent (RFC
   const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
   expect(agentsMd).not.toContain("## Semantic layer — read first");
 });
+
+// Consumer field report: the block must reach every surface an agent reads —
+// nested generated guides and opt-in hand-written files, not only generated roots.
+
+test("agents-generate emits the read-first block into nested workspace guides", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("<!-- forge:begin semantic-layer -->");
+  expect(nested).toContain("## Semantic layer — read first");
+  expect(nested).toContain("`docs/requirements.xml`");
+  expect(nested).toContain("<!-- forge:end semantic-layer -->");
+  // the footer stays the last substantive line — it is the merge boundary
+  // for legacy marker-less files and must not move below the block
+  expect(nested.indexOf("## Semantic layer — read first")).toBeLessThan(
+    nested.indexOf("See the root `AGENTS.md`"),
+  );
+});
+
+test("agents-generate expands the forge:semantic-layer sentinel in a hand-written root", async () => {
+  await makeForgeYaml(tempDir);
+  await writeFile(
+    join(tempDir, "AGENTS.md"),
+    "# Hand-written\n\nCustom intro.\n\n<!-- forge:semantic-layer -->\n\nCustom tail.\n",
+    "utf8",
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.rootSkipped).toBe(true);
+  expect(result.data?.injected).toContain("AGENTS.md");
+
+  const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  expect(agentsMd).toContain("<!-- forge:begin semantic-layer -->");
+  expect(agentsMd).toContain("## Semantic layer — read first");
+  expect(agentsMd).toContain("`docs/requirements.xml`");
+  expect(agentsMd).toContain("<!-- forge:end semantic-layer -->");
+  expect(agentsMd).toContain("Custom intro.");
+  expect(agentsMd).toContain("Custom tail.");
+  expect(agentsMd).not.toContain("<!-- forge:semantic-layer -->");
+  expect(agentsMd.match(/## Semantic layer — read first/g)).toHaveLength(1);
+});
+
+test("agents-generate refreshes a pasted semantic-layer region in a hand-written root", async () => {
+  await makeForgeYaml(tempDir);
+  const staleRegion = [
+    "<!-- forge:begin semantic-layer -->",
+    "",
+    "## Semantic layer — read first",
+    "",
+    "STALE",
+    "",
+    "<!-- forge:end semantic-layer -->",
+  ].join("\n");
+  await writeFile(join(tempDir, "AGENTS.md"), `# Hand-written\n\n${staleRegion}\n`, "utf8");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  expect(agentsMd).not.toContain("STALE");
+  expect(agentsMd).toContain("`docs/requirements.xml`");
+  expect(result.data?.injected).toContain("AGENTS.md");
+
+  // idempotent — a current region reports no further injection
+  const second = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(second.data?.injected).toEqual([]);
+});
+
+test("agents-generate leaves a hand-written root without the sentinel untouched", async () => {
+  await makeForgeYaml(tempDir);
+  const original = "# Hand-written\nNo marker, no sentinel — fully authored.\n";
+  await writeFile(join(tempDir, "AGENTS.md"), original, "utf8");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.injected).toEqual([]);
+
+  const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  expect(agentsMd).toBe(original);
+});
+
+test("agents-generate expands the sentinel in a hand-written nested guide", async () => {
+  await makeForgeYaml(tempDir);
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "AGENTS.md"),
+    "# Custom\n\n<!-- forge:semantic-layer -->\n",
+    "utf8",
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.data?.injected).toContain(join("packages", "my-pkg", "AGENTS.md"));
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).toContain("## Semantic layer — read first");
+  expect(nested).toContain("# Custom");
+});
+
+test("agents-generate emits no read-first block in nested guides when compassDocs is absent", async () => {
+  await makeForgeYaml(tempDir);
+  const yaml = (await readFile(join(tempDir, "forge.yaml"), "utf8")).replace(
+    "    compassDocs: [docs/requirements.xml]\n",
+    "",
+  );
+  await writeFile(join(tempDir, "forge.yaml"), yaml, "utf8");
+  await mkdir(join(tempDir, "packages", "my-pkg"), { recursive: true });
+  await writeFile(
+    join(tempDir, "packages", "my-pkg", "package.json"),
+    JSON.stringify({ name: "@test/my-pkg" }),
+  );
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
+  expect(nested).not.toContain("## Semantic layer — read first");
+});

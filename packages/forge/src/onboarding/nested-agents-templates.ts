@@ -8,7 +8,6 @@ content-rich AGENTS.md for a workspace from its package.json metadata. No I/O.</
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0611: initial minimal stub template for app, package, service workspaces.</item>
   <item>RFC-0643: selectNestedTemplate() for profile-driven template selection with path traversal guard.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -17,12 +16,15 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>Drop the blank line pushed after the generated header — the header ends in a newline so the extra line rendered two blank lines that prettier collapsed, ping-ponging doctor's stale check.</item>
+  <item>Emit the marker-wrapped semantic-layer read-first block ahead of the footer when paths.compassDocs is bound; footer literal exported as NESTED_AGENTS_FOOTER (consumer field report follow-up to RFC-1253).</item>
+  <history>RFC-0611</history>
 </CHANGE_SUMMARY>
 */
 
 import { alignMarkdownTable, buildGeneratedHeader } from "../utils/index.ts";
-import { resolveForgePackageRoot } from "../config/forge-config.ts";
+import { resolveBinding, resolveForgePackageRoot } from "../config/forge-config.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
+import { semanticLayerLines } from "./compass-docs/semantic-layer-block.ts";
 import type { WorkspaceDir, WorkspaceType } from "./workspace-discovery.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
@@ -53,6 +55,13 @@ const TYPE_LABEL: Record<WorkspaceType, string> = {
   package: "Package",
   service: "Service",
 };
+
+/**
+ * Canonical nested-guide footer — the last substantive line of every render.
+ * Legacy marker-less files merge against this boundary; it must stay last.
+ */
+export const NESTED_AGENTS_FOOTER =
+  "See the root `AGENTS.md` for project-wide rules, skills, and capabilities.";
 
 interface EntryPoint {
   name: string;
@@ -188,7 +197,7 @@ function substituteNestedTemplate(
 
 export function buildNestedAgentsMd(
   workspace: WorkspaceDir,
-  _config: ForgeConfig,
+  config: ForgeConfig,
   packageInfo?: PackageInfo,
 ): string {
   const header = buildGeneratedHeader({
@@ -241,7 +250,18 @@ export function buildNestedAgentsMd(
   lines.push(...buildScriptsTable(packageInfo?.scripts));
   lines.push(...buildDependenciesSection(packageInfo?.dependencies));
 
-  lines.push("See the root `AGENTS.md` for project-wide rules, skills, and capabilities.");
+  // Compass corpus read-first block (RFC-1253): emitted ahead of the footer —
+  // the footer line is the canonical merge boundary for legacy marker-less
+  // files and must stay the render's last non-empty line.
+  const compassDocs = resolveBinding(config, "paths.compassDocs");
+  const semanticLayerDocs = (Array.isArray(compassDocs) ? compassDocs : []).filter(
+    (d): d is string => typeof d === "string",
+  );
+  if (semanticLayerDocs.length > 0) {
+    lines.push(...semanticLayerLines(semanticLayerDocs), "");
+  }
+
+  lines.push(NESTED_AGENTS_FOOTER);
   lines.push("");
 
   return lines.join("\n");

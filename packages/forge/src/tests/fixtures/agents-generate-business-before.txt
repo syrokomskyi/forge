@@ -33,6 +33,8 @@
 - Specs: `docs/specs`
 - Skills: `.agents/skills`
 
+<!-- forge:begin semantic-layer -->
+
 ## Semantic layer — read first
 
 This repository carries a machine-readable Compass corpus — the semantic layer that answers “what reads X, what breaks if I change Y” without a full repository re-scan. For repository-wide, cross-workspace, architectural, shared-package, or high-risk tasks, read these documents before planning or editing code:
@@ -40,6 +42,8 @@ This repository carries a machine-readable Compass corpus — the semantic layer
 - `docs/requirements.xml`
 
 Treat these XML documents as the primary semantic layer for AI work and keep them synchronized with code, architecture, and verification changes.
+
+<!-- forge:end semantic-layer -->
 
 ## Skills
 

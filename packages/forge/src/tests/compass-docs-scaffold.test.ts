@@ -14,6 +14,7 @@ import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runCompassDocsScaffold } from "../../os/compass/handlers/compass-docs-scaffold.ts";
+import { runCompassDocsValidate } from "../../os/compass/handlers/compass-docs-validate.ts";
 import { forgeYaml } from "../../os/compass/handlers/tests/forge-yaml-fixture.ts";
 import { ambientIo } from "../utils/io.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../types.ts";
@@ -167,6 +168,72 @@ describe("compass.docs.scaffold — RFC-1253", () => {
     const forgeYaml = await readFile(join(root, "forge.yaml"), "utf8");
     expect(forgeYaml).toContain("docs/corpus/requirements.xml");
     expect(forgeYaml).toContain("docs/knowledge-graph.xml");
+  });
+
+  it("consumer field report: mixed-layout repo — ids derive from location, scaffold → validate needs zero manual edits", async () => {
+    // apps/ workspaces without astro/Dockerfile/service.config markers detect
+    // as "package" — under the old type-derived prefix they would emit pkg-*
+    // ids that COMPASS-DOC-02 resolves to nonexistent packages/<name> paths.
+    // The prefix must follow the location convention the validator enforces.
+    await mkdir(join(root, "apps", "api"), { recursive: true });
+    await writeFile(
+      join(root, "apps", "api", "package.json"),
+      JSON.stringify({ name: "@fixture/api" }),
+    );
+    await mkdir(join(root, "apps", "api-staging"), { recursive: true });
+    await writeFile(
+      join(root, "apps", "api-staging", "package.json"),
+      JSON.stringify({ name: "@fixture/api-staging" }),
+    );
+    await mkdir(join(root, "apps", "dashboard"), { recursive: true });
+    await writeFile(
+      join(root, "apps", "dashboard", "package.json"),
+      JSON.stringify({ name: "@fixture/dashboard" }),
+    );
+    await writeFile(join(root, "apps", "dashboard", "astro.config.mjs"), "export default {};\n");
+    await mkdir(join(root, "services", "beta"), { recursive: true });
+    await writeFile(
+      join(root, "services", "beta", "package.json"),
+      JSON.stringify({ name: "@fixture/beta" }),
+    );
+    await writeFile(join(root, "services", "beta", "service.config.yaml"), "name: beta\n");
+    // Locations the prefixed convention cannot express fall back to dotted ids.
+    await mkdir(join(root, "tools", "hammer"), { recursive: true });
+    await writeFile(
+      join(root, "tools", "hammer", "package.json"),
+      JSON.stringify({ name: "@fixture/hammer" }),
+    );
+    await mkdir(join(root, "packages", "alpha", "modules", "deep"), { recursive: true });
+    await writeFile(
+      join(root, "packages", "alpha", "modules", "deep", "package.json"),
+      JSON.stringify({ name: "@fixture/deep" }),
+    );
+    // knowledge-graph's root.rules node references AGENTS.md.
+    await writeFile(join(root, "AGENTS.md"), "# fixture\n");
+
+    const scaffold = await runCompassDocsScaffold(makeInput(), makeContext(root));
+    expect(scaffold.exitCode).toBe(0);
+
+    const kg = await readFile(join(root, "docs", "knowledge-graph.xml"), "utf8");
+    expect(kg).toContain('id="app-api"');
+    expect(kg).toContain('id="app-api-staging"');
+    expect(kg).toContain('id="app-dashboard"');
+    expect(kg).toContain('id="svc-beta"');
+    expect(kg).toContain('id="pkg-alpha"');
+    expect(kg).toContain('id="tools.hammer"');
+    expect(kg).toContain('id="packages.alpha.modules.deep"');
+    expect(kg).not.toContain('id="pkg-api"');
+
+    const tech = await readFile(join(root, "docs", "technology.xml"), "utf8");
+    expect(tech).toContain('id="app-api"');
+    expect(tech).not.toContain('id="pkg-api"');
+
+    const validation = await runCompassDocsValidate(makeInput(), makeContext(root));
+    expect(
+      validation.data?.diagnostics.filter((d) => d.severity === "error"),
+      "scaffold output must validate clean — check workspaceNodeId prefix derivation",
+    ).toEqual([]);
+    expect(validation.exitCode).toBe(0);
   });
 
   it("dry-run reports the manifest without writing", async () => {

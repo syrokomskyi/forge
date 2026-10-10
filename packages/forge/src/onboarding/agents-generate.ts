@@ -7,7 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
   <item>RFC-1253: emit "Semantic layer — read first" block listing bound paths.compassDocs before the Skills table when the binding resolves non-empty.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -16,7 +15,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643</history>
+  <item>Semantic-layer block rendered marker-wrapped via shared semantic-layer-block module and injected/refreshed inside hand-written roots carrying the sentinel or a pasted region; result gains injected[] (consumer field report follow-up to RFC-1253).</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664</history>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +29,7 @@ import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { alignMarkdownTable, buildGeneratedHeader, hasEditableGeneratedMarker, hasGeneratedMarker, mergeEditableGenerated, writeFileIfChanged } from "../utils/index.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
+import { injectSemanticLayerBlock, semanticLayerLines } from "./compass-docs/semantic-layer-block.ts";
 import { resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
 import type {
@@ -235,6 +236,8 @@ interface AgentsGenerateResult {
   configPath: string;
   generated: string[];
   skipped: string[];
+  /** Hand-written files that accepted the marker-guarded semantic-layer block. */
+  injected: string[];
   errors: string[];
   renderedFiles?: { [relPath: string]: string };
   details?: Array<{ path: string; domain?: string; register?: string; workspaceType?: string }>;
@@ -265,6 +268,7 @@ export async function runAgentsGenerate(
         configPath: "forge.yaml",
         generated: [],
         skipped: [],
+        injected: [],
         errors: [msg],
       },
       exitCode: 1,
@@ -305,21 +309,15 @@ export async function runAgentsGenerate(
 
   // RFC-1253: Compass corpus read-first block — only when the binding
   // resolves non-empty (DNA-90: instructions live where agents read them).
+  // Marker-wrapped so hand-written files that pasted it stay refreshable.
   const compassDocsReadFirst = resolveBinding(config, "paths.compassDocs");
-  if (Array.isArray(compassDocsReadFirst) && compassDocsReadFirst.length > 0) {
-    dynamicLines.push("## Semantic layer — read first");
-    dynamicLines.push("");
-    dynamicLines.push(
-      "This repository carries a machine-readable Compass corpus — the semantic layer that answers \u201cwhat reads X, what breaks if I change Y\u201d without a full repository re-scan. For repository-wide, cross-workspace, architectural, shared-package, or high-risk tasks, read these documents before planning or editing code:",
-    );
-    dynamicLines.push("");
-    for (const doc of compassDocsReadFirst) {
-      dynamicLines.push(`- \`${doc}\``);
-    }
-    dynamicLines.push("");
-    dynamicLines.push(
-      "Treat these XML documents as the primary semantic layer for AI work and keep them synchronized with code, architecture, and verification changes.",
-    );
+  const semanticLayerDocs = (Array.isArray(compassDocsReadFirst) ? compassDocsReadFirst : []).filter(
+    (d): d is string => typeof d === "string",
+  );
+  const semanticLayerBlock =
+    semanticLayerDocs.length > 0 ? semanticLayerLines(semanticLayerDocs).join("\n") : "";
+  if (semanticLayerBlock) {
+    dynamicLines.push(semanticLayerBlock);
     dynamicLines.push("");
   }
 
@@ -417,6 +415,7 @@ export async function runAgentsGenerate(
 
   const generated: string[] = [];
   const skipped: string[] = [];
+  const injected: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};
   const details: Array<{ path: string; domain?: string; register?: string; workspaceType?: string }> = [];
   details.push({
@@ -429,7 +428,24 @@ export async function runAgentsGenerate(
     renderedFiles["AGENTS.md"] = content;
     generated.push("AGENTS.md");
   } else if (rootSkipped) {
-    skipped.push("AGENTS.md (hand-written)");
+    // Marker-guarded opt-in: a hand-written root carrying the semantic-layer
+    // sentinel (or a pasted marked region) gets the block refreshed —
+    // surrounding prose is never touched.
+    let rootInjected = false;
+    if (semanticLayerBlock) {
+      try {
+        const existing = await fio.readFile(agentsMdPath);
+        const injection = injectSemanticLayerBlock(existing, semanticLayerBlock);
+        if (injection.changed) {
+          await writeFileIfChanged(agentsMdPath, injection.content, fio);
+          rootInjected = true;
+        }
+      } catch {
+        // Unreadable — leave the hand-written file alone.
+      }
+    }
+    skipped.push(`AGENTS.md (hand-written${rootInjected ? " — semantic-layer injected" : ""})`);
+    if (rootInjected) injected.push("AGENTS.md");
   } else {
     // RFC-1153: merge instead of overwrite — preserve the custom tail below
     // the forge:custom boundary; fail-closed skip when no boundary resolves.
@@ -478,6 +494,7 @@ export async function runAgentsGenerate(
   const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes, fio);
   generated.push(...nestedResult.generated);
   skipped.push(...nestedResult.skipped);
+  injected.push(...nestedResult.injected);
   Object.assign(renderedFiles, nestedResult.renderedFiles);
 
   // RFC-0643: add details for nested files
@@ -505,6 +522,7 @@ export async function runAgentsGenerate(
       configPath: "forge.yaml",
       generated,
       skipped,
+      injected,
       errors: [],
       details,
       ...(rootSkipped ? { rootSkipped: true, rootSkipReason: "hand-written" } : {}),
@@ -513,6 +531,6 @@ export async function runAgentsGenerate(
     exitCode: 0,
     summary: dryRun
       ? `forge.agents.generate: [dry-run] would generate ${generated.length} file(s), skip ${skipped.length}`
-      : `forge.agents.generate: OK — ${generated.length} file(s) generated, ${skipped.length} skipped${rootSkipped ? " (root AGENTS.md hand-written — skipped)" : ""}`,
+      : `forge.agents.generate: OK — ${generated.length} file(s) generated, ${skipped.length} skipped${injected.length > 0 ? `, ${injected.length} semantic-layer injected` : ""}${rootSkipped ? " (root AGENTS.md hand-written — skipped)" : ""}`,
   };
 }

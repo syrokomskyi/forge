@@ -10,7 +10,6 @@ runAgentsGenerate, runUpgrade, and runDoctor (staleness check via dryRun).</purp
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0640: accept optional workspaceTypes from profile and pass to discoverWorkspaces for profile-driven detection.</item>
   <item>RFC-0643: return workspaceTypeMap for per-file workspace type metadata in details field.</item>
   <item>RFC-0643: use selectNestedTemplate for profile-driven nested templates with terminology substitution.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -19,7 +18,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
-  <history>RFC-0611</history>
+  <item>Result gains injected[]: hand-written nested guides carrying the forge:semantic-layer sentinel or a pasted marked region get the read-first block refreshed in place; ensureSemanticLayerBlock guards renders that bypass the fallback template, e.g. profile-authored nested templates (consumer field report follow-up to RFC-1253).</item>
+  <history>RFC-0611, RFC-0640</history>
 </CHANGE_SUMMARY>
 */
 
@@ -34,7 +34,9 @@ import {
 } from "../utils/index.ts";
 import { resolveIo } from "../utils/io.ts";
 import { discoverWorkspaces } from "./workspace-discovery.ts";
-import { buildNestedAgentsMd, selectNestedTemplate, type PackageInfo } from "./nested-agents-templates.ts";
+import { buildNestedAgentsMd, NESTED_AGENTS_FOOTER, selectNestedTemplate, type PackageInfo } from "./nested-agents-templates.ts";
+import { ensureSemanticLayerBlock, injectSemanticLayerBlock, semanticLayerLines } from "./compass-docs/semantic-layer-block.ts";
+import { resolveBinding } from "../config/forge-config.ts";
 import type { ForgeConfig } from "../config/forge-config.ts";
 import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
@@ -46,6 +48,8 @@ export interface NestedGenerateResult {
   skipped: string[];
   /** RFC-1153: files merged with a carried custom tail below the boundary. */
   preserved: string[];
+  /** Hand-written files that accepted the marker-guarded semantic-layer block. */
+  injected: string[];
   renderedFiles: { [relPath: string]: string };
   workspaceTypeMap?: { [relPath: string]: string };
 }
@@ -75,6 +79,7 @@ export async function generateNestedAgentsMd(
   const generated: string[] = [];
   const skipped: string[] = [];
   const preserved: string[] = [];
+  const injected: string[] = [];
   const renderedFiles: { [relPath: string]: string } = {};
   const fio = resolveIo(io);
   const workspaceTypeMap: { [relPath: string]: string } = {};
@@ -83,6 +88,14 @@ export async function generateNestedAgentsMd(
   const profile = config.profile as StackProfile | undefined;
   const terminology = resolveAllTerminology(config, profile);
 
+  // RFC-1253: marker-wrapped read-first block for hand-written opt-in injection.
+  const compassDocs = resolveBinding(config, "paths.compassDocs");
+  const semanticLayerDocs = (Array.isArray(compassDocs) ? compassDocs : []).filter(
+    (d): d is string => typeof d === "string",
+  );
+  const semanticLayerBlock =
+    semanticLayerDocs.length > 0 ? semanticLayerLines(semanticLayerDocs).join("\n") : "";
+
   for (const ws of workspaces) {
     const agentsMdPath = path.join(workspaceRoot, ws.path, "AGENTS.md");
     const packageInfo = readPackageInfo(workspaceRoot, ws.path);
@@ -90,7 +103,11 @@ export async function generateNestedAgentsMd(
 
     // RFC-0643: use profile-driven template when available
     const wsType = workspaceTypes?.find((wt) => wt.id === ws.type);
-    const content = selectNestedTemplate(wsType, profile, terminology, fallback);
+    const content = ensureSemanticLayerBlock(
+      selectNestedTemplate(wsType, profile, terminology, fallback),
+      semanticLayerBlock,
+      NESTED_AGENTS_FOOTER,
+    );
     const relPath = path.join(ws.path, "AGENTS.md");
 
     if (dryRun) {
@@ -99,7 +116,24 @@ export async function generateNestedAgentsMd(
     }
 
     if (ws.hasAgentsMd && !ws.isGenerated) {
-      skipped.push(`${relPath} (hand-written)`);
+      // Marker-guarded opt-in: a hand-written guide carrying the
+      // forge:semantic-layer sentinel (or a pasted marked region) gets the
+      // block refreshed — surrounding prose is never touched.
+      let injectedHit = false;
+      if (semanticLayerBlock) {
+        try {
+          const existing = await fio.readFile(agentsMdPath);
+          const injection = injectSemanticLayerBlock(existing, semanticLayerBlock);
+          if (injection.changed) {
+            await writeFileIfChanged(agentsMdPath, injection.content, fio);
+            injected.push(relPath);
+            injectedHit = true;
+          }
+        } catch {
+          // Unreadable — leave the hand-written file alone.
+        }
+      }
+      skipped.push(`${relPath} (hand-written${injectedHit ? " — semantic-layer injected" : ""})`);
       continue;
     }
 
@@ -136,7 +170,7 @@ export async function generateNestedAgentsMd(
     }
   }
 
-  return { generated, skipped, preserved, renderedFiles, workspaceTypeMap };
+  return { generated, skipped, preserved, injected, renderedFiles, workspaceTypeMap };
 }
 
 export { discoverWorkspaces, type WorkspaceDir, type WorkspaceType } from "./workspace-discovery.ts";
