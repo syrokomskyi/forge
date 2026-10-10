@@ -12,7 +12,12 @@ import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runFileSizeLint, countLines } from "../../os/core/handlers/file-size-lint.ts";
-import type { ForgeRuntimeContext, ForgeLogger } from "../types.ts";
+import type {
+  ForgeRuntimeContext,
+  ForgeLogger,
+  ForgeCommandInput,
+  ForgeFlagValue,
+} from "../types.ts";
 
 const logger: ForgeLogger = {
   section() {},
@@ -31,10 +36,7 @@ function mockContext(workspaceRoot: string): ForgeRuntimeContext {
   };
 }
 
-function input(flags: Record<string, unknown> = {}): {
-  argv: string[];
-  flags: Record<string, unknown>;
-} {
+function input(flags: Record<string, ForgeFlagValue> = {}): ForgeCommandInput {
   return { argv: [], flags };
 }
 

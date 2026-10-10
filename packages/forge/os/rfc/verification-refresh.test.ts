@@ -67,7 +67,7 @@ function makeEnvelope(
 }
 
 async function setupWorkspace(opts: {
-  rfcs: Array<{ id: string; status: string; probes?: unknown[] }>;
+  rfcs: Array<{ id: string; status: string; probes?: Record<string, unknown>[] }>;
   envelopes?: Array<{ id: string; emittedAt?: string; overall?: "pass" | "fail" }>;
 }): Promise<{ workspaceRoot: string; cleanup: () => Promise<void> }> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "rfc-refresh-test-"));

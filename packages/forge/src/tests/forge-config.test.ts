@@ -238,6 +238,7 @@ const configWithBindings: ForgeConfig = {
       validateRfc: "pnpm exec werkstatt run rfc.validate --id {id} --json",
       validateAdr: null,
       implementStamp: null,
+      adrImplementStamp: null,
       typecheck: "pnpm --filter {workspace} run build:check",
       test: "pnpm --filter {workspace} run test",
       scopedBuild: null,
@@ -517,8 +518,6 @@ test("RFC-1224: applyForgeYamlPatches creates missing intermediate maps", () => 
 });
 
 test("RFC-1224: applyForgeYamlPatches returns null on invalid YAML", () => {
-  const patched = applyForgeYamlPatches("a: [unclosed\n  : :", [
-    { path: ["a"], value: 1 },
-  ]);
+  const patched = applyForgeYamlPatches("a: [unclosed\n  : :", [{ path: ["a"], value: 1 }]);
   expect(patched).toBeNull();
 });
