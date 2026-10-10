@@ -20,6 +20,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <item>fix: sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-* SKILL.md references dangled for npm consumers</item>
   <history>RFC-0543, RFC-0611, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -45,7 +46,12 @@ import {
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { syncKnowledgeFile } from "../knowledge/index.ts";
 import { writeFileIfChanged } from "../utils/fs-idempotent.ts";
-import { writeSkillMarker, pruneStaleSkillDirs, type PruneResult } from "./skill-markers.ts";
+import {
+  writeSkillMarker,
+  pruneStaleSkillDirs,
+  listFilesRecursive,
+  type PruneResult,
+} from "./skill-markers.ts";
 import {
   planPrettierignore,
   applyPrettierignore,
@@ -258,6 +264,37 @@ async function syncSharedKnowledge(
   return { updated, knowledgeConflicts };
 }
 
+/**
+ * Sync `_shared/` convention docs (fo-pipeline-conventions.md et al.) into
+ * `.agents/skills/_shared/`. fo-* SKILL.md files link these by relative path —
+ * without the copy the references dangle for npm consumers. Verbatim sync like
+ * SKILL.md, forge-managed via marker so a dropped upstream dir prunes cleanly.
+ */
+async function syncSharedConventions(
+  workspaceRoot: string,
+  forgeRoot: string,
+  skillsDir: string,
+  dryRun: boolean,
+  io: WorkspaceIO,
+): Promise<{ updated: string[] }> {
+  const srcDir = path.join(forgeRoot, "skills", "_shared");
+  if (!(await io.exists(srcDir))) return { updated: [] };
+
+  const files = await listFilesRecursive(srcDir, io);
+  if (files.length === 0) return { updated: [] };
+
+  if (!dryRun) {
+    const destDir = path.join(workspaceRoot, skillsDir, "_shared");
+    await io.mkdir(destDir);
+    for (const rel of files) {
+      const content = await io.readFile(path.join(srcDir, rel));
+      await writeFileIfChanged(path.join(destDir, rel), content, io);
+    }
+    await writeSkillMarker(destDir, files, io);
+  }
+  return { updated: ["_shared"] };
+}
+
 async function syncPackSkills(
   workspaceRoot: string,
   config: ForgeConfig,
@@ -370,11 +407,19 @@ async function reconcileGeneratedSurface(
     dryRun,
     io,
   );
+  const sharedConventionsResult = await syncSharedConventions(
+    workspaceRoot,
+    forgeRoot,
+    config.paths.skillsDir,
+    dryRun,
+    io,
+  );
 
   const currentSyncSet = new Set([
     ...forgeSkillsResult.updated,
     ...packResult.updated,
     ...sharedKnowledgeResult.updated,
+    ...sharedConventionsResult.updated,
   ]);
 
   const warnings: string[] = [];
@@ -410,6 +455,7 @@ async function reconcileGeneratedSurface(
       ...forgeSkillsResult.updated,
       ...packResult.updated,
       ...sharedKnowledgeResult.updated,
+      ...sharedConventionsResult.updated,
     ],
     knowledgeConflicts: [
       ...forgeSkillsResult.knowledgeConflicts,

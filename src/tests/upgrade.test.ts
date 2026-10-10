@@ -56,6 +56,12 @@ async function setupForgeSource(dir: string, version = "0.2.0"): Promise<void> {
     "# RFC Template",
     "utf8",
   );
+  await mkdir(join(dir, "packages", "forge", "skills", "_shared"), { recursive: true });
+  await writeFile(
+    join(dir, "packages", "forge", "skills", "_shared", "fo-pipeline-conventions.md"),
+    "# Shared Conventions\n",
+    "utf8",
+  );
   await mkdir(join(dir, "packages", "forge", "profiles"), { recursive: true });
 }
 
@@ -307,6 +313,75 @@ test("forge.upgrade syncs skills to .agents/skills/", async () => {
   expect(existsSync(skillPath)).toBe(true);
   const content = await readFile(skillPath, "utf8");
   expect(content).toContain("fo-idea");
+});
+
+test("forge.upgrade syncs _shared convention docs to .agents/skills/_shared/", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.skillsUpdated).toContain("_shared");
+  const convPath = join(tempDir, ".agents", "skills", "_shared", "fo-pipeline-conventions.md");
+  expect(existsSync(convPath)).toBe(true);
+  const content = await readFile(convPath, "utf8");
+  expect(content).toBe("# Shared Conventions\n");
+  // RFC-1154: the dir is forge-managed — marker lists every synced file.
+  const marker = await readFile(
+    join(tempDir, ".agents", "skills", "_shared", ".forge-managed"),
+    "utf8",
+  );
+  expect(JSON.parse(marker)).toEqual({ files: ["fo-pipeline-conventions.md"] });
+});
+
+test("forge.upgrade _shared sync refreshes a stale consumer copy", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  await mkdir(join(tempDir, ".agents", "skills", "_shared"), { recursive: true });
+  await writeFile(
+    join(tempDir, ".agents", "skills", "_shared", "fo-pipeline-conventions.md"),
+    "# Stale Copy\n",
+    "utf8",
+  );
+
+  await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  const content = await readFile(
+    join(tempDir, ".agents", "skills", "_shared", "fo-pipeline-conventions.md"),
+    "utf8",
+  );
+  expect(content).toBe("# Shared Conventions\n");
+});
+
+test("forge.upgrade --dry-run does not write _shared files", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await setupConsumerForgeYaml(tempDir, null);
+
+  const result = await runUpgrade(
+    { argv: [], flags: { "dry-run": true } },
+    makeContext(tempDir, true),
+  );
+
+  expect(result.data?.status).toBe("pass");
+  expect(existsSync(join(tempDir, ".agents", "skills", "_shared"))).toBe(false);
+});
+
+test("forge.init copies _shared convention docs to .agents/skills/_shared/", async () => {
+  await setupForgeSource(tempDir, "0.3.0");
+
+  runInit({ flags: {} }, { workspaceRoot: tempDir });
+
+  const convPath = join(tempDir, ".agents", "skills", "_shared", "fo-pipeline-conventions.md");
+  expect(existsSync(convPath)).toBe(true);
+  const content = await readFile(convPath, "utf8");
+  expect(content).toBe("# Shared Conventions\n");
+  const marker = await readFile(
+    join(tempDir, ".agents", "skills", "_shared", ".forge-managed"),
+    "utf8",
+  );
+  expect(JSON.parse(marker)).toEqual({ files: ["fo-pipeline-conventions.md"] });
 });
 
 test("RFC-0552: forge.upgrade returns skippedSkills field and syncs non-conflicting pack skills", async () => {

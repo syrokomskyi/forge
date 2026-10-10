@@ -147,7 +147,11 @@ export async function pruneStaleSkillDirs(
   return result;
 }
 
-async function listFilesRecursive(dir: string, io: WorkspaceIO, prefix = ""): Promise<string[]> {
+export async function listFilesRecursive(
+  dir: string,
+  io: WorkspaceIO,
+  prefix = "",
+): Promise<string[]> {
   const out: string[] = [];
   const entries = await io.readdir(dir);
   for (const entry of entries) {

@@ -1,6 +1,6 @@
 ---
 name: fo-handoff
-description: Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via ecosystem.commit.
+description: Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via the project's commit command (ecosystem.commit where registered).
 invocation: user
 category: fo
 concerns: document-only
@@ -11,7 +11,7 @@ triggerPhrases: ["create a handoff document", "compact conversation for next age
 
 <!--
 <MODULE_CONTRACT>
-<purpose>fo-handoff skill — Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via ecosystem.commit.</purpose>
+<purpose>fo-handoff skill — Compact the current conversation into a handoff document for another agent to pick up. Saves to docs/handoffs/ (resolved from forge.yaml paths.handoffsDir) and commits via the project's commit command (ecosystem.commit where registered).</purpose>
 <non-goals>
   <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
 </non-goals>
@@ -20,6 +20,7 @@ triggerPhrases: ["create a handoff document", "compact conversation for next age
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>fix: commit references resolve by project type — ecosystem.commit where registered, plain git commit in forge workshops</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -69,7 +70,7 @@ If the operator passed arguments, treat them as a description of what the next s
 
 ### 4. Commit
 
-Commit the handoff document so it survives stash operations and is available to the next session. Delegate the commit mechanics to `fo-step-commit` (it resolves the project's commit command and staging rules); where the project has no such skill, use its declared ecosystem commit command.
+Commit the handoff document so it survives stash operations and is available to the next session. Delegate the commit mechanics to `fo-step-commit` (it resolves the project's commit command and staging rules); where the project has no such skill, use the commit command the project declares — `ecosystem.commit` where it is registered, plain `git commit` otherwise.
 
 ### 5. Report
 
@@ -78,7 +79,7 @@ Tell the operator the absolute path of the handoff document and suggest opening 
 ## Constraints
 
 - **Save to `docs/handoffs/`** (or the directory resolved from `forge.yaml` `paths.handoffsDir`). Never save to `/tmp/` or other temporary directories.
-- **Commit the handoff document** after saving (via `fo-step-commit` or the project's ecosystem commit command).
+- **Commit the handoff document** after saving (via `fo-step-commit` or the project's commit command — `ecosystem.commit` where registered, `git commit` otherwise).
 - **Do not duplicate existing artifacts.** Reference them by path or URL.
 - **Redact sensitive information.** API keys, passwords, PII.
 - **Stage only the handoff file.** See `_shared/fo-pipeline-conventions.md` §Commit discipline.
