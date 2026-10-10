@@ -361,7 +361,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           },
         },
         writes: [".agents/skills/**", "forge.yaml", "docs/*.xml"],
-        generates: [{ path: "docs/*.xml", phase: "on-demand" }],
+        generates: [{ path: "docs/*.xml", phase: "on-demand", conditional: true }],
         reads: ["forge.yaml", "packages/forge/skills/**", "packages/forge/package.json"],
         cacheable: false,
         execute: async (input, context) =>
