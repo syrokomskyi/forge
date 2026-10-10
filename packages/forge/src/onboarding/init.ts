@@ -10,6 +10,7 @@
   <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
   <item>RFC-0941: create forge.plugin.yaml manifests for skill packs that lack them before calling discoverPackSkills.</item>
   <item>RFC-1019: extend PREFERENCES.md with formOfAddress, session-end protocol, skill invocation tracking, plan confirmation vs implementation, commit granularity rules.</item>
+  <item>fix: copy skills/_shared/ convention docs to .agents/skills/_shared/ on init — fo-* SKILL.md references dangled without it</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -416,6 +417,33 @@ export function runInit(
         ? ["learned-principles.md"]
         : [],
     );
+  }
+
+  // Sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-*
+  // SKILL.md files link these by relative path. Verbatim copy, forge-managed
+  // via marker (mirrors the upgrade-path syncSharedConventions step).
+  const sharedConvSrc = path.join(forgeRoot, "skills", "_shared");
+  if (fs.existsSync(sharedConvSrc)) {
+    const sharedConvDestDir = path.join(agentsSkillsDir, "_shared");
+    fs.mkdirSync(sharedConvDestDir, { recursive: true });
+    const sharedFiles: string[] = [];
+    const walk = (dir: string, prefix: string): void => {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          walk(path.join(dir, entry.name), rel);
+        } else {
+          sharedFiles.push(rel);
+        }
+      }
+    };
+    walk(sharedConvSrc, "");
+    for (const rel of sharedFiles) {
+      fs.mkdirSync(path.dirname(path.join(sharedConvDestDir, rel)), { recursive: true });
+      fs.copyFileSync(path.join(sharedConvSrc, rel), path.join(sharedConvDestDir, rel));
+      created.push(`${config.paths.skillsDir}/_shared/${rel}`);
+    }
+    writeSkillMarkerSync(sharedConvDestDir, sharedFiles);
   }
 
   // RFC-1154: reconcile the forge-managed .prettierignore block (prettier

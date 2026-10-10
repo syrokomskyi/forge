@@ -164,5 +164,30 @@ describe.runIf(hasForgeWorkspace)(
       const plan = planKnowledgeSync(src, dest);
       expect(plan.action, `shared-knowledge drift (sync action: ${plan.action})`).toBe("unchanged");
     });
+
+    it("_shared convention docs are synced verbatim", () => {
+      const srcDir = path.join(forgeRoot, "skills", "_shared");
+      if (!fs.existsSync(srcDir)) return; // conventions layer absent — nothing to gate
+      const drifted: string[] = [];
+      const walk = (dir: string, prefix: string): string[] =>
+        fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+          const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+          return entry.isDirectory() ? walk(path.join(dir, entry.name), rel) : [rel];
+        });
+      for (const rel of walk(srcDir, "")) {
+        const dest = path.join(skillsDir, "_shared", rel);
+        if (!fs.existsSync(dest)) {
+          drifted.push(`_shared/${rel} — missing in .agents/skills (run forge upgrade)`);
+        } else if (
+          fs.readFileSync(path.join(srcDir, rel), "utf8") !== fs.readFileSync(dest, "utf8")
+        ) {
+          drifted.push(`_shared/${rel} — diverged from source`);
+        }
+      }
+      expect(
+        drifted,
+        "_shared drift — convention docs sync verbatim via forge upgrade; never edit .agents/skills/_shared/ directly",
+      ).toEqual([]);
+    });
   },
 );
