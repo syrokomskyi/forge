@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1230: docs.archive post-loop merges only RFCs moved this run (collectLiveMergeTargets on rfc.archive moved[] instead of a full-tree rescan); declared docs/specs/live/*.md in writes/reads.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
@@ -16,7 +15,8 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1235: docs.archive post-loop records merge outcomes by exit code — exit-nonzero merges (incl. RFC-1230 fail-fast with populated data) land in failed[] with the merge summary as error, thrown errors record via liveMergeFailureEntry, and the spec.live.merge result block emits whenever anything was attempted; top-level result gains liveSpecFailures.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173</history>
+  <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230</history>
 </CHANGE_SUMMARY>
 */
 
@@ -527,8 +527,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.validate",
-        coverage: "operator" as const,
-        coverageNote: "artifact validator — typescript profile declares no artifacts by design",
         mutatesState: false,
         contract: "forge",
         rules: [],
