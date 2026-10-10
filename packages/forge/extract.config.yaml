@@ -40,6 +40,20 @@ excludePathSegments:
   # monorepo-scoped agent guide — not meaningful inside the standalone repo
   - AGENTS.md
 
+# Dest-side shield (RFC-1252): commitExport stages `git add -A`, so untracked
+# files dropped into the standalone repo between exports (agent skill installs,
+# forge-create scaffolds) would be swept into the public repo. The generated
+# .gitignore is rewritten on every export — list the known foreign paths here
+# so they stay ignored. `.agents/` must remain on disk (local skill resolver
+# reads it) but never enters git.
+extraGitignore:
+  - .agents/
+  - forge.yaml
+  - PREFERENCES.md
+  - docs/adrs/
+  - docs/plans/
+  - docs/rfcs/
+
 git:
   remote: git@github.com:syrokomskyi/forge.git
   autoPush: true

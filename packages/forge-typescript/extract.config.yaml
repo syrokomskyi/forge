@@ -42,3 +42,6 @@ postProcess:
 git:
   remote: git@github.com:syrokomskyi/werkstatt-typescript.git
   autoPush: true
+  # RFC-1252/repo-extract >=1.4.0: non-fast-forward push after history
+  # transfer reconciles via fetch + merge -s ours + retry. Never force-push.
+  autoReconcile: true
