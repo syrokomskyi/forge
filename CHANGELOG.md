@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [6.3.3] — 2026-10-11
+
+### Fixed
+
+- `compass.docs.scaffold` derives workspace node id prefixes from directory location (`apps/*` → `app-*`, `packages/*` → `pkg-*`, `services/*` → `svc-*`, dotted elsewhere) instead of detected workspace type — type-derived `pkg-*` ids failed `COMPASS-DOC-02` validation on `apps/` workspaces, so fresh scaffold output now validates clean with zero manual edits
+- `forge.agents.generate` emits the "Semantic layer — read first" block into nested generated workspace guides, not only the generated root `AGENTS.md`
+- Hand-written `AGENTS.md` files can opt in to the semantic-layer block via the `<!-- forge:semantic-layer -->` sentinel — expanded into a marker-wrapped `forge:begin/end semantic-layer` region that `agents.generate`, `upgrade`, and `doctor --fix` refresh in place without touching surrounding prose; result gains an `injected[]` field and doctor reports injections as fixes
+- Docs: `docs/reference/compass-docs.md` documents the workspace id convention and the hand-written opt-in sentinel
+
 ## [6.3.2] — 2026-10-10
 
 ### Added
