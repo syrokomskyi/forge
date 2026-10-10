@@ -14,6 +14,7 @@
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1253: created — six-doc scaffold, KG node merge, binding patch, dry-run manifest.</item>
+  <item>Derive workspace node id prefixes from directory location (apps/→app-, packages/→pkg-, services/→svc-, dotted elsewhere) — COMPASS-DOC-02 resolves prefixes to paths, so type-derived ids failed validation on apps/ repos (consumer field report).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -97,10 +98,32 @@ interface ScaffoldWorkspace {
   name: string;
 }
 
+/**
+ * COMPASS-DOC-02 resolves workspace ids by top-level-directory convention:
+ * app-* names apps/<rest>, pkg-* names packages/<rest>, svc-* names
+ * services/<rest>. Deriving the prefix from the detected workspace type breaks
+ * that contract on repos whose apps/ workspaces miss content detection — a
+ * non-astro, non-docker workspace under apps/ detects as "package" and would
+ * emit pkg-<name>, which the validator resolves to a packages/<name> path that
+ * does not exist. Derive the prefix from the location instead; locations the
+ * prefixed convention cannot express (nested deeper than <dir>/<name>, or
+ * outside apps/packages/services) fall back to the dotted semantic-id form —
+ * DOC-02 resolves it through its first two segments or leaves unmapped
+ * prefixes unchecked, and DOC-01 still verifies the real path via <path>.
+ */
+const WORKSPACE_ID_PREFIX: Record<string, string> = {
+  apps: "app",
+  packages: "pkg",
+  services: "svc",
+};
+
 function workspaceNodeId(dir: WorkspaceDir): string {
-  const name = basename(dir.path);
-  const prefix = dir.type === "service" ? "svc" : dir.type === "app" ? "app" : "pkg";
-  return `${prefix}-${name}`;
+  const segments = dir.path.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (segments.length === 2) {
+    const prefix = WORKSPACE_ID_PREFIX[segments[0]!];
+    if (prefix) return `${prefix}-${segments[1]}`;
+  }
+  return segments.join(".");
 }
 
 function readPackageName(

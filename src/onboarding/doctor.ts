@@ -8,13 +8,11 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1226: skills-unmanaged check — warn on SKILL.md-bearing dirs without .forge-managed marker</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>forge-version-sync check — warns when the installed @warpgogol/forge version diverges from forge.yaml syncedVersion (pnpm up drifts it silently); nested wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
+  <item>agents.generate remediation counts marker-guarded semantic-layer injections as fixes — a hand-written file that only gained the region reports fixed instead of skipped (consumer field report follow-up to RFC-1253).</item>
   <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -1708,8 +1706,8 @@ async function applyDoctorRemediation(
         const res = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes, io);
         return {
           check: check.name,
-          action: res.generated.length > 0 ? "fixed" : "skipped",
-          detail: `${res.generated.length} file(s) ${dryRun ? "would be " : ""}regenerated, ${res.skipped.length} skipped`,
+          action: res.generated.length > 0 || res.injected.length > 0 ? "fixed" : "skipped",
+          detail: `${res.generated.length} file(s) ${dryRun ? "would be " : ""}regenerated, ${res.skipped.length} skipped${res.injected.length > 0 ? `, ${res.injected.length} semantic-layer injected` : ""}`,
         };
       } catch (err) {
         return { check: check.name, action: "failed", detail: (err as Error).message };
