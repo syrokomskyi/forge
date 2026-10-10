@@ -664,4 +664,10 @@ test("forge.upgrade preserves project-accumulated knowledge entries (append-only
   // New package entry appended
   expect(merged).toContain("K-0003");
   expect(merged).toContain("New package entry.");
+  // Divergence is surfaced in result data and a durable report, not a
+  // single-line console dump.
+  expect(result.data?.knowledgeConflicts).toEqual(["fo-idea/qa-log.md#K-0001"]);
+  expect(result.data?.knowledgeConflictsReport).toBe(".forge/knowledge-conflicts.txt");
+  const report = await readFile(join(tempDir, ".forge", "knowledge-conflicts.txt"), "utf8");
+  expect(report).toContain("fo-idea/qa-log.md#K-0001");
 });

@@ -7,8 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0663: added syncSharedKnowledge step to sync shared knowledge layer to .agents/skills/shared-knowledge/.</item>
-  <item>RFC-0941: create forge.plugin.yaml manifests for skill packs that lack them before calling discoverPackSkills.</item>
   <item>RFC-1019: extend PREFERENCES.md with formOfAddress, session-end protocol, skill invocation tracking, plan confirmation vs implementation, commit granularity rules.</item>
   <item>fix: copy skills/_shared/ convention docs to .agents/skills/_shared/ on init — fo-* SKILL.md references dangled without it</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -17,7 +15,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0374, RFC-0391, RFC-0392, RFC-0393, RFC-0524, RFC-0539, RFC-0543, RFC-0544, RFC-0552, RFC-0640, RFC-0643</history>
+  <item>Prettierignore plan on init now enumerates generated AGENTS.md paths (workspace types resolved via shared resolveWorkspaceTypes).</item>
+  <history>RFC-0374, RFC-0391, RFC-0392, RFC-0393, RFC-0524, RFC-0539, RFC-0543, RFC-0544, RFC-0552, RFC-0640, RFC-0643, RFC-0663, RFC-0941</history>
 </CHANGE_SUMMARY>
 */
 
@@ -28,6 +27,7 @@ import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { syncKnowledgeFile } from "../knowledge/index.ts";
 import { writeSkillMarkerSync } from "./skill-markers.ts";
 import { planPrettierignoreSync, applyPrettierignoreSync } from "./prettierignore.ts";
+import { resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import { defaultForgeConfig, loadForgeConfig, resolveForgeRoot, type ForgeConfig } from "../config/forge-config.ts";
 import { listStackProfiles, detectStack } from "../profiles/stack-profile.ts";
 
@@ -452,7 +452,10 @@ export function runInit(
   try {
     applyPrettierignoreSync(
       workspaceRoot,
-      planPrettierignoreSync(workspaceRoot, config.paths.skillsDir),
+      planPrettierignoreSync(workspaceRoot, config.paths.skillsDir, {
+        workspaceTypes: resolveWorkspaceTypes(config, forgeRoot),
+        workspaceSkipDirs: config.bindings?.workspaces?.skipDirs,
+      }),
     );
   } catch (err) {
     errors.push(`.prettierignore reconcile failed: ${(err as Error).message}`);

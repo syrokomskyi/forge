@@ -7,7 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
   <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
   <item>RFC-1253: emit "Semantic layer — read first" block listing bound paths.compassDocs before the Skills table when the binding resolves non-empty.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -16,7 +15,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640</history>
+  <item>Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643</history>
 </CHANGE_SUMMARY>
 */
 
@@ -29,9 +29,8 @@ import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { alignMarkdownTable, buildGeneratedHeader, hasEditableGeneratedMarker, hasGeneratedMarker, mergeEditableGenerated, writeFileIfChanged } from "../utils/index.ts";
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
-import { listStackProfiles } from "../profiles/stack-profile.ts";
+import { resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import type { StackProfile } from "../profiles/stack-profile.ts";
-import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -408,8 +407,9 @@ export async function runAgentsGenerate(
   const dynamicSections = dynamicLines.join("\n");
   let content = replaceProjectPlaceholders(rootTemplate, config, dynamicSections);
 
-  // Prepend generated header (above template content)
-  content = header + "\n\n" + content;
+  // Prepend generated header (above template content) — header ends in a
+  // newline, so a single "\n" here yields the prettier-normal one blank line.
+  content = header + "\n" + content;
 
   // RFC-0643: Apply terminology substitution on final assembled content
   const resolvedTerminology = resolveAllTerminology(config, profile);
@@ -466,26 +466,15 @@ export async function runAgentsGenerate(
   }
 
   // Nested AGENTS.md generation (RFC-0611)
-  // RFC-0640: load workspaceTypes from stack profile for profile-driven detection
-  // RFC-0643: prefer config.profile (loaded by loadForgeConfig), fallback to stack-based lookup
-  let workspaceTypes: ProfileWorkspaceType[] | undefined;
-  if (profile?.workspaceTypes && profile.workspaceTypes.length > 0) {
-    workspaceTypes = profile.workspaceTypes;
-  } else {
-    try {
-      const forgeRoot = resolveForgeRoot(workspaceRoot);
-      const profiles = listStackProfiles(forgeRoot);
-      for (const stackId of config.project.stack) {
-        const stackProfile = profiles.find((p) => p.id === stackId);
-        if (stackProfile?.workspaceTypes && stackProfile.workspaceTypes.length > 0) {
-          workspaceTypes = stackProfile.workspaceTypes;
-          break;
-        }
-      }
-    } catch {
-      // forge root not resolvable — fallback to hardcoded detection
-    }
+  // RFC-0640/RFC-0643: resolveWorkspaceTypes prefers config.profile (loaded by
+  // loadForgeConfig), falls back to the stack-based catalog lookup.
+  let forgeRootForTypes: string | undefined;
+  try {
+    forgeRootForTypes = resolveForgeRoot(workspaceRoot);
+  } catch {
+    // forge root not resolvable — fallback to hardcoded detection
   }
+  const workspaceTypes = resolveWorkspaceTypes(config, forgeRootForTypes);
   const nestedResult = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes, fio);
   generated.push(...nestedResult.generated);
   skipped.push(...nestedResult.skipped);

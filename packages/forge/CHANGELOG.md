@@ -6,6 +6,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [6.3.1] — 2026-10-10
+
+### Fixed
+
+- `forge.package.health` — PKG-HEALTH-02 retuned to the repo-extract generated-CI model (RFC-1254); extractable packages declare their standalone lint tooling
+
+## [6.3.0] — 2026-10-10
+
+### Added
+
+- Compass corpus docs lifecycle (RFC-1253): `compass.docs.scaffold` + `compass.docs.validate` commands, corpus templates, `--compass-docs` flag on `forge create`/`init`/`upgrade`, doctor convention notices for corpus docs outside `docs/` with a scaffold remediation hint, `forge.validate` `compassDocs` section feeding `allPassed`, and `forge.agents.generate` emits a "Semantic layer — read first" block when `paths.compassDocs` resolves
+- `forge.package.health` lint-surface probe — PKG-HEALTH-06 (RFC-1254)
+- `diagnostic.rule-id.validate` gate — RULEID-CANONICAL-01 (RFC-1251)
+
+## [6.2.0] — 2026-10-10
+
+### Fixed
+
+- `compass.docs.validate` glob — closed an unused-var lint defect reintroduced by the RFC-1249 sweep (standalone lint green again)
+
+## [6.1.0] — 2026-10-10
+
+_Exported but not published to npm — superseded same-day by 6.2.0._
+
+### Added
+
+- Export-pipeline hardening (RFC-1252): CI-parity `verify-extract`, `--from-head` publish path, `autoReconcile` on `autoPush` remotes, `extraGitignore` dest-side shield, EC-20 staged-file lint gate in `ecosystem.commit`
+- `werkstatt.commands.validate` wired into `packages.check` (RFC-1249)
+
+### Fixed
+
+- Standalone lint failures at HEAD left by the RFC-1250 publish wave
+
 ## [6.0.0] — 2026-10-09
 
 ### Changed (breaking)
@@ -13,6 +46,105 @@ For the full commit history, see the [GitHub releases page](https://github.com/s
 - **RFC-1250: front-loaded operator decisions.** Orchestrated document runs are restructured into four phases — maturation → decision window → resolution → execution. Every run materializes a queue manifest (a single document is a one-item queue), all operator-facing questions are collected into a durable append-only ledger `docs/queues/<id>.decisions.yaml` instead of asked inline, and answers are applied in a single consolidated decision window that doubles as the batch acceptance ceremony (`draft→accepted` moves to the resolution phase). There is no compatibility mode for per-item inline asking inside orchestrator runs.
 - `queue.validate` gains **QUEUE-07** (blocking: implementable item with un-parked `open` decisions), **QUEUE-08** (ledger hygiene warnings), ledger↔manifest binding checks (QUEUE-02 family) and `Q-N` uniqueness (QUEUE-05); `next` skips deferred/parked/QUEUE-07-blocked items with a transitive `dependsOn` cascade; JSON output gains per-item and top-level `decisions` totals.
 - Pipeline skills gain a `collect`/`finalize` contract (`interview` stays for standalone invocations); `grilling` gains `emit` mode; emergent execution questions auto-resolve with ledger logging — only the closed hard-stop class (DNA, security/privacy, external contracts, irreversible ops, exhausted hard-block) parks an item.
+
+## [5.3.4] — 2026-10-07
+
+### Added
+
+- `forge.doctor` warns on unmanaged skill directories under `skillsDir` — SKILL.md-bearing dirs without a `.forge-managed` marker (RFC-1226)
+- `skill.validate` resolves the forge root via `resolveForgeRoot` (RFC-1225); SKILL-17 exempts comment regions (RFC-1227)
+
+### Changed
+
+- `forge.upgrade` preserves operator `forge.yaml` content; `adrImplementStamp` binding promoted (RFC-1224)
+- Governance-ID tail widened to accept mission IDs in `<history>` blocks; fail-closed guards on unparseable history tokens (RFC-1220)
+
+## [5.3.3] — 2026-10-06
+
+### Changed
+
+- `fo-idea-plan` skill auto-decides design summits without an operator prompt
+
+## [5.3.2] — 2026-10-04
+
+_No user-facing changes — post-ship version sync._
+
+## [5.3.1] — 2026-10-04
+
+### Fixed
+
+- Standalone CLI flag resolution is schema-driven — a value-less declared flag (e.g. `forge rfc.validate --id`) exits with KERNEL-FLAG-02 instead of crashing; kind-string flags repeated on the command line emit KERNEL-FLAG-02 instead of silently promoting to arrays, while inline values containing `=` are preserved via indexOf split
+- Routing table empty for npm consumers — `extractTriggerPhrases` resolves the installed package root
+- Generated `hooks.json` falls back to `PWD` when `ROOT_WORKSPACE_PATH` is unset
+- `.agents` drift gate tolerated missing `forge.yaml` (standalone skip)
+- `WorkspaceIO` port types inlined into `src/types.ts` (ADR-0019) — keeps `npm install` dependency-free in the standalone export
+
+## [5.3.0] — 2026-09-30
+
+### Changed (breaking)
+
+- Skill `SKILL.md` frontmatter `triggers` renamed to `triggerPhrases` — agent-IDE loaders reserve `triggers` for invocation modes
+
+### Added
+
+- Managed `.prettierignore` block for forge-owned generated paths (RFC-1154): marker-driven skill entries, `**/*.generated.yaml`, `docs/sessions/`, `docs/metrics/`, `docs/queues/session-*.yaml`; `.forge-managed` marker manifests with prune; prettier-normal `alignMarkdownTable` emitter
+- Editable generated files merge at a `forge:custom` boundary (RFC-1153) — content below the boundary is preserved on regeneration; canonical-footer fallback; `unmapped-customization` skip
+- `generates` field on commands — 47 commands declare real marker-bearing artifacts; GENERATES-MISSING sweep
+- `mutatesState` declared on all kernel commands (RFC-1173); registry-integrity ratchet closed — `execOnReadOnly` + `mutatingFlags` contracts, `io.readonly` marker, honest `writes[]` (RFC-1176)
+- `WorkspaceIO` port propagated across forge utils/handlers (RFC-1152) — kernel callers pass `context.io`, standalone CLI uses an ambient adapter
+
+## [5.2.4] — 2026-09-24
+
+_No user-facing changes — session-end version sync._
+
+## [5.2.3] — 2026-09-24
+
+### Fixed
+
+- `forge.upgrade`/`forge.init` knowledge-file sync is append-only — project-accumulated `K-NNNN` entries are no longer wiped
+- Dropped dead provider site-union member and `siteName` from `ForgeRegisteredCommandInfo`
+- Unused `MISSION_FILE` constant removed in compass-audit-plan test
+
+## [5.2.2] — 2026-09-24
+
+_Not published to npm — internal version sync; changes listed under 5.2.3._
+
+## [5.2.1] — 2026-09-23
+
+_Not published to npm — changes shipped in 5.2.3._
+
+### Added
+
+- Typed flag schemas on 28 commands + required-flag mentions in 90 command descriptions — KERNEL-FLAG-05/06 (RFC-1145)
+- Ledger-eligibility filter applied in compass audit validate/plan/record (RFC-1143)
+- CLI hint accuracy and agent-safety hygiene — `rfc.create` hint, EC-14-PARTIAL, amend delegation, ledger scope (RFC-1139)
+- Pipeline hygiene — module-scoped exempt entries, archive gitignore guard, promote auto-sync, `rfc.create` claim protocol (RFC-1138)
+
+## [5.2.0] — 2026-09-23
+
+### Added
+
+- `queue.validate` — validates `docs/queues/*.yaml` manifests and reports derived per-item pipeline status; shared resolver; queue module registered (RFC-1140)
+- Queue mode — manifest materializes at invocation from a pasted document list
+
+## [5.1.3] — 2026-09-23
+
+### Added
+
+- `site-workshop` stack profile + npm token probe (RFC-1125)
+- ADR-IMP-02 acceptance-criteria gate on `adr.implement.stamp`
+- `pinned.validate` exempts intra-dir moves
+- Fail-closed unresolvable declared profile id (RFC-1118)
+
+### Fixed
+
+- RFC validation closeout — V-28 createdAt monotonicity, supersession lifecycle (V-12/16/17), link integrity (V-19), probe command prefix (V-22), reviewer/evidence/frontmatter fields, kebab-case filenames (V-21), generated projections excluded from scan, terminal statuses exempt from V-32
+- forge↔engine package cycle broken — fingerprinting bridges via `@warpgogol/werkstatt-shared`
+- Compass leaf-workspace scan paths normalized so workpiece exclusion globs match
+
+## [5.1.2] — 2026-09-19
+
+_Internal version sync — changes listed under 5.1.3._
 
 ## [5.1.1] — 2026-09-18
 
@@ -44,6 +176,10 @@ For the full commit history, see the [GitHub releases page](https://github.com/s
 ### Added
 
 - `compass.migrate` codemod — mechanical v1 → v2 header migration across a workspace (RFC-1097)
+
+## [4.2.4] — 2026-09-16
+
+_Patch release published between 4.2.3 and the 5.0.0 major — no dedicated bump commit; contents folded into the releases around it._
 
 ## [4.2.3] — 2026-09-15
 

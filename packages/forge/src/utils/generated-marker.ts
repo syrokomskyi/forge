@@ -15,6 +15,7 @@ source (dependency inversion).</purpose>
   <item>Added optional commandPrefix to GeneratedHeaderInput — defaults to "forge" for autonomous mode; site-kernel passes "pnpm exec werkstatt run".</item>
   <item>Added editable flag to GeneratedHeaderInput — when true, emits a permissive marker and advisory that encourages agents to edit the file. AGENTS.md files use editable: true; other generated files keep the restrictive marker.</item>
   <item>RFC-1237: added generatedHeaderFields — structured marker keys for generated YAML files (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand), the emit-canonical envelope header format.</item>
+  <item>Dedupe the commandPrefix namespace in the Regenerate hint — ownerCommand "forge.agents.generate" under prefix "forge" no longer renders "forge forge.agents.generate".</item>
 </CHANGE_SUMMARY>
 */
 
@@ -171,6 +172,18 @@ export function commentStyleForPath(filePath: string): GeneratedHeaderCommentSty
 }
 
 /**
+ * Regenerate hint: `<prefix> <command>` — when ownerCommand already carries
+ * the prefix's own namespace (`forge.agents.generate` under prefix `forge`),
+ * the namespace is stripped once so the hint never doubles it
+ * (`forge forge.agents.generate` — the deprecated qualified form).
+ */
+function resolveRegenerateCommand(ownerCommand: string, prefix: string, site?: string): string {
+  const ns = `${prefix}.`;
+  const name = ownerCommand.startsWith(ns) ? ownerCommand.slice(ns.length) : ownerCommand;
+  return site ? `${prefix} ${name} --site ${site}` : `${prefix} ${name}`;
+}
+
+/**
  * RFC-1237: structured marker fields for generated YAML files — the key-format
  * counterpart of buildGeneratedHeader's comment rendering. Generators whose
  * output is YAML prepend these as leading top-level keys; consumers strip them
@@ -182,9 +195,7 @@ export function generatedHeaderFields(
 ): Record<string, string> {
   const prefix = input.commandPrefix ?? "forge";
   const editable = input.editable ?? false;
-  const regenerateCommand = input.site
-    ? `${prefix} ${input.ownerCommand} --site ${input.site}`
-    : `${prefix} ${input.ownerCommand}`;
+  const regenerateCommand = resolveRegenerateCommand(input.ownerCommand, prefix, input.site);
   return {
     generatedMarker: editable ? EDITABLE_GENERATED_MARKER : GENERATED_MARKER,
     doNotEdit: editable ? SAFE_TO_EDIT_LINE : DO_NOT_EDIT_LINE,
@@ -200,9 +211,7 @@ export function buildGeneratedHeader(input: GeneratedHeaderInput): string {
   const editable = input.editable ?? false;
   const marker = editable ? EDITABLE_GENERATED_MARKER : GENERATED_MARKER;
   const advisoryLine = editable ? SAFE_TO_EDIT_LINE : DO_NOT_EDIT_LINE;
-  const regenerateCommand = input.site
-    ? `${prefix} ${input.ownerCommand} --site ${input.site}`
-    : `${prefix} ${input.ownerCommand}`;
+  const regenerateCommand = resolveRegenerateCommand(input.ownerCommand, prefix, input.site);
   const editInstead = input.templatePath
     ? `Edit instead: ${input.templatePath}`
     : `Edit instead: the ${input.ownerCommand} generator source (not this file).`;

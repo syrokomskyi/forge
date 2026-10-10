@@ -16,6 +16,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1254: PKG-HEALTH-06 lint-surface probe — extractable packages run `pnpm --dir <projectDir> run lint` (eslint fallback), per-package pass/fail, error-severity violation</item>
   <item>RFC-1254: retune PKG-HEALTH-02 — repo-extract generates ci.yml from the config `ci:` provider block, so the check now flags only extractable packages whose exported repo would ship no CI (no ci: provider AND no in-package workflow)</item>
+  <item>RFC-1255: PKG-HEALTH-07 generated-CI script contract (build/lint/typecheck/test), PKG-HEALTH-08 repository.url vs git.remote for provenance publish, PKG-HEALTH-09 files[] src-reachability coverage; "extractable": false opt-out suppresses all extract-dependent checks</item>
 </CHANGE_SUMMARY>
 */
 
@@ -97,16 +98,129 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 // Reads the `provider:` scalar out of the top-level `ci:` mapping block in an
 // extract.config.yaml. Returns null when the block or the key is absent.
 function extractCiProvider(raw: string): string | null {
-  const ciMatch = raw.match(/^ci:[ \t]*$/m);
-  if (!ciMatch || ciMatch.index === undefined) return null;
-  const after = raw.slice(ciMatch.index + ciMatch[0].length);
+  return extractYamlBlockScalar(raw, "ci", "provider");
+}
+
+// Reads a `<subKey>:` scalar nested under a top-level `<topKey>:` mapping block
+// in extract.config.yaml. Returns null when the block or key is absent.
+function extractYamlBlockScalar(raw: string, topKey: string, subKey: string): string | null {
+  const blockMatch = raw.match(new RegExp(`^${topKey}:[ \\t]*$`, "m"));
+  if (!blockMatch || blockMatch.index === undefined) return null;
+  const after = raw.slice(blockMatch.index + blockMatch[0].length);
   for (const line of after.split("\n")) {
     if (line.trim() === "") continue;
     if (!/^\s/.test(line)) break;
-    const m = line.match(/^\s+provider:\s*(\S+)\s*$/);
+    const m = line.match(new RegExp(`^\\s+${subKey}:\\s*(\\S+)\\s*$`));
     if (m) return m[1];
   }
   return null;
+}
+
+// RFC-1255 CHECK 9: compute which src/ paths the package.json `files[]`
+// whitelist ships. Returns { fullSrc } when `src`/`src/` ships wholesale, or
+// the set of shipped dir prefixes + exact file paths otherwise.
+function shippedSrcSet(files: string[]): {
+  fullSrc: boolean;
+  prefixes: string[];
+  files: Set<string>;
+} {
+  const prefixes: string[] = [];
+  const exact = new Set<string>();
+  let fullSrc = false;
+  for (const entry of files) {
+    const e = entry.replace(/^\.\//, "");
+    if (e === "src" || e === "src/") {
+      fullSrc = true;
+    } else if (e === "src/" || e.endsWith("/")) {
+      if (e.startsWith("src/")) prefixes.push(e.endsWith("/") ? e : `${e}/`);
+    } else if (e.startsWith("src/")) {
+      exact.add(e);
+    }
+  }
+  return { fullSrc, prefixes, files: exact };
+}
+
+const SRC_IMPORT_RE =
+  /(?:import|export)[^'"]*from\s+["'](\.[^"']+)["']|import\s*\(\s*["'](\.[^"']+)["']/g;
+
+// RFC-1255 CHECK 9: walk the relative import graph from every shipped src file;
+// report src/ files reachable but absent from the files[] whitelist.
+function filesSrcGaps(
+  pkgDir: string,
+  shipped: { fullSrc: boolean; prefixes: string[]; files: Set<string> },
+): string[] {
+  if (shipped.fullSrc) return [];
+  const isShipped = (p: string): boolean =>
+    shipped.prefixes.some((pre) => p.startsWith(pre)) || shipped.files.has(p);
+
+  const collect = (dir: string, acc: string[]): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+      const rel = path.relative(pkgDir, path.join(dir, e.name)).split(path.sep).join("/");
+      if (e.isDirectory()) {
+        collect(path.join(dir, e.name), acc);
+      } else if (/\.tsx?$/.test(e.name) && isShipped(rel)) {
+        acc.push(rel);
+      }
+    }
+  };
+  const seeds: string[] = [];
+  collect(path.join(pkgDir, "src"), seeds);
+
+  const gaps = new Set<string>();
+  const visited = new Set<string>();
+  const queue = [...seeds];
+  while (queue.length > 0) {
+    const rel = queue.pop()!;
+    if (visited.has(rel)) continue;
+    visited.add(rel);
+    let source: string;
+    try {
+      source = fs.readFileSync(path.join(pkgDir, rel), "utf8");
+    } catch {
+      continue;
+    }
+    for (const m of source.matchAll(SRC_IMPORT_RE)) {
+      const spec = m[1] ?? m[2];
+      if (!spec) continue;
+      const base = path.posix.normalize(path.posix.join(path.posix.dirname(rel), spec));
+      for (const cand of [base, `${base}.ts`, `${base}.tsx`, `${base}/index.ts`]) {
+        const disk = path.join(pkgDir, cand);
+        if (!cand.startsWith("src/") || !fs.existsSync(disk)) continue;
+        if (!isShipped(cand)) gaps.add(cand);
+        else if (!visited.has(cand)) queue.push(cand);
+        break;
+      }
+    }
+  }
+  return [...gaps];
+}
+
+// RFC-1255 CHECK 8: normalize a git remote (ssh or https) to "host/owner/repo".
+function remoteSlug(remote: string): string | null {
+  const m =
+    remote.match(/^[a-z]+@([^:/]+):([^/]+)\/(.+?)(?:\.git)?$/) ??
+    remote.match(/^https?:\/\/([^/]+)\/([^/]+)\/(.+?)(?:\.git)?$/);
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : null;
+}
+
+// RFC-1255 CHECK 8: extract "host/owner/repo" from a repository.url of the
+// `git+https://host/owner/repo.git` (or plain https/ssh) form.
+function repositorySlug(repo: unknown): string | null {
+  const url =
+    typeof repo === "string" ? repo : ((repo as { url?: unknown })?.url as string | undefined);
+  if (typeof url !== "string") return null;
+  const m =
+    url.match(/^[a-z]+@([^:/]+):([^/]+)\/(.+?)(?:\.git)?$/) ??
+    url.match(/^(?:git\+)?https?:\/\/([^/]+)\/([^/]+)\/(.+?)(?:\.git)?$/) ??
+    url.match(/^(?:git\+)?ssh:\/\/[^@]+@([^/]+)\/([^/]+)\/(.+?)(?:\.git)?$/);
+  return m ? `${m[1]}/${m[2]}/${m[3]}` : null;
 }
 
 export async function runPackageHealth(
@@ -177,6 +291,13 @@ export async function runPackageHealth(
         fixHint: `Align engines.node with root: "${rootNodeRange}".`,
       });
     }
+
+    // RFC-1255: "extractable": false declares a published package that is
+    // deliberately NOT extractable (e.g. depends on a private workspace
+    // package). Suppresses every extract-dependent check (02,03,05,06,07,08,09)
+    // — the alternative, a config that can never succeed, is worse than none.
+    const extractable = pkg["extractable"] !== false;
+    if (!extractable) continue;
 
     // Read extract.config.yaml once — CHECK 2 (generated-vs-shipped CI),
     // CHECK 3 (config presence), CHECK 3b (versionBump), CHECK 5 (lint probe)
@@ -274,6 +395,69 @@ export async function runPackageHealth(
             ? `Run "pnpm --dir ${projectDir} run lint" and drain the reported errors.`
             : `Run "pnpm --dir ${projectDir} exec eslint \"src/**/*.ts\"" and drain the reported errors.`,
         });
+      }
+
+      // RFC-1255 CHECK 7: generated CI runs build (unless ci.skipBuild),
+      // lint, typecheck, test — every missing script is a guaranteed
+      // first-run CI failure (ERR_PNPM_NO_SCRIPT). Fires only for the
+      // generated contract; an in-package workflow's steps are authored
+      // and unknowable here.
+      if (hasGeneratedCi) {
+        const skipBuild = extractYamlBlockScalar(extractConfigRaw, "ci", "skipBuild") === "true";
+        const required = ["lint", "typecheck", "test", ...(skipBuild ? [] : ["build"])];
+        const missing = required.filter((s) => typeof scripts[s] !== "string" || !scripts[s]);
+        for (const s of missing) {
+          violations.push({
+            ruleId: "PKG-HEALTH-07",
+            packageName,
+            severity: "error",
+            message: `Generated CI invokes "run ${s}" but package.json has no "${s}" script.`,
+            file: pkgJsonPath,
+            fixHint:
+              s === "typecheck"
+                ? 'Add "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit" to scripts.'
+                : `Add a "${s}" script to package.json.`,
+          });
+        }
+      }
+
+      // RFC-1255 CHECK 8: provenance verifies repository.url against the
+      // Actions repo slug — a missing or mismatched field 422s at publish.
+      const ciPublish = extractYamlBlockScalar(extractConfigRaw, "ci", "publish");
+      const gitRemote = extractYamlBlockScalar(extractConfigRaw, "git", "remote");
+      if (hasGeneratedCi && ciPublish !== "false" && gitRemote) {
+        const expected = remoteSlug(gitRemote);
+        const actual = repositorySlug(pkg["repository"]);
+        if (expected && actual !== expected) {
+          violations.push({
+            ruleId: "PKG-HEALTH-08",
+            packageName,
+            severity: "error",
+            message: actual
+              ? `repository.url resolves to "${actual}" but git.remote is "${expected}" — npm publish --provenance will 422.`
+              : `Missing repository.url — npm publish --provenance verifies it against the GitHub repo "${expected}".`,
+            file: pkgJsonPath,
+            fixHint: `Add "repository": { "type": "git", "url": "git+https://${expected}.git" } to package.json.`,
+          });
+        }
+      }
+
+      // RFC-1255 CHECK 9: a selective files[] whitelist must ship every src/
+      // file reachable from the shipped src set — consumers follow shipped
+      // sources and hit TS2307 on the gap.
+      const filesField = pkg["files"];
+      if (Array.isArray(filesField)) {
+        const gaps = filesSrcGaps(pkgDir, shippedSrcSet(filesField as string[]));
+        for (const gap of gaps) {
+          violations.push({
+            ruleId: "PKG-HEALTH-09",
+            packageName,
+            severity: "error",
+            message: `"${gap}" is reachable from shipped src/ entries but missing from files[] — published consumers hit TS2307.`,
+            file: pkgJsonPath,
+            fixHint: `Add "${gap}" (or its parent directory) to the files[] array in package.json.`,
+          });
+        }
       }
     }
   }

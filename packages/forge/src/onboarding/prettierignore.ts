@@ -21,6 +21,7 @@ operator-owned.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial implementation — plan/apply + delimited-block reconcile.</item>
+  <item>Enumerate generated AGENTS.md paths (root + nested workspaces via discoverWorkspaces) in the managed block — prettier normalization byte-diverges from the generator render and trips doctor's stale check on every format-on-commit.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +32,9 @@ import { writeFileIfChanged } from "../utils/fs-idempotent.ts";
 import { fileExists } from "../utils/fs.ts";
 import * as sfs from "../utils/sync-fs.ts";
 import { SKILL_MARKER_FILE } from "./skill-markers.ts";
+import { discoverWorkspaces } from "./workspace-discovery.ts";
+import { hasGeneratedMarker } from "../utils/index.ts";
+import type { ProfileWorkspaceType } from "../profiles/profile-schema.ts";
 
 export const PRETTIERIGNORE_BLOCK_BEGIN = "# forge-managed generated paths (RFC-1154)";
 export const PRETTIERIGNORE_BLOCK_END = "# end forge-managed";
@@ -63,6 +67,12 @@ export interface PrettierignorePlan {
   applies: boolean; // consumer uses prettier
   entries: string[]; // resolved ignore entries for this workspace
   fileExists: boolean;
+}
+
+/** Optional discovery inputs for generated-AGENTS.md enumeration. */
+export interface PrettierignorePlanOptions {
+  workspaceTypes?: ProfileWorkspaceType[];
+  workspaceSkipDirs?: readonly string[];
 }
 
 export type PrettierignoreResult = "written" | "updated" | "unchanged" | "skipped";
@@ -153,19 +163,50 @@ function listManagedSkillEntriesSync(workspaceRoot: string, skillsDirRel: string
   return entries.sort();
 }
 
+/**
+ * Generated AGENTS.md paths — root file plus per-workspace nested guides.
+ * Only marker-bearing files are listed: generated AGENTS.md is forge-owned
+ * head + operator tail (RFC-1153), and prettier normalization in the head
+ * (blank-line collapse, table realign) byte-diverges from the generator's
+ * render, tripping doctor's stale check on every format-on-commit. Excluding
+ * them keeps the drift class out; hand-written AGENTS.md (no marker) stays
+ * operator-owned and prettier-covered.
+ */
+function listGeneratedAgentsMdEntries(
+  workspaceRoot: string,
+  opts: PrettierignorePlanOptions,
+): string[] {
+  const entries: string[] = [];
+  try {
+    if (hasGeneratedMarker(sfs.readFileSync(path.join(workspaceRoot, "AGENTS.md"), "utf8"))) {
+      // Anchored — a bare "AGENTS.md" pattern matches at every depth and would
+      // also ignore hand-written nested guides.
+      entries.push("/AGENTS.md");
+    }
+  } catch {
+    // root AGENTS.md absent or unreadable
+  }
+  for (const ws of discoverWorkspaces(workspaceRoot, opts.workspaceTypes, opts.workspaceSkipDirs)) {
+    if (ws.isGenerated) entries.push(`${ws.path}/AGENTS.md`);
+  }
+  return entries.sort();
+}
+
 export async function planPrettierignore(
   workspaceRoot: string,
   skillsDirRel = ".agents/skills",
   io?: WorkspaceIO,
+  opts: PrettierignorePlanOptions = {},
 ): Promise<PrettierignorePlan> {
   const fio = resolveIo(io);
   const applies = await detectPrettier(workspaceRoot, fio);
   const skillEntries = applies
     ? await listManagedSkillEntries(workspaceRoot, skillsDirRel, fio)
     : [];
+  const agentsMdEntries = applies ? listGeneratedAgentsMdEntries(workspaceRoot, opts) : [];
   return {
     applies,
-    entries: [...skillEntries, ...FIXED_ENTRIES],
+    entries: [...skillEntries, ...agentsMdEntries, ...FIXED_ENTRIES],
     fileExists: await fileExists(path.join(workspaceRoot, ".prettierignore")),
   };
 }
@@ -174,12 +215,14 @@ export async function planPrettierignore(
 export function planPrettierignoreSync(
   workspaceRoot: string,
   skillsDirRel = ".agents/skills",
+  opts: PrettierignorePlanOptions = {},
 ): PrettierignorePlan {
   const applies = detectPrettierSync(workspaceRoot);
   const skillEntries = applies ? listManagedSkillEntriesSync(workspaceRoot, skillsDirRel) : [];
+  const agentsMdEntries = applies ? listGeneratedAgentsMdEntries(workspaceRoot, opts) : [];
   return {
     applies,
-    entries: [...skillEntries, ...FIXED_ENTRIES],
+    entries: [...skillEntries, ...agentsMdEntries, ...FIXED_ENTRIES],
     fileExists: sfs.existsSync(path.join(workspaceRoot, ".prettierignore")),
   };
 }
