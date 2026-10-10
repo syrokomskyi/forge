@@ -71,7 +71,10 @@ test("passes when all published packages are healthy", async () => {
   writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
   writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   expect(result.exitCode).toBe(0);
   expect(result.data?.passed).toBe(true);
   expect(result.data?.packagesChecked).toBe(1);
@@ -93,7 +96,10 @@ test("skips private packages", async () => {
     private: true,
   });
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   expect(result.exitCode).toBe(0);
   expect(result.data?.packagesChecked).toBe(0);
   expect(result.data?.passed).toBe(true);
@@ -119,7 +125,10 @@ test("reports PKG-HEALTH-01 when engines.node is missing", async () => {
   writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
   writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   expect(result.exitCode).toBe(1);
   expect(result.data?.passed).toBe(false);
   const v01 = result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-01");
@@ -147,7 +156,10 @@ test("reports PKG-HEALTH-02 when CI workflow is missing", async () => {
   });
   writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   expect(result.exitCode).toBe(1);
   const v02 = result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-02");
   expect(v02).toBeDefined();
@@ -174,7 +186,10 @@ test("reports PKG-HEALTH-03 when extract.config.yaml is missing", async () => {
   mkdirSync(join(pkgDir, ".github", "workflows"), { recursive: true });
   writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   const v03 = result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-03");
   expect(v03).toBeDefined();
   expect(v03?.severity).toBe("warning");
@@ -207,7 +222,10 @@ test("reports PKG-HEALTH-04 when script tool is not in devDependencies", async (
   writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
   writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   expect(result.exitCode).toBe(1);
   const v04s = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-04");
   expect(v04s).toHaveLength(2);
@@ -219,7 +237,10 @@ test("reports PKG-HEALTH-04 when script tool is not in devDependencies", async (
 test("handles no packages/ directory gracefully", async () => {
   writePkgJson(tmpDir, { name: "empty", private: true });
 
-  const result = await runPackageHealth(makeInput(), makeContext(tmpDir));
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
   expect(result.exitCode).toBe(0);
   expect(result.data?.packagesChecked).toBe(0);
   expect(result.data?.passed).toBe(true);
