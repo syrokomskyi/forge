@@ -1,0 +1,29 @@
+<development-plan>
+  <meta>
+    <document-id>development-plan</document-id>
+    <version>1.0.0</version>
+    <status>draft</status>
+    <schema>forge/compass-docs@1</schema>
+    <scope>repository-root</scope>
+  </meta>
+
+  <!-- TODO: authored-intent document — scaffold cannot invent your roadmap.
+       Record phases, ordering constraints, and completion signals here. -->
+
+  <phases>
+    <phase id="phase-01" status="planned">
+      <name>TODO — first phase</name>
+      <goal>TODO</goal>
+      <work>
+        <item>TODO</item>
+      </work>
+      <done-when>
+        <item>TODO — observable completion signal</item>
+      </done-when>
+    </phase>
+  </phases>
+
+  <ordering-constraints>
+    <!-- TODO: hard dependencies between phases/items that an executor must honor. -->
+  </ordering-constraints>
+</development-plan>

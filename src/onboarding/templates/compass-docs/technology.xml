@@ -1,0 +1,30 @@
+<technology>
+  <meta>
+    <document-id>technology</document-id>
+    <version>1.0.0</version>
+    <status>active</status>
+    <schema>forge/compass-docs@1</schema>
+    <scope>repository-root</scope>
+  </meta>
+
+  <runtime>
+    <node>
+      <version-range>{{nodeRange}}</version-range>
+      <source>`package.json` engines.node</source>
+    </node>
+    <package-manager>
+      <name>{{packageManager}}</name>
+      <source>`package.json` packageManager / lockfile</source>
+    </package-manager>
+  </runtime>
+
+  <stack>
+    <profile id="{{profileId}}">
+      <source>`forge.yaml` profile</source>
+    </profile>
+  </stack>
+
+  <workspaces>
+{{workspaceRows}}
+  </workspaces>
+</technology>

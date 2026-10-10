@@ -1,0 +1,25 @@
+<verification-plan>
+  <meta>
+    <document-id>verification-plan</document-id>
+    <version>1.0.0</version>
+    <status>draft</status>
+    <schema>forge/compass-docs@1</schema>
+    <scope>repository-root</scope>
+  </meta>
+
+  <!-- TODO: authored-intent document — scaffold cannot invent your quality bar.
+       Record the gates, commands, and evidence standards that prove work is done. -->
+
+  <gates>
+    <gate id="gate-01" blocking="true">
+      <name>TODO — e.g. typecheck / lint / tests / package health</name>
+      <command>TODO — e.g. `pnpm run build:check`</command>
+      <runs-when>TODO — e.g. before every commit / on push / on demand</runs-when>
+    </gate>
+  </gates>
+
+  <evidence-standards>
+    <!-- TODO: what proof a change must leave behind (probe output, green gate,
+         verification artifact) and where it is recorded. -->
+  </evidence-standards>
+</verification-plan>

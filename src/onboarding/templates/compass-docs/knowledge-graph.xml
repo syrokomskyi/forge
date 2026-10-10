@@ -1,0 +1,57 @@
+<knowledge-graph>
+  <meta>
+    <document-id>knowledge-graph</document-id>
+    <version>1.0.0</version>
+    <status>active</status>
+    <schema>forge/compass-docs@1</schema>
+    <scope>repository-root</scope>
+  </meta>
+
+  <nodes>
+    <node id="root.rules" type="instruction-layer">
+      <name>Root AGENTS</name>
+      <path>`AGENTS.md`</path>
+      <role>Repository-wide active instruction layer.</role>
+      <links>
+        <link rel="binds-to" target="root.docs.requirements" />
+        <link rel="binds-to" target="root.docs.technology" />
+        <link rel="binds-to" target="root.docs.plan" />
+        <link rel="binds-to" target="root.docs.knowledge-graph" />
+        <link rel="binds-to" target="root.docs.verification" />
+        <link rel="binds-to" target="root.docs.source-markup" />
+{{rootLinks}}
+      </links>
+    </node>
+    <node id="root.docs.requirements" type="document">
+      <name>Requirements corpus document</name>
+      <path>`docs/requirements.xml`</path>
+      <role>Authored goals and durable requirements.</role>
+    </node>
+    <node id="root.docs.technology" type="document">
+      <name>Technology corpus document</name>
+      <path>`docs/technology.xml`</path>
+      <role>Runtime, package manager, and stack facts.</role>
+    </node>
+    <node id="root.docs.plan" type="document">
+      <name>Development plan corpus document</name>
+      <path>`docs/development-plan.xml`</path>
+      <role>Phases, ordering constraints, and completion signals.</role>
+    </node>
+    <node id="root.docs.knowledge-graph" type="document">
+      <name>Knowledge graph corpus document</name>
+      <path>`docs/knowledge-graph.xml`</path>
+      <role>This document — the semantic index of workspaces and instruction layers.</role>
+    </node>
+    <node id="root.docs.verification" type="document">
+      <name>Verification plan corpus document</name>
+      <path>`docs/verification-plan.xml`</path>
+      <role>Gates, commands, and evidence standards.</role>
+    </node>
+    <node id="root.docs.source-markup" type="document">
+      <name>Source markup corpus document</name>
+      <path>`docs/source-markup.xml`</path>
+      <role>The Compass source-file markup contract enforced by compass.validate.</role>
+    </node>
+{{workspaceNodes}}
+  </nodes>
+</knowledge-graph>
