@@ -69,7 +69,10 @@ test("passes when all published packages are healthy", async () => {
   });
   mkdirSync(join(pkgDir, ".github", "workflows"), { recursive: true });
   writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
-  writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
+  writeFileSync(
+    join(pkgDir, "extract.config.yaml"),
+    "source: .\nci:\n  provider: github-actions\n",
+  );
 
   const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
     ok: true,
@@ -137,7 +140,66 @@ test("reports PKG-HEALTH-01 when engines.node is missing", async () => {
   expect(v01?.packageName).toBe("@test/no-engines");
 });
 
-test("reports PKG-HEALTH-02 when CI workflow is missing", async () => {
+test("accepts generated CI — extractable package with ci: provider needs no in-package workflow", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "generated-ci");
+  mkdirSync(pkgDir, { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/generated-ci",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: {},
+  });
+  // No .github/workflows/ci.yml — repo-extract generates it from the ci: block.
+  writeFileSync(
+    join(pkgDir, "extract.config.yaml"),
+    "source: .\nci:\n  provider: github-actions\n  publish: true\n",
+  );
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  expect(result.exitCode).toBe(0);
+  expect(result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-02")).toBeUndefined();
+});
+
+test("accepts in-package CI as fallback — extractable package without ci: provider keeps shipped workflow", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "shipped-ci");
+  mkdirSync(pkgDir, { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/shipped-ci",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: {},
+  });
+  mkdirSync(join(pkgDir, ".github", "workflows"), { recursive: true });
+  writeFileSync(join(pkgDir, ".github", "workflows", "ci.yml"), "name: CI\n");
+  writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  expect(result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-02")).toBeUndefined();
+});
+
+test("reports PKG-HEALTH-02 when extracted repo would ship no CI", async () => {
   writePkgJson(tmpDir, {
     name: "test-workspace",
     private: true,

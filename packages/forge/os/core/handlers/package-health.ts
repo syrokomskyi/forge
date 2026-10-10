@@ -15,6 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1254: PKG-HEALTH-06 lint-surface probe — extractable packages run `pnpm --dir <projectDir> run lint` (eslint fallback), per-package pass/fail, error-severity violation</item>
+  <item>RFC-1254: retune PKG-HEALTH-02 — repo-extract generates ci.yml from the config `ci:` provider block, so the check now flags only extractable packages whose exported repo would ship no CI (no ci: provider AND no in-package workflow)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -93,6 +94,21 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
   }
 }
 
+// Reads the `provider:` scalar out of the top-level `ci:` mapping block in an
+// extract.config.yaml. Returns null when the block or the key is absent.
+function extractCiProvider(raw: string): string | null {
+  const ciMatch = raw.match(/^ci:[ \t]*$/m);
+  if (!ciMatch || ciMatch.index === undefined) return null;
+  const after = raw.slice(ciMatch.index + ciMatch[0].length);
+  for (const line of after.split("\n")) {
+    if (line.trim() === "") continue;
+    if (!/^\s/.test(line)) break;
+    const m = line.match(/^\s+provider:\s*(\S+)\s*$/);
+    if (m) return m[1];
+  }
+  return null;
+}
+
 export async function runPackageHealth(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -162,20 +178,9 @@ export async function runPackageHealth(
       });
     }
 
-    // CHECK 2: .github/workflows/ci.yml exists inside package
-    const ciWorkflowPath = path.join(pkgDir, ".github", "workflows", "ci.yml");
-    if (!fs.existsSync(ciWorkflowPath)) {
-      violations.push({
-        ruleId: "PKG-HEALTH-02",
-        packageName,
-        severity: "error",
-        message: "Missing .github/workflows/ci.yml — standalone extraction repo will have no CI.",
-        file: pkgDir,
-        fixHint: "Create .github/workflows/ci.yml inside the package directory with Node 24 setup.",
-      });
-    }
-
-    // CHECK 3: extract.config.yaml exists
+    // Read extract.config.yaml once — CHECK 2 (generated-vs-shipped CI),
+    // CHECK 3 (config presence), CHECK 3b (versionBump), CHECK 5 (lint probe)
+    // all consume it.
     const extractConfigPath = path.join(pkgDir, "extract.config.yaml");
     let extractConfigRaw: string | null = null;
     if (fs.existsSync(extractConfigPath)) {
@@ -185,6 +190,27 @@ export async function runPackageHealth(
         extractConfigRaw = null;
       }
     }
+
+    // CHECK 2: the extracted repo must carry CI. repo-extract generates
+    // .github/workflows/ci.yml from the config `ci:` provider block, so an
+    // in-package workflow is only required when no provider is declared.
+    const ciProvider = extractConfigRaw === null ? null : extractCiProvider(extractConfigRaw);
+    const hasGeneratedCi = ciProvider !== null && ciProvider !== "none";
+    const hasInPackageCi = fs.existsSync(path.join(pkgDir, ".github", "workflows", "ci.yml"));
+    if (extractConfigRaw !== null && !hasGeneratedCi && !hasInPackageCi) {
+      violations.push({
+        ruleId: "PKG-HEALTH-02",
+        packageName,
+        severity: "error",
+        message:
+          "Extracted repo will have no CI — extract.config.yaml declares no ci: provider and no .github/workflows/ci.yml ships in-package.",
+        file: extractConfigPath,
+        fixHint:
+          'Add "ci:\\n  provider: github-actions" to extract.config.yaml (repo-extract generates the workflow), or commit .github/workflows/ci.yml inside the package directory.',
+      });
+    }
+
+    // CHECK 3: extract.config.yaml exists
     if (extractConfigRaw === null) {
       violations.push({
         ruleId: "PKG-HEALTH-03",
