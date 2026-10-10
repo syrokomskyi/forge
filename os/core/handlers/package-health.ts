@@ -14,6 +14,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1254: PKG-HEALTH-06 lint-surface probe — extractable packages run `pnpm --dir <projectDir> run lint` (eslint fallback), per-package pass/fail, error-severity violation</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +40,26 @@ export interface PackageHealthResult {
   packagesChecked: number;
   violations: PackageHealthViolation[];
   passed: boolean;
+  lintSurface: Record<string, "pass" | "fail">;
+}
+
+export interface LintProbeOutcome {
+  ok: boolean;
+  detail: string;
+}
+
+function defaultLintRunner(projectDir: string, hasLintScript: boolean): LintProbeOutcome {
+  const args = hasLintScript
+    ? ["--dir", projectDir, "run", "lint"]
+    : ["--dir", projectDir, "exec", "eslint", "src/**/*.ts"];
+  try {
+    fs.execFileSync("pnpm", args, { stdio: "pipe" });
+    return { ok: true, detail: "" };
+  } catch (err) {
+    const stderr =
+      err instanceof Error && "stderr" in err ? String((err as { stderr?: unknown }).stderr) : "";
+    return { ok: false, detail: (stderr || String(err)).slice(0, 400) };
+  }
 }
 
 const KNOWN_SCRIPT_TOOLS: Record<string, string> = {
@@ -75,6 +96,7 @@ function readJsonFile(filePath: string): Record<string, unknown> | null {
 export async function runPackageHealth(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
+  lintRunner: (projectDir: string, hasLintScript: boolean) => LintProbeOutcome = defaultLintRunner,
 ): Promise<ForgeCommandResult<PackageHealthResult>> {
   const { workspaceRoot, logger } = context;
   const packagesDir = path.join(workspaceRoot, "packages");
@@ -86,6 +108,7 @@ export async function runPackageHealth(
         packagesChecked: 0,
         violations: [],
         passed: true,
+        lintSurface: {},
       },
       exitCode: 0,
       summary: "No packages/ directory found — nothing to check.",
@@ -97,6 +120,7 @@ export async function runPackageHealth(
   const rootNodeRange = rootEngines?.["node"];
 
   const violations: PackageHealthViolation[] = [];
+  const lintSurface: Record<string, "pass" | "fail"> = {};
   let packagesChecked = 0;
 
   const entries = fs.readdirSync(packagesDir, { withFileTypes: true });
@@ -153,7 +177,15 @@ export async function runPackageHealth(
 
     // CHECK 3: extract.config.yaml exists
     const extractConfigPath = path.join(pkgDir, "extract.config.yaml");
-    if (!fs.existsSync(extractConfigPath)) {
+    let extractConfigRaw: string | null = null;
+    if (fs.existsSync(extractConfigPath)) {
+      try {
+        extractConfigRaw = fs.readFileSync(extractConfigPath, "utf8");
+      } catch {
+        extractConfigRaw = null;
+      }
+    }
+    if (extractConfigRaw === null) {
       violations.push({
         ruleId: "PKG-HEALTH-03",
         packageName,
@@ -164,22 +196,17 @@ export async function runPackageHealth(
       });
     } else {
       // CHECK 3b: versionBump must be absent — version in package.json is source of truth
-      try {
-        const configRaw = fs.readFileSync(extractConfigPath, "utf8");
-        const versionBumpMatch = configRaw.match(/^versionBump:\s*(\S+)/m);
-        if (versionBumpMatch) {
-          violations.push({
-            ruleId: "PKG-HEALTH-05",
-            packageName,
-            severity: "error",
-            message: `extract.config.yaml has versionBump: ${versionBumpMatch[1]} — this auto-increments the version on every extract. The version in package.json is the source of truth.`,
-            file: extractConfigPath,
-            fixHint:
-              "Remove the versionBump line. Manually bump package.json version to the target before extracting.",
-          });
-        }
-      } catch {
-        // Read error — skip this check
+      const versionBumpMatch = extractConfigRaw.match(/^versionBump:\s*(\S+)/m);
+      if (versionBumpMatch) {
+        violations.push({
+          ruleId: "PKG-HEALTH-05",
+          packageName,
+          severity: "error",
+          message: `extract.config.yaml has versionBump: ${versionBumpMatch[1]} — this auto-increments the version on every extract. The version in package.json is the source of truth.`,
+          file: extractConfigPath,
+          fixHint:
+            "Remove the versionBump line. Manually bump package.json version to the target before extracting.",
+        });
       }
     }
 
@@ -199,6 +226,27 @@ export async function runPackageHealth(
           message: `Script uses "${toolDep}" but it is not in devDependencies or dependencies. It relies on monorepo hoisting and will fail standalone.`,
           file: pkgJsonPath,
           fixHint: `Add "${toolDep}" to devDependencies in package.json.`,
+        });
+      }
+    }
+
+    // CHECK 5: lint-surface — extractable packages must pass their own lint contract (RFC-1254)
+    if (extractConfigRaw !== null) {
+      const projectDirMatch = extractConfigRaw.match(/^projectDir:\s*(\S+)\s*$/m);
+      const projectDir = projectDirMatch ? path.resolve(workspaceRoot, projectDirMatch[1]) : pkgDir;
+      const hasLintScript = typeof scripts["lint"] === "string" && scripts["lint"].length > 0;
+      const outcome = lintRunner(projectDir, hasLintScript);
+      lintSurface[packageName] = outcome.ok ? "pass" : "fail";
+      if (!outcome.ok) {
+        violations.push({
+          ruleId: "PKG-HEALTH-06",
+          packageName,
+          severity: "error",
+          message: `Lint fails in ${path.relative(workspaceRoot, projectDir) || projectDir} — standalone extraction CI will fail.`,
+          file: projectDir,
+          fixHint: hasLintScript
+            ? `Run "pnpm --dir ${projectDir} run lint" and drain the reported errors.`
+            : `Run "pnpm --dir ${projectDir} exec eslint \"src/**/*.ts\"" and drain the reported errors.`,
         });
       }
     }
@@ -245,6 +293,7 @@ export async function runPackageHealth(
       packagesChecked,
       violations,
       passed,
+      lintSurface,
     },
     exitCode: passed ? 0 : 1,
     summary: passed
