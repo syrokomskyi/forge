@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0674: initial forge.validate handler with profile resolution, --dry-run, and per-artifact execution.</item>
   <item>RFC-0677: extended with --artifact filtering, violation parsing (outputFormat: json/plain), passed/allPassed fields.</item>
+  <item>RFC-1253: compassDocs section — runs compass.docs.validate when bindings.paths.compassDocs resolves non-empty; errors enter allPassed.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -21,12 +22,15 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 import { exec } from "../../../src/utils/sync-fs.ts";
 import { promisify } from "node:util";
 import type {
+  Diagnostic,
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import { loadForgeConfig, resolveBinding } from "../../../src/config/forge-config.ts";
 import { resolveActiveProfile, resolveLifecycleFlags } from "./profile-resolve.ts";
 import { runCompassValidation } from "../../compass/handlers/compass-inventory-handler.ts";
+import { runCompassDocsValidate } from "../../compass/handlers/compass-docs-validate.ts";
 
 const execAsync = promisify(exec);
 
@@ -61,12 +65,19 @@ export interface ForgeValidateCompassResult {
   }>;
 }
 
+export interface ForgeValidateCompassDocsResult {
+  passed: boolean;
+  scanned: { xmlFiles: number; pathsChecked: number; idsChecked: number };
+  diagnostics: Diagnostic[];
+}
+
 export interface ForgeValidateResult {
   command: "forge.validate";
   profileId: string;
   artifacts: ForgeValidateArtifactResult[];
   allPassed: boolean;
   compass?: ForgeValidateCompassResult;
+  compassDocs?: ForgeValidateCompassDocsResult;
 }
 
 export function parseViolations(
@@ -289,7 +300,27 @@ export async function runValidate(
     // compass.validate not available in this workspace — skip
   }
 
-  const allPassed = artifactsAllPassed && (compassResult?.passed ?? true);
+  // RFC-1253: corpus validation by resolved binding — errors enter allPassed.
+  let compassDocsResult: ForgeValidateCompassDocsResult | undefined;
+  try {
+    const config = loadForgeConfig(workspaceRoot, context.forgeRoot);
+    const bound = resolveBinding(config, "paths.compassDocs");
+    if (Array.isArray(bound) && bound.length > 0) {
+      const docsResponse = await runCompassDocsValidate({ argv: [], flags: {} }, context);
+      if (docsResponse.data) {
+        compassDocsResult = {
+          passed: (docsResponse.exitCode ?? 0) === 0,
+          scanned: docsResponse.data.scanned,
+          diagnostics: docsResponse.data.diagnostics,
+        };
+      }
+    }
+  } catch {
+    // forge.yaml missing/unreadable — binding unresolved; skip section
+  }
+
+  const allPassed =
+    artifactsAllPassed && (compassResult?.passed ?? true) && (compassDocsResult?.passed ?? true);
 
   const summaryParts: string[] = [
     allPassed
@@ -303,6 +334,13 @@ export async function runValidate(
         : `compass: ${compassResult.failures} failure(s)`,
     );
   }
+  if (compassDocsResult) {
+    summaryParts.push(
+      compassDocsResult.passed
+        ? `compassDocs: OK (${compassDocsResult.scanned.xmlFiles} files)`
+        : `compassDocs: ${compassDocsResult.diagnostics.filter((d) => d.severity === "error").length} error(s)`,
+    );
+  }
 
   return {
     data: {
@@ -311,6 +349,7 @@ export async function runValidate(
       artifacts: results,
       allPassed,
       compass: compassResult,
+      compassDocs: compassDocsResult,
     },
     exitCode: allPassed ? 0 : 1,
     summary: summaryParts.join("; "),
