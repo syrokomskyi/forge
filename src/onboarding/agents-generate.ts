@@ -10,6 +10,7 @@
   <item>RFC-0640: load workspaceTypes from stack profile and pass to generateNestedAgentsMd for profile-driven workspace detection.</item>
   <item>RFC-0643: terminology substitution on final content, root template selection by register, details field in result.</item>
   <item>RFC-0664: added project memory layer read discipline section to generated AGENTS.md.</item>
+  <item>RFC-1253: emit "Semantic layer — read first" block listing bound paths.compassDocs before the Skills table when the binding resolves non-empty.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -303,6 +304,26 @@ export async function runAgentsGenerate(
 
   // Build dynamic sections (skills table, capabilities, behavioral layer)
   const dynamicLines: string[] = [];
+
+  // RFC-1253: Compass corpus read-first block — only when the binding
+  // resolves non-empty (DNA-90: instructions live where agents read them).
+  const compassDocsReadFirst = resolveBinding(config, "paths.compassDocs");
+  if (Array.isArray(compassDocsReadFirst) && compassDocsReadFirst.length > 0) {
+    dynamicLines.push("## Semantic layer — read first");
+    dynamicLines.push("");
+    dynamicLines.push(
+      "This repository carries a machine-readable Compass corpus — the semantic layer that answers \u201cwhat reads X, what breaks if I change Y\u201d without a full repository re-scan. For repository-wide, cross-workspace, architectural, shared-package, or high-risk tasks, read these documents before planning or editing code:",
+    );
+    dynamicLines.push("");
+    for (const doc of compassDocsReadFirst) {
+      dynamicLines.push(`- \`${doc}\``);
+    }
+    dynamicLines.push("");
+    dynamicLines.push(
+      "Treat these XML documents as the primary semantic layer for AI work and keep them synchronized with code, architecture, and verification changes.",
+    );
+    dynamicLines.push("");
+  }
 
   // Skills table (RFC-1154: emitted prettier-normal via alignMarkdownTable)
   dynamicLines.push("## Skills");

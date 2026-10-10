@@ -502,3 +502,33 @@ test("agents-generate nested for service workspace omits entry points", async ()
   expect(nested).toContain("## Scripts");
   expect(nested).toContain("## Dependencies");
 });
+
+test("agents-generate emits the semantic-layer read-first block when compassDocs is non-empty (RFC-1253)", async () => {
+  await makeForgeYaml(tempDir);
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+
+  const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  expect(agentsMd).toContain("## Semantic layer — read first");
+  expect(agentsMd).toContain("`docs/requirements.xml`");
+  expect(agentsMd).toContain("primary semantic layer");
+  // block must precede the Skills table — reading discipline comes first
+  expect(agentsMd.indexOf("## Semantic layer — read first")).toBeLessThan(
+    agentsMd.indexOf("## Skills"),
+  );
+});
+
+test("agents-generate omits the read-first block when compassDocs is absent (RFC-1253)", async () => {
+  await makeForgeYaml(tempDir);
+  // strip the compassDocs line — binding resolves absent
+  const yaml = (await readFile(join(tempDir, "forge.yaml"), "utf8")).replace(
+    "    compassDocs: [docs/requirements.xml]\n",
+    "",
+  );
+  await writeFile(join(tempDir, "forge.yaml"), yaml, "utf8");
+
+  const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
+  expect(result.exitCode).toBe(0);
+  const agentsMd = await readFile(join(tempDir, "AGENTS.md"), "utf8");
+  expect(agentsMd).not.toContain("## Semantic layer — read first");
+});
