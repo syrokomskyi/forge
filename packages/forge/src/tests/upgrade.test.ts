@@ -19,7 +19,7 @@ import { runUpgrade } from "../onboarding/upgrade.ts";
 import { generateNestedAgentsMd } from "../onboarding/nested-agents-generate.ts";
 import { ambientIo } from "../utils/io.ts";
 import { buildGeneratedHeader } from "../utils/index.ts";
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import type { WorkspaceIO } from "../types.ts";
 import { runInit } from "../onboarding/init.ts";
 import {
   loadForgeConfig,
