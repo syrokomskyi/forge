@@ -12,6 +12,7 @@
   <item>Link targets resolve to declared node ids OR file/dir conventions (DOC-03) — dangling-by-convention stays a warning, never an error.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
+  <item>RFC-1253: scan-set union — docs/*.xml ∪ bindings.paths.compassDocs (deduped, missing bound paths skipped; doctor owns missing-path diagnostics) + COMPASS-DOC-04 schema-marker warning scoped to corpus docs (canonical basenames ∪ bound paths).</item>
   <item>RFC-1242: review fixes — self-close detection strips quoted attr values first (a="foo/" no longer fakes a self-close), non-backticked path tokens get the same ellipsis strip, docs.* link slugs keep their basename prefix (docs.plans.plan-rfc-* resolves).</item>
   <item>RFC-1242: created — scan docs/*.xml for unresolvable paths, workspace ids, and link targets (COMPASS-DOC-00..03).</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
@@ -20,6 +21,11 @@
 
 import { resolve } from "node:path";
 import { resolveIo } from "../../../src/utils/io.ts";
+import { loadForgeConfig, resolveBinding } from "../../../src/config/forge-config.ts";
+import {
+  CANONICAL_CORPUS_DOCS,
+  COMPASS_DOCS_SCHEMA_ID,
+} from "../../../src/onboarding/compass-docs/constants.ts";
 import type { Diagnostic, WorkspaceIO } from "../../../src/types.ts";
 import type {
   ForgeCommandInput,
@@ -258,23 +264,54 @@ export async function runCompassDocsValidate(
     }
   }
 
-  const xmlFiles = (await io.glob(DOCS_GLOB, { cwd: docsDir })).sort();
+  // RFC-1253: scan set = docs/*.xml ∪ bindings.paths.compassDocs (deduped by
+  // absolute path). Bound paths may live outside docs/; missing bound files are
+  // skipped — doctor owns missing-path diagnostics. A config that fails to
+  // load degrades to glob-only scanning.
+  let declared: string[] = [];
+  try {
+    const config = loadForgeConfig(context.workspaceRoot, context.forgeRoot);
+    const raw = resolveBinding(config, "paths.compassDocs");
+    declared = (Array.isArray(raw) ? raw : []).filter((p): p is string => typeof p === "string");
+  } catch {
+    declared = [];
+  }
+
+  const canonicalBasenames = new Set(CANONICAL_CORPUS_DOCS.map((n) => `${n}.xml`));
+  const declaredAbs = new Set(declared.map((p) => resolve(context.workspaceRoot, p)));
+
+  const scanEntries: Array<{ abs: string; file: string; corpus: boolean }> = [];
+  const seen = new Set<string>();
+  for (const rel of (await io.glob(DOCS_GLOB, { cwd: docsDir })).sort()) {
+    const abs = resolve(docsDir, rel);
+    seen.add(abs);
+    scanEntries.push({
+      abs,
+      file: `docs/${rel}`,
+      corpus: canonicalBasenames.has(rel) || declaredAbs.has(abs),
+    });
+  }
+  for (const declaredPath of declared) {
+    const abs = resolve(context.workspaceRoot, declaredPath);
+    if (seen.has(abs) || !(await io.exists(abs))) continue;
+    scanEntries.push({ abs, file: declaredPath, corpus: true });
+  }
+
   const declaredNodeIds = new Set<string>();
 
   // Pass 1: collect declared node ids so link targets can resolve across files.
   const sources = new Map<string, string>();
-  for (const rel of xmlFiles) {
-    const abs = resolve(docsDir, rel);
-    const source = await io.readFile(abs);
-    sources.set(rel, source);
+  for (const entry of scanEntries) {
+    const source = await io.readFile(entry.abs);
+    sources.set(entry.file, source);
     for (const m of source.matchAll(/<node\s[^>]*?id="([^"]+)"/g)) {
       declaredNodeIds.add(m[1]!);
     }
   }
 
-  for (const rel of xmlFiles) {
-    const file = `docs/${rel}`;
-    const source = sources.get(rel)!;
+  for (const entry of scanEntries) {
+    const file = entry.file;
+    const source = sources.get(file)!;
 
     const malformed = checkWellFormed(file, source);
     if (malformed) {
@@ -286,6 +323,26 @@ export async function runCompassDocsValidate(
         message: `file is not well-formed XML: ${malformed.message}`,
       });
       continue; // refs from a broken file are noise
+    }
+
+    // COMPASS-DOC-04 (warning, corpus docs only): <meta><schema> must carry
+    // forge/compass-docs@1 — missing marker or unknown schema id warns.
+    if (entry.corpus) {
+      const metaBlock = /<meta>[\s\S]*?<\/meta>/.exec(source)?.[0] ?? "";
+      const schemaId = /<schema>([^<]*)<\/schema>/.exec(metaBlock)?.[1]?.trim();
+      if (schemaId !== COMPASS_DOCS_SCHEMA_ID) {
+        const metaLine = /<meta>/.exec(source)?.index;
+        diagnostics.push({
+          ruleId: "COMPASS-DOC-04",
+          severity: "warning",
+          file,
+          line: metaLine === undefined ? 1 : source.slice(0, metaLine).split("\n").length,
+          message: schemaId
+            ? `corpus document declares schema '${schemaId}' — expected '${COMPASS_DOCS_SCHEMA_ID}'`
+            : `corpus document lacks <meta><schema>${COMPASS_DOCS_SCHEMA_ID}</schema> marker`,
+          fixHint: "Add <schema>forge/compass-docs@1</schema> inside the <meta> block",
+        });
+      }
     }
 
     const refs = extractRefs(source);
@@ -349,13 +406,13 @@ export async function runCompassDocsValidate(
     data: {
       command: "compass.docs.validate",
       status: errors.length === 0 ? "pass" : "fail",
-      scanned: { xmlFiles: xmlFiles.length, pathsChecked, idsChecked },
+      scanned: { xmlFiles: scanEntries.length, pathsChecked, idsChecked },
       diagnostics,
     },
     exitCode: errors.length > 0 ? 1 : 0,
     summary:
       errors.length === 0
-        ? `[compass.docs.validate] OK (${xmlFiles.length} files, ${pathsChecked} paths, ${idsChecked} ids)`
+        ? `[compass.docs.validate] OK (${scanEntries.length} files, ${pathsChecked} paths, ${idsChecked} ids)`
         : `[compass.docs.validate] ${errors.length} error(s)`,
   };
 }

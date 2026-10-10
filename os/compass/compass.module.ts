@@ -321,13 +321,24 @@ export const forgeCompassModule: ForgeModule = {
       modulePath: "packages/forge/os/compass/compass.module.ts",
       mutatesState: false,
       contract: "compass",
-      rules: ["COMPASS-DOC-00", "COMPASS-DOC-01", "COMPASS-DOC-02", "COMPASS-DOC-03"],
+      rules: [
+        "COMPASS-DOC-00",
+        "COMPASS-DOC-01",
+        "COMPASS-DOC-02",
+        "COMPASS-DOC-03",
+        "COMPASS-DOC-04",
+      ],
       description:
-        "Validate that the live docs/*.xml corpus resolves every path, workspace id, and knowledge-graph link target it references (RFC-1242). Read-only.",
+        "Validate that the live docs/*.xml corpus ∪ bindings.paths.compassDocs resolves every path, workspace id, and knowledge-graph link target it references, and that corpus documents carry the forge/compass-docs@1 schema marker (RFC-1242, RFC-1253). Read-only.",
       scope: "workspace",
       acceptsAllFlag: true,
       flags: {},
-      reads: ["docs/*.xml", "docs/command-manifest.generated.yaml", "docs/architecture-dna.md"],
+      reads: [
+        "docs/*.xml",
+        "docs/command-manifest.generated.yaml",
+        "docs/architecture-dna.md",
+        "forge.yaml",
+      ],
       execute: runCompassDocsValidate,
       gate: {
         severity: "mixed",
