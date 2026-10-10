@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: steps 1-4 — compass.migrate codemod
-
-Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>KERNEL-FLAG-02: Declare compass --root as kind "string[]" — resolveScanRoots reads it as multi-value via getFlagValues, so repeated --root stays legal now that repeated kind-"string" flags are rejected at flag resolution.</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
@@ -18,7 +15,8 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
-  <history>RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1242</history>
+  <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
+  <history>RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
@@ -348,6 +346,9 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.docs.scaffold",
       modulePath: "packages/forge/os/compass/compass.module.ts",
+      coverage: "operator" as const,
+      coverageNote:
+        "operator-invoked corpus setup; also reachable via --compass-docs on forge.create/init/upgrade (flag dispatch, not a pipeline step)",
       mutatesState: true,
       description:
         "Scaffold the six-document Compass corpus (requirements, technology, development-plan, knowledge-graph, verification-plan, source-markup) from real repository state and write/merge bindings.paths.compassDocs (RFC-1253). Idempotent — existing files are preserved; knowledge-graph only gains missing workspace nodes.",
