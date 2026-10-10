@@ -21,7 +21,7 @@ function makeInput(
   flags: Record<string, ForgeFlagValue> = {},
   args: string[] = [],
 ): ForgeCommandInput {
-  return { argv: [], args, flags };
+  return { argv: args, flags };
 }
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {

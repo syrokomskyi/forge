@@ -139,9 +139,12 @@ test("forge.doctor wraps warn-only results as optional next-steps, fails as requ
     io: ambientIo,
   } as unknown as ForgeRuntimeContext;
   const result = await doctor.execute(input, ctx);
+  expect(result).toBeDefined();
+  if (!result) return;
 
-  const checks = result.data?.checks ?? [];
-  const allPass = result.data?.allPass === true;
+  const data = result.data as { checks?: { status: string }[]; allPass?: boolean } | undefined;
+  const checks = data?.checks ?? [];
+  const allPass = data?.allPass === true;
   const hasFails = checks.some((c) => c.status === "fail");
   // This workspace should surface warnings (version mismatch at minimum)
   // without hard failures — if the fixture ever drifts, update the scenario.

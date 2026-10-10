@@ -73,6 +73,7 @@ describe("--compass-docs lifecycle flag (RFC-1253)", () => {
     const init = mod.commands.find((c) => c.name === "forge.init")!;
 
     const result = await init.execute(makeInput({ "compass-docs": true }), makeContext(root));
+    if (!result) throw new Error("forge.init returned no result");
     expect(result.exitCode).toBe(0);
 
     const req = await readFile(join(root, "docs", "requirements.xml"), "utf8");
@@ -88,6 +89,7 @@ describe("--compass-docs lifecycle flag (RFC-1253)", () => {
     const init = mod.commands.find((c) => c.name === "forge.init")!;
 
     const result = await init.execute(makeInput({}), makeContext(root));
+    if (!result) throw new Error("forge.init returned no result");
     expect(result.exitCode).toBe(0);
 
     await expect(readFile(join(root, "docs", "requirements.xml"), "utf8")).rejects.toThrow();

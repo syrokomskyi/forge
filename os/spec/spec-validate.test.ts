@@ -58,8 +58,8 @@ ${consumersYaml}waves:
     await writeConsumerSpec(workspaceRoot, "    consumers:\n      - personal-agent\n");
     const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(workspaceRoot));
     expect(result.exitCode).toBe(0);
-    expect(result.data.status).toBe("pass");
-    const warnings = result.data.specs[0]!.violations.filter((v) => v.severity === "warning");
+    expect(result.data!.status).toBe("pass");
+    const warnings = result.data!.specs[0]!.violations.filter((v) => v.severity === "warning");
     expect(warnings.map((v) => v.rule)).toEqual(["SPEC-13"]);
     expect(warnings[0]!.message).toContain("EX-001");
   });
@@ -72,7 +72,7 @@ ${consumersYaml}waves:
     await writeConsumerSpec(workspaceRoot, "    consumers:\n      - personal-agent\n");
     const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(workspaceRoot));
     expect(result.exitCode).toBe(0);
-    expect(result.data.specs[0]!.violations).toEqual([]);
+    expect(result.data!.specs[0]!.violations).toEqual([]);
   });
 
   it("fails with SPEC-12 on duplicate consumer entries", async () => {
@@ -81,7 +81,7 @@ ${consumersYaml}waves:
     await writeConsumerSpec(workspaceRoot, "    consumers:\n      - werkstatt\n      - werkstatt\n");
     const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(workspaceRoot));
     expect(result.exitCode).toBe(1);
-    expect(result.data.specs[0]!.violations.map((v) => v.rule)).toContain("SPEC-12");
+    expect(result.data!.specs[0]!.violations.map((v) => v.rule)).toContain("SPEC-12");
   });
 });
 

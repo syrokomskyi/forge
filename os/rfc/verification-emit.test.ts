@@ -49,7 +49,7 @@ function makeEnvelope(rfcId: string, overall: "pass" | "fail"): Record<string, u
 }
 
 async function setupWorkspace(opts: {
-  rfcs: Array<{ id: string; status: string; probes?: unknown[] }>;
+  rfcs: Array<{ id: string; status: string; probes?: Record<string, unknown>[] }>;
   envelopes?: Array<{ id: string; overall: "pass" | "fail" }>;
 }): Promise<{ workspaceRoot: string; cleanup: () => Promise<void> }> {
   const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "rfc-emit-test-"));

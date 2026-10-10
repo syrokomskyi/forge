@@ -218,6 +218,7 @@ describe("RFC-0639: resolveTerminology", () => {
         validateRfc: null,
         validateAdr: null,
         implementStamp: null,
+        adrImplementStamp: null,
         typecheck: null,
         test: null,
         scopedBuild: null,

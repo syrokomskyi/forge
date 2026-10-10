@@ -22,7 +22,7 @@ function makeInput(
   flags: Record<string, ForgeFlagValue> = {},
   args: string[] = [],
 ): ForgeCommandInput {
-  return { argv: [], args, flags };
+  return { argv: args, flags };
 }
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
@@ -125,7 +125,7 @@ Commands: session.save`;
     await writeFile(join(rawDir, "keepraw-claim.atif"), uniqueAtif, "utf-8");
 
     const result = await runSessionSave(makeInput({ "keep-raw": true }), makeContext(dir));
-    expect(result.data.id).not.toBe("");
+    expect(result.data!.id).not.toBe("");
 
     const remaining = await readdir(rawDir);
     expect(remaining).toContain("keepraw-claim.atif");

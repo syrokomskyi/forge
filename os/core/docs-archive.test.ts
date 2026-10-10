@@ -106,12 +106,9 @@ describe("docs.archive failed-merge accounting (RFC-1235)", () => {
       entry: { id: "RFC-1230", domain: "forge", operation: "modified", conflicts: 0 },
     });
     expect(outcome.kind).toBe("merged");
-    const entry =
-      outcome.kind === "merged"
-        ? outcome.entry
-        : liveMergeFailureEntry("RFC-1230", new Error("unreachable"));
+    if (outcome.kind !== "merged") throw new Error("unreachable");
 
-    const block = buildLiveMergeBlock([entry], [], 0, false);
+    const block = buildLiveMergeBlock([outcome.entry], [], 0, false);
     expect(block).toEqual({
       merged: [{ id: "RFC-1230", domain: "forge", operation: "modified", conflicts: 0 }],
       failed: [],

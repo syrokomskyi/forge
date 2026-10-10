@@ -175,7 +175,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "build": "pnpm exec tsc -p tsconfig.json",
+    "build": "pnpm exec tsc -p tsconfig.build.json",
     "build:check": "pnpm exec tsc -p tsconfig.json --noEmit",
     "lint": "pnpm exec eslint \"src/**/*.ts\" \"os/**/*.ts\"",
     "typecheck": "pnpm exec tsc -p tsconfig.json --noEmit",
