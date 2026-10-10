@@ -62,6 +62,28 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
   const { runPublicSurfaceValidate } = await import("./handlers/public-surface.ts");
   const { runFileSizeLint } = await import("./handlers/file-size-lint.ts");
+  const { runCompassDocsScaffold } = await import("../compass/handlers/compass-docs-scaffold.ts");
+
+  // RFC-1253: --compass-docs on lifecycle commands runs the corpus scaffold
+  // after the primary operation (idempotent — re-invocation is a no-op).
+  const maybeScaffoldCompassDocs = async (
+    input: ForgeCommandInput,
+    context: ForgeRuntimeContext,
+    result: ForgeCommandResult,
+  ): Promise<ForgeCommandResult> => {
+    if (input.flags["compass-docs"] !== true) return result;
+    const docs = await runCompassDocsScaffold(input, context);
+    const ok = (docs.exitCode ?? 0) === 0;
+    return {
+      ...result,
+      data: { ...(result.data as Record<string, unknown>), compassDocs: docs.data },
+      exitCode: ok ? result.exitCode : 1,
+      summary: result.summary
+        ? `${result.summary}; compassDocs scaffold ${ok ? "applied" : "FAILED"}`
+        : result.summary,
+      nextSteps: [...(result.nextSteps ?? []), ...(docs.nextSteps ?? [])],
+    };
+  };
 
   const scaffoldWrapper = async (
     input: ForgeCommandInput,
@@ -332,12 +354,18 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             description:
               "Update @warpgogol/forge from npm before syncing. Skipped in monorepo (local package).",
           },
+          "compass-docs": {
+            kind: "boolean",
+            description:
+              "After syncing, run compass.docs.scaffold to materialize/merge the Compass corpus (RFC-1253).",
+          },
         },
-        writes: [".agents/skills/**", "forge.yaml"],
-        generates: [],
+        writes: [".agents/skills/**", "forge.yaml", "docs/*.xml"],
+        generates: [{ path: "docs/*.xml", phase: "on-demand" }],
         reads: ["forge.yaml", "packages/forge/skills/**", "packages/forge/package.json"],
         cacheable: false,
-        execute: runUpgrade,
+        execute: async (input, context) =>
+          maybeScaffoldCompassDocs(input, context, await runUpgrade(input, context)),
       },
       {
         name: "forge.scaffold",
@@ -395,9 +423,15 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             kind: "string",
             description: "Template id for multi-template profiles (e.g. react, html).",
           },
+          "compass-docs": {
+            kind: "boolean",
+            description:
+              "After create, run compass.docs.scaffold to materialize the Compass corpus (RFC-1253).",
+          },
         },
         cacheable: false,
-        execute: createWrapper,
+        execute: async (input, context) =>
+          maybeScaffoldCompassDocs(input, context, await createWrapper(input, context)),
       },
       {
         name: "forge.init",
@@ -417,9 +451,15 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             description: "Documentation language (default: en).",
           },
           from: { kind: "string", description: "Detect stack from existing project path." },
+          "compass-docs": {
+            kind: "boolean",
+            description:
+              "After init, run compass.docs.scaffold to materialize the Compass corpus (RFC-1253).",
+          },
         },
         cacheable: false,
-        execute: initWrapper,
+        execute: async (input, context) =>
+          maybeScaffoldCompassDocs(input, context, await initWrapper(input, context)),
       },
       {
         name: "forge.profile.validate",
