@@ -18,7 +18,7 @@ import type {
   KernelLogger,
   KernelRuntimeContext,
   Diagnostic,
-} from "@warpgogol/werkstatt-engine/kernel/types";
+} from "@warpgogol/werkstatt-shared/kernel/types";
 import { defineTsCheck, type TsCheckData } from "./run-ts-check.ts";
 import { makeDiagnostic } from "./diagnostic-helpers.ts";
 

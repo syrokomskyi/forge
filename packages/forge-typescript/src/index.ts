@@ -22,7 +22,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 import type { WerkstattPlugin } from "@warpgogol/werkstatt-shared/plugin";
-import type { KernelModule } from "@warpgogol/werkstatt-engine/kernel/types";
+import type { KernelModule } from "@warpgogol/werkstatt-shared/kernel/types";
 import { typescriptPathConventions } from "./paths/typescript-paths.ts";
 import { TYPESCRIPT_INVARIANTS } from "./invariants/typescript-invariants.ts";
 

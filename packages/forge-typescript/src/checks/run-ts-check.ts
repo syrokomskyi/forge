@@ -29,7 +29,7 @@ import type {
   KernelCommandDefinition,
   KernelCommandResult,
   Diagnostic,
-} from "@warpgogol/werkstatt-engine/kernel/types";
+} from "@warpgogol/werkstatt-shared/kernel/types";
 import { buildWorkspaceModel, type TsWorkspaceModel } from "../model/workspace-model.ts";
 import { emptySummary, buildSummary } from "./diagnostic-helpers.ts";
 

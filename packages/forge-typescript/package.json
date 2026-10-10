@@ -45,7 +45,6 @@
   },
   "dependencies": {
     "@warpgogol/forge": "workspace:*",
-    "@warpgogol/werkstatt-engine": "workspace:*",
     "@warpgogol/werkstatt-shared": "workspace:*"
   },
   "devDependencies": {

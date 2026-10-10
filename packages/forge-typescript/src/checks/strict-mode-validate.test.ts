@@ -17,7 +17,7 @@ import type {
   KernelCommandInput,
   KernelLogger,
   KernelRuntimeContext,
-} from "@warpgogol/werkstatt-engine/kernel/types";
+} from "@warpgogol/werkstatt-shared/kernel/types";
 import {
   createStrictModeValidateCommand,
   type StrictModeValidateData,

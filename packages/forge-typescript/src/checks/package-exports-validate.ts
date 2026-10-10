@@ -20,7 +20,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import type { KernelCommandDefinition, Diagnostic } from "@warpgogol/werkstatt-engine/kernel/types";
+import type { KernelCommandDefinition, Diagnostic } from "@warpgogol/werkstatt-shared/kernel/types";
 import { join } from "node:path";
 import type { TsWorkspaceModel } from "../model/workspace-model.ts";
 import { makeDiagnostic } from "./diagnostic-helpers.ts";

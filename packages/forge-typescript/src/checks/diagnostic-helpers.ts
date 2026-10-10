@@ -18,7 +18,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 </CHANGE_SUMMARY>
 */
 
-import type { Diagnostic } from "@warpgogol/werkstatt-engine/kernel/types";
+import type { Diagnostic } from "@warpgogol/werkstatt-shared/kernel/types";
 
 export function makeDiagnostic(
   ruleId: string,

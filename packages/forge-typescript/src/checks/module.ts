@@ -24,7 +24,7 @@ import { createPhantomDepsValidateCommand } from "./phantom-deps-validate.ts";
 import { createPackageExportsValidateCommand } from "./package-exports-validate.ts";
 import { createStrictModeValidateCommand } from "./strict-mode-validate.ts";
 import { createBarrelValidateCommand } from "./barrel-validate.ts";
-import type { ModuleExport } from "@warpgogol/werkstatt-engine/runtime/desired-state";
+import type { ModuleExport } from "@warpgogol/werkstatt-shared/kernel/desired-state";
 
 export function createTypescriptCheckModule(): ModuleExport {
   return {
