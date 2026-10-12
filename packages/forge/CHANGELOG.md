@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [6.3.6] — 2026-10-12
+
+### Fixed
+
+- Knowledge sync reports conflicts only when duplicate IDs carry different title, body, or metadata; identical records with reordered metadata fields no longer produce false conflict warnings
+
 ## [6.3.5] — 2026-10-12
 
 ### Fixed
