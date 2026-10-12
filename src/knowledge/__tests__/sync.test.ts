@@ -57,6 +57,46 @@ test("unchanged when contents are identical", () => {
   expect(result.action).toBe("unchanged");
 });
 
+test("does not report a conflict when duplicate entries are semantically identical", () => {
+  const src = join(tempDir, "qa-log.md");
+  const dest = join(tempDir, "dest.md");
+  const sourceEntry = entry("K-0001", "First", "Body one.");
+  const localEntry = sourceEntry.replace(
+    "layer: L0\ncreated: 2026-08-03",
+    "created: 2026-08-03\nlayer: L0",
+  );
+  writeFileSync(src, knowledgeFile("L0", [sourceEntry]), "utf8");
+  const localContent = knowledgeFile("L0", [localEntry]).replace(
+    "# Knowledge (L0)",
+    "# Project knowledge",
+  );
+  writeFileSync(dest, localContent, "utf8");
+
+  const plan = planKnowledgeSync(src, dest);
+
+  expect(plan.action).toBe("unchanged");
+  expect(plan.conflicts).toEqual([]);
+  expect(plan.content).toBeNull();
+  expect(readFileSync(dest, "utf8")).toBe(localContent);
+});
+
+test.each([
+  ["title", entry("K-0001", "Different title", "Body one.")],
+  ["body", entry("K-0001", "First", "Different body.")],
+  ["metadata", entry("K-0001", "First", "Body one.").replace("status: active", "status: stale")],
+] as const)("reports a conflict when duplicate entry %s differs", (_difference, sourceEntry) => {
+  const src = join(tempDir, "qa-log.md");
+  const dest = join(tempDir, "dest.md");
+  writeFileSync(src, knowledgeFile("L0", [sourceEntry]), "utf8");
+  writeFileSync(dest, knowledgeFile("L0", [entry("K-0001", "First", "Body one.")]), "utf8");
+
+  const plan = planKnowledgeSync(src, dest);
+
+  expect(plan.action).toBe("unchanged");
+  expect(plan.conflicts).toEqual(["K-0001"]);
+  expect(plan.content).toBeNull();
+});
+
 test("merges: local entries preserved, new source entries appended", () => {
   const src = join(tempDir, "qa-log.md");
   const dest = join(tempDir, "dest.md");
