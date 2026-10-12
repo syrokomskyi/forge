@@ -20,7 +20,7 @@ import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { parseKnowledgeFile } from "./parse.ts";
 import { serializeKnowledgeFile } from "./serialize.ts";
-import type { ParsedKnowledgeFile } from "./schema.ts";
+import type { KnowledgeEntry, ParsedKnowledgeFile } from "./schema.ts";
 
 export type KnowledgeSyncAction = "copied" | "merged" | "unchanged" | "skipped";
 
@@ -28,7 +28,7 @@ export interface KnowledgeSyncResult {
   action: KnowledgeSyncAction;
   /** Entry IDs appended from the source file (merge only). */
   appended: string[];
-  /** Entry IDs present in both files — the local version is always kept. */
+  /** Entry IDs present in both files with differing content — the local version is kept. */
   conflicts: string[];
 }
 
@@ -56,6 +56,16 @@ function isCumulative(parsed: ParsedKnowledgeFile): boolean {
   return !parsed.isKnowledgeAdjacent;
 }
 
+function sameEntryContent(left: KnowledgeEntry, right: KnowledgeEntry): boolean {
+  const leftMeta = Object.entries(left.meta).sort(([a], [b]) => a.localeCompare(b));
+  const rightMeta = Object.entries(right.meta).sort(([a], [b]) => a.localeCompare(b));
+  return (
+    left.title === right.title &&
+    left.body === right.body &&
+    JSON.stringify(leftMeta) === JSON.stringify(rightMeta)
+  );
+}
+
 function planFileSync(srcPath: string, destPath: string): KnowledgeSyncPlan {
   const none = { appended: [], conflicts: [] };
   if (!fs.existsSync(srcPath)) {
@@ -78,9 +88,14 @@ function planFileSync(srcPath: string, destPath: string): KnowledgeSyncPlan {
   // Both files use the cumulative K-NNNN format → append-only merge:
   // local entries always win; source entries with new IDs are appended.
   if (isCumulative(srcParsed) && isCumulative(destParsed)) {
-    const destIds = new Set(destParsed.entries.map((e) => e.meta.id));
-    const appendedEntries = srcParsed.entries.filter((e) => !destIds.has(e.meta.id));
-    const conflicts = srcParsed.entries.filter((e) => destIds.has(e.meta.id)).map((e) => e.meta.id);
+    const destEntries = new Map(destParsed.entries.map((entry) => [entry.meta.id, entry]));
+    const appendedEntries = srcParsed.entries.filter((entry) => !destEntries.has(entry.meta.id));
+    const conflicts = srcParsed.entries
+      .filter((entry) => {
+        const localEntry = destEntries.get(entry.meta.id);
+        return localEntry !== undefined && !sameEntryContent(entry, localEntry);
+      })
+      .map((entry) => entry.meta.id);
 
     const destLegacyTexts = new Set(destParsed.legacySections.map((l) => l.text.trim()));
     const appendedLegacy = srcParsed.legacySections.filter(
