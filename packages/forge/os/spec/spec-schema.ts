@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0394: initial spec schema — forge/spec@1, integrity manifest, decision/rfc/wave types.</item>
   <item>RFC-1240: consumers field on roadmap nodes (consumer ownership filtering); severity field on SpecViolation for warning diagnostics.</item>
+  <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: skippedDirs field on SpecValidateResult for sweep-mode transparency.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -154,6 +155,9 @@ export interface SpecValidateResult {
     status: string;
     violations: SpecViolation[];
   }>;
+  /** Dirs under specsDir skipped in sweep mode — non-package dirs carry no
+   * forge-spec.yaml (authored/live work areas). Always [] under --spec. */
+  skippedDirs: string[];
 }
 
 // ---------------------------------------------------------------------------
