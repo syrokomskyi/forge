@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [6.3.5] — 2026-10-12
+
+### Fixed
+
+- `spec.validate` sweep mode scopes to manifest-bearing dirs — directories without `forge-spec.yaml` (authored spec work areas, `docs/specs/live/`) are skipped instead of failing SPEC-02, matching the vendored-packages contract; skipped dirs surface as `skippedDirs` on `SpecValidateResult` and a pretty-output info line (xrepo handoff `xrepo-personal-agent-to-forge-spec-validate-sweep`)
+- `--spec=<id>` keeps SPEC-02 when the named dir lacks a manifest; present-but-corrupt manifests still fail SPEC-02 in sweep mode — the skip is by file presence, not parseability
+- Docs: agent-guide note on conditional mid-pipeline generates, `context.site` trust, and commit-guard scope semantics
+
+## [6.3.4] — 2026-10-12
+
+_Bumped in-monorepo but never exported or published — superseded same-day by 6.3.5._
+
 ## [6.3.3] — 2026-10-11
 
 ### Fixed
