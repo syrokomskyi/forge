@@ -11,6 +11,7 @@
   <item>RFC-0394: initial spec.validate handler with SPEC-01..07 rules.</item>
   <item>Gap fix: resolve materialized RFCs recursively so terminal RFC archival does not invalidate accepted specs.</item>
   <item>RFC-1240: SPEC-12 consumers list hygiene, SPEC-13 consumer-identity warning; warnings no longer fail validation.</item>
+  <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: sweep mode skips dirs without forge-spec.yaml (authored/live areas are not packages), reports them as skippedDirs; --spec keeps SPEC-02.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -456,6 +457,7 @@ export async function runSpecValidate(
   const filterSpec = input.flags["spec"] as string | undefined;
 
   let specDirs = await listSpecDirs(specsRoot);
+  const skippedDirs: string[] = [];
   if (filterSpec) {
     if (!specDirs.includes(filterSpec)) {
       return {
@@ -463,12 +465,21 @@ export async function runSpecValidate(
           command: "spec.validate",
           status: "fail",
           specs: [],
+          skippedDirs,
         },
         exitCode: 1,
         summary: `spec.validate: spec '${filterSpec}' not found. Available: ${specDirs.join(", ") || "(none)"}`,
       };
     }
     specDirs = [filterSpec];
+  } else {
+    // Sweep mode: only manifest-bearing dirs are spec packages — authored
+    // work areas and docs/specs/live/ carry no forge-spec.yaml and are skipped.
+    specDirs = specDirs.filter((dir) => {
+      if (existsSync(path.join(specsRoot, dir, "forge-spec.yaml"))) return true;
+      skippedDirs.push(dir);
+      return false;
+    });
   }
 
   const rfcDir = path.join(workspaceRoot, "docs", "rfcs");
@@ -553,6 +564,11 @@ export async function runSpecValidate(
         }
       }
     }
+    if (skippedDirs.length > 0) {
+      logger.info(
+        `Skipped ${skippedDirs.length} non-package dir(s) without forge-spec.yaml: ${skippedDirs.join(", ")}`,
+      );
+    }
   }
 
   return {
@@ -560,6 +576,7 @@ export async function runSpecValidate(
       command: "spec.validate",
       status: hasFailures ? "fail" : "pass",
       specs: results,
+      skippedDirs,
     },
     exitCode: hasFailures ? 1 : 0,
     summary: hasFailures

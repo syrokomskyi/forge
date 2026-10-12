@@ -1,9 +1,9 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Prove vendored spec validation resolves materialized RFCs across the canonical RFC archive topology.</purpose>
+<purpose>Prove vendored spec validation behaviors — consumer rules, SPEC-07 archive resolution, and sweep-mode package scoping.</purpose>
 <non-goals><item>Do not duplicate individual integrity, graph, or amendment rule tests.</item></non-goals>
 </MODULE_CONTRACT>
-<CHANGE_SUMMARY><item>Gap fix: cover SPEC-07 after terminal RFC archival.</item></CHANGE_SUMMARY>
+<CHANGE_SUMMARY><item>Gap fix: cover SPEC-07 after terminal RFC archival.</item><item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: cover sweep-mode manifest-dir scoping and skippedDirs.</item></CHANGE_SUMMARY>
 */
 
 import fs from "node:fs/promises";
@@ -19,11 +19,10 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => fs.rm(root, { recursive: true, force: true })));
 });
 
-describe("spec.validate consumer rules (RFC-1240)", () => {
-  async function writeConsumerSpec(workspaceRoot: string, consumersYaml: string): Promise<void> {
-    const specDir = path.join(workspaceRoot, "docs/specs/example");
-    await fs.mkdir(specDir, { recursive: true });
-    await fs.writeFile(path.join(specDir, "forge-spec.yaml"), `schema: forge/spec@1
+async function writeConsumerSpec(workspaceRoot: string, consumersYaml: string): Promise<void> {
+  const specDir = path.join(workspaceRoot, "docs/specs/example");
+  await fs.mkdir(specDir, { recursive: true });
+  await fs.writeFile(path.join(specDir, "forge-spec.yaml"), `schema: forge/spec@1
 id: example
 title: Example
 version: 1.0.0
@@ -44,14 +43,15 @@ ${consumersYaml}waves:
     name: Test
     goal: Exercise consumer rules
 `);
-    await fs.writeFile(path.join(specDir, "integrity.yaml"), "schema: forge/spec-integrity@1\nfiles: {}\n");
-  }
+  await fs.writeFile(path.join(specDir, "integrity.yaml"), "schema: forge/spec-integrity@1\nfiles: {}\n");
+}
 
-  function ctx(workspaceRoot: string): ForgeRuntimeContext {
-    return { workspaceRoot, dryRun: false, outputFormat: "json",
-      logger: { section() {}, info() {}, warn() {}, error() {}, success() {} } } as ForgeRuntimeContext;
-  }
+function ctx(workspaceRoot: string): ForgeRuntimeContext {
+  return { workspaceRoot, dryRun: false, outputFormat: "json",
+    logger: { section() {}, info() {}, warn() {}, error() {}, success() {} } } as ForgeRuntimeContext;
+}
 
+describe("spec.validate consumer rules (RFC-1240)", () => {
   it("emits SPEC-13 warning without failing when consumers exist but no local identity is configured", async () => {
     const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-consumer-"));
     roots.push(workspaceRoot);
@@ -121,5 +121,54 @@ waves:
     const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, context);
     expect(result).toMatchObject({ exitCode: 0, data: { status: "pass",
       specs: [{ id: "example", violations: [] }] } });
+  });
+});
+
+describe("spec.validate sweep scoping (xrepo-personal-agent-to-forge-spec-validate-sweep)", () => {
+  it("skips dirs without forge-spec.yaml and reports them in skippedDirs", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-sweep-"));
+    roots.push(workspaceRoot);
+    await writeConsumerSpec(workspaceRoot, "");
+    await fs.mkdir(path.join(workspaceRoot, "docs/specs/authored-draft"), { recursive: true });
+    await fs.mkdir(path.join(workspaceRoot, "docs/specs/live"), { recursive: true });
+    const result = await runSpecValidate({ argv: [], flags: {} }, ctx(workspaceRoot));
+    expect(result.exitCode).toBe(0);
+    expect(result.data!.status).toBe("pass");
+    expect(result.data!.specs.map((s) => s.id)).toEqual(["example"]);
+    expect(result.data!.skippedDirs.sort()).toEqual(["authored-draft", "live"]);
+  });
+
+  it("passes with empty specs when every dir lacks a manifest", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-sweep-"));
+    roots.push(workspaceRoot);
+    await fs.mkdir(path.join(workspaceRoot, "docs/specs/authored-draft"), { recursive: true });
+    const result = await runSpecValidate({ argv: [], flags: {} }, ctx(workspaceRoot));
+    expect(result).toMatchObject({ exitCode: 0, data: { status: "pass",
+      specs: [], skippedDirs: ["authored-draft"] } });
+  });
+
+  it("keeps SPEC-02 when --spec names a dir without a manifest", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-sweep-"));
+    roots.push(workspaceRoot);
+    await fs.mkdir(path.join(workspaceRoot, "docs/specs/authored-draft"), { recursive: true });
+    const result = await runSpecValidate(
+      { argv: [], flags: { spec: "authored-draft" } }, ctx(workspaceRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.specs[0]!.violations).toEqual([
+      { rule: "SPEC-02", message: "forge-spec.yaml not found" },
+    ]);
+    expect(result.data!.skippedDirs).toEqual([]);
+  });
+
+  it("still reports SPEC-02 in sweep mode for a present-but-corrupt manifest", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-sweep-"));
+    roots.push(workspaceRoot);
+    const broken = path.join(workspaceRoot, "docs/specs/broken");
+    await fs.mkdir(broken, { recursive: true });
+    await fs.writeFile(path.join(broken, "forge-spec.yaml"), "schema: [unclosed\n");
+    const result = await runSpecValidate({ argv: [], flags: {} }, ctx(workspaceRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.skippedDirs).toEqual([]);
+    expect(result.data!.specs[0]!.violations[0]!.rule).toBe("SPEC-02");
   });
 });

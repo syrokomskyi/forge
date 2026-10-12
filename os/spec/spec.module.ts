@@ -17,6 +17,7 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1234: spec.live.validate description lists V-LS-09 drift rule.</item>
   <item>RFC-1240: --consumer flag on spec.validate/spec.status/spec.materialize; SPEC-12/13 rules in spec.validate description.</item>
+  <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: spec.validate description documents sweep-mode manifest-dir scoping.</item>
   <history>RFC-0394, RFC-0396, RFC-0711</history>
 </CHANGE_SUMMARY>
 */
@@ -62,7 +63,9 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "Checks integrity (SHA-256), schema, dependency graph (acyclic), " +
         "reference resolution, wave coverage, duplicate ids, materializedAs links, " +
         "and consumer hygiene (SPEC-12 duplicates/empty, SPEC-13 identity warning). " +
-        "Use --spec=<id> to validate a single spec.",
+        "Sweep mode skips directories without forge-spec.yaml (authored/live dirs " +
+        "are not packages); --spec=<id> validates one spec and reports SPEC-02 " +
+        "when the named dir lacks a manifest.",
       scope: "workspace",
       flags: {
         spec: {
