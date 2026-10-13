@@ -15,6 +15,7 @@ prose checklist.
 <CHANGE_SUMMARY>
   <item>RFC-0268: initial implementation.</item>
   <item>RFC-0998: added test and json-schema probe kinds — spawnVitest helper, Ajv validation, shape validation.</item>
+  <item>RFC-1271: optional probe metadata — expectationSource enum-check, limitations pass-through.</item>
 </CHANGE_SUMMARY>
 */
 
