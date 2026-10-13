@@ -610,7 +610,8 @@ export type RfcImplementStampRule =
   | "RFC-IMP-05"
   | "RFC-IMP-06"
   | "RFC-IMP-07"
-  | "RFC-IMP-08";
+  | "RFC-IMP-08"
+  | "RFC-IMP-09";
 
 export interface RfcImplementStampViolation {
   rule: RfcImplementStampRule;
