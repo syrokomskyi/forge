@@ -68,3 +68,16 @@ status: active
 ```
 
 API keys, passwords, PII must be removed from the transcript. Same redaction pattern as `fo-handoff`.
+
+### K-0007: Any kernel module's module-level throw kills every command — including session.save
+
+```knowledge-entry
+id: K-0007
+layer: L2
+created: 2026-10-13
+lastConfirmedAt: 2026-10-13
+confirmations: 1
+status: active
+```
+
+The kernel registry eagerly imports all modules before dispatch (`[registry] loading module <name>` lines). A throw at module top level — e.g. a malformed regex literal in `packages/werkstatt-journal/src/kernel/studio-commands.ts` — aborts the whole CLI, so `session.save` fails before it can process `.raw/` transcripts. When session.save dies during registry load, bisect recently-edited `*/kernel/*.ts` modules; note ripgrep skips files containing raw control bytes as binary — verify suspect regexes with `sed -n '<line>p' <file> | od -c`.
