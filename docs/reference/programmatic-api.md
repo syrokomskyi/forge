@@ -60,7 +60,7 @@ Each module registers its commands with the registry. Modules are independent â€
 | `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive`, `adr.implement.stamp` |
 | `forgeNamingModule` | `naming.convention.lint` |
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.trim` |
-| `forgeWorkflowModule` | `workflow.lint`, `workflow.list`, `workflow.amend.list` |
+| `forgeWorkflowModule` | `workflow.lint`, `workflow.list` |
 | `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge` |
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list`, `metrics.aggregate` |
 | `forgePluginModule` | `forge.plugin.validate`, `forge.plugin.discover` |

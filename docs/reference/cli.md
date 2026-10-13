@@ -64,7 +64,6 @@ forge naming.convention.lint
 ```sh
 forge workflow.lint
 forge workflow.list
-forge workflow.amend.list
 ```
 
 ## Spec vendoring
