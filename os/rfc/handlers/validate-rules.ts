@@ -28,13 +28,14 @@ import { parse as yamlParse } from "yaml";
 import { validateAcceptanceShape } from "../acceptance.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
-import type { RfcStatus, RfcKind, RfcScope, Marker } from "../types.ts";
+import type { RfcStatus, RfcKind, RfcScope, RfcVerificationTier, Marker } from "../types.ts";
 import {
   RFC_DIR,
   RFC_ID_PATTERN,
   RFC_STATUSES,
   RFC_KINDS,
   RFC_SCOPES,
+  RFC_VERIFICATION_TIERS,
   RFC_FULL_REQUIRED_SECTIONS,
   RFC_METADATA_CUTOFF,
   RFC_VERSION_BUMP_CUTOFF,
@@ -924,6 +925,20 @@ export async function validateSingleRfc(
         "error",
       );
     }
+  }
+
+  // V-43: valid verificationTier (RFC-1271 — optional; absent is valid)
+  const verificationTier = fm["verificationTier"];
+  if (
+    verificationTier !== undefined &&
+    !RFC_VERIFICATION_TIERS.includes(verificationTier as RfcVerificationTier)
+  ) {
+    addViolation(
+      rfcId,
+      relFile,
+      "V-43",
+      `Invalid verificationTier "${String(verificationTier)}". Must be one of: ${RFC_VERIFICATION_TIERS.join(", ")}`,
+    );
   }
 
   // V-15: title consistency

@@ -88,6 +88,36 @@ export const RFC_KINDS: readonly RfcKind[] = [
 export type RfcScope = "app" | "workspace";
 
 export const RFC_SCOPES: readonly RfcScope[] = ["app", "workspace"] as const; // ─── Frontmatter ─────────────────────────────────────────────────────────────
+
+/**
+ * RFC-1271: optional verification rigor declaration — standard (default)
+ * checks, high (adds negative-path + independent verification where it
+ * genuinely reduces risk), formal (opt-in formal/property methods for
+ * precisely specifiable properties). Tier semantics live in
+ * `.agents/skills/_shared/agent-operating-model.md`.
+ */
+export type RfcVerificationTier = "standard" | "high" | "formal";
+
+export const RFC_VERIFICATION_TIERS: readonly RfcVerificationTier[] = [
+  "standard",
+  "high",
+  "formal",
+] as const;
+
+/**
+ * RFC-1271: where a check's expected result originates. `self` is
+ * implementer-derived (diagnostic, not sole proof); `requirement` follows an
+ * accepted requirement; `independent` is fixed before/independently of the
+ * implementation; `external` comes from an authoritative external system.
+ */
+export type RfcExpectationSource = "self" | "requirement" | "independent" | "external";
+
+export const RFC_EXPECTATION_SOURCES: readonly RfcExpectationSource[] = [
+  "self",
+  "requirement",
+  "independent",
+  "external",
+] as const;
 /**
  * Tracks which OS commands this RFC adds, changes, or removes.
  * Used by rfc.validate to cross-check that proposed commands
@@ -269,7 +299,12 @@ export interface RfcFrontmatter {
  * site-kernel CLI itself (string must start with "site-kernel ") — no
  * arbitrary shell, keeping the probe surface auditable and platform-independent.
  */
-export type AcceptanceProbe =
+export interface AcceptanceProbeMeta {
+  expectationSource?: RfcExpectationSource;
+  limitations?: string;
+}
+
+export type AcceptanceProbe = (
   | { probe: "run"; command: string; expect: { exitCode: number }; criterion?: string }
   | { probe: "file-exists"; path: string; criterion?: string }
   | { probe: "file-contains"; path: string; pattern: string; criterion?: string }
@@ -300,7 +335,9 @@ export type AcceptanceProbe =
       artifact: string;
       schemaInline: Record<string, unknown>;
       criterion?: string;
-    };
+    }
+) &
+  AcceptanceProbeMeta;
 
 export interface ProbeResult {
   probe: AcceptanceProbe;
@@ -630,6 +667,7 @@ export const RFC_KNOWN_KEYS: readonly string[] = [
   "satisfies",
   "specRef",
   "versionBump",
+  "verificationTier",
   "breaksC",
   "liveSpec",
   "dependsOn",
