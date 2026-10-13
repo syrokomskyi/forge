@@ -143,7 +143,7 @@ Agents can change. Models can change. IDEs can change. Engineering rules stay wi
 - **Workflow linting** — validate `.agents/workflows/` frontmatter
 - **Stack scaffolding** — pnpm + Turborepo monorepo from a profile
 - **Bindings contract** — de-hardcode project-specific commands via `forge.yaml`
-- **Agent operating model** — EXPLORE/ROUTINE/GOVERNED work modes, a verification portfolio with tiers, and separated completion vocabulary (IMPLEMENTED / VERIFIED / ACCEPTED / RELEASED), shipped as a shared skill and synced by `forge upgrade`
+- **Agent operating model** — EXPLORE/ROUTINE/GOVERNED work modes with explicit authority boundaries (the operator owns intent and significant decisions; the agent owns implementation inside them, and escalates rather than guesses when a boundary is crossed), a proportionate verification portfolio with tiers (tests are one tool — rigor scales to risk, not a mandatory-TDD rule; skills declare `notApplicableWhen`/`costNotes` so a mismatching skill is not force-applied), and separated completion vocabulary (IMPLEMENTED / VERIFIED / ACCEPTED / RELEASED), shipped as a shared skill and synced by `forge upgrade`
 - **Doctor** — project health check
 - **Upgrade** — additive, idempotent skill and config sync
 

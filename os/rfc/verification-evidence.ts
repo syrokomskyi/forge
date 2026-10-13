@@ -20,6 +20,7 @@ shared emit-canonical serializer restoring the structured YAML marker-key
 header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
 with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
 </CHANGE_SUMMARY>
 */
 
@@ -161,15 +162,26 @@ export function serializeEvidenceEnvelope(envelope: VerificationEvidence): strin
 }
 
 /**
- * RFC-1271: the serialization whitelist is the union of keys across ALL
- * probe objects — fields unique to later probes (criterion, path, pattern,
- * expectationSource, limitations, …) must reach acceptanceHash, otherwise
- * retargeting a later probe's criterion or path leaves the hash unchanged.
+ * RFC-1271: canonical serialization for acceptanceHash. Keys are sorted
+ * recursively at every depth and NO key is filtered — every probe field
+ * (top-level or nested inside expect/schemaInline) must reach the hash,
+ * otherwise retargeting a nested probe field leaves the hash unchanged.
  * Exported so rfc.implement.stamp recomputes with the identical function.
  */
 export function normalizeProbes(probes: AcceptanceProbe[]): string {
-  const keys = [...new Set(probes.flatMap((p) => Object.keys(p)))].sort();
-  return JSON.stringify(probes, keys);
+  return JSON.stringify(sortKeysDeep(probes));
+}
+
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sortKeysDeep);
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([k, v]) => [k, sortKeysDeep(v)]),
+    );
+  }
+  return value;
 }
 
 export function buildEvidenceEnvelope(

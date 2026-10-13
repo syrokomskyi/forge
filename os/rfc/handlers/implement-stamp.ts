@@ -12,7 +12,6 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1053: integrate generateRfcMetrics after successful stamp (non-fatal, guarded by !isDryRun).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -21,7 +20,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>Session-retro 2026-10-08: auto-detect picks the sole implement/feat-prefixed candidate among multi-commit references (RFC-IMP-03 no longer blocks full pipelines); ambiguous sets keep blocking with annotated candidate list + earliest-candidate suggestion.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-IMP-07</history>
+  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -42,7 +42,7 @@ import {
 } from "../frontmatter-io.ts";
 import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
-import { byteHashHex, normalizeProbes } from "../verification-evidence.ts";
+import { byteHashHex, normalizeProbes, runRfcVerificationEmit } from "../verification-evidence.ts";
 import { RFC_DIR, RFC_METADATA_CUTOFF, RFC_PROBE_BINDING_CUTOFF } from "../types.ts";
 import type {
   RfcStatus,
@@ -207,16 +207,38 @@ async function releaseRfcLock(lockPath: string): Promise<void> {
 async function checkExistingEvidence(
   workspaceRoot: string,
   rfcId: string,
-): Promise<{ exists: boolean; overall: string; envelope: VerificationEvidence | null }> {
+): Promise<{
+  exists: boolean;
+  overall: string;
+  envelope: VerificationEvidence | null;
+  malformed: boolean;
+}> {
   const slug = rfcId.toLowerCase();
   const evidencePath = join(workspaceRoot, VERIFICATION_DIR, `${slug}.generated.yaml`);
+  let content: string;
   try {
-    const content = await io.readFile(evidencePath);
-    const evidence = yamlParse(content) as VerificationEvidence;
-    return { exists: true, overall: String(evidence.overall ?? ""), envelope: evidence };
+    content = await io.readFile(evidencePath);
   } catch {
-    return { exists: false, overall: "missing", envelope: null };
+    return { exists: false, overall: "missing", envelope: null, malformed: false };
   }
+  let parsed: unknown;
+  try {
+    parsed = yamlParse(content);
+  } catch {
+    return { exists: true, overall: "malformed", envelope: null, malformed: true };
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    // Fail closed: a committed envelope that parses to a scalar/array is
+    // malformed evidence, not absent evidence.
+    return { exists: true, overall: "malformed", envelope: null, malformed: true };
+  }
+  const evidence = parsed as VerificationEvidence;
+  return {
+    exists: true,
+    overall: String(evidence.overall ?? ""),
+    envelope: evidence,
+    malformed: false,
+  };
 }
 
 // ─── Frontmatter mutation ────────────────────────────────────────────────────
@@ -459,11 +481,16 @@ export async function runRfcImplementStamp(
   // (the RFC file must be committed-clean to stamp) the compared bytes are
   // effectively the committed bytes — deliberate, keeps the gate honest
   // without a second git read. Fires before any frontmatter mutation.
-  if (evidenceCheck.exists && evidenceCheck.envelope) {
-    if (!hasProbes) {
+  if (evidenceCheck.exists) {
+    if (evidenceCheck.malformed || !evidenceCheck.envelope) {
       violations.push({
         rule: "RFC-IMP-09",
-        message: `RFC ${targetId} has a committed evidence envelope but no acceptance: list — probes were deleted after emission, which is a criteria change. Restore the probes or re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+        message: `RFC ${targetId} evidence envelope is malformed (unreadable YAML or non-object content). Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope — or delete the stale envelope file.`,
+      });
+    } else if (!hasProbes) {
+      violations.push({
+        rule: "RFC-IMP-09",
+        message: `RFC ${targetId} has a committed evidence envelope but no acceptance: list — probes were deleted after emission, which is a criteria change. Either restore the probes and re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope — or delete the stale envelope file (rfc.verification.emit skips probe-less RFCs, so re-emit alone cannot clear this).`,
       });
     } else {
       const rfcMarkdown = await io.readFile(rfcFilePath);
@@ -570,11 +597,33 @@ export async function runRfcImplementStamp(
       }
     }
 
-    // ── Re-emit evidence if probes exist (to update with new status) ─────────
-    if (hasProbes && requiresEvidence && evidenceRelPath) {
-      // Evidence already exists and passed — no need to re-emit on stamp
-      // The evidence was generated before stamping; the status change is
-      // recorded in the RFC frontmatter, not in the evidence file.
+    // ── RFC-1271: post-stamp evidence re-emit ────────────────────────────────
+    // The frontmatter mutation above changes the bytes RFC-IMP-09 binds via
+    // rfcFileHash — without re-emission every successful stamp manufactures a
+    // stale envelope. Re-emit inside the stamp for probe-bearing RFCs so the
+    // committed envelope describes the implemented-state file. Non-fatal:
+    // the mutation is already written; a failed re-emit leaves a stale
+    // envelope the operator re-emits manually.
+    let evidenceReEmitted = false;
+    if (hasProbes) {
+      try {
+        const emitResult = await runRfcVerificationEmit(
+          { argv: [], flags: { id: targetId } },
+          context,
+        );
+        evidenceReEmitted = emitResult.exitCode === 0;
+        if (evidenceReEmitted) {
+          evidenceRelPath = join(VERIFICATION_DIR, `${targetId.toLowerCase()}.generated.yaml`);
+        } else {
+          logger.warn(
+            `[evidence] post-stamp re-emit failed for ${targetId} — re-run: site-kernel run rfc.verification.emit --id ${targetId}`,
+          );
+        }
+      } catch (emitErr) {
+        logger.warn(
+          `[evidence] post-stamp re-emit failed for ${targetId}: ${(emitErr as Error).message}`,
+        );
+      }
     }
 
     if (outputFormat === "pretty") {
@@ -597,6 +646,7 @@ export async function runRfcImplementStamp(
           stampedAt,
           criteriaChecked: criteriaEval.totalChecked,
           ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
+          ...(hasProbes ? { evidenceReEmitted } : {}),
           ...(metricsPath ? { metricsPath } : {}),
         },
         violations: [],
