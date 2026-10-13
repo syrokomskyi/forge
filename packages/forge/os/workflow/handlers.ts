@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Workflow lint/list/amend handlers for forge — validates .agents/workflows frontmatter, command references, and per-chain phase links.</purpose>
+<purpose>Workflow lint/list handlers for forge — validates .agents/workflows frontmatter, command references, and per-chain phase links.</purpose>
 <non-goals>
   <item>Do not execute workflow steps.</item>
   <item>Do not edit workflow files to repair violations.</item>
@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0075: Add agent workflow lint/list handlers.</item>
   <item>RFC-0374: Migrated from packages/os/site-kernel/src/workflow/ to packages/forge/os/workflow/.</item>
+  <item>RFC-1276: remove runWorkflowAmendList, WORKFLOW_AMEND_DIR, and the amend RFC command exemption set — the RFC-0135/0136 amend pipeline is superseded</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,8 +23,6 @@ import type {
 } from "../../src/types.ts";
 import {
   WORKFLOW_PHASES,
-  WORKFLOW_CHAINS,
-  type WorkflowChain,
   type WorkflowFrontmatter,
   type WorkflowLintResult,
   type WorkflowLintViolation,
@@ -31,22 +30,7 @@ import {
 } from "./types.ts";
 
 const WORKFLOW_DIR = ".agents/workflows";
-const WORKFLOW_AMEND_DIR = ".agents/workflows-amend";
 
-// RFC-0135/RFC-0136 commands (registered in site-kernel-onboarding / site-kernel-checks).
-const _PENDING_AMEND_RFC_COMMANDS = new Set([
-  "amend.input.validate",
-  "amend.atoms.merge",
-  "amend.provenance.append",
-  "amend.provenance.validate",
-  "amend.phase.validate",
-  "content.coverage.delta",
-  "audit.delta.run",
-  "amend-check.author",
-  "amend-check.postbuild",
-  "amend-check.run",
-  "workflow-amend.list",
-]);
 const PENDING_ACCEPTED_RFC_COMMANDS = new Set([
   "brief.validate",
   "biome.tokens.derive",
@@ -124,7 +108,6 @@ function validateFrontmatter(file: string, value: unknown): WorkflowFrontmatter 
     typeof candidate.id === "string" &&
     typeof candidate.title === "string" &&
     WORKFLOW_PHASES.includes(candidate.phase) &&
-    (candidate.chain === undefined || WORKFLOW_CHAINS.includes(candidate.chain)) &&
     isStringArray(candidate.reads) &&
     isStringArray(candidate.writes) &&
     Boolean(candidate.scope) &&
@@ -140,21 +123,18 @@ function validateFrontmatter(file: string, value: unknown): WorkflowFrontmatter 
     typeof candidate.selfOrchestration.autoRun === "boolean" &&
     isStringArray(candidate.selfOrchestration.pauseFor) &&
     isStringArray(candidate.checkpoints) &&
-    (candidate.nextWorkflow === undefined || typeof candidate.nextWorkflow === "string") &&
-    (candidate.branch === undefined ||
-      (typeof candidate.branch.on === "string" && isStringArray(candidate.branch.cases)));
+    (candidate.nextWorkflow === undefined || typeof candidate.nextWorkflow === "string");
 
   if (!valid) throw new Error(`${file}: invalid workflow frontmatter shape`);
   return candidate;
 }
 
-/** Load one chain's workflow files. The chain a file belongs to is fixed by its directory. */
-async function loadWorkflows(workspaceRoot: string, chain: WorkflowChain = "greenfield") {
-  const dir = chain === "amend" ? WORKFLOW_AMEND_DIR : WORKFLOW_DIR;
+/** Load the greenfield chain's workflow files. */
+async function loadWorkflows(workspaceRoot: string) {
+  const dir = WORKFLOW_DIR;
   const files = await readWorkflowFiles(workspaceRoot, dir);
   const workflows: Array<{
     relativeFile: string;
-    chain: WorkflowChain;
     data: WorkflowFrontmatter;
   }> = [];
   const violations: WorkflowLintViolation[] = [];
@@ -165,7 +145,6 @@ async function loadWorkflows(workspaceRoot: string, chain: WorkflowChain = "gree
       const source = await fs.readFile(file);
       workflows.push({
         relativeFile,
-        chain,
         data: validateFrontmatter(relativeFile, parseMarkdownFrontmatter(source)),
       });
     } catch (error) {
@@ -199,7 +178,7 @@ export async function runWorkflowList(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<{ command: "workflow.list"; workflows: WorkflowListEntry[] }>> {
-  const { workflows } = await loadWorkflows(context.workspaceRoot, "greenfield");
+  const { workflows } = await loadWorkflows(context.workspaceRoot);
   const entries = toListEntries(workflows);
   return {
     data: { command: "workflow.list", workflows: entries },
@@ -214,19 +193,6 @@ export async function runWorkflowList(
             },
           ]
         : undefined,
-  };
-}
-
-export async function runWorkflowAmendList(
-  _input: ForgeCommandInput,
-  context: ForgeRuntimeContext,
-): Promise<ForgeCommandResult<{ command: "workflow-amend.list"; workflows: WorkflowListEntry[] }>> {
-  const { workflows } = await loadWorkflows(context.workspaceRoot, "amend");
-  const entries = toListEntries(workflows);
-  return {
-    data: { command: "workflow-amend.list", workflows: entries },
-    exitCode: 0,
-    summary: `workflow-amend.list: ${entries.length} amend workflow file(s) found`,
   };
 }
 
