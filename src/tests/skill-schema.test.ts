@@ -143,4 +143,43 @@ describe("skillFrontmatterSchema", () => {
       false,
     );
   });
+
+  test("accepts optional notApplicableWhen field (RFC-1271)", () => {
+    const result = skillFrontmatterSchema.safeParse({
+      ...valid,
+      notApplicableWhen: ["Idea already maps to an open RFC in docs/rfcs/."],
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.notApplicableWhen).toEqual([
+        "Idea already maps to an open RFC in docs/rfcs/.",
+      ]);
+    }
+  });
+
+  test("rejects notApplicableWhen entries under 5 chars", () => {
+    expect(skillFrontmatterSchema.safeParse({ ...valid, notApplicableWhen: ["n/a"] }).success).toBe(
+      false,
+    );
+  });
+
+  test("accepts optional costNotes field (RFC-1271)", () => {
+    const result = skillFrontmatterSchema.safeParse({
+      ...valid,
+      costNotes: "Runs 3-5 probes; light token cost.",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.costNotes).toBe("Runs 3-5 probes; light token cost.");
+    }
+  });
+
+  test("accepts frontmatter without RFC-1271 optional fields", () => {
+    const result = skillFrontmatterSchema.safeParse(valid);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.notApplicableWhen).toBeUndefined();
+      expect(result.data.costNotes).toBeUndefined();
+    }
+  });
 });
