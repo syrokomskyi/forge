@@ -20,12 +20,9 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 export { createForgeWorkflowModule } from "./workflow.module.ts";
-export { runWorkflowLint, runWorkflowList, runWorkflowAmendList } from "./handlers.ts";
+export { runWorkflowLint, runWorkflowList } from "./handlers.ts";
 export type {
   WorkflowPhase,
-  WorkflowChain,
-  WorkflowPreconditions,
-  WorkflowBranch,
   WorkflowFrontmatter,
   WorkflowListEntry,
   WorkflowLintViolation,
