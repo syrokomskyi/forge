@@ -37,7 +37,7 @@ import type {
   RfcAcceptanceRunResult,
   ProbeCoverageReport,
 } from "./types.ts";
-import { RFC_DIR, RFC_PROBE_BINDING_CUTOFF } from "./types.ts";
+import { RFC_DIR, RFC_PROBE_BINDING_CUTOFF, RFC_EXPECTATION_SOURCES } from "./types.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./handlers/validate-rules.ts";
 
@@ -186,6 +186,24 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
           index,
           message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page, test, json-schema`,
         });
+    }
+
+    // RFC-1271: optional metadata shared by every probe kind.
+    const expectationSource = (entry as Record<string, unknown>)["expectationSource"];
+    if (
+      expectationSource !== undefined &&
+      !RFC_EXPECTATION_SOURCES.includes(
+        expectationSource as (typeof RFC_EXPECTATION_SOURCES)[number],
+      )
+    ) {
+      issues.push({
+        index,
+        message: `probe "expectationSource" must be one of: ${RFC_EXPECTATION_SOURCES.join(", ")}`,
+      });
+    }
+    const limitations = (entry as Record<string, unknown>)["limitations"];
+    if (limitations !== undefined && typeof limitations !== "string") {
+      issues.push({ index, message: 'probe "limitations" must be a string if present' });
     }
   });
 

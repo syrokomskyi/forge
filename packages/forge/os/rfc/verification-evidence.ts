@@ -160,8 +160,16 @@ export function serializeEvidenceEnvelope(envelope: VerificationEvidence): strin
   })}\n`;
 }
 
-function normalizeProbes(probes: AcceptanceProbe[]): string {
-  return JSON.stringify(probes, Object.keys(probes[0] ?? {}).sort());
+/**
+ * RFC-1271: the serialization whitelist is the union of keys across ALL
+ * probe objects — fields unique to later probes (criterion, path, pattern,
+ * expectationSource, limitations, …) must reach acceptanceHash, otherwise
+ * retargeting a later probe's criterion or path leaves the hash unchanged.
+ * Exported so rfc.implement.stamp recomputes with the identical function.
+ */
+export function normalizeProbes(probes: AcceptanceProbe[]): string {
+  const keys = [...new Set(probes.flatMap((p) => Object.keys(p)))].sort();
+  return JSON.stringify(probes, keys);
 }
 
 export function buildEvidenceEnvelope(
