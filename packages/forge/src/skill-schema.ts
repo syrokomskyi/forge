@@ -35,6 +35,13 @@ export const skillFrontmatterSchema = z.object({
   // Windsurf) reserve `triggers` for invocation modes (user/model); a list of
   // phrases parses to zero valid modes and the skill is dropped entirely.
   triggerPhrases: z.array(z.string().min(5).max(100)).max(5).optional(),
+  // RFC-1271: declares when this skill must NOT run — routing skills (EXPLORE /
+  // ROUTINE / GOVERNED outcomes) use it to state exclusion conditions so an
+  // agent can skip them without reading the body.
+  notApplicableWhen: z.array(z.string().min(5).max(200)).optional(),
+  // RFC-1271: free-text cost notes (token/runtime cost, expected probe count) —
+  // documentation metadata only; consumers may ignore it.
+  costNotes: z.string().max(500).optional(),
 });
 
 export type SkillFrontmatter = z.infer<typeof skillFrontmatterSchema>;
