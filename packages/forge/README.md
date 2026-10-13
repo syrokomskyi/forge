@@ -143,6 +143,7 @@ Agents can change. Models can change. IDEs can change. Engineering rules stay wi
 - **Workflow linting** — validate `.agents/workflows/` frontmatter
 - **Stack scaffolding** — pnpm + Turborepo monorepo from a profile
 - **Bindings contract** — de-hardcode project-specific commands via `forge.yaml`
+- **Agent operating model** — EXPLORE/ROUTINE/GOVERNED work modes, verification tiers, and separated completion vocabulary (IMPLEMENTED / VERIFIED / ACCEPTED / RELEASED), shipped as a shared skill and synced by `forge upgrade`
 - **Doctor** — project health check
 - **Upgrade** — additive, idempotent skill and config sync
 
@@ -156,7 +157,7 @@ Forge works with any AI agent — Windsurf, Cursor, Claude Code, Codex CLI, or a
 
 **Describe results, not steps.** Tell the agent what you want, not how to do it. For complex work, ask the agent to plan first and wait for your approval.
 
-**Let the agent verify its own work.** Give criteria for "done" and let the agent check itself: "Run the tests after you're done." "Validate the RFC before committing." "Check project health with `forge doctor`."
+**Let the agent verify its own work.** Give criteria for "done" and let the agent check itself: "Run the tests after you're done." "Validate the RFC before committing." "Check project health with `forge doctor`." Forge's operating model teaches agents to report IMPLEMENTED vs VERIFIED vs ACCEPTED separately — a claim never outruns its evidence.
 
 **AGENTS.md is your project's persistent memory.** Forge generates `AGENTS.md` files that the agent reads at the start of every session. Put build commands, code style, architecture decisions, and "do X, not Y" rules there.
 

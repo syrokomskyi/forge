@@ -10,6 +10,7 @@ bindings:
   requires: []
   optional: [paths.invariantsFile]
 triggerPhrases: ["I have an idea for a change", "analyze this idea and route it", "decompose this feature idea", "does this need an RFC", "should I write an ADR for this"]
+notApplicableWhen: ["The operator already named the decision artifact — a specific RFC/ADR id or 'write an ADR for X' — invoke the creation skill directly", "The intent is not an idea/classification request — review, fix, commit, session-end, or mission work route through the front-door table in fo-idea-i-just-want-to-see-the-result"]
 ---
 
 <!--
@@ -33,6 +34,8 @@ Before starting, read `PREFERENCES.md` at the repository root. If the file is mi
 > **This is a document-only skill.** It produces RFC and/or ADR files in `docs/rfcs/` or `docs/adrs/` — nothing else. It must never modify, create, or delete source code files in `apps/`, `packages/`, `services/`, or any other directory. It must not run build commands, tests, or validation suites. If the operator's description sounds like a concrete implementation task (e.g. "replace fonts", "add a button", "fix the sitemap"), that is expected — this skill's job is to **create the document that precedes implementation**, not to implement the change itself. Implementation is handled by `fo-idea-implement` after the document is accepted.
 
 Analyze the operator's text to determine whether the task requires a single RFC, a single ADR, or a **series** of documents. When a series is needed, decompose the task into atomic decisions, classify each, and create all documents in dependency order.
+
+Routing outcomes map to the RFC-1271 work modes (see `_shared/agent-operating-model.md`): **EXPLORE** → `fo-explore` suggestion (step 1b), **ROUTINE** → direct implementation, **GOVERNED** → RFC/ADR documents.
 
 ## Process
 
@@ -154,9 +157,9 @@ If the classification is ambiguous (e.g. the operator's description is too vague
 
 Once classified, take the matching action **inline** — execute it fully without stopping or returning control to the user:
 
-- **RFC** → invoke `/fo-idea-create-rfc`. It will collect metadata, grill the concept, create the file, fill it, validate, and report.
-- **ADR** → invoke `/fo-idea-create-adr`. It will collect metadata, grill the concept, create the file, fill it, validate, and report. **On the accepted-decision fast path (step 1a)**, tell `fo-idea-create-adr` to skip grilling and use the operator's justification text directly.
-- **Direct implementation** → tell the operator that no RFC or ADR is needed for this change, explain why (which Direct criterion applies), then **climb the minimality ladder** (see `_shared/fo-pipeline-conventions.md` §Minimality ladder) to determine the minimum implementation approach before writing any code. Present the ladder rung you landed on and proceed to implement. Do not create a governance document. The operator may still request an ADR for traceability if they prefer — respect that choice.
+- **RFC** → invoke `/fo-idea-create-rfc` (GOVERNED mode). It will collect metadata, grill the concept, create the file, fill it, validate, and report.
+- **ADR** → invoke `/fo-idea-create-adr` (GOVERNED mode). It will collect metadata, grill the concept, create the file, fill it, validate, and report. **On the accepted-decision fast path (step 1a)**, tell `fo-idea-create-adr` to skip grilling and use the operator's justification text directly.
+- **Direct implementation** → tell the operator that no RFC or ADR is needed for this change (ROUTINE mode), explain why (which Direct criterion applies), then **climb the minimality ladder** (see `_shared/fo-pipeline-conventions.md` §Minimality ladder) to determine the minimum implementation approach before writing any code. Present the ladder rung you landed on and proceed to implement. Do not create a governance document. The operator may still request an ADR for traceability if they prefer — respect that choice.
 
 Do not duplicate the creation skill's work — just route to it and let it run.
 
