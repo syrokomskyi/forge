@@ -7,13 +7,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — werkstatt-engine clean
-
-Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: rfc.verification.refresh gains acceptsAllFlag: true — the declared --all flag is now reachable via werkstatt run (consumed selector re-injected as flags.all after the gate).</item>
   <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <history>RFC-0260, RFC-0795, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -461,11 +459,14 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         description:
           "RFC-0476: the exclusive atomic path for accepted → implemented transitions. " +
           "Verifies preconditions (accepted status, checked+evidenced criteria, clean tree, " +
-          "reachable RFC-referencing commit, passing probe evidence) then atomically sets " +
-          "status: implemented, implementedAt, and updatedAt. Use --dry-run to preview. Required flags: `--id`.",
+          "reachable RFC-referencing commit, passing probe evidence, fresh evidence hashes — " +
+          "RFC-IMP-09 stale-evidence gate from RFC-1271) then atomically sets " +
+          "status: implemented, implementedAt, and updatedAt. For probe-bearing RFCs the " +
+          "evidence envelope is re-emitted post-mutation so it binds the implemented-state " +
+          "file (RFC-1271). Use --dry-run to preview. Required flags: `--id`.",
         scope: "workspace",
         mutatesState: true,
-        writes: ["docs/rfcs/**/*.md"],
+        writes: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
         generates: [],
         reads: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
         cacheable: false,

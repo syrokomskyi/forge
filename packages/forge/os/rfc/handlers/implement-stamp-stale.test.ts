@@ -22,10 +22,7 @@ const PROBE = { probe: "file-exists", path: "src/index.ts", criterion: "AC-1" };
 
 const RFC_MD = (id: string, probes: Record<string, unknown>[] | null, body = "Test.\n") => {
   const probeYaml = (probes ?? [])
-    .map(
-      (p) =>
-        `  - probe: ${p.probe}\n    path: ${p.path}\n    criterion: ${p.criterion}`,
-    )
+    .map((p) => `  - probe: ${p.probe}\n    path: ${p.path}\n    criterion: ${p.criterion}`)
     .join("\n");
   const acceptanceBlock = probes === null ? "" : `acceptance:\n${probeYaml}\n`;
   return `---\nid: ${id}\ntitle: "Test ${id}"\nstatus: accepted\nkind: command\nscope: workspace\nowners:\n  - architecture\ncreatedAt: 2026-10-01\nupdatedAt: 2026-10-01\n${acceptanceBlock}---\n\n# ${id}\n## Context\n${body}\n## Acceptance criteria\n\n- [x] AC-1: THE thing SHALL work (evidence: test: packages/forge/x.test.ts)\n`;
@@ -123,10 +120,7 @@ describe("rfc.implement.stamp — RFC-IMP-09 stale evidence gate (RFC-1271)", ()
       commitAll(dir, "feat: implement RFC-0100");
 
       // Criterion retarget on the probe — committed, so IMP-04 passes.
-      await writeRfc(
-        rfcDir,
-        RFC_MD("RFC-0100", [{ ...PROBE, criterion: "AC-9" }]),
-      );
+      await writeRfc(rfcDir, RFC_MD("RFC-0100", [{ ...PROBE, criterion: "AC-9" }]));
       commitAll(dir, "chore: tweak RFC-0100 probes");
 
       const result = await stamp(dir, git(dir, ["rev-parse", "HEAD"]));
@@ -178,6 +172,75 @@ describe("rfc.implement.stamp — RFC-IMP-09 stale evidence gate (RFC-1271)", ()
     }
   });
 
+  test("malformed scalar envelope → IMP-09 fail-closed (no evasion)", async () => {
+    const { dir, rfcDir, cleanup } = await setupGitWorkspace();
+    try {
+      await writeRfc(rfcDir, RFC_MD("RFC-0100", [PROBE]));
+      const envPath = path.join(dir, "docs", "rfcs", "verification", "rfc-0100.generated.yaml");
+      await fs.mkdir(path.dirname(envPath), { recursive: true });
+      // yamlParse("0") → 0 — falsy scalar must NOT slip the gate open.
+      await fs.writeFile(envPath, "0\n");
+      commitAll(dir, "feat: implement RFC-0100 with forged scalar envelope");
+
+      const result = await stamp(dir, git(dir, ["rev-parse", "HEAD"]));
+      expect(rules(result)).toContain("RFC-IMP-09");
+      const v = result.data!.violations.find((x) => x.rule === "RFC-IMP-09")!;
+      expect(v.message).toContain("malformed");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("unparseable envelope → IMP-09 fail-closed", async () => {
+    const { dir, rfcDir, cleanup } = await setupGitWorkspace();
+    try {
+      await writeRfc(rfcDir, RFC_MD("RFC-0100", [PROBE]));
+      const envPath = path.join(dir, "docs", "rfcs", "verification", "rfc-0100.generated.yaml");
+      await fs.mkdir(path.dirname(envPath), { recursive: true });
+      await fs.writeFile(envPath, "{{{not yaml: [unclosed\n");
+      commitAll(dir, "feat: implement RFC-0100 with broken envelope");
+
+      const result = await stamp(dir, git(dir, ["rev-parse", "HEAD"]));
+      expect(rules(result)).toContain("RFC-IMP-09");
+      const v = result.data!.violations.find((x) => x.rule === "RFC-IMP-09")!;
+      expect(v.message).toContain("malformed");
+    } finally {
+      await cleanup();
+    }
+  });
+
+  test("successful stamp auto re-emits — envelope binds the implemented-state file", async () => {
+    const { dir, rfcDir, cleanup } = await setupGitWorkspace();
+    try {
+      await writeRfc(rfcDir, RFC_MD("RFC-0100", [PROBE]));
+      await emitEnvelope(dir);
+      const sha = commitAll(dir, "feat: implement RFC-0100");
+
+      const result = await stamp(dir, sha);
+      expect(rules(result)).toEqual([]);
+      expect(result.data!.data?.evidenceReEmitted).toBe(true);
+
+      // Born-stale regression: the envelope MUST describe the post-mutation
+      // file — a fresh emit --check on the stamped state diverges on nothing.
+      const envPath = path.join(dir, "docs", "rfcs", "verification", "rfc-0100.generated.yaml");
+      const env = yamlParse(await fs.readFile(envPath, "utf-8")) as Record<string, unknown>;
+      expect(env["rfcStatus"]).toBe("implemented");
+
+      mockRunProbe.mockResolvedValue({ probe: PROBE, ok: true, detail: "exists" });
+      const check = await runRfcVerificationEmit(
+        { flags: { id: "RFC-0100", check: true } } as unknown as ForgeCommandInput,
+        makeContext(dir),
+      );
+      expect(check.exitCode).toBe(0);
+      expect(check.data!.check![0]).toMatchObject({
+        rfcId: "RFC-0100",
+        match: true,
+      });
+    } finally {
+      await cleanup();
+    }
+  });
+
   test("envelope lacking hash fields → IMP-09 fail-closed", async () => {
     const { dir, rfcDir, cleanup } = await setupGitWorkspace();
     try {
@@ -186,17 +249,8 @@ describe("rfc.implement.stamp — RFC-IMP-09 stale evidence gate (RFC-1271)", ()
       commitAll(dir, "feat: implement RFC-0100");
 
       // Strip the hash fields to simulate a pre-RFC-0330 envelope.
-      const envPath = path.join(
-        dir,
-        "docs",
-        "rfcs",
-        "verification",
-        "rfc-0100.generated.yaml",
-      );
-      const env = yamlParse(await fs.readFile(envPath, "utf-8")) as Record<
-        string,
-        unknown
-      >;
+      const envPath = path.join(dir, "docs", "rfcs", "verification", "rfc-0100.generated.yaml");
+      const env = yamlParse(await fs.readFile(envPath, "utf-8")) as Record<string, unknown>;
       delete env["rfcFileHash"];
       delete env["acceptanceHash"];
       await fs.writeFile(envPath, yamlStringify(env) + "\n");

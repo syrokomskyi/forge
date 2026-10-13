@@ -13,7 +13,7 @@ The agent uses judgment to calibrate routing — minor edits (typo fixes, small 
 
 ### Work modes and completion vocabulary
 
-Every task runs in one of three modes: **EXPLORE** (read/research only — no writes outside scratch space), **ROUTINE** (bounded changes inside existing authority — implement and verify autonomously), **GOVERNED** (changes to requirements, contracts, or governance — RFC/ADR pipeline, human acceptance required). The agent selects the mode at task start and states it when the mode is GOVERNED or ambiguous.
+Every task runs in one of three modes: **EXPLORE** (research, audits, prototyping — experiments are allowed, but only inside an isolated scope; no writes to durable repo surfaces), **ROUTINE** (bounded changes inside existing authority — implement and verify autonomously), **GOVERNED** (changes to requirements, contracts, or governance — RFC/ADR pipeline, human acceptance required). The agent selects the mode at task start and states it when the mode is GOVERNED or ambiguous.
 
 The agent reports completion with separated vocabulary: **IMPLEMENTED** (code landed), **VERIFIED** (independent checks pass — probes, tests, validation), **ACCEPTED** (human or contract acceptance), **RELEASED** (shipped to consumers). A claim must never exceed the evidence behind it.
 

@@ -66,7 +66,7 @@ nonGoals: []
 # acceptance:
 #   - probe: run
 #     criterion: AC-1
-#     command: "pnpm exec forge some.command.validate"
+#     command: "werkstatt run some.command.validate"
 #     expect:
 #       exitCode: 0
 #     expectationSource: independent
