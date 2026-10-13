@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0396: initial spec.status handler — per-node states, blockers, front, progress.</item>
   <item>RFC-1240: consumer-aware front — foreignOwned flag/list, foreign deps are not local blockers, --consumer flag resolution.</item>
+  <item>FIX: loadRfcStatuses delegated to loadRfcStatusMap (recursive) — archived implemented RFCs resolve their status, so terminal dependencies unblock the front instead of collapsing nodes to stale draft.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +30,7 @@ import {
   type ForgeSpec,
   type SpecAmendment,
 } from "./spec-schema.ts";
+import { loadRfcStatusMap } from "../rfc/frontmatter-io.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -93,24 +95,9 @@ async function listSpecDirs(specsDir: string): Promise<string[]> {
 async function loadRfcStatuses(
   rfcDir: string,
 ): Promise<Map<string, string>> {
-  const statuses = new Map<string, string>();
-  if (!existsSync(rfcDir)) return statuses;
-  const files = (await fs.readdir(rfcDir)).map((e) => e.name);
-  for (const file of files) {
-    if (!file.endsWith(".md") || file.startsWith("rfc-0000")) continue;
-    try {
-      const content = await fs.readFile(path.join(rfcDir, file));
-      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) continue;
-      const fm = parseYaml(fmMatch[1]) as Record<string, unknown>;
-      const id = String(fm["id"] ?? "");
-      const status = String(fm["status"] ?? "");
-      if (id && status) statuses.set(id, status);
-    } catch {
-      // skip
-    }
-  }
-  return statuses;
+  // loadRfcStatusMap recurses — archived RFCs still resolve their status, so a
+  // terminal (implemented/archived) dependency unblocks the front correctly.
+  return loadRfcStatusMap(rfcDir);
 }
 
 async function loadAmendments(specDir: string): Promise<SpecAmendment[]> {
