@@ -12,7 +12,7 @@ workspace type (app, service, package) by content markers.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0611: initial workspace discovery and type auto-detection.</item>
   <item>RFC-0640: accept optional workspaceTypes from profile for profile-driven detection, falling back to hardcoded detection when absent.</item>
-  <item>Extracted shared resolveWorkspaceTypes — config.profile wins, then stack-catalog lookup; deduplicates the resolution inlined in runAgentsGenerate/runDoctor and reused by the prettierignore plan.</item>
+  <item>RFC-1255: Extracted shared resolveWorkspaceTypes — config.profile wins, then stack-catalog lookup; deduplicates the resolution inlined in runAgentsGenerate/runDoctor and reused by the prettierignore plan.</item>
 </CHANGE_SUMMARY>
 */
 
