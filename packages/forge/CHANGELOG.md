@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [7.0.0] — 2026-10-13
+
+_Major: `rfc.implement.stamp` now enforces the RFC-IMP-09 stale-evidence gate and writes the verification envelope itself — the stamp contract and its declared `writes[]` change. The agent operating model ships as a synced normative document and reaches generated `AGENTS.md`._
+
+### Added
+
+- **Evidence-driven agent operating model** (`skills/_shared/agent-operating-model.md`, synced to `.agents/skills/_shared/` by `forge upgrade`): EXPLORE/ROUTINE/GOVERNED work modes, authority boundaries and escalation triggers, a proportionate verification portfolio (STANDARD/HIGH/FORMAL tiers — proportionate checks, not mandatory TDD), expectation-source classes for probes, the evidence trust boundary, and the IMPLEMENTED/VERIFIED/ACCEPTED/RELEASED completion vocabulary
+- **RFC-IMP-09 stale-evidence gate** in `rfc.implement.stamp`: recomputes `rfcFileHash` + `acceptanceHash` before mutation and blocks on mismatch, missing hash fields, post-emit probe deletion, or malformed/non-object envelopes (fail-closed)
+- **Post-stamp evidence re-emit**: stamping a probe-bearing RFC re-emits its verification envelope in-process after the frontmatter mutation — a stamped RFC never ships a born-stale envelope (`evidenceReEmitted` in the result payload)
+- **`rfc.verification.emit --check`**: recomputes evidence and compares the committed envelope on non-volatile fields (`rfcFileHash`, `acceptanceHash`, `probes.length`, `probes[].ok`, `overall`) — exits non-zero with named `mismatches` on divergence or a missing envelope; no writes
+- **Probe metadata**: optional `expectationSource` (`self|requirement|independent|external`) and `limitations` on every acceptance-probe kind; optional RFC frontmatter `verificationTier` (`standard|high|formal`, V-43)
+- **Skill schema**: optional `notApplicableWhen` and `costNotes` frontmatter fields; `fo-idea` declares `notApplicableWhen` and labels its routing outcomes with work modes
+- **Behavioral layer**: generated `AGENTS.md` gains a "Work modes and completion vocabulary" section
+- **V-23 archive exemption**: `docs/rfcs/archive/**` no longer blocks validation on historical failed envelopes (archive-freeze precedent)
+
+### Changed
+
+- `normalizeProbes` serialization is now a full recursive key sort with no key filtering — `acceptanceHash` binds the complete probe identity including nested `expect`/`schemaInline` fields; exported for the stamp-side recompute (envelopes emitted before 7.0.0 read as stale once — one `rfc.verification.emit` re-emit heals them)
+- `rfc.implement.stamp` declares `docs/rfcs/verification/*.generated.yaml` in `writes[]` (it owns the post-stamp re-emit)
+- EXPLORE-mode gloss aligned across the behavioral template and the normative document: isolated-scope experiments permitted, no writes to durable surfaces
+- RFC template probe examples carry `criterion:` bindings and the `werkstatt run` command prefix required by the shape validator
+- `rfc.implement.stamp` repair hints name the real fixes (re-emit; for probe deletion: restore probes first or remove the stale envelope)
+
 ## [6.3.6] — 2026-10-12
 
 ### Fixed
