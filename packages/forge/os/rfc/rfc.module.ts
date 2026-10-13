@@ -268,6 +268,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "boolean",
             description: "Run probes and report results without writing envelope files.",
           },
+          check: {
+            kind: "boolean",
+            description:
+              "RFC-1271: recompute evidence and compare the committed envelope against a fresh run on non-volatile fields (rfcFileHash, acceptanceHash, probes[].ok, probes.length, overall). Writes nothing; exits 1 on divergence or a missing envelope — detects forged/hand-edited evidence.",
+          },
           concurrency: {
             kind: "string",
             description:

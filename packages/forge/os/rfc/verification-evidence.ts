@@ -199,6 +199,32 @@ export function buildEvidenceEnvelope(
   };
 }
 
+/**
+ * RFC-1271 `--check`: compare a committed envelope against a fresh
+ * computation on non-volatile fields only. Volatile per-run metadata
+ * (emittedAt, lastRefreshedAt, durationMs, commit, workingTreeDirty,
+ * kernelVersion, probe details) is per-run evidence context, not evidence
+ * identity — it is intentionally not compared.
+ */
+export function checkEvidenceEnvelope(
+  committed: Partial<VerificationEvidence>,
+  fresh: VerificationEvidence,
+): string[] {
+  const mismatches: string[] = [];
+  if (committed.rfcFileHash !== fresh.rfcFileHash) mismatches.push("rfcFileHash");
+  if (committed.acceptanceHash !== fresh.acceptanceHash) mismatches.push("acceptanceHash");
+  const committedProbes = committed.probes ?? [];
+  if (committedProbes.length !== fresh.probes.length) {
+    mismatches.push("probes.length");
+  } else {
+    fresh.probes.forEach((rec, i) => {
+      if (committedProbes[i]?.ok !== rec.ok) mismatches.push(`probes[${i}].ok`);
+    });
+  }
+  if (committed.overall !== fresh.overall) mismatches.push("overall");
+  return mismatches;
+}
+
 export async function runRfcVerificationEmit(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -207,6 +233,7 @@ export async function runRfcVerificationEmit(
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
   const targetId = input.flags["id"] as string | undefined;
+  const checkOnly = input.flags["check"] === true;
   const targetStatus = input.flags["status"] as string | undefined;
   // RFC-1237: consumeCommonFlags strips --dry-run into context.dryRun before
   // dispatch — the input.flags read stays for direct/programmatic callers.
@@ -243,13 +270,14 @@ export async function runRfcVerificationEmit(
   }
   const kernelVersion = await getKernelVersion(workspaceRoot);
   const verificationDirAbs = join(workspaceRoot, VERIFICATION_DIR);
-  if (!dryRun) await io.mkdir(verificationDirAbs);
+  if (!dryRun && !checkOnly) await io.mkdir(verificationDirAbs);
 
   const processFile = async (
     fileName: string,
   ): Promise<{
     emittedEntry?: NonNullable<RfcVerificationEmitResult["emitted"]>[number];
     skippedEntry?: NonNullable<RfcVerificationEmitResult["skipped"]>[number];
+    checkEntry?: NonNullable<RfcVerificationEmitResult["check"]>[number];
     diagnostic?: Diagnostic;
   }> => {
     const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
@@ -301,6 +329,21 @@ export async function runRfcVerificationEmit(
     const evidenceRelPath = join(VERIFICATION_DIR, evidenceFileName);
     const evidenceAbsPath = join(workspaceRoot, evidenceRelPath);
 
+    // RFC-1271 --check: same probe run as emit, but the committed envelope is
+    // compared to the fresh computation and nothing is written. A missing
+    // envelope is itself a divergence.
+    if (checkOnly) {
+      let committed: Partial<VerificationEvidence> | null = null;
+      try {
+        committed = yamlParse(await io.readFile(evidenceAbsPath)) as Partial<VerificationEvidence>;
+      } catch {
+        // No committed envelope.
+      }
+      const mismatches =
+        committed === null ? ["envelope-missing"] : checkEvidenceEnvelope(committed, envelope);
+      return { checkEntry: { rfcId, match: mismatches.length === 0, mismatches } };
+    }
+
     // Committed-envelope baseline for the sweep delta — lets a fail-heavy run
     // separate still-failing drift from fresh regressions without git diff.
     let previousOverall: "pass" | "fail" | undefined;
@@ -348,13 +391,15 @@ export async function runRfcVerificationEmit(
   };
 
   const results = await mapWithConcurrency(allFiles, concurrency, processFile);
+  const checked: NonNullable<RfcVerificationEmitResult["check"]> = [];
   for (const r of results) {
     if (r.emittedEntry) emitted.push(r.emittedEntry);
     if (r.skippedEntry) skipped.push(r.skippedEntry);
+    if (r.checkEntry) checked.push(r.checkEntry);
     if (r.diagnostic) diagnostics.push(r.diagnostic);
   }
 
-  const hasFailures = emitted.some((e) => e.overall === "fail");
+  const hasFailures = emitted.some((e) => e.overall === "fail") || checked.some((c) => !c.match);
   const status: RfcVerificationEmitResult["status"] = hasFailures ? "fail" : "pass";
   const delta = {
     recovered: emitted
@@ -377,8 +422,11 @@ export async function runRfcVerificationEmit(
       skipped,
       diagnostics,
       delta,
+      ...(checkOnly ? { check: checked } : {}),
     },
     exitCode: hasFailures ? 1 : 0,
-    summary: `rfc.verification.emit: ${emitted.length} emitted, ${skipped.length} skipped${deltaSummary}${dryRun ? ", dry-run" : ""}`,
+    summary: checkOnly
+      ? `rfc.verification.emit --check: ${checked.filter((c) => c.match).length} match, ${checked.filter((c) => !c.match).length} diverged, ${skipped.length} skipped`
+      : `rfc.verification.emit: ${emitted.length} emitted, ${skipped.length} skipped${deltaSummary}${dryRun ? ", dry-run" : ""}`,
   };
 }

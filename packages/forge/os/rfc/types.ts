@@ -394,6 +394,9 @@ export interface RfcVerificationEmitResult {
   skipped: Array<{ rfcId: string; reason: "no-probes" }>;
   diagnostics: Diagnostic[];
   delta?: VerificationDelta;
+  /** RFC-1271 `--check`: committed-vs-fresh comparison per RFC — populated
+   *  only in check mode; `emitted` stays empty (nothing is written). */
+  check?: Array<{ rfcId: string; match: boolean; mismatches: string[] }>;
 }
 
 export interface RfcVerificationRefreshResult {
