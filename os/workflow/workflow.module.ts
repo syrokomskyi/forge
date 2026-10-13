@@ -1,12 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>forgeWorkflowModule — registers workflow.lint and workflow.list commands from forge.</purpose>
+<purpose>forgeWorkflowModule — registers the workflow.lint and workflow.list kernel commands from forge for .agents/workflows discovery, linting, and per-chain phase links.</purpose>
 <non-goals>
   <item>Do not register app-specific workflow commands.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0075: Add workflow command module.</item>
   <item>RFC-0374: Migrated from packages/os/site-kernel/src/workflow/ to packages/forge/os/workflow/.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
@@ -17,6 +16,7 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1276: remove workflow-amend.list and the workflows-amend lint branch — the RFC-0135/0136 amend pipeline is superseded</item>
+  <history>RFC-0075</history>
 </CHANGE_SUMMARY>
 */
 
