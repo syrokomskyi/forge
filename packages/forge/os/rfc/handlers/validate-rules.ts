@@ -1121,9 +1121,12 @@ export async function validateSingleRfc(
   }
 
   // V-23: verification evidence for post-cutoff, probe-bearing, implemented RFCs
+  // Skip for archived RFCs — archival freezes the document; its envelope records
+  // the state at stamp time and probe decay over moved/renamed paths is expected
+  // historical drift, not actionable debt (precedent: V-13/V-15 archive skips).
   const createdAtStr = String(fm["createdAt"] ?? "");
   const hasProbes = Array.isArray(fm["acceptance"]) && (fm["acceptance"] as unknown[]).length > 0;
-  if (createdAtStr >= RFC_METADATA_CUTOFF && hasProbes && status === "implemented") {
+  if (!isArchived && createdAtStr >= RFC_METADATA_CUTOFF && hasProbes && status === "implemented") {
     const slug = rfcId.toLowerCase();
     const evidenceRelPath = path.join(RFC_DIR, "verification", `${slug}.generated.yaml`);
     const evidenceAbsPath = path.join(workspaceRoot, evidenceRelPath);

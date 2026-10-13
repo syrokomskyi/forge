@@ -760,6 +760,48 @@ describe("RFC-DIR-01: directory structure convention (RFC-0722)", () => {
     expect(dir01).toHaveLength(0);
   });
 
+  test("V-23 fires on non-archived implemented RFC with missing evidence", async () => {
+    const parsed = makeParsed("implemented", BASE_BODY, {
+      createdAt: "2026-10-01",
+      acceptance: [{ probe: "file-exists", path: "x.ts", criterion: "AC-1" }],
+    });
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    const v23 = filterRule(violations, "V-23");
+    expect(v23).toHaveLength(1);
+  });
+
+  test("V-23 skips archived implemented RFCs (RFC-1271 — historical evidence drift is not debt)", async () => {
+    const parsed = makeParsed("implemented", BASE_BODY, {
+      createdAt: "2026-10-01",
+      acceptance: [{ probe: "file-exists", path: "x.ts", criterion: "AC-1" }],
+    });
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "archive/implemented/rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+    );
+    const v23 = filterRule(violations, "V-23");
+    expect(v23).toHaveLength(0);
+  });
+
   test("no warning when RFC file is in verification/ subdirectory", async () => {
     const parsed = makeParsed("accepted", BASE_BODY);
     const { add, violations } = makeViolationsCollector();
