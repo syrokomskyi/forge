@@ -20,7 +20,7 @@ triggerPhrases: ["create a handoff document", "compact conversation for next age
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
-  <item>fix: commit references resolve by project type — ecosystem.commit where registered, plain git commit in forge workshops</item>
+  <item>RFC-1154: commit references resolve by project type — ecosystem.commit where registered, plain git commit in forge workshops</item>
 </CHANGE_SUMMARY>
 -->
 

@@ -21,7 +21,7 @@ operator-owned.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial implementation — plan/apply + delimited-block reconcile.</item>
-  <item>Enumerate generated AGENTS.md paths (root + nested workspaces via discoverWorkspaces) in the managed block — prettier normalization byte-diverges from the generator render and trips doctor's stale check on every format-on-commit.</item>
+  <item>RFC-1255: Enumerate generated AGENTS.md paths (root + nested workspaces via discoverWorkspaces) in the managed block — prettier normalization byte-diverges from the generator render and trips doctor's stale check on every format-on-commit.</item>
 </CHANGE_SUMMARY>
 */
 

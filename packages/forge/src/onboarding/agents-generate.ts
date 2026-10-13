@@ -14,7 +14,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <item>Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
+  <item>RFC-1255: Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>Semantic-layer block rendered marker-wrapped via shared semantic-layer-block module and injected/refreshed inside hand-written roots carrying the sentinel or a pasted region; result gains injected[] (consumer field report follow-up to RFC-1253).</item>
   <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664</history>
 </CHANGE_SUMMARY>

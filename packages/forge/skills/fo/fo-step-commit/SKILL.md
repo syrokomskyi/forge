@@ -28,7 +28,7 @@ triggerPhrases:
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
-  <item>fix: step 5 resolves the commit path by project type — plain git commit in forge workshops where ecosystem.commit is not registered</item>
+  <item>RFC-1154: step 5 resolves the commit path by project type — plain git commit in forge workshops where ecosystem.commit is not registered</item>
 </CHANGE_SUMMARY>
 -->
 
