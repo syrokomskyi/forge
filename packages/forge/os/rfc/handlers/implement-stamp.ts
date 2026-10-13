@@ -42,8 +42,15 @@ import {
 } from "../frontmatter-io.ts";
 import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
+import { byteHashHex, normalizeProbes } from "../verification-evidence.ts";
 import { RFC_DIR, RFC_METADATA_CUTOFF, RFC_PROBE_BINDING_CUTOFF } from "../types.ts";
-import type { RfcStatus, RfcImplementStampViolation, RfcImplementStampResult } from "../types.ts";
+import type {
+  RfcStatus,
+  RfcImplementStampViolation,
+  RfcImplementStampResult,
+  AcceptanceProbe,
+  VerificationEvidence,
+} from "../types.ts";
 
 // Ambient default for helper fns without a context param — handlers override
 // with `const io = resolveIo(context.io)` inside their own scope.
@@ -200,15 +207,15 @@ async function releaseRfcLock(lockPath: string): Promise<void> {
 async function checkExistingEvidence(
   workspaceRoot: string,
   rfcId: string,
-): Promise<{ exists: boolean; overall: string }> {
+): Promise<{ exists: boolean; overall: string; envelope: VerificationEvidence | null }> {
   const slug = rfcId.toLowerCase();
   const evidencePath = join(workspaceRoot, VERIFICATION_DIR, `${slug}.generated.yaml`);
   try {
     const content = await io.readFile(evidencePath);
-    const evidence = yamlParse(content) as { overall?: string };
-    return { exists: true, overall: String(evidence.overall ?? "") };
+    const evidence = yamlParse(content) as VerificationEvidence;
+    return { exists: true, overall: String(evidence.overall ?? ""), envelope: evidence };
   } catch {
-    return { exists: false, overall: "missing" };
+    return { exists: false, overall: "missing", envelope: null };
   }
 }
 
@@ -425,11 +432,17 @@ export async function runRfcImplementStamp(
   const hasProbes = Array.isArray(acceptance) && (acceptance as unknown[]).length > 0;
   const createdAtStr = String(fm["createdAt"] ?? "");
   const requiresEvidence = createdAtStr >= RFC_METADATA_CUTOFF && hasProbes;
+  const rfcFilePath = join(rfcDirPath, targetFile);
 
   let evidenceRelPath: string | undefined;
 
+  // RFC-1271: the envelope is fetched unconditionally — a committed envelope
+  // must also be evaluated when hasProbes is now false, because probe
+  // deletion IS a criteria change and would otherwise slip past
+  // requiresEvidence entirely (RFC-IMP-08 exempts policy/deprecation kinds).
+  const evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
+
   if (requiresEvidence) {
-    const evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
     if (!evidenceCheck.exists || evidenceCheck.overall !== "pass") {
       violations.push({
         rule: "RFC-IMP-06",
@@ -438,6 +451,45 @@ export async function runRfcImplementStamp(
     } else {
       const slug = targetId.toLowerCase();
       evidenceRelPath = join(VERIFICATION_DIR, `${slug}.generated.yaml`);
+    }
+  }
+
+  // ── RFC-IMP-09: stale evidence gate (RFC-1271) ────────────────────────────
+  // Hashes are recomputed from the working tree; combined with RFC-IMP-04
+  // (the RFC file must be committed-clean to stamp) the compared bytes are
+  // effectively the committed bytes — deliberate, keeps the gate honest
+  // without a second git read. Fires before any frontmatter mutation.
+  if (evidenceCheck.exists && evidenceCheck.envelope) {
+    if (!hasProbes) {
+      violations.push({
+        rule: "RFC-IMP-09",
+        message: `RFC ${targetId} has a committed evidence envelope but no acceptance: list — probes were deleted after emission, which is a criteria change. Restore the probes or re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+      });
+    } else {
+      const rfcMarkdown = await io.readFile(rfcFilePath);
+      const currentFileHash = byteHashHex(rfcMarkdown);
+      const currentAcceptanceHash = byteHashHex(normalizeProbes(acceptance as AcceptanceProbe[]));
+      const env = evidenceCheck.envelope;
+      if (!env.rfcFileHash || !env.acceptanceHash) {
+        violations.push({
+          rule: "RFC-IMP-09",
+          message: `RFC ${targetId} evidence envelope lacks hash fields (pre-RFC-0330 format). Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+        });
+      } else if (
+        env.rfcFileHash !== currentFileHash ||
+        env.acceptanceHash !== currentAcceptanceHash
+      ) {
+        const staleFields = [
+          env.rfcFileHash !== currentFileHash ? "rfcFileHash" : "",
+          env.acceptanceHash !== currentAcceptanceHash ? "acceptanceHash" : "",
+        ]
+          .filter(Boolean)
+          .join(" + ");
+        violations.push({
+          rule: "RFC-IMP-09",
+          message: `RFC ${targetId} evidence is stale: ${staleFields} mismatch — the RFC file or its acceptance list changed after emission. Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+        });
+      }
     }
   }
 
@@ -470,7 +522,6 @@ export async function runRfcImplementStamp(
 
   try {
     // ── Atomic mutation ──────────────────────────────────────────────────────
-    const rfcFilePath = join(rfcDirPath, targetFile);
     const rfcSource = await io.readFile(rfcFilePath);
 
     const today = toIsoDate(new Date());
