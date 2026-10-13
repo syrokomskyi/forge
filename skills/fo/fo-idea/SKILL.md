@@ -35,7 +35,7 @@ Before starting, read `PREFERENCES.md` at the repository root. If the file is mi
 
 Analyze the operator's text to determine whether the task requires a single RFC, a single ADR, or a **series** of documents. When a series is needed, decompose the task into atomic decisions, classify each, and create all documents in dependency order.
 
-Routing outcomes map to the RFC-1271 work modes (see `_shared/agent-operating-model.md`): **EXPLORE** → `fo-explore` suggestion (step 1b), **ROUTINE** → direct implementation, **GOVERNED** → RFC/ADR documents.
+Routing outcomes map to the work modes in `_shared/agent-operating-model.md`: **EXPLORE** → `fo-explore` suggestion (step 1b), **ROUTINE** → direct implementation, **GOVERNED** → RFC/ADR documents.
 
 ## Process
 

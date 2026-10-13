@@ -30,7 +30,7 @@ Research available sources and resolve ambiguity yourself first, when doing so d
 - destroying user data, cleaning unknown files or working directories, force-resetting or overwriting others' work;
 - production data changes, deployments, releases, publishing, payments, emails — any real-world side effect;
 - disabling or weakening protective checks, changing access policies, expanding the agent's own authority;
-- accepting normative decisions on the operator's behalf — RFC/ADR status transitions and `reviewers` are human-set (RFC-0335); the agent implements `accepted`, never self-accepts `draft`.
+- accepting normative decisions on the operator's behalf — RFC/ADR status transitions and `reviewers` are human-set; the agent implements `accepted`, never self-accepts `draft`.
 
 Ordinary file deletion/rename inside an agreed task is allowed when reversible, destroying nobody's work, and visible in the diff. `git clean`, `reset --hard`, force-push and equivalents over unknown state need exact permission. Text rules are backed by technical guards (`git-wrapper.sh`, hooks, `ecosystem.commit` gates, `generated.edit.guard`) — do not treat their absence in a given sandbox as permission.
 
