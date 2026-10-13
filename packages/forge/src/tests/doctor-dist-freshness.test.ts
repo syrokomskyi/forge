@@ -57,7 +57,11 @@ paths:
   sessionsDir: docs/sessions
 `;
 
-async function makeForgeCheckout(srcMtime: Date, distMtime: Date): Promise<void> {
+async function makeForgeCheckout(
+  srcMtime: Date,
+  distFileMtime: Date,
+  distDirMtime = distFileMtime,
+): Promise<void> {
   const forgeRoot = join(tempDir, "packages", "forge");
   await mkdir(join(forgeRoot, "src"), { recursive: true });
   await mkdir(join(forgeRoot, "dist"), { recursive: true });
@@ -65,7 +69,8 @@ async function makeForgeCheckout(srcMtime: Date, distMtime: Date): Promise<void>
   await writeFile(join(forgeRoot, "src", "index.ts"), "export {};\n");
   await writeFile(join(forgeRoot, "dist", "index.js"), "export {};\n");
   await utimes(join(forgeRoot, "src", "index.ts"), srcMtime, srcMtime);
-  await utimes(join(forgeRoot, "dist"), distMtime, distMtime);
+  await utimes(join(forgeRoot, "dist", "index.js"), distFileMtime, distFileMtime);
+  await utimes(join(forgeRoot, "dist"), distDirMtime, distDirMtime);
 }
 
 test("dist-freshness warns when dist is older than newest src file", async () => {
@@ -81,6 +86,22 @@ test("dist-freshness warns when dist is older than newest src file", async () =>
   expect(check).toBeDefined();
   expect(check!.status).toBe("warn");
   expect(check!.message).toContain("pnpm run build");
+});
+
+test("dist-freshness passes when emitted files are newer even if dist directory is older", async () => {
+  await writeFile(join(tempDir, "forge.yaml"), FORGE_YAML, "utf8");
+  const old = new Date("2026-01-01T00:00:00Z");
+  const recent = new Date("2026-09-01T00:00:00Z");
+  const newest = new Date("2026-09-02T00:00:00Z");
+  await makeForgeCheckout(recent, newest, old);
+
+  const input: ForgeCommandInput = { argv: [], flags: {} };
+  const result = await runDoctor(input, makeContext());
+
+  const check = result.data!.checks.find((c) => c.name === "dist-freshness");
+  expect(check).toBeDefined();
+  expect(check!.status).toBe("pass");
+  expect(check!.message).toContain("fresh");
 });
 
 test("dist-freshness passes when dist is absent (npm consumer layout)", async () => {

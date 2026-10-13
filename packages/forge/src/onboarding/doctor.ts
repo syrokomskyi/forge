@@ -1668,8 +1668,8 @@ function checkDistFreshness(forgeRoot: string): DoctorCheck {
     };
   }
   const newestSrc = newestMtime(srcDir);
-  const distMtime = fs.statSync(distDir).mtimeMs;
-  if (newestSrc > distMtime) {
+  const newestDist = newestMtime(distDir);
+  if (newestSrc > newestDist) {
     return {
       name: "dist-freshness",
       status: "warn",
