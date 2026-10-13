@@ -52,15 +52,24 @@ appsImpacted: []
 packagesImpacted: []
 successSignals: []
 nonGoals: []
+# RFC-1271: Verification tier declares the expected rigor of the acceptance
+# portfolio — standard (default) | high | formal. Policy-level signal reviewed
+# at acceptance; tier-to-portfolio guidance lives in
+# packages/forge/skills/_shared/agent-operating-model.md.
+# verificationTier: standard
 # OPTIONAL machine-checkable acceptance probes, executed on-demand
 # via `pnpm exec forge rfc.acceptance.run --id <this-rfc-id>` (never
 # automatically inside build pipelines).
+# RFC-1271: a probe MAY declare `expectationSource` — who authored the
+# expected result: self | requirement | independent | external — and
+# `limitations`, a free-text caveat about coverage gaps. Both optional.
 # acceptance:
 #   - probe: run
 #     criterion: AC-1
 #     command: "pnpm exec forge some.command.validate"
 #     expect:
 #       exitCode: 0
+#     expectationSource: independent
 #   - probe: file-exists
 #     criterion: AC-2
 #     path: "packages/my-package/src/some-new-module.ts"
@@ -234,6 +243,14 @@ interface ExampleResult {
   in the same commit.
 - Agents MUST NOT weaken or remove enforcement rules established by this RFC
   without a new RFC that supersedes it.
+- Agents report completion with the RFC-1271 vocabulary: IMPLEMENTED (code
+  landed), VERIFIED (independent probes pass), ACCEPTED (human/contract
+  acceptance), RELEASED (shipped to consumers). Do not claim a later state
+  than the evidence supports.
+- Verification follows the portfolio model in
+  packages/forge/skills/_shared/agent-operating-model.md — TDD is one tool,
+  not a mandate; proportionate evidence (probes, tests, manual checks)
+  is required.
 - If implementation reveals an invariant conflict, run
   `pnpm exec forge rfc.supersede.propose --id <this-rfc-id> --reason "..." --invariant "DNA-N"`
   instead of working around it.
