@@ -3,7 +3,11 @@
 <purpose>Prove vendored spec validation behaviors — consumer rules, SPEC-07 archive resolution, and sweep-mode package scoping.</purpose>
 <non-goals><item>Do not duplicate individual integrity, graph, or amendment rule tests.</item></non-goals>
 </MODULE_CONTRACT>
-<CHANGE_SUMMARY><item>Gap fix: cover SPEC-07 after terminal RFC archival.</item><item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: cover sweep-mode manifest-dir scoping and skippedDirs.</item></CHANGE_SUMMARY>
+<CHANGE_SUMMARY>
+  <item>Gap fix: cover SPEC-07 after terminal RFC archival.</item>
+  <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: cover sweep-mode manifest-dir scoping and skippedDirs.</item>
+  <item>RFC-1302: consumer-aware SPEC-07, narrowed SPEC-10, source-first bin entry (RFC-1302)</item>
+</CHANGE_SUMMARY>
 */
 
 import fs from "node:fs/promises";
@@ -170,5 +174,76 @@ describe("spec.validate sweep scoping (xrepo-personal-agent-to-forge-spec-valida
     expect(result.exitCode).toBe(1);
     expect(result.data!.skippedDirs).toEqual([]);
     expect(result.data!.specs[0]!.violations[0]!.rule).toBe("SPEC-02");
+  });
+});
+
+describe("spec.validate RFC-1302 consumer-aware SPEC-07 and narrowed SPEC-10", () => {
+  async function workspace(nodeExtra: string, consumer?: string): Promise<string> {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-1302-"));
+    roots.push(workspaceRoot);
+    if (consumer) {
+      await fs.writeFile(path.join(workspaceRoot, "forge.yaml"),
+        `schema: forge/config@1\nproject:\n  name: test-ws\n  consumer: ${consumer}\npaths: {}\n`);
+    }
+    await writeConsumerSpec(workspaceRoot, nodeExtra);
+    return workspaceRoot;
+  }
+
+  async function amendment(root: string, id: string, targetsYaml: string): Promise<void> {
+    const dir = path.join(root, "docs/specs/example/amendments");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, `${id.toLowerCase()}.md`), `---
+schema: forge/spec-amendment@1
+id: ${id}
+title: ${id}
+status: accepted
+createdAt: 2026-10-15
+reviewers:
+  - human:test
+targets:
+${targetsYaml}discoveredBy: test
+---
+`);
+  }
+
+  it("skips SPEC-07 for a materialized node owned by another consumer", async () => {
+    const root = await workspace("    consumers:\n      - werkstatt\n    materializedAs: RFC-9001\n", "pipelines");
+    const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(root));
+    expect(result.exitCode).toBe(0);
+    expect(result.data!.specs[0]!.violations).toEqual([]);
+  });
+
+  it("keeps SPEC-07 for a locally owned materialized node whose RFC is missing", async () => {
+    const root = await workspace("    consumers:\n      - werkstatt\n    materializedAs: RFC-9001\n", "werkstatt");
+    const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(root));
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.specs[0]!.violations.map((v) => v.rule)).toEqual(["SPEC-07"]);
+  });
+
+  it("downgrades SPEC-10 node-target overlap to a warning", async () => {
+    const root = await workspace("");
+    await amendment(root, "AMD-001", "  - kind: node\n    id: EX-001\n");
+    await amendment(root, "AMD-002", "  - kind: node\n    id: EX-001\n");
+    const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(root));
+    expect(result.exitCode).toBe(0);
+    const v = result.data!.specs[0]!.violations;
+    expect(v).toHaveLength(1);
+    expect(v[0]).toMatchObject({ rule: "SPEC-10", severity: "warning" });
+    expect(v[0]!.message).toContain("AMD-001, AMD-002");
+  });
+
+  it("keeps SPEC-10 as an error when two amendments rewrite the same section anchor", async () => {
+    const root = await workspace("");
+    await fs.writeFile(path.join(root, "docs/specs/example/forge-spec.yaml"),
+      (await fs.readFile(path.join(root, "docs/specs/example/forge-spec.yaml"), "utf8"))
+        .replace("documents: {}", "documents:\n  doc: doc.md"));
+    const t = "  - kind: section\n    document: doc\n    anchor: a\n";
+    await amendment(root, "AMD-001", t);
+    await amendment(root, "AMD-002", t);
+    const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(root));
+    expect(result.exitCode).toBe(1);
+    const spec10 = result.data!.specs[0]!.violations.filter((x) => x.rule === "SPEC-10");
+    expect(spec10).toHaveLength(1);
+    expect(spec10[0]!.severity).toBeUndefined();
   });
 });
