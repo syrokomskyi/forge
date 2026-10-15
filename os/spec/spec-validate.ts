@@ -12,6 +12,7 @@
   <item>Gap fix: resolve materialized RFCs recursively so terminal RFC archival does not invalidate accepted specs.</item>
   <item>RFC-1240: SPEC-12 consumers list hygiene, SPEC-13 consumer-identity warning; warnings no longer fail validation.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: sweep mode skips dirs without forge-spec.yaml (authored/live areas are not packages), reports them as skippedDirs; --spec keeps SPEC-02.</item>
+  <item>RFC-1302: consumer-aware SPEC-07, narrowed SPEC-10, source-first bin entry (RFC-1302)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +33,7 @@ import {
   forgeSpecSchema,
   specIntegritySchema,
   specAmendmentSchema,
+  ownsSpecNode,
   type ForgeSpec,
   type SpecIntegrity,
   type SpecAmendment,
@@ -265,11 +267,15 @@ function checkDuplicates(spec: ForgeSpec, violations: SpecViolation[]): void {
 async function checkMaterializedAs(
   spec: ForgeSpec,
   rfcDir: string,
+  localConsumer: string | undefined,
   violations: SpecViolation[],
 ): Promise<void> {
   const rfcFiles = await listRfcFiles(rfcDir);
   for (const node of spec.rfcs) {
     if (!node.materializedAs) continue;
+    // RFC-1302: a foreign-owned node's RFC lives in the owning consumer's
+    // repository — a vendoring consumer can never hold it locally.
+    if (!ownsSpecNode(node, localConsumer)) continue;
     const rfcId = node.materializedAs;
     const prefix = rfcId.toLowerCase().replace(/^rfc-/, "rfc-");
     const found = rfcFiles.some((file) => path.basename(file).startsWith(prefix));
@@ -407,9 +413,13 @@ function checkAmendments(
     }
   }
 
-  // SPEC-10: two accepted amendments target the same anchor with conflicting Becomes
+  // SPEC-10: accepted amendments whose targets overlap (RFC-1302).
+  // Section anchors and decisions are single-text targets — two "Becomes"
+  // rewriting the same text genuinely conflict (error). Node targets compose
+  // additively at read time (resolveAmendedNode), so overlap there is only
+  // a review signal (warning).
   const acceptedAmendments = amendments.filter((a) => a.status === "accepted");
-  const targetCounts = new Map<string, number>();
+  const targetOwners = new Map<string, { kind: string; ids: string[] }>();
   for (const amendment of acceptedAmendments) {
     for (const target of amendment.targets) {
       const key = target.kind === "section"
@@ -417,14 +427,23 @@ function checkAmendments(
         : target.kind === "decision"
           ? `decision:${target.id}`
           : `node:${target.id}`;
-      targetCounts.set(key, (targetCounts.get(key) ?? 0) + 1);
+      const entry = targetOwners.get(key) ?? { kind: target.kind, ids: [] };
+      if (!entry.ids.includes(amendment.id)) entry.ids.push(amendment.id);
+      targetOwners.set(key, entry);
     }
   }
-  for (const [key, count] of targetCounts) {
-    if (count > 1) {
+  for (const [key, { kind, ids }] of targetOwners) {
+    if (ids.length < 2) continue;
+    if (kind === "node") {
       violations.push({
         rule: "SPEC-10",
-        message: `conflicting accepted amendments targeting ${key} — manual review required`,
+        severity: "warning",
+        message: `accepted amendments ${ids.join(", ")} all target ${key} — they compose additively; review that their changes do not contradict`,
+      });
+    } else {
+      violations.push({
+        rule: "SPEC-10",
+        message: `conflicting accepted amendments ${ids.join(", ")} targeting ${key} — manual review required`,
       });
     }
   }
@@ -524,7 +543,7 @@ export async function runSpecValidate(
     checkDuplicates(spec, violations);
 
     // SPEC-07: materializedAs
-    await checkMaterializedAs(spec, rfcDir, violations);
+    await checkMaterializedAs(spec, rfcDir, localConsumer, violations);
 
     // SPEC-08..11: Amendments (RFC-0397)
     const amendments = await loadAmendments(specDir);
