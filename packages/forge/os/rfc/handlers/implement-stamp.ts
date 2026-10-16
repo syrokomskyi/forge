@@ -12,17 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>Session-retro 2026-10-08: auto-detect picks the sole implement/feat-prefixed candidate among multi-commit references (RFC-IMP-03 no longer blocks full pipelines); ambiguous sets keep blocking with annotated candidate list + earliest-candidate suggestion.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: --sync flag runs rfc.evidence.sync via context.invoke before the stale-evidence gate; EVIDENCE-SYNC-01 when no kernel host, sync failure aborts before any mutation.</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-IMP-07</history>
+  <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -348,7 +343,16 @@ export async function runRfcImplementStamp(
       });
       return stampFailResult(violations, isDryRun, outputFormat, logger);
     }
-    const syncReport = await context.invoke("rfc.evidence.sync", { id: targetId });
+    let syncReport: Awaited<ReturnType<NonNullable<typeof context.invoke>>>;
+    try {
+      syncReport = await context.invoke("rfc.evidence.sync", { id: targetId });
+    } catch (err) {
+      violations.push({
+        rule: "EVIDENCE-SYNC-02",
+        message: `rfc.evidence.sync threw before stamping: ${err instanceof Error ? err.message : String(err)}. Resolve the failing step and re-run the stamp.`,
+      });
+      return stampFailResult(violations, isDryRun, outputFormat, logger);
+    }
     if (syncReport.exitCode !== 0) {
       violations.push({
         rule: "EVIDENCE-SYNC-02",
