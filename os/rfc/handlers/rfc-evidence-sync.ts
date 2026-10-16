@@ -16,8 +16,8 @@ invocation attests "all generated artifacts + RFC evidence are current".
   <item>EVIDENCE_SYNC_STEPS is the canonical regen list — pinned verbatim by the probe suite; adding a generated artifact to the RFC lifecycle means adding it here AND updating the test.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim.</item>
-  <item>RFC-1306: rfc.evidence.sync — one-command evidence resync via ctx.invoke host port; rfc.implement.stamp --sync; EVIDENCE-SYNC-01 fail-closed standalone</item>
+  <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>
+  <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
 </CHANGE_SUMMARY>
 */
 
@@ -63,6 +63,8 @@ export interface RfcEvidenceSyncResult {
   steps: RfcEvidenceSyncStepResult[];
   rfcId?: string;
   failedStep?: string;
+  /** Dry-run only — the ordered step list that would execute. */
+  planned?: Array<{ step: string; flags?: Record<string, string> }>;
 }
 
 interface SyncReport {
@@ -124,7 +126,7 @@ export async function runRfcEvidenceSync(
         command: "rfc.evidence.sync",
         status: "pass",
         violations: [],
-        data: { steps: [], ...(rfcIdStr ? { rfcId: rfcIdStr } : {}) },
+        data: { steps: [], planned: plan, ...(rfcIdStr ? { rfcId: rfcIdStr } : {}) },
       },
       exitCode: 0,
       summary: `[dry-run] rfc.evidence.sync: ${plan.length} steps — ${lines.join(" → ")}`,
@@ -150,7 +152,26 @@ export async function runRfcEvidenceSync(
 
   const steps: RfcEvidenceSyncStepResult[] = [];
   for (const planned of plan) {
-    const report = await invoke(planned.step, planned.flags);
+    // A throwing invoke (unresolvable child, host/module failure) still maps
+    // into the EVIDENCE-SYNC-02 contract — fail closed, never a raw exception.
+    let report: Awaited<ReturnType<typeof invoke>>;
+    try {
+      report = await invoke(planned.step, planned.flags);
+    } catch (err) {
+      const violations: RfcEvidenceSyncViolation[] = [
+        {
+          rule: "EVIDENCE-SYNC-02",
+          message: `Step "${planned.step}" threw: ${err instanceof Error ? err.message : String(err)}. Partial sync — earlier steps were applied.`,
+          step: planned.step,
+        },
+      ];
+      return syncResult(
+        "fail",
+        violations,
+        { steps, failedStep: planned.step, ...(rfcIdStr ? { rfcId: rfcIdStr } : {}) },
+        `rfc.evidence.sync: step "${planned.step}" threw`,
+      );
+    }
     const filesModified = report.filesModified ?? [];
     const stepResult: RfcEvidenceSyncStepResult = {
       step: planned.step,
@@ -190,7 +211,7 @@ export async function runRfcEvidenceSync(
     }
   }
 
-  const changedFiles = steps.flatMap((s) => s.filesModified);
+  const changedFiles = [...new Set(steps.flatMap((s) => s.filesModified))];
   return syncResult(
     "pass",
     [],
