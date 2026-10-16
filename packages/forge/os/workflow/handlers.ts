@@ -10,6 +10,7 @@
   <item>RFC-0075: Add agent workflow lint/list handlers.</item>
   <item>RFC-0374: Migrated from packages/os/site-kernel/src/workflow/ to packages/forge/os/workflow/.</item>
   <item>RFC-1276: remove runWorkflowAmendList, WORKFLOW_AMEND_DIR, and the amend RFC command exemption set — the RFC-0135/0136 amend pipeline is superseded</item>
+  <item>RFC-1307: canonical org-singleton PBP paths, seeded hreflang+publication.gate, full rollback</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +33,6 @@ import {
 const WORKFLOW_DIR = ".agents/workflows";
 
 const PENDING_ACCEPTED_RFC_COMMANDS = new Set([
-  "brief.validate",
   "biome.tokens.derive",
   "family.contract.validate",
   "family.list",
