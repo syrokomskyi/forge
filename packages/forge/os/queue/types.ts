@@ -24,6 +24,8 @@ items; top-level decision totals added. Orchestrator pre-flight treats
 QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
+  <item>RFC-1250: decision stage enum gains audit — audit-phase questions had no valid stage</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 
@@ -46,7 +48,7 @@ export const decisionOptionSchema = z.object({
 export const decisionEntrySchema = z.object({
   id: z.string().regex(/^Q-\d+$/),
   doc: z.string().regex(QUEUE_ITEM_ID_PATTERN),
-  stage: z.enum(["idea", "enhance", "plan", "implement", "review"]),
+  stage: z.enum(["idea", "audit", "enhance", "plan", "implement", "review"]),
   question: z.string().min(1),
   resolutionPath: z.enum(["codebase", "convention", "profile", "policy", "none"]),
   options: z.array(decisionOptionSchema).default([]),
