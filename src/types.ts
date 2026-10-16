@@ -23,6 +23,7 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
+  <item>RFC-1306: ForgeRuntimeContext.invoke — structurally-typed optional port mirroring the kernel contract; forge stays runtime-autonomous (no engine import).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -362,4 +363,32 @@ export interface ForgeRuntimeContext {
    * standalone `forge` CLI, where helpers fall back to the ambient adapter.
    */
   io?: WorkspaceIO;
+  /**
+   * RFC-1306: optional sibling-command invocation port — populated when the
+   * command runs under a kernel host (the executor delegates by name through
+   * its own entry point, so the child resolves its own flags and io adapter).
+   * Absent under the standalone `forge` CLI — handlers that need it must
+   * fail closed with a diagnostic, never crash on the absent port.
+   */
+  invoke?: ForgeInvokeCommand;
 }
+
+/**
+ * RFC-1306: minimal report shape returned through `ForgeRuntimeContext.invoke`
+ * — a structural subset of the kernel's execution report so a kernel-populated
+ * port is assignable without any @warpgogol/* import (FORGE-AUTONOMY-01).
+ */
+export interface ForgeInvokeResult {
+  exitCode: number;
+  ok: boolean;
+  data?: unknown;
+  summary?: string;
+  /** Workspace-relative paths the child wrote (RFC-0326 report field). */
+  filesModified?: string[];
+}
+
+/** RFC-1306: signature of the kernel-populated `ForgeRuntimeContext.invoke` port. */
+export type ForgeInvokeCommand = (
+  commandName: string,
+  flags?: Record<string, ForgeFlagValue>,
+) => Promise<ForgeInvokeResult>;

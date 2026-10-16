@@ -21,6 +21,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
   <item>Session-retro 2026-10-08: auto-detect picks the sole implement/feat-prefixed candidate among multi-commit references (RFC-IMP-03 no longer blocks full pipelines); ambiguous sets keep blocking with annotated candidate list + earliest-candidate suggestion.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
+  <item>RFC-1306: --sync flag runs rfc.evidence.sync via context.invoke before the stale-evidence gate; EVIDENCE-SYNC-01 when no kernel host, sync failure aborts before any mutation.</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -331,6 +332,31 @@ export async function runRfcImplementStamp(
       message: `RFC ${targetId} has status "${currentStatus}" — only "accepted" RFCs can be stamped to "implemented".`,
     });
     return stampFailResult(violations, isDryRun, outputFormat, logger);
+  }
+
+  // ── RFC-1306: --sync runs the evidence-resync chain before stamping ────────
+  // Positioned after the target RFC resolves (so --id is real) and before any
+  // criteria/commit/evidence read, so the IMP-06/09 gates see fresh artifacts.
+  // The chain is delegated by name through the kernel host's invoke port — the
+  // standalone forge CLI has no host and fails closed like rfc.evidence.sync.
+  if (input.flags["sync"] === true) {
+    if (!context.invoke) {
+      violations.push({
+        rule: "EVIDENCE-SYNC-01",
+        message:
+          "--sync requires the werkstatt kernel host (context.invoke is absent). Run via `pnpm exec werkstatt run rfc.implement.stamp --id <id> --sync`, or resync manually.",
+      });
+      return stampFailResult(violations, isDryRun, outputFormat, logger);
+    }
+    const syncReport = await context.invoke("rfc.evidence.sync", { id: targetId });
+    if (syncReport.exitCode !== 0) {
+      violations.push({
+        rule: "EVIDENCE-SYNC-02",
+        message: `rfc.evidence.sync failed before stamping${syncReport.summary ? `: ${syncReport.summary}` : ""}. Resolve the failing step and re-run the stamp.`,
+      });
+      return stampFailResult(violations, isDryRun, outputFormat, logger);
+    }
+    logger.info(`[rfc.implement.stamp] --sync: ${syncReport.summary ?? "resync chain completed"}`);
   }
 
   // ── RFC-IMP-02: criterion checks (V-26/V-27 semantics) ────────────────────
