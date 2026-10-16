@@ -12,6 +12,7 @@
   <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
+  <item>RFC-1306: register rfc.evidence.sync (coverage operator, mutatesState, EVIDENCE-SYNC-01/02 rules, generates:[] — artifacts stay owned by delegated steps); rfc.implement.stamp gains --sync.</item>
   <history>RFC-0260, RFC-0795, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -39,6 +40,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
   const { runRfcArchive } = await import("./handlers/archive.ts");
   const { runRfcPipelineStatus } = await import("./handlers/pipeline-status.ts");
   const { runRfcImplementStamp } = await import("./handlers/implement-stamp.ts");
+  const { runRfcEvidenceSync } = await import("./handlers/rfc-evidence-sync.ts");
   // ── rfc.list ─────────────────────────────────────────────────────────────;
   return {
     name: "rfc",
@@ -487,8 +489,55 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "boolean",
             description: "Perform all checks without mutating the RFC file or emitting evidence.",
           },
+          sync: {
+            kind: "boolean",
+            description:
+              "RFC-1306: run the rfc.evidence.sync regeneration chain before the stale-evidence gate instead of failing on RFC-IMP-09. Requires a kernel host (context.invoke).",
+          },
         },
         execute: runRfcImplementStamp,
+      },
+      {
+        name: "rfc.evidence.sync",
+        coverage: "operator" as const,
+        coverageNote:
+          "manual/runbook — pre-stamp evidence resync; also invoked by rfc.implement.stamp --sync",
+        modulePath: "packages/forge/os/rfc/rfc.module.ts",
+        description:
+          "RFC-1306: one-command evidence resync before stamp — runs the generated-manifest " +
+          "chain in dependency order (checks.commands.generate → command.manifest.generate → " +
+          "validator.inventory.generate → docs.commands.generate → ecosystem.manifest.generate), " +
+          "then rfc.verification.emit when --id is given. Delegates each step by name through " +
+          "the kernel host's invoke port — fails closed (EVIDENCE-SYNC-01) under the standalone " +
+          "forge CLI. Stops on the first failing step with its diagnostics verbatim " +
+          "(EVIDENCE-SYNC-02). --dry-run lists the steps without executing.",
+        scope: "workspace",
+        mutatesState: true,
+        rules: ["EVIDENCE-SYNC-01", "EVIDENCE-SYNC-02"],
+        flags: {
+          id: {
+            kind: "string",
+            description: "Target a single RFC by id — appends rfc.verification.emit for it.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            description: "List the steps without executing (honors context.dryRun, DNA-110).",
+          },
+        },
+        reads: ["docs/rfcs/**/*.md"],
+        // The artifacts below stay owned by the delegated generators — sync
+        // orchestrates them by name, so generates is empty (OWN-DUP-01).
+        generates: [],
+        writes: [
+          "packages/werkstatt-site/src/checks/command-tables/index.generated.ts",
+          "docs/command-manifest.generated.yaml",
+          "docs/validator-inventory.generated.yaml",
+          "docs/COMMANDS.md",
+          "docs/ecosystem.generated.yaml",
+          "docs/rfcs/verification/*.generated.yaml",
+        ],
+        cacheable: false,
+        execute: runRfcEvidenceSync,
       },
     ],
     pipelines: [],

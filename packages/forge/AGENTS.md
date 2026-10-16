@@ -19,7 +19,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | Module | Commands | Source |
 | --- | --- | --- |
 | `forgeCoreModule` | `create`, `doctor`, `upgrade`, `forge.agents.generate`, `scaffold`, `port.scaffold`, `skill.validate`, `skill.list`, `port.validate`, `profile.validate`, `dev`, `build`, `validate`, `pinned.validate`, `pinned.init`, `package.health`, `docs.archive`, `forge.autonomy.validate`, `forge.public-surface.validate`, `file.size.lint` | `os/core/` |
-| `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, `rfc.verification.emit`, `rfc.verification.refresh`, etc. | `os/rfc/` |
+| `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, `rfc.verification.emit`, `rfc.verification.refresh`, `rfc.evidence.sync`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.record`, `compass.summary.trim`, etc. (8 commands). All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). `compass.summary.record` appends governance-ID items to `CHANGE_SUMMARY` at commit time (RFC-1095). | `os/compass/` |
@@ -217,6 +217,12 @@ YAML plain scalar values that **start with a backtick** (`` ` ``) must be double
 ## RFC status transitions: rfc.implement.stamp is exclusive (V-16)
 
 `rfc.implement.stamp` is the **exclusive atomic path** for accepted → implemented transitions. It atomically sets `status: implemented`, `implementedAt`, and `updatedAt` together. **NEVER** manually edit RFC frontmatter to set `implementedAt` or change `status` to `implemented` — this bypasses the atomic guarantee and risks leaving `status` and `implementedAt` out of sync. V-16 enforces this as an error: `status: accepted/draft` with `implementedAt` set, or `status: implemented` with empty `implementedAt`, both fail `rfc.validate`. After implementing an RFC, run `rfc.implement.stamp --id RFC-XXXX` to stamp it (auto-detects the implementation commit via `git log --grep` when `--implementation-commit` is omitted, RFC-0756; pass `--implementation-commit <sha>` to override). **`--implementation-commit` takes a git SHA, not the version printed by `ecosystem.commit`** — passing `6.316.121` fails RFC-IMP-03 ("not reachable from HEAD"). Resolve the SHA via `git log --oneline --grep="<message>"`. Discovered during RFC-1139 stamping.
+
+## RFC-1306: rfc.evidence.sync + stamp --sync (kernel-host invoke port)
+
+`rfc.evidence.sync [--id RFC-XXXX] [--dry-run]` re-runs the generated-artifact chain in dependency order (`checks.commands.generate` → `command.manifest.generate` → `validator.inventory.generate` → `docs.commands.generate` → `ecosystem.manifest.generate` → `rfc.verification.emit --refresh` when `--id` is given) by delegating each step by name through `context.invoke` — the optional command-execution port the engine executor populates on `KernelRuntimeContext`/`ForgeRuntimeContext`. It stops on the first failing step (EVIDENCE-SYNC-02) with the child's diagnostics verbatim and never re-enters itself. `rfc.implement.stamp --sync` runs the same chain before the stale-evidence gate; plain stamp behavior is unchanged.
+
+**Fail-closed contract:** under the standalone `forge` CLI there is no kernel host, so `context.invoke` is absent and `rfc.evidence.sync`/`stamp --sync` return EVIDENCE-SYNC-01 ("requires the werkstatt kernel host") instead of crashing. Forge must stay runtime-autonomous — never import the engine to obtain the port; the field is structurally typed in `src/types.ts` and populated only by the host.
 
 ## ADR status transitions: adr.implement.stamp commit reference (ADR-IMP-03)
 

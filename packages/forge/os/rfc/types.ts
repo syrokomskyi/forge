@@ -21,6 +21,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten â
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave â€” deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
+  <item>RFC-1306: ForgeInvokeResult/flag-record types for the ctx.invoke delegation surface.</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -612,7 +613,12 @@ export type RfcImplementStampRule =
   | "RFC-IMP-06"
   | "RFC-IMP-07"
   | "RFC-IMP-08"
-  | "RFC-IMP-09";
+  | "RFC-IMP-09"
+  // RFC-1306: --sync delegates to rfc.evidence.sync through ctx.invoke; the
+  // chain's own rule ids surface as stamp violations on host-less or
+  // mid-chain-failure paths.
+  | "EVIDENCE-SYNC-01"
+  | "EVIDENCE-SYNC-02";
 
 export interface RfcImplementStampViolation {
   rule: RfcImplementStampRule;
