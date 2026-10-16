@@ -70,6 +70,18 @@ describe("decisionLedgerSchema (RFC-1250)", () => {
     expect(result.success).toBe(false);
   });
 
+  test("stage accepts pipeline phases incl. audit", () => {
+    for (const stage of ["idea", "audit", "enhance", "plan", "implement", "review"]) {
+      const result = decisionLedgerSchema.safeParse({
+        id: "x.decisions",
+        queue: "x",
+        createdAt: "2026-10-09",
+        items: [{ id: "Q-1", doc: "RFC-1243", stage, question: "q", resolutionPath: "none" }],
+      });
+      expect(result.success, `stage "${stage}" rejected`).toBe(true);
+    }
+  });
+
   test("entry id must match Q-N", () => {
     const result = decisionLedgerSchema.safeParse({
       id: "x.decisions",
@@ -141,10 +153,7 @@ describe("decisionLedgerPath / loadDecisionLedger (RFC-1250)", () => {
   });
 
   test("invalid YAML → QUEUE-01 error on the manifest load path", async () => {
-    await fs.writeFile(
-      path.join(tmpDir, "docs/queues/block-b.decisions.yaml"),
-      "id: [unclosed\n",
-    );
+    await fs.writeFile(path.join(tmpDir, "docs/queues/block-b.decisions.yaml"), "id: [unclosed\n");
     const { ledger, errors } = await loadDecisionLedger(tmpDir, "docs/queues/block-b.yaml");
     expect(ledger).toBeNull();
     expect(errors.some((e) => e.ruleId === "QUEUE-01")).toBe(true);
