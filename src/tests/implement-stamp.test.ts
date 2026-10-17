@@ -9,6 +9,7 @@ Unit tests for implement stamp covering rfc.implement.stamp. It also guards the 
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the implement suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
 </CHANGE_SUMMARY>
 */
 
@@ -267,7 +268,7 @@ describe("rfc.implement.stamp", () => {
   it("ignores uncommitted changes in unrelated files (multi-agent)", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
-    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
 
     // Create uncommitted files from other agents — must NOT block stamping
     await writeFile(join(workspaceRoot, "dirty.txt"), "dirty");
@@ -323,7 +324,7 @@ describe("rfc.implement.stamp", () => {
   it("passes in dry-run mode for a valid accepted RFC", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
-    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0001", commit, true),
@@ -345,7 +346,7 @@ describe("rfc.implement.stamp", () => {
   it("atomically stamps a valid accepted RFC to implemented", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
-    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0001", commit),
@@ -370,7 +371,7 @@ describe("rfc.implement.stamp", () => {
   it("auto-detects the implementation commit when --implementation-commit is omitted (RFC-0756)", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
-    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
 
     const result = await runRfcImplementStamp(
       makeInputAutoDetect("RFC-0001"),
@@ -430,7 +431,10 @@ describe("rfc.implement.stamp", () => {
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
     await commitAll(workspaceRoot, "Implement RFC-0001 step 1");
     await writeFile(join(workspaceRoot, "src.txt"), "step 2");
-    const secondCommit = await commitAll(workspaceRoot, "Implement RFC-0001 step 2");
+    const secondCommit = await commitAll(
+      workspaceRoot,
+      "Implement RFC-0001 step 2\n\nX-RFC: RFC-0001",
+    );
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0001", secondCommit),
@@ -448,7 +452,10 @@ describe("rfc.implement.stamp", () => {
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
     await commitAll(workspaceRoot, "docs: audit RFC-0001");
     await writeFile(join(workspaceRoot, "src.txt"), "impl");
-    const implCommit = await commitAll(workspaceRoot, "implement: RFC-0001 — the change");
+    const implCommit = await commitAll(
+      workspaceRoot,
+      "implement: RFC-0001 — the change\n\nX-RFC: RFC-0001",
+    );
     await writeFile(join(workspaceRoot, "src.txt"), "evidence");
     await commitAll(workspaceRoot, "docs: RFC-0001 evidence sweep");
 
@@ -526,7 +533,7 @@ describe("rfc.implement.stamp", () => {
     await writeFile(depFile, RFC_BODY("RFC-0001", "implemented", true));
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0002-main.md");
     await writeFile(rfcFile, RFC_BODY_WITH_DEPS("RFC-0002", "accepted", true, ["RFC-0001"]));
-    const commit = await commitAll(workspaceRoot, "Implement RFC-0002");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002\n\nX-RFC: RFC-0002");
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0002", commit),
@@ -542,7 +549,7 @@ describe("rfc.implement.stamp", () => {
   it("passes when dependsOn is absent (RFC-IMP-07)", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
-    const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0001", commit),

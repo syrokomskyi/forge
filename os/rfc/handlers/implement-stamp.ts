@@ -12,11 +12,11 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Session-retro 2026-10-08: auto-detect picks the sole implement/feat-prefixed candidate among multi-commit references (RFC-IMP-03 no longer blocks full pipelines); ambiguous sets keep blocking with annotated candidate list + earliest-candidate suggestion.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: --sync flag runs rfc.evidence.sync via context.invoke before the stale-evidence gate; EVIDENCE-SYNC-01 when no kernel host, sync failure aborts before any mutation.</item>
   <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
+  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -138,6 +138,38 @@ async function autoDetectImplementationCommit(
     });
 
   return { multiple: candidates };
+}
+
+/**
+ * RFC-1310 STAMP-GOV-01: provenance, not mere reference — the commit carries
+ * an `X-RFC:`/`X-ADR:` trailer naming the id (ecosystem.commit --rfc/--adr)
+ * or its diff adds a CHANGE_SUMMARY `<item>` naming the id (the injection
+ * itself, e.g. commits made before the trailer existed).
+ */
+async function commitCarriesGovernanceProvenance(
+  workspaceRoot: string,
+  commitSha: string,
+  rfcId: string,
+): Promise<boolean> {
+  const idUpper = rfcId.toUpperCase();
+  const commitMsg = await execGit(workspaceRoot, ["log", "-1", "--format=%B", commitSha]);
+  if (
+    commitMsg
+      .split("\n")
+      .some((l) => /^X-(?:RFC|ADR):\s*\S/i.test(l) && l.toUpperCase().includes(idUpper))
+  ) {
+    return true;
+  }
+  const diff = await execGit(workspaceRoot, ["show", "-U0", "--format=", commitSha]);
+  return diff
+    .split("\n")
+    .some(
+      (l) =>
+        l.startsWith("+") &&
+        !l.startsWith("+++") &&
+        l.includes("<item>") &&
+        l.toUpperCase().includes(idUpper),
+    );
 }
 
 async function commitReferencesRfc(
@@ -401,10 +433,14 @@ export async function runRfcImplementStamp(
   }
 
   // ── RFC-0756: auto-detect implementation commit when --implementation-commit is omitted ──
+  // RFC-1310 STAMP-GOV-01: auto-detect candidates join the provenance scan
+  // set — a trailer on any implementation-shaped commit counts.
+  const provenanceCandidateShas: string[] = [];
   if (!implementationCommit) {
     const detected = await autoDetectImplementationCommit(workspaceRoot, targetId);
     if ("sha" in detected) {
       implementationCommit = detected.sha;
+      provenanceCandidateShas.push(detected.sha);
     } else if ("none" in detected) {
       violations.push({
         rule: "RFC-IMP-03",
@@ -414,6 +450,7 @@ export async function runRfcImplementStamp(
       // Auto-resolve when exactly one candidate looks like an implementation
       // commit — a multi-commit RFC pipeline (audit → plan → implement → docs →
       // review) references the id at every step, but only one step implements.
+      provenanceCandidateShas.push(...detected.multiple.map((c) => c.sha));
       const implCandidates = detected.multiple.filter((c) =>
         IMPLEMENTATION_SUBJECT_RE.test(c.message),
       );
@@ -475,6 +512,29 @@ export async function runRfcImplementStamp(
           rule: "RFC-IMP-03",
           message: `Implementation commit ${implementationCommit} does not reference ${targetId} in its message or changed files.`,
         });
+      } else {
+        // ── RFC-1310 STAMP-GOV-01: commit-time governance provenance ──────
+        // A subject mention is not provenance — the implementation commit
+        // (or an auto-detected sibling candidate) must carry the X-RFC
+        // trailer or an injected CHANGE_SUMMARY item, else the stamp would
+        // certify a provenance-broken implementation (DNA-59).
+        const scanShas = [...new Set([implementationCommit, ...provenanceCandidateShas])];
+        logger.info(
+          `[rfc.implement.stamp] STAMP-GOV-01 scanning ${scanShas.length} commit(s): ${scanShas.join(", ")}`,
+        );
+        let provenance = false;
+        for (const sha of scanShas) {
+          if (await commitCarriesGovernanceProvenance(workspaceRoot, sha, targetId)) {
+            provenance = true;
+            break;
+          }
+        }
+        if (!provenance) {
+          violations.push({
+            rule: "STAMP-GOV-01",
+            message: `Implementation commit(s) for ${targetId} carry no governance provenance (no X-RFC: ${targetId} trailer, no injected CHANGE_SUMMARY item) — scanned: ${scanShas.join(", ")}. Retro-fix: hand-edit CHANGE_SUMMARY <item>${targetId}: …</item> entries into the touched files' headers in the worktree, then land a follow-up ecosystem.commit --rfc ${targetId} --message "docs(${targetId.toLowerCase()}): retrofit governance provenance" and re-stamp.`,
+          });
+        }
       }
     }
   }
