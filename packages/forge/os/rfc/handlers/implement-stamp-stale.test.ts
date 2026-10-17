@@ -9,6 +9,7 @@ Unit tests for implement stamp stale covering rfc.implement.stamp — RFC-IMP-09
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the implement suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
 </CHANGE_SUMMARY>
 */
 
@@ -116,7 +117,10 @@ describe("rfc.implement.stamp — RFC-IMP-09 stale evidence gate (RFC-1271)", ()
     try {
       await writeRfc(rfcDir, RFC_MD("RFC-0100", [PROBE]));
       await emitEnvelope(dir);
-      const sha = commitAll(dir, "feat: implement RFC-0100 evidence-driven gate");
+      const sha = commitAll(
+        dir,
+        "feat: implement RFC-0100 evidence-driven gate\n\nX-RFC: RFC-0100",
+      );
 
       const result = await stamp(dir, sha);
       expect(rules(result)).not.toContain("RFC-IMP-09");
@@ -228,7 +232,7 @@ describe("rfc.implement.stamp — RFC-IMP-09 stale evidence gate (RFC-1271)", ()
     try {
       await writeRfc(rfcDir, RFC_MD("RFC-0100", [PROBE]));
       await emitEnvelope(dir);
-      const sha = commitAll(dir, "feat: implement RFC-0100");
+      const sha = commitAll(dir, "feat: implement RFC-0100\n\nX-RFC: RFC-0100");
 
       const result = await stamp(dir, sha);
       expect(rules(result)).toEqual([]);

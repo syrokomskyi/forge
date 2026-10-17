@@ -12,16 +12,14 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: ForgeInvokeResult/flag-record types for the ctx.invoke delegation surface.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999</history>
+  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -613,6 +611,9 @@ export type RfcImplementStampRule =
   | "RFC-IMP-07"
   | "RFC-IMP-08"
   | "RFC-IMP-09"
+  // RFC-1310: commit-time governance provenance — the implementation commit
+  // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
+  | "STAMP-GOV-01"
   // RFC-1306: --sync delegates to rfc.evidence.sync through ctx.invoke; the
   // chain's own rule ids surface as stamp violations on host-less or
   // mid-chain-failure paths.

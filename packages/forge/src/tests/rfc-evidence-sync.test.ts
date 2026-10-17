@@ -9,6 +9,7 @@ Unit tests for rfc evidence sync covering rfc.evidence.sync (RFC-1306); rfc.impl
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the rfc suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
 </CHANGE_SUMMARY>
 */
 
@@ -264,7 +265,7 @@ describe("rfc.implement.stamp --sync (RFC-1306)", () => {
       );
       expect(emitResult.exitCode).toBe(0);
       git(dir, ["add", "-A"]);
-      git(dir, ["commit", "-qm", "feat: implement RFC-0100"]);
+      git(dir, ["commit", "-qm", "feat: implement RFC-0100\n\nX-RFC: RFC-0100"]);
 
       const invoke = vi.fn(async (_name: string): Promise<ForgeInvokeResult> => okReport);
       const result = await runRfcImplementStamp(
