@@ -17,7 +17,7 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
-import { realpathSync } from "node:fs";
+import { realpathSync } from "../../../src/utils/sync-fs.ts";
 import { relative, resolve } from "node:path";
 import {
   createCompassInventoryEntries,
@@ -90,7 +90,8 @@ async function explicitTarget(
   };
   // --files bypasses scan roots, not the extension allowlist — a binary or
   // non-source path must never receive a header.
-  const extension = absPath.slice(absPath.lastIndexOf("."));
+  const lastDot = absPath.lastIndexOf(".");
+  const extension = lastDot > absPath.lastIndexOf("/") ? absPath.slice(lastDot) : "";
   if (!policy.fileExtensions.has(extension)) {
     return { ...shell, skipReason: `unsupported extension ${extension || "(none)"}` };
   }

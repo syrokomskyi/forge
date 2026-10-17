@@ -599,6 +599,25 @@ describe("scaffoldFile codemod (RFC-1318)", () => {
     expect(purposeOpen).toBeLessThan(ngOpen);
   });
 
+  it("repaired: same-line siblings in a line-style header close inline", () => {
+    const header = `# ${MC_OPEN}\n# <purpose>${PURPOSE} <non-goals>\n#   <item>Fixtures only.</item>\n# </non-goals>\n# ${MC_CLOSE}\n# ${CS_OPEN}\n# ${CS_CLOSE}`;
+    const source = `${header}\nextends Node\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-purpose");
+    const line = result.source.split("\n").find((l) => l.includes("<purpose>"));
+    expect(line).toContain("</purpose>");
+    expect(result.source.indexOf("<purpose>")).toBeLessThan(result.source.indexOf("</purpose>"));
+  });
+
   it("repaired: a stray CHANGE_SUMMARY without a contract keeps canonical order", () => {
     const header = `${CS_OPEN}\n  <item>RFC-9999: stray.</item>\n${CS_CLOSE}`;
     const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
