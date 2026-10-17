@@ -128,7 +128,9 @@ function insideLiteral(source: string, open: number, style: CommentStyle): boole
     return (before.match(/(?<!\\)`/g) ?? []).length % 2 === 1;
   }
   if (style === "html") {
-    const fences = before.split("\n").filter((l) => l.trimStart().startsWith("```")).length;
+    const fences = before
+      .split("\n")
+      .filter((l) => l.trimStart().startsWith("```") || l.trimStart().startsWith("~~~")).length;
     return fences % 2 === 1;
   }
   return false;
@@ -352,10 +354,16 @@ interface Edit {
   start: number;
   end: number;
   text: string;
+  /**
+   * Emission rank for same-position inserts — higher applies first so the
+   * final text order follows ascending rank (inner closes before new blocks
+   * before outer closes at a shared anchor).
+   */
+  order?: number;
 }
 
 function applyEdits(source: string, edits: Edit[]): string {
-  const sorted = [...edits].sort((a, b) => b.start - a.start);
+  const sorted = [...edits].sort((a, b) => b.start - a.start || (b.order ?? 0) - (a.order ?? 0));
   let out = source;
   for (const e of sorted) out = out.slice(0, e.start) + e.text + out.slice(e.end);
   return out;
@@ -400,6 +408,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       return (
         open >= 0 &&
         atLineStart(source, open) &&
+        !insideLiteral(source, open, opener === "/*" ? "block" : "html") &&
         !source.slice(open, tagIdx).includes(closer) &&
         source.indexOf(closer, tagIdx) < 0
       );
@@ -579,6 +588,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           start: openEnd,
           end: openEnd,
           text: `\n${lineWrap(`<purpose>${purpose.text}</purpose>`, h.span)}`,
+          order: 20,
         });
         repairs.push(purpose.sentinel ? "sentinel-purpose" : "inserted-purpose");
       } else if (!contractText.includes("</purpose>")) {
@@ -591,11 +601,18 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           .sort((a, b) => a - b);
         // `following` is contractText-relative; contract.end is h.text-relative.
         const absAt = following.length > 0 ? base + following[0]! : h.span.start + contract.end;
-        const anchor = insertAt(absAt, h);
+        // Same-line siblings (`# <purpose>t <non-goals>`) close mid-line —
+        // a line-start insert would emit the close before its own open.
+        const purposeAbs = base + purposeOpen;
+        const anchor =
+          prefixFor(h.span) !== "" && lineStartOf(next, absAt) === lineStartOf(next, purposeAbs)
+            ? absAt
+            : insertAt(absAt, h);
         edits.push({
           start: anchor,
           end: anchor,
           text: `${lineWrap("</purpose>", h.span)}\n`,
+          order: 10,
         });
         repairs.push("closed-purpose");
       }
@@ -607,6 +624,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           start: anchor,
           end: anchor,
           text: `${lineWrap(`<non-goals>\n  <item>${SENTINEL_NONGOAL}</item>\n</non-goals>`, h.span)}\n`,
+          order: 30,
         });
         repairs.push("inserted-non-goals");
       } else {
@@ -617,6 +635,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
             start: anchor,
             end: anchor,
             text: `${lineWrap("</non-goals>", h.span)}\n`,
+            order: 40,
           });
           repairs.push("closed-non-goals");
           ngEnd = contractText.indexOf("</MODULE_CONTRACT>");
@@ -658,6 +677,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
             start: anchor,
             end: anchor,
             text: `${lineWrap("</item>", h.span)}\n`,
+            order: 10,
           });
           repairs.push("closed-item");
         }

@@ -573,6 +573,32 @@ describe("scaffoldFile codemod (RFC-1318)", () => {
     expect(second.disposition).toBe("unchanged");
   });
 
+  it("repaired: unclosed purpose + missing non-goals emit closes before new blocks", () => {
+    // Shared </MODULE_CONTRACT> anchor — closed-purpose must land before the
+    // inserted non-goals block, not after it.
+    const header = `${MC_OPEN}\n<purpose>${PURPOSE}\n${MC_CLOSE}\n${KD_OPEN}\n  <item>${KD_ITEM}</item>\n${KD_CLOSE}\n${CS_OPEN}\n${CS_CLOSE}`;
+    const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-purpose");
+    expect(result.repairs).toContain("inserted-non-goals");
+    const purposeClose = result.source.indexOf("</purpose>");
+    const ngOpen = result.source.indexOf("<non-goals>");
+    expect(purposeClose).toBeLessThan(ngOpen);
+    expect(ngOpen).toBeLessThan(result.source.indexOf(MC_CLOSE));
+  });
+
+  it("repaired: an adjacent empty contract emits purpose before non-goals", () => {
+    const header = `${MC_OPEN}${MC_CLOSE}\n${KD_OPEN}\n  <item>${KD_ITEM}</item>\n${KD_CLOSE}\n${CS_OPEN}\n${CS_CLOSE}`;
+    const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("repaired");
+    const purposeOpen = result.source.indexOf("<purpose>");
+    const ngOpen = result.source.indexOf("<non-goals>");
+    expect(purposeOpen).toBeGreaterThan(-1);
+    expect(purposeOpen).toBeLessThan(ngOpen);
+  });
+
   it("repaired: a stray CHANGE_SUMMARY without a contract keeps canonical order", () => {
     const header = `${CS_OPEN}\n  <item>RFC-9999: stray.</item>\n${CS_CLOSE}`;
     const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
