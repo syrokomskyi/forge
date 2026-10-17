@@ -3,6 +3,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Behavioural tests for ts.package.exports.validate through the execute() seam (RFC-1099, DNA-100).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: replace load-verification stub with execute()-seam tests.</item>
