@@ -12,13 +12,11 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: ForgeInvokeResult/flag-record types for the ctx.invoke delegation surface.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1320</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -389,7 +387,13 @@ export interface RfcVerificationEmitResult {
     overall: "pass" | "fail";
     previousOverall?: "pass" | "fail";
   }>;
-  skipped: Array<{ rfcId: string; reason: "no-probes" }>;
+  // RFC-1320: "stale-generated-artifact" — EVIDENCE-FRESH-01 blocked the
+  // pre-probe freshness gate; "unknown-probe-kind" — EVIDENCE-FRESH-03, a
+  // probe kind outside the artifact map (fail-closed); no envelope either way.
+  skipped: Array<{
+    rfcId: string;
+    reason: "no-probes" | "stale-generated-artifact" | "unknown-probe-kind";
+  }>;
   diagnostics: Diagnostic[];
   delta?: VerificationDelta;
   /** RFC-1271 `--check`: committed-vs-fresh comparison per RFC — populated
@@ -520,6 +524,8 @@ export interface DecisionLogResult {
   count: number;
   entries: DecisionLogEntry[];
   written?: string[];
+  /** RFC-1320: dry-run render surface for generated.drift.validate. */
+  renderedFiles?: Record<string, string>;
 }
 
 export interface ConsultedDecision {

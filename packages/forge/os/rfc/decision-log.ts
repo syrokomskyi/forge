@@ -12,13 +12,12 @@ keywords for rfc.create consultation, and generate/validate projections.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0329: initial implementation.</item>
+  <item>RFC-1320 review-r1: writes migrated writeFileAtomic → context.io; dry-run returns renderedFiles for both projections (ambient writes bypassed dry-run interception and self-healed stale artifacts inside emit's freshness precheck).</item>
 </CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";
 import { resolveIo } from "../../src/utils/io.ts";
-
-import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
@@ -290,8 +289,27 @@ export async function runRfcDecisionLogGenerate(
   const jsonContent = `${buildGeneratedHeader({ filePath: jsonRelPath, ownerCommand: "rfc.decision-log.generate" })}${yamlStringify({ command: "rfc.decision-log.generate", status: "ok", count: entries.length, entries })}\n`;
   const mdContent = renderMarkdown(entries);
 
-  await writeFileAtomic(join(workspaceRoot, jsonRelPath), jsonContent);
-  await writeFileAtomic(join(workspaceRoot, mdRelPath), mdContent);
+  // RFC-1320: dry-run must surface renderedFiles — emit's freshness gate
+  // byte-verifies these artifacts via generated.drift.validate --target=workspace.
+  if (context.dryRun) {
+    return {
+      data: {
+        command: "rfc.decision-log.generate",
+        status: "ok",
+        count: entries.length,
+        entries,
+        renderedFiles: {
+          [jsonRelPath.replace(/\\/g, "/")]: jsonContent,
+          [mdRelPath.replace(/\\/g, "/")]: mdContent,
+        },
+      },
+      exitCode: 0,
+      summary: `rfc.decision-log.generate: dry-run rendered ${entries.length} entries (JSON + Markdown)`,
+    };
+  }
+
+  await io.writeFile(join(workspaceRoot, jsonRelPath), jsonContent);
+  await io.writeFile(join(workspaceRoot, mdRelPath), mdContent);
 
   if (outputFormat === "pretty") {
     logger.success(`Wrote ${jsonRelPath} and ${mdRelPath} (${entries.length} entries)`);

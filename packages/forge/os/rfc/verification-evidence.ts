@@ -21,6 +21,7 @@ header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
 with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
+  <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +33,7 @@ import { performance } from "node:perf_hooks";
 import { byteHash } from "../../src/utils/hash.ts";
 
 import { runProbe } from "./acceptance.ts";
+import { EVIDENCE_SYNC_STEPS } from "./handlers/rfc-evidence-sync.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { generatedHeaderFields } from "../../src/utils/generated-marker.ts";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
@@ -56,6 +58,188 @@ import type {
 
 export const VERIFICATION_DIR = join(RFC_DIR, "verification");
 const HASH_PREFIX = "sha" + "256:";
+
+// RFC-1320: emitted envelopes are owned by this command — an RFC's own
+// evidence artifact must never freshness-block its own emission.
+const EMIT_OWNED_EVIDENCE_RE = /^docs\/rfcs\/verification\/.*\.generated\.yaml$/;
+const COMMAND_MANIFEST_PATH = "docs/command-manifest.generated.yaml";
+
+/**
+ * RFC-1320: exhaustive probe-kind → candidate-artifact mapping. Probes that
+ * execute live (run/test/page) carry no generated dependency; path-bearing
+ * probes map to their referenced file; command-registered reads the command
+ * manifest via acceptance.ts's manifest fallback. An unrecognized kind fails
+ * loudly — a future kind must opt into this table.
+ */
+export function probeArtifactCandidates(probe: AcceptanceProbe): string[] {
+  switch (probe.probe) {
+    case "command-registered":
+      return [COMMAND_MANIFEST_PATH];
+    case "file-contains":
+    case "file-exists":
+      if (typeof probe.path !== "string" || probe.path.length === 0) {
+        throw new Error(
+          `EVIDENCE-FRESH-03: probe "${probe.probe}" carries no string path — fix the acceptance frontmatter.`,
+        );
+      }
+      return [probe.path];
+    case "json-schema":
+      if (typeof probe.artifact !== "string" || probe.artifact.length === 0) {
+        throw new Error(
+          'EVIDENCE-FRESH-03: probe "json-schema" carries no string artifact — fix the acceptance frontmatter.',
+        );
+      }
+      return [probe.artifact];
+    case "run":
+    case "test":
+    case "page":
+      return [];
+    default:
+      throw new Error(
+        `EVIDENCE-FRESH-03: unknown probe kind "${String((probe as { probe?: unknown }).probe)}" — extend the freshness artifact map.`,
+      );
+  }
+}
+
+interface DriftArtifactVerdict {
+  path: string;
+  owner: string | null;
+  verdict:
+    | "fresh"
+    | "stale"
+    | "missing"
+    | "skipped-volatile"
+    | "skipped-binary"
+    | "render-unavailable"
+    | "unowned";
+}
+
+function toPosixPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "");
+}
+
+/**
+ * RFC-1320: pre-probe freshness gate. Collects probe-referenced artifacts,
+ * delegates byte-comparison to `generated.drift.validate --target=workspace
+ * --paths` via context.invoke, and maps verdicts: stale/missing → blocking
+ * EVIDENCE-FRESH-01 (no envelope written); invoke-absent/throw/payload-gap/
+ * render-unavailable → EVIDENCE-FRESH-02 warning and probes still run.
+ * `unowned` verdicts mean no generates[] declaration — no fire.
+ */
+async function freshnessPrecheck(
+  rfcId: string,
+  probes: AcceptanceProbe[],
+  context: ForgeRuntimeContext,
+): Promise<{ block?: Diagnostic; warnings: Diagnostic[] }> {
+  const warnings: Diagnostic[] = [];
+  const warn = (message: string): Diagnostic => ({
+    ruleId: "EVIDENCE-FRESH-02",
+    severity: "warning",
+    message: `${rfcId}: ${message}`,
+  });
+
+  const candidates = new Set<string>();
+  for (const probe of probes) {
+    try {
+      const paths = probeArtifactCandidates(probe);
+      for (const p of paths) {
+        const norm = toPosixPath(p);
+        if (EMIT_OWNED_EVIDENCE_RE.test(norm)) continue;
+        candidates.add(norm);
+      }
+    } catch (err) {
+      // Loud failure — a future probe kind must opt into the artifact map
+      // rather than silently mapping to none, and a malformed path-bearing
+      // probe must fail this RFC, never crash the sweep (RFC-1320 review).
+      return {
+        warnings,
+        block: {
+          ruleId: "EVIDENCE-FRESH-03",
+          severity: "error",
+          message: `${rfcId}: ${err instanceof Error ? err.message : String(err)}`,
+        },
+      };
+    }
+  }
+  if (candidates.size === 0) return { warnings };
+
+  const invoke = context.invoke;
+  if (!invoke) {
+    warnings.push(
+      warn(
+        `EVIDENCE-FRESH-02: no kernel host (context.invoke absent) — probe-referenced generated artifact freshness unverified: ${[...candidates].join(", ")}`,
+      ),
+    );
+    return { warnings };
+  }
+
+  let report: Awaited<ReturnType<typeof invoke>>;
+  try {
+    report = await invoke("generated.drift.validate", {
+      target: "workspace",
+      paths: [...candidates],
+    });
+  } catch (err) {
+    warnings.push(
+      warn(
+        `EVIDENCE-FRESH-02: freshness check threw (${err instanceof Error ? err.message : String(err)}) — artifacts trusted unverified: ${[...candidates].join(", ")}`,
+      ),
+    );
+    return { warnings };
+  }
+
+  const data =
+    report && typeof report.data === "object" && report.data !== null
+      ? (report.data as { artifacts?: unknown })
+      : undefined;
+  const artifacts = Array.isArray(data?.artifacts)
+    ? (data.artifacts as DriftArtifactVerdict[])
+    : undefined;
+  if (!artifacts) {
+    warnings.push(
+      warn(
+        `EVIDENCE-FRESH-02: freshness check returned no artifact verdicts — trusted unverified: ${[...candidates].join(", ")}`,
+      ),
+    );
+    return { warnings };
+  }
+
+  const blocking = artifacts.filter((a) => a.verdict === "stale" || a.verdict === "missing");
+  if (blocking.length > 0) {
+    const details = blocking
+      .map((a) => {
+        const remedy =
+          a.owner && EVIDENCE_SYNC_STEPS.includes(a.owner)
+            ? `werkstatt run rfc.evidence.sync --id ${rfcId}`
+            : `werkstatt run ${a.owner ?? "<generator>"}`;
+        return `"${a.path}" (${a.verdict}, owner: ${a.owner ?? "unowned"}, remedy: ${remedy})`;
+      })
+      .join("; ");
+    return {
+      warnings,
+      block: {
+        ruleId: "EVIDENCE-FRESH-01",
+        severity: "error",
+        message: `${rfcId}: probe-referenced generated artifact(s) not fresh — ${details}. Emission blocked; regenerate the artifact(s) and re-run rfc.verification.emit.`,
+      },
+    };
+  }
+
+  const unverifiable = artifacts.filter(
+    (a) =>
+      a.verdict === "render-unavailable" ||
+      a.verdict === "skipped-volatile" ||
+      a.verdict === "skipped-binary",
+  );
+  if (unverifiable.length > 0) {
+    warnings.push(
+      warn(
+        `EVIDENCE-FRESH-02: freshness unverifiable for ${unverifiable.map((a) => `"${a.path}" (${a.verdict}${a.owner ? `, owner: ${a.owner}` : ""})`).join(", ")} — probes still run`,
+      ),
+    );
+  }
+  return { warnings };
+}
 
 function execGit(workspaceRoot: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
@@ -307,6 +491,26 @@ export async function runRfcVerificationEmit(
     }
 
     const probes = acceptance as AcceptanceProbe[];
+
+    // RFC-1320: generated-artifact freshness gate runs BEFORE any probe —
+    // a probe reading stale bytes proves nothing. EVIDENCE-FRESH-01 skips
+    // emission (blocking diagnostic, non-zero exit); EVIDENCE-FRESH-02 only
+    // warns.
+    const fresh = await freshnessPrecheck(rfcId, probes, context);
+    diagnostics.push(...fresh.warnings);
+    if (fresh.block) {
+      return {
+        skippedEntry: {
+          rfcId,
+          reason:
+            fresh.block.ruleId === "EVIDENCE-FRESH-03"
+              ? "unknown-probe-kind"
+              : "stale-generated-artifact",
+        },
+        diagnostic: fresh.block,
+      };
+    }
+
     const probeRecords: VerificationEvidenceProbeRecord[] = [];
     const rfcFilePath = join(rfcDirPath, fileName);
     const rfcMarkdown = await io.readFile(rfcFilePath);
@@ -411,7 +615,12 @@ export async function runRfcVerificationEmit(
     if (r.diagnostic) diagnostics.push(r.diagnostic);
   }
 
-  const hasFailures = emitted.some((e) => e.overall === "fail") || checked.some((c) => !c.match);
+  // RFC-1320: a blocking diagnostic (EVIDENCE-FRESH-01/03) means the run
+  // failed even when nothing was emitted.
+  const hasFailures =
+    emitted.some((e) => e.overall === "fail") ||
+    checked.some((c) => !c.match) ||
+    diagnostics.some((d) => d.severity === "error");
   const status: RfcVerificationEmitResult["status"] = hasFailures ? "fail" : "pass";
   const delta = {
     recovered: emitted

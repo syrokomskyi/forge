@@ -10,6 +10,7 @@ Unit tests for rfc evidence sync covering rfc.evidence.sync (RFC-1306); rfc.impl
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the rfc suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1320</item>
 </CHANGE_SUMMARY>
 */
 
@@ -276,8 +277,15 @@ describe("rfc.implement.stamp --sync (RFC-1306)", () => {
         makeContext(invoke, dir),
       );
       expect(result.exitCode).toBe(0);
-      expect(invoke).toHaveBeenCalledTimes(1);
-      expect(invoke).toHaveBeenCalledWith("rfc.evidence.sync", { id: "RFC-0100" });
+      // RFC-1320: the post-stamp re-emit (RFC-1271) runs the freshness gate
+      // through the same invoke port — generated.drift.validate precedes the
+      // probe run for the file-exists probe's referenced path.
+      expect(invoke).toHaveBeenCalledTimes(2);
+      expect(invoke).toHaveBeenNthCalledWith(1, "rfc.evidence.sync", { id: "RFC-0100" });
+      expect(invoke).toHaveBeenNthCalledWith(2, "generated.drift.validate", {
+        target: "workspace",
+        paths: ["src/index.ts"],
+      });
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

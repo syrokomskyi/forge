@@ -12,13 +12,12 @@ entries from all RFCs, and builds a bidirectional trace matrix.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0331: initial implementation.</item>
+  <item>RFC-1320 review-r1: write migrated writeFileAtomic → context.io; dry-run returns renderedFiles (ambient writes bypassed dry-run interception and self-healed stale artifacts inside emit's freshness precheck).</item>
 </CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
-
-import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import { buildGeneratedHeader } from "../../src/utils/generated-marker.ts";
 import { stringify as yamlStringify } from "yaml";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
@@ -55,6 +54,8 @@ export interface DnaTraceResult {
   entries: DnaTraceEntry[];
   diagnostics: Diagnostic[];
   written?: string;
+  /** RFC-1320: dry-run render surface for generated.drift.validate. */
+  renderedFiles?: Record<string, string>;
 }
 
 async function parseDnaRegistry(workspaceRoot: string): Promise<Set<string>> {
@@ -269,7 +270,18 @@ export async function runRfcDnaTraceGenerate(
     written: outRel,
   };
   const jsonContent = `${buildGeneratedHeader({ filePath: outRel, ownerCommand: "rfc.dna.trace.generate" })}${yamlStringify({ ...payload })}\n`;
-  await writeFileAtomic(join(workspaceRoot, outRel), jsonContent);
+
+  // RFC-1320: dry-run must surface renderedFiles — emit's freshness gate
+  // byte-verifies this artifact via generated.drift.validate --target=workspace.
+  if (context.dryRun) {
+    return {
+      data: { ...payload, renderedFiles: { [outRel.replace(/\\/g, "/")]: jsonContent } },
+      exitCode: hasErrors ? 1 : 0,
+      summary: `rfc.dna.trace.generate: dry-run rendered ${outRel} (${registryIds.size} DNA, ${tracedDnaCount} traced)`,
+    };
+  }
+
+  await _io.writeFile(join(workspaceRoot, outRel), jsonContent);
 
   if (outputFormat === "pretty") {
     logger.section(
