@@ -133,6 +133,11 @@ function insideLiteral(source: string, open: number, style: CommentStyle): boole
       .filter((l) => l.trimStart().startsWith("```") || l.trimStart().startsWith("~~~")).length;
     return fences % 2 === 1;
   }
+  if (style === "line") {
+    // GDScript/tres docstrings: an odd triple-quote count puts the run inside
+    // a string literal, not a comment block.
+    return (before.match(/"""/g) ?? []).length % 2 === 1;
+  }
   return false;
 }
 
@@ -178,6 +183,7 @@ function findHeaderSpanInStyle(
   if (tagLine < 0 || !lines[tagLine]!.trimStart().startsWith(prefix)) return null;
   let first = tagLine;
   while (first > 0 && lines[first - 1]!.trimStart().startsWith(prefix)) first -= 1;
+  if (insideLiteral(source, offsets[first]!, style)) return null;
   let last = tagLine;
   while (last + 1 < lines.length && lines[last + 1]!.trimStart().startsWith(prefix)) last += 1;
   const end = offsets[last]! + lines[last]!.length;
@@ -601,17 +607,17 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           .sort((a, b) => a - b);
         // `following` is contractText-relative; contract.end is h.text-relative.
         const absAt = following.length > 0 ? base + following[0]! : h.span.start + contract.end;
-        // Same-line siblings (`# <purpose>t <non-goals>`) close mid-line —
-        // a line-start insert would emit the close before its own open.
+        // Same-line siblings (`# <purpose>t <non-goals>`) close inline —
+        // a line-start insert would emit the close before its own open and
+        // a prefixed insert would split the line leaving a bare tag tail.
         const purposeAbs = base + purposeOpen;
-        const anchor =
-          prefixFor(h.span) !== "" && lineStartOf(next, absAt) === lineStartOf(next, purposeAbs)
-            ? absAt
-            : insertAt(absAt, h);
+        const sameLine =
+          prefixFor(h.span) !== "" && lineStartOf(next, absAt) === lineStartOf(next, purposeAbs);
+        const anchor = sameLine ? absAt : insertAt(absAt, h);
         edits.push({
           start: anchor,
           end: anchor,
-          text: `${lineWrap("</purpose>", h.span)}\n`,
+          text: sameLine ? `</purpose> ` : `${lineWrap("</purpose>", h.span)}\n`,
           order: 10,
         });
         repairs.push("closed-purpose");
@@ -672,11 +678,18 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
             repairs.push("non-goals-items");
           }
         } else if (itemOpens !== itemCloses) {
-          const anchor = insertAt(base + ngEnd, h);
+          // Same-line `<item>…</non-goals>` closes inline — a line-start
+          // insert would emit the close before its own open.
+          const itemOpenAbs = base + ng + "<non-goals>".length + inner.lastIndexOf("<item>");
+          const itemAbsEnd = base + ngEnd;
+          const sameLine =
+            prefixFor(h.span) !== "" &&
+            lineStartOf(next, itemAbsEnd) === lineStartOf(next, itemOpenAbs);
+          const anchor = sameLine ? itemAbsEnd : insertAt(itemAbsEnd, h);
           edits.push({
             start: anchor,
             end: anchor,
-            text: `${lineWrap("</item>", h.span)}\n`,
+            text: sameLine ? `</item> ` : `${lineWrap("</item>", h.span)}\n`,
             order: 10,
           });
           repairs.push("closed-item");
