@@ -4,7 +4,7 @@
 @warpgogol/site-kernel-integrity to @warpgogol/forge for full autonomous mode (RFC-0556).
 Provides getRevisionByPath with integrity-registry lookup and git-history fallback,
 plus getFileRevisionFromHistory and the porcelain dirty-path helpers
-(listDirtyPaths/isDirtyPath) shared by write-refusing commands.</purpose>
+(repoTopLevel/listDirtyPaths/isDirtyPath) shared by write-refusing commands.</purpose>
 <non-goals>
   <item>Do not compute a new per-file counter — reuse the existing integrity revision.</item>
   <item>Do not modify the registry or write any files.</item>
@@ -33,6 +33,20 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_TIMEOUT_MS = 15_000;
 
 export const DIRTY_LIST_CAP = 20;
+
+/** The repository top-level containing `repoRoot` — null when not a git repo. */
+export function repoTopLevel(repoRoot: string): string | null {
+  try {
+    const out = execFileSync("git", ["-C", repoRoot, "rev-parse", "--show-toplevel"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15000,
+    }).trim();
+    return out.length > 0 ? out : null;
+  } catch {
+    return null;
+  }
+}
 
 /** Paths with uncommitted changes under `repoRoot` — null when not a git repo. */
 export function listDirtyPaths(repoRoot: string): string[] | null {

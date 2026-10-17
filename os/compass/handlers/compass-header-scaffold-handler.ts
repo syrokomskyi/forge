@@ -35,7 +35,7 @@ import {
   type ScaffoldFileInput,
   type ScaffoldFileResult,
 } from "./compass-header-scaffold.ts";
-import { DIRTY_LIST_CAP, isDirtyPath, listDirtyPaths } from "./git-revision.ts";
+import { DIRTY_LIST_CAP, isDirtyPath, listDirtyPaths, repoTopLevel } from "./git-revision.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import type {
@@ -242,11 +242,14 @@ export async function runCompassHeaderScaffold(
   // ── Dirty-target refusal — apply mode only; census never writes ──────────
   if (!census && !force && writes.length > 0) {
     const rawDirty = listDirtyPaths(baseRoot);
-    if (rawDirty && rawDirty.length > 0) {
-      // git status reports paths relative to the repo root at baseRoot;
-      // reports carry workspace-relative paths — rebase before matching.
+    const topLevel = repoTopLevel(baseRoot);
+    if (rawDirty && rawDirty.length > 0 && topLevel) {
+      // Porcelain paths are repo-top-relative while reports carry
+      // workspace-relative paths — rebase through the actual top-level so a
+      // scoped scan (--package/--packages inside one repo, or a nested
+      // --workpiece repo) still sees its dirty targets.
       const dirty = rawDirty.map((d) => {
-        const rebased = relative(context.workspaceRoot, resolve(baseRoot, d)).replace(/\\/g, "/");
+        const rebased = relative(context.workspaceRoot, resolve(topLevel, d)).replace(/\\/g, "/");
         return d.endsWith("/") && !rebased.endsWith("/") ? `${rebased}/` : rebased;
       });
       const dirtyTargets = writes.filter((w) => isDirtyPath(w.path, dirty));

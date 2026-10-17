@@ -117,6 +117,23 @@ function atLineStart(source: string, index: number): boolean {
   return source.slice(lineStart, index).trim() === "";
 }
 
+/**
+ * Line-start openers still sit inside fixtures when they live inside a
+ * multi-line template literal (odd unescaped-backtick count) or a fenced
+ * code block (odd ```-fence count) — neither is a real comment.
+ */
+function insideLiteral(source: string, open: number, style: CommentStyle): boolean {
+  const before = source.slice(0, open);
+  if (style === "block") {
+    return (before.match(/(?<!\\)`/g) ?? []).length % 2 === 1;
+  }
+  if (style === "html") {
+    const fences = before.split("\n").filter((l) => l.trimStart().startsWith("```")).length;
+    return fences % 2 === 1;
+  }
+  return false;
+}
+
 function findHeaderSpanInStyle(
   source: string,
   tagIdx: number,
@@ -125,7 +142,7 @@ function findHeaderSpanInStyle(
 ): HeaderSpan | null {
   if (style === "block") {
     const open = source.lastIndexOf("/*", tagIdx);
-    if (open < 0 || !atLineStart(source, open)) return null;
+    if (open < 0 || !atLineStart(source, open) || insideLiteral(source, open, style)) return null;
     if (source.slice(open, tagIdx).includes("*/")) return null;
     const close = source.indexOf("*/", tagIdx);
     if (close < 0) return null;
@@ -133,7 +150,7 @@ function findHeaderSpanInStyle(
   }
   if (style === "html") {
     const open = source.lastIndexOf("<!--", tagIdx);
-    if (open < 0 || !atLineStart(source, open)) return null;
+    if (open < 0 || !atLineStart(source, open) || insideLiteral(source, open, style)) return null;
     if (source.slice(open, tagIdx).includes("-->")) return null;
     const close = source.indexOf("-->", tagIdx);
     if (close < 0) return null;
@@ -205,6 +222,7 @@ function stemPhrase(path: string): string {
   const raw = dot > 0 ? filename.slice(0, dot) : filename;
   return raw
     .replace(/\.(test|spec)$/i, "")
+    .replace(/[[\]]/g, " ")
     .replace(/[-_.]+/g, " ")
     .trim();
 }
@@ -228,11 +246,14 @@ function derivePurpose(input: ScaffoldFileInput): { text: string; sentinel: bool
   if (isTest) {
     const title = firstDescribeTitle(source);
     if (title) {
-      const text = `Unit tests for ${title} — covers the ${stem} suite surface and its observable contract.`;
+      const clean = title.replace(/[<>]/g, "");
+      const text = `Unit tests for ${clean} — covers the ${stem} suite surface and its observable contract.`;
       if (purposeMeetsBar(text, tokens)) return { text, sentinel: false };
     }
   } else {
-    const symbols = exportedSymbols(source).slice(0, 3);
+    const symbols = exportedSymbols(source)
+      .slice(0, 3)
+      .map((s) => s.replace(/[<>]/g, ""));
     if (symbols.length > 0) {
       const text = `Provides ${symbols.join(", ")} for the ${stem} module surface consumed by callers of this layer.`;
       if (purposeMeetsBar(text, tokens)) return { text, sentinel: false };
@@ -278,7 +299,8 @@ function wrapHeader(blocks: string[], style: CommentStyle, path: string): string
  * markers in the template region would render as text.
  */
 function insertStyleFor(path: string, source: string): CommentStyle {
-  if (path.endsWith(".astro") && !source.startsWith("---")) return "html";
+  const start = source.charCodeAt(0) === 0xfeff ? 1 : 0;
+  if (path.endsWith(".astro") && !source.startsWith("---", start)) return "html";
   return commentStyleFor(path);
 }
 
@@ -300,9 +322,13 @@ function insertionOffset(source: string, path: string): number {
     if (openEnd >= 0) return openEnd + 1;
   }
   if (path.endsWith(".md") && source.startsWith("---", i)) {
-    const close = source.indexOf("\n---", i + 3);
+    // The closing fence must be a --- only line — `----` rules or body
+    // horizontal rules are not frontmatter terminators.
+    const close = source.slice(i + 3).search(/\r?\n---[^\S\r\n]*(?:\r?\n|$)/);
     if (close >= 0) {
-      const afterClose = source.indexOf("\n", close + 4);
+      const nlLen = source[i + 3 + close] === "\r" ? 2 : 1;
+      const fenceStart = i + 3 + close + nlLen;
+      const afterClose = source.indexOf("\n", fenceStart);
       i = afterClose < 0 ? source.length : afterClose + 1;
     }
   }
@@ -315,6 +341,11 @@ function insertionOffset(source: string, path: string): number {
   }
   while (source[i] === "\n" || source[i] === "\r") i += 1;
   return i;
+}
+
+/** Offset of the start of the line containing `index`. */
+function lineStartOf(source: string, index: number): number {
+  return source.lastIndexOf("\n", index - 1) + 1;
 }
 
 interface Edit {
@@ -356,7 +387,29 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
 
   // Fixture-string safety — markup candidates outside a header comment are
   // string-literal/code-borne tags; dynamic tag construction is agent work.
+  // An unterminated comment opener swallowing the tags is a malformation
+  // (SCAFFOLD-02), not a fixture.
   if (!span && tagIdx >= 0) {
+    const unterminated = (
+      [
+        ["/*", "*/"],
+        ["<!--", "-->"],
+      ] as const
+    ).some(([opener, closer]) => {
+      const open = source.lastIndexOf(opener, tagIdx);
+      return (
+        open >= 0 &&
+        atLineStart(source, open) &&
+        !source.slice(open, tagIdx).includes(closer) &&
+        source.indexOf(closer, tagIdx) < 0
+      );
+    });
+    if (unterminated) {
+      return skipped("unrepairable malformation", source, {
+        ruleId: "SCAFFOLD-02",
+        message: "unterminated comment carries compass tags — file left untouched",
+      });
+    }
     const lines = tagLines(source);
     return skipped("fixture-string markup", source, {
       ruleId: "SCAFFOLD-01",
@@ -387,7 +440,10 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
     const style = insertStyleFor(pathFromRoot, source);
     const header = wrapHeader(blocks, style, pathFromRoot);
     const at = insertionOffset(source, pathFromRoot);
-    const next = `${source.slice(0, at)}${header}\n\n${source.slice(at)}`;
+    // Never glue the header onto a partial last line (EOF shebang, frontmatter
+    // fence without trailing newline, terminal 'use client').
+    const pad = at > 0 && source[at - 1] !== "\n" ? "\n" : "";
+    const next = `${source.slice(0, at)}${pad}${header}\n\n${source.slice(at)}`;
     if (!closesCleanly(next, pathFromRoot)) {
       return skipped("unrepairable malformation", source, {
         ruleId: "SCAFFOLD-02",
@@ -422,6 +478,17 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           .map((l) => prefix + l)
           .join("\n");
   };
+  // Line-style spans may only be edited at line boundaries — a mid-line
+  // insert either splits the prefix run or glues text onto a comment line.
+  // insertAt: before the line containing absPos. appendAt: past the run's
+  // end for line style (closeStart === end there), before the comment
+  // terminator otherwise. Line-style text needs a leading "\n".
+  const insertAt = (absPos: number, h: { span: HeaderSpan }) =>
+    prefixFor(h.span) !== "" ? lineStartOf(next, absPos) : absPos;
+  const appendAt = (h: { span: HeaderSpan }) =>
+    prefixFor(h.span) !== "" ? h.span.end : h.span.closeStart;
+  const appendText = (block: string, s: HeaderSpan) =>
+    prefixFor(s) !== "" ? `\n${block}` : `${block}\n`;
   const stageGuard = (): ScaffoldFileResult => ({
     disposition: "skipped",
     source,
@@ -450,14 +517,24 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
         .filter((i) => i >= 0)
         .sort((a, b) => a - b);
       let at: number;
+      let closeLine: string;
       if (later.length > 0 && prefix !== "") {
         // Anchor at the sibling tag's line start — a mid-line insert would
         // split the contiguous prefix run line comments depend on.
         at = h.text.lastIndexOf("\n", later[0]! - 1) + 1;
+        closeLine = `${prefix}</${tag}>\n`;
+      } else if (later.length > 0) {
+        at = later[0]!;
+        closeLine = `</${tag}>\n`;
+      } else if (prefix !== "") {
+        // End of the prefix run — open a fresh line rather than gluing onto
+        // the last comment line's tail.
+        at = h.span.end - h.span.start;
+        closeLine = `\n${prefix}</${tag}>`;
       } else {
-        at = later.length > 0 ? later[0]! : h.span.closeStart - h.span.start;
+        at = h.span.closeStart - h.span.start;
+        closeLine = `</${tag}>\n`;
       }
-      const closeLine = prefix === "" ? `</${tag}>\n` : `${prefix}</${tag}>\n`;
       closeEdits.push({ start: h.span.start + at, end: h.span.start + at, text: closeLine });
       repairs.push(`closed-${tag.toLowerCase().replace(/_/g, "-")}`);
     }
@@ -473,11 +550,22 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
     const contract = blockSpan(h.text, "MODULE_CONTRACT");
     if (!contract) {
       // The header comment carries stray tags but no contract — compose one
-      // inside the comment before its terminator.
+      // inside the comment. Canonical order puts MODULE_CONTRACT first, so it
+      // anchors before the earliest stray block (or at the run's end).
       const purpose = derivePurpose(input);
       usedSentinel = purpose.sentinel;
-      const insertion = lineWrap(contractBlock(purpose.text, [SENTINEL_NONGOAL]), h.span) + "\n";
-      edits.push({ start: h.span.closeStart, end: h.span.closeStart, text: insertion });
+      const insertion = lineWrap(contractBlock(purpose.text, [SENTINEL_NONGOAL]), h.span);
+      const strayIdx = ["<KEY_DECISIONS>", "<CHANGE_SUMMARY>"]
+        .map((t) => h.text.indexOf(t))
+        .filter((i) => i >= 0)
+        .sort((a, b) => a - b)[0];
+      if (strayIdx !== undefined) {
+        const at = insertAt(h.span.start + strayIdx, h);
+        edits.push({ start: at, end: at, text: `${insertion}\n` });
+      } else {
+        const at = appendAt(h);
+        edits.push({ start: at, end: at, text: appendText(insertion, h.span) });
+      }
       repairs.push("inserted-module-contract");
     } else {
       const contractText = h.text.slice(contract.start, contract.end);
@@ -501,10 +589,12 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           .map((t) => contractText.indexOf(t, purposeOpen + 1))
           .filter((i) => i >= 0)
           .sort((a, b) => a - b);
-        const at = following.length > 0 ? following[0]! : contract.end;
+        // `following` is contractText-relative; contract.end is h.text-relative.
+        const absAt = following.length > 0 ? base + following[0]! : h.span.start + contract.end;
+        const anchor = insertAt(absAt, h);
         edits.push({
-          start: base + at,
-          end: base + at,
+          start: anchor,
+          end: anchor,
           text: `${lineWrap("</purpose>", h.span)}\n`,
         });
         repairs.push("closed-purpose");
@@ -512,20 +602,20 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
 
       const ng = contractText.indexOf("<non-goals>");
       if (ng < 0) {
-        const closeAt = base + contractText.indexOf("</MODULE_CONTRACT>");
+        const anchor = insertAt(base + contractText.indexOf("</MODULE_CONTRACT>"), h);
         edits.push({
-          start: closeAt,
-          end: closeAt,
+          start: anchor,
+          end: anchor,
           text: `${lineWrap(`<non-goals>\n  <item>${SENTINEL_NONGOAL}</item>\n</non-goals>`, h.span)}\n`,
         });
         repairs.push("inserted-non-goals");
       } else {
         let ngEnd = contractText.indexOf("</non-goals>", ng);
         if (ngEnd < 0) {
-          const closeAt = base + contractText.indexOf("</MODULE_CONTRACT>");
+          const anchor = insertAt(base + contractText.indexOf("</MODULE_CONTRACT>"), h);
           edits.push({
-            start: closeAt,
-            end: closeAt,
+            start: anchor,
+            end: anchor,
             text: `${lineWrap("</non-goals>", h.span)}\n`,
           });
           repairs.push("closed-non-goals");
@@ -540,16 +630,33 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
             .map((l) => l.trim().replace(/^[#;]+\s?/, ""))
             .filter((l) => l.length > 0 && !l.startsWith("*") && !l.startsWith("//"));
           const items = bareLines.length > 0 ? bareLines : [SENTINEL_NONGOAL];
-          edits.push({
-            start: base + ng + "<non-goals>".length,
-            end: base + ngEnd,
-            text: lineWrap(`\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n`, h.span),
-          });
-          repairs.push("non-goals-items");
+          const ngPrefix = prefixFor(h.span);
+          if (ngPrefix !== "") {
+            // Line style: replace whole prefixed lines — the line after
+            // <non-goals> through the line before </non-goals>.
+            const innerStart = next.indexOf("\n", base + ng) + 1;
+            const innerEnd = lineStartOf(next, base + ngEnd);
+            if (innerStart > 0 && innerStart <= innerEnd) {
+              edits.push({
+                start: innerStart,
+                end: innerEnd,
+                text: items.map((i) => `${ngPrefix}  <item>${i}</item>\n`).join(""),
+              });
+              repairs.push("non-goals-items");
+            }
+          } else {
+            edits.push({
+              start: base + ng + "<non-goals>".length,
+              end: base + ngEnd,
+              text: `\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n`,
+            });
+            repairs.push("non-goals-items");
+          }
         } else if (itemOpens !== itemCloses) {
+          const anchor = insertAt(base + ngEnd, h);
           edits.push({
-            start: base + ngEnd,
-            end: base + ngEnd,
+            start: anchor,
+            end: anchor,
             text: `${lineWrap("</item>", h.span)}\n`,
           });
           repairs.push("closed-item");
@@ -580,9 +687,8 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           { start: h.span.start + mc.end, end: h.span.start + mc.end, text: `\n${kd}` },
         ]);
       } else {
-        next = applyEdits(next, [
-          { start: h.span.closeStart, end: h.span.closeStart, text: `${kd}\n` },
-        ]);
+        const at = appendAt(h);
+        next = applyEdits(next, [{ start: at, end: at, text: appendText(kd, h.span) }]);
       }
       repairs.push("inserted-key-decisions");
     }
@@ -601,9 +707,8 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
           { start: h.span.start + anchor, end: h.span.start + anchor, text: `\n${cs}` },
         ]);
       } else {
-        next = applyEdits(next, [
-          { start: h.span.closeStart, end: h.span.closeStart, text: `${cs}\n` },
-        ]);
+        const at = appendAt(h);
+        next = applyEdits(next, [{ start: at, end: at, text: appendText(cs, h.span) }]);
       }
       repairs.push("inserted-change-summary");
     }

@@ -22,6 +22,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync, readFileSync } from "nod
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { scaffoldFile, type ScaffoldFileInput } from "../compass-header-scaffold.ts";
+import { forgeYaml } from "./forge-yaml-fixture.ts";
 import { runCompassHeaderScaffold } from "../compass-header-scaffold-handler.ts";
 import { resolveCompassPolicy, type CompassPolicy } from "../../policy.ts";
 import type {
@@ -434,7 +435,7 @@ describe("scaffoldFile codemod (RFC-1318)", () => {
     const bom = `﻿export const missionWidget = 1;\n`;
     const bombed = scaffoldFile(input(bom), policy);
     expect(bombed.source.charCodeAt(0)).toBe(0xfeff);
-    expect(bombed.source.indexOf("/*")).toBe(1);
+    expect(bombed.source.indexOf("/*")).toBe(2); // BOM, newline, then /*
 
     const directive = `"use client";\n\nexport const missionWidget = 1;\n`;
     const directived = scaffoldFile(input(directive), policy);
@@ -452,11 +453,135 @@ describe("scaffoldFile codemod (RFC-1318)", () => {
     expect(result.source).toBe(source);
   });
 
-  it("skipped: an unterminated comment carrying tags leaves the file untouched", () => {
+  it("SCAFFOLD-02: an unterminated comment carrying tags leaves the file untouched", () => {
     const source = `/*\n${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\nexport const missionWidget = 1;\n`;
     const result = scaffoldFile(input(source), policy);
     expect(result.disposition).toBe("skipped");
+    expect(result.diagnostic?.ruleId).toBe("SCAFFOLD-02");
     expect(result.source).toBe(source);
+  });
+
+  it("SCAFFOLD-01: a line-start /* inside a multi-line template literal stays untouched", () => {
+    const source = ["const fixture = `", "/*", MC_OPEN, "*/", "`;", "export const t = 1;"].join(
+      "\n",
+    );
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("skipped");
+    expect(result.diagnostic?.ruleId).toBe("SCAFFOLD-01");
+    expect(result.source).toBe(source);
+  });
+
+  it("SCAFFOLD-01: an html comment inside a fenced code block stays untouched", () => {
+    const fence = "```";
+    const source = ["# Doc", "", fence, "<!--", MC_OPEN, "-->", fence, "", "Body."].join("\n");
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/docs/mission-notes.md",
+        workspaceRelativePath: "docs/mission-notes.md",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("skipped");
+    expect(result.diagnostic?.ruleId).toBe("SCAFFOLD-01");
+    expect(result.source).toBe(source);
+  });
+
+  it("repaired: .gd stage-1 close lands on its own prefixed line before the sibling", () => {
+    const header = `# ${MC_OPEN}\n# <purpose>${PURPOSE}</purpose>\n# <non-goals>\n#   <item>Fixtures only.</item>\n# </non-goals>\n# ${CS_OPEN}\n# ${CS_CLOSE}`;
+    const source = `${header}\nextends Node\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-module-contract");
+    const mcClose = result.source.indexOf(MC_CLOSE);
+    const csOpen = result.source.indexOf(CS_OPEN);
+    expect(result.source).toContain(`# ${MC_CLOSE}`);
+    expect(mcClose).toBeLessThan(csOpen);
+    expect(result.source).not.toContain("# #");
+  });
+
+  it("repaired: .gd stage-2 inner repairs keep every inserted line prefixed", () => {
+    // Unclosed <purpose> + missing CHANGE_SUMMARY — exercises stage-2 and
+    // stage-4 anchors on a line-style span.
+    const header = `# ${MC_OPEN}\n# <purpose>${PURPOSE}\n# <non-goals>\n#   <item>Fixtures only.</item>\n# </non-goals>\n# ${MC_CLOSE}`;
+    const source = `${header}\nextends Node\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-purpose");
+    expect(result.repairs).toContain("inserted-change-summary");
+    expect(result.source).toContain("# </purpose>");
+    expect(result.source).toContain(`# ${CS_OPEN}`);
+    expect(result.source).not.toContain("# #");
+    // No bare tag lines — every tag line keeps its comment prefix.
+    for (const line of result.source.split("\n")) {
+      if (line.includes("<") && line.includes(">")) {
+        expect(line.trimStart().startsWith("#") || line.includes("extends")).toBe(true);
+      }
+    }
+    const second = scaffoldFile(
+      input(result.source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(second.disposition).toBe("unchanged");
+  });
+
+  it("inserted: .tscn headers use the ; line prefix", () => {
+    const source = `[gd_scene format=3]\n\n[node name="Mission" type="Node"]\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/scenes/mission.tscn",
+        workspaceRelativePath: "scenes/mission.tscn",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).not.toBe("skipped");
+    expect(result.source).toContain(`; ${MC_OPEN}`);
+    expect(result.source).not.toContain("; ;");
+    const second = scaffoldFile(
+      input(result.source, {
+        pathFromRoot: "packages/fixture-pkg/scenes/mission.tscn",
+        workspaceRelativePath: "scenes/mission.tscn",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(second.disposition).toBe("unchanged");
+  });
+
+  it("repaired: a stray CHANGE_SUMMARY without a contract keeps canonical order", () => {
+    const header = `${CS_OPEN}\n  <item>RFC-9999: stray.</item>\n${CS_CLOSE}`;
+    const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("repaired");
+    const mcOpen = result.source.indexOf(MC_OPEN);
+    const csOpen = result.source.indexOf(CS_OPEN);
+    expect(mcOpen).toBeGreaterThan(-1);
+    expect(mcOpen).toBeLessThan(csOpen);
   });
 });
 
@@ -603,6 +728,45 @@ describe("runCompassHeaderScaffold handler (RFC-1318)", () => {
     );
     expect(result.exitCode).toBe(0);
     expect(dataOf(result).files.find((f) => f.path === MEDIUM_ROOT)?.disposition).toBe("inserted");
+  });
+
+  it("apply under --package refuses dirty targets inside the scanned package", async () => {
+    // Porcelain paths are repo-top-relative — a package-scoped scan must still
+    // match dirty files below the scan root.
+    const target = "packages/fixture-pkg/src/widget.ts";
+    writeFixture(target, `export const widget = 1;\n`);
+    commitAll();
+    writeFixture(target, `export const widget = 2;\n`); // dirty
+
+    const result = await runCompassHeaderScaffold(
+      makeInput({ package: "fixture-pkg" }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("dirty");
+    expect(readFileSync(join(tempDir, target), "utf8")).toBe("export const widget = 2;\n");
+  });
+
+  it("--files honors excludedPaths — exclusions cannot be overridden by naming a file", async () => {
+    writeFileSync(
+      join(tempDir, "forge.yaml"),
+      forgeYaml(
+        '  compass:\n    excludedPaths:\n      - { pattern: "src/templates/**", reason: template-source }\n',
+      ),
+    );
+    const excluded = "packages/fixture-pkg/src/templates/widget.ts";
+    writeFixture(excluded, `export const widget = 1;\n`);
+    commitAll();
+
+    const result = await runCompassHeaderScaffold(
+      makeInput({ files: [excluded], force: true }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(0);
+    const report = dataOf(result).files.find((f) => f.path === excluded);
+    expect(report?.disposition).toBe("skipped");
+    expect(report?.skipReason).toContain("template-source");
+    expect(readFileSync(join(tempDir, excluded), "utf8")).toBe("export const widget = 1;\n");
   });
 
   it("apply inside a --workpiece leaf repo refuses dirty targets it can see", async () => {
