@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1321: commitReferencesRfc compares case-insensitively — --id rfc-NNNN satisfies an RFC-NNNN subject (RFC-IMP-03 false-fail closed)</item>
   <item>RFC-1321: review-r2: stringLiteralValue — comment-aware literal extractor keys COMMAND_PROVENANCE cleanly (adjacent comments no longer corrupt the key or evade CMDGEN-03); (?!\d) boundary in commitCarriesGovernanceProvenance; non-string --id guard</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-IMP-07</history>
+  <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -311,7 +311,11 @@ function mutateFrontmatter(
 
 /** Extract the inline `(evidence: ...)` annotation text from a criterion line. */
 function extractEvidenceAnnotation(line: string): string | undefined {
-  return line.match(/\(evidence:\s*(.+?)\)/)?.[1]?.trim();
+  // The authoritative annotation is the LAST occurrence — criterion prose may
+  // reference the literal `(evidence: ...)` syntax mid-sentence (RFC-1322's own
+  // AC-1/AC-2 do), and taking the first match would certify `...` as evidence.
+  const matches = [...line.matchAll(/\(evidence:\s*(.+?)\)/g)];
+  return matches.at(-1)?.[1]?.trim();
 }
 
 /**
