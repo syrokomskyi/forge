@@ -10,12 +10,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1094: --mode flag; mode-aware COMPASS-CS-05/06/07 diagnostics via shared evaluateV2Rules; PROTECTED_RE now aliases GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: rewrote trim as v2 repair (collapse >5 described items into history, remove ID-less items, normalize history); removed compass.changesummary.validate and the classify machinery (classifyChangeSummaryItem, PROTECTED_RE, BOILERPLATE_RE).</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
-  <history>RFC-0349, RFC-0538, RFC-0556</history>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
+  <history>RFC-0349, RFC-0538, RFC-0556, RFC-1094</history>
 </CHANGE_SUMMARY>
 */
 
@@ -47,7 +47,7 @@ export async function runCompassSummaryTrim(
 ): Promise<
   ForgeCommandResult<{
     command: string;
-    status: "ok";
+    status: "ok" | "failed";
     files: Array<{ path: string; removed: string[]; kept: number }>;
     skippedUnsafe: string[];
   }>
@@ -166,14 +166,18 @@ export async function runCompassSummaryTrim(
   return {
     data: {
       command: "compass.summary.trim",
-      status: "ok",
+      status: skippedUnsafe.length > 0 ? "failed" : "ok",
       files: results,
       skippedUnsafe,
     },
-    exitCode: 0,
+    // Same CS-08 contract as migrate and scaffold-apply: an unsafe file is
+    // corruption, not advisory debt — the run fails closed and names it.
+    exitCode: skippedUnsafe.length > 0 ? 1 : 0,
     summary:
       `[compass.summary.trim] files=${results.length}, removed=${results.reduce((sum, r) => sum + r.removed.length, 0)}` +
-      (skippedUnsafe.length > 0 ? `, skipped-unsafe=${skippedUnsafe.length}` : ""),
+      (skippedUnsafe.length > 0
+        ? `, skipped-unsafe=${skippedUnsafe.length}: ${skippedUnsafe.join(", ")}`
+        : ""),
     nextSteps: [
       {
         action: `Commit the repaired headers: pnpm exec forge run ecosystem.commit`,

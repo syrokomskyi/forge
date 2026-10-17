@@ -12,6 +12,7 @@ PURPOSE, ORDER, and TODO rule families.
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for SYNTAX-01 parity.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -285,6 +286,9 @@ describe("compass v2 contract (RFC-1094)", () => {
     const diag = dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-08");
     expect(diag, "CS-08 must fire on a mid-block comment terminator").toBeDefined();
     expect(diag!.message).toContain(truncTerm);
+    // RFC-1323: corruption detection, not advisory debt — always an error,
+    // even in the default warning mode where sibling v2 rules stay warnings.
+    expect(diag!.severity).toBe("error");
   });
 
   it("CS-08 negative: a well-formed header emits no terminator diagnostic (RFC-1323)", async () => {

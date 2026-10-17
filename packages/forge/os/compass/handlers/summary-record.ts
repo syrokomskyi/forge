@@ -15,12 +15,12 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1233: stripGitTrailers at the record point + sanitizeItemText star-slash guard — commit-message trailers (Token: value / Token #value, plus markdown-link attribution lines like "Generated with [X](url)") no longer pollute injected items.</item>
   <item>Session-retro 2026-10-08: id-in-diff dedup — auto-inject skips when the worktree diff already carries a same-ID item (HEAD-vs-worktree via git show HEAD:path), closing the descriptive+generic duplicate class seen on RFC-1237.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1323: authored text asserts COMPASS-CS-08 via comment-safety; --injected text neutralizes style-aware and reports neutralized; getLineCommentPrefix/HEADER_SCAN_LINES moved to os/compass/comment-safety.ts.</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
-  <history>CONTRACT-02, PURPOSE-02, RFC-1095, RFC-1097, RFC-1220</history>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
+  <history>CONTRACT-02, PURPOSE-02, RFC-1095, RFC-1097, RFC-1220, RFC-1233</history>
 </CHANGE_SUMMARY>
 */
 
@@ -439,43 +439,55 @@ export async function runCompassSummaryRecord(
   // neutralized, not rejected. Authored --text asserts per target style.
   const injected = input.flags["injected"] === true;
 
-  if (!injected) {
-    // Fail BEFORE any file write: check the text against every target's
-    // comment style — a `-->` that is harmless in a .ts header still
-    // terminates a .md one, so the whole target set gates together. The
-    // style is resolved exactly the way the write loop resolves it (the
-    // comment actually enclosing the block) — `.astro` files can carry an
-    // html header the extension table does not predict, and guessing would
-    // diverge the up-front gate from the per-file assert mid-loop.
-    for (const file of files) {
-      const absPath = resolve(baseRoot, file);
-      const rel = relative(baseRoot, absPath).replace(/\\/g, "/");
-      let style: CommentStyle | null = null;
-      try {
-        const source = await io.readFile(absPath);
-        const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
-        const inHeaderRegion =
-          blockMatch !== null &&
-          blockMatch.index !== undefined &&
-          source.slice(0, blockMatch.index).split("\n").length <= HEADER_SCAN_LINES;
-        if (inHeaderRegion) style = enclosingCommentStyle(source, blockMatch.index!, rel);
-      } catch {
-        // Unreadable or block-less targets are skipped by the write loop —
-        // nothing lands in a comment, so nothing needs gating here.
+  // Fail BEFORE any file write: gate every target together. The style is
+  // resolved exactly the way the write loop resolves it (the comment
+  // actually enclosing the block) — `.astro` files can carry an html header
+  // the extension table does not predict, and guessing would diverge the
+  // up-front gate from the per-file assert mid-loop. Two surfaces gate here:
+  // the new text (authored only — injected text is neutralized, not gated)
+  // and every EXISTING item, which `buildChangeSummaryBlock` re-emits and
+  // asserts — a pre-corrupted item must abort before the first write, not
+  // mid-batch after earlier files already landed.
+  for (const file of files) {
+    const absPath = resolve(baseRoot, file);
+    const rel = relative(baseRoot, absPath).replace(/\\/g, "/");
+    let style: CommentStyle | null = null;
+    let existing: string[] = [];
+    try {
+      const source = await io.readFile(absPath);
+      const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
+      const inHeaderRegion =
+        blockMatch !== null &&
+        blockMatch.index !== undefined &&
+        source.slice(0, blockMatch.index).split("\n").length <= HEADER_SCAN_LINES;
+      if (inHeaderRegion) {
+        style = enclosingCommentStyle(source, blockMatch.index!, rel);
+        existing = parseChangeSummary(blockMatch![0]).items;
       }
-      if (style === null) continue;
-      try {
+    } catch {
+      // Unreadable or block-less targets are skipped by the write loop —
+      // nothing lands in a comment, so nothing needs gating here.
+    }
+    if (style === null) continue;
+    try {
+      for (const item of existing) {
+        assertCompassCommentSafe(item, style, {
+          file: rel,
+          block: "CHANGE_SUMMARY",
+        });
+      }
+      if (!injected) {
         assertCompassCommentSafe(text, style, {
           file: rel,
           block: "CHANGE_SUMMARY",
         });
-      } catch (err) {
-        if (err instanceof CompassCommentSafetyError) {
-          context.logger.error(`[compass.summary.record] ${err.message}\n  ${err.fixHint}`);
-          return { exitCode: 1, summary: `COMPASS-CS-08: ${err.message}` };
-        }
-        throw err;
       }
+    } catch (err) {
+      if (err instanceof CompassCommentSafetyError) {
+        context.logger.error(`[compass.summary.record] ${err.message}\n  ${err.fixHint}`);
+        return { exitCode: 1, summary: `COMPASS-CS-08: ${err.message}` };
+      }
+      throw err;
     }
   }
 
