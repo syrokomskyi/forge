@@ -15,16 +15,14 @@ for Compass source-file inventory.</purpose>
   <item>Policy literals come from resolveCompassPolicy — no stack- or consumer-specific values live in this module.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1111: normalize dynamic-route bracket stems in deriveFileTokens — [token]/[...slug]/[lang] segments strip brackets and dots so PURPOSE-02 is satisfiable for Astro dynamic routes.</item>
   <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
-  <history>RFC-0348, RFC-0556, RFC-1094, RFC-1095, RFC-1096</history>
+  <item>RFC-1318</item>
+  <history>RFC-0348, RFC-0556, RFC-1094, RFC-1095, RFC-1096, RFC-1097</history>
 </CHANGE_SUMMARY>
 
 */
@@ -212,7 +210,7 @@ function detectWorkspaceKind(segments: string[], policy: CompassPolicy): Compass
   return (first !== undefined && policy.workspaceKinds[first]) || "app";
 }
 
-function detectWorkspaceName(segments: string[], policy: CompassPolicy): string {
+export function detectWorkspaceName(segments: string[], policy: CompassPolicy): string {
   if (isWorkspaceDir(segments[0], policy)) {
     return segments[1] ?? "unknown";
   }

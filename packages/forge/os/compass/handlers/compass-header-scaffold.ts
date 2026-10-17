@@ -15,6 +15,7 @@ deference, deterministic repair of known malformation shapes.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <item>RFC-1318</item>
 </CHANGE_SUMMARY>
 */
 
@@ -106,6 +107,16 @@ function firstTagIndex(source: string): number {
  * them. Repair anchors at the header comment's own terminator, never a close
  * marker below it (fixture blocks or later comments must not absorb the boundary).
  */
+/**
+ * A comment opener counts as a header carrier only when nothing but
+ * whitespace precedes it on its line — an opener inside a string literal or
+ * mid-expression is fixture material, not a comment (SCAFFOLD-01).
+ */
+function atLineStart(source: string, index: number): boolean {
+  const lineStart = source.lastIndexOf("\n", index - 1) + 1;
+  return source.slice(lineStart, index).trim() === "";
+}
+
 function findHeaderSpanInStyle(
   source: string,
   tagIdx: number,
@@ -114,7 +125,7 @@ function findHeaderSpanInStyle(
 ): HeaderSpan | null {
   if (style === "block") {
     const open = source.lastIndexOf("/*", tagIdx);
-    if (open < 0) return null;
+    if (open < 0 || !atLineStart(source, open)) return null;
     if (source.slice(open, tagIdx).includes("*/")) return null;
     const close = source.indexOf("*/", tagIdx);
     if (close < 0) return null;
@@ -122,7 +133,7 @@ function findHeaderSpanInStyle(
   }
   if (style === "html") {
     const open = source.lastIndexOf("<!--", tagIdx);
-    if (open < 0) return null;
+    if (open < 0 || !atLineStart(source, open)) return null;
     if (source.slice(open, tagIdx).includes("-->")) return null;
     const close = source.indexOf("-->", tagIdx);
     if (close < 0) return null;
@@ -242,10 +253,10 @@ function contractBlock(purposeText: string, nonGoalItems: string[]): string {
   ].join("\n");
 }
 
-function keyDecisionsBlock(items: string[], path: string): string {
-  const prefix = getLineCommentPrefix(path);
-  const lines = ["<KEY_DECISIONS>", ...items.map((i) => `  <item>${i}</item>`), "</KEY_DECISIONS>"];
-  return prefix ? lines.map((l) => prefix + l).join("\n") : lines.join("\n");
+function keyDecisionsBlock(items: string[]): string {
+  return ["<KEY_DECISIONS>", ...items.map((i) => `  <item>${i}</item>`), "</KEY_DECISIONS>"].join(
+    "\n",
+  );
 }
 
 function wrapHeader(blocks: string[], style: CommentStyle, path: string): string {
@@ -261,7 +272,22 @@ function wrapHeader(blocks: string[], style: CommentStyle, path: string): string
   return `/*\n${body}\n*/`;
 }
 
-/** Offset where a new header lands — after BOM, shebang, astro frontmatter, and directive prologue. */
+/**
+ * Comment style for a NEW header. .astro gets `/* *\u002f` inside a `---`
+ * frontmatter fence but `<!-- -->` when the file has none — literal block
+ * markers in the template region would render as text.
+ */
+function insertStyleFor(path: string, source: string): CommentStyle {
+  if (path.endsWith(".astro") && !source.startsWith("---")) return "html";
+  return commentStyleFor(path);
+}
+
+/**
+ * Offset where a new header lands — after BOM, shebang, astro frontmatter,
+ * markdown YAML frontmatter, and directive prologue. For .astro the offset is
+ * INSIDE the frontmatter fence (block comment); for .md it is after the fence
+ * (frontmatter stays first, then the `<!-- -->` header).
+ */
 function insertionOffset(source: string, path: string): number {
   let i = 0;
   if (source.charCodeAt(0) === 0xfeff) i = 1;
@@ -269,11 +295,16 @@ function insertionOffset(source: string, path: string): number {
     const nl = source.indexOf("\n", i);
     i = nl < 0 ? source.length : nl + 1;
   }
-  // .astro headers land inside the frontmatter fence (block comment) when the
-  // file has one — `---\n` opens, the header follows it directly.
   if (path.endsWith(".astro") && source.startsWith("---", i)) {
     const openEnd = source.indexOf("\n", i);
     if (openEnd >= 0) return openEnd + 1;
+  }
+  if (path.endsWith(".md") && source.startsWith("---", i)) {
+    const close = source.indexOf("\n---", i + 3);
+    if (close >= 0) {
+      const afterClose = source.indexOf("\n", close + 4);
+      i = afterClose < 0 ? source.length : afterClose + 1;
+    }
   }
   for (;;) {
     const m = /^[^\S\r\n]*["']use [\w-]+["'][^\S\r\n]*;?[^\S\r\n]*(?:\r?\n|$)/.exec(
@@ -349,11 +380,12 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
     const blocks = [
       contractBlock(purpose.text, [SENTINEL_NONGOAL]),
       ...(keyDecisionsRequired
-        ? [keyDecisionsBlock(aiInvariants.length > 0 ? aiInvariants : [TODO_ITEM], pathFromRoot)]
+        ? [keyDecisionsBlock(aiInvariants.length > 0 ? aiInvariants : [TODO_ITEM])]
         : []),
       "<CHANGE_SUMMARY>\n</CHANGE_SUMMARY>",
     ];
-    const header = wrapHeader(blocks, commentStyleFor(pathFromRoot), pathFromRoot);
+    const style = insertStyleFor(pathFromRoot, source);
+    const header = wrapHeader(blocks, style, pathFromRoot);
     const at = insertionOffset(source, pathFromRoot);
     const next = `${source.slice(0, at)}${header}\n\n${source.slice(at)}`;
     if (!closesCleanly(next, pathFromRoot)) {
@@ -375,31 +407,40 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
   let next = source;
   const repairs: string[] = [];
   let usedSentinel = false;
-  const linePrefix = () =>
-    commentStyleFor(pathFromRoot) === "line" ? (getLineCommentPrefix(pathFromRoot) ?? "# ") : "";
+  const prefixFor = (s: HeaderSpan) =>
+    s.style === "line" ? (getLineCommentPrefix(pathFromRoot) ?? "# ") : "";
   const reheader = () => {
     const s = findHeaderSpan(next, pathFromRoot);
     return s ? { span: s, text: next.slice(s.start, s.end) } : null;
   };
-  const lineWrap = (block: string) =>
-    linePrefix() === ""
+  const lineWrap = (block: string, s: HeaderSpan) => {
+    const prefix = prefixFor(s);
+    return prefix === ""
       ? block
       : block
           .split("\n")
-          .map((l) => linePrefix() + l)
+          .map((l) => prefix + l)
           .join("\n");
+  };
+  const stageGuard = (): ScaffoldFileResult => ({
+    disposition: "skipped",
+    source,
+    repairs: [],
+    skipReason: "unrepairable malformation",
+    diagnostic: {
+      ruleId: "SCAFFOLD-02",
+      message: "header comment lost between repair stages — file left untouched",
+    },
+  });
 
   // Stage 1 — close any compass tag left open inside the header. The close
   // anchors before the next sibling tag's open (a swallowed sibling) or
-  // before the header comment's own terminator.
+  // before the header comment's own terminator. All anchor positions are
+  // header-relative and shift by h.span.start exactly once.
   {
     const h = reheader();
-    if (!h) {
-      return skipped("unrepairable malformation", source, {
-        ruleId: "SCAFFOLD-02",
-        message: "header comment vanished between parse stages — file left untouched",
-      });
-    }
+    if (!h) return stageGuard();
+    const prefix = prefixFor(h.span);
     const closeEdits: Edit[] = [];
     for (const tag of COMPASS_TAGS) {
       if (!hasUnclosedTag(h.text, tag)) continue;
@@ -408,18 +449,26 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
         .map((t) => h.text.indexOf(`<${t}>`, openAt + 1))
         .filter((i) => i >= 0)
         .sort((a, b) => a - b);
-      const at = later.length > 0 ? later[0]! : h.span.closeStart;
-      const closeLine = linePrefix() === "" ? `</${tag}>\n` : `${linePrefix()}</${tag}>\n`;
+      let at: number;
+      if (later.length > 0 && prefix !== "") {
+        // Anchor at the sibling tag's line start — a mid-line insert would
+        // split the contiguous prefix run line comments depend on.
+        at = h.text.lastIndexOf("\n", later[0]! - 1) + 1;
+      } else {
+        at = later.length > 0 ? later[0]! : h.span.closeStart - h.span.start;
+      }
+      const closeLine = prefix === "" ? `</${tag}>\n` : `${prefix}</${tag}>\n`;
       closeEdits.push({ start: h.span.start + at, end: h.span.start + at, text: closeLine });
       repairs.push(`closed-${tag.toLowerCase().replace(/_/g, "-")}`);
     }
     next = applyEdits(next, closeEdits);
   }
 
-  // Stage 2 — contract-level repairs: missing contract, missing purpose,
-  // missing/unclosed/item-less non-goals.
+  // Stage 2 — contract-level repairs: missing contract, missing/unclosed
+  // purpose, missing/unclosed/item-less non-goals.
   {
-    const h = reheader()!;
+    const h = reheader();
+    if (!h) return stageGuard();
     const edits: Edit[] = [];
     const contract = blockSpan(h.text, "MODULE_CONTRACT");
     if (!contract) {
@@ -427,7 +476,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       // inside the comment before its terminator.
       const purpose = derivePurpose(input);
       usedSentinel = purpose.sentinel;
-      const insertion = lineWrap(contractBlock(purpose.text, [SENTINEL_NONGOAL])) + "\n";
+      const insertion = lineWrap(contractBlock(purpose.text, [SENTINEL_NONGOAL]), h.span) + "\n";
       edits.push({ start: h.span.closeStart, end: h.span.closeStart, text: insertion });
       repairs.push("inserted-module-contract");
     } else {
@@ -438,8 +487,27 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
         const purpose = derivePurpose(input);
         usedSentinel = purpose.sentinel;
         const openEnd = base + "<MODULE_CONTRACT>".length;
-        edits.push({ start: openEnd, end: openEnd, text: `\n<purpose>${purpose.text}</purpose>` });
+        edits.push({
+          start: openEnd,
+          end: openEnd,
+          text: `\n${lineWrap(`<purpose>${purpose.text}</purpose>`, h.span)}`,
+        });
         repairs.push(purpose.sentinel ? "sentinel-purpose" : "inserted-purpose");
+      } else if (!contractText.includes("</purpose>")) {
+        // An unclosed <purpose> swallows its siblings — close it before the
+        // next inner tag or the contract close, whichever comes first.
+        const purposeOpen = contractText.indexOf("<purpose>");
+        const following = ["<non-goals>", "</MODULE_CONTRACT>"]
+          .map((t) => contractText.indexOf(t, purposeOpen + 1))
+          .filter((i) => i >= 0)
+          .sort((a, b) => a - b);
+        const at = following.length > 0 ? following[0]! : contract.end;
+        edits.push({
+          start: base + at,
+          end: base + at,
+          text: `${lineWrap("</purpose>", h.span)}\n`,
+        });
+        repairs.push("closed-purpose");
       }
 
       const ng = contractText.indexOf("<non-goals>");
@@ -448,30 +516,43 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
         edits.push({
           start: closeAt,
           end: closeAt,
-          text: `<non-goals>\n  <item>${SENTINEL_NONGOAL}</item>\n</non-goals>\n`,
+          text: `${lineWrap(`<non-goals>\n  <item>${SENTINEL_NONGOAL}</item>\n</non-goals>`, h.span)}\n`,
         });
         repairs.push("inserted-non-goals");
       } else {
         let ngEnd = contractText.indexOf("</non-goals>", ng);
         if (ngEnd < 0) {
           const closeAt = base + contractText.indexOf("</MODULE_CONTRACT>");
-          edits.push({ start: closeAt, end: closeAt, text: "</non-goals>\n" });
+          edits.push({
+            start: closeAt,
+            end: closeAt,
+            text: `${lineWrap("</non-goals>", h.span)}\n`,
+          });
           repairs.push("closed-non-goals");
           ngEnd = contractText.indexOf("</MODULE_CONTRACT>");
         }
         const inner = contractText.slice(ng + "<non-goals>".length, ngEnd);
-        if (!inner.includes("<item>")) {
+        const itemOpens = (inner.match(/<item>/g) ?? []).length;
+        const itemCloses = (inner.match(/<\/item>/g) ?? []).length;
+        if (itemOpens === 0) {
           const bareLines = inner
             .split("\n")
-            .map((l) => l.trim())
+            .map((l) => l.trim().replace(/^[#;]+\s?/, ""))
             .filter((l) => l.length > 0 && !l.startsWith("*") && !l.startsWith("//"));
           const items = bareLines.length > 0 ? bareLines : [SENTINEL_NONGOAL];
           edits.push({
             start: base + ng + "<non-goals>".length,
             end: base + ngEnd,
-            text: `\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n`,
+            text: lineWrap(`\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n`, h.span),
           });
           repairs.push("non-goals-items");
+        } else if (itemOpens !== itemCloses) {
+          edits.push({
+            start: base + ngEnd,
+            end: base + ngEnd,
+            text: `${lineWrap("</item>", h.span)}\n`,
+          });
+          repairs.push("closed-item");
         }
       }
     }
@@ -480,7 +561,8 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
 
   // Stage 3 — KEY_DECISIONS required by layer/risk but absent.
   {
-    const h = reheader()!;
+    const h = reheader();
+    if (!h) return stageGuard();
     if (keyDecisionsRequired && !h.text.includes("<KEY_DECISIONS>")) {
       if (riskClass === "high" && aiInvariants.length === 0) {
         return skipped(
@@ -489,7 +571,8 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
         );
       }
       const kd = lineWrap(
-        keyDecisionsBlock(aiInvariants.length > 0 ? aiInvariants : [TODO_ITEM], pathFromRoot),
+        keyDecisionsBlock(aiInvariants.length > 0 ? aiInvariants : [TODO_ITEM]),
+        h.span,
       );
       const mc = blockSpan(h.text, "MODULE_CONTRACT");
       if (mc) {
@@ -507,9 +590,10 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
 
   // Stage 4 — CHANGE_SUMMARY absent entirely (unclosed was repaired in stage 1).
   {
-    const h = reheader()!;
+    const h = reheader();
+    if (!h) return stageGuard();
     if (!h.text.includes("<CHANGE_SUMMARY>")) {
-      const cs = lineWrap("<CHANGE_SUMMARY>\n</CHANGE_SUMMARY>");
+      const cs = lineWrap("<CHANGE_SUMMARY>\n</CHANGE_SUMMARY>", h.span);
       const anchor =
         blockSpan(h.text, "KEY_DECISIONS")?.end ?? blockSpan(h.text, "MODULE_CONTRACT")?.end;
       if (anchor !== undefined) {
@@ -541,7 +625,11 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
   };
 }
 
-/** Every compass tag present in the header comment closes inside it. */
+/**
+ * Every compass tag present in the header comment closes inside it — inner
+ * tags included, so "unchanged" stays aligned with what compass.validate
+ * reports (its extractor requires close tags too).
+ */
 function closesCleanly(source: string, path: string): boolean {
   const span = findHeaderSpan(source, path);
   if (!span) return false;
@@ -552,11 +640,13 @@ function closesCleanly(source: string, path: string): boolean {
   const contract = blockSpan(header, "MODULE_CONTRACT");
   if (!contract) return false;
   const contractText = header.slice(contract.start, contract.end);
-  if (!contractText.includes("<purpose>")) return false;
+  if (!contractText.includes("<purpose>") || !contractText.includes("</purpose>")) return false;
   const ng = blockSpan(contractText, "non-goals");
   if (!ng) return false;
   const ngText = contractText.slice(ng.start, ng.end);
-  if (!ngText.includes("<item>")) return false;
+  const itemOpens = (ngText.match(/<item>/g) ?? []).length;
+  const itemCloses = (ngText.match(/<\/item>/g) ?? []).length;
+  if (itemOpens === 0 || itemOpens !== itemCloses) return false;
   return header.includes("<CHANGE_SUMMARY>");
 }
 
