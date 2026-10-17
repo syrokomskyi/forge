@@ -12,13 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
-  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: --sync flag runs rfc.evidence.sync via context.invoke before the stale-evidence gate; EVIDENCE-SYNC-01 when no kernel host, sync failure aborts before any mutation.</item>
   <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1321: commitReferencesRfc compares case-insensitively — --id rfc-NNNN satisfies an RFC-NNNN subject (RFC-IMP-03 false-fail closed)</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-IMP-07</history>
+  <item>RFC-1321: review-r2: stringLiteralValue — comment-aware literal extractor keys COMMAND_PROVENANCE cleanly (adjacent comments no longer corrupt the key or evade CMDGEN-03); (?!\d) boundary in commitCarriesGovernanceProvenance; non-string --id guard</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -155,11 +154,12 @@ async function commitCarriesGovernanceProvenance(
   rfcId: string,
 ): Promise<boolean> {
   const idUpper = rfcId.toUpperCase();
+  // RFC-1321 review-r2: same (?!\d) boundary as commitReferencesRfc —
+  // X-RFC: RFC-00011 must not satisfy provenance for RFC-0001.
+  const idRe = new RegExp(`${idUpper.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?!\\d)`);
   const commitMsg = await execGit(workspaceRoot, ["log", "-1", "--format=%B", commitSha]);
   if (
-    commitMsg
-      .split("\n")
-      .some((l) => /^X-(?:RFC|ADR):\s*\S/i.test(l) && l.toUpperCase().includes(idUpper))
+    commitMsg.split("\n").some((l) => /^X-(?:RFC|ADR):\s*\S/i.test(l) && idRe.test(l.toUpperCase()))
   ) {
     return true;
   }
@@ -171,7 +171,7 @@ async function commitCarriesGovernanceProvenance(
         l.startsWith("+") &&
         !l.startsWith("+++") &&
         l.includes("<item>") &&
-        l.toUpperCase().includes(idUpper),
+        idRe.test(l.toUpperCase()),
     );
 }
 
@@ -318,8 +318,10 @@ export async function runRfcImplementStamp(
 
   // RFC-1321: canonicalize the governance id at parse — every stored surface
   // (result rfcId, post-stamp re-emit flags, metrics ids) carries the
-  // canonical uppercase spelling regardless of flag casing.
-  const targetId = (input.flags["id"] as string | undefined)?.toUpperCase();
+  // canonical uppercase spelling regardless of flag casing. A non-string flag
+  // (repeated --id forms an array) degrades to absent rather than crashing.
+  const rawId = input.flags["id"];
+  const targetId = typeof rawId === "string" ? rawId.toUpperCase() : undefined;
   let implementationCommit = input.flags["implementation-commit"] as string | undefined;
 
   // ── Flag validation ───────────────────────────────────────────────────────
