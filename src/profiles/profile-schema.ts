@@ -321,6 +321,7 @@ export interface ProfileTemplate {
 export const compassPolicyOverridesSchema = z.object({
   fileExtensions: z.array(z.string()).optional(),
   testPatterns: z.array(z.string()).optional(),
+  scaffoldTestPatterns: z.array(z.string()).optional(),
   scanRoots: z.array(z.string()).optional(),
   ignoredDirs: z.array(z.string()).optional(),
   ignoredDirPrefixes: z.array(z.string()).optional(),
