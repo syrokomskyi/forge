@@ -249,7 +249,9 @@ This fallback ensures review and fix are never skipped, even if `fo-idea-impleme
 
 ### 3. Report and stop
 
-After the pipeline is complete (or if it was interrupted and resumed), present a single summary in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, ADR-XXXX, file paths) stay untranslated.
+**Terminal gate (MANDATORY, before any summary):** run `queue.validate --file <manifest>` and read the derived per-item status. The summary may only report items the validator derives as `implemented` or `skipped` — plus items the batch itself recorded as parked/blocked (ledger `parked: true` or the in-session `blocked` report language). A derived `in-progress` means the item is NOT done: return to Phase 4 instead of reporting. Never derive "done" from commits, passing tests, or a continuation summary — the validator's derivation is the single source of truth. (Retro 2026-10-17: a batch reported all four items implemented while every one of them still needed step 4.8 — `status: accepted`, unchecked criteria, stale envelopes — and only this gate caught it.)
+
+After the gate passes, present a single summary in `aiLanguage`. **Translate all labels and headings to `aiLanguage`** — the template below is structural only. Only identifiers (RFC-XXXX, ADR-XXXX, file paths) stay untranslated.
 
 ```
 ## <Pipeline Summary in aiLanguage>
@@ -278,7 +280,7 @@ If the session was interrupted (agent stopped, context limit, crash, checkpoint 
    - TODO list with steps like "Step N: ..." or "implement: RFC-XXXX step N" — these are implementation steps from the plan phase, meaning the pipeline was in step 4 (implement).
    - Git log showing `audit:`, `enhance:`, `plan:`, `implement:` commits for the same RFC/ADR — confirming pipeline progress.
    - If any of these are found, this skill IS the active pipeline — resume it, do not start a new one.
-2. **Detect progress** — check which pipeline steps have already been completed by scanning for:
+2. **Detect progress** — first run `queue.validate --file <manifest>`; its derived per-item status (`implemented`/`skipped`/`in-progress` + open/parked decision counts) is the authoritative resume point. Then corroborate with artifacts:
    - Document exists in `docs/rfcs/` or `docs/adrs/` (idea creation done)
    - Audit report in `docs/audits/audit-rfc-XXXX-*.md`
    - `enhancedAt` in the RFC frontmatter
