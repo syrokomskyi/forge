@@ -15,11 +15,11 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>Session-retro 2026-10-08: id-in-diff dedup — auto-inject skips when the worktree diff already carries a same-ID item (HEAD-vs-worktree via git show HEAD:path), closing the descriptive+generic duplicate class seen on RFC-1237.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1323: authored text asserts COMPASS-CS-08 via comment-safety; --injected text neutralizes style-aware and reports neutralized; getLineCommentPrefix/HEADER_SCAN_LINES moved to os/compass/comment-safety.ts.</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
+  <item>RFC-1323: final review nits — existing-item ordering, fail enum convention, trim skippedUnsafe coverage</item>
   <history>CONTRACT-02, PURPOSE-02, RFC-1095, RFC-1097, RFC-1220, RFC-1233</history>
 </CHANGE_SUMMARY>
 */
@@ -461,8 +461,8 @@ export async function runCompassSummaryRecord(
         blockMatch.index !== undefined &&
         source.slice(0, blockMatch.index).split("\n").length <= HEADER_SCAN_LINES;
       if (inHeaderRegion) {
-        style = enclosingCommentStyle(source, blockMatch.index!, rel);
         existing = parseChangeSummary(blockMatch![0]).items;
+        style = enclosingCommentStyle(source, blockMatch.index!, rel);
       }
     } catch {
       // Unreadable or block-less targets are skipped by the write loop —

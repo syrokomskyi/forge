@@ -10,12 +10,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1095: rewrote trim as v2 repair (collapse >5 described items into history, remove ID-less items, normalize history); removed compass.changesummary.validate and the classify machinery (classifyChangeSummaryItem, PROTECTED_RE, BOILERPLATE_RE).</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
-  <history>RFC-0349, RFC-0538, RFC-0556, RFC-1094</history>
+  <item>RFC-1323: final review nits — existing-item ordering, fail enum convention, trim skippedUnsafe coverage</item>
+  <history>RFC-0349, RFC-0538, RFC-0556, RFC-1094, RFC-1095</history>
 </CHANGE_SUMMARY>
 */
 
@@ -47,7 +47,7 @@ export async function runCompassSummaryTrim(
 ): Promise<
   ForgeCommandResult<{
     command: string;
-    status: "ok" | "failed";
+    status: "ok" | "fail";
     files: Array<{ path: string; removed: string[]; kept: number }>;
     skippedUnsafe: string[];
   }>
@@ -166,7 +166,7 @@ export async function runCompassSummaryTrim(
   return {
     data: {
       command: "compass.summary.trim",
-      status: skippedUnsafe.length > 0 ? "failed" : "ok",
+      status: skippedUnsafe.length > 0 ? "fail" : "ok",
       files: results,
       skippedUnsafe,
     },
