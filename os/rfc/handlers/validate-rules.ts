@@ -15,6 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1271: V-43 verificationTier enum check; V-23 archive exemption (isArchived paths skip evidence-presence — archive-freeze precedent).</item>
+  <item>RFC-1322: fo-review fix pass — V-37 annotation extraction takes the LAST (evidence: ...) occurrence, matching the stamp resolver (prose mentions no longer shadow the real annotation).</item>
   <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795</history>
 </CHANGE_SUMMARY>
 */
@@ -812,7 +813,10 @@ export async function validateSingleRfc(
           .split("\n")
           .filter((line: string) => /^- \[x\]/.test(line));
         for (const line of checkedLines) {
-          const evidenceMatch = line.match(/\(evidence:\s*(.+?)\)/);
+          // The LAST `(evidence: ...)` occurrence is the annotation — criterion
+          // prose may mention the literal syntax mid-sentence (RFC-1322 AC-1/2).
+          const evidenceMatches = [...line.matchAll(/\(evidence:\s*(.+?)\)/g)];
+          const evidenceMatch = evidenceMatches.at(-1);
           if (!evidenceMatch) continue;
           const evidence = evidenceMatch[1]!.trim();
 

@@ -12,6 +12,7 @@ Unit tests for implement stamp covering rfc.implement.stamp. It also guards the 
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — stale-envelope refresh, probes-less fail-closed, empty/dir/escape paths, line-ranges, --sync composition, fully-checked no-op</item>
+  <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
 </CHANGE_SUMMARY>
 */
 
@@ -948,6 +949,37 @@ describe("rfc.implement.stamp", () => {
     expect(violation).toBeDefined();
     expect(violation!.message).toContain("AC-1");
     await rm(join(workspaceRoot, "..", "outside.ts"), { force: true });
+  });
+
+  it("--check-criteria uses the LAST (evidence: ...) on a line — prose mentions don't shadow it", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    // AC-1's prose mentions the literal `(evidence: ...)` syntax before the real
+    // trailing annotation — a first-match extractor would certify `...`.
+    await writeFile(
+      rfcFile,
+      RFC_BODY_FLAGGED("RFC-0101", {
+        ac1: "test: src/x.test.ts",
+      }).replace(
+        "- [ ] AC-1: test-path evidence",
+        "- [ ] AC-1: prose mentions (evidence: ...) mid-sentence",
+      ),
+    );
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("- [x] AC-1: prose mentions (evidence: ...)");
   });
 
   it("--check-criteria composes with --sync (invoke delegation then auto-check)", async () => {
