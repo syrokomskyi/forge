@@ -20,9 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: ledger-bound implementation — answered entries bind at
-  prerequisites; emergent questions auto-resolve with auto-resolved log
-  entries; closed hard-stop enumeration parks the item (dependsOn cascade).</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -40,6 +37,8 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1317: unblock AC-7 — repair pre-existing fo-idea-implement SKILL-11/SKILL-17 violations (drop hardcoded werkstatt run literal + internal RFC ids), sync .agents copy</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -118,17 +117,18 @@ Execute the plan's step sequence in order. For each step:
 
 1. **Execute** the agent actions described in the step.
 2. **Validate** — run the step's validation command (lightweight only: `rfc.validate`, type checks, unit tests on touched files). Do **not** run heavy checks (`root build`, `build:check`, `astro:check`) during implementation — they run only after all steps are complete.
-3. **Commit** after each step or phase that produces a coherent, complete unit of work — always through `ecosystem.commit` with the RFC id pre-baked into the `--rfc` flag (RFC-1310: a governed id in the subject without the flag fails COMMIT-GOV-01, and the implementation commit needs the `X-RFC` trailer for STAMP-GOV-01):
+3. **Commit** after each step or phase that produces a coherent, complete unit of work — always through `ecosystem.commit` with the RFC id pre-baked into the `--rfc` flag (a governed id in the subject without the flag fails the commit-parity gate COMMIT-GOV-01, and the implementation commit needs the `X-RFC` trailer for the STAMP-GOV-01 provenance check):
 
    > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
 
 ```sh
-   pnpm exec werkstatt run ecosystem.commit --rfc RFC-XXXX --files <paths> --message "implement: RFC-XXXX step N — <step title>
+   # invoked through the project's command runner — see fo-step-commit
+   ecosystem.commit --rfc RFC-XXXX --files <paths> --message "implement: RFC-XXXX step N — <step title>
 
    <one-line description of what was done in this step>."
 ```
 
-For ADR work substitute `--adr ADR-XXXX`. A conversational id mention that must NOT declare governance (e.g. "revert RFC-1290 behavior") passes `--allow-unlinked` instead — never drop the flag silently.
+For ADR work substitute `--adr ADR-XXXX`. A conversational id mention that must NOT declare governance (e.g. "revert an earlier RFC's behavior") passes `--allow-unlinked` instead — never drop the flag silently.
 
 Stage only the files touched by this step. Do not stage unrelated changes — another agent may be working in a different session.
 
