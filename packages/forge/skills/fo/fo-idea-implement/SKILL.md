@@ -20,9 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
@@ -38,7 +35,8 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1317: unblock AC-7 — repair pre-existing fo-idea-implement SKILL-11/SKILL-17 violations (drop hardcoded werkstatt run literal + internal RFC ids), sync .agents copy</item>
-  <history>RFC-1250</history>
+  <item>RFC-1322: step 5 — prescribe --check-criteria stamp + single-commit post-shape</item>
+  <history>RFC-1097, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -221,56 +219,42 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 1. **Verify the criterion is met semantically** — check the code does what the criterion says, run the relevant command, or inspect the artifact. Mechanical existence (command registered, test passes) is NOT sufficient. The criterion must describe observable behavior that the RFC defines, not just that a command exists.
 2. **Check for stubs** — if the code contains TODO, stub, not-implemented, or placeholder logic in the path the criterion covers, the criterion is NOT met. Implement the real logic before marking it.
 3. **If a criterion is not met**, implement the missing work, commit it, and re-verify.
-4. **Annotate every `[x]` with inline evidence** — add `(evidence: ...)` to each checked criterion, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by the V-27 evidence discipline.
+4. **Annotate every criterion with inline evidence** — add `(evidence: ...)` to each `## Acceptance criteria` line, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by the V-27 evidence discipline. **Leave the box unchecked** — `rfc.implement.stamp --check-criteria` flips evidenced `[ ]` lines itself in the same atomic write as the frontmatter mutation (RFC-1322). The annotation grammar the stamp resolves is exactly `test:<path>`, `file:<path>`, `<path>:<line>` (path must exist) and `probe:AC-N` (a probe bound to AC-N must pass in the evidence envelope); any other form — free prose, `file:` prose combos, unbound probe refs — aborts with STAMP-CHECK-01.
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
 6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
 7. **Check document readiness** — if the RFC has a `## Document readiness` section, verify every `DR-N` checkbox is checked `[x]`. Unchecked `DR-N` items block `accepted`/`implemented` status via V-38. Document readiness criteria cover document quality (sections present, risks described, alternatives considered), not system behavior — they are checked by inspecting the RFC itself, not by running code.
 
-Do not proceed to step 4.7 until every acceptance criterion checkbox AND every document readiness checkbox is checked with evidence.
+Do not proceed to step 4.7 until every criterion is verified met and carries a resolvable `(evidence: ...)` annotation, and every document readiness checkbox is checked.
 
-#### 4.7. Run acceptance probes and emit evidence
+#### 4.7. Acceptance probes and evidence envelope
 
-If the RFC declares `acceptance:` probes in frontmatter:
+If the RFC declares `acceptance:` probes in frontmatter, sanity-run them once before stamping:
 
 ```sh
 ref(forge.yaml bindings.commands.validateRfc) --acceptance.run --id RFC-XXXX
 ```
 
-If the RFC was created on or after 2026-07-07 and has acceptance probes:
-
-```sh
-ref(forge.yaml bindings.commands.validateRfc) --verification.emit --id RFC-XXXX
-```
+The **evidence envelope is NOT emitted or committed manually** — `rfc.implement.stamp --check-criteria` refreshes a missing/malformed/stale envelope in-process on the committed bytes (emit-if-needed) and re-emits it after the mutation so the committed envelope always describes the stamped file (RFC-1322). No `rfc.verification.emit` step, no evidence commit.
 
 **Note:** If acceptance probes are commented out (`# acceptance:`) in the RFC frontmatter, `rfc.verification.emit` silently skips creating an evidence file (`filesModified: []`, zero errors). This is expected behavior — RFCs with commented-out probes get no evidence file, and `rfc.implement.stamp` still works without it.
-
-Commit the evidence file:
-
-```txt
-evidence: RFC-XXXX verification artifact
-
-Emit per-RFC verification evidence for RFC-XXXX implementation.
-```
-
-Stage `docs/rfcs/verification/rfc-xxxx.generated.json`.
 
 #### 4.8. Stamp implemented
 
 Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Direct edits to `status`, `implementedAt`, and `updatedAt` are prohibited for all actors.
 
-1. Ensure the working tree is clean (all implementation changes committed).
+1. Ensure the working tree is clean (all implementation changes committed — including the RFC file itself carrying the verified, annotated, still-unchecked criteria).
 2. Identify the implementation commit SHA — use the **first** `implement:` commit (the commit where implementation began), not the latest fix or documentation commit. Find it via `git log --oneline` and locate the first commit with an `implement:` prefix after the `plan:` or `rfc: accept` commit.
-3. Run the stamp command:
+3. Run the stamp command **with `--check-criteria`** (RFC-1322 — the default invocation; the flag auto-checks evidenced criteria, refreshes a missing/stale envelope in-process, and lands flips + frontmatter in one atomic write):
 
    ```sh
-   ref(forge.yaml bindings.commands.implementStamp) --id RFC-XXXX --implementation-commit <sha>
+   ref(forge.yaml bindings.commands.implementStamp) --id RFC-XXXX --implementation-commit <sha> --check-criteria
    ```
 
-   The command atomically validates all preconditions (accepted status, checked+evidenced criteria, clean tree, reachable RFC-referencing commit, passing probe evidence) and sets `status: implemented`, `implementedAt`, and `updatedAt` in one atomic write.
+   The command atomically validates all preconditions (accepted status, checked+evidenced criteria — flipped in-place when evidenced under the flag, clean tree, reachable RFC-referencing commit, passing probe evidence) and sets `status: implemented`, `implementedAt`, and `updatedAt` in one atomic write. The result reports `criteriaAutoChecked` — the criterion ids the stamp flipped.
 
-   **Troubleshooting:** If the stamp fails with `Could not parse target RFC` (RFC-IMP-01), the RFC frontmatter has a YAML syntax error — not a missing file. Check for unquoted backtick values in `successSignals`, `nonGoals`, or other list items. YAML plain scalars starting with a backtick must be double-quoted.
+   **Troubleshooting:** If the stamp fails with `Could not parse target RFC` (RFC-IMP-01), the RFC frontmatter has a YAML syntax error — not a missing file. Check for unquoted backtick values in `successSignals`, `nonGoals`, or other list items. YAML plain scalars starting with a backtick must be double-quoted. If it fails STAMP-CHECK-01, the named criteria carry no resolvable `(evidence: ...)` annotation — fix the annotation (or verify the criterion is actually met), commit, and re-stamp; the flag never blank-checks.
 
-4. Commit the stamped RFC file:
+4. Commit the stamped artifacts — **one commit** covering the stamped RFC file, the regenerated `docs/rfcs/verification/rfc-xxxx.generated.yaml` envelope, and `docs/metrics/rfcs/rfc-xxxx.metrics.yaml`:
 
    ```txt
    rfc: implement RFC-XXXX <short title>
@@ -279,7 +263,7 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
    All acceptance criteria met, verification evidence emitted, scoped build passes.
    ```
 
-   Stage only the RFC file. The implementation commit and the stamp commit MUST be separate.
+   Stage the RFC file and the generated envelope + metrics together. The implementation commit and the stamp commit MUST be separate.
 
 #### 4.8b. Regenerate command manifest (MANDATORY)
 
