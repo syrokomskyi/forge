@@ -14,6 +14,7 @@ in temp dirs.
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -788,6 +789,23 @@ describe("runCompassHeaderScaffold handler (RFC-1318)", () => {
     expect(result.exitCode).toBe(1);
     expect(result.summary).toContain("COMPASS-CS-08");
     expect(result.summary).toContain(target);
+    const report = dataOf(result).files.find((f) => f.path === target);
+    expect(report?.disposition).toBe("skipped");
+    expect(report?.diagnostic?.ruleId).toBe("COMPASS-CS-08");
+    expect(readFileSync(join(tempDir, target), "utf8")).toBe(body);
+  });
+
+  it("census mode surfaces the CS-08 skip but stays exit 0 — reporting only (RFC-1323)", async () => {
+    const target = "packages/fixture-pkg/src/page.astro";
+    const body = `---\nconst x = 1;\n---\n${"<"}!--\n${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\n<non-goals>\nbare ${"<"}!-- note\n</non-goals>\n${MC_CLOSE}\n${"--" + ">"}\n<main/>\n`;
+    writeFixture(target, body);
+    commitAll();
+
+    const result = await runCompassHeaderScaffold(
+      makeInput({ files: [target], census: true }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(0);
     const report = dataOf(result).files.find((f) => f.path === target);
     expect(report?.disposition).toBe("skipped");
     expect(report?.diagnostic?.ruleId).toBe("COMPASS-CS-08");

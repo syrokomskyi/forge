@@ -86,6 +86,7 @@ ${history && history.length > 0 ? `  <history>${history.join(", ")}</history>\n`
   <item>RFC-1311: Compass header sweep — declares the summary suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
 </CHANGE_SUMMARY>
 */
 export const x = 1;
@@ -579,6 +580,31 @@ ${HTML_CLOSE}
       makeContext(root),
     );
     expect(result.exitCode).toBe(1);
+    expect(await readFile(join(root, "src", "a.ts"), "utf8")).toBe(tsBefore);
+    expect(await readFile(join(root, "src", "page.astro"), "utf8")).toBe(astroBefore);
+  });
+
+  it("a PRE-EXISTING corrupt item aborts the record before any file writes (RFC-1323)", async () => {
+    // The html item parses (<!-- does not end the comment) but re-emitting it
+    // would corrupt — buildChangeSummaryBlock asserts all items, so the
+    // pre-pass must catch it before the first file in the batch is written.
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    await writeFile(
+      join(root, "src", "page.astro"),
+      ASTRO_HTML_HEADER([`RFC-0001: existing ${"<"}!-- note`]),
+    );
+    const tsBefore = await readFile(join(root, "src", "a.ts"), "utf8");
+    const astroBefore = await readFile(join(root, "src", "page.astro"), "utf8");
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["src/a.ts", "src/page.astro"],
+        text: "harmless new text",
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("COMPASS-CS-08");
     expect(await readFile(join(root, "src", "a.ts"), "utf8")).toBe(tsBefore);
     expect(await readFile(join(root, "src", "page.astro"), "utf8")).toBe(astroBefore);
   });

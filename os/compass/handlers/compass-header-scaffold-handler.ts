@@ -13,6 +13,7 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -342,7 +343,7 @@ export async function runCompassHeaderScaffold(
       diagnostics.length > 0
         ? [
             {
-              action: `${diagnostics.length} file(s) skipped with SCAFFOLD-01/02 diagnostics — review them manually (fixture strings or unrepairable malformation).`,
+              action: `${diagnostics.length} file(s) skipped with diagnostics (${[...new Set(diagnostics.map((d) => d.diagnostic!.ruleId))].join("/")}) — review them manually.`,
               kind: "optional",
             },
           ]

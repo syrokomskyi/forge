@@ -18,6 +18,7 @@ header-region truncation scan findCompassTerminatorInHeader.
   <item>RFC-1323: created — AC-2 coverage for the comment-safety helper across block, html, and line styles.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -86,6 +87,28 @@ describe("comment-safety — style detection", () => {
   it("a /* in .md prose is literal text — never opens a comment", () => {
     const source = `note about ${"/*"} markers\n${HTML_OPEN}\n${"<MODULE_CONTRACT>"}\n`;
     const idx = source.indexOf("<MODULE_CONTRACT>");
+    expect(enclosingCommentStyle(source, idx, "docs/guide.md")).toBe("html");
+  });
+
+  it("a /* inside .astro frontmatter code is a phantom — the real html header wins", () => {
+    // `const m = "/*"` latches block state; without the fence reset the html
+    // header below is inert inside the phantom and detection lies "block".
+    const source = `---\nconst m = "${"/*"}";\n---\n${HTML_OPEN}\n${"<MODULE_CONTRACT>"}\n`;
+    const idx = source.indexOf("<MODULE_CONTRACT>");
+    expect(enclosingCommentStyle(source, idx, "page.astro")).toBe("html");
+  });
+
+  it("a real block header INSIDE frontmatter still resolves block", () => {
+    const source = `---\n/*\n${"<MODULE_CONTRACT>"}\n<purpose>x</purpose>\n${"</MODULE_CONTRACT>"}\n${BLOCK_TERM}\nconst m = 1;\n---\n<main/>\n`;
+    const idx = source.indexOf("<purpose>");
+    expect(enclosingCommentStyle(source, idx, "page.astro")).toBe("block");
+  });
+
+  it("the fence reset does not misfire on --- inside a real html comment", () => {
+    // Mid-comment `---` (a thematic break in prose) must not reset state —
+    // only the LEADING frontmatter close is a fence.
+    const source = `${HTML_OPEN}\n${"<MODULE_CONTRACT>"}\n<purpose>text</purpose>\n---\n${"</MODULE_CONTRACT>"}\n${HTML_CLOSE}\n`;
+    const idx = source.indexOf("</MODULE_CONTRACT>");
     expect(enclosingCommentStyle(source, idx, "docs/guide.md")).toBe("html");
   });
 });

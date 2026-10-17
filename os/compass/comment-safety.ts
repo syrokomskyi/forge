@@ -22,6 +22,7 @@ detects latent corruption in existing files.
   <item>RFC-1323: created — CommentStyle/commentStyleFor/getLineCommentPrefix/HEADER_SCAN_LINES consolidated here; terminator triple + CompassCommentSafetyError + header-region CS-08 scan.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1323: re-review pass — frontmatter-zone enclosing-style detection, existing-item pre-pass gating, trim exit-1 on unsafe, nextSteps rule labels, severity/census test coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -70,22 +71,51 @@ export function commentStyleFor(path: string): CommentStyle {
  * prose (or a `<!--` literal inside `/* *​/`) is inert text, not a state
  * change, so it can never flip the detected style. Openers of styles the
  * file type cannot carry are ignored entirely — a `/*` inside .md prose is
- * literal text, never a comment. No enclosing comment falls back to the
+ * literal text, never a comment.
+ *
+ * .astro zoning: a `/*` is a real comment only inside `---` frontmatter
+ * (the code region); `<!--` is real only outside it. In markup a `/*` is
+ * literal text and in frontmatter code a `<!--` can only be a string
+ * literal — counting either latches phantom state that hides the real
+ * header, the same class the CS-08 scanner resets on `---`. A comment
+ * still open at the closing fence is likewise a phantom and is reset —
+ * real frontmatter comments cannot span the fence (frontmatter is TS).
+ * Pure-block files (canHtml=false) never carry frontmatter, so `/*`
+ * counts anywhere there. No enclosing comment falls back to the
  * extension table.
  */
 const ENCLOSING_TOKEN_RE = /\*\/|\/\*|-->|<!--/g;
+
+function leadingFrontmatterFenceEnd(source: string): number {
+  const open = /^---[ \t]*\r?\n/.exec(source);
+  if (!open) return -1;
+  const rest = /^---[ \t]*$/gm;
+  rest.lastIndex = open[0].length;
+  const close = rest.exec(source);
+  return close === null ? -1 : close.index + close[0].length;
+}
 
 export function enclosingCommentStyle(source: string, index: number, path: string): CommentStyle {
   if (getLineCommentPrefix(path) !== null) return "line";
   const candidates = commentStyleCandidates(path);
   const canBlock = candidates.includes("block");
   const canHtml = candidates.includes("html");
+  const fenceEnd = canHtml ? leadingFrontmatterFenceEnd(source) : -1;
+  const hasFrontmatter = fenceEnd > 0;
+  let fenceCleared = false;
   let inComment: "block" | "html" | null = null;
   for (const m of source.slice(0, index).matchAll(ENCLOSING_TOKEN_RE)) {
+    const inFm = hasFrontmatter && m.index! < fenceEnd;
+    if (hasFrontmatter && !fenceCleared && !inFm) {
+      inComment = null;
+      fenceCleared = true;
+    }
     const token = m[0];
+    const blockZone = canBlock && (!canHtml || inFm);
+    const htmlZone = canHtml && !inFm;
     if (inComment === null) {
-      if (token === "/*" && canBlock) inComment = "block";
-      else if (token === "<!--" && canHtml) inComment = "html";
+      if (token === "/*" && blockZone) inComment = "block";
+      else if (token === "<!--" && htmlZone) inComment = "html";
     } else if (inComment === "block" && token === "*/") {
       inComment = null;
     } else if (inComment === "html" && token === "-->") {
