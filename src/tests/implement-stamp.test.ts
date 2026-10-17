@@ -11,6 +11,7 @@ Unit tests for implement stamp covering rfc.implement.stamp. It also guards the 
   <item>RFC-1311: Compass header sweep — declares the implement suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
+  <item>RFC-1322: fo-review fix pass — stale-envelope refresh, probes-less fail-closed, empty/dir/escape paths, line-ranges, --sync composition, fully-checked no-op</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,6 +20,7 @@ import { mkdtemp, rm, mkdir, writeFile, readFile, access } from "node:fs/promise
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 
 const { mockRunProbe } = vi.hoisted(() => ({ mockRunProbe: vi.fn() }));
 vi.mock("../../os/rfc/acceptance.ts", () => ({ runProbe: mockRunProbe }));
@@ -769,6 +771,9 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.status).toBe("pass");
     // Path-form annotations resolve; the probe: one awaits the skipped emit.
     expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2"]);
+    // Machine-readable dry-run surface: pending ids + refresh intent (E1).
+    expect(result.data?.data?.criteriaPendingRefresh).toEqual(["AC-3"]);
+    expect(result.data?.data?.evidenceWouldRefresh).toBe(true);
 
     const content = await readFile(rfcFile, "utf-8");
     expect(content).toContain("status: accepted");
@@ -776,5 +781,197 @@ describe("rfc.implement.stamp", () => {
     expect(await pathExists(evidenceEnvelopePath(workspaceRoot, "RFC-0101"))).toBe(false);
     // No probe ran at all — dry-run performs zero writes, including the emit.
     expect(mockRunProbe.mock.calls.length).toBe(0);
+  });
+
+  it("--check-criteria refreshes a stale-hash envelope in-process instead of failing IMP-09", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+
+    const { runRfcVerificationEmit } = await import("../../os/rfc/verification-evidence.ts");
+    const emitResult = await runRfcVerificationEmit(
+      { argv: [], flags: { id: "RFC-0101" } },
+      makeContext(workspaceRoot),
+    );
+    expect(emitResult.exitCode).toBe(0);
+    await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    // Committed body edit after emission → the envelope's rfcFileHash is now
+    // stale. Without the flag the stamp would fail IMP-09; with it, the
+    // emit-if-needed pass refreshes the envelope first. The commit still
+    // carries the X-RFC trailer — it is the --implementation-commit target.
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101") + "\nPost-emission body edit.\n");
+    const commit = await commitAll(workspaceRoot, "chore: post-emit edit\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.violations).toEqual([]);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
+    expect(result.data?.data?.evidenceReEmitted).toBe(true);
+    const stamped = await readFile(rfcFile, "utf-8");
+    expect(stamped).toContain("status: implemented");
+    expect(stamped).not.toContain("- [ ]");
+  });
+
+  it("--check-criteria on a fully-checked RFC stamps with an empty auto-check delta", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101").replace(/- \[ \]/g, "- [x]"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual([]);
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: implemented");
+  });
+
+  it("--check-criteria reports STAMP-CHECK-01 on a probes-less envelope instead of crashing", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+
+    // Emit a real envelope, then strip its probes array — the object stays
+    // hash-valid (hashes cover the RFC bytes, not the probe list) so the
+    // emit-if-needed pass leaves it alone and the resolver meets `undefined`.
+    const { runRfcVerificationEmit } = await import("../../os/rfc/verification-evidence.ts");
+    await runRfcVerificationEmit(
+      { argv: [], flags: { id: "RFC-0101" } },
+      makeContext(workspaceRoot),
+    );
+    const envPath = evidenceEnvelopePath(workspaceRoot, "RFC-0101");
+    const env = yamlParse(await readFile(envPath, "utf-8")) as Record<string, unknown>;
+    delete env["probes"];
+    await writeFile(envPath, `${yamlStringify(env)}\n`);
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const violation = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(violation, "probes-less envelope must fail closed, not TypeError").toBeDefined();
+    expect(violation!.message).toContain("AC-3");
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: accepted");
+    expect(content).toContain("- [ ] AC-3:");
+  });
+
+  it("--check-criteria rejects empty and directory evidence paths (no blank-check)", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    // `test:` resolves to "" → would stat workspaceRoot (a directory); and
+    // `file: src` names a real directory. Neither may certify a criterion.
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101", { ac1: "test:", ac2: "file: src" }));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const violation = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(violation).toBeDefined();
+    expect(violation!.message).toContain("AC-1");
+    expect(violation!.message).toContain("AC-2");
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: accepted");
+  });
+
+  it("--check-criteria resolves file: and bare line-range annotations", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(
+      rfcFile,
+      RFC_BODY_FLAGGED("RFC-0101", {
+        ac1: "file: src/x.test.ts:1-5",
+        ac2: "src/foo.ts:1-2",
+      }),
+    );
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
+  });
+
+  it("--check-criteria refuses evidence paths that escape the workspace root", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    // `..` traversal reaches a real file outside the workspace — still not
+    // evidence: the resolver stays inside workspaceRoot.
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101", { ac1: "file: ../outside.ts" }));
+    await writeFile(join(workspaceRoot, "..", "outside.ts"), "// outside\n");
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const violation = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(violation).toBeDefined();
+    expect(violation!.message).toContain("AC-1");
+    await rm(join(workspaceRoot, "..", "outside.ts"), { force: true });
+  });
+
+  it("--check-criteria composes with --sync (invoke delegation then auto-check)", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const invoke = vi.fn(async () => ({ exitCode: 0, ok: true, summary: "resync ok" }));
+    const input = makeInputWithCriteriaFlag("RFC-0101", commit);
+    input.flags["sync"] = true;
+    const result = await runRfcImplementStamp(input, {
+      ...makeContext(workspaceRoot),
+      invoke,
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(invoke).toHaveBeenCalledWith("rfc.evidence.sync", { id: "RFC-0101" });
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: implemented");
   });
 });
