@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1306: --sync flag runs rfc.evidence.sync via context.invoke before the stale-evidence gate; EVIDENCE-SYNC-01 when no kernel host, sync failure aborts before any mutation.</item>
   <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1321: commitReferencesRfc compares case-insensitively — --id rfc-NNNN satisfies an RFC-NNNN subject (RFC-IMP-03 false-fail closed)</item>
   <item>RFC-1321: review-r2: stringLiteralValue — comment-aware literal extractor keys COMMAND_PROVENANCE cleanly (adjacent comments no longer corrupt the key or evade CMDGEN-03); (?!\d) boundary in commitCarriesGovernanceProvenance; non-string --id guard</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-IMP-07</history>
+  <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -306,6 +306,172 @@ function mutateFrontmatter(
   return content;
 }
 
+// ─── RFC-1322: --check-criteria ──────────────────────────────────────────────
+
+/** Extract the inline `(evidence: ...)` annotation text from a criterion line. */
+function extractEvidenceAnnotation(line: string): string | undefined {
+  return line.match(/\(evidence:\s*(.+?)\)/)?.[1]?.trim();
+}
+
+/**
+ * The AC-N identifier of a checklist line, or a truncated line excerpt when it
+ * carries no id — STAMP-CHECK-01 diagnostics and criteriaAutoChecked key on it.
+ */
+function criterionLabelOf(line: string): string {
+  const id = line.match(/- \[[ x]\]\s*(AC-\d+):/)?.[1];
+  if (id) return id;
+  const trimmed = line.trim();
+  return trimmed.length > 72 ? `${trimmed.slice(0, 69)}…` : trimmed;
+}
+
+/**
+ * Resolvable-annotation contract (RFC-1322 — deliberately stricter than V-37,
+ * which validates the `probe:` binding only and lets `file:` annotations fall
+ * through unvalidated): `test:<path>`, `file:<path>`, and `<path>:<line>`
+ * resolve when the path exists on disk; `probe:AC-N` resolves when the
+ * evidence envelope carries a probe record bound to AC-N with ok === true.
+ * Every other form is unresolvable — the stamp certifies, so it resolves
+ * evidence, not just references.
+ */
+async function resolveCriterionEvidence(
+  annotation: string,
+  envelope: VerificationEvidence | null,
+  workspaceRoot: string,
+): Promise<boolean> {
+  if (annotation.startsWith("probe:")) {
+    const refId = annotation.slice("probe:".length).trim();
+    return envelope?.probes.some((r) => r.probe.criterion === refId && r.ok) === true;
+  }
+  if (annotation.startsWith("test:") || annotation.startsWith("file:")) {
+    const filePath = annotation.slice(annotation.indexOf(":") + 1).trim();
+    try {
+      await io.stat(join(workspaceRoot, filePath));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  if (/^[^:]+:\d+$/.test(annotation)) {
+    const filePath = annotation.slice(0, annotation.lastIndexOf(":")).trim();
+    try {
+      await io.stat(join(workspaceRoot, filePath));
+      return true;
+    } catch {
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * The committed envelope needs an in-process refresh when it is absent,
+ * malformed, lacks the hash fields IMP-09 binds, or its hashes diverge from
+ * the committed RFC bytes / acceptance list — the same comparisons IMP-09
+ * performs, evaluated pre-write so the auto-check pass sees probe: evidence.
+ */
+function envelopeNeedsRefresh(
+  evidenceCheck: {
+    exists: boolean;
+    malformed: boolean;
+    envelope: VerificationEvidence | null;
+  },
+  rfcMarkdown: string,
+  acceptance: unknown,
+): boolean {
+  if (!evidenceCheck.exists || evidenceCheck.malformed || !evidenceCheck.envelope) {
+    return true;
+  }
+  const env = evidenceCheck.envelope;
+  if (!env.rfcFileHash || !env.acceptanceHash) return true;
+  const currentFileHash = byteHashHex(rfcMarkdown);
+  const currentAcceptanceHash = byteHashHex(
+    normalizeProbes(Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : []),
+  );
+  return env.rfcFileHash !== currentFileHash || env.acceptanceHash !== currentAcceptanceHash;
+}
+
+interface AutoCheckOutcome {
+  /** Trimmed unchecked lines whose evidence resolved — flip targets. */
+  flippable: string[];
+  /** Criterion labels of flippable lines — the criteriaAutoChecked surface. */
+  flippedIds: string[];
+  /** Unresolvable/absent annotations — STAMP-CHECK-01 payloads. */
+  failures: Array<{ criterion: string; annotation: string }>;
+  /**
+   * Dry-run only: `probe:` annotations that cannot resolve because the
+   * envelope would be refreshed first. Not failures — the real run resolves
+   * them against the freshly emitted envelope.
+   */
+  pendingRefresh: string[];
+}
+
+/** In-memory auto-check pass over the unchecked criteria of the committed body. */
+async function autoCheckCriteria(opts: {
+  uncheckedLines: string[];
+  envelope: VerificationEvidence | null;
+  /** False in dry-run when the envelope would be re-emitted before resolving. */
+  probesUsable: boolean;
+  workspaceRoot: string;
+}): Promise<AutoCheckOutcome> {
+  const outcome: AutoCheckOutcome = {
+    flippable: [],
+    flippedIds: [],
+    failures: [],
+    pendingRefresh: [],
+  };
+  for (const line of opts.uncheckedLines) {
+    const label = criterionLabelOf(line);
+    const annotation = extractEvidenceAnnotation(line);
+    if (!annotation) {
+      outcome.failures.push({
+        criterion: label,
+        annotation: "<no (evidence: ...) annotation>",
+      });
+      continue;
+    }
+    if (!opts.probesUsable && annotation.startsWith("probe:")) {
+      outcome.pendingRefresh.push(label);
+      continue;
+    }
+    if (await resolveCriterionEvidence(annotation, opts.envelope, opts.workspaceRoot)) {
+      outcome.flippable.push(line);
+      outcome.flippedIds.push(label);
+    } else {
+      outcome.failures.push({ criterion: label, annotation });
+    }
+  }
+  return outcome;
+}
+
+/**
+ * Flip `- [ ]` → `- [x]` for the given unchecked criterion lines inside the
+ * source's `## Acceptance criteria` section only — fenced code blocks are
+ * skipped so a section example inside ``` fences never becomes a flip target
+ * (the same guard the section extractors apply), and `## Document readiness`
+ * DR-N items are out of scope by construction.
+ */
+function flipCriteriaInSource(source: string, uncheckedTargets: ReadonlySet<string>): string {
+  const lines = source.split("\n");
+  let inFence = false;
+  let inSection = false;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (/^```/.test(line)) {
+      inFence = !inFence;
+      continue;
+    }
+    if (inFence) continue;
+    if (/^## /.test(line)) {
+      inSection = /^## Acceptance criteria\s*$/.test(line);
+      continue;
+    }
+    if (inSection && /^\s*- \[ \]/.test(line) && uncheckedTargets.has(line.trim())) {
+      lines[i] = line.replace(/- \[ \]/, "- [x]");
+    }
+  }
+  return lines.join("\n");
+}
+
 // ─── Main handler ────────────────────────────────────────────────────────────
 
 export async function runRfcImplementStamp(
@@ -331,6 +497,10 @@ export async function runRfcImplementStamp(
 
   const violations: RfcImplementStampViolation[] = [];
   const isDryRun = dryRun || input.flags["dry-run"] === true;
+  // RFC-1322: the stamp performs the checkbox flips itself — but only for
+  // criteria whose (evidence: ...) annotation resolves — and refreshes a
+  // missing/stale envelope in-process before the gates evaluate it.
+  const checkCriteria = input.flags["check-criteria"] === true;
 
   // ── Find the target RFC ───────────────────────────────────────────────────
   const files = await listRfcFiles(rfcDirPath);
@@ -408,14 +578,17 @@ export async function runRfcImplementStamp(
   }
 
   // ── RFC-IMP-02: criterion checks (V-26/V-27 semantics) ────────────────────
+  // Under --check-criteria both branches defer: unchecked lines become flip
+  // candidates for the auto-check pass, and checkedWithoutEvidence re-runs on
+  // the post-flip body — a flipped line always keeps its annotation.
   const criteriaEval = evaluateAcceptanceCriteria(body);
-  if (criteriaEval.totalUnchecked > 0) {
+  if (!checkCriteria && criteriaEval.totalUnchecked > 0) {
     violations.push({
       rule: "RFC-IMP-02",
       message: `${criteriaEval.totalUnchecked} acceptance criteria are unchecked. All criteria must be checked before stamping: ${criteriaEval.uncheckedLines.join("; ")}`,
     });
   }
-  if (criteriaEval.checkedWithoutEvidence.length > 0) {
+  if (!checkCriteria && criteriaEval.checkedWithoutEvidence.length > 0) {
     violations.push({
       rule: "RFC-IMP-02",
       message: `${criteriaEval.checkedWithoutEvidence.length} checked criteria lack inline (evidence: ...) annotation: ${criteriaEval.checkedWithoutEvidence.join("; ")}`,
@@ -564,9 +737,10 @@ export async function runRfcImplementStamp(
   // must also be evaluated when hasProbes is now false, because probe
   // deletion IS a criteria change and would otherwise slip past
   // requiresEvidence entirely (RFC-IMP-08 exempts policy/deprecation kinds).
-  const evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
+  // let — --check-criteria re-reads the envelope after the emit-if-needed pass.
+  let evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
 
-  if (requiresEvidence) {
+  if (!checkCriteria && requiresEvidence) {
     if (!evidenceCheck.exists || evidenceCheck.overall !== "pass") {
       violations.push({
         rule: "RFC-IMP-06",
@@ -583,7 +757,9 @@ export async function runRfcImplementStamp(
   // (the RFC file must be committed-clean to stamp) the compared bytes are
   // effectively the committed bytes — deliberate, keeps the gate honest
   // without a second git read. Fires before any frontmatter mutation.
-  if (evidenceCheck.exists) {
+  // Under --check-criteria this gate moves inside the lock, evaluated against
+  // the envelope the emit-if-needed pass may have just refreshed.
+  if (!checkCriteria && evidenceCheck.exists) {
     if (evidenceCheck.malformed || !evidenceCheck.envelope) {
       violations.push({
         rule: "RFC-IMP-09",
@@ -640,6 +816,9 @@ export async function runRfcImplementStamp(
   }
 
   // ── RFC-IMP-05: acquire RFC-specific exclusive lock ───────────────────────
+  // Under --check-criteria the lock must precede the FIRST write — which is
+  // the emit-if-needed envelope refresh, not the stamp mutation — so all
+  // envelope-independent gates above abort before this point.
   const { acquired, lockPath } = await acquireRfcLock(workspaceRoot, targetId);
   if (!acquired) {
     violations.push({
@@ -652,16 +831,176 @@ export async function runRfcImplementStamp(
   try {
     // ── Atomic mutation ──────────────────────────────────────────────────────
     const rfcSource = await io.readFile(rfcFilePath);
+    // RFC-1322: the mutation-bound source — under --check-criteria it carries
+    // the auto-check flips; without the flag it is the committed file text.
+    let stampSource = rfcSource;
+    let criteriaAutoChecked: string[] | undefined;
+    let criteriaPendingRefresh: string[] = [];
+    let evidenceWouldRefresh = false;
+    let effectiveCriteriaChecked = criteriaEval.totalChecked;
+
+    if (checkCriteria) {
+      // Emit-if-needed (RFC-1322 order step 4): a missing, malformed, or
+      // hash-stale envelope is refreshed in-process through the same direct
+      // runRfcVerificationEmit call the post-stamp re-emit uses — on the
+      // committed bytes, so IMP-09 keeps evaluating a real file state. The
+      // freshness precheck (RFC-1320) gates this emit exactly as a manual one.
+      const needsEmit = hasProbes && envelopeNeedsRefresh(evidenceCheck, rfcSource, acceptance);
+      evidenceWouldRefresh = needsEmit;
+      if (needsEmit && !isDryRun) {
+        let emitOk = false;
+        let emitSummary = "";
+        try {
+          const emitResult = await runRfcVerificationEmit(
+            { argv: [], flags: { id: targetId } },
+            context,
+          );
+          emitOk = emitResult.exitCode === 0;
+          emitSummary = emitResult.summary ?? "";
+        } catch (emitErr) {
+          violations.push({
+            rule: "EVIDENCE-SYNC-02",
+            message: `pre-stamp evidence emit for ${targetId} threw: ${emitErr instanceof Error ? emitErr.message : String(emitErr)}. Resolve the failing step and re-run the stamp.`,
+          });
+          return stampFailResult(violations, isDryRun, outputFormat, logger);
+        }
+        if (!emitOk) {
+          violations.push({
+            rule: "EVIDENCE-SYNC-02",
+            message: `pre-stamp evidence emit for ${targetId} failed${emitSummary ? `: ${emitSummary}` : ""}. Resolve the failing step and re-run the stamp.`,
+          });
+          return stampFailResult(violations, isDryRun, outputFormat, logger);
+        }
+        logger.info(`[rfc.implement.stamp] --check-criteria: refreshed stale/missing envelope`);
+        evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
+      }
+
+      // Auto-check pass (RFC-1322 order step 5, in-memory): each unchecked
+      // criterion resolves its (evidence: ...) annotation; unresolvable ones
+      // abort before any RFC mutation. In dry-run with a pending refresh the
+      // probe: annotations are not yet resolvable — pending, not failures.
+      const auto = await autoCheckCriteria({
+        uncheckedLines: criteriaEval.uncheckedLines,
+        envelope: evidenceCheck.envelope,
+        probesUsable: !(isDryRun && needsEmit),
+        workspaceRoot,
+      });
+      criteriaAutoChecked = auto.flippedIds;
+      criteriaPendingRefresh = auto.pendingRefresh;
+      if (auto.failures.length > 0) {
+        violations.push({
+          rule: "STAMP-CHECK-01",
+          message:
+            `${auto.failures.length} unchecked acceptance criteria lack resolvable (evidence: ...) annotations — ` +
+            `supply a resolvable reference (test:<path>, file:<path>, <path>:<line>, or probe:AC-N bound to a passing envelope probe): ` +
+            auto.failures.map((f) => `${f.criterion} [${f.annotation}]`).join("; "),
+        });
+      }
+
+      if (auto.flippable.length > 0) {
+        stampSource = flipCriteriaInSource(rfcSource, new Set(auto.flippable));
+      }
+
+      // Post-flip criteria gates on the mutation-bound bytes (step 6): a
+      // still-unchecked line means the flip failed to land — fail closed
+      // rather than write a partially checked document; checked lines must
+      // keep their annotation (a flipped line always does).
+      const postFlipEval = evaluateAcceptanceCriteria(stampSource);
+      if (postFlipEval.totalUnchecked > 0) {
+        violations.push({
+          rule: "RFC-IMP-02",
+          message: `${postFlipEval.totalUnchecked} acceptance criteria remain unchecked after the --check-criteria pass: ${postFlipEval.uncheckedLines.join("; ")}`,
+        });
+      }
+      if (postFlipEval.checkedWithoutEvidence.length > 0) {
+        violations.push({
+          rule: "RFC-IMP-02",
+          message: `${postFlipEval.checkedWithoutEvidence.length} checked criteria lack inline (evidence: ...) annotation: ${postFlipEval.checkedWithoutEvidence.join("; ")}`,
+        });
+      }
+      effectiveCriteriaChecked = postFlipEval.totalChecked;
+
+      // IMP-06 + IMP-09 against the (possibly just-refreshed) envelope —
+      // skipped in dry-run when a refresh would run, since committed-bytes
+      // verdicts are not predictive of the post-emit state the real stamp
+      // evaluates.
+      if (!(isDryRun && needsEmit)) {
+        if (requiresEvidence) {
+          if (!evidenceCheck.exists || evidenceCheck.overall !== "pass") {
+            violations.push({
+              rule: "RFC-IMP-06",
+              message: `RFC ${targetId} declares acceptance probes but evidence file is missing or overall is not "pass" (got "${evidenceCheck.overall}"). Run: site-kernel run rfc.verification.emit --id ${targetId}`,
+            });
+          } else {
+            const slug = targetId.toLowerCase();
+            evidenceRelPath = join(VERIFICATION_DIR, `${slug}.generated.yaml`);
+          }
+        }
+        if (evidenceCheck.exists) {
+          if (evidenceCheck.malformed || !evidenceCheck.envelope) {
+            violations.push({
+              rule: "RFC-IMP-09",
+              message: `RFC ${targetId} evidence envelope is malformed (unreadable YAML or non-object content). Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope — or delete the stale envelope file.`,
+            });
+          } else if (!hasProbes) {
+            violations.push({
+              rule: "RFC-IMP-09",
+              message: `RFC ${targetId} has a committed evidence envelope but no acceptance: list — probes were deleted after emission, which is a criteria change. Either restore the probes and re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope — or delete the stale envelope file (rfc.verification.emit skips probe-less RFCs, so re-emit alone cannot clear this).`,
+            });
+          } else {
+            const rfcMarkdown = await io.readFile(rfcFilePath);
+            const currentFileHash = byteHashHex(rfcMarkdown);
+            const currentAcceptanceHash = byteHashHex(
+              normalizeProbes(acceptance as AcceptanceProbe[]),
+            );
+            const env = evidenceCheck.envelope;
+            if (!env.rfcFileHash || !env.acceptanceHash) {
+              violations.push({
+                rule: "RFC-IMP-09",
+                message: `RFC ${targetId} evidence envelope lacks hash fields (pre-RFC-0330 format). Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+              });
+            } else if (
+              env.rfcFileHash !== currentFileHash ||
+              env.acceptanceHash !== currentAcceptanceHash
+            ) {
+              const staleFields = [
+                env.rfcFileHash !== currentFileHash ? "rfcFileHash" : "",
+                env.acceptanceHash !== currentAcceptanceHash ? "acceptanceHash" : "",
+              ]
+                .filter(Boolean)
+                .join(" + ");
+              violations.push({
+                rule: "RFC-IMP-09",
+                message: `RFC ${targetId} evidence is stale: ${staleFields} mismatch — the RFC file or its acceptance list changed after emission. Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+              });
+            }
+          }
+        }
+      }
+
+      if (violations.length > 0) {
+        return stampFailResult(violations, isDryRun, outputFormat, logger);
+      }
+    }
 
     const today = toIsoDate(new Date());
     const stampedAt = new Date().toISOString();
-    const mutatedSource = mutateFrontmatter(rfcSource, "implemented", today, today);
+    const mutatedSource = mutateFrontmatter(stampSource, "implemented", today, today);
 
     if (isDryRun) {
       if (outputFormat === "pretty") {
         logger.success(`[dry-run] ${targetId} would be stamped as implemented`);
         logger.info(`  implementation commit: ${implementationCommit}`);
-        logger.info(`  criteria checked: ${criteriaEval.totalChecked}`);
+        logger.info(`  criteria checked: ${effectiveCriteriaChecked}`);
+        if (criteriaAutoChecked && criteriaAutoChecked.length > 0) {
+          logger.info(`  criteria auto-checked: ${criteriaAutoChecked.join(", ")}`);
+        }
+        if (criteriaPendingRefresh.length > 0) {
+          logger.info(`  criteria pending envelope refresh: ${criteriaPendingRefresh.join(", ")}`);
+        }
+        if (evidenceWouldRefresh) {
+          logger.info(`  evidence envelope would be refreshed (missing or stale)`);
+        }
         if (evidenceRelPath) {
           logger.info(`  evidence: ${evidenceRelPath}`);
         }
@@ -674,7 +1013,8 @@ export async function runRfcImplementStamp(
             rfcId: targetId,
             implementationCommit: implementationCommit!,
             stampedAt,
-            criteriaChecked: criteriaEval.totalChecked,
+            criteriaChecked: effectiveCriteriaChecked,
+            ...(checkCriteria ? { criteriaAutoChecked: criteriaAutoChecked ?? [] } : {}),
             ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
           },
           violations: [],
@@ -684,7 +1024,8 @@ export async function runRfcImplementStamp(
       };
     }
 
-    // Write the mutated RFC file atomically
+    // Write the mutated RFC file atomically — under --check-criteria this
+    // single write carries the checkbox flips AND the frontmatter mutation.
     await writeFileAtomic(rfcFilePath, mutatedSource);
 
     // ── RFC-1053: Generate per-RFC metrics (non-fatal, guarded by !isDryRun) ─
@@ -731,7 +1072,10 @@ export async function runRfcImplementStamp(
     if (outputFormat === "pretty") {
       logger.success(`${targetId} stamped as implemented`);
       logger.info(`  implementation commit: ${implementationCommit}`);
-      logger.info(`  criteria checked: ${criteriaEval.totalChecked}`);
+      logger.info(`  criteria checked: ${effectiveCriteriaChecked}`);
+      if (criteriaAutoChecked && criteriaAutoChecked.length > 0) {
+        logger.info(`  criteria auto-checked: ${criteriaAutoChecked.join(", ")}`);
+      }
       if (evidenceRelPath) {
         logger.info(`  evidence: ${evidenceRelPath}`);
       }
@@ -746,7 +1090,8 @@ export async function runRfcImplementStamp(
           rfcId: targetId,
           implementationCommit: implementationCommit!,
           stampedAt,
-          criteriaChecked: criteriaEval.totalChecked,
+          criteriaChecked: effectiveCriteriaChecked,
+          ...(checkCriteria ? { criteriaAutoChecked: criteriaAutoChecked ?? [] } : {}),
           ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
           ...(hasProbes ? { evidenceReEmitted } : {}),
           ...(metricsPath ? { metricsPath } : {}),
