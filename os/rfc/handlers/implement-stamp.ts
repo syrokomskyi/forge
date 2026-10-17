@@ -12,11 +12,11 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1321: commitReferencesRfc compares case-insensitively — --id rfc-NNNN satisfies an RFC-NNNN subject (RFC-IMP-03 false-fail closed)</item>
   <item>RFC-1321: review-r2: stringLiteralValue — comment-aware literal extractor keys COMMAND_PROVENANCE cleanly (adjacent comments no longer corrupt the key or evade CMDGEN-03); (?!\d) boundary in commitCarriesGovernanceProvenance; non-string --id guard</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
+  <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -430,7 +430,10 @@ async function autoCheckCriteria(opts: {
       continue;
     }
     if (!opts.probesUsable && annotation.startsWith("probe:")) {
-      outcome.pendingRefresh.push(label);
+      // Store the trimmed line so the post-flip gate can exclude pending
+      // criteria from the residual-unchecked check (they flip post-emit in
+      // the real run); labels derive via criterionLabelOf when reported.
+      outcome.pendingRefresh.push(line);
       continue;
     }
     if (await resolveCriterionEvidence(annotation, opts.envelope, opts.workspaceRoot)) {
@@ -886,7 +889,7 @@ export async function runRfcImplementStamp(
         workspaceRoot,
       });
       criteriaAutoChecked = auto.flippedIds;
-      criteriaPendingRefresh = auto.pendingRefresh;
+      criteriaPendingRefresh = auto.pendingRefresh.map(criterionLabelOf);
       if (auto.failures.length > 0) {
         violations.push({
           rule: "STAMP-CHECK-01",
@@ -904,12 +907,16 @@ export async function runRfcImplementStamp(
       // Post-flip criteria gates on the mutation-bound bytes (step 6): a
       // still-unchecked line means the flip failed to land — fail closed
       // rather than write a partially checked document; checked lines must
-      // keep their annotation (a flipped line always does).
+      // keep their annotation (a flipped line always does). Dry-run pending
+      // criteria (probe: awaiting the skipped emit) are excluded — the real
+      // run resolves them against the refreshed envelope.
+      const pendingSet = new Set(auto.pendingRefresh);
       const postFlipEval = evaluateAcceptanceCriteria(stampSource);
-      if (postFlipEval.totalUnchecked > 0) {
+      const residualUnchecked = postFlipEval.uncheckedLines.filter((l) => !pendingSet.has(l));
+      if (residualUnchecked.length > 0) {
         violations.push({
           rule: "RFC-IMP-02",
-          message: `${postFlipEval.totalUnchecked} acceptance criteria remain unchecked after the --check-criteria pass: ${postFlipEval.uncheckedLines.join("; ")}`,
+          message: `${residualUnchecked.length} acceptance criteria remain unchecked after the --check-criteria pass: ${residualUnchecked.join("; ")}`,
         });
       }
       if (postFlipEval.checkedWithoutEvidence.length > 0) {
