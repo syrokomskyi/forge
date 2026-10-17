@@ -15,13 +15,11 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: AC-4 banned literal in os/compass handlers
-
-compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
   <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
   <item>RFC-1233: stripGitTrailers at the record point + sanitizeItemText star-slash guard — commit-message trailers (Token: value / Token #value, plus markdown-link attribution lines like "Generated with [X](url)") no longer pollute injected items.</item>
   <item>Session-retro 2026-10-08: id-in-diff dedup — auto-inject skips when the worktree diff already carries a same-ID item (HEAD-vs-worktree via git show HEAD:path), closing the descriptive+generic duplicate class seen on RFC-1237.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1323: authored text asserts COMPASS-CS-08 via comment-safety; --injected text neutralizes style-aware and reports neutralized; getLineCommentPrefix/HEADER_SCAN_LINES moved to os/compass/comment-safety.ts.</item>
   <history>CONTRACT-02, PURPOSE-02, RFC-1095, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -30,6 +28,16 @@ import { execFile, existsSync } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
 import { resolve, relative } from "node:path";
+import {
+  HEADER_SCAN_LINES,
+  commentStyleFor,
+  enclosingCommentStyle,
+  getLineCommentPrefix,
+  assertCompassCommentSafe,
+  neutralizeCompassText,
+  CompassCommentSafetyError,
+  type CommentStyle,
+} from "../comment-safety.ts";
 import { detectRiskClass, getWorkspaceRelativeSegments } from "./compass-inventory.ts";
 import { parseGovernanceIdParts, resolveCompassPolicy, type CompassPolicy } from "../policy.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
@@ -51,10 +59,8 @@ const CONVENTIONAL_PREFIX_RE = /^[a-z]+(\([^)]*\))?!?:\s*/i;
 
 export const CHANGE_SUMMARY_WINDOW = 5;
 
-// A CHANGE_SUMMARY block is a file header only when it starts within this many
-// lines from the top. Deeper matches are examples inside template literals or
-// fenced doc sections, not headers.
-const HEADER_SCAN_LINES = 120;
+// HEADER_SCAN_LINES now lives in ../comment-safety.ts (RFC-1323) — imported
+// above; it bounds both this writer's header guard and the CS-08 scan.
 
 export interface SummaryRecordInput {
   id: string;
@@ -72,6 +78,8 @@ export interface SummaryRecordResult {
   collapsed: string[];
   skipped: Array<{ file: string; reason: SummaryRecordSkipReason }>;
   keyDecisionsReminders: string[];
+  /** RFC-1323: files whose injected item text was terminator-neutralized. */
+  neutralized: string[];
 }
 
 interface ParsedChangeSummary {
@@ -131,17 +139,28 @@ export function mergeHistoryIds(
   return [...parseable, ...unparseable];
 }
 
-export function getLineCommentPrefix(filePath: string): string | null {
-  if (filePath.endsWith(".gd")) return "# ";
-  if (filePath.endsWith(".tscn") || filePath.endsWith(".tres")) return "; ";
-  return null;
-}
+// getLineCommentPrefix moved to ../comment-safety.ts (RFC-1323) — re-exported
+// here so existing deep-import consumers keep working.
+export { getLineCommentPrefix } from "../comment-safety.ts";
 
 export function buildChangeSummaryBlock(
   items: string[],
   historyIds: string[],
   filePath: string,
+  style?: CommentStyle,
 ): string {
+  // RFC-1323: emission-time guard — item text must not carry the host style's
+  // comment terminator. Callers either asserted (authored) or neutralized
+  // (injected) upstream; this assert is the uniform seam for every emitter.
+  // `style` defaults to the extension guess — callers editing an existing
+  // header should pass enclosingCommentStyle's detection instead.
+  const effectiveStyle = style ?? commentStyleFor(filePath);
+  for (const item of items) {
+    assertCompassCommentSafe(item, effectiveStyle, {
+      file: filePath,
+      block: "CHANGE_SUMMARY",
+    });
+  }
   const prefix = getLineCommentPrefix(filePath);
   const lines = ["<CHANGE_SUMMARY>"];
   for (const item of items) {
@@ -202,15 +221,18 @@ export function stripGitTrailers(message: string): string {
 const COMPASS_TAG_LITERAL_RE =
   /<\/?(?:CHANGE_SUMMARY|MODULE_CONTRACT|KEY_DECISIONS|history|item|purpose|non-goals)>/g;
 
-export function sanitizeItemText(text: string): string {
-  return (
-    text
-      .replace(COMPASS_TAG_LITERAL_RE, (tag) => tag.replace(/[<>]/g, ""))
-      // RFC-1233: a literal star-slash sequence would terminate the
-      // surrounding block comment when the item lands in /* ... */ headers.
-      // ∕ (U+2215) is visually near-identical, idempotent, and never re-forms.
-      .replace(/\*\//g, "*\u2215")
-  );
+/**
+ * RFC-1233 tag-strip stays here; the terminator rewrite delegates to
+ * neutralizeCompassText (RFC-1323) — style-aware, so a star-slash inside an
+ * html- or line-style header stays literal (it is not a terminator there).
+ * Returns the neutralization flag so injected paths can report it.
+ */
+export function sanitizeItemText(
+  text: string,
+  style: CommentStyle,
+): { text: string; neutralized: boolean } {
+  const tagStripped = text.replace(COMPASS_TAG_LITERAL_RE, (tag) => tag.replace(/[<>]/g, ""));
+  return neutralizeCompassText(tagStripped, style);
 }
 
 export function isValidGovernanceId(id: string, policy: CompassPolicy): boolean {
@@ -221,6 +243,8 @@ interface RecordOutcome {
   recorded: boolean;
   collapsed: boolean;
   skipReason?: SummaryRecordSkipReason;
+  /** RFC-1323: the item text carried a comment terminator and was neutralized. */
+  neutralized?: boolean;
 }
 
 /**
@@ -228,6 +252,8 @@ interface RecordOutcome {
  * Returns the outcome; writes the file only when mutated and not dry-run.
  * `headSource` is the file's content at HEAD (when resolvable) — it enables
  * the id-in-diff dedup; pass undefined outside git workspaces.
+ * `injected` marks machine-piped free text (commit messages): it is
+ * neutralized instead of rejected; authored text throws COMPASS-CS-08.
  */
 export async function recordSummaryItem(
   absPath: string,
@@ -238,6 +264,7 @@ export async function recordSummaryItem(
   policy: CompassPolicy,
   headSource?: string,
   addedItemIds?: ReadonlySet<string>,
+  injected = false,
 ): Promise<RecordOutcome> {
   const source = await io.readFile(absPath);
   const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
@@ -262,7 +289,16 @@ export async function recordSummaryItem(
   const strippedText = text.startsWith(id)
     ? text.slice(id.length).replace(/^\s*[:—-]?\s*/, "")
     : text;
-  const newItem = strippedText.length > 0 ? `${id}: ${sanitizeItemText(strippedText)}` : id;
+  // RFC-1323: authored text asserts (rewordable — a silent rewrite would
+  // obscure intent); injected text neutralizes and reports the flag. The
+  // style is detected from the comment actually enclosing the block — for
+  // .astro that can differ from the extension guess.
+  const style = enclosingCommentStyle(source, blockMatch.index!, relPath);
+  if (!injected) {
+    assertCompassCommentSafe(strippedText, style, { file: relPath, block: "CHANGE_SUMMARY" });
+  }
+  const { text: safeText, neutralized } = sanitizeItemText(strippedText, style);
+  const newItem = strippedText.length > 0 ? `${id}: ${safeText}` : id;
   const normalizedNew = normalizeItemText(newItem);
   if (items.some((item) => normalizeItemText(item) === normalizedNew)) {
     return { recorded: false, collapsed: false, skipReason: "duplicate" };
@@ -302,12 +338,12 @@ export async function recordSummaryItem(
   const collapsed = collapsedIds.length > 0;
   const nextHistory = mergeHistoryIds(historyIds, collapsedIds, policy);
 
-  const newBlock = buildChangeSummaryBlock(nextItems, nextHistory, relPath);
+  const newBlock = buildChangeSummaryBlock(nextItems, nextHistory, relPath, style);
   const transformed = source.replace(CHANGE_SUMMARY_BLOCK_RE, newBlock);
   if (!dryRun && transformed !== source) {
     await writeFileIfChanged(absPath, transformed);
   }
-  return { recorded: true, collapsed };
+  return { recorded: true, collapsed, ...(neutralized ? { neutralized } : {}) };
 }
 
 function execGit(cwd: string, args: string[]): Promise<string | null> {
@@ -399,6 +435,30 @@ export async function runCompassSummaryRecord(
   // ecosystem.commit and mission.git.commit both pipe the raw message here.
   const stripped = typeof rawText === "string" ? stripGitTrailers(rawText).trim() : "";
   const text = stripped.length > 0 ? stripped : id;
+  // RFC-1323: commit integrations pass --injected to mark piped free text —
+  // neutralized, not rejected. Authored --text asserts per target style.
+  const injected = input.flags["injected"] === true;
+
+  if (!injected) {
+    // Fail BEFORE any file write: check the text against every target's
+    // comment style — a `-->` that is harmless in a .ts header still
+    // terminates a .md one, so the whole target set gates together.
+    for (const file of files) {
+      const rel = relative(baseRoot, resolve(baseRoot, file)).replace(/\\/g, "/");
+      try {
+        assertCompassCommentSafe(text, commentStyleFor(rel), {
+          file: rel,
+          block: "CHANGE_SUMMARY",
+        });
+      } catch (err) {
+        if (err instanceof CompassCommentSafetyError) {
+          context.logger.error(`[compass.summary.record] ${err.message}\n  ${err.fixHint}`);
+          return { exitCode: 1, summary: `COMPASS-CS-08: ${err.message}` };
+        }
+        throw err;
+      }
+    }
+  }
 
   const result: SummaryRecordResult = {
     command: "compass.summary.record",
@@ -407,6 +467,7 @@ export async function runCompassSummaryRecord(
     collapsed: [],
     skipped: [],
     keyDecisionsReminders: [],
+    neutralized: [],
   };
 
   const gitTopRaw = await execGit(baseRoot, ["rev-parse", "--show-toplevel"]);
@@ -433,6 +494,7 @@ export async function runCompassSummaryRecord(
         policy,
         headSource,
         addedItemIds,
+        injected,
       );
       if (outcome.skipReason) {
         result.skipped.push({ file, reason: outcome.skipReason });
@@ -441,6 +503,7 @@ export async function runCompassSummaryRecord(
       if (outcome.recorded) {
         result.recorded.push(relPath);
         if (outcome.collapsed) result.collapsed.push(relPath);
+        if (outcome.neutralized) result.neutralized.push(relPath);
         const source = await io.readFile(absPath);
         if (riskReminderNeeded(relPath, source, policy)) {
           result.keyDecisionsReminders.push(relPath);
@@ -448,6 +511,11 @@ export async function runCompassSummaryRecord(
         }
       }
     } catch (err) {
+      // CS-08 is fail-closed, not a per-file skip — abort the whole record.
+      if (err instanceof CompassCommentSafetyError) {
+        context.logger.error(`[compass.summary.record] ${err.message}\n  ${err.fixHint}`);
+        return { exitCode: 1, summary: `COMPASS-CS-08: ${err.message}` };
+      }
       result.skipped.push({ file, reason: "unparseable" });
       context.logger.warn(
         `[compass.summary.record] skipped ${file}: ${err instanceof Error ? err.message : String(err)}`,
@@ -458,6 +526,10 @@ export async function runCompassSummaryRecord(
   return {
     data: result,
     exitCode: 0,
-    summary: `[compass.summary.record] recorded=${result.recorded.length}, collapsed=${result.collapsed.length}, skipped=${result.skipped.length}`,
+    summary:
+      `[compass.summary.record] recorded=${result.recorded.length}, collapsed=${result.collapsed.length}, skipped=${result.skipped.length}` +
+      (result.neutralized.length > 0
+        ? `, neutralized=${result.neutralized.length} (${result.neutralized.join(", ")})`
+        : ""),
   };
 }

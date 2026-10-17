@@ -15,13 +15,11 @@ for Compass source-file inventory.</purpose>
   <item>Policy literals come from resolveCompassPolicy — no stack- or consumer-specific values live in this module.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1111: normalize dynamic-route bracket stems in deriveFileTokens — [token]/[...slug]/[lang] segments strip brackets and dots so PURPOSE-02 is satisfiable for Astro dynamic routes.</item>
   <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <history>RFC-0348, RFC-0556, RFC-1094, RFC-1095, RFC-1096, RFC-1097</history>
 </CHANGE_SUMMARY>
 
@@ -31,6 +29,7 @@ import { join, relative, resolve } from "node:path";
 import { ambientIo } from "../../../src/utils/io.ts";
 import type { ForgeCommandInput } from "../../../src/types.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
+import { findCompassTerminatorInHeader } from "../comment-safety.ts";
 
 // Ambient default for helper fns without a context param — handlers override
 // with `const io = resolveIo(context.io)` inside their own scope.
@@ -544,6 +543,19 @@ export function evaluateV2Rules(
 ): CompassV2Diagnostic[] {
   const parse = parseCompassBlocks(source);
   const diagnostics: CompassV2Diagnostic[] = [];
+
+  // RFC-1323: COMPASS-CS-08 — a comment terminator landing while Compass
+  // inner tags are still unclosed truncated the header mid-block. Scan runs
+  // on the raw header region: parseCompassBlocks never sees the corrupted
+  // tail, so the parse cannot carry this diagnostic.
+  const terminatorHit = findCompassTerminatorInHeader(source, entry.path);
+  if (terminatorHit) {
+    diagnostics.push({
+      ruleId: "COMPASS-CS-08",
+      message: `comment-close sequence "${terminatorHit.substring}" truncates a Compass block at line ${terminatorHit.line} — inner tags are left unclosed`,
+      fix: "fix: reword so the terminator pair never appears in block text (space the glyphs, describe the glob, or XML-escape); run the writers that now reject/neutralize at the seam",
+    });
+  }
 
   const orderedPositions = [
     parse.positions.moduleContract,

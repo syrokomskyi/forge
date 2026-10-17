@@ -15,6 +15,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1253: created — six-doc scaffold, KG node merge, binding patch, dry-run manifest.</item>
   <item>Derive workspace node id prefixes from directory location (apps/→app-, packages/→pkg-, services/→svc-, dotted elsewhere) — COMPASS-DOC-02 resolves prefixes to paths, so type-derived ids failed validation on apps/ repos (consumer field report).</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +32,7 @@ import {
 import { stringify as stringifyYaml } from "yaml";
 import { resolveIo } from "../../../src/utils/io.ts";
 import { resolveCompassPolicy } from "../policy.ts";
+import { CompassCommentSafetyError, assertCompassCommentSafe } from "../comment-safety.ts";
 import {
   discoverWorkspaces,
   type WorkspaceDir,
@@ -81,6 +83,11 @@ function xmlEscape(value: string): string {
 function render(template: string, slots: Record<string, string>): string {
   let out = template;
   for (const [key, value] of Object.entries(slots)) {
+    // RFC-1323: slot values are authored data (workspace names, policy
+    // reasons). xmlEscape already makes the rendered XML safe byte-wise, but
+    // the contract-level gate rejects terminator-carrying authored values —
+    // a slot needing the escape is a data bug worth surfacing, not hiding.
+    assertCompassCommentSafe(value, "html", { block: `docs-slot:${key}` });
     out = out.replaceAll(`{{${key}}}`, value);
   }
   return out;
@@ -334,7 +341,18 @@ export async function runCompassDocsScaffold(
       files.push({ path: rel, action: "skipped", detail: "exists — authored content preserved" });
       continue;
     }
-    const content = render(loadTemplate(name), slotsFor(name));
+    let content: string;
+    try {
+      content = render(loadTemplate(name), slotsFor(name));
+    } catch (err) {
+      // RFC-1323: authored slot data carrying a comment terminator fails the
+      // file closed (COMPASS-CS-08) — the batch continues for other docs.
+      if (err instanceof CompassCommentSafetyError) {
+        files.push({ path: rel, action: "failed", detail: err.message });
+        continue;
+      }
+      throw err;
+    }
     if (!dryRun) {
       await io.mkdir(dirname(abs));
       await io.writeFile(abs, content);

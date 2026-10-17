@@ -11,6 +11,7 @@ PURPOSE, ORDER, and TODO rule families.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for SYNTAX-01 parity.</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
 </CHANGE_SUMMARY>
 */
 
@@ -270,6 +271,30 @@ describe("compass v2 contract (RFC-1094)", () => {
     );
     expect(cs07, "unparseable token must produce a CS-07 diagnostic").toBeDefined();
     expect(result.exitCode).toBeDefined();
+  });
+
+  it("CS-08: a comment terminator truncating an unclosed Compass block is flagged (RFC-1323 AC-4)", async () => {
+    // The `*/` inside <purpose> closes the block comment while MODULE_CONTRACT
+    // and purpose are still open — parseCompassBlocks sees a truncated header;
+    // the raw-text scan must name it.
+    const truncTerm = "*" + "/";
+    const corrupted = `/*\n${MC_OPEN}\n<purpose>tracks widgets under packages${truncTerm}wg paths</purpose>\n${MC_CLOSE}\n${truncTerm}\n`;
+    writeFixture(LOW_FILE, corrupted);
+
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
+    const diag = dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-08");
+    expect(diag, "CS-08 must fire on a mid-block comment terminator").toBeDefined();
+    expect(diag!.message).toContain(truncTerm);
+  });
+
+  it("CS-08 negative: a well-formed header emits no terminator diagnostic (RFC-1323)", async () => {
+    writeFixture(
+      LOW_FILE,
+      wrap(MC("Tracks mission notes for the compass v2 contract test suite."), CS([CS_ITEM])),
+    );
+
+    const result = await runCompassValidation(makeInput(), makeContext(tempDir));
+    expect(dataOf(result).diagnostics.find((d) => d.ruleId === "COMPASS-CS-08")).toBeUndefined();
   });
 
   it("empty CHANGE_SUMMARY (no items, no history) is legal", async () => {

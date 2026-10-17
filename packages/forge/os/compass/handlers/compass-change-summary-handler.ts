@@ -10,12 +10,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0538: renamed compass.changesummary.tidy to compass.summary.trim, raised cap from 3 unprotected to 30 total items, aligned validate cap to 30 total.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: --mode flag; mode-aware COMPASS-CS-05/06/07 diagnostics via shared evaluateV2Rules; PROTECTED_RE now aliases GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: rewrote trim as v2 repair (collapse >5 described items into history, remove ID-less items, normalize history); removed compass.changesummary.validate and the classify machinery (classifyChangeSummaryItem, PROTECTED_RE, BOILERPLATE_RE).</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
-  <history>RFC-0349</history>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <history>RFC-0349, RFC-0538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +32,7 @@ import {
   mergeHistoryIds,
   parseChangeSummary,
 } from "./summary-record.ts";
+import { enclosingCommentStyle } from "../comment-safety.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -118,7 +119,15 @@ export async function runCompassSummaryTrim(
       continue;
     }
 
-    const newBlock = buildChangeSummaryBlock(idItems, nextHistory, entry.path);
+    // RFC-1323: the emission assert uses the style of the comment actually
+    // enclosing the block — .astro can carry an html header the extension
+    // table does not predict.
+    const newBlock = buildChangeSummaryBlock(
+      idItems,
+      nextHistory,
+      entry.path,
+      enclosingCommentStyle(source, blockMatch.index!, entry.path),
+    );
     const transformed = source.replace(CHANGE_SUMMARY_BLOCK_RE, newBlock);
 
     if (transformed === source) {

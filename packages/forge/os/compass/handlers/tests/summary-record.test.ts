@@ -63,6 +63,7 @@ ${items.map((i) => `  <item>${i}</item>`).join("\n")}
 ${history && history.length > 0 ? `  <history>${history.join(", ")}</history>\n` : ""}${CS_CLOSE}
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the summary suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
 </CHANGE_SUMMARY>
 */
 export const x = 1;
@@ -337,13 +338,14 @@ describe("compass.summary.record", () => {
     expect(source).not.toContain("devin.ai");
   });
 
-  it("neutralizes a literal star-slash in --text so the item cannot terminate the block comment (RFC-1233 AC-2)", async () => {
+  it("neutralizes a literal star-slash in injected --text so the item cannot terminate the block comment (RFC-1233 AC-2, RFC-1323)", async () => {
     await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
-    await runCompassSummaryRecord(
+    const result = await runCompassSummaryRecord(
       makeInput({
         id: "RFC-1233",
         files: ["src/a.ts"],
         text: "glob src" + "/**/*.ts in comments",
+        injected: true,
       }),
       makeContext(root),
     );
@@ -352,6 +354,26 @@ describe("compass.summary.record", () => {
     expect(source.match(CS_BLOCK_RE)).not.toBeNull();
     // The neutralized form keeps both characters readable but cannot close /*.
     expect(source).toContain("glob src/**" + "∕*.ts in comments");
+    // RFC-1323: the record report marks the neutralized file.
+    expect(result.data?.neutralized).toEqual(["src/a.ts"]);
+  });
+
+  it("rejects a literal star-slash in authored --text with COMPASS-CS-08 and writes nothing (RFC-1323 AC-1)", async () => {
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    const before = await readFile(join(root, "src", "a.ts"), "utf8");
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["src/a.ts"],
+        text: "glob src" + "/**/*.ts in comments",
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("COMPASS-CS-08");
+    expect(result.summary).toContain("src/a.ts");
+    // Fail closed: the file is untouched.
+    expect(await readFile(join(root, "src", "a.ts"), "utf8")).toBe(before);
   });
 
   it("keeps a single-line subject identical — negative regression (RFC-1233 AC-3)", async () => {
@@ -377,6 +399,94 @@ describe("compass.summary.record", () => {
     const source = await readFile(join(root, "src", "a.ts"), "utf8");
     expect(source).toContain("Note: this line is prose about the fix");
     expect(source).toContain("final summary line");
+  });
+
+  // RFC-1323: style-aware authored/injected coverage. Concatenation keeps the
+  // terminator literal out of this file's own comment-level view.
+  const BLOCK_TERM = "*" + "/";
+  const HTML_CLOSE = "--" + ">";
+  const MD_HEADER = (items: string[]) => `${"<"}!--
+<MODULE_CONTRACT>
+<purpose>
+Fixture markdown doc for summary record tests.
+</purpose>
+</MODULE_CONTRACT>
+${CS_OPEN}
+${items.map((i) => `  <item>${i}</item>`).join("\n")}
+${CS_CLOSE}
+${HTML_CLOSE}
+`;
+
+  it("rejects an authored html terminator on a .md target with COMPASS-CS-08 (RFC-1323 AC-1)", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "docs", "guide.md"), MD_HEADER([]));
+    const before = await readFile(join(root, "docs", "guide.md"), "utf8");
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["docs/guide.md"],
+        text: `close the comment ${HTML_CLOSE} here`,
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("COMPASS-CS-08");
+    expect(await readFile(join(root, "docs", "guide.md"), "utf8")).toBe(before);
+  });
+
+  it("accepts authored text whose star-slash is harmless in the target's html style (RFC-1323)", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "docs", "guide.md"), MD_HEADER([]));
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["docs/guide.md"],
+        text: `glob src${BLOCK_TERM}*.ts stays literal in html comments`,
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(0);
+    const source = await readFile(join(root, "docs", "guide.md"), "utf8");
+    expect(source).toContain(`glob src${BLOCK_TERM}*.ts stays literal`);
+  });
+
+  it("neutralizes html terminators in injected --text and reports the file (RFC-1323)", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "docs", "guide.md"), MD_HEADER([]));
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["docs/guide.md"],
+        text: `close ${HTML_CLOSE} open ${"<"}!--`,
+        injected: true,
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(0);
+    const source = await readFile(join(root, "docs", "guide.md"), "utf8");
+    expect(source).toContain(`close --› open ‹!--`);
+    expect(result.data?.neutralized).toEqual(["docs/guide.md"]);
+  });
+
+  it("a mixed target set rejects authored text unsafe for ANY member's style (RFC-1323)", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(join(root, "docs", "guide.md"), MD_HEADER([]));
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    const tsBefore = await readFile(join(root, "src", "a.ts"), "utf8");
+    const mdBefore = await readFile(join(root, "docs", "guide.md"), "utf8");
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["docs/guide.md", "src/a.ts"],
+        text: `glob src${BLOCK_TERM}*.ts`,
+      }),
+      makeContext(root),
+    );
+    // Legal inside guide.md's html comment but fatal inside a.ts's block
+    // comment — the whole set fails closed, nothing is written anywhere.
+    expect(result.exitCode).toBe(1);
+    expect(await readFile(join(root, "src", "a.ts"), "utf8")).toBe(tsBefore);
+    expect(await readFile(join(root, "docs", "guide.md"), "utf8")).toBe(mdBefore);
   });
 });
 

@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>KERNEL-FLAG-02: Declare compass --root as kind "string[]" — resolveScanRoots reads it as multi-value via getFlagValues, so repeated --root stays legal now that repeated kind-"string" flags are rejected at flag resolution.</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
 Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
@@ -16,7 +15,8 @@ surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
-  <history>RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1242</history>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
@@ -87,7 +87,9 @@ export const forgeCompassModule: ForgeModule = {
       name: "compass.validate",
       mutatesState: false,
       contract: "compass",
-      rules: [],
+      // RFC-1323: first declared CS-family id — sibling CS-05/06/07 stay
+      // undeclared (pre-existing inconsistency the RFC does not backfill).
+      rules: ["COMPASS-CS-08"],
       description:
         "Validate authored source files against current Compass scaffolding requirements.",
       scope: "workspace",
@@ -137,6 +139,11 @@ export const forgeCompassModule: ForgeModule = {
           kind: "string",
           description:
             "Item description. Default: commit subject minus conventional prefix; bare ID outside commit context.",
+        },
+        injected: {
+          kind: "boolean",
+          description:
+            "RFC-1323: mark --text as machine-piped free text (commit messages) — comment terminators are neutralized instead of rejected with COMPASS-CS-08, and the write reports `neutralized` per file.",
         },
       },
       execute: runCompassSummaryRecord,
