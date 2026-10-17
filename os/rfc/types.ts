@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: ForgeInvokeResult/flag-record types for the ctx.invoke delegation surface.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1320</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097</history>
+  <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -602,6 +602,8 @@ export interface RfcImplementStampData {
   implementationCommit: string;
   stampedAt: string;
   criteriaChecked: number;
+  /** RFC-1322: criterion ids flipped `[ ]` → `[x]` by --check-criteria. */
+  criteriaAutoChecked?: string[];
   evidencePath?: string;
   evidenceReEmitted?: boolean;
   metricsPath?: string;
@@ -624,7 +626,10 @@ export type RfcImplementStampRule =
   // chain's own rule ids surface as stamp violations on host-less or
   // mid-chain-failure paths.
   | "EVIDENCE-SYNC-01"
-  | "EVIDENCE-SYNC-02";
+  | "EVIDENCE-SYNC-02"
+  // RFC-1322: --check-criteria — an unchecked criterion carries no resolvable
+  // (evidence: ...) annotation; the stamp refuses rather than blank-checking.
+  | "STAMP-CHECK-01";
 
 export interface RfcImplementStampViolation {
   rule: RfcImplementStampRule;

@@ -7,12 +7,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1231: rfc.verification.refresh gains acceptsAllFlag: true — the declared --all flag is now reachable via werkstatt run (consumed selector re-injected as flags.all after the gate).</item>
   <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: register rfc.evidence.sync (coverage operator, mutatesState, EVIDENCE-SYNC-01/02 rules, generates:[] — artifacts stay owned by delegated steps); rfc.implement.stamp gains --sync.</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173</history>
+  <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231</history>
 </CHANGE_SUMMARY>
 */
 
@@ -464,7 +464,9 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "RFC-IMP-09 stale-evidence gate from RFC-1271) then atomically sets " +
           "status: implemented, implementedAt, and updatedAt. For probe-bearing RFCs the " +
           "evidence envelope is re-emitted post-mutation so it binds the implemented-state " +
-          "file (RFC-1271). Use --dry-run to preview. Required flags: `--id`.",
+          "file (RFC-1271). --check-criteria flips evidenced unchecked criteria " +
+          "in the same atomic write and refreshes a missing/stale envelope in-process " +
+          "(RFC-1322). Use --dry-run to preview. Required flags: `--id`.",
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
@@ -492,6 +494,14 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "boolean",
             description:
               "RFC-1306: run the rfc.evidence.sync regeneration chain before the stale-evidence gate instead of failing on RFC-IMP-09. Requires a kernel host (context.invoke).",
+          },
+          "check-criteria": {
+            kind: "boolean",
+            description:
+              "RFC-1322: auto-check unchecked acceptance criteria whose (evidence: ...) " +
+              "annotation resolves (test:/file:/<path>:<line> exists; probe:AC-N passes in " +
+              "the evidence envelope), refreshing a missing/stale envelope in-process first. " +
+              "Unresolvable annotations abort with STAMP-CHECK-01 before any RFC mutation.",
           },
         },
         execute: runRfcImplementStamp,
