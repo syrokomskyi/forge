@@ -1,3 +1,19 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for the compass.summary.trim handler — CS-08 unsafe-text skip
+semantics (exit 1, bytes untouched, skippedUnsafe channel) and the clean
+over-cap collapse control case against .astro html-enclosed fixtures.
+</purpose>
+<non-goals>
+  <item>Fixture Compass markup is built via string concatenation so source-level validators never see literal forbidden tags — do not inline real tag literals.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1323: trim skippedUnsafe coverage — unsafe fixture exits 1 with bytes untouched, clean over-cap fixture collapses.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -101,7 +117,10 @@ describe("compass.summary.trim", () => {
 
     const result = await runCompassSummaryTrim(makeInput(), makeContext(root));
     expect(result.exitCode).toBe(0);
-    const data = result.data as { skippedUnsafe: string[]; files: Array<{ path: string; kept: number }> };
+    const data = result.data as {
+      skippedUnsafe: string[];
+      files: Array<{ path: string; kept: number }>;
+    };
     expect(data.skippedUnsafe).toEqual([]);
     const entry = data.files.find((f) => f.path === target);
     expect(entry?.kept).toBe(5);
