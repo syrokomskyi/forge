@@ -5,7 +5,13 @@
   (deduped), applies COMPASS-DOC-04 schema-marker warnings to corpus documents only
   (canonical basenames ∪ bound paths), and leaves generated non-corpus XML untouched.
 </purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the compass suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
 */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

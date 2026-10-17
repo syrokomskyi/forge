@@ -1,3 +1,17 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for skill validate covering SKILL-13: knowledge file existence; RFC-0539: Pack skill validation (SKILL-14, SKILL-15); RFC-0548: SKILL-16 triggerPhrases field validation.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the skill suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { test, expect, describe } from "vitest";
 import { runSkillValidate } from "../validators/skill-validate.ts";
 import fs from "node:fs";

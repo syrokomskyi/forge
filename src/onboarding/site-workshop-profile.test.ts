@@ -1,6 +1,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Unit tests for the site-workshop stack profile (RFC-1125) — verifies the profile parses, scaffolds the workshop contract, and never scaffolds systems-cache inside the workshop root.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1125: initial site-workshop profile tests (AC-1 evidence).</item>

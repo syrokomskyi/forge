@@ -1,9 +1,12 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Unit tests for the append-only knowledge sync (syncKnowledgeFile / planKnowledgeSync) — covers copy, merge by entry-ID union, conflict handling, skip semantics, and directory recursion.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>2026-09-24: initial tests for append-only knowledge sync.</item>
+  <item>RFC-1311: carried legacy entry — 2026-09-24: initial tests for append-only knowledge sync.</item>
 </CHANGE_SUMMARY>
 */
 

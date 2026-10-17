@@ -3,9 +3,12 @@
 <purpose>Verify that template files referenced by source code are included in the npm package
 (files array in package.json). Prevents shipping bugs where template files exist on disk
 but are missing from the published package.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial test: verify onboarding templates are in package.json files array.</item>
+  <item>RFC-1311: carried legacy entry — Initial test: verify onboarding templates are in package.json files array.</item>
 </CHANGE_SUMMARY>
 */
 

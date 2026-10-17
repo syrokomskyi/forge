@@ -7,6 +7,9 @@ per-package lint-surface: fail and flip passed/exitCode.</purpose>
   <item>Does not exercise the real pnpm execFileSync runner — the lint subprocess is stubbed via the injected lintRunner seam.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the package suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, beforeEach, afterEach } from "vitest";

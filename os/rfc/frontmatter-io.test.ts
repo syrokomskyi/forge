@@ -1,3 +1,17 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for frontmatter io covering listRfcFiles — recursive scanning (RFC-0491); readAndParseRfc — YAML parse error handling (RFC-0755); parseRfcFile — basic parsing.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the frontmatter suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { test, expect, describe } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";

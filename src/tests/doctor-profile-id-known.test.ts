@@ -1,6 +1,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Unit tests for RFC-1118 fail-closed handling of unresolvable forge.yaml profile id — profile-id-known doctor check, declared-id preservation, serializeForgeConfig, init re-detect guard.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1118: initial tests — AC-1..AC-8 plus corrupted-object recovery.</item>

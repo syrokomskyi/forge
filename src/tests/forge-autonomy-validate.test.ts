@@ -1,6 +1,8 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for forge.autonomy.validate handler (RFC-0940, FORGE-AUTONOMY-01).</purpose>
+<purpose>
+Unit tests for forge autonomy validate covering forge.autonomy.validate. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
 <non-goals>
   <item>Does not test the pipeline wiring — that is covered by integration tests.</item>
 </non-goals>

@@ -4,9 +4,12 @@
 @warpgogol/forge package version vs forge.yaml forge.syncedVersion. Drift is
 a warn (pnpm up bumps the package without running forge.upgrade); missing
 sides pass with a skipped note.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial forge-version-sync doctor check tests.</item>
+  <item>RFC-1311: carried legacy entry — Initial forge-version-sync doctor check tests.</item>
 </CHANGE_SUMMARY>
 */
 

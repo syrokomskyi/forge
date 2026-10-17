@@ -3,6 +3,9 @@
 <purpose>Exclusive lease tests — concurrent starts, heartbeat, token mismatch,
 timeout, explicit recovery, interrupted seal/complete, and release after
 committed completion (RFC-0856 AC-6).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial exclusive lease tests.</item>

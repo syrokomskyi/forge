@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>Unit tests for the nested-AGENTS.md doctor check — consumer-declared
 workspace discovery exclusions via bindings.workspaces.skipDirs (RFC-1150).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1150: initial nested-AGENTS.md skipDirs tests.</item>

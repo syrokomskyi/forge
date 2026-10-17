@@ -7,13 +7,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: rfc.verification.refresh gains acceptsAllFlag: true — the declared --all flag is now reachable via werkstatt run (consumed selector re-injected as flags.all after the gate).</item>
   <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: register rfc.evidence.sync (coverage operator, mutatesState, EVIDENCE-SYNC-01/02 rules, generates:[] — artifacts stay owned by delegated steps); rfc.implement.stamp gains --sync.</item>
-  <history>RFC-0260, RFC-0795, RFC-1097</history>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173</history>
 </CHANGE_SUMMARY>
 */
 

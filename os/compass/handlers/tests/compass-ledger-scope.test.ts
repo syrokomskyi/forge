@@ -5,7 +5,13 @@
     paths under missions/ or gitignored roots — the tracked ledger only
     accumulates entries for paths that can be audited long-term.
   </purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the compass suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
 */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";

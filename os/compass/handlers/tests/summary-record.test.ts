@@ -53,12 +53,17 @@ const CS_BLOCK_RE = new RegExp(`${CS_OPEN}[\\s\\S]*?${CS_CLOSE}`);
 
 const TS_HEADER = (items: string[], history?: string[]) => `/*
 <MODULE_CONTRACT>
-<purpose>Test fixture file for summary record coverage.</purpose>
+<purpose>
+Unit tests for summary record covering compass.summary.record; summary-record helpers. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
 <non-goals><item>No production logic.</item></non-goals>
 </MODULE_CONTRACT>
 ${CS_OPEN}
 ${items.map((i) => `  <item>${i}</item>`).join("\n")}
 ${history && history.length > 0 ? `  <history>${history.join(", ")}</history>\n` : ""}${CS_CLOSE}
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the summary suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
 */
 export const x = 1;
 `;

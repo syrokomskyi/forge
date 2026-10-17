@@ -3,6 +3,9 @@
 <purpose>Unit tests for RFC-0643: per-domain AGENTS.md template generation —
 terminology substitution, register selection, nested template selection, fallback,
 path traversal rejection, details field, and regression.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0643: initial domain template tests — terminology substitution, register selection, nested templates, fallback, path traversal, details field, regression.</item>

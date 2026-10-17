@@ -193,7 +193,7 @@ describe("resolveCompassPolicy (RFC-1096)", () => {
     const body = Array.from({ length: 25 }, (_, i) => `export const line${i} = ${i};`).join("\n");
     writeFileSync(
       join(fixture, "engine.ts"),
-      `/*\n<MODULE_CONTRACT>\n<purpose>Fixture kernel engine file for the compass policy high-risk test.</purpose>\n<non-goals>\n  <item>No production logic.</item>\n</non-goals>\n</MODULE_CONTRACT>\n*/\n${body}\n`,
+      `/*\n<MODULE_CONTRACT>\n<purpose>Fixture kernel engine file for the compass policy high-risk test.</purpose>\n\n</MODULE_CONTRACT>\n*/\n${body}\n`,
     );
 
     const result = await runCompassInventory({ flags: {} } as never, makeContext(root));

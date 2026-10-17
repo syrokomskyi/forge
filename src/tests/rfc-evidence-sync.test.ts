@@ -1,3 +1,17 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for rfc evidence sync covering rfc.evidence.sync (RFC-1306); rfc.implement.stamp --sync (RFC-1306).
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the rfc suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
+*/
+
 // @vitest-environment node
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";

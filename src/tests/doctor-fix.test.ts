@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>Unit tests for forge doctor --fix — safe remediations for warn/fail
 checks: nested-AGENTS.md regeneration and memory-layer compaction (RFC-1151).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1151: initial doctor --fix tests.</item>

@@ -10,15 +10,14 @@ otherwise source and copy have drifted apart.</purpose>
   <item>Do not flag unmarked dirs — a missing .forge-managed marker means
     consumer-owned (RFC-1154), e.g. `_shared/`.</item>
 </non-goals>
+</MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>planKnowledgeSync is reused so the gate encodes the exact merge
-    semantics of the syncer — only "unchanged" is a pass; "merged" (source has
-    entries the copy lacks), "copied" (copy missing), and "skipped"
-    (non-mergeable divergence = hand-edited copy) all fail.</item>
+    semantics of the syncer</item>
   <item>Runs on the real repo — this is a drift gate, not a fixture test.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>Initial version — covers FORGE_SKILLS, declared pack skills
+  <item>RFC-1311: carried legacy entry — Initial version — covers FORGE_SKILLS, declared pack skills
     (discoverPackSkills), and the shared-knowledge layer.</item>
 </CHANGE_SUMMARY>
 */
