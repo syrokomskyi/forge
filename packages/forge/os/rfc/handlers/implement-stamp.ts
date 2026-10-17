@@ -17,6 +17,7 @@ verification evidence, and atomically mutates RFC frontmatter.
   <item>RFC-1306: --sync flag runs rfc.evidence.sync via context.invoke before the stale-evidence gate; EVIDENCE-SYNC-01 when no kernel host, sync failure aborts before any mutation.</item>
   <item>RFC-1306: review-r1 — io-native writes, cacheable off on chain generators, EVIDENCE-SYNC-02 on invoke throws</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1321: commitReferencesRfc compares case-insensitively — --id rfc-NNNN satisfies an RFC-NNNN subject (RFC-IMP-03 false-fail closed)</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -109,6 +110,7 @@ async function autoDetectImplementationCommit(
   const hashes = await execGit(workspaceRoot, [
     "log",
     "--fixed-strings",
+    "--regexp-ignore-case",
     "--no-merges",
     `--grep=${rfcId}`,
     "--format=%H",
@@ -122,6 +124,7 @@ async function autoDetectImplementationCommit(
   const details = await execGit(workspaceRoot, [
     "log",
     "--fixed-strings",
+    "--regexp-ignore-case",
     "--no-merges",
     `--grep=${rfcId}`,
     "--format=%h %s",
@@ -179,7 +182,11 @@ async function commitReferencesRfc(
 ): Promise<boolean> {
   // Check the commit message and the diff for the RFC ID
   const commitMsg = await execGit(workspaceRoot, ["log", "-1", "--format=%B", commitSha]);
-  if (commitMsg.includes(rfcId)) return true;
+  // RFC-1321: governance ids compare case-insensitively — `--id rfc-1310` must
+  // satisfy an `RFC-1310` subject (the RFC-IMP-03 false-fail). The (?!\d)
+  // boundary keeps RFC-0001 from matching RFC-00011.
+  const esc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  if (new RegExp(`${esc(rfcId.toUpperCase())}(?!\\d)`).test(commitMsg.toUpperCase())) return true;
 
   // Also check if the commit touched a file whose name contains the RFC id
   const changedFiles = await execGit(workspaceRoot, [
@@ -189,7 +196,7 @@ async function commitReferencesRfc(
     commitSha,
   ]);
   const slug = rfcId.toLowerCase();
-  if (changedFiles.toLowerCase().includes(slug)) return true;
+  if (new RegExp(`${esc(slug)}(?!\\d)`).test(changedFiles.toLowerCase())) return true;
 
   return false;
 }
@@ -309,7 +316,10 @@ export async function runRfcImplementStamp(
   const { workspaceRoot, logger, outputFormat, dryRun } = context;
   const rfcDirPath = join(workspaceRoot, RFC_DIR);
 
-  const targetId = input.flags["id"] as string | undefined;
+  // RFC-1321: canonicalize the governance id at parse — every stored surface
+  // (result rfcId, post-stamp re-emit flags, metrics ids) carries the
+  // canonical uppercase spelling regardless of flag casing.
+  const targetId = (input.flags["id"] as string | undefined)?.toUpperCase();
   let implementationCommit = input.flags["implementation-commit"] as string | undefined;
 
   // ── Flag validation ───────────────────────────────────────────────────────
