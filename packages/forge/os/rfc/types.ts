@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: ForgeInvokeResult/flag-record types for the ctx.invoke delegation surface.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1320</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249</history>
+  <item>RFC-1322: fo-review fix pass — criteriaPendingRefresh/evidenceWouldRefresh dry-run fields</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -604,6 +604,13 @@ export interface RfcImplementStampData {
   criteriaChecked: number;
   /** RFC-1322: criterion ids flipped `[ ]` → `[x]` by --check-criteria. */
   criteriaAutoChecked?: string[];
+  /**
+   * RFC-1322 dry-run only: criterion ids whose `probe:` annotations await the
+   * envelope refresh a real run would perform — pending, not failures.
+   */
+  criteriaPendingRefresh?: string[];
+  /** RFC-1322 dry-run only: the missing/stale envelope would be refreshed first. */
+  evidenceWouldRefresh?: boolean;
   evidencePath?: string;
   evidenceReEmitted?: boolean;
   metricsPath?: string;
