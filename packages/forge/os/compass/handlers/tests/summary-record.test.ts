@@ -212,6 +212,82 @@ describe("compass.summary.record", () => {
     expect(source).toContain("<item>RFC-1095: step 2</item>");
   });
 
+  it("suppresses a diff-added same-ID item even when HEAD already carries the ID (RFC-1315 AC-1)", async () => {
+    execFileSync("git", ["init"], { cwd: root });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: root });
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER(["RFC-1315: step 1 — recorded by the previous commit"]),
+    );
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "baseline"], { cwd: root });
+    // Pending change hand-authors a second, descriptive same-ID item.
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER([
+        "RFC-1315: step 1 — recorded by the previous commit",
+        "RFC-1315: hand-authored descriptive entry for this step",
+      ]),
+    );
+
+    const result = await runCompassSummaryRecord(
+      makeInput({ id: "RFC-1315", files: ["src/a.ts"], text: "generic subject line" }),
+      makeContext(root),
+    );
+
+    expect(result.data?.skipped).toEqual([{ file: "src/a.ts", reason: "id-in-diff" }]);
+    expect(result.data?.recorded).toEqual([]);
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).not.toContain("generic subject line");
+  });
+
+  it("does not suppress when the diff adds an item for a different ID (RFC-1315)", async () => {
+    execFileSync("git", ["init"], { cwd: root });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: root });
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER(["RFC-0001: existing item."]));
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "baseline"], { cwd: root });
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER(["RFC-0001: existing item.", "RFC-0002: another RFC's item"]),
+    );
+
+    const result = await runCompassSummaryRecord(
+      makeInput({ id: "RFC-1315", files: ["src/a.ts"], text: "inject me" }),
+      makeContext(root),
+    );
+
+    expect(result.data?.recorded).toEqual(["src/a.ts"]);
+    const source = await readFile(join(root, "src", "a.ts"), "utf8");
+    expect(source).toContain("<item>RFC-1315: inject me</item>");
+  });
+
+  it("suppresses when the diff verbatim re-adds a same-ID item line (RFC-1315)", async () => {
+    execFileSync("git", ["init"], { cwd: root });
+    execFileSync("git", ["config", "user.email", "t@t"], { cwd: root });
+    execFileSync("git", ["config", "user.name", "T"], { cwd: root });
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER(["RFC-1315: the same line", "RFC-0001: other item."]),
+    );
+    execFileSync("git", ["add", "-A"], { cwd: root });
+    execFileSync("git", ["commit", "-m", "baseline"], { cwd: root });
+    // Swapped item order — git emits the RFC-1315 line as -/+ verbatim re-add.
+    await writeFile(
+      join(root, "src", "a.ts"),
+      TS_HEADER(["RFC-0001: other item.", "RFC-1315: the same line"]),
+    );
+
+    const result = await runCompassSummaryRecord(
+      makeInput({ id: "RFC-1315", files: ["src/a.ts"], text: "generic subject" }),
+      makeContext(root),
+    );
+
+    expect(result.data?.skipped).toEqual([{ file: "src/a.ts", reason: "id-in-diff" }]);
+  });
+
   it("defaults item text to the bare ID when --text is absent", async () => {
     await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
     await runCompassSummaryRecord(
