@@ -15,12 +15,12 @@ items to CHANGE_SUMMARY blocks per RFC-1095. Collapses the 5-item window into
   <item>Item text is sanitized on record — literal Compass tags would corrupt history parsing.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1220: step 2 — fail-closed guards in history paths</item>
   <item>RFC-1233: stripGitTrailers at the record point + sanitizeItemText star-slash guard — commit-message trailers (Token: value / Token #value, plus markdown-link attribution lines like "Generated with [X](url)") no longer pollute injected items.</item>
   <item>Session-retro 2026-10-08: id-in-diff dedup — auto-inject skips when the worktree diff already carries a same-ID item (HEAD-vs-worktree via git show HEAD:path), closing the descriptive+generic duplicate class seen on RFC-1237.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1323: authored text asserts COMPASS-CS-08 via comment-safety; --injected text neutralizes style-aware and reports neutralized; getLineCommentPrefix/HEADER_SCAN_LINES moved to os/compass/comment-safety.ts.</item>
-  <history>CONTRACT-02, PURPOSE-02, RFC-1095, RFC-1097</history>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <history>CONTRACT-02, PURPOSE-02, RFC-1095, RFC-1097, RFC-1220</history>
 </CHANGE_SUMMARY>
 */
 
@@ -442,11 +442,30 @@ export async function runCompassSummaryRecord(
   if (!injected) {
     // Fail BEFORE any file write: check the text against every target's
     // comment style — a `-->` that is harmless in a .ts header still
-    // terminates a .md one, so the whole target set gates together.
+    // terminates a .md one, so the whole target set gates together. The
+    // style is resolved exactly the way the write loop resolves it (the
+    // comment actually enclosing the block) — `.astro` files can carry an
+    // html header the extension table does not predict, and guessing would
+    // diverge the up-front gate from the per-file assert mid-loop.
     for (const file of files) {
-      const rel = relative(baseRoot, resolve(baseRoot, file)).replace(/\\/g, "/");
+      const absPath = resolve(baseRoot, file);
+      const rel = relative(baseRoot, absPath).replace(/\\/g, "/");
+      let style: CommentStyle | null = null;
       try {
-        assertCompassCommentSafe(text, commentStyleFor(rel), {
+        const source = await io.readFile(absPath);
+        const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
+        const inHeaderRegion =
+          blockMatch !== null &&
+          blockMatch.index !== undefined &&
+          source.slice(0, blockMatch.index).split("\n").length <= HEADER_SCAN_LINES;
+        if (inHeaderRegion) style = enclosingCommentStyle(source, blockMatch.index!, rel);
+      } catch {
+        // Unreadable or block-less targets are skipped by the write loop —
+        // nothing lands in a comment, so nothing needs gating here.
+      }
+      if (style === null) continue;
+      try {
+        assertCompassCommentSafe(text, style, {
           file: rel,
           block: "CHANGE_SUMMARY",
         });

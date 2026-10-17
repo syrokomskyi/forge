@@ -49,7 +49,28 @@ function makeInput(flags: Record<string, unknown>) {
 // by compass.summary.record itself and rewritten at commit time.
 const CS_OPEN = "<" + "CHANGE_SUMMARY>";
 const CS_CLOSE = "</" + "CHANGE_SUMMARY>";
+const MC_OPEN = "<" + "MODULE_CONTRACT>";
+const MC_CLOSE = "</" + "MODULE_CONTRACT>";
 const CS_BLOCK_RE = new RegExp(`${CS_OPEN}[\\s\\S]*?${CS_CLOSE}`);
+const HTML_OPEN = "<!" + "--";
+const HTML_CLOSE = "--" + ">";
+
+// .astro headers can live in a markup comment below the frontmatter — the
+// extension table guesses block, the real enclosure is html.
+const ASTRO_HTML_HEADER = (items: string[]) => `---
+const frontmatter = true;
+---
+${HTML_OPEN}
+${MC_OPEN}
+<purpose>Astro page fixture exercising html-enclosed Compass headers.</purpose>
+<non-goals><item>No production logic.</item></non-goals>
+${MC_CLOSE}
+${CS_OPEN}
+${items.map((i) => `  <item>${i}</item>`).join("\n")}
+${CS_CLOSE}
+${HTML_CLOSE}
+<main/>
+`;
 
 const TS_HEADER = (items: string[], history?: string[]) => `/*
 <MODULE_CONTRACT>
@@ -64,6 +85,7 @@ ${history && history.length > 0 ? `  <history>${history.join(", ")}</history>\n`
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the summary suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 export const x = 1;
@@ -406,11 +428,11 @@ describe("compass.summary.record", () => {
   const BLOCK_TERM = "*" + "/";
   const HTML_CLOSE = "--" + ">";
   const MD_HEADER = (items: string[]) => `${"<"}!--
-<MODULE_CONTRACT>
+${MC_OPEN}
 <purpose>
 Fixture markdown doc for summary record tests.
 </purpose>
-</MODULE_CONTRACT>
+${MC_CLOSE}
 ${CS_OPEN}
 ${items.map((i) => `  <item>${i}</item>`).join("\n")}
 ${CS_CLOSE}
@@ -487,6 +509,78 @@ ${HTML_CLOSE}
     expect(result.exitCode).toBe(1);
     expect(await readFile(join(root, "src", "a.ts"), "utf8")).toBe(tsBefore);
     expect(await readFile(join(root, "docs", "guide.md"), "utf8")).toBe(mdBefore);
+  });
+
+  // RFC-1323 review fixes: .astro files carry BOTH candidate styles — the
+  // enclosing comment, not the extension guess, must gate the write.
+  it("rejects an authored html terminator on an .astro file whose header is html-enclosed (RFC-1323)", async () => {
+    await writeFile(join(root, "src", "page.astro"), ASTRO_HTML_HEADER([]));
+    const before = await readFile(join(root, "src", "page.astro"), "utf8");
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["src/page.astro"],
+        text: `close the comment ${HTML_CLOSE} here`,
+      }),
+      makeContext(root),
+    );
+    // The extension table guesses block for .astro — the pre-pass must still
+    // catch the html terminator, and nothing must be written.
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("COMPASS-CS-08");
+    expect(await readFile(join(root, "src", "page.astro"), "utf8")).toBe(before);
+  });
+
+  it("allows authored star-slash text on an .astro file whose header is html-enclosed (RFC-1323)", async () => {
+    await writeFile(join(root, "src", "page.astro"), ASTRO_HTML_HEADER([]));
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["src/page.astro"],
+        text: `glob src${BLOCK_TERM}*.ts is inert inside an html comment`,
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(0);
+    const source = await readFile(join(root, "src", "page.astro"), "utf8");
+    expect(source).toContain(`glob src${BLOCK_TERM}*.ts is inert`);
+  });
+
+  it("neutralizes injected html terminators inside an .astro html header (RFC-1323)", async () => {
+    await writeFile(join(root, "src", "page.astro"), ASTRO_HTML_HEADER([]));
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        files: ["src/page.astro"],
+        text: `close ${HTML_CLOSE} open ${"<"}!--`,
+        injected: true,
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(0);
+    const source = await readFile(join(root, "src", "page.astro"), "utf8");
+    expect(source).toContain(`close --› open ‹!--`);
+    expect(result.data?.neutralized).toEqual(["src/page.astro"]);
+  });
+
+  it("a .ts + .astro-html mixed set rejects authored html text before EITHER file is written (RFC-1323)", async () => {
+    await writeFile(join(root, "src", "a.ts"), TS_HEADER([]));
+    await writeFile(join(root, "src", "page.astro"), ASTRO_HTML_HEADER([]));
+    const tsBefore = await readFile(join(root, "src", "a.ts"), "utf8");
+    const astroBefore = await readFile(join(root, "src", "page.astro"), "utf8");
+    const result = await runCompassSummaryRecord(
+      makeInput({
+        id: "RFC-1323",
+        // a.ts comes FIRST in the list — a divergent pre-pass would write it
+        // before the astro file rejects mid-loop. Atomicity: nothing written.
+        files: ["src/a.ts", "src/page.astro"],
+        text: `close the comment ${HTML_CLOSE} here`,
+      }),
+      makeContext(root),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(await readFile(join(root, "src", "a.ts"), "utf8")).toBe(tsBefore);
+    expect(await readFile(join(root, "src", "page.astro"), "utf8")).toBe(astroBefore);
   });
 });
 

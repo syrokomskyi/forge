@@ -12,6 +12,7 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
 <CHANGE_SUMMARY>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -304,6 +305,18 @@ export async function runCompassHeaderScaffold(
     for (const d of diagnostics.slice(0, 10)) {
       context.logger.warn(`[${d.diagnostic!.ruleId}] ${d.path}: ${d.diagnostic!.message}`);
     }
+  }
+
+  // RFC-1323: an unsafe-text skip in apply mode means a file the operator
+  // asked to scaffold was refused — report the batch, but fail closed so
+  // the skipped files are reworded deliberately, not lost in a warning.
+  const unsafe = diagnostics.filter((d) => d.diagnostic!.ruleId === "COMPASS-CS-08");
+  if (!census && unsafe.length > 0) {
+    return {
+      data: { mode: "apply", scanned, files: reports, byPackage },
+      exitCode: 1,
+      summary: `[compass.header.scaffold] apply scanned=${scanned} ${tally} — ${unsafe.length} file(s) skipped on COMPASS-CS-08: ${unsafe.map((d) => d.path).join(", ")}`,
+    };
   }
 
   // Per-package table in default output — the result contract promises it

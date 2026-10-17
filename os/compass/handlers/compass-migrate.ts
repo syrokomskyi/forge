@@ -25,6 +25,7 @@ walker; the kernel handler lives in compass-migrate-handler.ts.</purpose>
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -177,7 +178,10 @@ function extractPurposeText(source: string): string {
 /**
  * Pure v1 to v2 transform of one file's source. Returns the rewritten source
  * and the closed action union. `unchanged` is exclusive; every other action
- * may combine. Never throws on malformed input — reports `unparseable`.
+ * may combine. Never throws on malformed input — reports `unparseable` —
+ * except CompassCommentSafetyError (COMPASS-CS-08): text that would corrupt
+ * the target comment is fail-closed, not malformed; batch callers (e.g.
+ * migrateWorkspace's runMigrateGuarded) convert it to `unsafe-text` per file.
  */
 export function migrateFile(
   source: string,

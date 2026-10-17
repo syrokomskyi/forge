@@ -21,6 +21,7 @@ detects latent corruption in existing files.
 <CHANGE_SUMMARY>
   <item>RFC-1323: created — CommentStyle/commentStyleFor/getLineCommentPrefix/HEADER_SCAN_LINES consolidated here; terminator triple + CompassCommentSafetyError + header-region CS-08 scan.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -62,16 +63,36 @@ export function commentStyleFor(path: string): CommentStyle {
  * truth for edits inside an EXISTING header (record/trim/migrate), where
  * commentStyleFor is only an extension guess. .astro is the case that
  * matters: its header may sit in a `<!-- -->` markup comment while the
- * extension table says "block". Whichever comment opener directly precedes
- * the index wins; line-prefix files keep their own style; no opener found
- * falls back to the extension table.
+ * extension table says "block".
+ *
+ * Detection replays the comment open/close tokens up to `index` — the
+ * nearest UNCLOSED opener wins. A `/*` literal inside an `<!-- -->` header's
+ * prose (or a `<!--` literal inside `/* *​/`) is inert text, not a state
+ * change, so it can never flip the detected style. Openers of styles the
+ * file type cannot carry are ignored entirely — a `/*` inside .md prose is
+ * literal text, never a comment. No enclosing comment falls back to the
+ * extension table.
  */
+const ENCLOSING_TOKEN_RE = /\*\/|\/\*|-->|<!--/g;
+
 export function enclosingCommentStyle(source: string, index: number, path: string): CommentStyle {
   if (getLineCommentPrefix(path) !== null) return "line";
-  const blockOpen = source.lastIndexOf("/*", index);
-  const htmlOpen = source.lastIndexOf("<!--", index);
-  if (blockOpen === -1 && htmlOpen === -1) return commentStyleFor(path);
-  return htmlOpen > blockOpen ? "html" : "block";
+  const candidates = commentStyleCandidates(path);
+  const canBlock = candidates.includes("block");
+  const canHtml = candidates.includes("html");
+  let inComment: "block" | "html" | null = null;
+  for (const m of source.slice(0, index).matchAll(ENCLOSING_TOKEN_RE)) {
+    const token = m[0];
+    if (inComment === null) {
+      if (token === "/*" && canBlock) inComment = "block";
+      else if (token === "<!--" && canHtml) inComment = "html";
+    } else if (inComment === "block" && token === "*/") {
+      inComment = null;
+    } else if (inComment === "html" && token === "-->") {
+      inComment = null;
+    }
+  }
+  return inComment ?? commentStyleFor(path);
 }
 
 /**
@@ -185,13 +206,13 @@ const COMPASS_INNER_TAGS = [
 const COMPASS_STRUCTURAL_TAGS = ["MODULE_CONTRACT", "KEY_DECISIONS", "CHANGE_SUMMARY"] as const;
 
 const CS08_TOKEN_RE = new RegExp(
-  `<(?:${COMPASS_INNER_TAGS.join("|")})>|</(?:${COMPASS_INNER_TAGS.join("|")})>|\\*\\/|\\/\\*|-->|<!--`,
-  "g",
+  `<(?:${COMPASS_INNER_TAGS.join("|")})>|</(?:${COMPASS_INNER_TAGS.join("|")})>|\\*\\/|\\/\\*|-->|<!--|^---[^\\S\\n]*$`,
+  "gm",
 );
 
 export interface CompassTerminatorHit {
   substring: string;
-  /** Byte offset of the terminator inside the scanned region. */
+  /** UTF-16 code-unit offset of the terminator inside the scanned region. */
   offset: number;
   /** 1-based line number. */
   line: number;
@@ -212,7 +233,10 @@ export interface CompassTerminatorHit {
  *
  * For .astro both candidate comment styles are recognized — either header
  * form can be corrupted. Line-style files carry no embedded terminator and
- * are never flagged.
+ * are never flagged. `---`-only lines (frontmatter fences, horizontal
+ * rules) reset a comment state that holds no open Compass tags: a `/*` or
+ * `<!--` token inside frontmatter code (string/regex/division) is phantom
+ * state, not a comment span.
  */
 export function findCompassTerminatorInHeader(
   source: string,
@@ -228,6 +252,15 @@ export function findCompassTerminatorInHeader(
   const open = new Set<string>();
   for (const m of region.matchAll(CS08_TOKEN_RE)) {
     const token = m[0];
+    // Frontmatter/horizontal-rule fence: a `---`-only line while a comment
+    // holds NO open Compass tags must be phantom comment state (a `/*` or
+    // `<!--` inside a code string/regex latched it) — resetting restores
+    // visibility of the real header below. With tags open the line is
+    // comment content and state is preserved.
+    if (token.startsWith("---") && inComment !== null && open.size === 0) {
+      inComment = null;
+      continue;
+    }
     if (inComment === null) {
       if (token === "/*" && canBlock) inComment = "block";
       else if (token === "<!--" && canHtml) inComment = "html";

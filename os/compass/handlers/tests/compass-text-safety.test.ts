@@ -17,6 +17,7 @@ header-region truncation scan findCompassTerminatorInHeader.
 <CHANGE_SUMMARY>
   <item>RFC-1323: created — AC-2 coverage for the comment-safety helper across block, html, and line styles.</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -59,6 +60,33 @@ describe("comment-safety — style detection", () => {
     expect(enclosingCommentStyle("# hdr\nx", 0, "s.gd")).toBe("line");
     // No opener before the index → extension fallback.
     expect(enclosingCommentStyle("const x = 1;", 4, "a.ts")).toBe("block");
+  });
+
+  it("ignores a /* literal inside an html comment's prose", () => {
+    const source = `${HTML_OPEN}\n${"<MODULE_CONTRACT>"}\n<purpose>documents ${"/*"} close pairs</purpose>\n${"</MODULE_CONTRACT>"}\n${HTML_CLOSE}\n`;
+    const idx = source.indexOf("<purpose>");
+    expect(enclosingCommentStyle(source, idx, "page.astro")).toBe("html");
+    expect(enclosingCommentStyle(source, idx, "docs/guide.md")).toBe("html");
+  });
+
+  it("ignores a <!-- literal inside a block comment's prose", () => {
+    const source = `/*\n${"<MODULE_CONTRACT>"}\n<purpose>discusses ${HTML_OPEN} pairs</purpose>\n${"</MODULE_CONTRACT>"}\n${BLOCK_TERM}\n`;
+    const idx = source.indexOf("<purpose>");
+    expect(enclosingCommentStyle(source, idx, "src/a.ts")).toBe("block");
+    // .astro extension guesses block — the real enclosing comment is block too.
+    expect(enclosingCommentStyle(source, idx, "page.astro")).toBe("block");
+  });
+
+  it("an opener that closed before the index does not win", () => {
+    const source = `/*\nprior comment\n${BLOCK_TERM}\n${HTML_OPEN}\n${"<MODULE_CONTRACT>"}\n`;
+    const idx = source.indexOf("<MODULE_CONTRACT>");
+    expect(enclosingCommentStyle(source, idx, "page.astro")).toBe("html");
+  });
+
+  it("a /* in .md prose is literal text — never opens a comment", () => {
+    const source = `note about ${"/*"} markers\n${HTML_OPEN}\n${"<MODULE_CONTRACT>"}\n`;
+    const idx = source.indexOf("<MODULE_CONTRACT>");
+    expect(enclosingCommentStyle(source, idx, "docs/guide.md")).toBe("html");
   });
 });
 
@@ -167,6 +195,54 @@ describe("comment-safety — findCompassTerminatorInHeader (CS-08 scan)", () => 
   it("ignores corruption markers beyond the header region bound", () => {
     const pad = Array.from({ length: 130 }, () => "// pad").join("\n");
     const source = `/* ok */\n${pad}\n${MC_OPEN} truncated ${BLOCK_TERM}\n`;
+    expect(findCompassTerminatorInHeader(source, "src/a.ts")).toBeNull();
+  });
+
+  it("does not fire on a nested <!-- inside an otherwise clean html comment", () => {
+    const source = `${HTML_OPEN}\n${HTML_OPEN} stray nested opener — harmless\n${MC_OPEN}\n<purpose>x</purpose>\n${MC_CLOSE}\n${HTML_CLOSE}\n`;
+    expect(findCompassTerminatorInHeader(source, "docs/guide.md")).toBeNull();
+  });
+
+  it("does not fire on a JSDoc line carrying a bare <item> — no structural parent", () => {
+    const source = `/** <item> documents the <item> tag ${BLOCK_TERM}/\nexport const x = 1;\n`;
+    expect(findCompassTerminatorInHeader(source, "src/a.ts")).toBeNull();
+  });
+
+  it("ignores a-->b-shaped code tokens outside comments", () => {
+    const source = `/*\n${MC_OPEN}\n<purpose>clean</purpose>\n${MC_CLOSE}\n${BLOCK_TERM}\nconst arrow = a${HTML_CLOSE}b;\n`;
+    expect(findCompassTerminatorInHeader(source, "src/a.ts")).toBeNull();
+  });
+
+  it("an escaped <\\/close> does not close a real open tag — a later terminator still fires", () => {
+    const source = `/*\n${MC_OPEN}\n<purpose>text</purpose>\nescaped <\\/${"MODULE_CONTRACT"}\n${BLOCK_TERM}\n`;
+    const hit = findCompassTerminatorInHeader(source, "src/a.ts");
+    expect(hit).not.toBeNull();
+    expect(hit!.substring).toBe(BLOCK_TERM);
+  });
+
+  it("fires on the second comment when the first closed legally — state does not leak", () => {
+    const source = `/*\n${MC_OPEN}\n<purpose>clean</purpose>\n${MC_CLOSE}\n${BLOCK_TERM}\n\n/*\n${CS_OPEN}\n<item>oops ${BLOCK_TERM}</item>\n`;
+    const hit = findCompassTerminatorInHeader(source, "src/a.ts");
+    expect(hit).not.toBeNull();
+    expect(hit!.substring).toBe(BLOCK_TERM);
+  });
+
+  it(".astro: a phantom /* inside frontmatter code cannot hide a corrupt html header", () => {
+    const source = `---\nconst marker = "${"/*"}";\n---\n${HTML_OPEN}\n${CS_OPEN}\n  <item>bad ${HTML_CLOSE}</item>\n${CS_CLOSE}\n${HTML_CLOSE}\n<main/>\n`;
+    const hit = findCompassTerminatorInHeader(source, "src/page.astro");
+    expect(hit).not.toBeNull();
+    expect(hit!.substring).toBe(HTML_CLOSE);
+  });
+
+  it("a --- line while Compass tags are open preserves state — the terminator still fires", () => {
+    const source = `${HTML_OPEN}\n${MC_OPEN}\n<purpose>text</purpose>\n---\n${HTML_CLOSE}\n`;
+    const hit = findCompassTerminatorInHeader(source, "docs/guide.md");
+    expect(hit).not.toBeNull();
+    expect(hit!.substring).toBe(HTML_CLOSE);
+  });
+
+  it("a --- line inside a tag-less comment resets state — a later close is a legal no-op", () => {
+    const source = `/* a note\n---\n${BLOCK_TERM}\nexport const x = 1;\n`;
     expect(findCompassTerminatorInHeader(source, "src/a.ts")).toBeNull();
   });
 });

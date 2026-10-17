@@ -16,6 +16,7 @@
   <item>RFC-1253: created — six-doc scaffold, KG node merge, binding patch, dry-run manifest.</item>
   <item>Derive workspace node id prefixes from directory location (apps/→app-, packages/→pkg-, services/→svc-, dotted elsewhere) — COMPASS-DOC-02 resolves prefixes to paths, so type-derived ids failed validation on apps/ repos (consumer field report).</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -80,14 +81,20 @@ function xmlEscape(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
+/**
+ * RFC-1323: authored slot data (workspace names, policy reasons, config
+ * ids) is asserted BEFORE escaping — post-escape text can no longer carry
+ * a terminator, so the contract gate must see the raw value. A slot needing
+ * the escape is a data bug worth surfacing, not hiding (COMPASS-CS-08).
+ */
+function esc(value: string, slot: string): string {
+  assertCompassCommentSafe(value, "html", { block: `docs-slot:${slot}` });
+  return xmlEscape(value);
+}
+
 function render(template: string, slots: Record<string, string>): string {
   let out = template;
   for (const [key, value] of Object.entries(slots)) {
-    // RFC-1323: slot values are authored data (workspace names, policy
-    // reasons). xmlEscape already makes the rendered XML safe byte-wise, but
-    // the contract-level gate rejects terminator-carrying authored values —
-    // a slot needing the escape is a data bug worth surfacing, not hiding.
-    assertCompassCommentSafe(value, "html", { block: `docs-slot:${key}` });
     out = out.replaceAll(`{{${key}}}`, value);
   }
   return out;
@@ -95,7 +102,7 @@ function render(template: string, slots: Record<string, string>): string {
 
 /** <item> list lines at 6-space indent for the scan-policy slots. */
 function itemLines(values: readonly string[]): string {
-  return values.map((v) => `      <item>${xmlEscape(v)}</item>`).join("\n");
+  return values.map((v) => `      <item>${esc(v, "item")}</item>`).join("\n");
 }
 
 interface ScaffoldWorkspace {
@@ -169,10 +176,10 @@ function collectWorkspaces(workspaceRoot: string, config: ForgeConfig): Scaffold
 
 function kgNode(ws: ScaffoldWorkspace): string {
   return [
-    `    <node id="${xmlEscape(ws.id)}" type="workspace">`,
-    `      <name>${xmlEscape(ws.name)}</name>`,
-    `      <path>\`${xmlEscape(ws.dir)}\`</path>`,
-    `      <role>${xmlEscape(ws.type)} workspace.</role>`,
+    `    <node id="${esc(ws.id, "kg.node.id")}" type="workspace">`,
+    `      <name>${esc(ws.name, "kg.node.name")}</name>`,
+    `      <path>\`${esc(ws.dir, "kg.node.path")}\`</path>`,
+    `      <role>${esc(ws.type, "kg.node.role")} workspace.</role>`,
     `    </node>`,
   ].join("\n");
 }
@@ -262,7 +269,9 @@ export async function runCompassDocsScaffold(
     if (name === "knowledge-graph") {
       return {
         rootLinks: workspaces
-          .map((ws) => `        <link rel="delegates-to" target="${xmlEscape(ws.id)}" />`)
+          .map(
+            (ws) => `        <link rel="delegates-to" target="${esc(ws.id, "kg.link.target")}" />`,
+          )
           .join("\n"),
         workspaceNodes: workspaces.map(kgNode).join("\n"),
       };
@@ -270,17 +279,18 @@ export async function runCompassDocsScaffold(
     if (name === "technology") {
       const engines = rootPkg["engines"] as Record<string, unknown> | undefined;
       return {
-        nodeRange: xmlEscape(String(engines?.["node"] ?? ">=24 <25")),
-        packageManager: xmlEscape(
+        nodeRange: esc(String(engines?.["node"] ?? ">=24 <25"), "technology.nodeRange"),
+        packageManager: esc(
           String(rootPkg["packageManager"] ?? "pnpm").split("@")[0] || "pnpm",
+          "technology.packageManager",
         ),
-        profileId: xmlEscape(config.profile?.id ?? "unknown"),
+        profileId: esc(config.profile?.id ?? "unknown", "technology.profileId"),
         workspaceRows: workspaces
           .map(
             (ws) =>
-              `    <workspace id="${xmlEscape(ws.id)}" type="${xmlEscape(ws.type)}">\n` +
-              `      <name>${xmlEscape(ws.name)}</name>\n` +
-              `      <path>\`${xmlEscape(ws.dir)}\`</path>\n` +
+              `    <workspace id="${esc(ws.id, "tech.ws.id")}" type="${esc(ws.type, "tech.ws.type")}">\n` +
+              `      <name>${esc(ws.name, "tech.ws.name")}</name>\n` +
+              `      <path>\`${esc(ws.dir, "tech.ws.path")}\`</path>\n` +
               `    </workspace>`,
           )
           .join("\n"),
@@ -295,13 +305,16 @@ export async function runCompassDocsScaffold(
         ignoredDirPrefixes: itemLines([...policy.ignoredDirPrefixes]),
         highRiskPaths: itemLines([...policy.highRiskPaths]),
         excludedPaths: policy.excludedPaths
-          .map((e) => `      <item pattern="${xmlEscape(e.pattern)}">${xmlEscape(e.reason)}</item>`)
+          .map(
+            (e) =>
+              `      <item pattern="${esc(e.pattern, "sm.excluded.pattern")}">${esc(e.reason, "sm.excluded.reason")}</item>`,
+          )
           .join("\n"),
-        idPattern: xmlEscape(policy.idPattern.source),
+        idPattern: esc(policy.idPattern.source, "sm.idPattern"),
         layerRules: policy.layerRules
           .map(
             (r) =>
-              `      <rule pattern="${xmlEscape(r.pattern)}" layer="${xmlEscape(r.layer)}" risk-class="${xmlEscape(r.risk)}" />`,
+              `      <rule pattern="${esc(r.pattern, "sm.rule.pattern")}" layer="${esc(r.layer, "sm.rule.layer")}" risk-class="${esc(r.risk, "sm.rule.risk")}" />`,
           )
           .join("\n"),
       };
@@ -315,7 +328,18 @@ export async function runCompassDocsScaffold(
     if (await io.exists(abs)) {
       if (name === "knowledge-graph") {
         const source = await io.readFile(abs);
-        const merged = mergeKgNodes(source, workspaces);
+        let merged: string | null;
+        try {
+          merged = mergeKgNodes(source, workspaces);
+        } catch (err) {
+          // RFC-1323: unsafe authored slot data fails this file closed; the
+          // batch continues for other docs.
+          if (err instanceof CompassCommentSafetyError) {
+            files.push({ path: rel, action: "failed", detail: err.message });
+            continue;
+          }
+          throw err;
+        }
         if (merged === null) {
           files.push({
             path: rel,
