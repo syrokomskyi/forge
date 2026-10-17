@@ -44,6 +44,13 @@ export interface CompassPolicySource {
 export interface CompassPolicy {
   fileExtensions: ReadonlySet<string>;
   testPatterns: readonly string[];
+  /**
+   * RFC-1311: test-path globs that opt OUT of the test-file authoring
+   * exclusion — matched test files are authored and carry the standard
+   * MODULE_CONTRACT scaffolding. `testPatterns` itself still controls test
+   * classification; this list only narrows the exclusion.
+   */
+  scaffoldTestPatterns: readonly string[];
   scanRoots: readonly string[];
   ignoredDirs: ReadonlySet<string>;
   ignoredDirPrefixes: readonly string[];
@@ -68,6 +75,8 @@ export interface CompassPolicy {
   isHighRisk(pathFromRoot: string): boolean;
   /** Whether a workspace-relative path is a test file. */
   isTestPath(workspaceRelativePath: string): boolean;
+  /** Whether a workspace-relative path is a scaffold-required test file (RFC-1311). */
+  isScaffoldedTestPath(workspaceRelativePath: string): boolean;
   /** Exclusion reason for a workspace-relative path, if any. */
   excludedReason(workspaceRelativePath: string): string | undefined;
 }
@@ -125,6 +134,10 @@ const GENERIC_TEST_PATTERNS = [
   "**/*.spec.js",
 ];
 
+// RFC-1311: no generic scaffolded-test patterns — whether test files carry
+// Compass headers is a consumer decision declared in bindings.compass.
+const GENERIC_SCAFFOLD_TEST_PATTERNS: string[] = [];
+
 const GENERIC_ID_PATTERN = "\\b([A-Z][A-Z0-9]*-)+\\d+\\b";
 
 const GENERIC_PURPOSE_BOILERPLATE = [
@@ -162,8 +175,8 @@ const GENERIC_WORKSPACE_KINDS: Record<string, CompassWorkspaceKind> = {
 
 // ---------------------------------------------------------------------------
 // Merge semantics (RFC-1096): union keys merge with `!entry` subtraction
-// (fileExtensions, testPatterns, ignoredDirs, ignoredDirPrefixes, highRiskPaths,
-// excludedPaths — matched by `pattern`); scanRoots, idPattern,
+// (fileExtensions, testPatterns, scaffoldTestPatterns, ignoredDirs,
+// ignoredDirPrefixes, highRiskPaths, excludedPaths — matched by `pattern`); scanRoots, idPattern,
 // purposeBoilerplatePatterns, layerRules, and workspaceKinds replace wholesale
 // (bindings > profile > generic).
 // ---------------------------------------------------------------------------
@@ -259,6 +272,11 @@ export function resolveCompassPolicy(workspaceRoot: string, forgeRoot?: string):
     profileCompass?.testPatterns,
     bindingsCompass?.testPatterns,
   );
+  const scaffoldTestPatterns = mergeStringList(
+    GENERIC_SCAFFOLD_TEST_PATTERNS,
+    profileCompass?.scaffoldTestPatterns,
+    bindingsCompass?.scaffoldTestPatterns,
+  );
   const ignoredDirs = mergeStringList(
     GENERIC_IGNORED_DIRS,
     profileCompass?.ignoredDirs,
@@ -312,6 +330,9 @@ export function resolveCompassPolicy(workspaceRoot: string, forgeRoot?: string):
   }));
   const highRiskMatchers = highRiskPaths.map((pattern) => picomatch(pattern, { dot: true }));
   const testMatchers = testPatterns.map((pattern) => picomatch(pattern, { dot: true }));
+  const scaffoldTestMatchers = scaffoldTestPatterns.map((pattern) =>
+    picomatch(pattern, { dot: true }),
+  );
   const excludedMatchers = excludedPaths.map((entry) => ({
     reason: entry.reason,
     is: picomatch(entry.pattern, { dot: true }),
@@ -322,6 +343,7 @@ export function resolveCompassPolicy(workspaceRoot: string, forgeRoot?: string):
   return Object.freeze({
     fileExtensions: new Set(fileExtensions),
     testPatterns,
+    scaffoldTestPatterns,
     scanRoots,
     ignoredDirs: new Set(ignoredDirs),
     ignoredDirPrefixes,
@@ -345,6 +367,9 @@ export function resolveCompassPolicy(workspaceRoot: string, forgeRoot?: string):
     },
     isTestPath(workspaceRelativePath: string): boolean {
       return testMatchers.some((is) => is(workspaceRelativePath));
+    },
+    isScaffoldedTestPath(workspaceRelativePath: string): boolean {
+      return scaffoldTestMatchers.some((is) => is(workspaceRelativePath));
     },
     excludedReason(workspaceRelativePath: string): string | undefined {
       for (const { reason, is } of excludedMatchers) {

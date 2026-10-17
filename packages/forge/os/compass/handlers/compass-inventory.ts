@@ -289,7 +289,9 @@ function detectAuthoringStatus(
     };
   }
 
-  if (policy.isTestPath(relativePath)) {
+  // RFC-1311: scaffoldTestPatterns opts covered test files out of the
+  // exclusion — they stay authored and carry the standard scaffolding.
+  if (policy.isTestPath(relativePath) && !policy.isScaffoldedTestPath(relativePath)) {
     return {
       authoringStatus: "excluded",
       exclusionReason: "test-file",
@@ -480,8 +482,12 @@ export function deriveFileTokens(pathFromRoot: string, source: string): Set<stri
   const segments = pathFromRoot.split("/").filter(Boolean);
   const filename = segments[segments.length - 1] ?? "";
   const dotIndex = filename.lastIndexOf(".");
-  const stem = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
+  const rawStem = dotIndex > 0 ? filename.slice(0, dotIndex) : filename;
   const extension = dotIndex > 0 ? filename.slice(dotIndex) : "";
+  // RFC-1311: compound suffixes (`.test`, `.spec`) glue the real stem to an
+  // unwritable token (`create.test` → "createtest") — strip them so
+  // scaffolded test files get their natural stem tokens.
+  const stem = rawStem.replace(/\.(test|spec)$/i, "");
 
   const tokens = new Set<string>();
   for (const segment of stem.split("-").filter(Boolean)) {
