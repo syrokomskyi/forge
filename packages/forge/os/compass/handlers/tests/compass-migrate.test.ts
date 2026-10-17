@@ -11,12 +11,13 @@ handler across fixture workspaces in temp dirs.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for FORBIDDEN-01/SYNTAX-01 parity.</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 import { migrateFile, type MigrateAction } from "../compass-migrate.ts";
@@ -106,6 +107,28 @@ describe("compass.migrate codemod (RFC-1097)", () => {
     const result = migrateFile(broken, policy, MEDIUM_ROOT, MEDIUM_WS);
     expect(result.actions).toEqual(["unparseable"]);
     expect(result.source).toBe(broken);
+  });
+
+  it("RFC-1323: migrateFile throws CompassCommentSafetyError on unsafe authored text", () => {
+    // An html-enclosed .md header item carrying `<!--` parses fine — the
+    // throw lands at collapse re-emit, not parse time.
+    const items = [
+      "RFC-0001: first.",
+      "RFC-0002: second.",
+      "RFC-0003: third.",
+      "RFC-0004: fourth.",
+      "RFC-0005: fifth.",
+      `RFC-0006: notes ${"<"}!-- mid-item`,
+    ];
+    const source = `${"<"}!--\n${MC(PURPOSE)}\n${CS(items)}\n${"--" + ">"}`;
+    expect(() =>
+      migrateFile(
+        `${source}\n\n${BODY}\n`,
+        policy,
+        "packages/fixture-pkg/src/guide.md",
+        "src/guide.md",
+      ),
+    ).toThrowError(/COMPASS-CS-08/);
   });
 
   it("collapsed: 8 items keep newest 5, overflow IDs merge into sorted history, ID-less items drop", () => {
@@ -311,5 +334,36 @@ describe("runCompassMigrate handler (RFC-1097)", () => {
     const actions: MigrateAction[] = data.files[0]!.actions;
     // custom-dir/widget.ts is low-risk (no layer match) → no seeding, v1 file is already clean.
     expect(actions).toEqual(["unchanged"]);
+  });
+
+  it("RFC-1323: an item carrying the enclosing comment's terminator reports unsafe-text and exits 1", async () => {
+    // .astro header sits in a markup comment below frontmatter — an item
+    // containing `<!--` parses fine (it does not end the comment) but
+    // re-emitting it would corrupt. The 6-item window forces a collapse
+    // re-emit, which throws COMPASS-CS-08 — converted to a per-file
+    // unsafe-text action, never a written file.
+    const astroPath = "packages/fixture-pkg/src/page.astro";
+    const items = [
+      "RFC-0001: first.",
+      "RFC-0002: second.",
+      "RFC-0003: third.",
+      "RFC-0004: fourth.",
+      "RFC-0005: fifth.",
+      `RFC-0006: notes ${"<"}!-- mid-item`,
+    ];
+    const header = `---\nconst x = 1;\n---\n${"<"}!--\n${MC(PURPOSE)}\n${CS(items)}\n${"--" + ">"}`;
+    writeFixture(astroPath, header);
+    git("add", "-A");
+    git("commit", "-q", "-m", "fixture");
+
+    const before = readFileSync(join(tempDir, astroPath), "utf8");
+    const result = await runCompassMigrate(makeInput(), makeContext(tempDir));
+    expect(result.exitCode).toBe(1);
+    const data = dataOf(result);
+    const entry = data.files.find((f) => f.path === astroPath);
+    expect(entry?.actions).toEqual(["unsafe-text"]);
+    expect(entry?.error).toContain("COMPASS-CS-08");
+    // Fail closed per file — bytes untouched.
+    expect(readFileSync(join(tempDir, astroPath), "utf8")).toBe(before);
   });
 });

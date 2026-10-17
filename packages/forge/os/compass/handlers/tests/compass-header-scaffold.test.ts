@@ -13,6 +13,7 @@ in temp dirs.
 <CHANGE_SUMMARY>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -151,6 +152,24 @@ describe("scaffoldFile codemod (RFC-1318)", () => {
     expect(result.disposition).toBe("inserted");
     expect(result.source).toContain("mission widget contract");
     expect(result.source).not.toContain("<purpose>TODO(compass)");
+  });
+
+  it("COMPASS-CS-08: a describe title carrying the terminator skips the file, never throws (RFC-1323)", () => {
+    // The title's star-slash flows into the derived purpose — the emission
+    // assert converts to a skipped disposition instead of crashing the batch.
+    const source = `import { describe, it } from "vitest";\ndescribe("mission widget glob ${"*"}${"/"} pairs", () => {\n  it("passes", () => {});\n});\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/components/mission-widget.test.ts",
+        workspaceRelativePath: "src/components/mission-widget.test.ts",
+        isTest: true,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("skipped");
+    expect(result.diagnostic?.ruleId).toBe("COMPASS-CS-08");
+    expect(result.diagnostic?.message).toContain("file left untouched");
+    expect(result.source).toBe(source);
   });
 
   it("SCAFFOLD-01: literal tag markup outside a header comment is skipped with line evidence", () => {
@@ -751,6 +770,28 @@ describe("runCompassHeaderScaffold handler (RFC-1318)", () => {
     expect(report?.disposition).toBe("skipped");
     expect(report?.skipReason).toContain("extension");
     expect(readFileSync(join(tempDir, yaml), "utf8")).toBe("key: value\n");
+  });
+
+  it("apply exits non-zero naming files skipped on COMPASS-CS-08 (RFC-1323)", async () => {
+    // An existing html-enclosed partial header whose <non-goals> carries a
+    // bare line with `<!--` — the repair re-emits it as an <item>, the guard
+    // rejects it (CS-08), the file is skipped, and apply fails closed.
+    const target = "packages/fixture-pkg/src/page.astro";
+    const body = `---\nconst x = 1;\n---\n${"<"}!--\n${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\n<non-goals>\nbare ${"<"}!-- note\n</non-goals>\n${MC_CLOSE}\n${"--" + ">"}\n<main/>\n`;
+    writeFixture(target, body);
+    commitAll();
+
+    const result = await runCompassHeaderScaffold(
+      makeInput({ files: [target] }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("COMPASS-CS-08");
+    expect(result.summary).toContain(target);
+    const report = dataOf(result).files.find((f) => f.path === target);
+    expect(report?.disposition).toBe("skipped");
+    expect(report?.diagnostic?.ruleId).toBe("COMPASS-CS-08");
+    expect(readFileSync(join(tempDir, target), "utf8")).toBe(body);
   });
 
   it("report payload carries path/disposition/repairs — never full file source", async () => {

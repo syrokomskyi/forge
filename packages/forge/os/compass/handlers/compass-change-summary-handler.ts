@@ -10,12 +10,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1094: --mode flag; mode-aware COMPASS-CS-05/06/07 diagnostics via shared evaluateV2Rules; PROTECTED_RE now aliases GOVERNANCE_ID_RE.</item>
   <item>RFC-1095: rewrote trim as v2 repair (collapse >5 described items into history, remove ID-less items, normalize history); removed compass.changesummary.validate and the classify machinery (classifyChangeSummaryItem, PROTECTED_RE, BOILERPLATE_RE).</item>
   <item>RFC-1095: compass.summary.record, trim repair rewrite, commit integration</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
-  <history>RFC-0349, RFC-0538</history>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <history>RFC-0349, RFC-0538, RFC-0556</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +32,7 @@ import {
   mergeHistoryIds,
   parseChangeSummary,
 } from "./summary-record.ts";
-import { enclosingCommentStyle } from "../comment-safety.ts";
+import { enclosingCommentStyle, CompassCommentSafetyError } from "../comment-safety.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -49,6 +49,7 @@ export async function runCompassSummaryTrim(
     command: string;
     status: "ok";
     files: Array<{ path: string; removed: string[]; kept: number }>;
+    skippedUnsafe: string[];
   }>
 > {
   const io = resolveIo(context.io);
@@ -75,6 +76,7 @@ export async function runCompassSummaryTrim(
   );
 
   const results: Array<{ path: string; removed: string[]; kept: number }> = [];
+  const skippedUnsafe: string[] = [];
 
   for (const entry of entries) {
     if (entry.authoringStatus !== "authored" || entry.requiredScaffolding === "none") {
@@ -121,14 +123,26 @@ export async function runCompassSummaryTrim(
 
     // RFC-1323: the emission assert uses the style of the comment actually
     // enclosing the block — .astro can carry an html header the extension
-    // table does not predict.
-    const newBlock = buildChangeSummaryBlock(
-      idItems,
-      nextHistory,
-      entry.path,
-      enclosingCommentStyle(source, blockMatch.index!, entry.path),
-    );
-    const transformed = source.replace(CHANGE_SUMMARY_BLOCK_RE, newBlock);
+    // table does not predict. A re-emitted item carrying the style's
+    // terminator means the file's own text is unsafe — skip it per file so
+    // one bad block never aborts the batch after earlier writes.
+    let transformed: string;
+    try {
+      const newBlock = buildChangeSummaryBlock(
+        idItems,
+        nextHistory,
+        entry.path,
+        enclosingCommentStyle(source, blockMatch.index!, entry.path),
+      );
+      transformed = source.replace(CHANGE_SUMMARY_BLOCK_RE, newBlock);
+    } catch (err) {
+      if (err instanceof CompassCommentSafetyError) {
+        skippedUnsafe.push(entry.path);
+        context.logger.warn(`[compass.summary.trim] skipped ${entry.path}: ${err.message}`);
+        continue;
+      }
+      throw err;
+    }
 
     if (transformed === source) {
       continue;
@@ -154,9 +168,12 @@ export async function runCompassSummaryTrim(
       command: "compass.summary.trim",
       status: "ok",
       files: results,
+      skippedUnsafe,
     },
     exitCode: 0,
-    summary: `[compass.summary.trim] files=${results.length}, removed=${results.reduce((sum, r) => sum + r.removed.length, 0)}`,
+    summary:
+      `[compass.summary.trim] files=${results.length}, removed=${results.reduce((sum, r) => sum + r.removed.length, 0)}` +
+      (skippedUnsafe.length > 0 ? `, skipped-unsafe=${skippedUnsafe.length}` : ""),
     nextSteps: [
       {
         action: `Commit the repaired headers: pnpm exec forge run ecosystem.commit`,

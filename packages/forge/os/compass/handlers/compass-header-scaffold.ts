@@ -17,6 +17,7 @@ deference, deterministic repair of known malformation shapes.
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
+  <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,12 +42,13 @@ import {
   commentStyleFor,
   getLineCommentPrefix,
   assertCompassCommentSafe,
+  CompassCommentSafetyError,
 } from "../comment-safety.ts";
 
 export type ScaffoldDisposition = "inserted" | "repaired" | "sentinel" | "unchanged" | "skipped";
 
 export interface ScaffoldDiagnostic {
-  ruleId: "SCAFFOLD-01" | "SCAFFOLD-02";
+  ruleId: "SCAFFOLD-01" | "SCAFFOLD-02" | "COMPASS-CS-08";
   message: string;
 }
 
@@ -400,10 +402,25 @@ function skipped(
 
 /**
  * Pure per-file transform. Returns the (possibly) rewritten source plus a
- * disposition — never throws; unrepairable shapes report SCAFFOLD-02 and the
- * original source.
+ * disposition — never throws; unrepairable shapes report SCAFFOLD-02, and
+ * authored text carrying a comment terminator reports COMPASS-CS-08 — both
+ * with the original source.
  */
 export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): ScaffoldFileResult {
+  try {
+    return scaffoldFileImpl(input, policy);
+  } catch (err) {
+    if (err instanceof CompassCommentSafetyError) {
+      return skipped("unsafe text", input.source, {
+        ruleId: "COMPASS-CS-08",
+        message: `${err.message} — file left untouched`,
+      });
+    }
+    throw err;
+  }
+}
+
+function scaffoldFileImpl(input: ScaffoldFileInput, policy: CompassPolicy): ScaffoldFileResult {
   const { source, pathFromRoot, riskClass, keyDecisionsRequired } = input;
   const tagIdx = firstTagIndex(source);
   const span = findHeaderSpan(source, pathFromRoot);
@@ -739,9 +756,9 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       } else {
         const at = appendAt(h);
         next = applyEdits(next, [{ start: at, end: at, text: appendText(kd, h.span) }], {
-            style: h.span.style,
-            file: pathFromRoot,
-          });
+          style: h.span.style,
+          file: pathFromRoot,
+        });
       }
       repairs.push("inserted-key-decisions");
     }
@@ -770,9 +787,9 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       } else {
         const at = appendAt(h);
         next = applyEdits(next, [{ start: at, end: at, text: appendText(cs, h.span) }], {
-            style: h.span.style,
-            file: pathFromRoot,
-          });
+          style: h.span.style,
+          file: pathFromRoot,
+        });
       }
       repairs.push("inserted-change-summary");
     }
