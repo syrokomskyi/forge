@@ -11,6 +11,7 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <item>RFC-1318</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,7 @@ import {
   createCompassInventoryEntries,
   detectAuthoringStatus,
   detectRiskClass,
+  detectWorkspaceName,
   getEntrySource,
   getRelativeSegments,
   getWorkspaceRelativeSegments,
@@ -44,7 +46,7 @@ import type {
 
 const io = ambientIo;
 
-export interface ScaffoldFileReport extends ScaffoldFileResult {
+export interface ScaffoldFileReport extends Omit<ScaffoldFileResult, "source"> {
   path: string;
   workspaceName: string;
 }
@@ -65,63 +67,50 @@ interface ScaffoldTarget {
   input?: ScaffoldFileInput;
 }
 
-function detectWorkspaceName(
-  segments: string[],
-  policy: ReturnType<typeof resolveCompassPolicy>,
-): string {
-  if (segments[0] !== undefined && segments[0] in policy.workspaceKinds) {
-    return segments[1] ?? "unknown";
-  }
-  return "root";
-}
-
 async function explicitTarget(
   workspaceRoot: string,
   baseRoot: string,
   file: string,
   policy: ReturnType<typeof resolveCompassPolicy>,
   leafRoot?: string,
-): Promise<ScaffoldTarget | undefined> {
+): Promise<ScaffoldTarget> {
   const absPath = resolve(baseRoot, file);
-  let source: string;
-  try {
-    source = await io.readFile(absPath);
-  } catch {
-    return {
-      absPath,
-      pathFromRoot: file,
-      workspaceRelativePath: file,
-      workspaceName: "(unknown)",
-      skipReason: "unreadable",
-    };
-  }
   const pathFromRoot = relative(workspaceRoot, absPath).replace(/\\/g, "/");
   const workspaceRelativePath = leafRoot
     ? relative(leafRoot, absPath).replace(/\\/g, "/")
     : explicitWorkspaceRelativePath(absPath, workspaceRoot, policy);
   const segments = getRelativeSegments(absPath, workspaceRoot);
+  const workspaceName = detectWorkspaceName(segments, policy);
+  const shell: Omit<ScaffoldTarget, "skipReason" | "input"> = {
+    absPath,
+    pathFromRoot,
+    workspaceRelativePath,
+    workspaceName,
+  };
+  // --files bypasses scan roots, not the extension allowlist — a binary or
+  // non-source path must never receive a header.
+  const extension = absPath.slice(absPath.lastIndexOf("."));
+  if (!policy.fileExtensions.has(extension)) {
+    return { ...shell, skipReason: `unsupported extension ${extension || "(none)"}` };
+  }
+  let source: string;
+  try {
+    source = await io.readFile(absPath);
+  } catch {
+    return { ...shell, skipReason: "unreadable" };
+  }
   const { authoringStatus, exclusionReason } = detectAuthoringStatus(
     segments,
     workspaceRelativePath,
     source,
     policy,
   );
-  const workspaceName = detectWorkspaceName(segments, policy);
   if (authoringStatus === "excluded") {
-    return {
-      absPath,
-      pathFromRoot,
-      workspaceRelativePath,
-      workspaceName,
-      skipReason: exclusionReason ?? "excluded",
-    };
+    return { ...shell, skipReason: exclusionReason ?? "excluded" };
   }
   const riskClass = detectRiskClass(pathFromRoot, workspaceRelativePath, policy);
   return {
-    absPath,
-    pathFromRoot,
-    workspaceRelativePath,
-    workspaceName,
+    ...shell,
     input: {
       pathFromRoot,
       workspaceRelativePath,
@@ -161,7 +150,7 @@ function entryTarget(
     input: {
       pathFromRoot: entry.path,
       workspaceRelativePath,
-      source: "",
+      source: getEntrySource(entry) ?? "",
       riskClass: entry.riskClass,
       keyDecisionsRequired: entry.keyDecisionsRequired,
       isTest: policy.isTestPath(workspaceRelativePath),
@@ -199,11 +188,9 @@ export async function runCompassHeaderScaffold(
 
   // ── Target collection ────────────────────────────────────────────────────
   const targets: ScaffoldTarget[] = [];
-  const entrySourceCache = new Map<string, string>();
   if (files.length > 0) {
     for (const file of files) {
-      const target = await explicitTarget(context.workspaceRoot, baseRoot, file, policy, leafRoot);
-      if (target) targets.push(target);
+      targets.push(await explicitTarget(context.workspaceRoot, baseRoot, file, policy, leafRoot));
     }
   } else {
     const entries = await createCompassInventoryEntries(
@@ -214,16 +201,16 @@ export async function runCompassHeaderScaffold(
       context.site?.directory,
     );
     for (const entry of entries) {
-      const target = entryTarget(context.workspaceRoot, entry, policy, leafRoot);
-      const cached = getEntrySource(entry);
-      if (cached !== undefined) entrySourceCache.set(target.absPath, cached);
-      targets.push(target);
+      targets.push(entryTarget(context.workspaceRoot, entry, policy, leafRoot));
     }
   }
   targets.sort((a, b) => a.pathFromRoot.localeCompare(b.pathFromRoot));
 
   // ── Dispositions (identical pass for census and apply — census just never writes) ──
+  // Pending write sources live outside the report payload — serializing every
+  // file body into data.files[] would balloon a full-repo census.
   const reports: ScaffoldFileReport[] = [];
+  const writeSources = new Map<string, string>();
   let scanned = 0;
   for (const target of targets) {
     if (!target.input) {
@@ -231,33 +218,37 @@ export async function runCompassHeaderScaffold(
         path: target.pathFromRoot,
         workspaceName: target.workspaceName,
         disposition: "skipped",
-        source: "",
         repairs: [],
         skipReason: target.skipReason,
       });
       continue;
     }
     scanned += 1;
-    const source =
-      target.input.source ||
-      entrySourceCache.get(target.absPath) ||
-      (await io.readFile(target.absPath));
+    const source = target.input.source || (await io.readFile(target.absPath));
     const result = scaffoldFile({ ...target.input, source }, policy);
-    reports.push({ path: target.pathFromRoot, workspaceName: target.workspaceName, ...result });
+    const { source: nextSource, ...report } = result;
+    if (
+      result.disposition === "inserted" ||
+      result.disposition === "repaired" ||
+      result.disposition === "sentinel"
+    ) {
+      writeSources.set(target.pathFromRoot, nextSource);
+    }
+    reports.push({ path: target.pathFromRoot, workspaceName: target.workspaceName, ...report });
   }
 
-  const writes = reports.filter(
-    (r) =>
-      (r.disposition === "inserted" ||
-        r.disposition === "repaired" ||
-        r.disposition === "sentinel") &&
-      r.source.length > 0,
-  );
+  const writes = reports.filter((r) => writeSources.has(r.path));
 
   // ── Dirty-target refusal — apply mode only; census never writes ──────────
   if (!census && !force && writes.length > 0) {
-    const dirty = listDirtyPaths(baseRoot);
-    if (dirty && dirty.length > 0) {
+    const rawDirty = listDirtyPaths(baseRoot);
+    if (rawDirty && rawDirty.length > 0) {
+      // git status reports paths relative to the repo root at baseRoot;
+      // reports carry workspace-relative paths — rebase before matching.
+      const dirty = rawDirty.map((d) => {
+        const rebased = relative(context.workspaceRoot, resolve(baseRoot, d)).replace(/\\/g, "/");
+        return d.endsWith("/") && !rebased.endsWith("/") ? `${rebased}/` : rebased;
+      });
       const dirtyTargets = writes.filter((w) => isDirtyPath(w.path, dirty));
       if (dirtyTargets.length > 0) {
         const shown = dirtyTargets.slice(0, DIRTY_LIST_CAP);
@@ -276,11 +267,9 @@ export async function runCompassHeaderScaffold(
   // ── Writes ───────────────────────────────────────────────────────────────
   if (!census) {
     for (const report of writes) {
-      await writeFileIfChanged(
-        resolve(context.workspaceRoot, report.path),
-        report.source,
-        context.io,
-      );
+      const nextSource = writeSources.get(report.path);
+      if (nextSource === undefined) continue;
+      await writeFileIfChanged(resolve(context.workspaceRoot, report.path), nextSource, context.io);
     }
   }
 
@@ -302,6 +291,21 @@ export async function runCompassHeaderScaffold(
     for (const d of diagnostics.slice(0, 10)) {
       context.logger.warn(`[${d.diagnostic!.ruleId}] ${d.path}: ${d.diagnostic!.message}`);
     }
+  }
+
+  // Per-package table in default output — the result contract promises it
+  // outside --json too.
+  const packageLines = Object.entries(byPackage)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(
+      ([pkg, tallies]) =>
+        `  ${pkg}: ${Object.entries(tallies)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([k, v]) => `${k}=${v}`)
+          .join(" ")}`,
+    );
+  if (packageLines.length > 0) {
+    context.logger.info(`[compass.header.scaffold] by package:\n${packageLines.join("\n")}`);
   }
 
   return {

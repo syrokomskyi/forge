@@ -1,8 +1,10 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Git revision lookup by file path. Moved from @warpgogol/site-kernel-integrity
-to @warpgogol/forge for full autonomous mode (RFC-0556). Provides getRevisionByPath
-with integrity-registry lookup and git-history fallback, plus getFileRevisionFromHistory.</purpose>
+<purpose>Git revision and worktree-dirtiness lookup by file path. Moved from
+@warpgogol/site-kernel-integrity to @warpgogol/forge for full autonomous mode (RFC-0556).
+Provides getRevisionByPath with integrity-registry lookup and git-history fallback,
+plus getFileRevisionFromHistory and the porcelain dirty-path helpers
+(listDirtyPaths/isDirtyPath) shared by write-refusing commands.</purpose>
 <non-goals>
   <item>Do not compute a new per-file counter — reuse the existing integrity revision.</item>
   <item>Do not modify the registry or write any files.</item>
@@ -12,6 +14,7 @@ with integrity-registry lookup and git-history fallback, plus getFileRevisionFro
   <item>RFC-0352: initial implementation of getRevisionByPath helper.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <item>RFC-1318</item>
 </CHANGE_SUMMARY>
 */
 

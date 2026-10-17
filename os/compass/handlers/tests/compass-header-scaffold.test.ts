@@ -12,6 +12,7 @@ in temp dirs.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <item>RFC-1318</item>
 </CHANGE_SUMMARY>
 */
 
@@ -290,6 +291,173 @@ describe("scaffoldFile codemod (RFC-1318)", () => {
     expect(result.disposition).toBe("unchanged");
     expect(result.source).toBe(source);
   });
+
+  it("inserted: .md keeps YAML frontmatter at byte zero and inserts <!-- --> after it", () => {
+    const source = `---\ntitle: Mission Notes\n---\n\n# Notes\n\nBody text.\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/docs/mission-notes.md",
+        workspaceRelativePath: "docs/mission-notes.md",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).not.toBe("skipped");
+    expect(result.source.startsWith("---\ntitle: Mission Notes\n---\n")).toBe(true);
+    const headerAt = result.source.indexOf("<!--");
+    expect(headerAt).toBeGreaterThan(result.source.indexOf("---\n\n"));
+    expect(result.source).toContain(MC_OPEN);
+    // Idempotent — the html comment is detected on the second pass.
+    const second = scaffoldFile(
+      input(result.source, {
+        pathFromRoot: "packages/fixture-pkg/docs/mission-notes.md",
+        workspaceRelativePath: "docs/mission-notes.md",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(second.disposition).toBe("unchanged");
+  });
+
+  it("repaired: unclosed trailing tag after .md frontmatter closes inside the header comment", () => {
+    // Non-zero offset regression — the header starts after frontmatter, so a
+    // close anchored at absolute closeStart would land before the header.
+    const header = `<!--\n${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\n<non-goals>\n  <item>Fixtures only.</item>\n</non-goals>\n${MC_CLOSE}\n${CS_OPEN}`;
+    const source = `---\ntitle: Notes\n---\n\n${header}\n-->\n\n# Body\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/docs/mission-notes.md",
+        workspaceRelativePath: "docs/mission-notes.md",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-change-summary");
+    const csClose = result.source.indexOf(CS_CLOSE);
+    const commentClose = result.source.indexOf("-->");
+    expect(csClose).toBeGreaterThan(-1);
+    expect(csClose).toBeLessThan(commentClose);
+  });
+
+  it("inserted: .gd line-comment headers carry exactly one prefix per line", () => {
+    const source = `extends Node\n\nfunc mission_ready() -> bool:\n\treturn true\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).not.toBe("skipped");
+    expect(result.source).toContain(`# ${MC_OPEN}`);
+    expect(result.source).toContain(`# ${CS_CLOSE}`);
+    expect(result.source).not.toContain("# #");
+    // Contiguous prefix run — second run is a no-op.
+    const second = scaffoldFile(
+      input(result.source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(second.disposition).toBe("unchanged");
+    expect(second.source).toBe(result.source);
+  });
+
+  it("repaired: .gd header with a missing block inserts prefixed lines, no doubled markers", () => {
+    const header = `# ${MC_OPEN}\n# <purpose>${PURPOSE}</purpose>\n# <non-goals>\n#   <item>Fixtures only.</item>\n# </non-goals>\n# ${MC_CLOSE}`;
+    const source = `${header}\nextends Node\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/mission-widget.gd",
+        workspaceRelativePath: "src/mission-widget.gd",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).toBe("repaired");
+    expect(result.source).toContain(`# ${CS_OPEN}`);
+    expect(result.source).not.toContain("# #");
+    expect(result.source).not.toMatch(/\n<CHANGE_SUMMARY>/);
+  });
+
+  it("repaired: unclosed <purpose> gets closed before its siblings", () => {
+    const header = `${MC_OPEN}\n<purpose>${PURPOSE}\n<non-goals>\n  <item>Fixtures only.</item>\n</non-goals>\n${MC_CLOSE}\n${KD_OPEN}\n  <item>${KD_ITEM}</item>\n${KD_CLOSE}\n${CS_OPEN}\n${CS_CLOSE}`;
+    const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-purpose");
+    const purposeClose = result.source.indexOf("</purpose>");
+    expect(purposeClose).toBeGreaterThan(-1);
+    expect(purposeClose).toBeLessThan(result.source.indexOf("<non-goals>"));
+  });
+
+  it("repaired: an unclosed <item> inside non-goals gets closed", () => {
+    const header = `${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\n<non-goals>\n  <item>Fixtures only.\n  <item>No rewrites.</item>\n</non-goals>\n${MC_CLOSE}\n${KD_OPEN}\n  <item>${KD_ITEM}</item>\n${KD_CLOSE}\n${CS_OPEN}\n${CS_CLOSE}`;
+    const source = `${wrap(header)}\n\nexport const missionWidget = 1;\n`;
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("repaired");
+    expect(result.repairs).toContain("closed-item");
+  });
+
+  it("inserted: frontmatter-less .astro gets an html comment header, not /* */", () => {
+    const source = `<section>Mission</section>\n`;
+    const result = scaffoldFile(
+      input(source, {
+        pathFromRoot: "packages/fixture-pkg/src/pages/mission.astro",
+        workspaceRelativePath: "src/pages/mission.astro",
+        riskClass: "low",
+        keyDecisionsRequired: false,
+      }),
+      policy,
+    );
+    expect(result.disposition).not.toBe("skipped");
+    expect(result.source.startsWith("<!--\n" + MC_OPEN)).toBe(true);
+    expect(result.source).not.toContain("/*");
+  });
+
+  it("inserted: shebang, BOM, and directive prologues stay above the header", () => {
+    const shebang = `#!/usr/bin/env node\nexport const missionWidget = 1;\n`;
+    const shebanged = scaffoldFile(input(shebang), policy);
+    expect(shebanged.source.startsWith("#!/usr/bin/env node\n")).toBe(true);
+    expect(shebanged.source.indexOf(MC_OPEN)).toBeGreaterThan(shebanged.source.indexOf("#!"));
+
+    const bom = `﻿export const missionWidget = 1;\n`;
+    const bombed = scaffoldFile(input(bom), policy);
+    expect(bombed.source.charCodeAt(0)).toBe(0xfeff);
+    expect(bombed.source.indexOf("/*")).toBe(1);
+
+    const directive = `"use client";\n\nexport const missionWidget = 1;\n`;
+    const directived = scaffoldFile(input(directive), policy);
+    expect(directived.source.startsWith('"use client";')).toBe(true);
+    expect(directived.source.indexOf('"use client"')).toBeLessThan(
+      directived.source.indexOf(MC_OPEN),
+    );
+  });
+
+  it("SCAFFOLD-01: a comment opener inside a string literal is fixture material", () => {
+    const source = ["const fixture = `/*", MC_OPEN, "*/`;", "export const t = 1;"].join("\n");
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("skipped");
+    expect(result.diagnostic?.ruleId).toBe("SCAFFOLD-01");
+    expect(result.source).toBe(source);
+  });
+
+  it("skipped: an unterminated comment carrying tags leaves the file untouched", () => {
+    const source = `/*\n${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\nexport const missionWidget = 1;\n`;
+    const result = scaffoldFile(input(source), policy);
+    expect(result.disposition).toBe("skipped");
+    expect(result.source).toBe(source);
+  });
 });
 
 describe("runCompassHeaderScaffold handler (RFC-1318)", () => {
@@ -397,5 +565,64 @@ describe("runCompassHeaderScaffold handler (RFC-1318)", () => {
     expect(data.files).toHaveLength(1);
     expect(data.files[0]!.path).toBe(outside);
     expect(readFileSync(join(tempDir, outside), "utf8")).toContain(MC_OPEN);
+  });
+
+  it("--files refuses unsupported extensions — bypass is scan-root only", async () => {
+    const yaml = "packages/fixture-pkg/config.yaml";
+    writeFixture(yaml, `key: value\n`);
+    commitAll();
+
+    const result = await runCompassHeaderScaffold(
+      makeInput({ files: [yaml], force: true }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(0);
+    const report = dataOf(result).files.find((f) => f.path === yaml);
+    expect(report?.disposition).toBe("skipped");
+    expect(report?.skipReason).toContain("extension");
+    expect(readFileSync(join(tempDir, yaml), "utf8")).toBe("key: value\n");
+  });
+
+  it("report payload carries path/disposition/repairs — never full file source", async () => {
+    writeFixture(MEDIUM_ROOT, `export const missionWidget = 1;\n`);
+    const result = await runCompassHeaderScaffold(
+      makeInput({ census: true }),
+      makeContext(tempDir),
+    );
+    const report = dataOf(result).files.find((f) => f.path === MEDIUM_ROOT);
+    expect(report).toBeDefined();
+    expect("source" in (report ?? {})).toBe(false);
+  });
+
+  it("census on a dirty tree still reports dispositions without refusing", async () => {
+    writeFixture(MEDIUM_ROOT, `export const missionWidget = 1;\n`);
+    // Uncommitted (dirty) target — census never writes so it never refuses.
+    const result = await runCompassHeaderScaffold(
+      makeInput({ census: true }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(dataOf(result).files.find((f) => f.path === MEDIUM_ROOT)?.disposition).toBe("inserted");
+  });
+
+  it("apply inside a --workpiece leaf repo refuses dirty targets it can see", async () => {
+    const workpiece = "missions/m1/workpiece";
+    const target = `${workpiece}/src/widget.ts`;
+    writeFixture(target, `export const widget = 1;\n`);
+    // Nested git repo: git status inside it reports workpiece-relative paths.
+    execFileSync("git", ["init", "-q"], { cwd: join(tempDir, workpiece), stdio: "ignore" });
+    execFileSync("git", ["config", "user.email", "test@test.com"], {
+      cwd: join(tempDir, workpiece),
+      stdio: "ignore",
+    });
+    execFileSync("git", ["config", "user.name", "Test"], {
+      cwd: join(tempDir, workpiece),
+      stdio: "ignore",
+    });
+
+    const result = await runCompassHeaderScaffold(makeInput({ workpiece }), makeContext(tempDir));
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("dirty");
+    expect(readFileSync(join(tempDir, target), "utf8")).toBe("export const widget = 1;\n");
   });
 });
