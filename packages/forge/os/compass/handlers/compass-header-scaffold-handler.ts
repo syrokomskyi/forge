@@ -17,6 +17,7 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
+import { realpathSync } from "node:fs";
 import { relative, resolve } from "node:path";
 import {
   createCompassInventoryEntries,
@@ -242,14 +243,22 @@ export async function runCompassHeaderScaffold(
   // ── Dirty-target refusal — apply mode only; census never writes ──────────
   if (!census && !force && writes.length > 0) {
     const rawDirty = listDirtyPaths(baseRoot);
-    const topLevel = repoTopLevel(baseRoot);
-    if (rawDirty && rawDirty.length > 0 && topLevel) {
+    if (rawDirty && rawDirty.length > 0) {
       // Porcelain paths are repo-top-relative while reports carry
       // workspace-relative paths — rebase through the actual top-level so a
       // scoped scan (--package/--packages inside one repo, or a nested
-      // --workpiece repo) still sees its dirty targets.
+      // --workpiece repo) still sees its dirty targets. realpath both sides:
+      // git reports canonical paths while workspaceRoot may be symlinked.
+      const topLevel = repoTopLevel(baseRoot);
+      let wsRoot = context.workspaceRoot;
+      try {
+        wsRoot = realpathSync(wsRoot);
+      } catch {
+        // keep the workspace root as given
+      }
+      const gitBase = topLevel ?? baseRoot;
       const dirty = rawDirty.map((d) => {
-        const rebased = relative(context.workspaceRoot, resolve(topLevel, d)).replace(/\\/g, "/");
+        const rebased = relative(wsRoot, resolve(gitBase, d)).replace(/\\/g, "/");
         return d.endsWith("/") && !rebased.endsWith("/") ? `${rebased}/` : rebased;
       });
       const dirtyTargets = writes.filter((w) => isDirtyPath(w.path, dirty));
