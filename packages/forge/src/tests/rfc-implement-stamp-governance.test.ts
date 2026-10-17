@@ -10,14 +10,18 @@
   <item>RFC-1310: STAMP-GOV-01 fixtures — trailer provenance, injected-item provenance, candidate-set scan, retro-fix remedy, dry-run scan reporting</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1321: lowercase --id satisfies an uppercase subject (AC-3)</item>
+  <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
 </CHANGE_SUMMARY>
 */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtemp, rm, mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
+
+const { mockRunProbe } = vi.hoisted(() => ({ mockRunProbe: vi.fn() }));
+vi.mock("../../os/rfc/acceptance.ts", () => ({ runProbe: mockRunProbe }));
 
 import { runRfcImplementStamp } from "../../os/rfc/handlers/implement-stamp.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext, ForgeLogger } from "../../src/types.ts";
@@ -243,5 +247,157 @@ describe("STAMP-GOV-01 — implementation provenance", () => {
     const scanLine = infoLog.find((l) => l.includes("STAMP-GOV-01 scanning"));
     expect(scanLine).toBeDefined();
     expect(scanLine).toContain(commit.slice(0, 40));
+  });
+});
+
+// ─── RFC-1322: STAMP-CHECK-01 — --check-criteria fail-closed ─────────────────
+//
+// An unchecked criterion can only be auto-checked when its (evidence: ...)
+// annotation resolves: test:/file:/<path>:<line> paths must exist on disk;
+// probe:AC-N must bind a passing probe in the evidence envelope. Anything else
+// aborts the stamp before any write to the RFC file.
+
+const RFC_CHECK_FAIL = (criteria: string): string => `---
+id: RFC-0002
+title: "Check-criteria fail fixture"
+status: accepted
+kind: command
+scope: workspace
+owners:
+  - architecture
+reviewers:
+  - human:test
+createdAt: 2026-10-01
+updatedAt: 2026-10-01
+acceptance:
+  - probe: file-exists
+    path: src/index.ts
+    criterion: AC-1
+---
+
+# RFC-0002: Test RFC
+
+## Acceptance criteria
+
+${criteria}
+`;
+
+function makeCheckInput(id: string, commit: string): ForgeCommandInput {
+  return {
+    argv: [],
+    flags: { id, "implementation-commit": commit, "check-criteria": true },
+  };
+}
+
+const envelopePath = (root: string, id: string) =>
+  join(root, "docs", "rfcs", "verification", `${id.toLowerCase()}.generated.yaml`);
+
+describe("STAMP-CHECK-01 — unresolvable evidence aborts before any write", () => {
+  let workspaceRoot: string;
+  let rfcFile: string;
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(join(tmpdir(), "rfc-stamp-check-"));
+    await mkdir(join(workspaceRoot, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    execFileSync("git", ["init"], { cwd: workspaceRoot, timeout: 5000 });
+    execFileSync("git", ["config", "user.email", "test@test.com"], {
+      cwd: workspaceRoot,
+      timeout: 5000,
+    });
+    execFileSync("git", ["config", "user.name", "Test"], {
+      cwd: workspaceRoot,
+      timeout: 5000,
+    });
+    rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0002-check.md");
+    mockRunProbe.mockReset();
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "real.test.ts"), "// test\n");
+  });
+
+  afterEach(async () => {
+    await rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  it("unchecked criterion with no annotation fails STAMP-CHECK-01 before any write", async () => {
+    const body = RFC_CHECK_FAIL(
+      "- [ ] AC-1: resolvable (evidence: probe:AC-1)\n- [ ] AC-2: bare criterion with no evidence annotation\n",
+    );
+    await writeFile(rfcFile, body);
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002\n\nX-RFC: RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeCheckInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const check = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(check).toBeDefined();
+    expect(check?.message).toContain("AC-2");
+    expect(check?.message).toContain("no (evidence: ...) annotation");
+
+    // Abort before any RFC write: bytes untouched. The emit-if-needed pass
+    // ran first, so a fresh envelope describing the committed bytes remains —
+    // a correct generated artifact, not a partial mutation (RFC-1322 step 5).
+    expect(await readFile(rfcFile, "utf-8")).toBe(body);
+    await expect(access(envelopePath(workspaceRoot, "RFC-0002"))).resolves.toBeUndefined();
+  });
+
+  it("unchecked criterion with a nonexistent test: path fails STAMP-CHECK-01", async () => {
+    const body = RFC_CHECK_FAIL(
+      "- [ ] AC-1: resolvable (evidence: probe:AC-1)\n- [ ] AC-2: dangling test ref (evidence: test: src/missing.test.ts)\n",
+    );
+    await writeFile(rfcFile, body);
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002\n\nX-RFC: RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeCheckInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const check = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(check?.message).toContain("AC-2");
+    expect(check?.message).toContain("test: src/missing.test.ts");
+    expect(await readFile(rfcFile, "utf-8")).toBe(body);
+  });
+
+  it("probe:AC-N annotation binding a criterion with no envelope probe fails STAMP-CHECK-01", async () => {
+    const body = RFC_CHECK_FAIL(
+      "- [ ] AC-1: resolvable (evidence: probe:AC-1)\n- [ ] AC-2: unbound probe ref (evidence: probe:AC-9)\n",
+    );
+    await writeFile(rfcFile, body);
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002\n\nX-RFC: RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeCheckInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const check = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(check?.message).toContain("AC-2");
+    expect(check?.message).toContain("probe:AC-9");
+    expect(await readFile(rfcFile, "utf-8")).toBe(body);
+  });
+
+  it("a free-form annotation outside the resolvable grammar fails STAMP-CHECK-01", async () => {
+    const body = RFC_CHECK_FAIL(
+      "- [ ] AC-1: resolvable (evidence: test: src/real.test.ts)\n- [ ] AC-2: prose evidence (evidence: reviewed in the session transcript)\n",
+    );
+    await writeFile(rfcFile, body);
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0002\n\nX-RFC: RFC-0002");
+
+    const result = await runRfcImplementStamp(
+      makeCheckInput("RFC-0002", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const check = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(check?.message).toContain("AC-2");
+    expect(await readFile(rfcFile, "utf-8")).toBe(body);
   });
 });

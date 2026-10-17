@@ -10,14 +10,18 @@ Unit tests for implement stamp covering rfc.implement.stamp. It also guards the 
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the implement suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
 </CHANGE_SUMMARY>
 */
 
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { mkdtemp, rm, mkdir, writeFile, readFile, access } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
+
+const { mockRunProbe } = vi.hoisted(() => ({ mockRunProbe: vi.fn() }));
+vi.mock("../../os/rfc/acceptance.ts", () => ({ runProbe: mockRunProbe }));
 
 import { runRfcImplementStamp } from "../../os/rfc/handlers/implement-stamp.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext, ForgeLogger } from "../../src/types.ts";
@@ -199,6 +203,96 @@ async function commitAll(dir: string, message: string): Promise<string> {
   return execFileSync("git", ["rev-parse", "HEAD"], { cwd: dir, timeout: 5000 }).toString().trim();
 }
 
+// ─── RFC-1322: --check-criteria fixtures ──────────────────────────────────────
+
+// Post-cutoff probe-bearing fixture: AC-3 binds a file-exists probe so the
+// emitted envelope carries a probe record the probe:AC-3 annotation resolves
+// against; AC-1/AC-2 resolve via on-disk paths.
+const RFC_BODY_FLAGGED = (
+  id: string,
+  overrides?: { ac1?: string; ac2?: string; ac3?: string },
+): string => `---
+id: ${id}
+title: "Test RFC"
+status: accepted
+kind: command
+scope: workspace
+owners:
+  - architecture
+reviewers:
+  - human:test
+createdAt: 2026-10-01
+updatedAt: 2026-10-01
+acceptance:
+  - probe: file-exists
+    path: src/index.ts
+    criterion: AC-3
+---
+
+# ${id}: Test RFC
+
+## Context
+
+Test context.
+
+## Acceptance criteria
+
+- [ ] AC-1: test-path evidence (evidence: ${overrides?.ac1 ?? "test: src/x.test.ts"})
+- [ ] AC-2: file-line evidence (evidence: ${overrides?.ac2 ?? "src/foo.ts:10"})
+- [ ] AC-3: probe evidence (evidence: ${overrides?.ac3 ?? "probe:AC-3"})
+`;
+
+const RFC_BODY_FLAGGED_PARTIAL = `---
+id: RFC-0101
+title: "Test RFC"
+status: accepted
+kind: command
+scope: workspace
+owners:
+  - architecture
+reviewers:
+  - human:test
+createdAt: 2026-10-01
+updatedAt: 2026-10-01
+acceptance:
+  - probe: file-exists
+    path: src/index.ts
+    criterion: AC-1
+---
+
+# RFC-0101: Test RFC
+
+## Acceptance criteria
+
+- [x] AC-1: already checked (evidence: probe:AC-1)
+- [ ] AC-2: straggler path evidence (evidence: test: src/x.test.ts)
+- [ ] AC-3: straggler file-line evidence (evidence: src/foo.ts:10)
+`;
+
+function makeInputWithCriteriaFlag(
+  id: string,
+  commit: string,
+  dryRun?: boolean,
+): ForgeCommandInput {
+  return {
+    argv: [],
+    flags: {
+      id,
+      "implementation-commit": commit,
+      "check-criteria": true,
+      ...(dryRun ? { "dry-run": true } : {}),
+    },
+  };
+}
+
+const evidenceEnvelopePath = (root: string, id: string) =>
+  join(root, "docs", "rfcs", "verification", `${id.toLowerCase()}.generated.yaml`);
+
+const pathExists = async (p: string) =>
+  access(p)
+    .then(() => true)
+    .catch(() => false);
+
 // ─── Tests ────────────────────────────────────────────────────────────────────
 
 describe("rfc.implement.stamp", () => {
@@ -208,6 +302,7 @@ describe("rfc.implement.stamp", () => {
     workspaceRoot = await mkdtemp(join(tmpdir(), "rfc-stamp-test-"));
     await mkdir(join(workspaceRoot, "docs", "rfcs"), { recursive: true });
     await makeGitRepo(workspaceRoot);
+    mockRunProbe.mockClear();
   });
 
   afterEach(async () => {
@@ -560,5 +655,126 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.status).toBe("pass");
     const imp07 = result.data?.violations.find((v) => v.rule === "RFC-IMP-07");
     expect(imp07).toBeUndefined();
+  });
+
+  // ── RFC-1322: --check-criteria ────────────────────────────────────────────
+
+  it("--check-criteria flips resolvable unchecked criteria and stamps in one pass", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    expect(result.data?.violations).toEqual([]);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
+
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: implemented");
+    expect(content).toContain("- [x] AC-1:");
+    expect(content).toContain("- [x] AC-2:");
+    expect(content).toContain("- [x] AC-3:");
+    expect(content).not.toContain("- [ ]");
+
+    // emit-if-needed produced the envelope in-process; the post-stamp re-emit
+    // then bound the implemented-state bytes.
+    expect(await pathExists(evidenceEnvelopePath(workspaceRoot, "RFC-0101"))).toBe(true);
+    expect(result.data?.data?.evidenceReEmitted).toBe(true);
+    // Two probe runs: emit-if-needed (missing envelope) + post-stamp re-emit.
+    expect(mockRunProbe.mock.calls.length).toBe(2);
+  });
+
+  it("--check-criteria flips only the stragglers on a partially-checked RFC", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED_PARTIAL);
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-2", "AC-3"]);
+
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("- [x] AC-1: already checked");
+    expect(content).toContain("- [x] AC-2: straggler");
+    expect(content).toContain("- [x] AC-3: straggler");
+    expect(result.data?.data?.criteriaChecked).toBe(3);
+  });
+
+  it("--check-criteria skips emit-if-needed when the committed envelope is fresh", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+
+    // Pre-emit a fresh envelope and commit it — emit-if-needed must NOT run
+    // again; only the post-stamp re-emit fires (one probe run after setup).
+    const { runRfcVerificationEmit } = await import("../../os/rfc/verification-evidence.ts");
+    const emitResult = await runRfcVerificationEmit(
+      { argv: [], flags: { id: "RFC-0101" } },
+      makeContext(workspaceRoot),
+    );
+    expect(emitResult.exitCode).toBe(0);
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+    mockRunProbe.mockClear();
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
+    // One probe run only — the post-stamp re-emit; emit-if-needed shorted out.
+    expect(mockRunProbe.mock.calls.length).toBe(1);
+  });
+
+  it("--check-criteria dry-run writes nothing and reports the would-be flips", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit, true),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    // Path-form annotations resolve; the probe: one awaits the skipped emit.
+    expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2"]);
+
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: accepted");
+    expect(content).toContain("- [ ] AC-1:");
+    expect(await pathExists(evidenceEnvelopePath(workspaceRoot, "RFC-0101"))).toBe(false);
+    // No probe ran at all — dry-run performs zero writes, including the emit.
+    expect(mockRunProbe.mock.calls.length).toBe(0);
   });
 });
