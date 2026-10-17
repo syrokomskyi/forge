@@ -11,10 +11,11 @@ with integrity-registry lookup and git-history fallback, plus getFileRevisionFro
 <CHANGE_SUMMARY>
   <item>RFC-0352: initial implementation of getRevisionByPath helper.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @warpgogol/forge for autonomous mode.</item>
+  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "../../../src/utils/sync-fs.ts";
+import { execFile, execFileSync } from "../../../src/utils/sync-fs.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
@@ -27,6 +28,43 @@ const io = ambientIo;
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_TIMEOUT_MS = 15_000;
+
+export const DIRTY_LIST_CAP = 20;
+
+/** Paths with uncommitted changes under `repoRoot` — null when not a git repo. */
+export function listDirtyPaths(repoRoot: string): string[] | null {
+  try {
+    const out = execFileSync("git", ["-C", repoRoot, "status", "--porcelain"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15000,
+    });
+    return out
+      .split("\n")
+      .filter((line) => line.length >= 3)
+      .map((line) => {
+        // Porcelain is `XY <path>` — slice the raw line so leading-space
+        // status pairs (e.g. " M") keep their offsets.
+        let path = line.slice(3);
+        // Rename entries read `old -> new`; the live path is the target.
+        const arrow = path.indexOf(" -> ");
+        if (arrow >= 0) path = path.slice(arrow + 4);
+        return path.replace(/^"|"$/g, "");
+      })
+      .filter(Boolean);
+  } catch {
+    // Not a git repository — nothing to protect, skip the check.
+    return null;
+  }
+}
+
+/**
+ * Whether `path` is covered by the dirty set. Git collapses untracked
+ * directories to `?? dir/`, so a dirty directory prefix counts as dirty too.
+ */
+export function isDirtyPath(path: string, dirty: readonly string[]): boolean {
+  return dirty.some((d) => path === d || (d.endsWith("/") && path.startsWith(d)));
+}
 
 async function runGit(
   cwd: string,

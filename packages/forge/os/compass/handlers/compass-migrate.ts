@@ -23,6 +23,7 @@ walker; the kernel handler lives in compass-migrate-handler.ts.</purpose>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
+  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
 </CHANGE_SUMMARY>
 */
 
@@ -80,17 +81,17 @@ export interface MigrateOptions {
   siteDirectory?: string;
 }
 
-const HEADER_SCAN_LINES = 120;
+export const HEADER_SCAN_LINES = 120;
 const KEY_DECISIONS_MAX_ITEMS = 7;
-const TODO_ITEM = "TODO: record current design decisions";
+export const TODO_ITEM = "TODO: record current design decisions";
 
-const COMPASS_TAGS = ["MODULE_CONTRACT", "KEY_DECISIONS", "CHANGE_SUMMARY"] as const;
+export const COMPASS_TAGS = ["MODULE_CONTRACT", "KEY_DECISIONS", "CHANGE_SUMMARY"] as const;
 type CompassTag = (typeof COMPASS_TAGS)[number];
 
 const FORBIDDEN_BLOCK_TAGS = ["MODULE_MAP", "keywords", "responsibilities"] as const;
 const COMPASS_BLOCK_ANCHOR_RE = /[ \t]*<\/?COMPASS_BLOCK\b[^>]*>[ \t]*/g;
 
-function blockSpan(source: string, tag: string): { start: number; end: number } | null {
+export function blockSpan(source: string, tag: string): { start: number; end: number } | null {
   const open = source.indexOf(`<${tag}>`);
   if (open < 0) return null;
   const closeTag = `</${tag}>`;
@@ -99,11 +100,11 @@ function blockSpan(source: string, tag: string): { start: number; end: number } 
   return { start: open, end: close + closeTag.length };
 }
 
-function hasUnclosedTag(source: string, tag: string): boolean {
+export function hasUnclosedTag(source: string, tag: string): boolean {
   return source.includes(`<${tag}>`) && !source.includes(`</${tag}>`);
 }
 
-function inHeaderRegion(source: string, index: number): boolean {
+export function inHeaderRegion(source: string, index: number): boolean {
   return source.slice(0, index).split("\n").length <= HEADER_SCAN_LINES;
 }
 

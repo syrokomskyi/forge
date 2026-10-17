@@ -9,7 +9,6 @@ the migrateWorkspace codemod and returns the per-file action manifest.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: initial handler — dirty-tree refusal with --force, --files bypass, dry-run manifest.</item>
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
@@ -22,11 +21,13 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1097: AC-4 banned literal in os/compass handlers
 
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
+  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
-import { execFileSync } from "../../../src/utils/sync-fs.ts";
 import { migrateWorkspace, type MigrateResult } from "./compass-migrate.ts";
+import { DIRTY_LIST_CAP, listDirtyPaths } from "./git-revision.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import type {
@@ -34,26 +35,6 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-
-const DIRTY_LIST_CAP = 20;
-
-function listDirtyPaths(repoRoot: string): string[] | null {
-  try {
-    const out = execFileSync("git", ["-C", repoRoot, "status", "--porcelain"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 15000,
-    });
-    return out
-      .split("\n")
-      .map((line) => line.trim())
-      .filter(Boolean)
-      .map((line) => line.slice(3));
-  } catch {
-    // Not a git repository — nothing to protect, skip the check.
-    return null;
-  }
-}
 
 export async function runCompassMigrate(
   input: ForgeCommandInput,

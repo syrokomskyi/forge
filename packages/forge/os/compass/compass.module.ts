@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>KERNEL-FLAG-02: Declare compass --root as kind "string[]" — resolveScanRoots reads it as multi-value via getFlagValues, so repeated --root stays legal now that repeated kind-"string" flags are rejected at flag resolution.</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
@@ -16,7 +15,8 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
-  <history>RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1242</history>
+  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <history>RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +32,7 @@ import {
 import { runCompassSummaryTrim } from "./handlers/compass-change-summary-handler.ts";
 import { runCompassSummaryRecord } from "./handlers/summary-record.ts";
 import { runCompassMigrate } from "./handlers/compass-migrate-handler.ts";
+import { runCompassHeaderScaffold } from "./handlers/compass-header-scaffold-handler.ts";
 import { runCompassDocsValidate } from "./handlers/compass-docs-validate.ts";
 import { runCompassDocsScaffold } from "./handlers/compass-docs-scaffold.ts";
 
@@ -204,6 +205,44 @@ export const forgeCompassModule: ForgeModule = {
         },
       },
       execute: runCompassMigrate,
+    },
+    {
+      name: "compass.header.scaffold",
+      coverage: "operator" as const,
+      description:
+        "Author and repair Compass v2 headers (RFC-1318): append-only merge, closed-block guarantee, derived-or-sentinel purposes, fixture-string safety (SCAFFOLD-01), high-risk deference. --census reports the coverage manifest without writing; apply refuses when target files carry uncommitted changes unless --force.",
+      scope: "workspace",
+      mutatesState: true,
+      acceptsAllFlag: true,
+      writes: [
+        "apps/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "packages/**/*.{astro,ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
+      generates: [],
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+      ],
+      cacheable: false,
+      flags: {
+        ...compassScanFlags,
+        files: {
+          kind: "string[]",
+          description: "Explicit root-relative file list — bypasses scan-root filtering entirely.",
+        },
+        census: {
+          kind: "boolean",
+          description:
+            "Report per-package uncovered/malformed/clean counts through the same discovery and disposition pipeline — performs no writes and never refuses on a dirty tree.",
+        },
+        force: {
+          kind: "boolean",
+          description: "Override the dirty-target refusal (apply mode only).",
+        },
+      },
+      execute: runCompassHeaderScaffold,
     },
     {
       name: "compass.audit.plan",
