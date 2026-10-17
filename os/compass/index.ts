@@ -12,6 +12,7 @@
   <item>RFC-1097: steps 1-4 — compass.migrate codemod
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,3 +50,17 @@ export {
   type SummaryRecordResult,
   type SummaryRecordSkipReason,
 } from "./handlers/summary-record.ts";
+export {
+  CompassCommentSafetyError,
+  HEADER_SCAN_LINES,
+  commentStyleCandidates,
+  commentStyleFor,
+  enclosingCommentStyle,
+  getLineCommentPrefix,
+  findCompassTerminator,
+  findCompassTerminatorInHeader,
+  assertCompassCommentSafe,
+  neutralizeCompassText,
+  type CommentStyle,
+  type CompassTerminatorHit,
+} from "./comment-safety.ts";

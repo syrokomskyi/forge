@@ -16,6 +16,7 @@ deference, deterministic repair of known malformation shapes.
 <CHANGE_SUMMARY>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,7 +35,13 @@ import {
   getRelativeSegments,
   getWorkspaceRelativeSegments,
 } from "./compass-inventory.ts";
-import { getLineCommentPrefix } from "./summary-record.ts";
+import {
+  type CommentStyle,
+  commentStyleCandidates,
+  commentStyleFor,
+  getLineCommentPrefix,
+  assertCompassCommentSafe,
+} from "../comment-safety.ts";
 
 export type ScaffoldDisposition = "inserted" | "repaired" | "sentinel" | "unchanged" | "skipped";
 
@@ -65,23 +72,8 @@ const SENTINEL_PURPOSE =
 const SENTINEL_NONGOAL = "TODO(compass): record the boundary this file must not take on.";
 const TAG_LINE_CAP = 10;
 
-type CommentStyle = "block" | "html" | "line";
-
-/**
- * Comment styles a file type may carry, most likely first. .astro headers
- * exist in both forms — `/* *\u002f` inside the `---` frontmatter and
- * `<!-- -->` in the markup below — so both are candidates at detection time.
- */
-function commentStyleCandidates(path: string): CommentStyle[] {
-  if (path.endsWith(".astro")) return ["block", "html"];
-  if (path.endsWith(".md")) return ["html"];
-  if (getLineCommentPrefix(path) !== null) return ["line"];
-  return ["block"];
-}
-
-function commentStyleFor(path: string): CommentStyle {
-  return commentStyleCandidates(path)[0]!;
-}
+// CommentStyle / commentStyleCandidates / commentStyleFor live in
+// ../comment-safety.ts (RFC-1323) — imported above; no private copy remains.
 
 interface HeaderSpan {
   start: number;
@@ -290,6 +282,10 @@ function keyDecisionsBlock(items: string[]): string {
 
 function wrapHeader(blocks: string[], style: CommentStyle, path: string): string {
   const body = blocks.join("\n");
+  // RFC-1323: authored/derived text must not carry the style's comment
+  // terminator — a terminator-bearing derived purpose is a scaffold bug and
+  // fails closed (COMPASS-CS-08) rather than writing a corrupted header.
+  assertCompassCommentSafe(body, style, { file: path, block: "header" });
   if (style === "html") return `<!--\n${body}\n-->`;
   if (style === "line") {
     const prefix = getLineCommentPrefix(path) ?? "# ";
@@ -368,8 +364,21 @@ interface Edit {
   order?: number;
 }
 
-function applyEdits(source: string, edits: Edit[]): string {
+function applyEdits(
+  source: string,
+  edits: Edit[],
+  guard?: { style: CommentStyle; file: string },
+): string {
   const sorted = [...edits].sort((a, b) => b.start - a.start || (b.order ?? 0) - (a.order ?? 0));
+  // RFC-1323: every inserted payload is asserted against the header's own
+  // style — seeded/re-emitted item text (e.g. @ai-invariant lines captured
+  // from // comments) can carry a terminator that means nothing there but
+  // truncates the block/html header it lands in.
+  if (guard) {
+    for (const e of sorted) {
+      assertCompassCommentSafe(e.text, guard.style, { file: guard.file, block: "header" });
+    }
+  }
   let out = source;
   for (const e of sorted) out = out.slice(0, e.start) + e.text + out.slice(e.end);
   return out;
@@ -553,7 +562,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       closeEdits.push({ start: h.span.start + at, end: h.span.start + at, text: closeLine });
       repairs.push(`closed-${tag.toLowerCase().replace(/_/g, "-")}`);
     }
-    next = applyEdits(next, closeEdits);
+    next = applyEdits(next, closeEdits, { style: h.span.style, file: pathFromRoot });
   }
 
   // Stage 2 — contract-level repairs: missing contract, missing/unclosed
@@ -696,7 +705,7 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
         }
       }
     }
-    next = applyEdits(next, edits);
+    next = applyEdits(next, edits, { style: h.span.style, file: pathFromRoot });
   }
 
   // Stage 3 — KEY_DECISIONS required by layer/risk but absent.
@@ -716,12 +725,23 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       );
       const mc = blockSpan(h.text, "MODULE_CONTRACT");
       if (mc) {
-        next = applyEdits(next, [
-          { start: h.span.start + mc.end, end: h.span.start + mc.end, text: `\n${kd}` },
-        ]);
+        next = applyEdits(
+          next,
+          [
+            {
+              start: h.span.start + mc.end,
+              end: h.span.start + mc.end,
+              text: `\n${kd}`,
+            },
+          ],
+          { style: h.span.style, file: pathFromRoot },
+        );
       } else {
         const at = appendAt(h);
-        next = applyEdits(next, [{ start: at, end: at, text: appendText(kd, h.span) }]);
+        next = applyEdits(next, [{ start: at, end: at, text: appendText(kd, h.span) }], {
+            style: h.span.style,
+            file: pathFromRoot,
+          });
       }
       repairs.push("inserted-key-decisions");
     }
@@ -736,12 +756,23 @@ export function scaffoldFile(input: ScaffoldFileInput, policy: CompassPolicy): S
       const anchor =
         blockSpan(h.text, "KEY_DECISIONS")?.end ?? blockSpan(h.text, "MODULE_CONTRACT")?.end;
       if (anchor !== undefined) {
-        next = applyEdits(next, [
-          { start: h.span.start + anchor, end: h.span.start + anchor, text: `\n${cs}` },
-        ]);
+        next = applyEdits(
+          next,
+          [
+            {
+              start: h.span.start + anchor,
+              end: h.span.start + anchor,
+              text: `\n${cs}`,
+            },
+          ],
+          { style: h.span.style, file: pathFromRoot },
+        );
       } else {
         const at = appendAt(h);
-        next = applyEdits(next, [{ start: at, end: at, text: appendText(cs, h.span) }]);
+        next = applyEdits(next, [{ start: at, end: at, text: appendText(cs, h.span) }], {
+            style: h.span.style,
+            file: pathFromRoot,
+          });
       }
       repairs.push("inserted-change-summary");
     }

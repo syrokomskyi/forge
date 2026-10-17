@@ -24,6 +24,7 @@ walker; the kernel handler lives in compass-migrate-handler.ts.</purpose>
 
 Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,10 +40,18 @@ import {
 import {
   buildChangeSummaryBlock,
   CHANGE_SUMMARY_WINDOW,
-  getLineCommentPrefix,
   mergeHistoryIds,
   parseChangeSummary,
 } from "./summary-record.ts";
+import {
+  CompassCommentSafetyError,
+  HEADER_SCAN_LINES,
+  commentStyleFor,
+  enclosingCommentStyle,
+  getLineCommentPrefix,
+  assertCompassCommentSafe,
+  type CommentStyle,
+} from "../comment-safety.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import type { CompassPolicy } from "../policy.ts";
 import type { ForgeCommandInput } from "../../../src/types.ts";
@@ -60,6 +69,7 @@ export type MigrateAction =
   | "reordered"
   | "unparseable"
   | "no-header"
+  | "unsafe-text"
   | "unchanged";
 
 export interface MigrateFileResult {
@@ -69,7 +79,7 @@ export interface MigrateFileResult {
 
 export interface MigrateResult {
   scanned: number;
-  files: Array<{ path: string; actions: MigrateAction[] }>;
+  files: Array<{ path: string; actions: MigrateAction[]; error?: string }>;
 }
 
 export interface MigrateOptions {
@@ -81,7 +91,9 @@ export interface MigrateOptions {
   siteDirectory?: string;
 }
 
-export const HEADER_SCAN_LINES = 120;
+// Canonical home is ../comment-safety.ts (RFC-1323) — re-exported to keep the
+// existing public surface of this module.
+export { HEADER_SCAN_LINES } from "../comment-safety.ts";
 const KEY_DECISIONS_MAX_ITEMS = 7;
 export const TODO_ITEM = "TODO: record current design decisions";
 
@@ -132,7 +144,14 @@ export function collectAiInvariants(source: string, policy: CompassPolicy): stri
   return items;
 }
 
-function buildKeyDecisionsBlock(items: string[], filePath: string): string {
+function buildKeyDecisionsBlock(items: string[], filePath: string, style?: CommentStyle): string {
+  // RFC-1323: seeded items carry authored @ai-invariant text — it may hold a
+  // sequence that is harmless where it was written but terminates the target
+  // comment style here. Fail closed (COMPASS-CS-08), never write corrupt text.
+  const effectiveStyle = style ?? commentStyleFor(filePath);
+  for (const item of items) {
+    assertCompassCommentSafe(item, effectiveStyle, { file: filePath, block: "KEY_DECISIONS" });
+  }
   const lines = ["<KEY_DECISIONS>"];
   for (const item of items) {
     lines.push(`  <item>${item}</item>`);
@@ -206,7 +225,13 @@ export function migrateFile(
       nextHistory.length !== historyIds.length ||
       nextHistory.some((id, i) => id !== historyIds[i]);
     if (changed) {
-      const newBlock = buildChangeSummaryBlock(idItems, nextHistory, pathFromRoot);
+      // RFC-1323: emission assert uses the enclosing comment's detected style.
+      const newBlock = buildChangeSummaryBlock(
+        idItems,
+        nextHistory,
+        pathFromRoot,
+        enclosingCommentStyle(next, csSpan.start, pathFromRoot),
+      );
       next = next.slice(0, csSpan.start) + newBlock + next.slice(csSpan.end);
       actions.push("collapsed");
     }
@@ -230,15 +255,16 @@ export function migrateFile(
   if (kdRequired && !next.includes("<KEY_DECISIONS>")) {
     const invariants = collectAiInvariants(next, policy);
     const items = invariants.length > 0 ? invariants : [TODO_ITEM];
-    const kdBlock = buildKeyDecisionsBlock(items, pathFromRoot);
     const mcSpan = blockSpan(next, "MODULE_CONTRACT");
+    const csAnchor = mcSpan ?? blockSpan(next, "CHANGE_SUMMARY");
+    const insertStyle = csAnchor
+      ? enclosingCommentStyle(next, csAnchor.start, pathFromRoot)
+      : undefined;
+    const kdBlock = buildKeyDecisionsBlock(items, pathFromRoot, insertStyle);
     if (mcSpan) {
       next = next.slice(0, mcSpan.end) + "\n" + kdBlock + next.slice(mcSpan.end);
-    } else {
-      const csSpan2 = blockSpan(next, "CHANGE_SUMMARY");
-      if (csSpan2) {
-        next = next.slice(0, csSpan2.start) + kdBlock + "\n" + next.slice(csSpan2.start);
-      }
+    } else if (csAnchor) {
+      next = next.slice(0, csAnchor.start) + kdBlock + "\n" + next.slice(csAnchor.start);
     }
     actions.push(invariants.length > 0 ? "seeded" : "todo");
   }
@@ -335,13 +361,17 @@ export async function migrateWorkspace(
         continue;
       }
       result.scanned += 1;
-      const migrated = migrateFile(
+      const migrated = runMigrateGuarded(
         source,
         policy,
         target.pathFromRoot,
         target.workspaceRelativePath,
       );
-      result.files.push({ path: target.pathFromRoot, actions: migrated.actions });
+      result.files.push({
+        path: target.pathFromRoot,
+        actions: migrated.actions,
+        error: migrated.error,
+      });
       if (!options.dryRun && migrated.source !== source) {
         await writeFileIfChanged(absPath, migrated.source);
       }
@@ -362,12 +392,33 @@ export async function migrateWorkspace(
     const source = getEntrySource(entry) ?? (await io.readFile(absPath));
     const segments = getRelativeSegments(absPath, workspaceRoot);
     const workspaceRelativePath = getWorkspaceRelativeSegments(segments, policy).join("/");
-    const migrated = migrateFile(source, policy, entry.path, workspaceRelativePath);
-    result.files.push({ path: entry.path, actions: migrated.actions });
+    const migrated = runMigrateGuarded(source, policy, entry.path, workspaceRelativePath);
+    result.files.push({ path: entry.path, actions: migrated.actions, error: migrated.error });
     if (!options.dryRun && migrated.source !== source) {
       await writeFileIfChanged(absPath, migrated.source);
     }
   }
 
   return result;
+}
+
+/**
+ * RFC-1323: migrateFile's emission asserts can throw COMPASS-CS-08 when authored
+ * @ai-invariant text carries a comment terminator. Fail closed per file — the
+ * file is left untouched, the action is recorded, the batch continues.
+ */
+function runMigrateGuarded(
+  source: string,
+  policy: CompassPolicy,
+  pathFromRoot: string,
+  workspaceRelativePath: string,
+): MigrateFileResult & { error?: string } {
+  try {
+    return migrateFile(source, policy, pathFromRoot, workspaceRelativePath);
+  } catch (err) {
+    if (err instanceof CompassCommentSafetyError) {
+      return { source, actions: ["unsafe-text"], error: err.message };
+    }
+    throw err;
+  }
 }

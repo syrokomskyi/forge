@@ -9,9 +9,6 @@ the migrateWorkspace codemod and returns the per-file action manifest.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: steps 1-4 — compass.migrate codemod
-
-Add the v1 to v2 Compass header codemod: migrateFile pure transform (collapse, strip, seed, reorder, purpose-flag actions), migrateWorkspace walker, runCompassMigrate handler with dirty-tree refusal and --force/--files/--dry-run flags, module registration, and 15 unit tests.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -22,6 +19,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 
 compass-migrate-handler hint used a consumer-specific run command — switched to generic 'pnpm exec forge run' convention. Reworded recorded CHANGE_SUMMARY items in 3 handlers to drop the consumer-specific literal. compass-policy AC-4 test green (65/65).</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
+  <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -88,11 +86,18 @@ export async function runCompassMigrate(
     }
   }
   const tally = [...counts.entries()].map(([k, v]) => `${k}=${v}`).join(", ");
+  const unsafe = result.files.filter((f) => f.actions.includes("unsafe-text"));
+  const unsafeNote =
+    unsafe.length > 0
+      ? ` | COMPASS-CS-08 unsafe authored text (files left untouched): ${unsafe
+          .map((f) => `${f.path}${f.error ? ` — ${f.error}` : ""}`)
+          .join("; ")}`
+      : "";
 
   return {
     data: result,
-    exitCode: 0,
-    summary: `[compass.migrate] scanned=${result.scanned} ${tally}${dryRun ? " (dry-run)" : ""}`,
+    exitCode: unsafe.length > 0 ? 1 : 0,
+    summary: `[compass.migrate] scanned=${result.scanned} ${tally}${dryRun ? " (dry-run)" : ""}${unsafeNote}`,
     nextSteps: [
       {
         action:
