@@ -13,6 +13,7 @@ Writes to docs/metrics/rfcs/<rfc-id>.metrics.yaml via writeFileAtomic.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1321: getRfcCommits grep hardened — --fixed-strings + --regexp-ignore-case so a lowercase rfcId still finds canonical subjects.</item>
   <item>RFC-1053: initial generateRfcMetrics pure function.</item>
 </CHANGE_SUMMARY>
 */
@@ -80,6 +81,8 @@ async function getRfcCommits(workspaceRoot: string, rfcId: string): Promise<GitL
   const raw = await execGit(workspaceRoot, [
     "log",
     "--no-merges",
+    "--fixed-strings",
+    "--regexp-ignore-case",
     `--grep=${rfcId}`,
     `--format=${format}`,
   ]);

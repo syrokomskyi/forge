@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1310: STAMP-GOV-01 fixtures — trailer provenance, injected-item provenance, candidate-set scan, retro-fix remedy, dry-run scan reporting</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1321: lowercase --id satisfies an uppercase subject (AC-3)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -94,7 +95,10 @@ describe("STAMP-GOV-01 — implementation provenance", () => {
     workspaceRoot = await mkdtemp(join(tmpdir(), "rfc-stamp-gov-"));
     await mkdir(join(workspaceRoot, "docs", "rfcs"), { recursive: true });
     execFileSync("git", ["init"], { cwd: workspaceRoot, timeout: 5000 });
-    execFileSync("git", ["config", "user.email", "test@test.com"], { cwd: workspaceRoot, timeout: 5000 });
+    execFileSync("git", ["config", "user.email", "test@test.com"], {
+      cwd: workspaceRoot,
+      timeout: 5000,
+    });
     execFileSync("git", ["config", "user.name", "Test"], { cwd: workspaceRoot, timeout: 5000 });
     await writeFile(join(workspaceRoot, "docs", "rfcs", "rfc-0001-test.md"), RFC_BODY);
     infoLog.length = 0;
@@ -126,6 +130,19 @@ describe("STAMP-GOV-01 — implementation provenance", () => {
 
     const result = await runRfcImplementStamp(
       makeInput("RFC-0001", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    expect(result.data?.violations).toEqual([]);
+  });
+
+  it("RFC-1321 AC-3: lowercase --id rfc-0001 satisfies an RFC-0001 subject", async () => {
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
+
+    const result = await runRfcImplementStamp(
+      makeInput("rfc-0001", commit),
       makeContext(workspaceRoot),
     );
 
