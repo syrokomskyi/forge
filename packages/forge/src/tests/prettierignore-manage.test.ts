@@ -4,6 +4,9 @@
 root-only prettier detection, delimited-block reconcile preserving operator
 content, marker-driven skill entries, and the skipped contract for
 prettier-free consumers.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial prettierignore plan/apply tests.</item>

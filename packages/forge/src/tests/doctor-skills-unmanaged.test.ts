@@ -1,6 +1,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Unit tests for forge.doctor skills-unmanaged check (RFC-1226): SKILL.md-bearing dirs without .forge-managed are reported as warnings.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1226: initial tests — AC-1 warn on unmanaged, AC-2 pass when all marked, AC-3 skip non-skill dirs, AC-4 skip without config/skillsDir.</item>

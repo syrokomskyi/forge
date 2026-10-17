@@ -1,7 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Behavioural tests for buildWorkspaceModel — glob expansion, exclusion
-sets, symlink skip, and AST fact extraction per kind (RFC-1099).</purpose>
+<purpose>
+Unit tests for workspace model covering buildWorkspaceModel. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial model tests at the public buildWorkspaceModel seam.</item>

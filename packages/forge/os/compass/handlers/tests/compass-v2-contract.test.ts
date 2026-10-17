@@ -1,3 +1,19 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for the compass v2 contract ruleset — evaluateV2Rules and
+runCompassValidation over fixture workspaces covering CONTRACT, KD, CS,
+PURPOSE, ORDER, and TODO rule families.
+</purpose>
+<non-goals>
+  <item>Fixture Compass markup is built via string concatenation so source-level validators never see literal block tags — do not inline real tag literals.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for SYNTAX-01 parity.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -29,11 +45,15 @@ function makeInput(flags: Record<string, unknown> = {}): ForgeCommandInput {
   return { flags } as ForgeCommandInput;
 }
 
+const MC_OPEN = "<" + "MODULE_CONTRACT>";
+const MC_CLOSE = "</" + "MODULE_CONTRACT>";
 const MC = (purpose: string) =>
-  `<MODULE_CONTRACT>\n<purpose>${purpose}</purpose>\n<non-goals>\n  <item>Do not perform real validation — fixtures only.</item>\n</non-goals>\n</MODULE_CONTRACT>`;
+  `${MC_OPEN}\n<purpose>${purpose}</purpose>\n<non-goals>\n  <item>Do not perform real validation — fixtures only.</item>\n</non-goals>\n${MC_CLOSE}`;
+const KD_OPEN = "<" + "KEY_DECISIONS>";
+const KD_CLOSE = "</" + "KEY_DECISIONS>";
 const KD = (items: string[]) =>
-  `<KEY_DECISIONS>\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n</KEY_DECISIONS>`;
-const KD_EMPTY = `<KEY_DECISIONS>\n</KEY_DECISIONS>`;
+  `${KD_OPEN}\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n${KD_CLOSE}`;
+const KD_EMPTY = `${KD_OPEN}\n${KD_CLOSE}`;
 // Dynamic tags: a literal CHANGE_SUMMARY block in this file would be matched
 // by compass.summary.record itself and rewritten at commit time.
 const CS_OPEN = "<" + "CHANGE_SUMMARY>";

@@ -1,8 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Behavioural tests for defineTsCheck — model built once per execute,
-contract+rules preserved, --globs flag declared, empty-workspace pass,
-error→fail/exitCode 1, warning→warn/exitCode 0 (RFC-1099).</purpose>
+<purpose>
+Unit tests for run ts check covering defineTsCheck. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial harness tests at the definition.execute() seam.</item>

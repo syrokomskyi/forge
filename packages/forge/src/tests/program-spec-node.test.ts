@@ -4,6 +4,9 @@
 spec-node packets with null resolvedRfc are rejected at seal boundary
 (PROGRAM-PACKET-12) and that phase-aware lease schema accepts preparation
 and execution phases.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0857: spec-node seal validation and phase-aware lease tests.</item>

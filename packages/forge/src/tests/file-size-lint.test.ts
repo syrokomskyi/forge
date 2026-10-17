@@ -1,6 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for forge.file-size.lint — SIZE-01 rule from RFC-1088.</purpose>
+<purpose>
+Unit tests for file size lint covering countLines (RFC-1088); runFileSizeLint (RFC-1088, command-level).
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1088: initial tests for portable file-size lint handler.</item>

@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>Unit tests for program packet schemas — verify strict rejection of
 unknown fields, required fields, and type constraints (RFC-0856).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial schema tests.</item>

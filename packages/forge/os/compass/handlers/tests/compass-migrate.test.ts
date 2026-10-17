@@ -1,3 +1,19 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for the compass.migrate codemod — migrateFile action union
+(collapse, strip, seed, reorder, todo, unparseable) and the workspace-walker
+handler across fixture workspaces in temp dirs.
+</purpose>
+<non-goals>
+  <item>Fixture Compass markup is built via string concatenation so source-level validators never see literal forbidden tags — do not inline real tag literals.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for FORBIDDEN-01/SYNTAX-01 parity.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -35,10 +51,14 @@ function makeInput(flags: Record<string, unknown> = {}): ForgeCommandInput {
 // by compass.summary.record itself and rewritten at commit time.
 const CS_OPEN = "<" + "CHANGE_SUMMARY>";
 const CS_CLOSE = "</" + "CHANGE_SUMMARY>";
+const MC_OPEN = "<" + "MODULE_CONTRACT>";
+const MC_CLOSE = "</" + "MODULE_CONTRACT>";
 const MC = (purpose: string) =>
-  `<MODULE_CONTRACT>\n<purpose>${purpose}</purpose>\n<non-goals>\n  <item>Do not perform real validation — fixtures only.</item>\n</non-goals>\n</MODULE_CONTRACT>`;
+  `${MC_OPEN}\n<purpose>${purpose}</purpose>\n<non-goals>\n  <item>Do not perform real validation — fixtures only.</item>\n</non-goals>\n${MC_CLOSE}`;
+const KD_OPEN = "<" + "KEY_DECISIONS>";
+const KD_CLOSE = "</" + "KEY_DECISIONS>";
 const KD = (items: string[]) =>
-  `<KEY_DECISIONS>\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n</KEY_DECISIONS>`;
+  `${KD_OPEN}\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n${KD_CLOSE}`;
 const CS = (items: string[], history?: string) =>
   `${CS_OPEN}\n${items.map((i) => `  <item>${i}</item>`).join("\n")}\n${history ? `  <history>${history}</history>\n` : ""}${CS_CLOSE}`;
 const wrap = (...blocks: string[]) => `/*\n${blocks.join("\n")}\n*/`;
@@ -82,7 +102,7 @@ describe("compass.migrate codemod (RFC-1097)", () => {
   });
 
   it("unparseable: open tag without close is skipped", () => {
-    const broken = `/*\n<MODULE_CONTRACT>\n<purpose>${PURPOSE}</purpose>\n`;
+    const broken = `/*\n${MC_OPEN}\n<purpose>${PURPOSE}</purpose>\n`;
     const result = migrateFile(broken, policy, MEDIUM_ROOT, MEDIUM_WS);
     expect(result.actions).toEqual(["unparseable"]);
     expect(result.source).toBe(broken);
@@ -119,8 +139,8 @@ describe("compass.migrate codemod (RFC-1097)", () => {
 
   it("stripped: MODULE_MAP, keywords, responsibilities and COMPASS_BLOCK anchors are removed", () => {
     const mm = "<" + "MODULE_MAP" + ">\n  <item>x</item>\n</" + "MODULE_MAP" + ">";
-    const kw = "<keywords>a, b</keywords>";
-    const resp = "<responsibilities>\n  <item>y</item>\n</responsibilities>";
+    const kw = "<" + "keywords" + ">a, b</" + "keywords" + ">";
+    const resp = "<" + "responsibilities" + ">\n  <item>y</item>\n</" + "responsibilities" + ">";
     const anchorOpen = "<" + "COMPASS_BLOCK" + ">";
     const anchorClose = "</" + "COMPASS_BLOCK" + ">";
     const source = wrap(
@@ -145,7 +165,7 @@ describe("compass.migrate codemod (RFC-1097)", () => {
     const result = migrate(wrap(MC(PURPOSE), CS(["RFC-1094: fixture."]), KD([KD_ITEM])));
     expect(result.actions).toContain("reordered");
     const mcIdx = result.source.indexOf("<MODULE_CONTRACT>");
-    const kdIdx = result.source.indexOf("<KEY_DECISIONS>");
+    const kdIdx = result.source.indexOf(KD_OPEN);
     const csIdx = result.source.indexOf(CS_OPEN);
     expect(mcIdx).toBeLessThan(kdIdx);
     expect(kdIdx).toBeLessThan(csIdx);
@@ -155,7 +175,11 @@ describe("compass.migrate codemod (RFC-1097)", () => {
     const source = `${wrap(MC(PURPOSE), CS(["RFC-1094: fixture."]))}\n// @ai-invariant RFC-0020: Widget tokens must stay deterministic.\n// @ai-invariant Widget tokens must stay deterministic.\n\n${BODY}\n`;
     const result = migrateFile(source, policy, MEDIUM_ROOT, MEDIUM_WS);
     expect(result.actions).toContain("seeded");
-    const kdMatch = result.source.match(/<KEY_DECISIONS>([\s\S]*?)<\/KEY_DECISIONS>/);
+    const kdMatch = result.source.match(
+      new RegExp(
+        `${KD_OPEN.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([\\s\\S]*?)${KD_CLOSE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`,
+      ),
+    );
     expect(kdMatch, "seeded file must carry a KEY_DECISIONS block").toBeTruthy();
     expect(kdMatch![1]).toContain("Widget tokens must stay deterministic.");
     // Deduped (two identical invariants → one item) and ID prefix stripped (KD-05).
@@ -178,7 +202,7 @@ describe("compass.migrate codemod (RFC-1097)", () => {
     );
     expect(result.actions).not.toContain("seeded");
     expect(result.actions).not.toContain("todo");
-    expect(result.source).not.toContain("<KEY_DECISIONS>");
+    expect(result.source).not.toContain(KD_OPEN);
   });
 
   it("purpose-flagged: boilerplate purpose is reported without rewriting", () => {

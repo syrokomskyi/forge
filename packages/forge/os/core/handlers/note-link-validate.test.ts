@@ -1,6 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for note.link.validate command handler (RFC-0808).</purpose>
+<purpose>
+Unit tests for note link validate covering note.link.validate. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0808: initial note.link.validate tests.</item>

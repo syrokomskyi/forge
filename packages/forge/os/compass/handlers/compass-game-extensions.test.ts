@@ -8,7 +8,7 @@ and that checkCommentSyntax correctly validates comment prefixes for each file t
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial: test game extension discovery and comment-syntax validation for .cs, .gd, .tscn, .tres files.</item>
+  <item>RFC-1311: carried legacy entry — Initial: test game extension discovery and comment-syntax validation for .cs, .gd, .tscn, .tres files.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -111,9 +111,7 @@ test("compass.validate emits COMPASS-SYNTAX-01 for .gd file with wrong comment s
     join(tempDir, "packages", "my-game", "src", "Player.gd"),
     `/* <MODULE_CONTRACT>
 <purpose>Player movement and input handling logic for the game</purpose>
-<non-goals>
-  <item>Do not handle combat logic here</item>
-</non-goals>
+
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Initial creation</item>
@@ -136,9 +134,7 @@ test("compass.validate does not emit COMPASS-SYNTAX-01 for .gd file with correct
     join(tempDir, "packages", "my-game", "src", "Player.gd"),
     `# <MODULE_CONTRACT>
 # <purpose>Player movement and input handling logic for the game</purpose>
-# <non-goals>
-#   <item>Do not handle combat logic here</item>
-# </non-goals>
+# 
 # </MODULE_CONTRACT>
 # <CHANGE_SUMMARY>
 #   <item>Initial creation</item>

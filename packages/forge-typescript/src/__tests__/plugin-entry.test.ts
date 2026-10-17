@@ -1,7 +1,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Plugin entry point tests — verify werkstattTypescriptPlugin shape and contract compliance (RFC-0889).</purpose>
-<keywords>test, plugin, entry, typescript</keywords>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0889: initial plugin entry point tests.</item>

@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>Unit tests for forge.agents.generate — behavioral layer generation,
 routing table, conditional extended layer, markers, and idempotency (RFC-0548, RFC-0549).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0548: initial agents-generate tests for behavioral layer.</item>

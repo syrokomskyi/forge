@@ -1,6 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Integration tests for forge.init binding defaults (RFC-0540).</purpose>
+<purpose>
+Unit tests for init bindings covering its documented public contract and regression-sensitive edge cases.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0540: initial init binding defaults integration tests.</item>

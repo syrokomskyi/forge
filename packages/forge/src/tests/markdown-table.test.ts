@@ -1,8 +1,11 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for alignMarkdownTable + parseMarkdownTable (RFC-1154):
-prettier-normal emission, separator dash-padding, escaped-pipe literals,
-idempotency, and a regression guard over forge emission surfaces.</purpose>
+<purpose>
+Unit tests for markdown table covering its documented public contract and regression-sensitive edge cases.
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial table-emitter tests + compact-separator regression guard.</item>

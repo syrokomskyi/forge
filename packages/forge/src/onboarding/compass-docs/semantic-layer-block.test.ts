@@ -5,7 +5,13 @@
   and the opt-in/refresh injection contract for hand-written AGENTS.md files
   (consumer field report follow-up to RFC-1253).
 </purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1311: Compass header sweep — declares the semantic suite's contract for test-file scaffold coverage.</item>
+</CHANGE_SUMMARY>
 */
 
 import { describe, it, expect } from "vitest";

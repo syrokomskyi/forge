@@ -1,6 +1,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Unit tests for RFC-0674/RFC-0677/RFC-0678/RFC-0679 lifecycle handlers — profile resolution, dry-run, build execution, validate with --artifact and violation parsing, determinism check, asset management.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0674: initial lifecycle handler tests — profile resolution, dry-run, build execution.</item>

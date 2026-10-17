@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>Unit tests for the dist-freshness doctor check — warns when a forge
 source checkout's dist/ is older than the newest src/ file (RFC-1151).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1151: initial dist-freshness tests.</item>

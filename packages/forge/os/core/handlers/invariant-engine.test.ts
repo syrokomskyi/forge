@@ -1,6 +1,8 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for the invariant enforcement engine (RFC-0675).</purpose>
+<purpose>
+Unit tests for invariant engine covering invariant-engine. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
 <non-goals>
   <item>Do not test domain-specific invariant logic — all rules are profile-driven.</item>
 </non-goals>

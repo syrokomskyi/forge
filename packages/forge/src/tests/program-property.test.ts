@@ -3,6 +3,9 @@
 <purpose>Property-based tests — idempotent seal/complete retries, stable
 digests for identical bytes, and rejection when reordered YAML/JSON changes
 the sealed exact-byte source identity (RFC-0856 AC-8).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial property tests.</item>

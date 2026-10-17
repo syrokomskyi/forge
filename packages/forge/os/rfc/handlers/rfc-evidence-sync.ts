@@ -12,8 +12,8 @@ invocation attests "all generated artifacts + RFC evidence are current".
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Step order is contract: the ecosystem manifest hashes the other artifacts, so ecosystem.manifest.generate runs last among the manifest steps (RFC-1306 Design).</item>
-  <item>EVIDENCE_SYNC_STEPS is the canonical regen list — pinned verbatim by the probe suite; adding a generated artifact to the RFC lifecycle means adding it here AND updating the test.</item>
+  <item>Step order is contract: the ecosystem manifest hashes the other artifacts, so ecosystem.manifest.generate runs last among the manifest steps.</item>
+  <item>EVIDENCE_SYNC_STEPS is the canonical regen list</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>

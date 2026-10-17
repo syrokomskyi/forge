@@ -3,6 +3,9 @@
 <purpose>Unit tests for program packet path matching utilities — verify
 cross-platform glob matching, symlink safety, and forbidden path detection
 (RFC-0856).</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial path matching tests.</item>

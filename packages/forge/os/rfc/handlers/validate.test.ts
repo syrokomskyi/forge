@@ -1,13 +1,14 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Unit tests for runRfcValidate flag handling — the --id guard that
-rejects non-string values before file scanning.</purpose>
+<purpose>
+Unit tests for validate covering runRfcValidate --id flag guard. It also guards the documented public contract and regression-sensitive edge cases.
+</purpose>
 <non-goals>
   <item>Do not duplicate validate-rules coverage — V-rule behavior lives in validate-rules*.test.ts.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial test — non-string --id (boolean/array from unvalidated flag input) throws a clear flag error instead of TypeError in rfcFileMatchesId.</item>
+  <item>RFC-1311: carried legacy entry — Initial test — non-string --id (boolean/array from unvalidated flag input) throws a clear flag error instead of TypeError in rfcFileMatchesId.</item>
 </CHANGE_SUMMARY>
 */
 
