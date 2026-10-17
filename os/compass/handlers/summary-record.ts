@@ -237,6 +237,7 @@ export async function recordSummaryItem(
   dryRun: boolean,
   policy: CompassPolicy,
   headSource?: string,
+  addedItemIds?: ReadonlySet<string>,
 ): Promise<RecordOutcome> {
   const source = await io.readFile(absPath);
   const blockMatch = source.match(CHANGE_SUMMARY_BLOCK_RE);
@@ -267,19 +268,27 @@ export async function recordSummaryItem(
     return { recorded: false, collapsed: false, skipReason: "duplicate" };
   }
 
-  // A same-ID item already in the worktree but absent from HEAD means the
-  // pending change already carries a hand-authored record for this governance
-  // ID — the auto-injected subject-derived item would duplicate it at lower
-  // specificity (observed 2026-10-08: 27 files carried descriptive + generic
-  // RFC-1237 items). HEAD-resident same-ID items do NOT suppress: consecutive
-  // commits under one RFC legitimately stack step items.
+  // A same-ID item the pending diff ADDS means the change already carries a
+  // hand-authored record for this governance ID — the auto-injected
+  // subject-derived item would duplicate it at lower specificity (observed
+  // 2026-10-08: 27 files carried descriptive + generic RFC-1237 items).
+  // RFC-1315: the suppression consults the diff's added lines, so it fires
+  // even when HEAD already carries a same-ID item — consecutive commits
+  // under one RFC still stack when the diff adds none.
   if (headSource !== undefined) {
-    const headBlock = headSource.match(CHANGE_SUMMARY_BLOCK_RE);
-    const headItems = headBlock ? parseChangeSummary(headBlock[0]).items : [];
-    const idInWorktree = items.some((item) => leadingGovernanceId(item, policy) === id);
-    const idInHead = headItems.some((item) => leadingGovernanceId(item, policy) === id);
-    if (idInWorktree && !idInHead) {
-      return { recorded: false, collapsed: false, skipReason: "id-in-diff" };
+    if (addedItemIds !== undefined) {
+      if (addedItemIds.has(id)) {
+        return { recorded: false, collapsed: false, skipReason: "id-in-diff" };
+      }
+    } else {
+      // git diff unavailable — presence-check fallback (pre-RFC-1315 shape).
+      const headBlock = headSource.match(CHANGE_SUMMARY_BLOCK_RE);
+      const headItems = headBlock ? parseChangeSummary(headBlock[0]).items : [];
+      const idInWorktree = items.some((item) => leadingGovernanceId(item, policy) === id);
+      const idInHead = headItems.some((item) => leadingGovernanceId(item, policy) === id);
+      if (idInWorktree && !idInHead) {
+        return { recorded: false, collapsed: false, skipReason: "id-in-diff" };
+      }
     }
   }
 
@@ -320,6 +329,38 @@ async function readHeadSource(gitTop: string | null, absPath: string): Promise<s
   if (rel === "" || rel.startsWith("..")) return undefined;
   const source = await execGit(gitTop, ["show", `HEAD:${rel}`]);
   return source ?? undefined;
+}
+
+/**
+ * Governance IDs carried by `<item>` elements on lines the pending diff
+ * ADDS to `path` (`git diff -U0 HEAD -- <path>` — `+` lines only; removals
+ * and zero-context output never feed the set, so removals don't suppress).
+ * RFC-1315: the id-in-diff dedup consults this set — a hand-authored
+ * same-ID item suppresses injection even when HEAD already carries the ID.
+ * Added lines are joined before matching so multi-line `<item>` elements
+ * still yield their leading ID. Returns undefined when git is unavailable.
+ */
+async function readDiffAddedItemIds(
+  gitTop: string | null,
+  absPath: string,
+  policy: CompassPolicy,
+): Promise<ReadonlySet<string> | undefined> {
+  if (!gitTop) return undefined;
+  const rel = relative(gitTop, absPath).replace(/\\/g, "/");
+  if (rel === "" || rel.startsWith("..")) return undefined;
+  const diff = await execGit(gitTop, ["diff", "-U0", "HEAD", "--", rel]);
+  if (diff === null) return undefined;
+  const added = diff
+    .split("\n")
+    .filter((line) => line.startsWith("+") && !line.startsWith("+++"))
+    .map((line) => line.slice(1))
+    .join("\n");
+  const ids = new Set<string>();
+  for (const m of added.matchAll(new RegExp(ITEM_RE.source, "g"))) {
+    const itemId = leadingGovernanceId(m[1]!.trim(), policy);
+    if (itemId) ids.add(itemId);
+  }
+  return ids;
 }
 
 function riskReminderNeeded(relPath: string, source: string, policy: CompassPolicy): boolean {
@@ -381,6 +422,8 @@ export async function runCompassSummaryRecord(
     }
     try {
       const headSource = await readHeadSource(gitTop, absPath);
+      const addedItemIds =
+        headSource !== undefined ? await readDiffAddedItemIds(gitTop, absPath, policy) : undefined;
       const outcome = await recordSummaryItem(
         absPath,
         relPath,
@@ -389,6 +432,7 @@ export async function runCompassSummaryRecord(
         context.dryRun,
         policy,
         headSource,
+        addedItemIds,
       );
       if (outcome.skipReason) {
         result.skipped.push({ file, reason: outcome.skipReason });
