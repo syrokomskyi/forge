@@ -15,7 +15,7 @@ Unit tests for rfc evidence sync covering rfc.evidence.sync (RFC-1306); rfc.impl
 */
 
 // @vitest-environment node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, test, vi } from "vitest";
 
@@ -62,36 +62,41 @@ describe("rfc.evidence.sync (RFC-1306)", () => {
     expect(EVIDENCE_SYNC_EMIT_STEP).toBe("rfc.verification.emit");
   });
 
-  test("coverage ratchet: every chain step's declared writes stay inside the sync declaration", () => {
-    // RFC-1306 Risks: the chain is the canonical regen order — a step gaining
-    // a generated artifact without the sync declaration covering it must fail
-    // here. Source of truth is the committed command manifest (the command's
-    // writes are embedded verbatim); the workspace-wide *.generated.*
-    // producer set (60+ commands) is deliberately out of scope — the chain is
-    // the RFC-evidence subset, not every generator.
-    const manifestPath = fileURLToPath(
-      new URL("../../../../docs/command-manifest.generated.yaml", import.meta.url),
-    );
-    const manifest = readFileSync(manifestPath, "utf8");
-    const entries = manifest.split(/\n(?=  - name: )/);
-    const writesOf = (name: string): string[] => {
-      const entry = entries.find((e) => e.startsWith(`  - name: ${name}\n`));
-      if (!entry)
-        throw new Error(`command "${name}" missing from command manifest — stale fixture?`);
-      const block = entry.match(/    writes:\n((?:      - .*\n)+)/);
-      return block ? [...block[1]!.matchAll(/      - (.*)/g)].map((m) => m[1]!) : [];
-    };
-    const syncWrites = new Set(writesOf("rfc.evidence.sync"));
-    expect(syncWrites.size).toBeGreaterThan(0);
-    for (const step of [...EVIDENCE_SYNC_STEPS, EVIDENCE_SYNC_EMIT_STEP]) {
-      for (const artifact of writesOf(step)) {
-        expect(
-          syncWrites.has(artifact),
-          `${step} writes ${artifact} — rfc.evidence.sync's writes[] must declare every step output`,
-        ).toBe(true);
+  // The committed command manifest exists only in the monorepo workshop; the
+  // standalone forge extraction has no docs/ tree, so the ratchet is skipped there.
+  const ratchetManifestPath = fileURLToPath(
+    new URL("../../../../docs/command-manifest.generated.yaml", import.meta.url),
+  );
+  test.skipIf(!existsSync(ratchetManifestPath))(
+    "coverage ratchet: every chain step's declared writes stay inside the sync declaration",
+    () => {
+      // RFC-1306 Risks: the chain is the canonical regen order — a step gaining
+      // a generated artifact without the sync declaration covering it must fail
+      // here. Source of truth is the committed command manifest (the command's
+      // writes are embedded verbatim); the workspace-wide *.generated.*
+      // producer set (60+ commands) is deliberately out of scope — the chain is
+      // the RFC-evidence subset, not every generator.
+      const manifest = readFileSync(ratchetManifestPath, "utf8");
+      const entries = manifest.split(/\n(?=  - name: )/);
+      const writesOf = (name: string): string[] => {
+        const entry = entries.find((e) => e.startsWith(`  - name: ${name}\n`));
+        if (!entry)
+          throw new Error(`command "${name}" missing from command manifest — stale fixture?`);
+        const block = entry.match(/    writes:\n((?:      - .*\n)+)/);
+        return block ? [...block[1]!.matchAll(/      - (.*)/g)].map((m) => m[1]!) : [];
+      };
+      const syncWrites = new Set(writesOf("rfc.evidence.sync"));
+      expect(syncWrites.size).toBeGreaterThan(0);
+      for (const step of [...EVIDENCE_SYNC_STEPS, EVIDENCE_SYNC_EMIT_STEP]) {
+        for (const artifact of writesOf(step)) {
+          expect(
+            syncWrites.has(artifact),
+            `${step} writes ${artifact} — rfc.evidence.sync's writes[] must declare every step output`,
+          ).toBe(true);
+        }
       }
-    }
-  });
+    },
+  );
 
   test("EVIDENCE-SYNC-01: absent invoke port fails closed (standalone forge CLI)", async () => {
     const result = await run({ flags: { id: "RFC-9999" } }, makeContext(undefined));
