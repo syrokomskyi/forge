@@ -20,22 +20,11 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
-
-REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
-(the park is the containment — a parked queue stays resumable and the
-decision window arbitrates it); loader fails open only on ENOENT —
-other read errors are QUEUE-01; ledger gains queue/id-stem binding
-(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
-(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
-items; top-level decision totals added. Orchestrator pre-flight treats
-QUEUE-07 as the window agenda — structural errors still stop the batch;
-maturation skips parked/deferred items; uncovered imperative ask sites
-gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1317: unblock AC-7 — repair pre-existing fo-idea-implement SKILL-11/SKILL-17 violations (drop hardcoded werkstatt run literal + internal RFC ids), sync .agents copy</item>
   <item>RFC-1322: step 5 — prescribe --check-criteria stamp + single-commit post-shape</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
+  <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
   <history>RFC-1097, RFC-1224, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
@@ -144,9 +133,23 @@ Stage only the files touched by this step. Do not stage unrelated changes — an
 - **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology.** Use Compass (not GRACE) in all new code, documentation, and log messages.
 
-#### 4.3b. Write tests
+#### 4.3b. Add tests only with a reason
 
-After implementing each plan step that produces or modifies code, write tests for the new behavior. Tests are written for **agents**, not humans — see `fo-add-tests` for the full process and decision tree.
+After implementing each plan step, add a test only when it has one of the four reasons below. Tests are written for **agents**, not humans — see `fo-add-tests` for the full process and decision tree.
+
+**Reason gate.** Decide per change whether a new automated test is warranted. Exactly one named reason allows it:
+
+- `requirement <AC-N>` — the test protects an acceptance criterion of the document being implemented;
+- `defect <ref>` — the test reproduces a defect (review finding id, issue file, failing-log reference);
+- `invariant <ref>` — the test guards a significant invariant (DNA entry, `@ai-invariant` file, or a pure function the property-based-test rule covers);
+- `regression <risk>` — a named, concrete regression risk.
+
+No reason → no new test: run the existing suite and the document's probes instead. If the adjacency check flags a new source file, add its inline exemption with the reason (`// test-adjacency: exempt — no test reason: <why>`) rather than a stub test.
+
+For `defect`: write the test, then run `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`.
+
+Commits that add test files carry `Test-Reason: <reason>` (one line per file, or one shared line), plus `Repro-Verified: <pre-fix-sha>` for defect reasons.
+
 
 **Principles:**
 
@@ -422,9 +425,23 @@ Read the `## Decision` section and implement it in code. **For each decision poi
 
 - If a tool call fails with a recoverable error, recover autonomously: split content, use `edit`/`multi_edit`, decompose files, and retry immediately.
 
-#### 5.3b. Write tests
+#### 5.3b. Add tests only with a reason
 
-After implementing the decision, write tests for the new behavior. Tests are written for **agents**, not humans — see `fo-add-tests` for the full process and decision tree.
+After implementing the decision, add a test only when it has one of the four reasons below (the same reason classes as step 4.3b). Tests are written for **agents**, not humans — see `fo-add-tests` for the full process and decision tree.
+
+**Reason gate.** Decide per change whether a new automated test is warranted. Exactly one named reason allows it:
+
+- `requirement <AC-N>` — the test protects an acceptance criterion of the document being implemented;
+- `defect <ref>` — the test reproduces a defect (review finding id, issue file, failing-log reference);
+- `invariant <ref>` — the test guards a significant invariant (DNA entry, `@ai-invariant` file, or a pure function the property-based-test rule covers);
+- `regression <risk>` — a named, concrete regression risk.
+
+No reason → no new test: run the existing suite and the document's probes instead. If the adjacency check flags a new source file, add its inline exemption with the reason (`// test-adjacency: exempt — no test reason: <why>`) rather than a stub test.
+
+For `defect`: write the test, then run `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`.
+
+Commits that add test files carry `Test-Reason: <reason>` (one line per file, or one shared line), plus `Repro-Verified: <pre-fix-sha>` for defect reasons.
+
 
 **Principles:**
 

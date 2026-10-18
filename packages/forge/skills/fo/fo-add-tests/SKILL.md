@@ -20,6 +20,7 @@ triggerPhrases: ["write tests for this code", "add unit tests", "add property-ba
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -124,6 +125,10 @@ Tests verify behavior through **public interfaces**, not implementation details.
 
 See `tests-reference.md` for good and bad test examples — the anti-patterns (tautological, implementation-coupled, horizontal slicing) are load-bearing.
 
+### 3b. Test reason gate
+
+See `## Test reason gate` below — run it now, before writing any test.
+
 ### 4. Write the tests
 
 #### Example-based tests (`*.test.ts`)
@@ -208,6 +213,15 @@ If the target package does not yet have `vitest` configured:
 
 4. Run `pnpm install` to update the lockfile.
 5. Do NOT add `node:test` shims or legacy assertion wrappers — the migration is forward-only.
+
+## Test reason gate
+
+Before writing tests, name the reason for each target:
+
+- When the operator invoked this skill directly for named code, the request counts as `requirement` — record the operator's wording as the reason.
+- Inside a pipeline, exactly one of `requirement <AC-N>`, `defect <ref>`, `invariant <ref>`, `regression <risk>` must apply; with no reason, write no test and say so in the report.
+- A `defect` test must be shown to fail against the pre-fix commit with `ref(forge.yaml bindings.commands.verifyReproduction)` before it is committed under that reason.
+- Commit messages that add test files carry `Test-Reason: <reason>` (and `Repro-Verified: <sha>` for defects).
 
 ## TDD mode
 
