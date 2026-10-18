@@ -6,6 +6,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [8.0.2] — 2026-10-19
+
+_Major line 8: verification evidence is now checked against git history and independent verification. `rfc.implement.stamp` gains blocking gates (RFC-IMP-10/11/12), and the `amend` command family is removed. 8.0.0 and 8.0.1 were never published; 8.0.2 is the first 8.x release on npm._
+
+### Added
+
+- **Git-derived probe origin** (`os/rfc/verification-origin.ts`): every probe in the verification envelope carries a derived origin (`self`, `verifier`, `unchanged`, `unresolved`, `presence`), computed from the range between the `status: accepted` transition and HEAD. V-44 rejects WHEN/IF criteria that are evidenced only by presence probes.
+- **Stamp gates**: RFC-IMP-10 blocks a declared `expectationSource` that git contradicts. RFC-IMP-11 blocks `verificationTier: high` RFCs when a behavioral criterion has no non-self probe. RFC-IMP-12 requires a committed, passing, subagent-isolated acceptance-verification report; the operator can waive it with `--waive-independent-verification`.
+- **`rfc.verify.workspace`**: exports a committed candidate as a tree without git metadata, with self-authored tests and RFC plan, review and session documents removed, for independent acceptance verification.
+- **`probe: reachable`** (symbol and command modes), plus a V-45 warning for exported symbols that nothing reaches.
+- **`verifyReproduction` binding** and reason-gated test guidance in `fo-idea-implement`, `fo-add-tests` and `fo-fix`. Acceptance-verification mode in `fo-review`.
+- **`rfc.implement.stamp --check-criteria`** flips evidenced criteria atomically with the stamp. **`rfc.evidence.sync`** resyncs evidence in one command. **`compass.header.scaffold`** codemod.
+- **Compass comment-terminator safety** (COMPASS-CS-08): authored text that would end a comment early is rejected, injected text is neutralized, and `summary.record` reports `neutralized`.
+
+### Changed
+
+- `rfc.verification.emit` checks that generated artifacts are fresh (EVIDENCE-FRESH-01/02/03).
+- Governance ids are matched case-insensitively.
+- Git subprocesses ignore repository-locating `GIT_*` variables inherited from the environment.
+
+### Removed
+
+- The `amend` command family.
+
 ## [7.0.0] — 2026-10-13
 
 _Major: `rfc.implement.stamp` now enforces the RFC-IMP-09 stale-evidence gate and writes the verification envelope itself — the stamp contract and its declared `writes[]` change. The agent operating model ships as a synced normative document and reaches generated `AGENTS.md`._
