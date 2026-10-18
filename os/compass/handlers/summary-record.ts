@@ -188,6 +188,9 @@ export function stripConventionalPrefix(subject: string): string {
 // tail is prose.
 const TRAILER_LINE_RE = /^[A-Za-z0-9-]+(:| #)\s*.*$/;
 const MARKDOWN_LINK_TAIL_RE = /^.*\[[^\]]*\]\([^)]+\)\s*$/;
+// A governed subject ("RFC-1331: …", "ADR-0110: …") matches the trailer shape;
+// trailer tokens never end in a numeric id segment.
+const GOVERNED_SUBJECT_RE = /^[A-Z][A-Z0-9]*-\d+:\s/;
 
 /**
  * Remove a trailing git-trailer block: the contiguous tail of strict
@@ -212,6 +215,9 @@ export function stripGitTrailers(message: string): string {
     }
   }
   if (!sawStrict || start === lines.length) return message;
+  // A trailer block is a paragraph after the subject: the subject line itself
+  // (e.g. "RFC-1331: steps 1-2") matches the trailer shape and must survive.
+  if (start === 0 && GOVERNED_SUBJECT_RE.test(lines[0]!.trim())) return message;
   return lines.slice(0, start).join("\n").trimEnd();
 }
 

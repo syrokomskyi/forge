@@ -670,6 +670,12 @@ describe("summary-record helpers", () => {
     ).toBe("subject\n\nbody line");
   });
 
+  it("stripGitTrailers keeps a governed subject line that looks like a trailer", () => {
+    expect(stripGitTrailers("RFC-1331: steps 1-2 — analyzer")).toBe(
+      "RFC-1331: steps 1-2 — analyzer",
+    );
+  });
+
   it("stripGitTrailers keeps a lone markdown-link tail (no strict trailer line)", () => {
     const msg = "subject\n\nsee [the docs](https://example.com)";
     expect(stripGitTrailers(msg)).toBe(msg);
