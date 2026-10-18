@@ -12,16 +12,12 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1237: dual-read dry-run (context.dryRun || flags["dry-run"]),
-io.writeFile port routing, dry-run summary marker; serializeEvidenceEnvelope —
-shared emit-canonical serializer restoring the structured YAML marker-key
-header (generatedMarker/doNotEdit/ownerCommand/editInstead/regenerateCommand
-with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
   <item>RFC-1330: emit attaches git-derived origin; origin is volatile for --check.</item>
-  <history>RFC-0330, RFC-0999</history>
+  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <history>RFC-0330, RFC-0999, RFC-1237</history>
 </CHANGE_SUMMARY>
 */
 
@@ -91,6 +87,8 @@ export function probeArtifactCandidates(probe: AcceptanceProbe): string[] {
         );
       }
       return [probe.artifact];
+    case "reachable":
+      return "command" in probe ? [COMMAND_MANIFEST_PATH] : [probe.module];
     case "run":
     case "test":
     case "page":

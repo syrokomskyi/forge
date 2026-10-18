@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1320</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: fo-review fix pass — criteriaPendingRefresh/evidenceWouldRefresh dry-run fields</item>
   <item>RFC-1330: origin contracts, RFC_ORIGIN_CUTOFF, RFC-IMP-10/11 rule ids, stamp warnings.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310</history>
+  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -325,6 +325,10 @@ export type AcceptanceProbe = (
       expect: { exitCode: number };
       criterion?: string;
     }
+  // RFC-1334: structural wiring — symbol mode (value-imported by a non-test
+  // module, optionally inside a root's import graph) or command mode (manifest reachableVia).
+  | { probe: "reachable"; symbol: string; module: string; root?: string; criterion?: string }
+  | { probe: "reachable"; command: string; criterion?: string }
   // RFC-0998: validate a JSON/YAML artifact against an inline JSON Schema using Ajv.
   | {
       probe: "json-schema";
@@ -797,6 +801,9 @@ export const RFC_CRITERIA_CONTENT_CUTOFF = "2026-09-03";
  * contradicted by git), and RFC-IMP-11 (HIGH tier needs non-self evidence).
  */
 export const RFC_ORIGIN_CUTOFF = "2026-10-18";
+
+/** RFC-1334: cutoff for V-45 (proposed/added commands need a command-mode reachable probe). */
+export const RFC_REACHABLE_CUTOFF = "2026-10-18";
 
 /**
  * RFC-0997: non-blocking probe coverage report per RFC.

@@ -9,6 +9,7 @@ Unit tests for acceptance covering validateAcceptanceShape — RFC-1271 optional
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the acceptance suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
 </CHANGE_SUMMARY>
 */
 
@@ -121,5 +122,15 @@ describe("V-43 — verificationTier enum validation (RFC-1271)", () => {
   test("rejects an unknown tier value", async () => {
     const violations = await runValidate(makeParsed("extreme"));
     expect(violations.some((v) => v.rule === "V-43")).toBe(true);
+  });
+  test("rejects a reachable probe that declares both or neither of symbol and command", () => {
+    const both = validateAcceptanceShape([
+      { probe: "reachable", symbol: "a", module: "m.ts", command: "x.y" },
+    ]);
+    const neither = validateAcceptanceShape([{ probe: "reachable" }]);
+    const ok = validateAcceptanceShape([{ probe: "reachable", command: "x.y" }]);
+    expect(both).toHaveLength(1);
+    expect(neither).toHaveLength(1);
+    expect(ok).toEqual([]);
   });
 });
