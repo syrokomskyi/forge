@@ -12,14 +12,14 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1320</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: fo-review fix pass — criteriaPendingRefresh/evidenceWouldRefresh dry-run fields</item>
   <item>RFC-1330: steps 1-2 — origin contracts and git-derived probe origin derivation
 
 Range base = status: accepted transition, head = HEAD; declaration, test, and run rules; verifier-trailer recognition; presence classification.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306</history>
+  <item>RFC-1330</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -651,6 +651,10 @@ export type RfcImplementStampRule =
   | "RFC-IMP-07"
   | "RFC-IMP-08"
   | "RFC-IMP-09"
+  // RFC-1330: declared expectationSource contradicted by git-derived origin.
+  | "RFC-IMP-10"
+  // RFC-1330: verificationTier high WHEN/IF criterion without non-self evidence.
+  | "RFC-IMP-11"
   // RFC-1310: commit-time governance provenance — the implementation commit
   // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
   | "STAMP-GOV-01"
@@ -673,6 +677,8 @@ export interface RfcImplementStampResult {
   status: "pass" | "fail";
   data?: RfcImplementStampData;
   violations: RfcImplementStampViolation[];
+  /** RFC-1330: non-blocking gate findings (RFC-IMP-11 until RFC-1333). */
+  warnings?: RfcImplementStampViolation[];
 } // ─── Constants ───────────────────────────────────────────────────────────────
 export const RFC_DIR = "docs/rfcs";
 export const RFC_TEMPLATE_FILE = "docs/rfcs/rfc-0000-template.md";
