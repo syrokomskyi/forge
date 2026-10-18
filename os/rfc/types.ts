@@ -12,12 +12,14 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1306: ForgeInvokeResult/flag-record types for the ctx.invoke delegation surface.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1320</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: fo-review fix pass — criteriaPendingRefresh/evidenceWouldRefresh dry-run fields</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271</history>
+  <item>RFC-1330: steps 1-2 — origin contracts and git-derived probe origin derivation
+
+Range base = status: accepted transition, head = HEAD; declaration, test, and run rules; verifier-trailer recognition; presence classification.</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -353,6 +355,29 @@ export interface VerificationEvidenceProbeRecord {
   ok: boolean;
   detail: string;
   durationMs: number;
+  /** RFC-1330: git-derived origin — present for RFCs created on or after RFC_ORIGIN_CUTOFF. */
+  origin?: ProbeOriginRecord;
+}
+
+/**
+ * RFC-1330: origin of a probe derived from git history of the RFC's
+ * implementation range (base = `status: accepted` transition, head = HEAD).
+ * `presence` marks structural probe kinds whose origin is not counted.
+ */
+export type DerivedProbeOrigin = "self" | "verifier" | "unchanged" | "unresolved";
+
+export interface ProbeOriginRecord {
+  declared: RfcExpectationSource | "undeclared";
+  derivedOrigin: DerivedProbeOrigin | "presence";
+  effective: RfcExpectationSource | "undeclared" | "presence";
+  /** Commit SHAs (short) that made the probe self, or the verifier report path. */
+  reason: string[];
+}
+
+export interface ImplementationRange {
+  /** null ⇒ unresolved (no `status: accepted` transition in history). */
+  base: string | null;
+  head: string;
 }
 
 export interface VerificationEvidence {
@@ -734,6 +759,14 @@ export const RFC_PROBE_BINDING_CUTOFF = "2026-09-01";
  * (criterion versioning annotation format). RFCs created before are exempt.
  */
 export const RFC_CRITERIA_CONTENT_CUTOFF = "2026-09-03";
+
+/**
+ * RFC-1330: cutoff date for git-derived probe origin. RFCs created on or after
+ * this date get `origin` records in their evidence envelope and are subject to
+ * V-44 (presence-only behavioral criterion), RFC-IMP-10 (declared origin
+ * contradicted by git), and RFC-IMP-11 (HIGH tier needs non-self evidence).
+ */
+export const RFC_ORIGIN_CUTOFF = "2026-10-18";
 
 /**
  * RFC-0997: non-blocking probe coverage report per RFC.
