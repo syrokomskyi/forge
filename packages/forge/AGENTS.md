@@ -289,6 +289,14 @@ V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-
 - **RFC-IMP-12 (stamp, blocking, RFC-1333):** a post-cutoff `verificationTier: high` RFC needs a committed `docs/reviews/acceptance/<rfc-id-lower>/acceptance-*.md` report with `verdict: pass`, `isolation: subagent`, and a `candidateSha` followed only by verifier-trailer or docs-only commits. `--waive-independent-verification "<reason>"` is operator-only and waives just the isolation requirement. Build the verifier input with `rfc.verify.workspace --id <id> --candidate <sha>` (git-free export; implementer in-range tests and the RFC's plan/review/session/queue docs stripped).
 - Agents MUST NOT add the verifier trailer by hand.
 
+## Reachable acceptance probe (RFC-1334)
+
+- `probe: reachable` proves structural wiring. **Symbol mode** (`symbol` + `module`, optional `root`): the symbol must be value-imported by at least one tracked non-test module (`git ls-files`; type-only imports and bare re-exports do not count; barrels followed to depth 5; bare specifiers resolved through workspace `package.json` `exports`); with `root`, an importer must sit in the root's import graph. **Command mode** (`command`): the command's `reachableVia` in `docs/command-manifest.generated.yaml` must hold a `pipeline`, `invoker`, or `coverage` edge (a `delegated` coverage needs a `coverageNote`). Exactly one mode per probe.
+- `reachableVia` carries structural edges only — documentation mentions never enter the manifest; `command.coverage.validate` keeps its own mention scan for COVERAGE-01.
+- `reachable` is a presence probe (RFC-1330): it cannot be the sole evidence for a WHEN/IF criterion (V-44).
+- **V-45 (rfc.validate, warning, post-cutoff):** a command in `commands.proposed`/`commands.added` without a command-mode `reachable` probe.
+- Do not satisfy a failing `reachable` probe with a dummy importer — wire the deliverable where the RFC says it belongs.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.

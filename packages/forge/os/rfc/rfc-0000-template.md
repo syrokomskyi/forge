@@ -76,6 +76,9 @@ nonGoals: []
 #   - probe: command-registered
 #     criterion: AC-3
 #     name: "some.new.command"
+#   - probe: reachable
+#     criterion: AC-7
+#     command: "some.new.command"   # or: symbol: someExport + module: "packages/x/src/m.ts" [+ root: <entry file>]
 #   - probe: file-contains
 #     criterion: AC-4
 #     path: "AGENTS.md"

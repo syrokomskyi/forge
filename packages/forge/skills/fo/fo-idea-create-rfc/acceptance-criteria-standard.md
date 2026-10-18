@@ -39,6 +39,10 @@ A criterion is a _falsifiable claim about an observable artifact_, not a descrip
 
 A criterion in WHEN or IF form describes behavior; bind it to a probe that executes something (`test`, `run`, or `page`). A criterion bound only to presence probes — `file-exists`, `command-registered`, or `file-contains`/`json-schema` over a non-document path — fails V-44. Presence probes stay correct for invariant-form `THE … SHALL` criteria (a type is exported, a rule id is declared) and for document targets. Declare `expectationSource:` honestly: the toolchain derives the origin from git history and rejects declarations it contradicts — tests written during implementation are `self`.
 
+## Structural wiring needs a reachable probe
+
+Deliverables that are new exported modules or commands get a `probe: reachable` (symbol or command mode) bound to an invariant-form criterion (for example "THE command SHALL be reachable from a pipeline or declared coverage").
+
 ## Phase separation (RFC-1006)
 
 RFCs have two phases of criteria:
