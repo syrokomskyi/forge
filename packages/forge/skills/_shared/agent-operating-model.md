@@ -59,7 +59,7 @@ Every significant check has an expectation origin:
 - **independent** — fixed before implementation or prepared independently of the implementer.
 - **external** — an authoritative external system, reference data, or observable environment supplies ground truth.
 
-Another AI agent is not automatically an independent verifier — independence is defined by criterion origin, access to normative sources, and real ability to catch the executor's error. Declare the class on probes via `expectationSource:`; declare what a check does not cover via `limitations:`.
+Another AI agent is not automatically an independent verifier — independence is defined by criterion origin, access to normative sources, and real ability to catch the executor's error. Declare the class on probes via `expectationSource:`; declare what a check does not cover via `limitations:`. The `self` class is derived from git history of the implementation range (acceptance transition → HEAD), not taken on the author's word: a probe whose declaration or test file changed after acceptance is `self` unless the change came from the sanctioned independent-verifier workflow, and a declaration that history contradicts blocks the stamp. Declare `self` honestly for checks you wrote while implementing.
 
 ## 9. Evidence trust boundary
 
