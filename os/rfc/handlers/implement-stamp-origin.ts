@@ -18,6 +18,7 @@ verificationTier: high RFC.
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1330: RFC-IMP-10 (blocking) and RFC-IMP-11 (warning until RFC-1333) origin gates.</item>
+  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,11 +27,10 @@ import type { AcceptanceProbe, ProbeOriginRecord, RfcImplementStampViolation } f
 import { listBehavioralCriteria } from "./validate-rules.ts";
 
 /**
- * RFC-IMP-11 is a warning until RFC-1333 lands: without independent
- * post-commitment verification a HIGH-tier RFC has no way to obtain non-self
- * evidence for new behavior.
+ * RFC-IMP-11 is blocking since RFC-1333: post-commitment independent
+ * verification gives HIGH-tier RFCs a source of non-self evidence.
  */
-export const RFC_IMP_11_BLOCKING = false;
+export const RFC_IMP_11_BLOCKING = true;
 
 const NON_SELF = new Set(["requirement", "independent", "external"]);
 
@@ -86,6 +86,60 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
         message: `${input.targetId} is verificationTier: high but ${id} (WHEN/IF) has no bound probe with a non-self effective origin. Obtain independent evidence (post-commitment verification) for ${id}.`,
       };
       (blocking ? errors : warnings).push(violation);
+    }
+  }
+  return { errors, warnings };
+}
+
+// ─── RFC-1333: RFC-IMP-12 acceptance-verification report gate ────────────────
+
+export const ACCEPTANCE_REPORTS_DIR = "docs/reviews/acceptance";
+
+export interface AcceptanceGateInput {
+  targetId: string;
+  frontmatter: Record<string, unknown>;
+  /** Report frontmatters found under docs/reviews/acceptance/<id>/ (committed). */
+  reports: Array<{ path: string; frontmatter: Record<string, unknown> }>;
+  /** True when every non-docs commit in candidate..HEAD carries the verifier trailers. */
+  isCandidateBound: (candidateSha: string) => Promise<boolean>;
+  waiverReason?: string;
+}
+
+/** Evaluate RFC-IMP-12 for a post-cutoff verificationTier: high RFC. */
+export async function evaluateAcceptanceVerificationGate(
+  input: AcceptanceGateInput,
+): Promise<OriginGateResult> {
+  const errors: RfcImplementStampViolation[] = [];
+  const warnings: RfcImplementStampViolation[] = [];
+  const fm = input.frontmatter;
+  if (String(fm["createdAt"] ?? "") < RFC_ORIGIN_CUTOFF || fm["verificationTier"] !== "high") {
+    return { errors, warnings };
+  }
+  const passing = input.reports.filter((r) => r.frontmatter["verdict"] === "pass");
+  const bound: typeof passing = [];
+  for (const r of passing) {
+    const sha = String(r.frontmatter["candidateSha"] ?? "");
+    if (sha && (await input.isCandidateBound(sha))) bound.push(r);
+  }
+  if (bound.length === 0) {
+    errors.push({
+      rule: "RFC-IMP-12",
+      message: `${input.targetId} is verificationTier: high but has no committed verdict: pass acceptance report in ${ACCEPTANCE_REPORTS_DIR}/${input.targetId.toLowerCase()}/ bound to the current code (only verifier-trailer or docs commits may follow the candidate). Run the independent acceptance verification step.`,
+    });
+    return { errors, warnings };
+  }
+  if (!bound.some((r) => r.frontmatter["isolation"] === "subagent")) {
+    const v: RfcImplementStampViolation = {
+      rule: "RFC-IMP-12",
+      message: `${input.targetId} acceptance report ${bound[0]!.path} records isolation "${String(bound[0]!.frontmatter["isolation"])}", not subagent.`,
+    };
+    if (input.waiverReason) {
+      warnings.push({ ...v, message: `${v.message} Waived by operator: ${input.waiverReason}` });
+    } else {
+      errors.push({
+        ...v,
+        message: `${v.message} Re-run with a clean-context subagent, or the operator may waive with --waive-independent-verification "<reason>".`,
+      });
     }
   }
   return { errors, warnings };

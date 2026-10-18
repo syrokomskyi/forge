@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
   <item>RFC-1330: origin gates wired into the shared evidence evaluator; non-blocking warnings surfaced in results.</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-IMP-07</history>
+  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -45,8 +45,16 @@ import {
   RFC_ORIGIN_CUTOFF,
   RFC_PROBE_BINDING_CUTOFF,
 } from "../types.ts";
-import { createOriginGit, deriveProbeOrigins } from "../verification-origin.ts";
-import { evaluateOriginGates } from "./implement-stamp-origin.ts";
+import {
+  createOriginGit,
+  deriveProbeOrigins,
+  hasVerifierTrailers,
+} from "../verification-origin.ts";
+import {
+  ACCEPTANCE_REPORTS_DIR,
+  evaluateAcceptanceVerificationGate,
+  evaluateOriginGates,
+} from "./implement-stamp-origin.ts";
 import type {
   RfcStatus,
   RfcImplementStampViolation,
@@ -419,6 +427,54 @@ export function envelopeNeedsRefresh(
  * in-lock against the envelope its emit-if-needed pass may have just
  * refreshed. One ruleset, two invocation orders — the paths cannot diverge.
  */
+/** RFC-1333: committed acceptance reports for an RFC (frontmatter only). */
+async function readAcceptanceReports(
+  workspaceRoot: string,
+  rfcId: string,
+): Promise<Array<{ path: string; frontmatter: Record<string, unknown> }>> {
+  const dir = join(ACCEPTANCE_REPORTS_DIR, rfcId.toLowerCase());
+  const listed = await execGit(workspaceRoot, ["ls-files", "--", dir]);
+  const out: Array<{ path: string; frontmatter: Record<string, unknown> }> = [];
+  for (const path of listed.split("\n").filter((p) => p.endsWith(".md"))) {
+    const text = await execGit(workspaceRoot, ["show", `HEAD:${path}`]);
+    const m = /^---\n([\s\S]*?)\n---/.exec(text);
+    if (!m) continue;
+    try {
+      const fm = yamlParse(m[1]!) as Record<string, unknown>;
+      if (fm && typeof fm === "object") out.push({ path, frontmatter: fm });
+    } catch {
+      // Unparseable report frontmatter is not evidence.
+    }
+  }
+  return out;
+}
+
+/** RFC-1333: candidate..HEAD may contain only verifier-trailer or docs-only commits. */
+async function candidateBoundToHead(workspaceRoot: string, sha: string): Promise<boolean> {
+  const isAnc = await new Promise<boolean>((done) =>
+    execFile("git", ["merge-base", "--is-ancestor", sha, "HEAD"], { cwd: workspaceRoot }, (err) =>
+      done(!err),
+    ),
+  );
+  if (!isAnc) return false;
+  const log = await execGit(workspaceRoot, [
+    "log",
+    "--format=%x1e%B%x1f",
+    "--name-only",
+    `${sha}..HEAD`,
+  ]);
+  for (const chunk of log.split("\x1e").filter((c) => c.includes("\x1f"))) {
+    const [body = "", files = ""] = chunk.split("\x1f");
+    const touched = files
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean);
+    const docsOnly = touched.every((f) => f.startsWith("docs/") || f.endsWith(".md"));
+    if (!docsOnly && !hasVerifierTrailers(body)) return false;
+  }
+  return true;
+}
+
 async function evaluateStampEvidenceGates(opts: {
   evidenceCheck: {
     exists: boolean;
@@ -435,6 +491,8 @@ async function evaluateStampEvidenceGates(opts: {
   /** RFC-1330: origin gates need the frontmatter and git access. */
   frontmatter: Record<string, unknown>;
   workspaceRoot: string;
+  /** RFC-1333: operator waiver for non-subagent isolation. */
+  waiverReason?: string;
 }): Promise<{
   violations: RfcImplementStampViolation[];
   warnings: RfcImplementStampViolation[];
@@ -465,6 +523,17 @@ async function evaluateStampEvidenceGates(opts: {
     });
     violations.push(...gate.errors);
     warnings.push(...gate.warnings);
+
+    // ── RFC-IMP-12: acceptance-verification report (RFC-1333) ─────────────
+    const acc = await evaluateAcceptanceVerificationGate({
+      targetId,
+      frontmatter: opts.frontmatter,
+      reports: await readAcceptanceReports(opts.workspaceRoot, targetId),
+      isCandidateBound: (sha) => candidateBoundToHead(opts.workspaceRoot, sha),
+      waiverReason: opts.waiverReason,
+    });
+    violations.push(...acc.errors);
+    warnings.push(...acc.warnings);
   }
 
   // ── RFC-IMP-06: probe-bearing post-cutoff RFCs need a passing envelope ────
@@ -875,8 +944,11 @@ export async function runRfcImplementStamp(
   const rfcFilePath = join(rfcDirPath, targetFile);
 
   let evidenceRelPath: string | undefined;
-  // RFC-1330: non-blocking stamp findings (RFC-IMP-11 until RFC-1333).
+  // RFC-1330: non-blocking stamp findings (waived RFC-IMP-12 isolation).
   const stampWarnings: RfcImplementStampViolation[] = [];
+  const waiverFlag = input.flags["waive-independent-verification"];
+  const waiverReason =
+    typeof waiverFlag === "string" && waiverFlag.trim() ? waiverFlag.trim() : undefined;
 
   // RFC-1271: the envelope is fetched unconditionally — a committed envelope
   // must also be evaluated when hasProbes is now false, because probe
@@ -899,6 +971,7 @@ export async function runRfcImplementStamp(
       io,
       frontmatter: fm,
       workspaceRoot,
+      waiverReason,
     });
     violations.push(...gates.violations);
     stampWarnings.push(...gates.warnings);
@@ -1048,6 +1121,7 @@ export async function runRfcImplementStamp(
           io,
           frontmatter: fm,
           workspaceRoot,
+          waiverReason,
         });
         violations.push(...gates.violations);
         stampWarnings.push(...gates.warnings);
