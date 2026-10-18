@@ -285,7 +285,8 @@ V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-
 - Derivation: a probe declaration added/changed after acceptance ⇒ `self`; a `probe: test` file touched in range ⇒ `self`; a `run` probe invoking a command from the RFC's own `commands` block ⇒ `self`. Commits carrying `X-Expectation-Origin: independent-verifier` + `X-Verifier-Report: <path>` derive `verifier` (effective `independent`). Presence kinds (`file-exists`, `command-registered`, non-doc `file-contains`/`json-schema`) derive `presence`. No acceptance transition in history ⇒ `unresolved` (counts as self).
 - **V-44 (rfc.validate, error, post-cutoff):** a WHEN/IF criterion whose bound probes are all presence probes. Bind a `test`, `run`, or `page` probe.
 - **RFC-IMP-10 (stamp, blocking):** a probe declares `requirement`/`independent`/`external` but derives `self`. Fix the declaration to `self` or obtain non-self evidence; never rewrite history.
-- **RFC-IMP-11 (stamp, warning until RFC-1333):** a `verificationTier: high` RFC has a WHEN/IF criterion without a non-self effective probe.
+- **RFC-IMP-11 (stamp, blocking since RFC-1333):** a `verificationTier: high` RFC has a WHEN/IF criterion without a non-self effective probe.
+- **RFC-IMP-12 (stamp, blocking, RFC-1333):** a post-cutoff `verificationTier: high` RFC needs a committed `docs/reviews/acceptance/<rfc-id-lower>/acceptance-*.md` report with `verdict: pass`, `isolation: subagent`, and a `candidateSha` followed only by verifier-trailer or docs-only commits. `--waive-independent-verification "<reason>"` is operator-only and waives just the isolation requirement. Build the verifier input with `rfc.verify.workspace --id <id> --candidate <sha>` (git-free export; implementer in-range tests and the RFC's plan/review/session/queue docs stripped).
 - Agents MUST NOT add the verifier trailer by hand.
 
 ## Re-entrant werkstatt locks (RFC-0616)
