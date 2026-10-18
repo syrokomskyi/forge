@@ -9,6 +9,7 @@
   <item>RFC-0639: initial test suite for semantic command keys, terminology resolution, and applyCliBindingDefaults.</item>
   <item>RFC-1224: adrImplementStamp schema/default coverage; consumer-defined command key passthrough.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -229,6 +230,7 @@ describe("RFC-0639: resolveTerminology", () => {
         verify: null,
         preview: null,
         lint: null,
+        verifyReproduction: null,
       },
       paths: {
         invariantsFile: null,

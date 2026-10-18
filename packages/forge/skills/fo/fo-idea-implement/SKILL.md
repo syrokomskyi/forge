@@ -20,7 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
 REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
@@ -36,7 +35,8 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1317: unblock AC-7 — repair pre-existing fo-idea-implement SKILL-11/SKILL-17 violations (drop hardcoded werkstatt run literal + internal RFC ids), sync .agents copy</item>
   <item>RFC-1322: step 5 — prescribe --check-criteria stamp + single-commit post-shape</item>
-  <history>RFC-1097, RFC-1250</history>
+  <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
+  <history>RFC-1097, RFC-1224, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -219,7 +219,7 @@ Read the RFC's `## Acceptance criteria` section. For each checkbox:
 1. **Verify the criterion is met semantically** — check the code does what the criterion says, run the relevant command, or inspect the artifact. Mechanical existence (command registered, test passes) is NOT sufficient. The criterion must describe observable behavior that the RFC defines, not just that a command exists.
 2. **Check for stubs** — if the code contains TODO, stub, not-implemented, or placeholder logic in the path the criterion covers, the criterion is NOT met. Implement the real logic before marking it.
 3. **If a criterion is not met**, implement the missing work, commit it, and re-verify.
-4. **Annotate every criterion with inline evidence** — add `(evidence: ...)` to each `## Acceptance criteria` line, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by the V-27 evidence discipline. **Leave the box unchecked** — `rfc.implement.stamp --check-criteria` flips evidenced `[ ]` lines itself in the same atomic write as the frontmatter mutation (RFC-1322). The annotation grammar the stamp resolves is exactly `test:<path>`, `file:<path>`, `<path>:<line>` (path must exist) and `probe:AC-N` (a probe bound to AC-N must pass in the evidence envelope); any other form — free prose, `file:` prose combos, unbound probe refs — aborts with STAMP-CHECK-01.
+4. **Annotate every criterion with inline evidence** — add `(evidence: ...)` to each `## Acceptance criteria` line, pointing to the _checking mechanism_, not just the artifact. Prefer `probe:AC-N` or `test: path/to/file.test.ts`, then `file:line`. This is enforced by the V-27 evidence discipline. **Leave the box unchecked** — `rfc.implement.stamp --check-criteria` flips evidenced `[ ]` lines itself in the same atomic write as the frontmatter mutation. The annotation grammar the stamp resolves is exactly `test:<path>`, `file:<path>`, `<path>:<line>` (path must exist) and `probe:AC-N` (a probe bound to AC-N must pass in the evidence envelope); any other form — free prose, `file:` prose combos, unbound probe refs — aborts with STAMP-CHECK-01.
 5. **If a criterion cannot be met** (e.g., requires an external dependency not yet available, requires a pilot that is not registered), do NOT mark it `[x]` and do NOT stamp `implemented`. Instead, split the deferred work into a follow-up RFC via `rfc.supersede.propose`. An RFC with unchecked `[ ]` criteria cannot transition to `implemented` — this is enforced by V-26.
 6. **Ensure `reviewers` is non-empty** — `rfc.validate` enforces V-25: implemented RFCs with an empty `reviewers` field fail validation. Add at least one reviewer (e.g. `human:<name>`) before stamping `implemented`.
 7. **Check document readiness** — if the RFC has a `## Document readiness` section, verify every `DR-N` checkbox is checked `[x]`. Unchecked `DR-N` items block `accepted`/`implemented` status via V-38. Document readiness criteria cover document quality (sections present, risks described, alternatives considered), not system behavior — they are checked by inspecting the RFC itself, not by running code.
@@ -234,7 +234,7 @@ If the RFC declares `acceptance:` probes in frontmatter, sanity-run them once be
 ref(forge.yaml bindings.commands.validateRfc) --acceptance.run --id RFC-XXXX
 ```
 
-The **evidence envelope is NOT emitted or committed manually** — `rfc.implement.stamp --check-criteria` refreshes a missing/malformed/stale envelope in-process on the committed bytes (emit-if-needed) and re-emits it after the mutation so the committed envelope always describes the stamped file (RFC-1322). No `rfc.verification.emit` step, no evidence commit.
+The **evidence envelope is NOT emitted or committed manually** — `rfc.implement.stamp --check-criteria` refreshes a missing/malformed/stale envelope in-process on the committed bytes (emit-if-needed) and re-emits it after the mutation so the committed envelope always describes the stamped file. No `rfc.verification.emit` step, no evidence commit.
 
 **Note:** If acceptance probes are commented out (`# acceptance:`) in the RFC frontmatter, `rfc.verification.emit` silently skips creating an evidence file (`filesModified: []`, zero errors). This is expected behavior — RFCs with commented-out probes get no evidence file, and `rfc.implement.stamp` still works without it.
 
@@ -244,7 +244,7 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
 
 1. Ensure the working tree is clean (all implementation changes committed — including the RFC file itself carrying the verified, annotated, still-unchecked criteria).
 2. Identify the implementation commit SHA — use the **first** `implement:` commit (the commit where implementation began), not the latest fix or documentation commit. Find it via `git log --oneline` and locate the first commit with an `implement:` prefix after the `plan:` or `rfc: accept` commit.
-3. Run the stamp command **with `--check-criteria`** (RFC-1322 — the default invocation; the flag auto-checks evidenced criteria, refreshes a missing/stale envelope in-process, and lands flips + frontmatter in one atomic write):
+3. Run the stamp command **with `--check-criteria`** (the default invocation; the flag auto-checks evidenced criteria, refreshes a missing/stale envelope in-process, and lands flips + frontmatter in one atomic write):
 
    ```sh
    ref(forge.yaml bindings.commands.implementStamp) --id RFC-XXXX --implementation-commit <sha> --check-criteria

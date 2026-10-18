@@ -40,6 +40,7 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1322: resolve fo-review findings — resolver hardening, shared gate evaluator, dry-run JSON</item>
+  <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -180,7 +181,7 @@ Step ordering follows the contract-first pattern:
 5. **Validation** — run `rfc.validate`, `build:check`, acceptance probes.
 6. **Evidence** — run `rfc.verification.emit`, commit evidence file.
 7. **Review & Fix** — `fo-review` on all session code changes, `fo-fix` if findings (MANDATORY — do not omit from the plan).
-8. **Stamp implemented** — run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha> --check-criteria` to transition `accepted → implemented` (RFC-1322 — the flag flips evidenced criteria and refreshes a stale envelope in-process). For ADRs, run `adr.implement.stamp --id ADR-XXXX --implementation-commit <sha>` per `fo-idea-implement` step 4.10.
+8. **Stamp implemented** — run `rfc.implement.stamp --id RFC-XXXX --implementation-commit <sha> --check-criteria` to transition `accepted → implemented` (the flag flips evidenced criteria and refreshes a stale envelope in-process). For ADRs, run `adr.implement.stamp --id ADR-XXXX --implementation-commit <sha>` per `fo-idea-implement` step 4.10.
 
 Mark **human review points** on steps that:
 

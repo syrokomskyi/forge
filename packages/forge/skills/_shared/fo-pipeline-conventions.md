@@ -145,6 +145,7 @@ Skills reference bindings by key, never by value. To resolve a binding:
 | `commands.test`         | string \| null         | Scoped test command                    |
 | `commands.scopedBuild`  | string \| null         | Scoped build command                   |
 | `commands.specValidate` | string \| null         | Spec validation command                |
+| `commands.verifyReproduction` | string \| null | Defect-reproduction check: runs a test against the pre-fix commit (`{test}`, `{sha}`) |
 | `paths.invariantsFile`  | string \| null         | Path to the project's invariants file  |
 | `paths.compassDocs`     | string[]               | Machine-readable semantic docs to sync |
 | `paths.reviewsDir`      | string \| null         | Directory for code reviews             |
