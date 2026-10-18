@@ -190,7 +190,7 @@ const TRAILER_LINE_RE = /^[A-Za-z0-9-]+(:| #)\s*.*$/;
 const MARKDOWN_LINK_TAIL_RE = /^.*\[[^\]]*\]\([^)]+\)\s*$/;
 // A governed subject ("RFC-1331: …", "ADR-0110: …") matches the trailer shape;
 // trailer tokens never end in a numeric id segment.
-const GOVERNED_SUBJECT_RE = /^[A-Z][A-Z0-9]*-\d+:\s/;
+const GOVERNED_SUBJECT_RE = /^[A-Z][A-Z0-9]*-\d+:\s/i;
 
 /**
  * Remove a trailing git-trailer block: the contiguous tail of strict

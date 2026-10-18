@@ -676,6 +676,10 @@ describe("summary-record helpers", () => {
     );
   });
 
+  it("stripGitTrailers keeps a lowercase governed subject", () => {
+    expect(stripGitTrailers("rfc-1331: steps")).toBe("rfc-1331: steps");
+  });
+
   it("stripGitTrailers keeps a lone markdown-link tail (no strict trailer line)", () => {
     const msg = "subject\n\nsee [the docs](https://example.com)";
     expect(stripGitTrailers(msg)).toBe(msg);
