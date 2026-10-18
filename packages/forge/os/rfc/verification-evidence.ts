@@ -88,7 +88,9 @@ export function probeArtifactCandidates(probe: AcceptanceProbe): string[] {
       }
       return [probe.artifact];
     case "reachable":
-      return "command" in probe ? [COMMAND_MANIFEST_PATH] : [probe.module];
+      return "command" in probe
+        ? [COMMAND_MANIFEST_PATH]
+        : [probe.module, ...(probe.root ? [probe.root] : [])];
     case "run":
     case "test":
     case "page":

@@ -95,6 +95,42 @@ describe("reachable probe (RFC-1334)", () => {
     expect((await probe()).ok).toBe(true);
   });
 
+  it("keeps imports that follow a glob string containing a comment opener", async () => {
+    await repo({
+      ...lib,
+      "packages/p/src/use.ts":
+        'const G = "packages/*/src/**";\nimport { compute } from "./lib.ts";\nexport const v = compute() + G.length; // */\n',
+    });
+    expect((await probe()).ok).toBe(true);
+  });
+
+  it("reaches an importer through a dynamic module loader from the root", async () => {
+    await repo({
+      ...lib,
+      "packages/p/src/feature.ts":
+        'import { compute } from "./lib.ts";\nexport const f = compute;\n',
+      "packages/p/src/main.ts": 'export const loaders = { f: () => import("./feature.ts") };\n',
+    });
+    expect((await probe({ root: "packages/p/src/main.ts" })).ok).toBe(true);
+  });
+
+  it("treats a bound dynamic import as a namespace", async () => {
+    await repo({
+      ...lib,
+      "packages/p/src/use.ts": 'const m = await import("./lib.ts");\nm.compute();\n',
+    });
+    expect((await probe()).ok).toBe(true);
+  });
+
+  it("resolves bare specifiers through exports subpath patterns", async () => {
+    await repo({
+      ...lib,
+      "packages/p/package.json": '{ "name": "@t/p", "exports": { "./*": "./src/*.ts" } }\n',
+      "packages/q/src/use.ts": 'import { compute } from "@t/p/lib";\nexport const v = compute();\n',
+    });
+    expect((await probe()).ok).toBe(true);
+  });
+
   it("fails a command probe whose reachableVia is empty", async () => {
     await repo({
       "docs/command-manifest.generated.yaml":
