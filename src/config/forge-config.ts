@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0662: added optional knowledge.retentionDays and knowledge.staleDays bindings for compaction overrides.</item>
   <item>RFC-0704: added optional independentVersionPackages field to forgeConfigSchema for packages with autonomous npm versions.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -15,7 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-1224</history>
+  <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -53,6 +53,8 @@ export const forgeBindingsSchema = z.object({
       verify: z.string().nullable().default(null),
       preview: z.string().nullable().default(null),
       lint: z.string().nullable().default(null),
+      // RFC-1332: defect-reproduction verifier ({test}, {sha} placeholders).
+      verifyReproduction: z.string().nullable().default(null),
       // RFC-1224: consumer-defined command keys (e.g. createRfc) stay in the
       // parsed config so resolveBinding can resolve them.
     })
@@ -115,6 +117,8 @@ export interface ForgeBindings {
     verify: string | null;
     preview: string | null;
     lint: string | null;
+    // RFC-1332: defect-reproduction verifier ({test}, {sha} placeholders).
+    verifyReproduction: string | null;
   };
   paths: {
     invariantsFile: string | null;
@@ -332,6 +336,7 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     verify: null,
     preview: null,
     lint: null,
+    verifyReproduction: null,
   };
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
     const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];
