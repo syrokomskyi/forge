@@ -12,6 +12,7 @@ manifest's `reachableVia` edges.
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
+  <item>Unsupported import forms (require, default-export probing) report as not reachable; use root or command mode.</item>
   <item>The scan set is the workspace's tracked files (git ls-files) — no hardcoded directory layout.</item>
   <item>Type-only imports and re-exports alone never count as usage.</item>
   <item>Barrel re-exports are followed to depth 5; bare specifiers resolve through workspace package.json exports.</item>
@@ -50,6 +51,8 @@ interface FileInfo {
   imports: ImportRecord[];
   /** `export { a } from "x"` → a; `export * from "x"` → "*". */
   reexports: Array<{ target: string | null; names: Set<string> }>;
+  /** Dynamic import targets (module loaders) — graph edges for root reachability. */
+  loaders: string[];
   text: string;
 }
 
@@ -71,8 +74,47 @@ function gitLsFiles(workspaceRoot: string): Promise<string[]> {
   });
 }
 
+/** Strip comments with a string-aware state machine (globs like "a/*" stay intact). */
 function stripComments(src: string): string {
-  return src.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`])\/\/.*$/gm, "$1");
+  let out = "";
+  let state: "code" | "line" | "block" | "string" = "code";
+  let quote = "";
+  for (let i = 0; i < src.length; i++) {
+    const ch = src[i]!;
+    const next = src[i + 1];
+    if (state === "code") {
+      if (ch === "/" && next === "/") {
+        state = "line";
+        i++;
+      } else if (ch === "/" && next === "*") {
+        state = "block";
+        i++;
+      } else {
+        if (ch === '"' || ch === "'" || ch === "`") {
+          state = "string";
+          quote = ch;
+        }
+        out += ch;
+      }
+    } else if (state === "line") {
+      if (ch === "\n") {
+        state = "code";
+        out += ch;
+      }
+    } else if (state === "block") {
+      if (ch === "*" && next === "/") {
+        state = "code";
+        i++;
+      } else if (ch === "\n") out += ch;
+    } else {
+      out += ch;
+      if (ch === "\\") {
+        out += next ?? "";
+        i++;
+      } else if (ch === quote || (ch === "\n" && quote !== "`")) state = "code";
+    }
+  }
+  return out;
 }
 
 function astroFrontmatter(src: string): string {
@@ -123,7 +165,24 @@ function resolveSpecifier(
   let target: string | null = null;
   if (typeof exportsMap === "string" && key === ".") target = exportsMap;
   else if (exportsMap && typeof exportsMap === "object") {
-    target = resolveExportsEntry((exportsMap as Record<string, unknown>)[key]);
+    const map = exportsMap as Record<string, unknown>;
+    target = resolveExportsEntry(map[key]);
+    if (!target) {
+      // Subpath patterns: "./*": "./src/*.ts"
+      for (const [pattern, value] of Object.entries(map)) {
+        const star = pattern.indexOf("*");
+        if (star < 0) continue;
+        const pre = pattern.slice(0, star);
+        const post = pattern.slice(star + 1);
+        if (key.startsWith(pre) && key.endsWith(post) && key.length >= pre.length + post.length) {
+          const hit = resolveExportsEntry(value);
+          if (hit) {
+            target = hit.replace("*", key.slice(pre.length, key.length - post.length));
+            break;
+          }
+        }
+      }
+    }
   }
   if (!target) return sub ? resolveFile(join(pkg.dir, sub), tracked) : null;
   return resolveFile(join(pkg.dir, target), tracked);
@@ -131,6 +190,11 @@ function resolveSpecifier(
 
 const IMPORT_RE = /\bimport\s+(type\s+)?([\s\S]*?)\s+from\s+["']([^"']+)["']/g;
 const DYNAMIC_RE = /\{([^}]*)\}\s*=\s*await\s+import\(\s*["']([^"']+)["']\s*\)/g;
+/** `const m = await import("x")` / `import("x").then((m) => …)` — bound as a namespace. */
+const DYNAMIC_NS_RE =
+  /(?:\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*await\s+import\(\s*["']([^"']+)["']\s*\))|(?:\bimport\(\s*["']([^"']+)["']\s*\)\s*\.then\(\s*\(?\s*([A-Za-z_$][\w$]*))/g;
+/** Any dynamic import specifier — a loader edge for root reachability. */
+const DYNAMIC_ANY_RE = /\bimport\(\s*["']([^"']+)["']\s*\)/g;
 const REEXPORT_RE = /\bexport\s+(type\s+)?(\*|\{[^}]*\})\s+from\s+["']([^"']+)["']/g;
 
 function namedList(braced: string): Set<string> {
@@ -190,6 +254,22 @@ async function buildIndex(workspaceRoot: string): Promise<ScanIndex> {
         names: namedList(m[1]!),
       });
     }
+    for (const m of clean.matchAll(DYNAMIC_NS_RE)) {
+      const alias = m[1] ?? m[4];
+      const spec = m[2] ?? m[3];
+      if (alias && spec) {
+        imports.push({
+          target: resolveSpecifier(rel, spec, tracked, packages),
+          names: new Set(["*"]),
+          namespace: alias,
+        });
+      }
+    }
+    const loaders: string[] = [];
+    for (const m of clean.matchAll(DYNAMIC_ANY_RE)) {
+      const t = resolveSpecifier(rel, m[1]!, tracked, packages);
+      if (t) loaders.push(t);
+    }
     const reexports: FileInfo["reexports"] = [];
     for (const m of clean.matchAll(REEXPORT_RE)) {
       if (m[1]) continue;
@@ -198,16 +278,36 @@ async function buildIndex(workspaceRoot: string): Promise<ScanIndex> {
         names: m[2] === "*" ? new Set(["*"]) : namedList(m[2]!),
       });
     }
-    files.set(rel, { imports, reexports, text: clean });
+    files.set(rel, { imports, reexports, loaders, text: clean });
   }
   return { files, packages };
 }
 
-function scanIndex(workspaceRoot: string): Promise<ScanIndex> {
-  let p = indexCache.get(workspaceRoot);
+function gitStateKey(workspaceRoot: string): Promise<string> {
+  return new Promise((done) => {
+    execFile(
+      "git",
+      ["status", "--porcelain=v1", "-z", "--untracked-files=no"],
+      { cwd: workspaceRoot, maxBuffer: 64 * 1024 * 1024, env: gitEnvForCwd() },
+      (_e, status) =>
+        execFile(
+          "git",
+          ["rev-parse", "HEAD"],
+          { cwd: workspaceRoot, env: gitEnvForCwd() },
+          (_e2, head) => done(`${String(head).trim()}:${String(status)}`),
+        ),
+    );
+  });
+}
+
+/** Memoized per workspace and git state — edits or commits invalidate the scan. */
+async function scanIndex(workspaceRoot: string): Promise<ScanIndex> {
+  const key = `${workspaceRoot}\u0000${await gitStateKey(workspaceRoot)}`;
+  let p = indexCache.get(key);
   if (!p) {
+    indexCache.clear();
     p = buildIndex(workspaceRoot);
-    indexCache.set(workspaceRoot, p);
+    indexCache.set(key, p);
   }
   return p;
 }
@@ -228,7 +328,8 @@ export async function probeReachableSymbol(opts: {
   module: string;
   root?: string;
 }): Promise<ReachableSymbolResult> {
-  const { workspaceRoot, symbol } = opts;
+  const { workspaceRoot } = opts;
+  const symbol = opts.symbol.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const moduleRel = toPosix(normalize(opts.module));
   if (!existsSync(join(workspaceRoot, moduleRel))) return { ok: false, detail: "module not found" };
   const exportRe = new RegExp(
@@ -238,6 +339,8 @@ export async function probeReachableSymbol(opts: {
   if (!exportRe.test(moduleText)) return { ok: false, detail: "symbol not exported" };
 
   const index = await scanIndex(workspaceRoot);
+  if (index.files.size === 0)
+    return { ok: false, detail: "scan failed: git ls-files returned no tracked sources" };
   // Files that provide the symbol: the module plus barrels re-exporting it.
   const providers = new Set([moduleRel]);
   for (let depth = 0; depth < MAX_REEXPORT_DEPTH; depth++) {
@@ -246,7 +349,8 @@ export async function probeReachableSymbol(opts: {
       if (providers.has(rel)) continue;
       if (
         info.reexports.some(
-          (r) => r.target && providers.has(r.target) && (r.names.has(symbol) || r.names.has("*")),
+          (r) =>
+            r.target && providers.has(r.target) && (r.names.has(opts.symbol) || r.names.has("*")),
         )
       ) {
         providers.add(rel);
@@ -261,7 +365,7 @@ export async function probeReachableSymbol(opts: {
     if (EXCLUDED_RE.test(rel)) continue;
     const uses = info.imports.some((imp) => {
       if (!imp.target || !providers.has(imp.target)) return false;
-      if (imp.names.has(symbol)) return true;
+      if (imp.names.has(opts.symbol)) return true;
       return (
         imp.namespace !== undefined &&
         new RegExp(`\\b${imp.namespace}\\.${symbol}\\b`).test(info.text)
@@ -277,10 +381,16 @@ export async function probeReachableSymbol(opts: {
     const queue = [rootRel];
     while (queue.length > 0) {
       const cur = queue.shift()!;
-      for (const imp of index.files.get(cur)?.imports ?? []) {
-        if (imp.target && !seen.has(imp.target)) {
-          seen.add(imp.target);
-          queue.push(imp.target);
+      const info = index.files.get(cur);
+      const next = [
+        ...(info?.imports ?? []).map((i) => i.target),
+        ...(info?.reexports ?? []).map((r) => r.target),
+        ...(info?.loaders ?? []),
+      ];
+      for (const t of next) {
+        if (t && !seen.has(t)) {
+          seen.add(t);
+          queue.push(t);
         }
       }
     }
