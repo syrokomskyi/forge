@@ -20,9 +20,7 @@ with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
-  <item>RFC-1330: step 3 — attach git-derived origin in emit and refresh envelopes
-
-Test-Reason: requirement AC-1</item>
+  <item>RFC-1330: emit attaches git-derived origin; origin is volatile for --check.</item>
   <history>RFC-0330, RFC-0999</history>
 </CHANGE_SUMMARY>
 */

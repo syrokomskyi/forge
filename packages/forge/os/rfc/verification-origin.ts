@@ -18,13 +18,10 @@ the expectation instead of trusting the declared expectationSource.
   <item>All in-range commits count regardless of subject, so unrelated subjects cannot hide test edits.</item>
   <item>Unresolvable history yields `unresolved`, which tier rules treat as self.</item>
   <item>Git access goes through an injectable port so derivation stays testable.</item>
+  <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: initial implementation — range resolution, declaration/test/run rules, verifier-trailer recognition, presence classification.</item>
-  <item>RFC-1330: attachProbeOrigins shared by emit and refresh envelope writers.</item>
-  <item>RFC-1330: steps 1-2 — origin contracts and git-derived probe origin derivation
-
-Range base = status: accepted transition, head = HEAD; declaration, test, and run rules; verifier-trailer recognition; presence classification.</item>
+  <item>RFC-1330: git-derived probe origin — range anchoring, declaration/test/run rules, verifier trailers, presence classes, attachProbeOrigins.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -158,7 +155,7 @@ export async function resolveImplementationRange(
     "--follow",
     "--format=%H",
     "-G",
-    "^status: accepted$",
+    "^status:[[:space:]]*[\"']?accepted[\"']?[[:space:]]*$",
     "--",
     rfcRelPath,
   ]);
@@ -248,7 +245,7 @@ async function declarationIntroductions(
 }
 
 function runCommandName(command: string): string | null {
-  const match = /^werkstatt\s+run\s+(\S+)/.exec(command.trim());
+  const match = /^(?:pnpm\s+exec\s+)?werkstatt\s+(?:run|pipeline)\s+(\S+)/.exec(command.trim());
   return match?.[1] ?? null;
 }
 

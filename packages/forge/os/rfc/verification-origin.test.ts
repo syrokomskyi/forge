@@ -6,13 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: initial tests for AC-1, AC-2, AC-3, AC-8, AC-13, AC-14, AC-15.</item>
-  <item>RFC-1330: steps 1-2 — origin contracts and git-derived probe origin derivation
-
-Range base = status: accepted transition, head = HEAD; declaration, test, and run rules; verifier-trailer recognition; presence classification.</item>
-  <item>RFC-1330: step 3 — attach git-derived origin in emit and refresh envelopes
-
-Test-Reason: requirement AC-1</item>
+  <item>RFC-1330: origin derivation tests over a temporary git repository.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -192,6 +186,16 @@ describe("deriveProbeOrigins (RFC-1330)", () => {
     const records = await derive([testProbe, verifierProbe]);
     expect(records[1]?.derivedOrigin).toBe("verifier");
     expect(records[0]?.derivedOrigin).toBe("unchanged");
+  });
+
+  it("resolves the base when the accepted status is quoted", async () => {
+    const quoted = rfcSource("accepted", [testProbe]).replace(
+      "status: accepted",
+      'status: "accepted"',
+    );
+    const accept = await commit("accept quoted", { [RFC_PATH]: quoted });
+    const range = await resolveImplementationRange(createOriginGit(root), RFC_PATH);
+    expect(range.base).toBe(accept);
   });
 
   it("reports unresolved when the RFC was never accepted", async () => {

@@ -19,9 +19,7 @@ io.writeFile port routing, emit-canonical generated header — refresh owns
 content freshness, never envelope identity (ownerCommand stays
 rfc.verification.emit).</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
-  <item>RFC-1330: step 3 — attach git-derived origin in emit and refresh envelopes
-
-Test-Reason: requirement AC-1</item>
+  <item>RFC-1330: refresh attaches git-derived origin like emit.</item>
 </CHANGE_SUMMARY>
 */
 
