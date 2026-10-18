@@ -27,6 +27,7 @@ triggerPhrases: ["исправим", "примени findings", "fix all", "fix 
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
+  <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -99,7 +100,7 @@ For each finding:
 
 **Blind-spot pass after two failures on one approach** — after two failed attempts on the same fix approach, and before the next retry or pivot, run the clean-context blind-spot pass defined in `_shared/fo-pipeline-conventions.md` §Blind-spot pass.
 
-After applying fixes, update any tests that should cover the change, then run the relevant package tests before the full build when that saves time.
+After applying fixes, add a test only when the finding is a reproducible defect (prove it with `ref(forge.yaml bindings.commands.verifyReproduction)` against the pre-fix commit) or names a concrete regression risk; otherwise rely on the existing suite. Run the relevant package tests before the full build when that saves time.
 
 ### 3. Run scoped typecheck verification
 
