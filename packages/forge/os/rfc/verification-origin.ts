@@ -21,6 +21,7 @@ the expectation instead of trusting the declared expectationSource.
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1330: initial implementation — range resolution, declaration/test/run rules, verifier-trailer recognition, presence classification.</item>
+  <item>RFC-1330: attachProbeOrigins shared by emit and refresh envelope writers.</item>
   <item>RFC-1330: steps 1-2 — origin contracts and git-derived probe origin derivation
 
 Range base = status: accepted transition, head = HEAD; declaration, test, and run rules; verifier-trailer recognition; presence classification.</item>
@@ -29,6 +30,7 @@ Range base = status: accepted transition, head = HEAD; declaration, test, and ru
 
 import { execFile } from "../../src/utils/sync-fs.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
+import { RFC_ORIGIN_CUTOFF } from "./types.ts";
 import type {
   AcceptanceProbe,
   DerivedProbeOrigin,
@@ -366,4 +368,33 @@ export async function deriveProbeOrigins(
     finish("unchanged", []);
   }
   return records;
+}
+
+/**
+ * RFC-1330: attach `origin` to envelope probe records for RFCs created on or
+ * after RFC_ORIGIN_CUTOFF. Shared by `rfc.verification.emit` and
+ * `rfc.verification.refresh` so both envelope writers stay identical.
+ * `origin` is volatile evidence context — `checkEvidenceEnvelope` never
+ * compares it because it depends on git history, not on the RFC bytes.
+ */
+export async function attachProbeOrigins(opts: {
+  workspaceRoot: string;
+  rfcRelPath: string;
+  frontmatter: Record<string, unknown>;
+  probes: AcceptanceProbe[];
+  records: Array<{ origin?: ProbeOriginRecord }>;
+  git?: OriginGit;
+}): Promise<void> {
+  const createdAt = String(opts.frontmatter["createdAt"] ?? "");
+  if (createdAt < RFC_ORIGIN_CUTOFF) return;
+  const origins = await deriveProbeOrigins({
+    git: opts.git ?? createOriginGit(opts.workspaceRoot),
+    rfcRelPath: opts.rfcRelPath,
+    frontmatter: opts.frontmatter,
+    probes: opts.probes,
+  });
+  origins.forEach((origin, i) => {
+    const record = opts.records[i];
+    if (record) record.origin = origin;
+  });
 }

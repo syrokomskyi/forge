@@ -10,6 +10,9 @@
   <item>RFC-1330: steps 1-2 — origin contracts and git-derived probe origin derivation
 
 Range base = status: accepted transition, head = HEAD; declaration, test, and run rules; verifier-trailer recognition; presence classification.</item>
+  <item>RFC-1330: step 3 — attach git-derived origin in emit and refresh envelopes
+
+Test-Reason: requirement AC-1</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,12 +23,13 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { stringify as yamlStringify } from "yaml";
 import {
+  attachProbeOrigins,
   createOriginGit,
   deriveProbeOrigins,
   isPresenceProbe,
   resolveImplementationRange,
 } from "./verification-origin.ts";
-import type { AcceptanceProbe } from "./types.ts";
+import type { AcceptanceProbe, ProbeOriginRecord } from "./types.ts";
 
 const RFC_PATH = "docs/rfcs/rfc-9001-fixture.md";
 const TEST_PATH = "src/foo.test.ts";
@@ -194,6 +198,28 @@ describe("deriveProbeOrigins (RFC-1330)", () => {
     const [record] = await derive([testProbe]);
     expect(record?.derivedOrigin).toBe("unresolved");
     expect(record?.effective).toBe("self");
+  });
+
+  it("attaches origin records only for RFCs created on or after the cutoff", async () => {
+    await commit("accept", { [RFC_PATH]: rfcSource("accepted", [testProbe]) });
+    const post = [{} as { origin?: ProbeOriginRecord }];
+    await attachProbeOrigins({
+      workspaceRoot: root,
+      rfcRelPath: RFC_PATH,
+      frontmatter: { createdAt: "2026-10-18" },
+      probes: [testProbe],
+      records: post,
+    });
+    expect(post[0]?.origin).toBeDefined();
+    const pre = [{} as { origin?: ProbeOriginRecord }];
+    await attachProbeOrigins({
+      workspaceRoot: root,
+      rfcRelPath: RFC_PATH,
+      frontmatter: { createdAt: "2026-10-01" },
+      probes: [testProbe],
+      records: pre,
+    });
+    expect(pre[0]?.origin, "pre-cutoff envelopes must stay byte-compatible").toBeUndefined();
   });
 
   it("classes structural probes as presence", () => {
