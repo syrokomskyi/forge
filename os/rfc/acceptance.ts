@@ -16,9 +16,11 @@ prose checklist.
   <item>RFC-0268: initial implementation.</item>
   <item>RFC-0998: added test and json-schema probe kinds — spawnVitest helper, Ajv validation, shape validation.</item>
   <item>RFC-1271: optional probe metadata — expectationSource enum-check, limitations pass-through.</item>
+  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
 </CHANGE_SUMMARY>
 */
 
+import { probeReachableCommand, probeReachableSymbol } from "./reachable-symbol.ts";
 import { spawn } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 
@@ -171,6 +173,42 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
         }
         break;
       }
+      case "reachable": {
+        const rec = entry as Record<string, unknown>;
+        const hasSymbol = rec["symbol"] !== undefined;
+        const hasCommand = rec["command"] !== undefined;
+        if (hasSymbol === hasCommand) {
+          issues.push({
+            index,
+            message:
+              'probe "reachable" requires exactly one of "symbol" (with "module") or "command"',
+          });
+        } else if (hasSymbol) {
+          if (typeof rec["symbol"] !== "string" || typeof rec["module"] !== "string") {
+            issues.push({
+              index,
+              message: 'probe "reachable" symbol mode requires string "symbol" and "module"',
+            });
+          }
+          if (rec["root"] !== undefined && typeof rec["root"] !== "string") {
+            issues.push({ index, message: 'probe "reachable" "root" must be a string if present' });
+          }
+        } else {
+          if (typeof rec["command"] !== "string") {
+            issues.push({
+              index,
+              message: 'probe "reachable" command mode requires a string "command"',
+            });
+          }
+          if (rec["root"] !== undefined || rec["module"] !== undefined) {
+            issues.push({
+              index,
+              message: 'probe "reachable" command mode takes no "root" or "module"',
+            });
+          }
+        }
+        break;
+      }
       case "json-schema": {
         const artifact = (entry as Record<string, unknown>)["artifact"];
         if (typeof artifact !== "string") {
@@ -185,7 +223,7 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
       default:
         issues.push({
           index,
-          message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page, test, json-schema`,
+          message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page, test, json-schema, reachable`,
         });
     }
 
@@ -355,6 +393,18 @@ export async function runProbe(
       }
       const ok = exitCode === probe.expect.exitCode;
       return { probe, ok, detail: `exitCode=${exitCode} (expected ${probe.expect.exitCode})` };
+    }
+    case "reachable": {
+      const r =
+        "command" in probe
+          ? await probeReachableCommand({ workspaceRoot, command: probe.command })
+          : await probeReachableSymbol({
+              workspaceRoot,
+              symbol: probe.symbol,
+              module: probe.module,
+              ...(probe.root ? { root: probe.root } : {}),
+            });
+      return { probe, ok: r.ok, detail: r.detail };
     }
     case "json-schema": {
       const artifactPath = path.join(workspaceRoot, probe.artifact);
