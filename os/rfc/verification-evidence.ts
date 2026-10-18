@@ -12,8 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0330: initial implementation.</item>
-  <item>RFC-0999: exported captureGitContext, getKernelVersion, byteHashHex, VERIFICATION_DIR for reuse by verification-refresh.ts.</item>
   <item>RFC-1237: dual-read dry-run (context.dryRun || flags["dry-run"]),
 io.writeFile port routing, dry-run summary marker; serializeEvidenceEnvelope —
 shared emit-canonical serializer restoring the structured YAML marker-key
@@ -22,17 +20,22 @@ with "pnpm exec werkstatt run" prefix), also consumed by refresh.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
+  <item>RFC-1330: step 3 — attach git-derived origin in emit and refresh envelopes
+
+Test-Reason: requirement AC-1</item>
+  <history>RFC-0330, RFC-0999</history>
 </CHANGE_SUMMARY>
 */
 
 import { execFile } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { performance } from "node:perf_hooks";
 import { byteHash } from "../../src/utils/hash.ts";
 
 import { runProbe } from "./acceptance.ts";
+import { attachProbeOrigins } from "./verification-origin.ts";
 import { EVIDENCE_SYNC_STEPS } from "./handlers/rfc-evidence-sync.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { generatedHeaderFields } from "../../src/utils/generated-marker.ts";
@@ -400,7 +403,8 @@ export function buildEvidenceEnvelope(
  * computation on non-volatile fields only. Volatile per-run metadata
  * (emittedAt, lastRefreshedAt, durationMs, commit, workingTreeDirty,
  * kernelVersion, probe details) is per-run evidence context, not evidence
- * identity — it is intentionally not compared.
+ * identity — it is intentionally not compared. RFC-1330 `origin` records are
+ * volatile too: they depend on git history, not on the RFC bytes.
  */
 export function checkEvidenceEnvelope(
   committed: Partial<VerificationEvidence>,
@@ -527,6 +531,15 @@ export async function runRfcVerificationEmit(
         durationMs,
       });
     }
+
+    // RFC-1330: git-derived origin per probe (post-cutoff RFCs only).
+    await attachProbeOrigins({
+      workspaceRoot,
+      rfcRelPath: relative(workspaceRoot, rfcFilePath),
+      frontmatter: fm,
+      probes,
+      records: probeRecords,
+    });
 
     const envelope = buildEvidenceEnvelope(
       rfcId,

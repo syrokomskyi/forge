@@ -19,15 +19,19 @@ io.writeFile port routing, emit-canonical generated header — refresh owns
 content freshness, never envelope identity (ownerCommand stays
 rfc.verification.emit).</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1330: step 3 — attach git-derived origin in emit and refresh envelopes
+
+Test-Reason: requirement AC-1</item>
 </CHANGE_SUMMARY>
 */
 
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { resolveIo } from "../../src/utils/io.ts";
 import { performance } from "node:perf_hooks";
 import { parse as yamlParse } from "yaml";
 
 import { runProbe } from "./acceptance.ts";
+import { attachProbeOrigins } from "./verification-origin.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import {
   captureGitContext,
@@ -148,6 +152,15 @@ export async function runRfcVerificationRefresh(
         durationMs,
       });
     }
+
+    // RFC-1330: git-derived origin per probe (post-cutoff RFCs only).
+    await attachProbeOrigins({
+      workspaceRoot,
+      rfcRelPath: relative(workspaceRoot, rfcFilePath),
+      frontmatter: fm,
+      probes,
+      records: probeRecords,
+    });
 
     const envelope = buildEvidenceEnvelope(
       rfcId,
