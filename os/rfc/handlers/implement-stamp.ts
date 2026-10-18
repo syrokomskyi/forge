@@ -16,7 +16,7 @@ verification evidence, and atomically mutates RFC frontmatter.
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
-  <item>RFC-1330</item>
+  <item>RFC-1330: origin gates wired into the shared evidence evaluator; non-blocking warnings surfaced in results.</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */

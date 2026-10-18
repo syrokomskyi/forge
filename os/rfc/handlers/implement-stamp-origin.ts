@@ -17,14 +17,13 @@ verificationTier: high RFC.
   <item>RFC-IMP-11 severity is a module constant until RFC-1333 provides non-self evidence.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: initial implementation — RFC-IMP-10 (blocking) and RFC-IMP-11 (warning).</item>
-  <item>RFC-1330</item>
+  <item>RFC-1330: RFC-IMP-10 (blocking) and RFC-IMP-11 (warning until RFC-1333) origin gates.</item>
 </CHANGE_SUMMARY>
 */
 
 import { RFC_ORIGIN_CUTOFF } from "../types.ts";
 import type { AcceptanceProbe, ProbeOriginRecord, RfcImplementStampViolation } from "../types.ts";
-import { extractAcceptanceCriteriaSection, stripFencedCodeBlocks } from "./validate-rules.ts";
+import { listBehavioralCriteria } from "./validate-rules.ts";
 
 /**
  * RFC-IMP-11 is a warning until RFC-1333 lands: without independent
@@ -48,17 +47,6 @@ export interface OriginGateInput {
 export interface OriginGateResult {
   errors: RfcImplementStampViolation[];
   warnings: RfcImplementStampViolation[];
-}
-
-function behavioralCriteria(body: string): string[] {
-  const section = extractAcceptanceCriteriaSection(stripFencedCodeBlocks(body));
-  if (!section) return [];
-  const ids: string[] = [];
-  for (const line of section.split("\n")) {
-    const match = /^\s*- \[[ x]\]\s*(AC-\d+):\s*(.*)$/.exec(line);
-    if (match && /^(WHEN|IF)\b/.test((match[2] ?? "").trim())) ids.push(match[1]!);
-  }
-  return ids;
 }
 
 function describeProbe(probe: AcceptanceProbe, index: number): string {
@@ -88,7 +76,7 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
 
   if (input.frontmatter["verificationTier"] === "high") {
     const blocking = input.imp11Blocking ?? RFC_IMP_11_BLOCKING;
-    for (const id of behavioralCriteria(input.body)) {
+    for (const id of listBehavioralCriteria(input.body)) {
       const hasNonSelf = input.probes.some(
         (p, i) => p.criterion === id && NON_SELF.has(String(input.origins[i]?.effective)),
       );

@@ -14,9 +14,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1271: V-43 verificationTier enum check; V-23 archive exemption (isArchived paths skip evidence-presence — archive-freeze precedent).</item>
   <item>RFC-1322: fo-review fix pass — V-37 annotation extraction takes the LAST (evidence: ...) occurrence, matching the stamp resolver (prose mentions no longer shadow the real annotation).</item>
-  <item>RFC-1330: step 4 — V-44 rejects WHEN/IF criteria evidenced only by presence probes
-
-Test-Reason: requirement AC-6</item>
+  <item>RFC-1330: V-44 presence-only behavioral criteria; shared listBehavioralCriteria.</item>
   <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006</history>
 </CHANGE_SUMMARY>
 */
@@ -108,22 +106,25 @@ export interface DocumentReadinessEvaluation {
  * bound probe is not reported here — probe coverage is V-35's concern.
  * Pure function — no I/O, no side effects.
  */
+export function listBehavioralCriteria(body: string): string[] {
+  const section = extractAcceptanceCriteriaSection(stripFencedCodeBlocks(body));
+  if (!section) return [];
+  const ids: string[] = [];
+  for (const line of section.split("\n")) {
+    const match = /^\s*- \[[ xX]\]\s*(AC-\d+):\s*(.*)$/.exec(line);
+    if (match && /^(WHEN|IF)\b/.test((match[2] ?? "").trim())) ids.push(match[1]!);
+  }
+  return ids;
+}
+
 export function findPresenceOnlyBehavioralCriteria(
   body: string,
   probes: AcceptanceProbe[],
 ): string[] {
-  const section = extractAcceptanceCriteriaSection(stripFencedCodeBlocks(body));
-  if (!section) return [];
-  const offenders: string[] = [];
-  for (const line of section.split("\n")) {
-    const match = /^\s*- \[[ x]\]\s*(AC-\d+):\s*(.*)$/.exec(line);
-    if (!match) continue;
-    const [, id, text] = match;
-    if (!/^(WHEN|IF)\b/.test((text ?? "").trim())) continue;
+  return listBehavioralCriteria(body).filter((id) => {
     const bound = probes.filter((p) => p.criterion === id);
-    if (bound.length > 0 && bound.every(isPresenceProbe)) offenders.push(id!);
-  }
-  return offenders;
+    return bound.length > 0 && bound.every(isPresenceProbe);
+  });
 }
 
 // ─── RFC-1006: reject checklist constants ──────────────────────────────────

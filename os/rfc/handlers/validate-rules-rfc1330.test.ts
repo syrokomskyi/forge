@@ -6,10 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: initial V-44 tests.</item>
-  <item>RFC-1330: step 4 — V-44 rejects WHEN/IF criteria evidenced only by presence probes
-
-Test-Reason: requirement AC-6</item>
+  <item>RFC-1330: V-44 tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -105,6 +102,11 @@ describe("V-44 (RFC-1330)", () => {
       { probe: "file-contains", criterion: "AC-2", path: "docs/index.md", pattern: "x" },
     ]);
     expect(offenders).toEqual([]);
+  });
+
+  test("treats uppercase checked boxes as criteria", () => {
+    const body = BODY("- [X] AC-1: WHEN a commit weakens a test, THE gate SHALL block it.");
+    expect(findPresenceOnlyBehavioralCriteria(body, [presence])).toEqual(["AC-1"]);
   });
 
   test("exempts RFCs created before the cutoff", async () => {

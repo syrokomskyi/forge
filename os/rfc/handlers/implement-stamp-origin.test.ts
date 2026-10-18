@@ -6,8 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: initial tests for AC-5 and AC-7.</item>
-  <item>RFC-1330</item>
+  <item>RFC-1330: RFC-IMP-10/11 gate tests.</item>
 </CHANGE_SUMMARY>
 */
 
