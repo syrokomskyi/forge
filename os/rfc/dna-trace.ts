@@ -11,6 +11,7 @@ entries from all RFCs, and builds a bidirectional trace matrix.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1328 review (unblock): rename _io → io in the two command scopes — the WS-WRITE-02 scan pattern matches io.writeFile but not _io.writeFile (false positive since the RFC-1320 migration).</item>
   <item>RFC-0331: initial implementation.</item>
   <item>RFC-1320 review-r1: write migrated writeFileAtomic → context.io; dry-run returns renderedFiles (ambient writes bypassed dry-run interception and self-healed stale artifacts inside emit's freshness precheck).</item>
 </CHANGE_SUMMARY>
@@ -191,7 +192,6 @@ export async function runRfcDnaTraceValidate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DnaTraceResult>> {
-  const _io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
   const dnaFilter = input.flags["dna"] as string | undefined;
 
@@ -247,7 +247,7 @@ export async function runRfcDnaTraceGenerate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<DnaTraceResult>> {
-  const _io = resolveIo(context.io);
+  const io = resolveIo(context.io);
   const { workspaceRoot, logger, outputFormat } = context;
 
   const { entries, diagnostics, registryIds } = await buildDnaTrace(workspaceRoot);
@@ -281,7 +281,7 @@ export async function runRfcDnaTraceGenerate(
     };
   }
 
-  await _io.writeFile(join(workspaceRoot, outRel), jsonContent);
+  await io.writeFile(join(workspaceRoot, outRel), jsonContent);
 
   if (outputFormat === "pretty") {
     logger.section(
