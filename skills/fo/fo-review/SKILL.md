@@ -38,6 +38,7 @@ items; top-level decision totals added. Orchestrator pre-flight treats
 QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
+  <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -74,6 +75,17 @@ Where the platform exposes no subagent primitive (or policy forbids dispatch), r
 An executor that narrows the reviewer's inputs — passing a self-authored summary instead of artifact paths — commits a scope-narrowing violation, itself reportable as a `soft-block` on the review process.
 
 **Report persistence is the dispatcher's duty in `independent` mode.** A clean-context reviewer may be read-only and never writes files — it returns findings and verdict. The skill run that dispatched it performs steps 6–7 itself: it assembles the report, builds the YAML frontmatter (`reviewer.isolation` records the mode actually used), and writes the file to `docs/reviews/code/`. A persisted review report without the frontmatter block is a contract violation regardless of which side produced the prose.
+
+## Acceptance verification mode
+
+Invoked as `fo-review --acceptance --rfc <RFC-id> --workspace <path>` by `fo-idea-implement` step 4.4b for documents declaring `verificationTier: high`. The oracle is the document's requirements, not conventions.
+
+- **Inputs (artifacts only):** the export path produced by `rfc.verify.workspace --id <RFC-id> --candidate <sha>`, its `VERIFY-BUNDLE.md` (Context, Problem, Decision, Design, Acceptance criteria — and the list of hidden paths), this section as rubric, and earlier-round counterexample lists. Never the plan, the diff narrative, the implementer's tests, review reports, or session text.
+- **Task:** for each acceptance criterion and each normative Design statement, write checks (test files under `.verify/` inside the export, CLI invocations, fixture inputs), run them in the export, and keep only the failing ones.
+- **Minimization:** shrink every counterexample to the smallest input that still fails (property-based shrinking for generated inputs, manual delta reduction otherwise).
+- **Output:** a counterexample list — `id` (CX-N), `criterion`, `input`, `expected` (quoting the document text the expectation follows from), `observed`, `reproCommand` — and a verdict `pass | counterexamples | inconclusive`. The verifier writes nothing in the main checkout; the dispatcher persists `docs/reviews/acceptance/<rfc-id-lower>/acceptance-<YYYY-MM-DD>-r<round>.md` with YAML frontmatter `rfcId, candidateSha, round, isolation, verifierModel, verdict, counterexamples`.
+- **Isolation and model:** dispatch a fresh clean-context subagent per round; record `isolation` truthfully (`subagent | isolated-inline | inline`) and the model actually used. A different vendor model may be requested where the platform allows.
+- **Loop cap:** at most two fix rounds (round 0 verification, then rounds 1 and 2 after fixes). A third failing verdict parks the item for operator arbitration; disputed counterexamples go to the decision ledger, never resolved by the executor.
 
 ## Process
 

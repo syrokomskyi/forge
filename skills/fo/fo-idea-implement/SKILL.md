@@ -20,12 +20,12 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1317: unblock AC-7 — repair pre-existing fo-idea-implement SKILL-11/SKILL-17 violations (drop hardcoded werkstatt run literal + internal RFC ids), sync .agents copy</item>
   <item>RFC-1322: step 5 — prescribe --check-criteria stamp + single-commit post-shape</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
-  <history>RFC-1097, RFC-1224, RFC-1250</history>
+  <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
+  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -192,6 +192,17 @@ After **all** plan steps are complete, run the heavy validation suite in order:
 Use the `packagesImpacted` and `appsImpacted` frontmatter lists to determine which workspaces to check. If the RFC does not list impacted workspaces, infer them from the plan's step sequence (which files were touched in which packages).
 
 **Do not run a full root `root build` or `turbo run build`.** The success criterion is that all impacted workspaces pass their scoped checks, not that the entire ecosystem builds. See root AGENTS.md §Build verification discipline.
+
+#### 4.4b. Independent acceptance verification
+
+Only when the document declares `verificationTier: high`. Run after the implementation is committed and heavy checks pass:
+
+1. `rfc.verify.workspace --id RFC-XXXX --candidate <committed-sha>` — a git-free export with your in-range tests and the document's plan/review/session files stripped.
+2. Dispatch `fo-review` in acceptance verification mode on that export (fresh clean-context subagent, artifacts only — never your narrative).
+3. Persist the report the verifier returns; triage each counterexample `confirmed` or `disputed` with a one-line reason.
+4. For every confirmed counterexample: fix the code, then commit the verifier's minimized check **verbatim** (only location/imports may change) as a regression test together with its `probe: test` binding in the document's `acceptance:` block, in a separate commit carrying `X-Expectation-Origin: independent-verifier` and `X-Verifier-Report: <report path>`. Later edits by you to that file make it `self` again.
+5. Disputed counterexamples go to the decision ledger for the operator. Repeat with a fresh verifier at most two fix rounds; a third failure parks the item.
+6. Stamping requires a committed `verdict: pass`, `isolation: subagent` report whose candidate is followed only by verifier-trailer or docs commits.
 
 #### 4.5. Fix errors
 
