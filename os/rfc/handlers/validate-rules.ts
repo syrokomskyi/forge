@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0997: add V-35 probe→criterion referential integrity, V-36 criterion identifier discipline, V-37 evidence mechanism validity, and computeProbeCoverage for non-blocking coverage reports.</item>
-  <item>RFC-1006: add V-38 document readiness completeness, V-39 non-atomic criterion, V-40 unbounded quantity, V-41 weasel verb, V-42 criterion versioning annotation format. Add evaluateDocumentReadiness and extend evaluateAcceptanceCriteria with supersession tracking and reject-checklist scans.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -16,7 +14,10 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1271: V-43 verificationTier enum check; V-23 archive exemption (isArchived paths skip evidence-presence — archive-freeze precedent).</item>
   <item>RFC-1322: fo-review fix pass — V-37 annotation extraction takes the LAST (evidence: ...) occurrence, matching the stamp resolver (prose mentions no longer shadow the real annotation).</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795</history>
+  <item>RFC-1330: step 4 — V-44 rejects WHEN/IF criteria evidenced only by presence probes
+
+Test-Reason: requirement AC-6</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006</history>
 </CHANGE_SUMMARY>
 */
 
@@ -42,8 +43,10 @@ import {
   RFC_VERSION_BUMP_CUTOFF,
   RFC_PROBE_BINDING_CUTOFF,
   RFC_CRITERIA_CONTENT_CUTOFF,
+  RFC_ORIGIN_CUTOFF,
 } from "../types.ts";
 import type { ProbeCoverageReport, AcceptanceProbe } from "../types.ts";
+import { isPresenceProbe } from "../verification-origin.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -95,6 +98,32 @@ export interface DocumentReadinessEvaluation {
   uncheckedLines: string[];
   criterionIds: string[];
   linesWithoutId: string[];
+}
+
+// ─── RFC-1330: V-44 presence-only behavioral criteria ───────────────────────
+
+/**
+ * Behavioral criteria (EARS event-driven `WHEN …` or failure-path `IF …`
+ * forms) whose bound probes are all presence probes. A criterion with no
+ * bound probe is not reported here — probe coverage is V-35's concern.
+ * Pure function — no I/O, no side effects.
+ */
+export function findPresenceOnlyBehavioralCriteria(
+  body: string,
+  probes: AcceptanceProbe[],
+): string[] {
+  const section = extractAcceptanceCriteriaSection(stripFencedCodeBlocks(body));
+  if (!section) return [];
+  const offenders: string[] = [];
+  for (const line of section.split("\n")) {
+    const match = /^\s*- \[[ x]\]\s*(AC-\d+):\s*(.*)$/.exec(line);
+    if (!match) continue;
+    const [, id, text] = match;
+    if (!/^(WHEN|IF)\b/.test((text ?? "").trim())) continue;
+    const bound = probes.filter((p) => p.criterion === id);
+    if (bound.length > 0 && bound.every(isPresenceProbe)) offenders.push(id!);
+  }
+  return offenders;
 }
 
 // ─── RFC-1006: reject checklist constants ──────────────────────────────────
@@ -943,6 +972,20 @@ export async function validateSingleRfc(
       "V-43",
       `Invalid verificationTier "${String(verificationTier)}". Must be one of: ${RFC_VERIFICATION_TIERS.join(", ")}`,
     );
+  }
+
+  // V-44: WHEN/IF criteria need an execution probe (RFC-1330, post-cutoff only)
+  if (createdAt >= RFC_ORIGIN_CUTOFF && !isArchived) {
+    const acceptance = fm["acceptance"];
+    const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+    for (const id of findPresenceOnlyBehavioralCriteria(body, probes)) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-44",
+        `${id} is a WHEN/IF behavioral criterion evidenced only by presence probes (file-exists, command-registered, or file-contains/json-schema over non-doc paths). Bind an execution probe (test, run, or page) to ${id}.`,
+      );
+    }
   }
 
   // V-15: title consistency
