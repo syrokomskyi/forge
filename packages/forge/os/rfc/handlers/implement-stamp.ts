@@ -12,11 +12,13 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
   <item>RFC-1330: origin gates wired into the shared evidence evaluator; non-blocking warnings surfaced in results.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
+  <item>RFC-1333: resolve acceptance counterexamples CX-1 and CX-2
+
+Candidate binding accepts docs/** only; the operator waiver also covers a missing report; RFC-IMP-12 applies to probe-less HIGH-tier RFCs.</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -469,7 +471,7 @@ async function candidateBoundToHead(workspaceRoot: string, sha: string): Promise
       .split("\n")
       .map((l) => l.trim())
       .filter(Boolean);
-    const docsOnly = touched.every((f) => f.startsWith("docs/") || f.endsWith(".md"));
+    const docsOnly = touched.every((f) => f.startsWith("docs/"));
     if (!docsOnly && !hasVerifierTrailers(body)) return false;
   }
   return true;
@@ -523,18 +525,19 @@ async function evaluateStampEvidenceGates(opts: {
     });
     violations.push(...gate.errors);
     warnings.push(...gate.warnings);
-
-    // ── RFC-IMP-12: acceptance-verification report (RFC-1333) ─────────────
-    const acc = await evaluateAcceptanceVerificationGate({
-      targetId,
-      frontmatter: opts.frontmatter,
-      reports: await readAcceptanceReports(opts.workspaceRoot, targetId),
-      isCandidateBound: (sha) => candidateBoundToHead(opts.workspaceRoot, sha),
-      waiverReason: opts.waiverReason,
-    });
-    violations.push(...acc.errors);
-    warnings.push(...acc.warnings);
   }
+
+  // RFC-IMP-12 applies to every post-cutoff HIGH-tier RFC, probe-bearing or not.
+  // ── RFC-IMP-12: acceptance-verification report (RFC-1333) ─────────────
+  const acc = await evaluateAcceptanceVerificationGate({
+    targetId,
+    frontmatter: opts.frontmatter,
+    reports: await readAcceptanceReports(opts.workspaceRoot, targetId),
+    isCandidateBound: (sha) => candidateBoundToHead(opts.workspaceRoot, sha),
+    waiverReason: opts.waiverReason,
+  });
+  violations.push(...acc.errors);
+  warnings.push(...acc.warnings);
 
   // ── RFC-IMP-06: probe-bearing post-cutoff RFCs need a passing envelope ────
   if (requiresEvidence) {
