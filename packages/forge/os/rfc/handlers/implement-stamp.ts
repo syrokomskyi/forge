@@ -12,11 +12,11 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1321: review-r2: stringLiteralValue — comment-aware literal extractor keys COMMAND_PROVENANCE cleanly (adjacent comments no longer corrupt the key or evade CMDGEN-03); (?!\d) boundary in commitCarriesGovernanceProvenance; non-string --id guard</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
+  <item>RFC-1330</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -24,7 +24,7 @@ verification evidence, and atomically mutates RFC frontmatter.
 import { execFile, writeFileSync } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
-import { join, dirname, resolve, sep } from "node:path";
+import { join, dirname, relative, resolve, sep } from "node:path";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse } from "yaml";
@@ -39,7 +39,14 @@ import {
 import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
 import { toIsoDate } from "./shared.ts";
 import { byteHashHex, normalizeProbes, runRfcVerificationEmit } from "../verification-evidence.ts";
-import { RFC_DIR, RFC_METADATA_CUTOFF, RFC_PROBE_BINDING_CUTOFF } from "../types.ts";
+import {
+  RFC_DIR,
+  RFC_METADATA_CUTOFF,
+  RFC_ORIGIN_CUTOFF,
+  RFC_PROBE_BINDING_CUTOFF,
+} from "../types.ts";
+import { createOriginGit, deriveProbeOrigins } from "../verification-origin.ts";
+import { evaluateOriginGates } from "./implement-stamp-origin.ts";
 import type {
   RfcStatus,
   RfcImplementStampViolation,
@@ -425,10 +432,40 @@ async function evaluateStampEvidenceGates(opts: {
   rfcFilePath: string;
   acceptance: unknown;
   io: WorkspaceIO;
-}): Promise<{ violations: RfcImplementStampViolation[]; evidenceRelPath?: string }> {
+  /** RFC-1330: origin gates need the frontmatter and git access. */
+  frontmatter: Record<string, unknown>;
+  workspaceRoot: string;
+}): Promise<{
+  violations: RfcImplementStampViolation[];
+  warnings: RfcImplementStampViolation[];
+  evidenceRelPath?: string;
+}> {
   const { evidenceCheck, requiresEvidence, hasProbes, targetId, rfcFilePath, acceptance } = opts;
   const violations: RfcImplementStampViolation[] = [];
+  const warnings: RfcImplementStampViolation[] = [];
   let evidenceRelPath: string | undefined;
+
+  // ── RFC-IMP-10 / RFC-IMP-11: git-derived origin gates (RFC-1330) ─────────
+  // Derived fresh at stamp time (head = HEAD) — the committed envelope's
+  // origin records are volatile context and may predate later commits.
+  if (hasProbes && String(opts.frontmatter["createdAt"] ?? "") >= RFC_ORIGIN_CUTOFF) {
+    const probes = acceptance as AcceptanceProbe[];
+    const origins = await deriveProbeOrigins({
+      git: createOriginGit(opts.workspaceRoot),
+      rfcRelPath: relative(opts.workspaceRoot, rfcFilePath),
+      frontmatter: opts.frontmatter,
+      probes,
+    });
+    const gate = evaluateOriginGates({
+      targetId,
+      frontmatter: opts.frontmatter,
+      body: await opts.io.readFile(rfcFilePath),
+      probes,
+      origins,
+    });
+    violations.push(...gate.errors);
+    warnings.push(...gate.warnings);
+  }
 
   // ── RFC-IMP-06: probe-bearing post-cutoff RFCs need a passing envelope ────
   if (requiresEvidence) {
@@ -486,7 +523,7 @@ async function evaluateStampEvidenceGates(opts: {
     }
   }
 
-  return { violations, evidenceRelPath };
+  return { violations, warnings, evidenceRelPath };
 }
 
 interface AutoCheckOutcome {
@@ -838,6 +875,8 @@ export async function runRfcImplementStamp(
   const rfcFilePath = join(rfcDirPath, targetFile);
 
   let evidenceRelPath: string | undefined;
+  // RFC-1330: non-blocking stamp findings (RFC-IMP-11 until RFC-1333).
+  const stampWarnings: RfcImplementStampViolation[] = [];
 
   // RFC-1271: the envelope is fetched unconditionally — a committed envelope
   // must also be evaluated when hasProbes is now false, because probe
@@ -858,8 +897,12 @@ export async function runRfcImplementStamp(
       rfcFilePath,
       acceptance,
       io,
+      frontmatter: fm,
+      workspaceRoot,
     });
     violations.push(...gates.violations);
+    stampWarnings.push(...gates.warnings);
+    for (const w of gates.warnings) logger.warn(`${w.rule}: ${w.message}`);
     if (gates.evidenceRelPath) evidenceRelPath = gates.evidenceRelPath;
   }
 
@@ -1003,8 +1046,12 @@ export async function runRfcImplementStamp(
           rfcFilePath,
           acceptance,
           io,
+          frontmatter: fm,
+          workspaceRoot,
         });
         violations.push(...gates.violations);
+        stampWarnings.push(...gates.warnings);
+        for (const w of gates.warnings) logger.warn(`${w.rule}: ${w.message}`);
         if (gates.evidenceRelPath) evidenceRelPath = gates.evidenceRelPath;
       }
 
@@ -1039,6 +1086,7 @@ export async function runRfcImplementStamp(
         data: {
           command: "rfc.implement.stamp",
           status: "pass",
+          ...(stampWarnings.length > 0 ? { warnings: stampWarnings } : {}),
           data: {
             rfcId: targetId,
             implementationCommit: implementationCommit!,
@@ -1122,6 +1170,7 @@ export async function runRfcImplementStamp(
       data: {
         command: "rfc.implement.stamp",
         status: "pass",
+        ...(stampWarnings.length > 0 ? { warnings: stampWarnings } : {}),
         data: {
           rfcId: targetId,
           implementationCommit: implementationCommit!,
