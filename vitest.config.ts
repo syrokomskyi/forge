@@ -3,6 +3,8 @@ import { defineConfig } from "vitest/config";
 export default defineConfig({
   test: {
     environment: "node",
+    // Fixture repos must never resolve to the workspace repository.
+    setupFiles: ["./vitest.setup.strip-git-env.ts"],
     include: ["src/**/*.test.ts", "os/**/*.test.ts"],
     testTimeout: 30_000,
     maxWorkers: "50%",
