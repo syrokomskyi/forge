@@ -76,7 +76,7 @@ describe("rfc.verify.workspace (RFC-1333)", () => {
       candidateSha: candidate,
       outDir: out,
     });
-    expect(r.status).toBe("pass");
+    expect(r.status, r.error).toBe("pass");
     expect(existsSync(path.join(out, "src/feature.test.ts"))).toBe(false);
     expect(existsSync(path.join(out, "src/old.test.ts")), "pre-acceptance tests stay visible").toBe(
       true,
@@ -98,6 +98,16 @@ describe("rfc.verify.workspace (RFC-1333)", () => {
     expect(bundle).toContain("## Decision");
     expect(bundle).not.toContain("## Risks");
     expect(r.removed).toContain("src/feature.test.ts");
+  });
+
+  it("fails without leaving a partial tree for an unknown candidate", async () => {
+    const r = await buildVerifyWorkspace({
+      workspaceRoot: root,
+      rfcId: "RFC-9002",
+      candidateSha: "not-a-ref",
+    });
+    expect(r.status).toBe("fail");
+    expect(r.path).toBeNull();
   });
 
   it("exports the candidate without git metadata", async () => {

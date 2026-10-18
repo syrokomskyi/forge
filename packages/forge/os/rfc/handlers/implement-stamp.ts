@@ -16,9 +16,7 @@ verification evidence, and atomically mutates RFC frontmatter.
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
   <item>RFC-1330: origin gates wired into the shared evidence evaluator; non-blocking warnings surfaced in results.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
-  <item>RFC-1333: resolve acceptance counterexamples CX-1 and CX-2
-
-Candidate binding accepts docs/** only; the operator waiver also covers a missing report; RFC-IMP-12 applies to probe-less HIGH-tier RFCs.</item>
+  <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -50,6 +48,7 @@ import {
 import {
   createOriginGit,
   deriveProbeOrigins,
+  gitEnvForCwd,
   hasVerifierTrailers,
 } from "../verification-origin.ts";
 import {
@@ -86,13 +85,18 @@ const IMPLEMENTATION_SUBJECT_RE = /^(implement|feat)(\([^)]*\))?!?:/i;
 
 function execGit(workspaceRoot: string, args: string[]): Promise<string> {
   return new Promise((resolve) => {
-    execFile("git", args, { cwd: workspaceRoot, timeout: 10000 }, (err, stdout) => {
-      if (err) {
-        resolve("");
-        return;
-      }
-      resolve(stdout.trim());
-    });
+    execFile(
+      "git",
+      args,
+      { cwd: workspaceRoot, timeout: 30000, env: gitEnvForCwd() },
+      (err, stdout) => {
+        if (err) {
+          resolve("");
+          return;
+        }
+        resolve(stdout.trim());
+      },
+    );
   });
 }
 
@@ -110,7 +114,7 @@ async function commitReachableFromHead(workspaceRoot: string, commitSha: string)
     execFile(
       "git",
       ["merge-base", "--is-ancestor", commitSha, "HEAD"],
-      { cwd: workspaceRoot, timeout: 10000 },
+      { cwd: workspaceRoot, timeout: 30000, env: gitEnvForCwd() },
       (err) => {
         resolve(!err);
       },
@@ -422,15 +426,8 @@ export function envelopeNeedsRefresh(
   return env.rfcFileHash !== currentFileHash || env.acceptanceHash !== currentAcceptanceHash;
 }
 
-/**
- * RFC-IMP-06 (probe-bearing RFCs need a passing envelope) + RFC-IMP-09
- * (committed envelope must hash-match the committed bytes — RFC-1271) as one
- * evaluator. The default path runs it pre-lock; --check-criteria runs it
- * in-lock against the envelope its emit-if-needed pass may have just
- * refreshed. One ruleset, two invocation orders — the paths cannot diverge.
- */
 /** RFC-1333: committed acceptance reports for an RFC (frontmatter only). */
-async function readAcceptanceReports(
+export async function readAcceptanceReports(
   workspaceRoot: string,
   rfcId: string,
 ): Promise<Array<{ path: string; frontmatter: Record<string, unknown> }>> {
@@ -439,7 +436,8 @@ async function readAcceptanceReports(
   const out: Array<{ path: string; frontmatter: Record<string, unknown> }> = [];
   for (const path of listed.split("\n").filter((p) => p.endsWith(".md"))) {
     const text = await execGit(workspaceRoot, ["show", `HEAD:${path}`]);
-    const m = /^---\n([\s\S]*?)\n---/.exec(text);
+    // CRLF checkouts and BOMs must not turn a real report into "no evidence".
+    const m = /^\uFEFF?---\r?\n([\s\S]*?)\r?\n---/.exec(text);
     if (!m) continue;
     try {
       const fm = yamlParse(m[1]!) as Record<string, unknown>;
@@ -452,20 +450,33 @@ async function readAcceptanceReports(
 }
 
 /** RFC-1333: candidate..HEAD may contain only verifier-trailer or docs-only commits. */
-async function candidateBoundToHead(workspaceRoot: string, sha: string): Promise<boolean> {
+export async function candidateBoundToHead(workspaceRoot: string, sha: string): Promise<boolean> {
   const isAnc = await new Promise<boolean>((done) =>
-    execFile("git", ["merge-base", "--is-ancestor", sha, "HEAD"], { cwd: workspaceRoot }, (err) =>
-      done(!err),
+    execFile(
+      "git",
+      ["merge-base", "--is-ancestor", sha, "HEAD"],
+      { cwd: workspaceRoot, env: gitEnvForCwd() },
+      (err) => done(!err),
     ),
   );
   if (!isAnc) return false;
+  // --first-parent -m: a merge reports its full first-parent diff, so code
+  // brought in by a merge cannot pass as an empty "docs-only" commit.
   const log = await execGit(workspaceRoot, [
     "log",
+    "--first-parent",
+    "-m",
     "--format=%x1e%B%x1f",
     "--name-only",
     `${sha}..HEAD`,
   ]);
-  for (const chunk of log.split("\x1e").filter((c) => c.includes("\x1f"))) {
+  const count = Number(
+    (await execGit(workspaceRoot, ["rev-list", "--count", `${sha}..HEAD`])) || "0",
+  );
+  const chunks = log.split("\x1e").filter((c) => c.includes("\x1f"));
+  // Fail closed: commits exist but their log could not be read.
+  if (count > 0 && chunks.length === 0) return false;
+  for (const chunk of chunks) {
     const [body = "", files = ""] = chunk.split("\x1f");
     const touched = files
       .split("\n")
@@ -477,6 +488,13 @@ async function candidateBoundToHead(workspaceRoot: string, sha: string): Promise
   return true;
 }
 
+/**
+ * RFC-IMP-06 (probe-bearing RFCs need a passing envelope) + RFC-IMP-09
+ * (committed envelope must hash-match the committed bytes — RFC-1271) as one
+ * evaluator. The default path runs it pre-lock; --check-criteria runs it
+ * in-lock against the envelope its emit-if-needed pass may have just
+ * refreshed. One ruleset, two invocation orders — the paths cannot diverge.
+ */
 async function evaluateStampEvidenceGates(opts: {
   evidenceCheck: {
     exists: boolean;
@@ -493,7 +511,7 @@ async function evaluateStampEvidenceGates(opts: {
   /** RFC-1330: origin gates need the frontmatter and git access. */
   frontmatter: Record<string, unknown>;
   workspaceRoot: string;
-  /** RFC-1333: operator waiver for non-subagent isolation. */
+  /** RFC-1333: operator waiver for a missing report or non-subagent isolation. */
   waiverReason?: string;
 }): Promise<{
   violations: RfcImplementStampViolation[];
@@ -947,7 +965,7 @@ export async function runRfcImplementStamp(
   const rfcFilePath = join(rfcDirPath, targetFile);
 
   let evidenceRelPath: string | undefined;
-  // RFC-1330: non-blocking stamp findings (waived RFC-IMP-12 isolation).
+  // RFC-1330/1333: non-blocking stamp findings (waived RFC-IMP-12: missing report or isolation).
   const stampWarnings: RfcImplementStampViolation[] = [];
   const waiverFlag = input.flags["waive-independent-verification"];
   const waiverReason =

@@ -41,6 +41,26 @@ export interface OriginGit {
   run(args: string[]): Promise<string | null>;
 }
 
+/**
+ * Env for git subprocesses that pass an explicit cwd: repository-locating
+ * variables inherited from a hook or outer git command (GIT_DIR, GIT_INDEX_FILE,
+ * …) would otherwise redirect every call to the outer repository.
+ */
+export function gitEnvForCwd(): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  for (const key of [
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_PREFIX",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+  ]) {
+    delete env[key];
+  }
+  return env;
+}
+
 export function createOriginGit(workspaceRoot: string): OriginGit {
   return {
     run: (args) =>
@@ -48,7 +68,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         execFile(
           "git",
           args,
-          { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024 },
+          { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024, env: gitEnvForCwd() },
           (err, stdout) => resolve(err ? null : String(stdout)),
         );
       }),

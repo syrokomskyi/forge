@@ -19,9 +19,7 @@ verificationTier: high RFC.
 <CHANGE_SUMMARY>
   <item>RFC-1330: RFC-IMP-10 (blocking) and RFC-IMP-11 (warning until RFC-1333) origin gates.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
-  <item>RFC-1333: resolve acceptance counterexamples CX-1 and CX-2
-
-Candidate binding accepts docs/** only; the operator waiver also covers a missing report; RFC-IMP-12 applies to probe-less HIGH-tier RFCs.</item>
+  <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
 </CHANGE_SUMMARY>
 */
 
