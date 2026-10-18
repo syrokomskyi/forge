@@ -16,6 +16,7 @@
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1322: fo-review fix pass — criteriaPendingRefresh/evidenceWouldRefresh dry-run fields</item>
   <item>RFC-1330: origin contracts, RFC_ORIGIN_CUTOFF, RFC-IMP-10/11 rule ids, stamp warnings.</item>
+  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -371,6 +372,29 @@ export interface ProbeOriginRecord {
   reason: string[];
 }
 
+/** RFC-1333: one minimized counterexample returned by the acceptance verifier. */
+export interface AcceptanceCounterexample {
+  id: string; // CX-1, CX-2 …
+  criterion: string; // AC-N or "design:<heading>"
+  input: string;
+  expected: string; // quoted RFC text the expectation follows from
+  observed: string;
+  reproCommand: string;
+  triage?: "confirmed" | "disputed";
+  triageReason?: string;
+}
+
+/** RFC-1333: frontmatter of docs/reviews/acceptance/<rfc>/acceptance-<date>-r<round>.md. */
+export interface AcceptanceVerificationReport {
+  rfcId: string;
+  candidateSha: string;
+  round: 0 | 1 | 2;
+  isolation: "subagent" | "isolated-inline" | "inline";
+  verifierModel: string | null;
+  verdict: "pass" | "counterexamples" | "inconclusive";
+  counterexamples: AcceptanceCounterexample[];
+}
+
 export interface ImplementationRange {
   /** null ⇒ unresolved (no `status: accepted` transition in history). */
   base: string | null;
@@ -652,6 +676,9 @@ export type RfcImplementStampRule =
   | "RFC-IMP-10"
   // RFC-1330: verificationTier high WHEN/IF criterion without non-self evidence.
   | "RFC-IMP-11"
+  // RFC-1333: verificationTier high needs a passing, subagent-isolated
+  // acceptance-verification report bound to the implementation commit.
+  | "RFC-IMP-12"
   // RFC-1310: commit-time governance provenance — the implementation commit
   // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
   | "STAMP-GOV-01"

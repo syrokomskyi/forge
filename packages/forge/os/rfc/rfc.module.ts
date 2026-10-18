@@ -7,12 +7,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1237: honor dry-run via context.dryRun across kernel commands; verification envelopes keep emit-canonical ownership</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: register rfc.evidence.sync (coverage operator, mutatesState, EVIDENCE-SYNC-01/02 rules, generates:[] — artifacts stay owned by delegated steps); rfc.implement.stamp gains --sync.</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231</history>
+  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237</history>
 </CHANGE_SUMMARY>
 */
 
@@ -40,6 +40,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
   const { runRfcPipelineStatus } = await import("./handlers/pipeline-status.ts");
   const { runRfcImplementStamp } = await import("./handlers/implement-stamp.ts");
   const { runRfcEvidenceSync } = await import("./handlers/rfc-evidence-sync.ts");
+  const { runRfcVerifyWorkspace } = await import("./verify-workspace.ts");
   // ── rfc.list ─────────────────────────────────────────────────────────────;
   return {
     name: "rfc",
@@ -242,6 +243,32 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         execute: runRfcAcceptanceRun,
+      },
+      {
+        name: "rfc.verify.workspace",
+        modulePath: "packages/forge/os/rfc/rfc.module.ts",
+        description:
+          "RFC-1333: export a committed candidate as a git-free tree under the OS temp dir for a " +
+          "clean-context acceptance verifier — implementer in-range tests, the RFC's plan/review/" +
+          "session/queue documents, and its evidence envelope are stripped; VERIFY-BUNDLE.md carries " +
+          "only the RFC's Context/Problem/Decision/Design/Acceptance criteria. Writes nothing in the repository.",
+        scope: "workspace",
+        mutatesState: false,
+        contract: "rfc",
+        rules: [],
+        coverage: "operator",
+        writes: [],
+        reads: ["docs/rfcs/**/*.md"],
+        cacheable: false,
+        flags: {
+          id: { kind: "string", required: true, description: "Target RFC id." },
+          candidate: {
+            kind: "string",
+            required: true,
+            description: "Committed candidate SHA to export.",
+          },
+        },
+        execute: runRfcVerifyWorkspace,
       },
       {
         name: "rfc.verification.emit",
@@ -474,6 +501,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         reads: ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
         cacheable: false,
         flags: {
+          "waive-independent-verification": {
+            kind: "string",
+            description:
+              "RFC-1333: operator-only waiver for a non-subagent acceptance report on a verificationTier: high RFC (RFC-IMP-12); the reason is recorded as a stamp warning.",
+          },
           id: {
             kind: "string",
             required: true,

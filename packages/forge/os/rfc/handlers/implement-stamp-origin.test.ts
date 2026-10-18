@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1330: RFC-IMP-10/11 gate tests.</item>
+  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
 </CHANGE_SUMMARY>
 */
 
@@ -85,8 +86,8 @@ describe("evaluateOriginGates (RFC-1330)", () => {
     expect(result.errors[0]?.message).toContain("AC-1");
   });
 
-  it("reports RFC-IMP-11 as a warning by default until independent verification exists", () => {
-    expect(RFC_IMP_11_BLOCKING).toBe(false);
+  it("treats RFC-IMP-11 as blocking", () => {
+    expect(RFC_IMP_11_BLOCKING).toBe(true);
     const result = evaluateOriginGates({
       targetId: "RFC-9001",
       frontmatter: fm({ verificationTier: "high" }),
@@ -94,8 +95,7 @@ describe("evaluateOriginGates (RFC-1330)", () => {
       probes: [{ ...probe, expectationSource: "self" }],
       origins: [{ ...selfOrigin, declared: "self" }],
     });
-    expect(result.errors).toEqual([]);
-    expect(result.warnings.map((w) => w.rule)).toEqual(["RFC-IMP-11"]);
+    expect(result.errors.map((e) => e.rule)).toEqual(["RFC-IMP-11"]);
   });
 
   it("accepts a high-tier criterion backed by verifier evidence", () => {
