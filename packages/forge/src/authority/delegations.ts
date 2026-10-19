@@ -19,6 +19,17 @@ policy plus audit evidence — not a cryptographic security boundary.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1336: initial module — schema, scope catalog, loader, resolver, serializer.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
+  <item>RFC-1336: delegated editorial sign-off (RFC-1336 step 3)
+
+editorial.review.signoff admits agent:<id> reviewers under an active
+editorial.signoff delegation — the record and the editorial-signoff
+bordbuch event carry delegatedBy + delegationId provenance; the sign-off
+schema fails closed on agent reviewers without it. leitstand.ship gains
+an editorial-delegated-signoff step between sync-after-alt and
+certify-main that prepares the packet (if absent) and signs as the
+delegate — a journaled no-op with no delegation, so the operator path is
+unchanged. certify/promote precondition remediation now names an active
+delegation when one covers the site.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -187,8 +198,13 @@ export function canonicalDelegationPayload(entry: DelegationEntry): string {
  */
 export interface DelegationQuery {
   scope: string;
-  /** Acting agent identity — "agent:<id>". */
-  agent: string;
+  /**
+   * Acting agent identity — "agent:<id>". When omitted the query is an
+   * existence check: any active grant covering scope+site matches regardless
+   * of grantee (used by precondition helpers that only need to know a
+   * delegation exists).
+   */
+  agent?: string;
   /** Site the operation targets; absent means a workspace-scope operation. */
   site?: string;
   /** When set, only grants recorded by this human match (grantor binding). */
@@ -204,13 +220,26 @@ export function resolveDelegation(
     if (d.scope !== query.scope) return false;
     if (d.revokedAt) return false;
     if (d.expiresAt && new Date(d.expiresAt).getTime() <= now.getTime()) return false;
-    if (d.grantedTo !== query.agent && d.grantedTo !== "agent:*") return false;
+    if (query.agent !== undefined && d.grantedTo !== query.agent && d.grantedTo !== "agent:*") {
+      return false;
+    }
     if (query.grantedBy !== undefined && d.grantedBy !== query.grantedBy) return false;
     if (d.sites === "workspace") return true;
     return query.site !== undefined && d.sites.includes(query.site);
   });
   if (matches.length === 0) return null;
-  return matches.reduce((a, b) => (a.grantedAt >= b.grantedAt ? a : b));
+  // Most specific grantee first (an explicit agent:<id> beats the wildcard),
+  // then most recently granted.
+  const specificity = (d: DelegationEntry) => (d.grantedTo === "agent:*" ? 0 : 1);
+  return matches.reduce((a, b) =>
+    specificity(a) !== specificity(b)
+      ? specificity(a) > specificity(b)
+        ? a
+        : b
+      : a.grantedAt >= b.grantedAt
+        ? a
+        : b,
+  );
 }
 
 /**
