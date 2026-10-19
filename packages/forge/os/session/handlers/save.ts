@@ -101,6 +101,10 @@ async function extractCommitHashes(content: string, cwd: string): Promise<string
         { cwd, timeout: GIT_VERIFY_TIMEOUT_MS, encoding: "utf8" },
         (err, out) => (err ? rejectPromise(err) : resolvePromise(out)),
       );
+      // The child may exit before draining stdin (e.g. not a git repo —
+      // cat-file fails fast and the pipe closes mid-write → EPIPE). The
+      // execFile callback carries the real outcome; stdin errors are noise.
+      child.stdin?.on("error", () => {});
       child.stdin?.end(candidates.map((c) => `${c}^{commit}`).join("\n") + "\n");
     });
     // One answer line per input, in order: `<sha> commit <size>` when the

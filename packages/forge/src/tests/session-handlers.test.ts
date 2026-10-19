@@ -221,6 +221,25 @@ Commit: ${realSha}`;
     }
   });
 
+  test("drops unverifiable commit hex in a non-git workspace (no repo to verify against)", async () => {
+    const noGitDir = await makeTempDir();
+    try {
+      await mkdir(join(noGitDir, "docs/sessions/.raw"), { recursive: true });
+      const atif = `2026-10-19T10:00:00+02:00
+User: update the approval 82b439b9808e
+Assistant: done
+Commit: a3f2c1d`;
+      await writeFile(join(noGitDir, "docs/sessions/.raw", "nogit.atif"), atif, "utf-8");
+
+      const result = await runSessionSave(makeInput(), makeContext(noGitDir));
+      const data = result.data as SessionSaveResult;
+      expect(data.id).not.toBe("");
+      expect(data.extractedMetadata.commits).toEqual([]);
+    } finally {
+      await rm(noGitDir, { recursive: true, force: true });
+    }
+  });
+
   test("no raw files — exit zero with summary", async () => {
     const emptyDir = await makeTempDir();
     try {

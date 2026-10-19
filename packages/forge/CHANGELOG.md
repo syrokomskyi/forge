@@ -6,11 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
-## [8.0.3] — 2026-10-19
+## [8.0.4] — 2026-10-19
+
+_8.0.3 was never published — its extraction push failed CI on a test-level `EPIPE` regression, fixed here; 8.0.4 is the published release._
 
 ### Fixed
 
 - **`session.save` metadata extraction** (xrepo handoff from personal-agent): a hex token is recorded under `commits:` only when it resolves to a commit object in the workspace repository — candidates are batch-verified via `git cat-file --batch-check <token>^{commit}`, so random hex ids (approval ids, checksums, foreign-repo shas) are no longer claimed as commits. Path tokens captured from enumerated prose no longer keep trailing sentence punctuation (`:`, `,`, `;`, `.`, `)`, `]`, …) — `packages/agent/data/agent.db:` is now stored as `packages/agent/data/agent.db`.
+- **`session.save` on non-git workspaces**: the batch-check stdin writer no longer propagates `EPIPE` when `git cat-file` exits before draining its input — unverifiable candidates are dropped cleanly instead of crashing the save.
 
 ## [8.0.2] — 2026-10-19
 
