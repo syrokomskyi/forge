@@ -208,7 +208,6 @@
     "@types/node": "^26.5.1",
     "@types/picomatch": "^4.0.3",
     "@vitest/coverage-v8": "^5.0.0",
-    "@warpgogol/werkstatt-shared": "workspace:*",
     "eslint": "^10.10.0",
     "fast-check": "^4.10.0",
     "typescript": "~5.9.3",
@@ -355,5 +354,6 @@
         "default": "./dist/os/queue/queue.module.js"
       }
     }
-  }
+  },
+  "packageManager": "pnpm@11.10.0"
 }
