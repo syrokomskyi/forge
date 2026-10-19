@@ -10,6 +10,7 @@ engine/site consumers import from @warpgogol/forge/authority.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1336: initial barrel.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
+  <item>RFC-1336: delegated rfc.decision/version.major/onboarding.decision + docs (RFC-1336 steps 4-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,11 +31,8 @@ export {
   delegationsPath,
   isDelegableScope,
   loadDelegations,
+  normalizeAgentId,
   resolveDelegation,
   serializeDelegations,
 } from "./delegations.ts";
-export type {
-  AuthorityDelegations,
-  DelegationEntry,
-  DelegationQuery,
-} from "./delegations.ts";
+export type { AuthorityDelegations, DelegationEntry, DelegationQuery } from "./delegations.ts";
