@@ -155,6 +155,18 @@
     "./os/queue-module": {
       "types": "./os/queue/queue.module.ts",
       "default": "./os/queue/queue.module.ts"
+    },
+    "./authority": {
+      "types": "./src/authority/index.ts",
+      "default": "./src/authority/index.ts"
+    },
+    "./os/authority": {
+      "types": "./os/authority/index.ts",
+      "default": "./os/authority/index.ts"
+    },
+    "./os/authority-module": {
+      "types": "./os/authority/authority.module.ts",
+      "default": "./os/authority/authority.module.ts"
     }
   },
   "files": [

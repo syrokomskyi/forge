@@ -10,7 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0543: source VERSION from package.json at runtime instead of hardcoded constant.</item>
   <item>Register all 16 forge modules in CLI registry — add adr, plan, audit, mission, spec, program, plugin (previously only 9 of 16 were reachable via `forge <cmd>`).</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -22,7 +21,8 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
-  <history>RFC-0542</history>
+  <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
+  <history>RFC-0542, RFC-0543</history>
 </CHANGE_SUMMARY>
 */
 
@@ -146,6 +146,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     ),
     await import("../os/notes/notes.module.ts").then((m) => m.createForgeNotesModule()),
     await import("../os/queue/queue.module.ts").then((m) => m.createForgeQueueModule()),
+    await import("../os/authority/authority.module.ts").then((m) => m.createForgeAuthorityModule()),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {
