@@ -14,6 +14,7 @@ Unit tests for session handlers covering session.save; session.archive; session.
 
 import { test, expect, describe, beforeAll, afterAll } from "vitest";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { mkdtemp, rm, mkdir, writeFile, readFile, readdir } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import type { ForgeCommandInput, ForgeRuntimeContext, ForgeFlagValue } from "../../src/types.ts";
@@ -173,6 +174,51 @@ Commands: session.save`;
 
     // Raw file must be deleted even on skip — this is the bug fix
     await expect(readFile(rawPath, "utf-8")).rejects.toThrow();
+  });
+
+  test("metadata extraction verifies commit hex against git and strips path punctuation", async () => {
+    const gitDir = await makeTempDir();
+    try {
+      await mkdir(join(gitDir, "docs/sessions/.raw"), { recursive: true });
+      execFileSync("git", ["init", "--initial-branch=main"], { cwd: gitDir, stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "forge@warpgogol.dev"], {
+        cwd: gitDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Forge Test"], { cwd: gitDir, stdio: "pipe" });
+      await writeFile(join(gitDir, "seed.txt"), "seed", "utf-8");
+      execFileSync("git", ["add", "seed.txt"], { cwd: gitDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "seed"], { cwd: gitDir, stdio: "pipe" });
+      const realSha = execFileSync("git", ["rev-parse", "--short", "HEAD"], {
+        cwd: gitDir,
+        encoding: "utf8",
+      }).trim();
+
+      // Defect fixtures from the personal-agent handoff: 82b439b9808e is an
+      // approvals.id (random 12-hex), not a git object; path tokens carry
+      // trailing `:` / `,` from enumerated assistant prose.
+      const atif = `2026-10-19T09:30:00+02:00
+User: approved request 82b439b9808e — update packages/agent/data/agent.db:
+Assistant: Done in ${realSha}. Touched docs/audits/, docs/plans/plan-*.md:, docs/reviews/code/packages-agent/, packages/agent/deploy/personal-agent.service, and packages/agent/data/agent.db.
+Commit: ${realSha}`;
+      await writeFile(join(gitDir, "docs/sessions/.raw", "extract-regression.atif"), atif, "utf-8");
+
+      const result = await runSessionSave(makeInput(), makeContext(gitDir));
+      const data = result.data as SessionSaveResult;
+
+      expect(data.extractedMetadata.commits).toContain(realSha);
+      expect(data.extractedMetadata.commits).not.toContain("82b439b9808e");
+
+      const { files, relatedArtifacts } = data.extractedMetadata;
+      expect(files).toContain("packages/agent/data/agent.db");
+      expect(files).toContain("docs/plans/plan-*.md");
+      expect(files).toContain("packages/agent/deploy/personal-agent.service");
+      for (const token of [...files, ...relatedArtifacts]) {
+        expect(token).not.toMatch(/[.,;:!?()\[\]{}]$/);
+      }
+    } finally {
+      await rm(gitDir, { recursive: true, force: true });
+    }
   });
 
   test("no raw files — exit zero with summary", async () => {

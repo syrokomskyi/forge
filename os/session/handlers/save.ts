@@ -24,6 +24,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 */
 
 import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { execFile } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import YAML from "yaml";
@@ -45,7 +46,9 @@ import {
 
 const RFC_PATTERN = /\bRFC-\d{4}\b/g;
 const FILE_PATH_PATTERN = /\b(?:packages|docs|services|systems|tools|scripts)\/[^\s"'`<>|]+/g;
+const PATH_EDGE_PUNCTUATION = /[.,;:!?()[\]{}]+$/;
 const COMMIT_HASH_PATTERN = /\b[0-9a-f]{7,40}\b/g;
+const GIT_VERIFY_TIMEOUT_MS = 15_000;
 const COMMAND_PATTERN =
   /\b(?:session|rfc|adr|plan|audit|docs|mission|forge|compass|werkstatt|spec|naming|workflow|bordbuch|sternsystem|release)\.\w+/g;
 
@@ -70,19 +73,46 @@ function extractRfcIds(content: string): string[] {
 
 function extractFilePaths(content: string): string[] {
   const matches = content.match(FILE_PATH_PATTERN);
-  return matches ? [...new Set(matches)] : [];
+  if (!matches) return [];
+  // Strip sentence punctuation clinging to path tokens in enumerated prose
+  // ("docs/foo.md:", "docs/foo/,") before accepting the token.
+  const cleaned = matches
+    .map((m) => m.replace(PATH_EDGE_PUNCTUATION, ""))
+    .filter((m) => m.includes("/"));
+  return [...new Set(cleaned)];
 }
 
-function extractCommitHashes(content: string): string[] {
+async function extractCommitHashes(content: string, cwd: string): Promise<string[]> {
   const matches = content.match(COMMIT_HASH_PATTERN);
   if (!matches) return [];
   // Filter to plausible git hashes (7-40 hex chars, but exclude pure version numbers)
-  const filtered = matches.filter((h) => {
-    // Exclude strings that look like version numbers (e.g. 1.0.0)
-    if (/^\d+$/.test(h) && h.length <= 8) return false;
-    return true;
-  });
-  return [...new Set(filtered)];
+  const candidates = [...new Set(matches.filter((h) => !/^\d+$/.test(h) || h.length > 8))];
+  if (candidates.length === 0) return [];
+
+  // A hex token is recorded as a commit only when it resolves to a commit
+  // object in the workspace repository — random hex ids (approval ids,
+  // checksums, foreign-repo shas) are dropped rather than claimed.
+  const verified = new Set<string>();
+  try {
+    const stdout = await new Promise<string>((resolvePromise, rejectPromise) => {
+      const child = execFile(
+        "git",
+        ["cat-file", "--batch-check"],
+        { cwd, timeout: GIT_VERIFY_TIMEOUT_MS, encoding: "utf8" },
+        (err, out) => (err ? rejectPromise(err) : resolvePromise(out)),
+      );
+      child.stdin?.end(candidates.map((c) => `${c}^{commit}`).join("\n") + "\n");
+    });
+    // One answer line per input, in order: `<sha> commit <size>` when the
+    // candidate resolves to a commit, `<input>^{commit} missing` otherwise.
+    const lines = stdout.split("\n");
+    candidates.forEach((candidate, i) => {
+      if (lines[i]?.split(/\s+/)[1] === "commit") verified.add(candidate);
+    });
+  } catch {
+    // Not a git repository or git unavailable — no candidate is verifiable.
+  }
+  return [...verified];
 }
 
 function extractCommands(content: string): string[] {
@@ -272,7 +302,7 @@ export async function runSessionSave(
     const fullContent = rawContent;
     const relatedRfcs = extractRfcIds(fullContent);
     const relatedArtifacts = extractFilePaths(fullContent);
-    const commits = extractCommitHashes(fullContent);
+    const commits = await extractCommitHashes(fullContent, workspaceRoot);
     const files = extractFilePaths(fullContent);
     const commands = extractCommands(fullContent);
     const types = detectSessionTypes(fullContent);
