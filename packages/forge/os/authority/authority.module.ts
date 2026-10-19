@@ -13,6 +13,7 @@ audit events.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1336: initial module — four authority.* commands.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
+  <item>RFC-1336: step 5: coverage "operator" declarations — the commands are CLI-invoked by the operator (or read-only by agents), not pipeline-wired; satisfies the reachable acceptance probe.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +40,9 @@ export async function createForgeAuthorityModule(): Promise<ForgeModule> {
           "(reviewer: agent:<id>, delegatedBy, delegationId). " +
           "Required flags: --scope, --to, --by. Mutates the registry.",
         scope: "workspace",
+        coverage: "operator" as const,
+        coverageNote:
+          "operator-invoked via forge/werkstatt CLI; agents MUST NOT run it (RFC-1336 grants are operator-authored)",
         mutatesState: true,
         mutatingFlags: ["scope", "to", "by"],
         reads: ["authority.delegations.yaml"],
@@ -92,6 +96,9 @@ export async function createForgeAuthorityModule(): Promise<ForgeModule> {
           "authority-delegation-revoked Bordbuch event per covered site. Idempotent. " +
           "OPERATOR-ONLY — agents MUST NOT run this command. Required flags: --id.",
         scope: "workspace",
+        coverage: "operator" as const,
+        coverageNote:
+          "operator-invoked via forge/werkstatt CLI; agents MUST NOT run it (RFC-1336 revocations are operator-authored)",
         mutatesState: true,
         mutatingFlags: ["id"],
         reads: ["authority.delegations.yaml"],
@@ -118,6 +125,9 @@ export async function createForgeAuthorityModule(): Promise<ForgeModule> {
           "RFC-1336: list delegations — active grants by default; --history includes " +
           "revoked/expired history, --site filters to grants covering one site. Read-only.",
         scope: "workspace",
+        coverage: "operator" as const,
+        coverageNote:
+          "operator/agent CLI read — not wired into a pipeline; agents may inspect grants",
         mutatesState: false,
         reads: ["authority.delegations.yaml"],
         cacheable: false,
@@ -141,6 +151,9 @@ export async function createForgeAuthorityModule(): Promise<ForgeModule> {
           "duplicate ids, non-delegable scopes, agent:* wildcards, site references, " +
           "signature integrity (DELEG-01..08). Read-only.",
         scope: "workspace",
+        coverage: "operator" as const,
+        coverageNote:
+          "operator/agent CLI read — not wired into a pipeline; agents may audit the registry",
         mutatesState: false,
         contract: "authority",
         rules: [
