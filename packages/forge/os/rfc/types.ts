@@ -17,6 +17,7 @@
   <item>RFC-1330: origin contracts, RFC_ORIGIN_CUTOFF, RFC-IMP-10/11 rule ids, stamp warnings.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <item>RFC-1336: RfcFrontmatter.decidedBy — the granting human when an agent:&lt;id&gt; reviewer decided under an rfc.decision delegation; added to RFC_KNOWN_KEYS.</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -157,6 +158,14 @@ export interface RfcFrontmatter {
 
   /** Optional additional reviewers. */
   reviewers?: string[];
+
+  /**
+   * RFC-1336: the granting human when a reviewer is `agent:<id>` —
+   * V-25 admits an agent reviewer only when decidedBy names the operator
+   * AND an active `rfc.decision` delegation covers the agent under that
+   * grantor. Absent on human-decided RFCs.
+   */
+  decidedBy?: string;
 
   /** ISO 8601 date of creation. */
   createdAt: string;
@@ -736,6 +745,7 @@ export const RFC_KNOWN_KEYS: readonly string[] = [
   "scope",
   "owners",
   "reviewers",
+  "decidedBy",
   "createdAt",
   "updatedAt",
   "enhancedAt",

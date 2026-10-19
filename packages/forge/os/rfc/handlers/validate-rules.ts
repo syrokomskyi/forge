@@ -12,6 +12,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
   <item>RFC-1271: V-43 verificationTier enum check; V-23 archive exemption (isArchived paths skip evidence-presence — archive-freeze precedent).</item>
   <item>RFC-1322: fo-review fix pass — V-37 annotation extraction takes the LAST (evidence: ...) occurrence, matching the stamp resolver (prose mentions no longer shadow the real annotation).</item>
   <item>RFC-1330: V-44 presence-only behavioral criteria; shared listBehavioralCriteria.</item>
+  <item>RFC-1336: V-25 admits agent:&lt;id&gt; reviewers iff frontmatter decidedBy names a human:&lt;handle&gt; AND an active rfc.decision delegation covers the agent under that grantor (authority.delegations.yaml).</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097</history>
 </CHANGE_SUMMARY>
@@ -19,6 +20,11 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 
 import path from "node:path";
 import { ambientIo } from "../../../src/utils/io.ts";
+import {
+  HUMAN_ID_PATTERN,
+  loadDelegations,
+  resolveDelegation,
+} from "../../../src/authority/delegations.ts";
 
 import { execFile } from "../../../src/utils/sync-fs.ts";
 
@@ -1250,12 +1256,42 @@ export async function validateSingleRfc(
           `reviewer "${entry}" does not match the identity format ^(human|agent):[a-z0-9][a-z0-9-]*$ (RFC-0335).`,
         );
       } else if (entry.startsWith("agent:")) {
-        addViolation(
-          rfcId,
-          relFile,
-          "V-25",
-          `agent reviewer identities are reserved until an RFC grants AI reviewer authority over RFC governance (see RFC-0279 for the pattern) (RFC-0335).`,
-        );
+        // RFC-1336: an agent reviewer is admitted iff the frontmatter records
+        // the granting human (decidedBy: human:<handle>) AND an active
+        // rfc.decision delegation covers this agent under that grantor —
+        // provenance is honest in both directions: the ledger shows who
+        // decided, the registry proves they authorized the delegate.
+        const decidedBy = typeof fm["decidedBy"] === "string" ? fm["decidedBy"] : "";
+        if (!HUMAN_ID_PATTERN.test(decidedBy)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-25",
+            `agent reviewer "${entry}" requires decidedBy: human:<handle> naming the granting operator (RFC-1336) — an unsigned agent attestation is not a decision.`,
+          );
+        } else {
+          let delegated = false;
+          try {
+            const registry = await loadDelegations(workspaceRoot, io);
+            delegated =
+              resolveDelegation(registry, {
+                scope: "rfc.decision",
+                agent: entry,
+                grantedBy: decidedBy,
+              }) !== null;
+          } catch {
+            // Registry unreadable/corrupt — fail closed: the violation stands.
+            delegated = false;
+          }
+          if (!delegated) {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-25",
+              `agent reviewer "${entry}" has no active rfc.decision delegation granted by ${decidedBy} (RFC-1336) — grant one via authority.delegate, or record a human reviewer instead.`,
+            );
+          }
+        }
       }
     }
   }

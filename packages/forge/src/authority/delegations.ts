@@ -30,6 +30,7 @@ certify-main that prepares the packet (if absent) and signs as the
 delegate — a journaled no-op with no delegation, so the operator path is
 unchanged. certify/promote precondition remediation now names an active
 delegation when one covers the site.</item>
+  <item>RFC-1336: delegated rfc.decision/version.major/onboarding.decision + docs (RFC-1336 steps 4-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -251,4 +252,16 @@ export function delegationActor(grant: DelegationEntry, sessionAgentId?: string)
   if (grant.grantedTo !== "agent:*") return grant.grantedTo;
   if (sessionAgentId && AGENT_ID_PATTERN.test(sessionAgentId)) return sessionAgentId;
   return null;
+}
+
+/**
+ * Normalize a session-declared agent id — callers read WERKSTATT_AGENT_ID,
+ * which accepts both "devin" and "agent:devin". Anything else is not a
+ * usable actor id and returns undefined (callers fail closed).
+ */
+export function normalizeAgentId(raw: string | undefined): string | undefined {
+  const trimmed = raw?.trim();
+  if (!trimmed) return undefined;
+  const id = trimmed.startsWith("agent:") ? trimmed : `agent:${trimmed}`;
+  return AGENT_ID_PATTERN.test(id) ? id : undefined;
 }
