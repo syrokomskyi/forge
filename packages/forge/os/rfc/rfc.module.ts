@@ -253,7 +253,9 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "session/queue documents, and its evidence envelope are stripped; VERIFY-BUNDLE.md carries " +
           "only the RFC's Context/Problem/Decision/Design/Acceptance criteria. Writes nothing in the repository.",
         scope: "workspace",
-        mutatesState: false,
+        // Exports via `git archive | tar -x` subprocesses + temp-dir writes —
+        // read-only toward the repository but not side-effect-free.
+        mutatesState: true,
         contract: "rfc",
         rules: [],
         coverage: "operator",
