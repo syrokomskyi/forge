@@ -9,6 +9,7 @@
   <item>RFC-1334: tests for AC-1..AC-5.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1351: step 1 — doc-mention edge tests (AC-4): AGENTS.md mention, frozen-tree exclusion, forge verb, CI workflow</item>
+  <item>RFC-1351: review F-1/F-2 — doc-scan fs.glob parity + surfaced scan failure + guarded-initializer note</item>
 </CHANGE_SUMMARY>
 */
 
@@ -188,5 +189,36 @@ describe("reachable probe (RFC-1334)", () => {
     expect((await probeReachableCommand({ workspaceRoot: root, command: "ci.gate" })).ok).toBe(
       true,
     );
+  });
+
+  it("counts a run mention in an untracked doc file (fs.glob parity, review F-1)", async () => {
+    await repo({
+      "docs/command-manifest.generated.yaml":
+        "commands:\n  - name: lonely.run\n    reachableVia: []\n",
+    });
+    // Written after `git add -A` — untracked on disk, still a live doc mention.
+    await fs.writeFile(
+      path.join(root, "AGENTS.md"),
+      "# Guide\n\nRun: `werkstatt run lonely.run` before shipping.\n",
+    );
+    expect((await probeReachableCommand({ workspaceRoot: root, command: "lonely.run" })).ok).toBe(
+      true,
+    );
+  });
+
+  it("surfaces a doc-mention scan failure instead of a bare no-edge detail", async () => {
+    const notGit = await fs.mkdtemp(path.join(os.tmpdir(), "reachable-nogit-"));
+    try {
+      await fs.mkdir(path.join(notGit, "docs"), { recursive: true });
+      await fs.writeFile(
+        path.join(notGit, "docs/command-manifest.generated.yaml"),
+        "commands:\n  - name: lonely.run\n    reachableVia: []\n",
+      );
+      const r = await probeReachableCommand({ workspaceRoot: notGit, command: "lonely.run" });
+      expect(r.ok).toBe(false);
+      expect(r.detail).toContain("doc-mention scan failed");
+    } finally {
+      await fs.rm(notGit, { recursive: true, force: true });
+    }
   });
 });
