@@ -9,6 +9,7 @@ Unit tests for queue validate covering loadQueueManifest — validation rules (R
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the queue suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
 </CHANGE_SUMMARY>
 */
 
@@ -16,6 +17,7 @@ import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { execFileSync } from "node:child_process";
 
 import type { ForgeRuntimeContext } from "../../src/types.ts";
 import { runQueueValidate } from "./handlers/queue-validate.ts";
@@ -431,6 +433,92 @@ describe("runQueueValidate — decision ledger (RFC-1250)", () => {
 
     expect(result?.data?.status).toBe("fail");
     expect(result?.data?.errors.some((e) => e.ruleId === "QUEUE-01")).toBe(true);
+  });
+});
+
+describe("runQueueValidate — QUEUE-09 declared-scope hygiene (RFC-1350)", () => {
+  function git(args: string[]): void {
+    execFileSync("git", ["-C", tmpDir, ...args], {
+      stdio: "ignore",
+      timeout: 10000,
+    });
+  }
+
+  function gitInit(): void {
+    git(["init", "-q"]);
+    git(["config", "user.email", "test@test.com"]);
+    git(["config", "user.name", "Test"]);
+  }
+
+  function gitCommitAll(message: string): void {
+    git(["add", "-A"]);
+    execFileSync("git", ["-C", tmpDir, "commit", "-q", "-m", message], {
+      stdio: "ignore",
+      timeout: 10000,
+    });
+  }
+
+  test("absent packagesImpacted → QUEUE-09 warning, not blocking", async () => {
+    await writeRfc("RFC-1600", "status: accepted\n");
+    const file = await writeManifest(
+      "block-scope",
+      "id: block-scope\ncreatedAt: 2026-10-20\nitems:\n  - id: RFC-1600\n",
+    );
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    const w = result?.data?.warnings.find((w) => w.ruleId === "QUEUE-09");
+    expect(w?.message).toContain("packagesImpacted");
+  });
+
+  test("declared packagesImpacted with touched root → no QUEUE-09", async () => {
+    gitInit();
+    await writeRfc("RFC-1601", "status: draft\n");
+    const file = await writeManifest(
+      "block-touched",
+      "id: block-touched\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1601\n",
+    );
+    gitCommitAll("add manifest");
+    await fs.mkdir(path.join(tmpDir, "packages/forge"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "packages/forge/touched.ts"), "export {}\n");
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.errors).toEqual([]);
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
+  });
+
+  test("declared but untouched package root → QUEUE-09 names it", async () => {
+    gitInit();
+    await writeRfc("RFC-1602", "status: draft\n");
+    const file = await writeManifest(
+      "block-untouched",
+      "id: block-untouched\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\n  - packages/ghost\nitems:\n  - id: RFC-1602\n",
+    );
+    gitCommitAll("add manifest");
+    await fs.mkdir(path.join(tmpDir, "packages/forge"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "packages/forge/touched.ts"), "export {}\n");
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    const w = result?.data?.warnings.find((w) => w.ruleId === "QUEUE-09");
+    expect(w?.message).toContain("packages/ghost");
+    expect(w?.message).not.toContain("packages/forge");
+  });
+
+  test("declared packagesImpacted without a git repo → no QUEUE-09 (degraded)", async () => {
+    await writeRfc("RFC-1603", "status: draft\n");
+    const file = await writeManifest(
+      "block-nogit",
+      "id: block-nogit\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1603\n",
+    );
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
   });
 });
 

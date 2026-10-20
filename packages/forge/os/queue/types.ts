@@ -7,7 +7,6 @@ block consumed by queue.validate and the pipeline orchestrator's queue mode.</pu
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: decision-ledger schemas — DecisionLedger, DecisionEntry, DecisionStatus, policies.</item>
   <item>RFC-1140: initial QueueManifest schema and queue.validate result types.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -25,6 +24,7 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: decision stage enum gains audit — audit-phase questions had no valid stage</item>
+  <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
   <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 */
@@ -65,20 +65,40 @@ export const decisionPolicySchema = z.object({
   appliesTo: z.union([z.literal("*"), z.array(z.string())]),
 });
 
+export const baselineFailureSchema = z.object({
+  kind: z.enum(["validator", "suite", "command"]),
+  name: z.string().min(1),
+  detail: z.string().optional(),
+});
+
 export const decisionLedgerSchema = z.object({
   id: z.string().min(1),
   queue: z.string().min(1),
   createdAt: z.string().min(1),
+  // RFC-1350: run-level pre-flight capture — the pre-existing red set recorded
+  // before Phase 1 so mid-batch failures attribute as new vs baseline. The
+  // per-entry schema cannot express a run-level fact, so it rides top-level.
+  baseline: z
+    .object({
+      capturedAt: z.string().min(1),
+      failures: z.array(baselineFailureSchema).default([]),
+    })
+    .optional(),
   policies: z.array(decisionPolicySchema).default([]),
   items: z.array(decisionEntrySchema).default([]),
 });
 
+export type BaselineFailure = z.infer<typeof baselineFailureSchema>;
 export type DecisionEntry = z.infer<typeof decisionEntrySchema>;
 export type DecisionLedger = z.infer<typeof decisionLedgerSchema>;
 
 export const queueManifestSchema = z.object({
   id: z.string().min(1),
   createdAt: z.string().min(1),
+  // RFC-1350: declared batch scope — the union of item packagesImpacted,
+  // synthesized at manifest materialization. QUEUE-09 warns when absent or
+  // when entries show no touched files since the introduction commit.
+  packagesImpacted: z.array(z.string()).optional(),
   items: z
     .array(
       z.object({
