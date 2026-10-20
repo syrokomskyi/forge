@@ -6,14 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
 Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
-  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242</history>
+  <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
+  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248</history>
 </CHANGE_SUMMARY>
 */
 
@@ -69,6 +69,8 @@ export const forgeCompassModule: ForgeModule = {
     {
       name: "compass.inventory",
       mutatesState: true,
+      writes: ["docs/compass-inventory.xml"],
+      generates: [],
       description: "Generate the repository-wide Compass source inventory XML report.",
       scope: "workspace",
       acceptsAllFlag: true,

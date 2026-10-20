@@ -7,14 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: register rfc.evidence.sync (coverage operator, mutatesState, EVIDENCE-SYNC-01/02 rules, generates:[] — artifacts stay owned by delegated steps); rfc.implement.stamp gains --sync.</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1351: step 2 — KERNEL-FLAG fixes, lint green
 
 asset.extract/asset.slot.fulfill resolve dry-run via context.dryRun fallback (KERNEL-FLAG-10); canonical.html-parity/canonical.url/semantic.coverage declare mode for resolveDeploymentMode (KERNEL-FLAG-07); rfc.verify.workspace, site.domain.adopt, test.repro.verify name required flags in descriptions (KERNEL-FLAG-06). kernel.flags.lint: 0 errors.</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249</history>
+  <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271</history>
 </CHANGE_SUMMARY>
 */
 
@@ -228,7 +228,8 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.acceptance.run",
-        mutatesState: true,
+        mutatesState: false,
+        execOnReadOnly: true,
         description:
           "RFC-0268: execute the acceptance: probes declared in an RFC's frontmatter and report " +
           "pass/fail per probe (RFC-ACC-01 failed probe, RFC-ACC-02 accepted/implemented RFC with " +
@@ -257,8 +258,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "Required flags: `--id`, `--candidate`.",
         scope: "workspace",
         // Exports via `git archive | tar -x` subprocesses + temp-dir writes —
-        // read-only toward the repository but not side-effect-free.
-        mutatesState: true,
+        // read-only toward the repository; execOnReadOnly keeps the subprocess
+        // surface declared without claiming repository writes.
+        mutatesState: false,
+        execOnReadOnly: true,
         contract: "rfc",
         rules: [],
         coverage: "operator",
