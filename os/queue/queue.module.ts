@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
-
-Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
   <item>RFC-1140: queue.validate missing contract/rules metadata (DNA-91)
 
 fo-review REVIEW-CODE-2026-09-23-01 finding: declare contract queue and emitted ruleIds QUEUE-01..06 so validator.inventory.generate does not fail closed. Manifest regenerated.</item>
@@ -26,6 +23,7 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
+  <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
   <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
@@ -48,8 +46,9 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
           "next actionable item. QUEUE-07 blocks implementable items carrying " +
           "un-parked open decisions (RFC-1250); QUEUE-08 warns on ledger " +
           "hygiene issues (missing answers, foreign doc ids); QUEUE-09 warns " +
-          "when the manifest's packagesImpacted is absent or names roots with " +
-          "no touched files since the introduction commit (RFC-1350). " +
+          "when the manifest's packagesImpacted is absent, names a non-root " +
+          "entry, or names roots with no touched files since the introduction " +
+          "commit while other roots are touched (RFC-1350). " +
           "Read-only — " +
           "the pipeline orchestrator runs this before a queued batch and the " +
           "decision window consumes its diagnostics (RFC-1140). " +

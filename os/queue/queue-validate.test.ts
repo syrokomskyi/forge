@@ -10,6 +10,7 @@ Unit tests for queue validate covering loadQueueManifest — validation rules (R
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the queue suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
+  <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
 </CHANGE_SUMMARY>
 */
 
@@ -514,6 +515,111 @@ describe("runQueueValidate — QUEUE-09 declared-scope hygiene (RFC-1350)", () =
       "block-nogit",
       "id: block-nogit\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1603\n",
     );
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
+  });
+
+  test("uncommitted manifest + nothing touched → no per-entry QUEUE-09", async () => {
+    gitInit();
+    await writeRfc("RFC-1604", "status: draft\n");
+    // Manifest written but never committed — no introduction commit exists, so
+    // no drift can be attributed; flagging honest declarations is noise.
+    const file = await writeManifest(
+      "block-uncommitted",
+      "id: block-uncommitted\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1604\n",
+    );
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
+  });
+
+  test("fresh committed manifest, nothing touched since → no per-entry QUEUE-09", async () => {
+    gitInit();
+    await writeRfc("RFC-1605", "status: draft\n");
+    const file = await writeManifest(
+      "block-fresh",
+      "id: block-fresh\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1605\n",
+    );
+    gitCommitAll("add manifest");
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
+  });
+
+  test("non-package-root packagesImpacted entry → QUEUE-09 'not a package root'", async () => {
+    gitInit();
+    await writeRfc("RFC-1606", "status: draft\n");
+    const file = await writeManifest(
+      "block-malformed",
+      "id: block-malformed\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\n  - docs/rfcs\nitems:\n  - id: RFC-1606\n",
+    );
+    gitCommitAll("add manifest");
+    await fs.mkdir(path.join(tmpDir, "packages/forge"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "packages/forge/touched.ts"), "export {}\n");
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    const w = result?.data?.warnings.find((w) => w.ruleId === "QUEUE-09");
+    expect(w?.message).toContain("docs/rfcs");
+    expect(w?.message).toContain("not package roots");
+  });
+
+  test("quoted porcelain path (non-ASCII) still resolves its package root", async () => {
+    gitInit();
+    await writeRfc("RFC-1607", "status: draft\n");
+    const file = await writeManifest(
+      "block-quoted",
+      "id: block-quoted\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1607\n",
+    );
+    gitCommitAll("add manifest");
+    await fs.mkdir(path.join(tmpDir, "packages/forge"), { recursive: true });
+    // core.quotePath quotes non-ASCII paths in porcelain output — the package
+    // root must still match.
+    await fs.writeFile(path.join(tmpDir, "packages/forge/fö.ts"), "export {}\n");
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
+  });
+
+  test("rename source counts as touched — package renamed out is not stale", async () => {
+    gitInit();
+    await writeRfc("RFC-1608", "status: draft\n");
+    const file = await writeManifest(
+      "block-renamed",
+      "id: block-renamed\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1608\n",
+    );
+    await fs.mkdir(path.join(tmpDir, "packages/forge"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "packages/forge/old.ts"), "export {}\n");
+    gitCommitAll("add manifest + forge file");
+    await fs.mkdir(path.join(tmpDir, "packages/renamed"), { recursive: true });
+    git(["mv", "packages/forge/old.ts", "packages/renamed/new.ts"]);
+
+    const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
+
+    expect(result?.data?.status).toBe("pass");
+    expect(result?.data?.warnings.some((w) => w.ruleId === "QUEUE-09")).toBe(false);
+  });
+
+  test("work committed alongside the manifest counts as touched", async () => {
+    gitInit();
+    await writeRfc("RFC-1609", "status: draft\n");
+    const file = await writeManifest(
+      "block-intro-commit",
+      "id: block-intro-commit\ncreatedAt: 2026-10-20\npackagesImpacted:\n  - packages/forge\nitems:\n  - id: RFC-1609\n",
+    );
+    await fs.mkdir(path.join(tmpDir, "packages/forge"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "packages/forge/with-manifest.ts"), "export {}\n");
+    gitCommitAll("add manifest + forge work");
 
     const result = await runQueueValidate({ argv: [], flags: { file } }, testContext());
 
