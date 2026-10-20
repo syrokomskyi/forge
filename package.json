@@ -44,6 +44,10 @@
       "types": "./src/config/forge-config.ts",
       "default": "./src/config/forge-config.ts"
     },
+    "./reachability": {
+      "types": "./src/reachability/command-mentions.ts",
+      "default": "./src/reachability/command-mentions.ts"
+    },
     "./os/core": {
       "types": "./os/core/core.module.ts",
       "default": "./os/core/core.module.ts"
@@ -241,6 +245,10 @@
       "./config": {
         "types": "./dist/src/config/forge-config.d.ts",
         "default": "./dist/src/config/forge-config.js"
+      },
+      "./reachability": {
+        "types": "./dist/src/reachability/command-mentions.d.ts",
+        "default": "./dist/src/reachability/command-mentions.js"
       },
       "./os/core": {
         "types": "./dist/os/core/core.module.d.ts",

@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1334: tests for AC-1..AC-5.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <item>RFC-1351: step 1 — doc-mention edge tests (AC-4): AGENTS.md mention, frozen-tree exclusion, forge verb, CI workflow</item>
 </CHANGE_SUMMARY>
 */
 
@@ -140,6 +141,51 @@ describe("reachable probe (RFC-1334)", () => {
       false,
     );
     expect((await probeReachableCommand({ workspaceRoot: root, command: "wired.run" })).ok).toBe(
+      true,
+    );
+  });
+
+  it("passes a command probe whose only edge is a doc run mention (RFC-1351 AC-4)", async () => {
+    await repo({
+      "docs/command-manifest.generated.yaml":
+        "commands:\n  - name: lonely.run\n    reachableVia: []\n",
+      "AGENTS.md": "# Guide\n\nRun: `werkstatt run lonely.run --json` before shipping.\n",
+    });
+    const res = await probeReachableCommand({ workspaceRoot: root, command: "lonely.run" });
+    expect(res.ok, "AGENTS.md mention must count as a doc edge").toBe(true);
+    expect(res.detail).toContain("doc:AGENTS.md");
+  });
+
+  it("ignores run mentions under frozen trees", async () => {
+    await repo({
+      "docs/command-manifest.generated.yaml":
+        "commands:\n  - name: lonely.run\n    reachableVia: []\n",
+      "docs/rfcs/rfc-9999-x.md": "Mentioned: `werkstatt run lonely.run` — historical.\n",
+    });
+    expect(
+      (await probeReachableCommand({ workspaceRoot: root, command: "lonely.run" })).ok,
+      "a mention inside docs/rfcs/ must not count as an invocation",
+    ).toBe(false);
+  });
+
+  it("counts a bare forge <verb> mention as a forge.<verb> edge", async () => {
+    await repo({
+      "docs/command-manifest.generated.yaml":
+        "commands:\n  - name: forge.check\n    reachableVia: []\n",
+      "package.json": '{ "scripts": { "ci": "forge check --all" } }\n',
+    });
+    expect((await probeReachableCommand({ workspaceRoot: root, command: "forge.check" })).ok).toBe(
+      true,
+    );
+  });
+
+  it("counts a run mention inside a CI workflow", async () => {
+    await repo({
+      "docs/command-manifest.generated.yaml":
+        "commands:\n  - name: ci.gate\n    reachableVia: []\n",
+      ".github/workflows/ci.yml": "steps:\n  - run: pnpm exec werkstatt run ci.gate\n",
+    });
+    expect((await probeReachableCommand({ workspaceRoot: root, command: "ci.gate" })).ok).toBe(
       true,
     );
   });
