@@ -6,12 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1235: docs.archive post-loop records merge outcomes by exit code — exit-nonzero merges (incl. RFC-1230 fail-fast with populated data) land in failed[] with the merge summary as error, thrown errors record via liveMergeFailureEntry, and the spec.live.merge result block emits whenever anything was attempted; top-level result gains liveSpecFailures.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1254: forge.package.health lint-surface probe (PKG-HEALTH-06) + --compass-docs generates marked conditional for OWN-DUP-01 parity</item>
   <item>RFC-1255: forge.doctor next-steps are severity-aware — warn-only runs emit an optional "review the warnings" step instead of a required "fix the violations" one.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231</history>
+  <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
+
+Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235</history>
 </CHANGE_SUMMARY>
 */
 
@@ -310,7 +312,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       },
       {
         name: "forge.agents.generate",
-        coverage: "operator" as const,
         mutatesState: true,
         description:
           "Regenerate AGENTS.md deterministically from forge.yaml and the skill registry.",
