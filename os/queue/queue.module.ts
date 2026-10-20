@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: queue.validate missing contract/rules metadata (DNA-91)
-
-fo-review REVIEW-CODE-2026-09-23-01 finding: declare contract queue and emitted ruleIds QUEUE-01..06 so validator.inventory.generate does not fail closed. Manifest regenerated.</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
 REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
@@ -24,6 +21,7 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
   <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
+  <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
@@ -67,6 +65,7 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
           "QUEUE-09",
         ],
         mutatesState: false,
+        execOnReadOnly: true,
         reads: [
           "docs/queues/*.yaml",
           "docs/rfcs/**/*.md",

@@ -6,14 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1254: forge.package.health lint-surface probe (PKG-HEALTH-06) + --compass-docs generates marked conditional for OWN-DUP-01 parity</item>
   <item>RFC-1255: forge.doctor next-steps are severity-aware — warn-only runs emit an optional "review the warnings" step instead of a required "fix the violations" one.</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
 Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235</history>
+  <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248</history>
 </CHANGE_SUMMARY>
 */
 
@@ -259,6 +259,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         name: "forge.port.scaffold",
         coverage: "operator" as const,
         mutatesState: true,
+        writes: ["packages/forge/skills/**", "packages/forge/os/**"],
+    generates: [],
         description: "Generate a skeleton for a new forge skill or command.",
         scope: "workspace",
         acceptsAllFlag: false,
@@ -328,6 +330,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         coverage: "operator" as const,
         coverageNote: "agent memory compaction",
         mutatesState: true,
+        writes: [".agents/memory/MEMORY.md"],
+    generates: [],
         description:
           "Enforce the MEMORY.md character budget by removing oldest Environment notes bullets (RFC-1151).",
         scope: "workspace",
@@ -370,6 +374,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         name: "forge.scaffold",
         coverage: "operator" as const,
         mutatesState: true,
+        writes: ["**"],
+    generates: [],
+        execOnReadOnly: true,
         description:
           "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory. Required flags: `--profile`, `--name`.",
         scope: "workspace",
@@ -393,6 +400,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       {
         name: "forge.create",
         mutatesState: true,
+        writes: ["**"],
+    generates: [],
+        execOnReadOnly: true,
         description:
           "Create a forge project in-place: scaffold + init + binding defaults. The target directory must be empty (only .git/ tolerated). Usage: forge create --in-place --profile <profile-id> [--name <name>] [--package-manager pnpm]",
         scope: "workspace",
@@ -435,6 +445,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       {
         name: "forge.init",
         mutatesState: true,
+        writes: ["forge.yaml", "PREFERENCES.md", ".agents/skills/**"],
+    generates: [],
         description:
           "Deploy forge into a project: create forge.yaml, PREFERENCES.md, copy skills, create docs dirs. Hidden recovery command — normally called by forge.create.",
         scope: "workspace",
@@ -482,7 +494,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       {
         name: "forge.dev",
         coverage: "operator" as const,
-        mutatesState: true,
+        mutatesState: false,
+        execOnReadOnly: true,
         description:
           "Start the dev/preview server declared in the active stack profile. Use --dry-run to print the resolved command without executing.",
         scope: "workspace",
@@ -505,7 +518,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       {
         name: "forge.build",
         coverage: "operator" as const,
-        mutatesState: true,
+        mutatesState: false,
+        execOnReadOnly: true,
         description:
           "Execute produce commands for all artifacts declared in the active stack profile. Use --dry-run to print resolved commands.",
         scope: "workspace",

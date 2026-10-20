@@ -9,6 +9,7 @@
   <item>RFC-0537: initial forgeSessionModule registering session.save, session.archive, session.validate, session.list commands.</item>
   <item>RFC-1053: register metrics.aggregate command for skill effectiveness metrics aggregation.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
+  <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -137,7 +138,7 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       {
         name: "metrics.aggregate",
         coverage: "operator" as const,
-        mutatesState: true,
+        mutatesState: false,
         description:
           "Query and aggregate skill effectiveness metrics from docs/metrics/ files. " +
           "Returns per-skill statistics (invocations, avgFindings, avgFixIterations, avgDurationMs). " +
