@@ -7,12 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1306: register rfc.evidence.sync (coverage operator, mutatesState, EVIDENCE-SYNC-01/02 rules, generates:[] — artifacts stay owned by delegated steps); rfc.implement.stamp gains --sync.</item>
   <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237</history>
+  <item>RFC-1351: step 2 — KERNEL-FLAG fixes, lint green
+
+asset.extract/asset.slot.fulfill resolve dry-run via context.dryRun fallback (KERNEL-FLAG-10); canonical.html-parity/canonical.url/semantic.coverage declare mode for resolveDeploymentMode (KERNEL-FLAG-07); rfc.verify.workspace, site.domain.adopt, test.repro.verify name required flags in descriptions (KERNEL-FLAG-06). kernel.flags.lint: 0 errors.</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249</history>
 </CHANGE_SUMMARY>
 */
 
@@ -251,7 +253,8 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "RFC-1333: export a committed candidate as a git-free tree under the OS temp dir for a " +
           "clean-context acceptance verifier — implementer in-range tests, the RFC's plan/review/" +
           "session/queue documents, and its evidence envelope are stripped; VERIFY-BUNDLE.md carries " +
-          "only the RFC's Context/Problem/Decision/Design/Acceptance criteria. Writes nothing in the repository.",
+          "only the RFC's Context/Problem/Decision/Design/Acceptance criteria. Writes nothing in the repository. " +
+          "Required flags: `--id`, `--candidate`.",
         scope: "workspace",
         // Exports via `git archive | tar -x` subprocesses + temp-dir writes —
         // read-only toward the repository but not side-effect-free.
