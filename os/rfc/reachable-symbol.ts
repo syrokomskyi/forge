@@ -24,6 +24,7 @@ manifest's `reachableVia` edges and unions them with live doc-mention edges
   <item>RFC-1334: initial implementation.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1351: step 1 — command mode unions reachableVia with live doc-mention edges via @warpgogol/forge/reachability (Q-1/A; manifest stays structural-only)</item>
+  <item>RFC-1351: review F-1/F-2 — doc-scan fs.glob parity + surfaced scan failure + guarded-initializer note</item>
 </CHANGE_SUMMARY>
 */
 
@@ -74,6 +75,28 @@ function gitLsFiles(workspaceRoot: string): Promise<string[]> {
       ["ls-files", "-z"],
       { cwd: workspaceRoot, maxBuffer: 256 * 1024 * 1024, env: gitEnvForCwd() },
       (err, stdout) => done(err ? [] : String(stdout).split("\0").filter(Boolean)),
+    );
+  });
+}
+
+/** Doc-mention candidates: tracked + untracked-non-ignored, for fs.glob parity
+ * with the coverage validator's enumeration (RFC-1351 review F-1). Unlike
+ * gitLsFiles (symbol mode, tracked-only by contract), a failure is surfaced
+ * so the caller cannot silently lose every doc edge. */
+function gitDocMentionCandidates(
+  workspaceRoot: string,
+): Promise<{ files: string[]; error?: string }> {
+  return new Promise((done) => {
+    execFile(
+      "git",
+      ["ls-files", "-z", "--cached", "--others", "--exclude-standard"],
+      { cwd: workspaceRoot, maxBuffer: 256 * 1024 * 1024, env: gitEnvForCwd() },
+      (err, stdout) =>
+        done(
+          err
+            ? { files: [], error: err.message }
+            : { files: String(stdout).split("\0").filter(Boolean) },
+        ),
     );
   });
 }
@@ -437,10 +460,12 @@ export async function probeReachableCommand(opts: {
     )
     .map((e) => `${e.kind}:${e.ref}`);
   // RFC-1351 (Q-1/A): doc mentions are reachability edges too — the probe scans
-  // live docs over the same surface command.coverage.validate applies, and the
-  // union keeps the committed manifest structural-only.
+  // live docs over the same surface command.coverage.validate applies (tracked +
+  // untracked-non-ignored, for fs.glob parity), and the union keeps the
+  // committed manifest structural-only.
   const only = new Set([opts.command]);
-  for (const rel of await gitLsFiles(opts.workspaceRoot)) {
+  const mentionScan = await gitDocMentionCandidates(opts.workspaceRoot);
+  for (const rel of mentionScan.files) {
     if (!isMentionCandidate(rel)) continue;
     let text: string;
     try {
@@ -451,6 +476,11 @@ export async function probeReachableCommand(opts: {
     if (docMentionsInText(text, only).size > 0) edges.push(`doc:${rel}`);
   }
   if (edges.length === 0)
-    return { ok: false, detail: "no pipeline, invoker, coverage, or doc-mention edge" };
+    return {
+      ok: false,
+      detail: mentionScan.error
+        ? `no pipeline, invoker, or coverage edge; doc-mention scan failed: ${mentionScan.error}`
+        : "no pipeline, invoker, coverage, or doc-mention edge",
+    };
   return { ok: true, detail: edges.slice(0, 3).join(", ") };
 }

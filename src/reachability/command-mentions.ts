@@ -8,13 +8,14 @@
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>Frozen and point-in-time trees (archive/, historical/, sessions/, metrics/, reviews/, RFC/ADR/plan bodies, …) record the past or propose the future — a mention there does not invoke a command today (RFC-1242 live/frozen boundary).</item>
-  <item>isMentionCandidate enumerates via picomatch over a caller-supplied file list; the coverage validator enumerates via context.io.glob over the same pattern constants — equivalent sets, different enumeration mechanics.</item>
+  <item>isMentionCandidate enumerates via picomatch over a caller-supplied file list; the coverage validator enumerates via context.io.glob over the same pattern constants — the vocabulary (files, globs, exclusions, regexes) is identical, the enumerated sets are not: the acceptance probe lists tracked + untracked-non-ignored paths via git ls-files --cached --others --exclude-standard (dotfiles included), while fs.glob skips dotfiles. Only the shared vocabulary is guaranteed equivalent.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1351: step 1 — extracted verbatim from command-coverage-validate.ts so the acceptance reachable probe shares the coverage validator's mention vocabulary (Q-1/A).</item>
   <item>RFC-1351: step 1 — doc-mention reachability edge for the acceptance probe
 
 Extract the RUN_MENTION_* vocabulary into @warpgogol/forge/reachability (Q-1/A): the coverage validator imports it, and probeReachableCommand unions manifest reachableVia edges with live doc mentions over the same surface — committed manifest stays structural-only.</item>
+  <item>RFC-1351: review F-1/F-2 — doc-scan fs.glob parity + surfaced scan failure + guarded-initializer note</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,7 +48,8 @@ export const RUN_MENTION_GLOBS = [
 export const RUN_MENTION_EXCLUDE =
   /(?:^|\/)docs\/COMMANDS\.md$|\.generated\.|(?:^|\/)(?:archive|historical|lagebild-archive|sessions|metrics|reviews|explorations|evidence|audits|rfcs|adrs|plans)\//;
 
-export const RUN_MENTION_RE = /\b(?:werkstatt|forge)\s+run\s+([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+)/g;
+export const RUN_MENTION_RE =
+  /\b(?:werkstatt|forge)\s+run\s+([a-z0-9][a-z0-9-]*(?:\.[a-z0-9-]+)+)/g;
 
 /** `forge <verb>` resolves to `forge.<verb>` in the forge CLI (bare subcommands). */
 export const FORGE_VERB_RE = /\bforge\s+([a-z][a-z0-9-]*)\b/g;
