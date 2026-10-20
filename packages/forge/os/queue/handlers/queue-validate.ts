@@ -11,7 +11,6 @@ queued batch.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: initial queue.validate handler.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
@@ -29,7 +28,8 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
-  <history>RFC-1250</history>
+  <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
+  <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 
@@ -128,12 +128,16 @@ function computeParkedDocIds(
 }
 
 const PACKAGE_ROOT_RE = /^(packages|services|integrations)\/[^/]+/;
+const EMPTY_TREE_SHA = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 /**
  * RFC-1350 QUEUE-09 — package roots touched since the manifest's
- * introduction commit: committed diff (`git log --diff-filter=A` oldest hit →
- * `git diff <sha>..HEAD`) plus uncommitted `git status --porcelain`. Returns
- * null on any git failure — the caller degrades to absence-only warnings.
+ * introduction commit; the introduction commit itself counts (work committed
+ * alongside materialization is in-window). Committed side parses
+ * `git diff --name-status` so rename sources count; uncommitted side parses
+ * porcelain with quote-stripping and the same both-sides rename rule.
+ * Returns null on any git failure — the caller degrades to absence-only
+ * warnings.
  */
 function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Set<string> | null {
   const git = (args: string[]): string =>
@@ -142,23 +146,50 @@ function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Se
       stdio: ["ignore", "pipe", "ignore"],
       timeout: 15000,
     });
+  const collect = (paths: Iterable<string>, into: Set<string>): void => {
+    for (const p of paths) {
+      // Git quotes paths containing specials ('?? "dir/fö"') — strip the
+      // wrapper; the package-root prefix we match is always ASCII.
+      const match = p.trim().replace(/^"|"$/g, "").match(PACKAGE_ROOT_RE);
+      if (match) into.add(match[0]);
+    }
+  };
   try {
-    // --diff-filter=A lists newest-first — the introduction commit is the tail.
-    const introductions = git(["log", "--diff-filter=A", "--format=%H", "--", manifestRelPath])
+    // --diff-filter=A lists newest-first — the introduction commit is the
+    // tail. --follow keeps the trail across manifest renames.
+    const introductions = git([
+      "log",
+      "--diff-filter=A",
+      "--follow",
+      "--format=%H",
+      "--",
+      manifestRelPath,
+    ])
       .split("\n")
       .filter((l) => l.trim().length > 0);
     const since = introductions[introductions.length - 1]?.trim();
-    const committed = since ? git(["diff", "--name-only", `${since}..HEAD`]) : "";
+    const roots = new Set<string>();
+    if (since) {
+      // `${since}~1` includes the introduction commit in the window; a root
+      // commit has no parent — fall back to the empty tree.
+      let base = EMPTY_TREE_SHA;
+      try {
+        base = git(["rev-parse", `${since}~1`]).trim() || EMPTY_TREE_SHA;
+      } catch {
+        // root commit — diff against the empty tree
+      }
+      const committed = git(["diff", "--name-status", `${base}..HEAD`]);
+      for (const line of committed.split("\n")) {
+        // R100/Cxx lines carry <status>\t<src>\t<dst>; others <status>\t<path>.
+        collect(line.split("\t").slice(1), roots);
+      }
+    }
     // --untracked-files=all: default porcelain collapses untracked dirs to
     // their top level ("?? packages/"), losing the package-root segment.
     const uncommitted = git(["status", "--porcelain", "--untracked-files=all"]);
-    const roots = new Set<string>();
-    for (const line of `${committed}\n${uncommitted}`.split("\n")) {
-      // porcelain lines carry a 3-char status prefix (" M ", "?? ", "R  a -> b").
-      const payload = line.startsWith("??") || /^[ MADRCU]{1,2} /.test(line) ? line.slice(3) : line;
-      const renamed = payload.includes(" -> ") ? payload.split(" -> ").pop()! : payload;
-      const match = renamed.trim().match(PACKAGE_ROOT_RE);
-      if (match) roots.add(match[0]);
+    for (const line of uncommitted.split("\n")) {
+      if (line.startsWith("!!") || line.length <= 3) continue;
+      collect(line.slice(3).split(" -> "), roots);
     }
     return roots;
   } catch {
@@ -203,9 +234,31 @@ export async function runQueueValidate(
         file,
       });
     } else {
+      const malformed = declared.filter((p) => !PACKAGE_ROOT_RE.test(p.replace(/\/+$/, "")));
+      if (malformed.length > 0) {
+        warnings.push({
+          ruleId: "QUEUE-09",
+          severity: "warning",
+          message: `packagesImpacted entries are not package roots: ${malformed.join(", ")} — expected (packages|services|integrations)/<name> (RFC-1350)`,
+          file,
+        });
+      }
+      // Declared entries normalize to their package root for the touched-set
+      // comparison — a narrow `packages/forge/os` scope is checked at root
+      // granularity (advisory; over-crediting is the safe direction).
+      const declaredRoots = [
+        ...new Set(
+          declared
+            .map((p) => p.replace(/\/+$/, "").match(PACKAGE_ROOT_RE)?.[0])
+            .filter((p): p is string => p !== undefined),
+        ),
+      ];
       const touched = touchedPackageRoots(workspaceRoot, manifestRel);
-      if (touched !== null) {
-        const untouched = declared.filter((p) => !touched.has(p.replace(/\/+$/, "")));
+      // Drift attribution needs at least one touched root — an empty
+      // touched-set (fresh or uncommitted manifest at pre-flight, batch not
+      // started) would flag every honest declaration.
+      if (touched !== null && touched.size > 0) {
+        const untouched = declaredRoots.filter((p) => !touched.has(p));
         if (untouched.length > 0) {
           warnings.push({
             ruleId: "QUEUE-09",

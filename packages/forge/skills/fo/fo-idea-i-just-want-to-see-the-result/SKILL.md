@@ -17,7 +17,6 @@ triggerPhrases: ["по полному пайплайну", "на результ�
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1247: regen agents-generate golden fixture, add fo-handoff route row, PREFERENCES pipeline-intent caveat (RFC-1247)</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
 REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
@@ -33,7 +32,8 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1250: re-review round 3 — transitive skip wording, cascade test hardening</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
-  <history>RFC-1097, RFC-1140, RFC-1250</history>
+  <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
+  <history>RFC-1097, RFC-1140, RFC-1247, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -99,6 +99,8 @@ The operator may provide either:
    ```yaml
    id: session-<YYYYMMDD>-<HHmm>
    createdAt: <YYYY-MM-DD>
+   packagesImpacted: # RFC-1350 — union of item scopes, step 3
+     - packages/<name>
    items:
      - id: RFC-XXXX
      - id: ADR-XXXX
@@ -106,7 +108,7 @@ The operator may provide either:
 
    The `id` field MUST equal the filename stem (`queue.validate` enforces this). Leave the file uncommitted — it is a session artifact; the operator may commit it for cross-session durability.
 
-3. Declare the top-level `packagesImpacted` (RFC-1350): the union of every item RFC's frontmatter `packagesImpacted`, deduped in declaration order. COMMIT-GOV-02 consumes this union as in-scope roots for every commit in the batch — an honest declaration is what keeps the advisory quiet on well-scoped commits. Omit the field only when no item declares a scope; `queue.validate` warns (QUEUE-09) on absence.
+3. Declare the top-level `packagesImpacted` (RFC-1350): the union of every item RFC's frontmatter `packagesImpacted`, deduped in declaration order. COMMIT-GOV-02 consumes this union as in-scope roots for every commit in the batch — an honest declaration is what keeps the advisory quiet on well-scoped commits. Omit the field only when no item declares a scope; `queue.validate` warns (QUEUE-09) on absence. This is the one manifest field set at materialization — `items[]` stays immutable after this point (see Manifest immutability).
 
 4. If the paste mixes ids with prose, ignore the prose — only the id sequence matters. Do not invent items that are not in the text.
 
@@ -117,9 +119,9 @@ The operator may provide either:
 - **Structural errors** (QUEUE-01..06 — schema, unknown ids, duplicates, id↔filename mismatches, ledger load/binding failures) — do NOT start the batch; report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
 - **QUEUE-07 diagnostics** — implementable items carrying un-parked `open` decisions. This is NOT a stop signal: those entries are precisely the decision window's agenda. The run proceeds — phase 1 finishes any incomplete maturation, then phase 2 arbitrates them. This is the designed resume path after a crash between collect and window, and after runs that parked items for arbitration.
 - **QUEUE-08 warnings** — ledger hygiene (resolved entries missing `answer`, decisions targeting foreign doc ids); report them in the batch summary, continue.
-- **QUEUE-09 warnings** — declared-scope hygiene (RFC-1350): the manifest carries no `packagesImpacted`, or an entry names a package root with zero touched files since the manifest's introduction commit. Advisory only — fix the manifest's scope declaration, never the item order.
+- **QUEUE-09 warnings** — declared-scope hygiene (RFC-1350): the manifest carries no `packagesImpacted`, an entry is not a package root, or an entry names a package root with zero touched files while other roots are already touched. Advisory only — correct `packagesImpacted` at materialization or at pre-flight (before Phase 1); mid-run, `items[]` stays immutable and the warning is recorded as drift evidence.
 
-**Baseline capture (RFC-1350, mandatory before Phase 1):** run the bounded validator surface once — `rfc.validate`, `adr.validate`, `compass.docs.validate`, plus `build:check` scoped to the manifest's declared `packagesImpacted` union — and record every pre-existing failure in the ledger's top-level `baseline` field:
+**Baseline capture (RFC-1350, mandatory before Phase 1):** run the bounded validator surface once — `rfc.validate`, `adr.validate`, `compass.docs.validate`, plus `build:check` scoped to the manifest's declared `packagesImpacted` union — and record every pre-existing failure in the ledger's top-level `baseline` field (create the ledger now if it does not exist yet — the schema accepts an empty `items: []`):
 
 ```yaml
 baseline:
@@ -170,7 +172,7 @@ Process items in manifest order — RFC items run `implement` (which includes re
 - `blockLevel: hard-block` — **stop the item before stamping and record it as blocked in the batch report; the batch continues.** A parked hard-block item requires the fix and then a **full** re-review on resume (not a delta re-check); at most two fix→re-review cycles, then the hard-stop class escalates the item for arbitration (§Auto-resolve and log).
 - The batch summary MUST list every paused/blocked item with its ledger question ids — accumulation is visible, never silent.
 
-**Manifest immutability:** Do not edit `items[]` or the manifest during a queue run. The ledger — not the manifest — carries decision state. Reordering requires stopping the batch and re-validating.
+**Manifest immutability:** Do not edit `items[]` during a queue run — `packagesImpacted` is set at materialization and may only be corrected at pre-flight (before Phase 1). The ledger — not the manifest — carries decision state. Reordering requires stopping the batch and re-validating.
 
 ## Process
 

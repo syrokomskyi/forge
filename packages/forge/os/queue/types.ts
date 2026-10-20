@@ -7,7 +7,6 @@ block consumed by queue.validate and the pipeline orchestrator's queue mode.</pu
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: initial QueueManifest schema and queue.validate result types.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
@@ -25,7 +24,8 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: decision stage enum gains audit — audit-phase questions had no valid stage</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
-  <history>RFC-1250</history>
+  <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
+  <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 
@@ -65,11 +65,13 @@ export const decisionPolicySchema = z.object({
   appliesTo: z.union([z.literal("*"), z.array(z.string())]),
 });
 
-export const baselineFailureSchema = z.object({
-  kind: z.enum(["validator", "suite", "command"]),
-  name: z.string().min(1),
-  detail: z.string().optional(),
-});
+export const baselineFailureSchema = z
+  .object({
+    kind: z.enum(["validator", "suite", "command"]),
+    name: z.string().min(1),
+    detail: z.string().optional(),
+  })
+  .strict();
 
 export const decisionLedgerSchema = z.object({
   id: z.string().min(1),
@@ -83,6 +85,7 @@ export const decisionLedgerSchema = z.object({
       capturedAt: z.string().min(1),
       failures: z.array(baselineFailureSchema).default([]),
     })
+    .strict()
     .optional(),
   policies: z.array(decisionPolicySchema).default([]),
   items: z.array(decisionEntrySchema).default([]),
