@@ -4,11 +4,12 @@
 RFC-1334: lexical reachability for the `reachable` acceptance probe — symbol mode
 proves an exported symbol is value-imported by a non-test module (optionally
 inside the import graph of a root file); command mode reads the generated command
-manifest's `reachableVia` edges.
+manifest's `reachableVia` edges and unions them with live doc-mention edges
+(RFC-1351, Q-1/A) from the shared mention vocabulary.
 </purpose>
 <non-goals>
   <item>No TypeScript semantic resolution — import declarations are scanned lexically.</item>
-  <item>No @warpgogol/* imports — command reachability comes from the generated manifest.</item>
+  <item>No @warpgogol/* imports — command reachability comes from the generated manifest plus the forge-side mention module.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
@@ -17,10 +18,12 @@ manifest's `reachableVia` edges.
   <item>Type-only imports and re-exports alone never count as usage.</item>
   <item>Barrel re-exports are followed to depth 5; bare specifiers resolve through workspace package.json exports.</item>
   <item>The tracked-file scan is memoized per workspace so several probes in one run share it.</item>
+  <item>Command mode unions manifest edges with doc-mention edges over the same surface command.coverage.validate scans — a mention under a frozen tree (docs/rfcs, archives, …) never counts.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1334: initial implementation.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <item>RFC-1351: step 1 — command mode unions reachableVia with live doc-mention edges via @warpgogol/forge/reachability (Q-1/A; manifest stays structural-only)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +32,7 @@ import { dirname, join, normalize, sep } from "node:path";
 import { parse as yamlParse } from "yaml";
 
 import { execFile } from "../../src/utils/sync-fs.ts";
+import { docMentionsInText, isMentionCandidate } from "../../src/reachability/command-mentions.ts";
 import { gitEnvForCwd } from "./verification-origin.ts";
 
 const SOURCE_EXT_RE = /\.(ts|tsx|mts|astro)$/;
@@ -424,18 +428,29 @@ export async function probeReachableCommand(opts: {
   if (!Array.isArray(entry.reachableVia)) {
     return { ok: false, detail: "manifest predates reachableVia — run command.manifest.generate" };
   }
-  const edges = entry.reachableVia.filter(
-    (e) =>
-      e.kind !== "coverage" ||
-      e.ref !== "delegated" ||
-      (entry.coverageNote ?? "").trim().length > 0,
-  );
-  if (edges.length === 0) return { ok: false, detail: "no pipeline, invoker, or coverage edge" };
-  return {
-    ok: true,
-    detail: edges
-      .slice(0, 3)
-      .map((e) => `${e.kind}:${e.ref}`)
-      .join(", "),
-  };
+  const edges = entry.reachableVia
+    .filter(
+      (e) =>
+        e.kind !== "coverage" ||
+        e.ref !== "delegated" ||
+        (entry.coverageNote ?? "").trim().length > 0,
+    )
+    .map((e) => `${e.kind}:${e.ref}`);
+  // RFC-1351 (Q-1/A): doc mentions are reachability edges too — the probe scans
+  // live docs over the same surface command.coverage.validate applies, and the
+  // union keeps the committed manifest structural-only.
+  const only = new Set([opts.command]);
+  for (const rel of await gitLsFiles(opts.workspaceRoot)) {
+    if (!isMentionCandidate(rel)) continue;
+    let text: string;
+    try {
+      text = readFileSync(join(opts.workspaceRoot, rel), "utf8");
+    } catch {
+      continue;
+    }
+    if (docMentionsInText(text, only).size > 0) edges.push(`doc:${rel}`);
+  }
+  if (edges.length === 0)
+    return { ok: false, detail: "no pipeline, invoker, coverage, or doc-mention edge" };
+  return { ok: true, detail: edges.slice(0, 3).join(", ") };
 }
