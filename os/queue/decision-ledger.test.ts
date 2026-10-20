@@ -9,6 +9,7 @@ Unit tests for decision ledger covering decisionLedgerSchema (RFC-1250); decisio
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the decision suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
 </CHANGE_SUMMARY>
 */
 
@@ -132,6 +133,44 @@ describe("decisionLedgerSchema (RFC-1250)", () => {
     expect(ledger.policies).toEqual([]);
     expect(ledger.items[0]?.status).toBe("open");
     expect(ledger.items[0]?.options).toEqual([]);
+  });
+
+  test("baseline field (RFC-1350): optional top-level capture of pre-existing failures", () => {
+    const withoutBaseline = decisionLedgerSchema.parse({
+      id: "x.decisions",
+      queue: "x",
+      createdAt: "2026-10-20",
+    });
+    expect(withoutBaseline.baseline).toBeUndefined();
+
+    const withBaseline = decisionLedgerSchema.parse({
+      id: "x.decisions",
+      queue: "x",
+      createdAt: "2026-10-20",
+      baseline: {
+        capturedAt: "2026-10-20T13:00:00.000Z",
+        failures: [
+          { kind: "validator", name: "kernel.flags.lint", detail: "12 errors" },
+          { kind: "suite", name: "packages/werkstatt-site build:check" },
+        ],
+      },
+    });
+    expect(withBaseline.baseline?.failures).toHaveLength(2);
+    expect(withBaseline.baseline?.failures[0]?.kind).toBe("validator");
+    expect(withBaseline.baseline?.failures[1]?.detail).toBeUndefined();
+  });
+
+  test("baseline rejects unknown failure kinds", () => {
+    const result = decisionLedgerSchema.safeParse({
+      id: "x.decisions",
+      queue: "x",
+      createdAt: "2026-10-20",
+      baseline: {
+        capturedAt: "2026-10-20T13:00:00.000Z",
+        failures: [{ kind: "mystery", name: "x" }],
+      },
+    });
+    expect(result.success).toBe(false);
   });
 });
 

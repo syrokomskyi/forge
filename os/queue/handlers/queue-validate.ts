@@ -11,10 +11,6 @@ queued batch.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: decision-ledger wiring — QUEUE-07 open-decision gate on
-  executable items (un-parked opens only; parked items are already gated),
-  per-item decisions counts plus top-level totals, `next` excludes parked and
-  QUEUE-07-blocked items with dependsOn cascade.</item>
   <item>RFC-1140: initial queue.validate handler.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -32,8 +28,13 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
+  <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 */
+
+import { execFileSync } from "../../../src/utils/sync-fs.ts";
+import path from "node:path";
 
 import type {
   ForgeCommandInput,
@@ -126,6 +127,45 @@ function computeParkedDocIds(
   return cascadeDependents(roots, dependsOn);
 }
 
+const PACKAGE_ROOT_RE = /^(packages|services|integrations)\/[^/]+/;
+
+/**
+ * RFC-1350 QUEUE-09 — package roots touched since the manifest's
+ * introduction commit: committed diff (`git log --diff-filter=A` oldest hit →
+ * `git diff <sha>..HEAD`) plus uncommitted `git status --porcelain`. Returns
+ * null on any git failure — the caller degrades to absence-only warnings.
+ */
+function touchedPackageRoots(workspaceRoot: string, manifestRelPath: string): Set<string> | null {
+  const git = (args: string[]): string =>
+    execFileSync("git", ["-C", workspaceRoot, ...args], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15000,
+    });
+  try {
+    // --diff-filter=A lists newest-first — the introduction commit is the tail.
+    const introductions = git(["log", "--diff-filter=A", "--format=%H", "--", manifestRelPath])
+      .split("\n")
+      .filter((l) => l.trim().length > 0);
+    const since = introductions[introductions.length - 1]?.trim();
+    const committed = since ? git(["diff", "--name-only", `${since}..HEAD`]) : "";
+    // --untracked-files=all: default porcelain collapses untracked dirs to
+    // their top level ("?? packages/"), losing the package-root segment.
+    const uncommitted = git(["status", "--porcelain", "--untracked-files=all"]);
+    const roots = new Set<string>();
+    for (const line of `${committed}\n${uncommitted}`.split("\n")) {
+      // porcelain lines carry a 3-char status prefix (" M ", "?? ", "R  a -> b").
+      const payload = line.startsWith("??") || /^[ MADRCU]{1,2} /.test(line) ? line.slice(3) : line;
+      const renamed = payload.includes(" -> ") ? payload.split(" -> ").pop()! : payload;
+      const match = renamed.trim().match(PACKAGE_ROOT_RE);
+      if (match) roots.add(match[0]);
+    }
+    return roots;
+  } catch {
+    return null;
+  }
+}
+
 /** QUEUE-07: an item derivable to the implement stage must not carry open decisions. */
 function isImplementable(item: { status: string; pipelineStep?: string; kind?: string }): boolean {
   return item.pipelineStep === "implement" || (item.kind === "adr" && item.status === "pending");
@@ -143,6 +183,40 @@ export async function runQueueValidate(
   }
 
   const { manifest, errors, warnings, dependsOn } = await loadQueueManifest(workspaceRoot, file);
+
+  // QUEUE-09 (RFC-1350): declared-scope hygiene — advisory only, matching
+  // COMMIT-GOV-02's advisory nature. Absent `packagesImpacted` warns
+  // unconditionally; declared entries are diffed against the package roots
+  // touched since the manifest's introduction commit — a declared root with
+  // zero touched files is stale scope. Git failure degrades to the
+  // absence-only warning. Skipped while the manifest itself fails to load
+  // (the stub manifest would blame a broken queue).
+  if (errors.length === 0) {
+    const declared = manifest.packagesImpacted ?? [];
+    const manifestRel = path.isAbsolute(file) ? path.relative(workspaceRoot, file) : file;
+    if (declared.length === 0) {
+      warnings.push({
+        ruleId: "QUEUE-09",
+        severity: "warning",
+        message:
+          "Manifest declares no top-level packagesImpacted — COMMIT-GOV-02 falls back to per-item scope only (RFC-1350)",
+        file,
+      });
+    } else {
+      const touched = touchedPackageRoots(workspaceRoot, manifestRel);
+      if (touched !== null) {
+        const untouched = declared.filter((p) => !touched.has(p.replace(/\/+$/, "")));
+        if (untouched.length > 0) {
+          warnings.push({
+            ruleId: "QUEUE-09",
+            severity: "warning",
+            message: `packagesImpacted entries show no touched files since the manifest's introduction commit: ${untouched.join(", ")} — stale scope turns COMMIT-GOV-02 into advisory noise (RFC-1350)`,
+            file,
+          });
+        }
+      }
+    }
+  }
 
   // The ledger is part of the queue's durable state — its load errors block.
   const {
