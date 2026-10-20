@@ -6,17 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
-
-Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
-follows the parsed selector. Guard renamed assertAllSitesAllowed ->
-assertAllFlagAccepted, message updated. 417 declaration sites + type
-surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
-  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1242</history>
+  <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
+
+Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
+  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242</history>
 </CHANGE_SUMMARY>
 */
 
@@ -215,7 +212,6 @@ export const forgeCompassModule: ForgeModule = {
     },
     {
       name: "compass.header.scaffold",
-      coverage: "operator" as const,
       description:
         "Author and repair Compass v2 headers (RFC-1318): append-only merge, closed-block guarantee, derived-or-sentinel purposes, fixture-string safety (SCAFFOLD-01), high-risk deference. --census reports the coverage manifest without writing; apply refuses when target files carry uncommitted changes unless --force.",
       scope: "workspace",
