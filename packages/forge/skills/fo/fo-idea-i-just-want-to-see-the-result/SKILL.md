@@ -99,7 +99,7 @@ The operator may provide either:
    ```yaml
    id: session-<YYYYMMDD>-<HHmm>
    createdAt: <YYYY-MM-DD>
-   packagesImpacted: # RFC-1350 — union of item scopes, step 3
+   packagesImpacted: # union of item scopes, step 3
      - packages/<name>
    items:
      - id: RFC-XXXX
@@ -108,7 +108,7 @@ The operator may provide either:
 
    The `id` field MUST equal the filename stem (`queue.validate` enforces this). Leave the file uncommitted — it is a session artifact; the operator may commit it for cross-session durability.
 
-3. Declare the top-level `packagesImpacted` (RFC-1350): the union of every item RFC's frontmatter `packagesImpacted`, deduped in declaration order. COMMIT-GOV-02 consumes this union as in-scope roots for every commit in the batch — an honest declaration is what keeps the advisory quiet on well-scoped commits. Omit the field only when no item declares a scope; `queue.validate` warns (QUEUE-09) on absence. This is the one manifest field set at materialization — `items[]` stays immutable after this point (see Manifest immutability).
+3. Declare the top-level `packagesImpacted`: the union of every item RFC's frontmatter `packagesImpacted`, deduped in declaration order. COMMIT-GOV-02 consumes this union as in-scope roots for every commit in the batch — an honest declaration is what keeps the advisory quiet on well-scoped commits. Omit the field only when no item declares a scope; `queue.validate` warns (QUEUE-09) on absence. This is the one manifest field set at materialization — `items[]` stays immutable after this point (see Manifest immutability).
 
 4. If the paste mixes ids with prose, ignore the prose — only the id sequence matters. Do not invent items that are not in the text.
 
@@ -119,9 +119,9 @@ The operator may provide either:
 - **Structural errors** (QUEUE-01..06 — schema, unknown ids, duplicates, id↔filename mismatches, ledger load/binding failures) — do NOT start the batch; report the errors and stop. When a pasted list references ids that do not resolve (QUEUE-04), name them explicitly — the operator must create those documents first or fix the list.
 - **QUEUE-07 diagnostics** — implementable items carrying un-parked `open` decisions. This is NOT a stop signal: those entries are precisely the decision window's agenda. The run proceeds — phase 1 finishes any incomplete maturation, then phase 2 arbitrates them. This is the designed resume path after a crash between collect and window, and after runs that parked items for arbitration.
 - **QUEUE-08 warnings** — ledger hygiene (resolved entries missing `answer`, decisions targeting foreign doc ids); report them in the batch summary, continue.
-- **QUEUE-09 warnings** — declared-scope hygiene (RFC-1350): the manifest carries no `packagesImpacted`, an entry is not a package root, or an entry names a package root with zero touched files while other roots are already touched. Advisory only — correct `packagesImpacted` at materialization or at pre-flight (before Phase 1); mid-run, `items[]` stays immutable and the warning is recorded as drift evidence.
+- **QUEUE-09 warnings** — declared-scope hygiene: the manifest carries no `packagesImpacted`, an entry is not a package root, or an entry names a package root with zero touched files while other roots are already touched. Advisory only — correct `packagesImpacted` at materialization or at pre-flight (before Phase 1); mid-run, `items[]` stays immutable and the warning is recorded as drift evidence.
 
-**Baseline capture (RFC-1350, mandatory before Phase 1):** run the bounded validator surface once — `rfc.validate`, `adr.validate`, `compass.docs.validate`, plus `build:check` scoped to the manifest's declared `packagesImpacted` union — and record every pre-existing failure in the ledger's top-level `baseline` field (create the ledger now if it does not exist yet — the schema accepts an empty `items: []`):
+**Baseline capture (mandatory before Phase 1):** run the bounded validator surface once — `rfc.validate`, `adr.validate`, `compass.docs.validate`, plus `build:check` scoped to the manifest's declared `packagesImpacted` union — and record every pre-existing failure in the ledger's top-level `baseline` field (create the ledger now if it does not exist yet — the schema accepts an empty `items: []`):
 
 ```yaml
 baseline:
@@ -161,7 +161,7 @@ Process items in manifest order — RFC items run `implement` (which includes re
 1. **Skip terminal, parked, and blocked items** — `implemented`/`skipped`, items with `deferred` ledger entries or `open`+`parked: true` entries, QUEUE-07-blocked items (un-parked `open` entries surviving the window), and items with any excluded item upstream in their `dependsOn` chain (transitive cascade). `queue.validate`'s `next` encodes the same skipping.
 2. **Ledger-bound implementation** — `fo-idea-implement` reads the ledger at prerequisites: `answered` entries bind; emergent questions auto-resolve and append `auto-resolved` entries; only the enumerated hard-stop class parks the item (§Auto-resolve and log).
 3. **Batch-item checkpoint** — after each item, emit the context checkpoint; **clean-tree gate** before the next item.
-4. **Test-first for stateful commands (RFC-1350)** — when an item's plan adds a mutating kernel command (evidence-writing, token-swapping, register-mutating), the fixture harness plus outcome assertions — including an idempotency/`--dry-run` assertion — MUST be written before the implementation loop starts. The batch-review checklist rejects implementation-first ordering for these commands.
+4. **Test-first for stateful commands** — when an item's plan adds a mutating kernel command (evidence-writing, token-swapping, register-mutating), the fixture harness plus outcome assertions — including an idempotency/`--dry-run` assertion — MUST be written before the implementation loop starts. The batch-review checklist rejects implementation-first ordering for these commands.
 5. **`stopAfter: plan`** — run phases 1–3 (maturation + window + resolution), stop before execution.
 
 **Failure:** If an item fails after its error checkpoint, stop the batch. The report names the blocked item id and the remaining item count. `blocked` is in-session report language only — never persist it into frontmatter, manifests, or files. Resume = re-invoke with the same manifest; `queue.validate` derives where to continue and the ledger carries answered decisions across sessions.
@@ -280,7 +280,7 @@ After the gate passes, present a single summary in `aiLanguage`. **Translate all
   3. Plan — <done | skipped (ADR)>
   4. Implement — <done (review: <verdict>, fix: <N> fixed | no findings) | not run (stopped at plan)>
 ### Status: <implemented | needs attention | planned (stopped at plan)>
-### Failures: <list each failure as `new` (introduced by this batch) or `baseline` (pre-existing, recorded in the ledger's `baseline` field) — attribute by validator/command name, RFC-1350>
+### Failures: <list each failure as `new` (introduced by this batch) or `baseline` (pre-existing, recorded in the ledger's `baseline` field) — attribute by validator/command name>
 ```
 
 If multiple documents were processed, present one summary block per document.
