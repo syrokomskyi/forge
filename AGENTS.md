@@ -37,6 +37,12 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeQueueModule` | `queue.validate` — validates `docs/queues/*.yaml` manifests and reports derived per-item pipeline status (RFC-1140). Loads the sibling `<stem>.decisions.yaml` ledger (RFC-1250): QUEUE-07 blocks implement-stage items carrying un-parked `open` decisions (the ledger also gains QUEUE-02 binding, QUEUE-05 id-uniqueness, QUEUE-08 hygiene warnings, plus the optional top-level `baseline` field recording pre-existing failures per RFC-1350), `next` skips `deferred`/parked/QUEUE-07-blocked items with `dependsOn` cascade. Manifests may declare top-level `packagesImpacted` (RFC-1350) — QUEUE-09 warns when absent or when entries show no touched files since the introduction commit. Shared resolver lives in `src/pipeline-status.ts`. | `os/queue/` |
 | `forgeConformanceModule` | `forge.conformance.run` + `forge.conformance.validate` — golden conformance for declared `contractProducers[]` (RFC-1365, DNA-115): emit → mirror → consumer legs over one execution path (`src/conformance/index.ts`, also published as the `@warpgogol/forge/conformance` vitest helper), per-leg failure attribution, absent-`consumer.root` self-skip with `--require-consumer`/`FORGE_CONFORMANCE_REQUIRE` fail-closed counterpart, CONF-01..06 declaration lint. | `os/conformance/` |
 
+## Golden contract conformance (RFC-1365, DNA-115)
+
+- A repository that emits a versioned contract bundle for an external authoritative consumer MUST declare the producer in `contractProducers[]` in `forge.yaml` and wire a golden-conformance run through the consumer's real validator — `forge.conformance.run` (emit → mirror → consumer legs over `src/conformance/index.ts`) plus `forge.conformance.validate` (CONF-01..06 lint). The `@warpgogol/forge/conformance` subpath export exposes the same execution path to producer vitest suites.
+- An absent `consumer.root` self-skips by default; `--require-consumer` or `FORGE_CONFORMANCE_REQUIRE=1` fails closed where the checkout is guaranteed.
+- Naming disambiguation: golden _contract_ conformance (this) ≠ DNA-78 component-runtime conformance ≠ DNA-61 content golden baseline ≠ verbund fixture conformance.
+
 ## RFC-1053: Skill effectiveness metrics
 
 `metrics.aggregate` (RFC-1053) queries and aggregates per-skill effectiveness metrics from `docs/metrics/` YAML files. Metrics are generated at two integration points:

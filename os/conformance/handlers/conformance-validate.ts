@@ -13,6 +13,7 @@ mirror (warning).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1365: step 2 — forge.conformance.validate handler (CONF-01..06).</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
+  <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
 </CHANGE_SUMMARY>
 */
 
@@ -295,20 +296,11 @@ export async function runConformanceValidate(
       );
     }
 
-    // CONF-03: producer-side argv script paths resolve from the repo root;
-    // consumer.validator argv paths resolve from consumer.root (checked only
-    // when the checkout exists — CONF-04 already surfaces the absence).
+    // CONF-03 (Q-9): producer-side argv only — consumer-side execution errors
+    // surface as consumer-leg transport failures at run time, keeping this lint
+    // single-repo-scoped and machine-independent.
     checkArgvPaths(decl.emit.argv, workspaceRoot, decl.id, "emit.argv", diagnostics);
     checkArgvPaths(decl.mirror?.argv, workspaceRoot, decl.id, "mirror.argv", diagnostics);
-    if (consumerRootExists) {
-      checkArgvPaths(
-        decl.consumer.validator.argv,
-        consumerRoot,
-        decl.id,
-        "consumer.validator.argv",
-        diagnostics,
-      );
-    }
   }
 
   const counts = { error: 0, warning: 0, info: 0 };

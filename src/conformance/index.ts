@@ -12,12 +12,14 @@
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1365: compass header fix — drop forbidden keywords/responsibilities tags, expand purpose</item>
+  <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
 </CHANGE_SUMMARY>
 */
 
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 import { existsSync, mkdtempSync, readdirSync, rmSync, spawn } from "../utils/sync-fs.ts";
+import type { ContractProducerEntry } from "../config/forge-config.ts";
 
 /** Captured leg output is tail-truncated to this many bytes (RFC-1365). */
 export const CONFORMANCE_OUTPUT_TAIL_BYTES = 64 * 1024;
@@ -28,16 +30,8 @@ export const CONFORMANCE_BUNDLE_DIR_ENV = "FORGE_CONFORMANCE_BUNDLE_DIR";
 
 const BUNDLE_PLACEHOLDER = "{bundle}";
 
-export interface ContractProducerDecl {
-  id: string;
-  emit: { argv: string[] };
-  mirror?: { argv: string[] };
-  consumer: {
-    root: string;
-    validator: { argv: string[]; timeoutMs?: number };
-  };
-  test?: string;
-}
+/** Alias of the schema type — single declaration lives in forge-config.ts. */
+export type ContractProducerDecl = ContractProducerEntry;
 
 export type ConformanceLeg = "emit" | "mirror" | "consumer";
 
@@ -48,6 +42,10 @@ export interface ConformanceLegResult {
   durationMs: number;
   output?: string;
   truncated?: boolean;
+  /** Present when the failure is transport, not a process verdict. */
+  transport?: "spawn-error" | "timeout";
+  /** Spawn error message (ENOENT, EACCES, …) when transport === "spawn-error". */
+  errorDetail?: string;
 }
 
 export interface ConformanceVerdict {
@@ -139,6 +137,9 @@ async function executeLeg(
       durationMs,
       output: outcome.output || undefined,
       truncated: outcome.truncated || undefined,
+      transport:
+        outcome.spawnError !== undefined ? "spawn-error" : outcome.timedOut ? "timeout" : undefined,
+      errorDetail: outcome.spawnError,
     };
   }
   return {
@@ -183,16 +184,34 @@ export async function runProducerConformance(
       bundleDir,
       CONFORMANCE_DEFAULT_TIMEOUT_MS,
     );
-    if (leg.status === "pass" && readdirSync(bundleDir).length === 0) {
-      leg = { ...leg, status: "fail" };
-      diagnostics.push(
-        "emit completed but left the bundle dir empty — bundle shape is the consumer's authority, existence is the emit leg's contract",
-      );
+    if (leg.status === "pass") {
+      let entries: number | null = null;
+      try {
+        entries = readdirSync(bundleDir).length;
+      } catch (err) {
+        diagnostics.push(
+          `emit completed but the bundle dir is unreadable: ${(err as Error).message}`,
+        );
+      }
+      if (entries !== null && entries === 0) {
+        diagnostics.push(
+          "emit completed but left the bundle dir empty — bundle shape is the consumer's authority, existence is the emit leg's contract",
+        );
+      }
+      if (entries === null || entries === 0) {
+        leg = { ...leg, status: "fail" };
+      }
     }
     legs.push(leg);
     if (leg.status === "fail") {
       if (diagnostics.length === 0) {
-        diagnostics.push(`emit argv exited ${leg.exitCode ?? "spawn-error/timeout"}`);
+        diagnostics.push(
+          leg.transport === "spawn-error"
+            ? `emit argv spawn failed: ${leg.errorDetail ?? "unknown spawn error"}`
+            : leg.transport === "timeout"
+              ? `emit argv timed out after ${CONFORMANCE_DEFAULT_TIMEOUT_MS}ms`
+              : `emit argv exited ${leg.exitCode ?? "unknown"}`,
+        );
       }
       return verdict("fail", "emit");
     }
@@ -209,7 +228,11 @@ export async function runProducerConformance(
       legs.push(leg);
       if (leg.status === "fail") {
         diagnostics.push(
-          `mirror exited ${leg.exitCode ?? "spawn-error/timeout"} — mirror-stricter-than-consumer drift or broken mirror; consumer leg not run`,
+          leg.transport === "spawn-error"
+            ? `mirror argv spawn failed: ${leg.errorDetail ?? "unknown spawn error"}`
+            : leg.transport === "timeout"
+              ? `mirror argv timed out after ${CONFORMANCE_DEFAULT_TIMEOUT_MS}ms`
+              : `mirror exited ${leg.exitCode} — mirror-stricter-than-consumer drift or broken mirror; consumer leg not run`,
         );
         return verdict("fail", "mirror");
       }
@@ -239,14 +262,20 @@ export async function runProducerConformance(
     legs.push(leg);
     if (leg.status === "fail") {
       diagnostics.push(
-        leg.exitCode === undefined
-          ? "consumer validator transport failure (spawn error or timeout) — not a bundle verdict"
-          : `consumer validator exited ${leg.exitCode} — see captured output`,
+        leg.transport === "spawn-error"
+          ? `consumer validator spawn failed: ${leg.errorDetail ?? "unknown spawn error"} — transport failure, not a bundle verdict`
+          : leg.transport === "timeout"
+            ? `consumer validator timed out after ${decl.consumer.validator.timeoutMs ?? CONFORMANCE_DEFAULT_TIMEOUT_MS}ms — transport failure, not a bundle verdict`
+            : `consumer validator exited ${leg.exitCode} — see captured output`,
       );
       return verdict("fail", "consumer");
     }
     return verdict("pass", undefined);
   } finally {
-    rmSync(bundleDir, { recursive: true, force: true });
+    try {
+      rmSync(bundleDir, { recursive: true, force: true });
+    } catch {
+      // cleanup failure (EPERM/EBUSY/orphaned grandchildren) must not mask the verdict
+    }
   }
 }

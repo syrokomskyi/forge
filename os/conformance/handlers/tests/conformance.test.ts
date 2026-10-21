@@ -14,11 +14,12 @@ consumer checkouts are sibling dirs inside the fixture workspace.
 <CHANGE_SUMMARY>
   <item>RFC-1365: step 3 — conformance handler + lint test suite.</item>
   <item>RFC-1365: step 3 — conformance handler + lint test suite (33 cases)</item>
+  <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
 </CHANGE_SUMMARY>
 */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -406,7 +407,7 @@ describe("forge.conformance.validate — CONF rules (AC-6)", () => {
     expect(result.data!.diagnostics.some((d) => d.ruleId === "CONF-03")).toBe(true);
   });
 
-  it("CONF-03: consumer validator path resolves from consumer.root", async () => {
+  it("CONF-03: producer-side only — consumer.validator.argv never linted (Q-9)", async () => {
     mkdirSync(join(ws, "consumer"), { recursive: true });
     writeForgeYaml(`contractProducers:
   - id: intake
@@ -415,27 +416,30 @@ describe("forge.conformance.validate — CONF rules (AC-6)", () => {
     consumer:
       root: "./consumer"
       validator:
-        argv: ["pnpm", "exec", "werkstatt", "run", "x.validate", "--bundle", "{bundle}"]
+        argv: ["node", "validators/does-not-exist.ts", "--bundle", "{bundle}"]
 `);
-    let result = await runConformanceValidate({ argv: [], flags: {} }, ctx());
+    const result = await runConformanceValidate({ argv: [], flags: {} }, ctx());
     expect(result.data!.diagnostics.some((d) => d.ruleId === "CONF-03")).toBe(false);
+  });
 
+  it("CONF-03: mirror argv script path missing → error", async () => {
     writeForgeYaml(`contractProducers:
   - id: intake
     emit:
       argv: ["pnpm", "exec", "tsx", "{bundle}"]
+    mirror:
+      argv: ["node", "scripts/missing-mirror.ts", "{bundle}"]
     consumer:
       root: "./consumer"
       validator:
-        argv: ["node", "validators/intake.ts", "--bundle", "{bundle}"]
+        argv: ["pnpm", "exec", "x", "run", "v", "{bundle}"]
 `);
-    result = await runConformanceValidate({ argv: [], flags: {} }, ctx());
-    expect(result.data!.diagnostics.some((d) => d.ruleId === "CONF-03")).toBe(true);
-
-    mkdirSync(join(ws, "consumer/validators"), { recursive: true });
-    writeFileSync(join(ws, "consumer/validators/intake.ts"), "// validator\n");
-    result = await runConformanceValidate({ argv: [], flags: {} }, ctx());
-    expect(result.data!.diagnostics.some((d) => d.ruleId === "CONF-03")).toBe(false);
+    const result = await runConformanceValidate({ argv: [], flags: {} }, ctx());
+    expect(
+      result.data!.diagnostics.some(
+        (d) => d.ruleId === "CONF-03" && d.message.includes("mirror.argv"),
+      ),
+    ).toBe(true);
   });
 
   it("CONF-04: absent consumer.root → warning, not error", async () => {
@@ -512,7 +516,7 @@ describe("forge.conformance.run — selection + aggregate exit", () => {
     writeForgeYaml("");
     const result = await runConformanceRun({ argv: [], flags: { all: true } }, ctx());
     expect(result.exitCode).toBe(0);
-    expect(result.data?.verdicts).toEqual([]);
+    expect(result.data?.producers).toEqual([]);
   });
 
   it("AC-2/AC-4: declared producer, consumer checkout absent → skip, aggregate exit 0", async () => {
@@ -527,7 +531,7 @@ describe("forge.conformance.run — selection + aggregate exit", () => {
 `);
     const result = await runConformanceRun({ argv: [], flags: { producer: ["intake"] } }, ctx());
     expect(result.exitCode).toBe(0);
-    expect(result.data?.verdicts[0]?.status).toBe("skip");
+    expect(result.data?.producers[0]?.status).toBe("skip");
   });
 
   it("AC-5: --require-consumer → exit 1 on absent consumer; FORGE_CONFORMANCE_REQUIRE env equivalent", async () => {
@@ -542,12 +546,97 @@ describe("forge.conformance.run — selection + aggregate exit", () => {
 `);
     let result = await runConformanceRun({ argv: [], flags: { "require-consumer": true } }, ctx());
     expect(result.exitCode).toBe(1);
-    expect(result.data?.verdicts[0]?.status).toBe("fail");
-    expect(result.data?.verdicts[0]?.diagnostics.join(" ")).toContain("consumer-missing");
+    expect(result.data?.producers[0]?.status).toBe("fail");
+    expect(result.data?.producers[0]?.diagnostics.join(" ")).toContain("consumer-missing");
 
     vi.stubEnv("FORGE_CONFORMANCE_REQUIRE", "1");
     result = await runConformanceRun({ argv: [], flags: {} }, ctx());
     expect(result.exitCode).toBe(1);
+  });
+
+  it("FORGE_CONFORMANCE_REQUIRE disables on 0/false/absent — skip stays exit 0", async () => {
+    writeForgeYaml(`contractProducers:
+  - id: intake
+    emit:
+      argv: [${JSON.stringify(NODE)}, "-e", ${JSON.stringify(EMIT_ENV)}, "{bundle}"]
+    consumer:
+      root: "./absent-consumer"
+      validator:
+        argv: [${JSON.stringify(NODE)}, "-e", "process.exit(1)", "{bundle}"]
+`);
+    for (const value of ["0", "false", "no", ""]) {
+      vi.stubEnv("FORGE_CONFORMANCE_REQUIRE", value);
+      const result = await runConformanceRun({ argv: [], flags: {} }, ctx());
+      expect(result.exitCode, `env=${value}`).toBe(0);
+      expect(result.data?.producers[0]?.status).toBe("skip");
+    }
+  });
+
+  it("--json result shape pins producers[] entries (producer/status/failedLeg/legs/diagnostics)", async () => {
+    mkdirSync(join(ws, "consumer"), { recursive: true });
+    writeForgeYaml(`contractProducers:
+  - id: intake
+    emit:
+      argv: [${JSON.stringify(NODE)}, "-e", ${JSON.stringify(EMIT_ENV)}, "{bundle}"]
+    consumer:
+      root: "./consumer"
+      validator:
+        argv: [${JSON.stringify(NODE)}, "-e", ${JSON.stringify(CONSUMER_CHECK)}, "{bundle}"]
+`);
+    const result = await runConformanceRun({ argv: [], flags: { all: true } }, ctx());
+    expect(result.data?.producers).toHaveLength(1);
+    const entry = result.data!.producers[0]!;
+    expect(Object.keys(entry).sort()).toEqual(
+      ["diagnostics", "failedLeg", "legs", "producer", "status"].sort(),
+    );
+    expect(entry.producer).toBe("intake");
+    expect(entry.status).toBe("pass");
+    expect(entry.legs.map((l) => l.leg)).toEqual(["emit", "consumer"]);
+  });
+
+  it("consumer validator non-zero → handler exit 1 with fail verdict", async () => {
+    mkdirSync(join(ws, "consumer"), { recursive: true });
+    writeForgeYaml(`contractProducers:
+  - id: intake
+    emit:
+      argv: [${JSON.stringify(NODE)}, "-e", ${JSON.stringify(EMIT_ENV)}, "{bundle}"]
+    consumer:
+      root: "./consumer"
+      validator:
+        argv: [${JSON.stringify(NODE)}, "-e", "process.exit(7)", "{bundle}"]
+`);
+    const result = await runConformanceRun({ argv: [], flags: { all: true } }, ctx());
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.producers[0]?.failedLeg).toBe("consumer");
+  });
+
+  it("emit argv deleting the bundle dir → fail emit, not a crash", async () => {
+    const d = withConsumerRoot(
+      decl({
+        emit: {
+          argv: [
+            NODE,
+            "-e",
+            `require("node:fs").rmSync(process.argv[1],{recursive:true,force:true})`,
+            "{bundle}",
+          ],
+        },
+      }),
+    );
+    const verdict = await runProducerConformance(d, { repoRoot: ws });
+    expect(verdict.status).toBe("fail");
+    expect(verdict.failedLeg).toBe("emit");
+    expect(verdict.diagnostics.join(" ")).toContain("unreadable");
+  });
+
+  it("bundle tmpdir is removed after the run", async () => {
+    const before = new Set(readdirSync(tmpdir()).filter((n) => n.startsWith("conformance-")));
+    const verdict = await runProducerConformance(withConsumerRoot(decl()), {
+      repoRoot: ws,
+    });
+    expect(verdict.status).toBe("pass");
+    const after = readdirSync(tmpdir()).filter((n) => n.startsWith("conformance-"));
+    expect(after.filter((n) => !before.has(n))).toEqual([]);
   });
 
   it("full pass against a stubbed consumer checkout → aggregate exit 0", async () => {
@@ -563,6 +652,6 @@ describe("forge.conformance.run — selection + aggregate exit", () => {
 `);
     const result = await runConformanceRun({ argv: [], flags: { producer: ["intake"] } }, ctx());
     expect(result.exitCode).toBe(0);
-    expect(result.data?.verdicts[0]?.status).toBe("pass");
+    expect(result.data?.producers[0]?.status).toBe("pass");
   });
 });
