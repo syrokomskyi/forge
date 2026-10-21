@@ -9,6 +9,7 @@
   <item>RFC-0396: initial spec.status handler — per-node states, blockers, front, progress.</item>
   <item>RFC-1240: consumer-aware front — foreignOwned flag/list, foreign deps are not local blockers, --consumer flag resolution.</item>
   <item>FIX: loadRfcStatuses delegated to loadRfcStatusMap (recursive) — archived implemented RFCs resolve their status, so terminal dependencies unblock the front instead of collapsing nodes to stale draft.</item>
+  <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,11 +25,9 @@ import type {
 } from "../../src/types.ts";
 import {
   forgeSpecSchema,
-  specAmendmentSchema,
   isForeignConsumerDep,
   isForeignOwnedNode,
   type ForgeSpec,
-  type SpecAmendment,
 } from "./spec-schema.ts";
 import { loadRfcStatusMap } from "../rfc/frontmatter-io.ts";
 
@@ -100,31 +99,7 @@ async function loadRfcStatuses(
   return loadRfcStatusMap(rfcDir);
 }
 
-async function loadAmendments(specDir: string): Promise<SpecAmendment[]> {
-  const amendmentsDir = path.join(specDir, "amendments");
-  if (!existsSync(amendmentsDir)) return [];
-
-  const entries = (await fs.readdir(amendmentsDir)).map((e) => e.name);
-  const amendments: SpecAmendment[] = [];
-
-  for (const entry of entries) {
-    if (!entry.endsWith(".md")) continue;
-    try {
-      const content = await fs.readFile(path.join(amendmentsDir, entry));
-      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) continue;
-      const raw = parseYaml(fmMatch[1]) as unknown;
-      const parsed = specAmendmentSchema.safeParse(raw);
-      if (parsed.success) {
-        amendments.push(parsed.data);
-      }
-    } catch {
-      // skip unreadable files
-    }
-  }
-
-  return amendments;
-}
+import { loadAmendments } from "./spec-amendments.ts";
 
 function computeFront(
   nodes: SpecNodeStatus[],
@@ -230,8 +205,27 @@ export async function runSpecStatus(
       total: nodes.length,
     };
 
-    // Load amendments (RFC-0397)
-    const amendments = await loadAmendments(specDir);
+    // Load amendments (RFC-0397) — fail closed on SPEC-14 (RFC-1363)
+    const { amendments, errors: amendmentErrors } = await loadAmendments(specDir);
+    if (amendmentErrors.length > 0) {
+      for (const v of amendmentErrors) {
+        if (outputFormat === "pretty") logger.error(`spec.status: ${specId} — ${v.rule}: ${v.message}`);
+      }
+      return {
+        data: {
+          command: "spec.status",
+          specs: [],
+        },
+        exitCode: 1,
+        summary: `spec.status: refused — ${amendmentErrors.length} unparseable amendment file(s) in ${specId} (run spec.validate for details)`,
+        nextSteps: [
+          {
+            action: `Repair or remove the named amendment files, then re-run: pnpm exec forge run spec.validate`,
+            kind: "required" as const,
+          },
+        ],
+      };
+    }
     const acceptedAmendments = amendments.filter((a) => a.status === "accepted");
     const amendedNodes = new Set<string>();
     const amendedDecisions = new Set<string>();

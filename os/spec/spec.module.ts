@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1230: added spec.live.rebuild command + --force flag on spec.live.merge (idempotent merge design).</item>
-  <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
-  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
 Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
@@ -18,7 +15,8 @@ surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item
   <item>RFC-1234: spec.live.validate description lists V-LS-09 drift rule.</item>
   <item>RFC-1240: --consumer flag on spec.validate/spec.status/spec.materialize; SPEC-12/13 rules in spec.validate description.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: spec.validate description documents sweep-mode manifest-dir scoping.</item>
-  <history>RFC-0394, RFC-0396, RFC-0711</history>
+  <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
+  <history>RFC-0394, RFC-0396, RFC-0711, RFC-1173, RFC-1230</history>
 </CHANGE_SUMMARY>
 */
 
@@ -57,12 +55,15 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "SPEC-11",
         "SPEC-12",
         "SPEC-13",
+        "SPEC-14",
       ],
       description:
         "Validate vendored spec packages under docs/specs/. " +
         "Checks integrity (SHA-256), schema, dependency graph (acyclic), " +
         "reference resolution, wave coverage, duplicate ids, materializedAs links, " +
         "and consumer hygiene (SPEC-12 duplicates/empty, SPEC-13 identity warning). " +
+        "Amendment files that do not parse or fail forge/spec-amendment@1 are SPEC-14 " +
+        "errors — the run fails closed instead of skipping them (RFC-1363). " +
         "Sweep mode skips directories without forge-spec.yaml (authored/live dirs " +
         "are not packages); --spec=<id> validates one spec and reports SPEC-02 " +
         "when the named dir lacks a manifest.",
