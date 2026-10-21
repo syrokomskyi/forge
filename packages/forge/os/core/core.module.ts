@@ -6,14 +6,20 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1254: forge.package.health lint-surface probe (PKG-HEALTH-06) + --compass-docs generates marked conditional for OWN-DUP-01 parity</item>
   <item>RFC-1255: forge.doctor next-steps are severity-aware — warn-only runs emit an optional "review the warnings" step instead of a required "fix the violations" one.</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
 Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248</history>
+  <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
+
+Declare every reachable env read on its owning command across engine/site/
+forge (fresh full-registry replay worklist: 151 ENV-INPUT-01, 60 commands).
+ForgeCommandMetadata gains the mirrored envInputs contract field. The
+npm_execpath ambient read in open-source-page.ts is removed for a
+deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251</history>
 </CHANGE_SUMMARY>
 */
 
@@ -678,6 +684,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         execute: runReleasePrepare,
       },
       {
+        envInputs: ["R2_AXIOM_ACCESS_KEY_ID", "R2_AXIOM_ACCOUNT_ID", "R2_AXIOM_SECRET_ACCESS_KEY", "S3_ACCESS_KEY_ID", "S3_BUCKET", "S3_ENDPOINT", "S3_SECRET_ACCESS_KEY"],
         name: "forge.release.publish",
         coverage: "operator" as const,
         coverageNote: "forge release publish step",
@@ -751,6 +758,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         execute: runKnowledgeCompact,
       },
       {
+        envInputs: ["FORGE_PINNED_OVERRIDE"],
         name: "pinned.validate",
         coverage: "operator" as const,
         coverageNote: "pin-file hygiene",
