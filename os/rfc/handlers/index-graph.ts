@@ -13,6 +13,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,28 +27,66 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import type {
   RfcStatus,
   RfcKind,
   RfcIndexEntry,
   RfcIndexResult,
+  RfcIndexFailure,
   RfcGraphResult,
 } from "../types.ts";
 import { RFC_DIR } from "../types.ts";
 import { toIsoDate } from "./shared.ts";
 
+// RFC-1364: injected reader seam — tests simulate a partial file that parses
+// only on a later read; no real concurrency in tests.
+let parseRfcImpl: typeof readAndParseRfc = readAndParseRfc;
+export function __setParseRfcImplForTests(impl: typeof readAndParseRfc | undefined): void {
+  parseRfcImpl = impl ?? readAndParseRfc;
+}
+
+const INDEX_PARSE_READS = 3;
+const INDEX_RETRY_DELAY_MS = 100;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function runRfcIndexGenerate(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
-): Promise<ForgeCommandResult<RfcIndexResult>> {
+): Promise<ForgeCommandResult<RfcIndexResult | RfcIndexFailure>> {
   const { workspaceRoot, logger, outputFormat } = context;
   const rfcDirPath = path.join(workspaceRoot, RFC_DIR);
 
   const files = await listRfcFiles(rfcDirPath);
   const entries: RfcIndexEntry[] = [];
+  const parseFailures: RfcIndexFailure["violations"] = [];
   for (const fileName of files) {
-    const result = await readAndParseRfc(rfcDirPath, fileName);
-    if (!result || "error" in result) continue;
+    // RFC-1364: retry a file that fails to parse — a concurrent writer may
+    // still be mid-rename. Up to 3 reads, 100 ms apart.
+    let result = await parseRfcImpl(rfcDirPath, fileName);
+    for (let attempt = 1; attempt < INDEX_PARSE_READS && result && "error" in result; attempt++) {
+      await sleep(INDEX_RETRY_DELAY_MS);
+      result = await parseRfcImpl(rfcDirPath, fileName);
+    }
+    if (!result) {
+      parseFailures.push({
+        rule: "RFC-IDX-04",
+        file: path.join(RFC_DIR, fileName),
+        message: "file not readable",
+      });
+      continue;
+    }
+    if ("error" in result) {
+      parseFailures.push({
+        rule: "RFC-IDX-04",
+        file: path.join(RFC_DIR, fileName),
+        message: result.error,
+      });
+      continue;
+    }
     const fm = result.parsed.frontmatter;
     const arr = (k: string): string[] =>
       Array.isArray(fm[k]) ? (fm[k] as unknown[]).map(String) : [];
@@ -69,6 +108,29 @@ export async function runRfcIndexGenerate(
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
 
+  // RFC-1364: a persistent parse failure fails the run without writing —
+  // a partial index built over unreadable sources is worse than a stale one.
+  if (parseFailures.length > 0) {
+    const failure: RfcIndexFailure = {
+      command: "rfc.index.generate",
+      status: "fail",
+      violations: parseFailures,
+    };
+    if (outputFormat === "pretty") {
+      for (const v of parseFailures) {
+        logger.error(`RFC-IDX-04: ${v.file}: ${v.message}`);
+      }
+      logger.error(
+        `${parseFailures.length} RFC file(s) unparseable after ${INDEX_PARSE_READS} reads — index not written.`,
+      );
+    }
+    return {
+      data: failure,
+      exitCode: 1,
+      summary: `${parseFailures.length} unparseable RFC file(s) after ${INDEX_PARSE_READS} reads — index not written`,
+    };
+  }
+
   let written: string | undefined;
   if (input.flags["write"] === true) {
     const outRel = path.join(RFC_DIR, "index.yaml");
@@ -78,7 +140,7 @@ export async function runRfcIndexGenerate(
       count: entries.length,
       entries,
     };
-    await fs.writeFile(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`);
+    await writeFileAtomic(path.join(workspaceRoot, outRel), `${yamlStringify(payload)}`);
     written = outRel;
   }
 
