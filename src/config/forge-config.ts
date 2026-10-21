@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0704: added optional independentVersionPackages field to forgeConfigSchema for packages with autonomous npm versions.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -15,7 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-1224</history>
+  <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -184,6 +184,44 @@ export interface ForgeMigrationAdapter {
 }
 
 // ---------------------------------------------------------------------------
+// Contract producers schema (RFC-1365)
+// ---------------------------------------------------------------------------
+
+/**
+ * A declared producer of a versioned contract bundle (RFC-1365): `emit.argv`
+ * writes the bundle into a forge-provided tmpdir, the optional `mirror.argv`
+ * re-checks it producer-side, and `consumer.validator.argv` invokes the
+ * authoritative validator inside the sibling consumer checkout. Entries
+ * passthrough so follow-up fields (e.g. a consumer pin) land without churn.
+ */
+export const contractProducerSchema = z
+  .object({
+    id: z.string().min(1),
+    emit: z.object({ argv: z.array(z.string().min(1)).min(1) }),
+    mirror: z.object({ argv: z.array(z.string().min(1)).min(1) }).optional(),
+    consumer: z.object({
+      root: z.string().min(1),
+      validator: z.object({
+        argv: z.array(z.string().min(1)).min(1),
+        timeoutMs: z.number().int().positive().optional(),
+      }),
+    }),
+    test: z.string().min(1).optional(),
+  })
+  .passthrough();
+
+export interface ContractProducerEntry {
+  id: string;
+  emit: { argv: string[] };
+  mirror?: { argv: string[] };
+  consumer: {
+    root: string;
+    validator: { argv: string[]; timeoutMs?: number };
+  };
+  test?: string;
+}
+
+// ---------------------------------------------------------------------------
 // Schema (forge/config@1)
 // ---------------------------------------------------------------------------
 
@@ -214,6 +252,8 @@ export const forgeConfigSchema = z
     skillPacks: z.array(forgeSkillPackSchema).optional(),
     /** Migration adapters (RFC-0546). Optional — absent means built-in adapters only. */
     migrationAdapters: z.array(forgeMigrationAdapterSchema).optional(),
+    /** Contract producers (RFC-1365). Optional — absent means no declared producers. */
+    contractProducers: z.array(contractProducerSchema).optional(),
     /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */
     forge: z
       .object({
@@ -258,6 +298,8 @@ export interface ForgeConfig {
   skillPacks?: ForgeSkillPack[];
   /** Migration adapters (RFC-0546). Optional — absent means built-in adapters only. */
   migrationAdapters?: ForgeMigrationAdapter[];
+  /** Contract producers (RFC-1365). Optional — absent means no declared producers. */
+  contractProducers?: ContractProducerEntry[];
   /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */
   forge?: { syncedVersion: string | null };
   /** RFC-0643: loaded stack profile — present when forge.yaml has a `profile` field */
