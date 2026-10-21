@@ -6,6 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1360: tighten werkstatt.lock.recover writes to the actual top-level cleanup surface (`systems|missions|releases/*.tmp|.staging-*|.incomplete|.failed-*`) — the bucket-scope declaration marked authored trees generated via .gitattributes.</item>
   <item>RFC-0374: initial forgeWerkstattModule registering 3 werkstatt commands.</item>
   <item>RFC-0556: removed dynamic imports of @warpgogol/site-kernel-handoff and @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/werkstatt/handlers/.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
@@ -56,7 +57,21 @@ export const forgeWerkstattModule: ForgeModule = {
           description: "Remove stale artifacts instead of classifying them.",
         },
       },
-      writes: [".werkstatt/locks/**", "systems/**", "missions/**", "releases/**"],
+      writes: [
+        ".werkstatt/locks/**",
+        "systems/*.tmp",
+        "systems/*.staging-*",
+        "systems/*.incomplete",
+        "systems/*.failed-*",
+        "missions/*.tmp",
+        "missions/*.staging-*",
+        "missions/*.incomplete",
+        "missions/*.failed-*",
+        "releases/*.tmp",
+        "releases/*.staging-*",
+        "releases/*.incomplete",
+        "releases/*.failed-*",
+      ],
       generates: [],
       reads: [".werkstatt/locks/**"],
       cacheable: false,
