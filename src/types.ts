@@ -9,9 +9,6 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — werkstatt-engine clean
-
-Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1147: ForgeRegisteredCommandInfo.provider narrowed to "workspace" and siteName field removed — forge never enumerated sites; mirrors the KernelRegisteredCommandInfo cleanup.</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
@@ -21,6 +18,13 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1306: ForgeRuntimeContext.invoke — structurally-typed optional port mirroring the kernel contract; forge stays runtime-autonomous (no engine import).</item>
   <item>RFC-1354: review r2 — approved/info; closes three info notes: requiresNetwork on remaining remote commands, ForgeCommandMetadata mirror JSDoc, baseline widened to full module-slice blind spot</item>
+  <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
+
+Declare every reachable env read on its owning command across engine/site/
+forge (fresh full-registry replay worklist: 151 ENV-INPUT-01, 60 commands).
+ForgeCommandMetadata gains the mirrored envInputs contract field. The
+npm_execpath ambient read in open-source-page.ts is removed for a
+deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
   <history>RFC-0518, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -190,6 +194,15 @@ export interface ForgeCommandMetadata {
    * KernelCommandMetadata.
    */
   mutatingFlags?: string[];
+  /**
+   * RFC-1303: environment variable names whose values this command reads
+   * (`process.env.*` reachable from its handler). Names only
+   * (`^[A-Z_][A-Z0-9_]*$`); declared inputs are hashed — never the raw
+   * values — into the result-cache key. Undeclared env reads on a cacheable
+   * command emit ENV-INPUT-01 (error); on non-cacheable commands, a warning.
+   * Structurally mirrors KernelCommandMetadata.
+   */
+  envInputs?: string[];
   /**
    * RFC-0960/0810: repo-relative path to the implementing module file —
    * propagated into generator ownership entries (OWN-XCHECK-03 requires it
