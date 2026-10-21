@@ -1,11 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Golden-conformance execution path for declared contract producers (RFC-1365).</purpose>
-<keywords>conformance, contract-producer, golden, cross-repo</keywords>
-<responsibilities>
-  <item>runProducerConformance — emit → mirror → consumer legs against a tmpdir bundle with leg attribution.</item>
-  <item>consumerAvailable — test-side describe.skipIf guard for an absent consumer checkout.</item>
-</responsibilities>
+<purpose>Shared golden-conformance execution path for declared contract producers (RFC-1365): runProducerConformance executes the emit → mirror → consumer legs against an mkdtemp bundle dir with per-leg failure attribution, and consumerAvailable backs the test-side describe.skipIf guard for an absent consumer checkout.</purpose>
 <non-goals>
   <item>Do not import @warpgogol/* packages — this module is autonomous (FORGE-AUTONOMY-01).</item>
   <item>Do not vendor or re-implement consumer validation rules — the consumer argv is the authority.</item>
@@ -16,6 +11,7 @@
   <item>RFC-1365: initial conformance execution path — emit/mirror/consumer legs, tail-bounded output, skip/require verdicts.</item>
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
+  <item>RFC-1365: compass header fix — drop forbidden keywords/responsibilities tags, expand purpose</item>
 </CHANGE_SUMMARY>
 */
 
