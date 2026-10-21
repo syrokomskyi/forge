@@ -10,7 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Register all 16 forge modules in CLI registry — add adr, plan, audit, mission, spec, program, plugin (previously only 9 of 16 were reachable via `forge <cmd>`).</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
 Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
@@ -22,6 +21,7 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
+  <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <history>RFC-0542, RFC-0543</history>
 </CHANGE_SUMMARY>
 */
@@ -147,6 +147,9 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/notes/notes.module.ts").then((m) => m.createForgeNotesModule()),
     await import("../os/queue/queue.module.ts").then((m) => m.createForgeQueueModule()),
     await import("../os/authority/authority.module.ts").then((m) => m.createForgeAuthorityModule()),
+    await import("../os/conformance/conformance.module.ts").then((m) =>
+      m.createForgeConformanceModule(),
+    ),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {
