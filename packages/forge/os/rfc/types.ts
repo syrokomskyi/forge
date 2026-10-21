@@ -12,13 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
-  <item>RFC-1322: fo-review fix pass — criteriaPendingRefresh/evidenceWouldRefresh dry-run fields</item>
   <item>RFC-1330: origin contracts, RFC_ORIGIN_CUTOFF, RFC-IMP-10/11 rule ids, stamp warnings.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1336: RfcFrontmatter.decidedBy — the granting human when an agent:&lt;id&gt; reviewer decided under an rfc.decision delegation; added to RFC_KNOWN_KEYS.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320</history>
+  <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -644,6 +643,13 @@ export interface RfcIndexResult {
   entries: RfcIndexEntry[];
   /** Path written, if --write was passed. */
   written?: string;
+}
+
+/** RFC-1364: persistent per-file parse failure — the run fails without writing. */
+export interface RfcIndexFailure {
+  command: "rfc.index.generate";
+  status: "fail";
+  violations: { rule: "RFC-IDX-04"; file: string; message: string }[];
 }
 
 export interface RfcGraphResult {

@@ -6,21 +6,21 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1139: second hint fix (rfc.list empty-state) + read-only test fix</item>
-  <history>RFC-0303</history>
+  <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
+  <history>RFC-0303, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo as fs } from "../../../src/utils/io.ts";
 import { writeFileSync } from "../../../src/utils/sync-fs.ts";
+import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
 import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
@@ -284,7 +284,16 @@ export async function runRfcCreate(
       content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
 
       const targetPath = path.join(rfcDirPath, fileName);
-      writeFileSync(targetPath, content, { flag: "wx" });
+      // RFC-1364: atomic write (temp + rename) so concurrent readers never
+      // observe a half-written RFC. The claim file already guarantees single
+      // id allocation; the existence check preserves the old `wx` behavior
+      // of failing loudly when the target somehow exists.
+      if (existsSync(targetPath)) {
+        throw Object.assign(new Error(`rfc target already exists: ${fileName}`), {
+          code: "EEXIST",
+        });
+      }
+      await writeFileAtomic(targetPath, content);
       relativeFile = path.join(RFC_DIR, fileName);
       allocated = true;
     } finally {
