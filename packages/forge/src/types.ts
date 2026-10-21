@@ -9,9 +9,6 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
@@ -23,7 +20,8 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1306: ForgeRuntimeContext.invoke — structurally-typed optional port mirroring the kernel contract; forge stays runtime-autonomous (no engine import).</item>
-  <history>RFC-0518</history>
+  <item>RFC-1354: review r2 — approved/info; closes three info notes: requiresNetwork on remaining remote commands, ForgeCommandMetadata mirror JSDoc, baseline widened to full module-slice blind spot</item>
+  <history>RFC-0518, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
@@ -172,6 +170,13 @@ export type ForgeCommandScope = "app" | "workspace";
 export interface ForgeCommandMetadata {
   description: string;
   scope: ForgeCommandScope;
+  /**
+   * Filesystem-scoped mutation capability — structurally mirrors
+   * KernelCommandMetadata. Delegated `executeKernelCommand` calls attribute
+   * their writes to the callee, whose own declaration owns those paths; a
+   * read-only orchestrator stays `mutatesState: false` and MUST NOT
+   * re-declare the callee's writes (single writer per path).
+   */
   mutatesState?: boolean;
   /**
    * RFC-1176: permits `io.exec` on the read-only adapter — the command
@@ -191,6 +196,7 @@ export interface ForgeCommandMetadata {
    * on every command that declares generates[]).
    */
   modulePath?: string;
+  /** The command performs network egress (remote APIs, git push, DHT). Informational manifest metadata. */
   requiresNetwork?: boolean;
   acceptsAllFlag?: boolean;
   /** RFC-0963: validation contract this command belongs to (e.g. "content", "seo"). */
