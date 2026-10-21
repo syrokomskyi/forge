@@ -10,6 +10,7 @@ contract producers plus the CONF-01..06 declaration lint.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1365: step 2 — forge-conformance module with run + validate commands.</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
+  <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,6 +39,7 @@ export async function createForgeConformanceModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: false,
         execOnReadOnly: true,
+        writes: [],
         envInputs: ["FORGE_CONFORMANCE_REQUIRE"],
         acceptsAllFlag: true,
         coverage: "operator",
@@ -57,7 +59,8 @@ export async function createForgeConformanceModule(): Promise<ForgeModule> {
           all: {
             kind: "boolean",
             required: false,
-            description: "Run every declared contract producer. Cannot be combined with --producer.",
+            description:
+              "Run every declared contract producer. Cannot be combined with --producer.",
           },
           "require-consumer": {
             kind: "boolean",
@@ -75,7 +78,7 @@ export async function createForgeConformanceModule(): Promise<ForgeModule> {
           "(RFC-1365). CONF-01 malformed entry / missing {bundle} placeholder, " +
           "CONF-02 missing or unwired conformance test (must reference " +
           "@warpgogol/forge/conformance or forge.conformance.run), CONF-03 " +
-          "unresolvable argv script path, CONF-04 consumer.root absent on this " +
+          "unresolvable producer-side argv script path, CONF-04 consumer.root absent on this " +
           "machine (warning — dead-gate risk), CONF-05 duplicate producer id, " +
           "CONF-06 mirror omitted (warning — drift leg unarmed). No producers " +
           "declared → pass with no work.",
@@ -83,6 +86,7 @@ export async function createForgeConformanceModule(): Promise<ForgeModule> {
         contract: "conformance",
         rules: ["CONF-01", "CONF-02", "CONF-03", "CONF-04", "CONF-05", "CONF-06"],
         mutatesState: false,
+        writes: [],
         coverage: "operator",
         coverageNote:
           "Operator-facing declaration lint — run directly or wired into " +

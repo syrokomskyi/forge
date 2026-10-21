@@ -13,14 +13,12 @@ FORGE_CONFORMANCE_REQUIRE.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1365: step 2 — forge.conformance.run handler over the shared execution path.</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
+  <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
 </CHANGE_SUMMARY>
 */
 
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
-import {
-  runProducerConformance,
-  type ConformanceVerdict,
-} from "../../../src/conformance/index.ts";
+import { runProducerConformance, type ConformanceVerdict } from "../../../src/conformance/index.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -30,8 +28,7 @@ import type {
 export interface ConformanceRunResult {
   command: "forge.conformance.run";
   status: "pass" | "fail" | "skip";
-  producers: number;
-  verdicts: ConformanceVerdict[];
+  producers: ConformanceVerdict[];
   summary: { pass: number; fail: number; skip: number };
 }
 
@@ -40,7 +37,7 @@ const REQUIRE_ENV = "FORGE_CONFORMANCE_REQUIRE";
 function requireModeEnabled(input: ForgeCommandInput): boolean {
   if (input.flags["require-consumer"] === true) return true;
   const env = process.env[REQUIRE_ENV];
-  return env !== undefined && env !== "" && env !== "0" && env.toLowerCase() !== "false";
+  return env === "1" || env?.toLowerCase() === "true";
 }
 
 function producerSelection(input: ForgeCommandInput): { all: boolean; ids: string[] } {
@@ -54,8 +51,7 @@ function usageError(message: string): ForgeCommandResult<ConformanceRunResult> {
     data: {
       command: "forge.conformance.run",
       status: "fail",
-      producers: 0,
-      verdicts: [],
+      producers: [],
       summary: { pass: 0, fail: 0, skip: 0 },
     },
     summary: `forge.conformance.run: ${message}`,
@@ -82,8 +78,7 @@ export async function runConformanceRun(
       data: {
         command: "forge.conformance.run",
         status: "fail",
-        producers: 0,
-        verdicts: [],
+        producers: [],
         summary: { pass: 0, fail: 0, skip: 0 },
       },
       summary: `forge.conformance.run: ${(err as Error).message}`,
@@ -107,10 +102,21 @@ export async function runConformanceRun(
   const verdicts: ConformanceVerdict[] = [];
 
   for (const decl of selected) {
-    const verdict = await runProducerConformance(decl, {
-      repoRoot: workspaceRoot,
-      requireConsumer,
-    });
+    let verdict: ConformanceVerdict;
+    try {
+      verdict = await runProducerConformance(decl, {
+        repoRoot: workspaceRoot,
+        requireConsumer,
+      });
+    } catch (err) {
+      verdict = {
+        producer: decl.id,
+        status: "fail",
+        failedLeg: "emit",
+        legs: [],
+        diagnostics: [`producer-level failure before legs could run: ${(err as Error).message}`],
+      };
+    }
     verdicts.push(verdict);
 
     if (context.outputFormat === "pretty") {
@@ -124,9 +130,12 @@ export async function runConformanceRun(
       for (const leg of verdict.legs) {
         const code = leg.exitCode !== undefined ? ` exit=${leg.exitCode}` : "";
         const trunc = leg.truncated ? " [output tail-truncated]" : "";
-        logger.info(
-          `    ${leg.leg}: ${leg.status} (${leg.durationMs}ms)${code}${trunc}`,
-        );
+        logger.info(`    ${leg.leg}: ${leg.status} (${leg.durationMs}ms)${code}${trunc}`);
+        if (leg.status === "fail" && leg.output) {
+          for (const line of leg.output.split("\n")) {
+            logger.info(`      | ${line}`);
+          }
+        }
       }
       for (const diagnostic of verdict.diagnostics) {
         if (verdict.status === "fail") {
@@ -143,14 +152,18 @@ export async function runConformanceRun(
     fail: verdicts.filter((v) => v.status === "fail").length,
     skip: verdicts.filter((v) => v.status === "skip").length,
   };
-  const status = counts.fail > 0 ? "fail" : counts.skip === verdicts.length && verdicts.length > 0 ? "skip" : "pass";
+  const status =
+    counts.fail > 0
+      ? "fail"
+      : counts.skip === verdicts.length && verdicts.length > 0
+        ? "skip"
+        : "pass";
 
   return {
     data: {
       command: "forge.conformance.run",
       status,
-      producers: verdicts.length,
-      verdicts,
+      producers: verdicts,
       summary: counts,
     },
     summary:
