@@ -16,6 +16,7 @@ stays the default for the standalone forge CLI.
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1152 Wave 2a: initial sync fs shim for forge ambient layer.</item>
+  <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +27,7 @@ export {
   writeFileSync,
   appendFileSync,
   mkdirSync,
+  mkdtempSync,
   readdirSync,
   statSync,
   lstatSync,

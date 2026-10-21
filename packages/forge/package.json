@@ -171,6 +171,18 @@
     "./os/authority-module": {
       "types": "./os/authority/authority.module.ts",
       "default": "./os/authority/authority.module.ts"
+    },
+    "./conformance": {
+      "types": "./src/conformance/index.ts",
+      "default": "./src/conformance/index.ts"
+    },
+    "./os/conformance": {
+      "types": "./os/conformance/index.ts",
+      "default": "./os/conformance/index.ts"
+    },
+    "./os/conformance-module": {
+      "types": "./os/conformance/conformance.module.ts",
+      "default": "./os/conformance/conformance.module.ts"
     }
   },
   "files": [
@@ -361,6 +373,18 @@
       "./os/queue-module": {
         "types": "./dist/os/queue/queue.module.d.ts",
         "default": "./dist/os/queue/queue.module.js"
+      },
+      "./conformance": {
+        "types": "./dist/src/conformance/index.d.ts",
+        "default": "./dist/src/conformance/index.js"
+      },
+      "./os/conformance": {
+        "types": "./dist/os/conformance/index.d.ts",
+        "default": "./dist/os/conformance/index.js"
+      },
+      "./os/conformance-module": {
+        "types": "./dist/os/conformance/conformance.module.d.ts",
+        "default": "./dist/os/conformance/conformance.module.js"
       }
     }
   }

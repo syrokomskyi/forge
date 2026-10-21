@@ -15,13 +15,13 @@
 <CHANGE_SUMMARY>
   <item>RFC-1365: initial conformance execution path — emit/mirror/consumer legs, tail-bounded output, skip/require verdicts.</item>
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
+  <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
 </CHANGE_SUMMARY>
 */
 
-import { spawn } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
+import { existsSync, mkdtempSync, readdirSync, rmSync, spawn } from "../utils/sync-fs.ts";
 
 /** Captured leg output is tail-truncated to this many bytes (RFC-1365). */
 export const CONFORMANCE_OUTPUT_TAIL_BYTES = 64 * 1024;
