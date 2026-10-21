@@ -23,6 +23,7 @@ triggerPhrases: ["record this architectural decision", "create an ADR", "documen
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1361: path-scoped commits by default — EC-24 pre-commit message lint with governed-prefix exemption</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -134,7 +135,7 @@ adr: create ADR-XXXX <short title>
 Draft ADR-XXXX (<title>) from template. Status: proposed, awaiting decider acceptance.
 ```
 
-Stage only the ADR file — do not stage unrelated changes. Another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
+Commit path-scoped (RFC-1361): `pnpm exec werkstatt run ecosystem.commit --message "adr: create ADR-XXXX <short title>" --files "<adr file path>"` — `--files` auto-stages the new ADR file and leaves foreign staged entries intact. On plain-git workshops (no `ecosystem.commit`): stage only the ADR file with `git add <path>` and commit — `git add -A` or `git add .` is forbidden; another agent may be working in a different session.
 
 ## Constraints
 

@@ -24,6 +24,7 @@ triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC"
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
+  <item>RFC-1361: path-scoped commits by default — EC-24 pre-commit message lint with governed-prefix exemption</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -136,7 +137,7 @@ rfc: create RFC-XXXX <short title>
 Draft RFC-XXXX (<title>) from template. Status: draft, awaiting human architecture review.
 ```
 
-Stage only the RFC file — do not stage unrelated changes. Another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
+Commit path-scoped (RFC-1361): `pnpm exec werkstatt run ecosystem.commit --message "rfc: create RFC-XXXX <short title>" --files "<rfc file path>"` — `--files` auto-stages the new RFC file and leaves foreign staged entries intact. On plain-git workshops (no `ecosystem.commit`): stage only the RFC file with `git add <path>` and commit — `git add -A` or `git add .` is forbidden; another agent may be working in a different session.
 
 ## Constraints
 
