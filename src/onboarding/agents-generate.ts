@@ -7,7 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1253: emit "Semantic layer — read first" block listing bound paths.compassDocs before the Skills table when the binding resolves non-empty.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -16,7 +15,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1255: Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>Semantic-layer block rendered marker-wrapped via shared semantic-layer-block module and injected/refreshed inside hand-written roots carrying the sentinel or a pasted region; result gains injected[] (consumer field report follow-up to RFC-1253).</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664</history>
+  <item>RFC-1365: step 4 — DNA-115, CONF-* remediation entries, agents-generate convention section</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1253</history>
 </CHANGE_SUMMARY>
 */
 
@@ -398,6 +398,22 @@ export async function runAgentsGenerate(
   dynamicLines.push("");
   dynamicLines.push("**Session-start read discipline (advisory):** At session start, read `MEMORY.md` (always), then `daily/<today>.md` and `daily/<yesterday>.md` (if present). Older daily files are cold — use grep when a task references past context.");
   dynamicLines.push("");
+
+  // RFC-1365 (DNA-115): declared contract producers carry the golden-conformance
+  // convention — emitted only when forge.yaml declares contractProducers[].
+  if ((config.contractProducers ?? []).length > 0) {
+    dynamicLines.push("## Golden conformance for declared contract producers");
+    dynamicLines.push("");
+    dynamicLines.push("This repository declares `contractProducers[]` in `forge.yaml` — every declared producer MUST keep a working golden-conformance path: `emit` writes the bundle into the forge-provided dir (`{bundle}` argv placeholder / `FORGE_CONFORMANCE_BUNDLE_DIR`), the optional `mirror` leg re-checks the same bundle, and the `consumer` leg invokes the authoritative consumer validator inside `consumer.root` (DNA-115).");
+    dynamicLines.push("");
+    dynamicLines.push("- One execution path serves both surfaces: `forge.conformance.run --producer <id>` (or `--all`) for operator/CI runs, and the `@warpgogol/forge/conformance` helper (`consumerAvailable` + `runProducerConformance`) for vitest wrappers — never hand-roll spawn/mkdtemp/skip plumbing in producer tests.");
+    dynamicLines.push("- An absent `consumer.root` self-skips with an explicit verdict; use `--require-consumer` or `FORGE_CONFORMANCE_REQUIRE=1` in environments where the checkout is guaranteed so the guard fails closed instead of silently degrading.");
+    dynamicLines.push("- `forge.conformance.validate` lints declarations fail-closed (CONF-01..06): schema + `{bundle}` placeholders, test wiring, argv path resolution, absent consumer.root (warning), duplicate ids, missing mirror (warning).");
+    dynamicLines.push("- Never vendor or re-implement consumer validation rules — the consumer argv is the authority; emit/mirror agreeing while both diverge from the consumer is the defect class this exists to catch.");
+    dynamicLines.push("");
+    dynamicLines.push("Naming: golden contract conformance (this, cross-repo producer side) ≠ component-runtime conformance (in-repo capability contracts) ≠ content golden baselines ≠ verbund fixture conformance.");
+    dynamicLines.push("");
+  }
 
   // RFC-0643: Load root template, replace project placeholders, insert dynamic sections
   const profile = config.profile as StackProfile | undefined;
