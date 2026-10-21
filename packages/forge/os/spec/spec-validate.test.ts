@@ -7,6 +7,7 @@
   <item>Gap fix: cover SPEC-07 after terminal RFC archival.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: cover sweep-mode manifest-dir scoping and skippedDirs.</item>
   <item>RFC-1302: consumer-aware SPEC-07, narrowed SPEC-10, source-first bin entry (RFC-1302)</item>
+  <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
 </CHANGE_SUMMARY>
 */
 
@@ -245,5 +246,49 @@ ${targetsYaml}discoveredBy: test
     const spec10 = result.data!.specs[0]!.violations.filter((x) => x.rule === "SPEC-10");
     expect(spec10).toHaveLength(1);
     expect(spec10[0]!.severity).toBeUndefined();
+  });
+});
+
+describe("spec.validate SPEC-14 fail-closed amendments (RFC-1363)", () => {
+  it("AC-1: a section target without anchor is a SPEC-14 error naming the file", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-spec14-"));
+    roots.push(workspaceRoot);
+    await writeConsumerSpec(workspaceRoot, "");
+    const dir = path.join(workspaceRoot, "docs/specs/example/amendments");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "amd-t1.md"), `---
+schema: forge/spec-amendment@1
+id: AMD-T1
+title: Missing anchor
+status: proposed
+createdAt: 2026-10-21
+reviewers: []
+targets:
+  - kind: section
+    document: readme
+discoveredBy: test
+---
+`);
+    const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(workspaceRoot));
+    expect(result.exitCode).toBe(1);
+    const spec14 = result.data!.specs[0]!.violations.filter((v) => v.rule === "SPEC-14");
+    expect(spec14).toHaveLength(1);
+    expect(spec14[0]!.message).toContain("amd-t1.md");
+    expect(spec14[0]!.message).toContain("forge/spec-amendment@1");
+  });
+
+  it("AC-2: an amendment file without frontmatter is a SPEC-14 error naming the file", async () => {
+    const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "spec-validate-spec14-"));
+    roots.push(workspaceRoot);
+    await writeConsumerSpec(workspaceRoot, "");
+    const dir = path.join(workspaceRoot, "docs/specs/example/amendments");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "amd-t2.md"), "# Amendment without frontmatter\n\nJust prose.\n");
+    const result = await runSpecValidate({ argv: [], flags: { spec: "example" } }, ctx(workspaceRoot));
+    expect(result.exitCode).toBe(1);
+    const spec14 = result.data!.specs[0]!.violations.filter((v) => v.rule === "SPEC-14");
+    expect(spec14).toHaveLength(1);
+    expect(spec14[0]!.message).toContain("amd-t2.md");
+    expect(spec14[0]!.message).toContain("no frontmatter block");
   });
 });

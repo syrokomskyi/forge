@@ -9,11 +9,11 @@
 <CHANGE_SUMMARY>
   <item>RFC-0396: initial spec.materialize handler — front computation, scaffold via rfc.create, materializedAs write-back.</item>
   <item>RFC-1240: consumer-aware front — consumers ownership gate, foreign-dep satisfaction, foreignOwned result field, --consumer flag resolution.</item>
+  <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo as fs } from "../../src/utils/io.ts";
-import { existsSync } from "../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { toKebabCase } from "../../src/utils/string-utils.ts";
@@ -26,16 +26,15 @@ import type {
 } from "../../src/types.ts";
 import {
   forgeSpecSchema,
-  specAmendmentSchema,
   type ForgeSpec,
   type SpecRfcNode,
-  type SpecAmendment,
   ownsSpecNode,
   isForeignOwnedNode,
   isForeignConsumerDep,
   resolveAmendedNode,
 } from "./spec-schema.ts";
 import { listRfcFiles } from "../rfc/frontmatter-io.ts";
+import { loadAmendments } from "./spec-amendments.ts";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -173,26 +172,25 @@ export async function runSpecMaterialize(
     };
   }
 
-  // Load amendments (RFC-0397)
-  const amendmentsDir = path.join(specDir, "amendments");
-  const amendments: SpecAmendment[] = [];
-  if (existsSync(amendmentsDir)) {
-    const amdEntries = (await fs.readdir(amendmentsDir)).map((e) => e.name);
-    for (const entry of amdEntries) {
-      if (!entry.endsWith(".md")) continue;
-      try {
-        const content = await fs.readFile(path.join(amendmentsDir, entry));
-        const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        if (!fmMatch) continue;
-        const raw = parseYaml(fmMatch[1]) as unknown;
-        const amdParsed = specAmendmentSchema.safeParse(raw);
-        if (amdParsed.success) {
-          amendments.push(amdParsed.data);
-        }
-      } catch {
-        // skip
-      }
+  // Load amendments (RFC-0397) — fail closed on SPEC-14 (RFC-1363)
+  const { amendments, errors: amendmentErrors } = await loadAmendments(specDir);
+  if (amendmentErrors.length > 0) {
+    for (const v of amendmentErrors) {
+      if (outputFormat === "pretty") logger.error(`spec.materialize: ${specId} — ${v.rule}: ${v.message}`);
     }
+    return {
+      data: {
+        command: "spec.materialize",
+        status: "fail",
+        spec: specId,
+        created: [],
+        skipped: [],
+        front: [],
+        foreignOwned: [],
+      },
+      exitCode: 1,
+      summary: `spec.materialize: refused — ${amendmentErrors.length} unparseable amendment file(s) in ${specId} (run spec.validate for details)`,
+    };
   }
 
   const proposedAmendmentNodes = new Set<string>();

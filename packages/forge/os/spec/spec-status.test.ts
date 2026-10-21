@@ -3,7 +3,10 @@
 <purpose>Prove spec.status resolves materializedAs against archived RFCs: an implemented RFC living only under docs/rfcs/archive/implemented/ still marks its node implemented and unblocks the front.</purpose>
 <non-goals><item>Do not duplicate spec.validate rule coverage — that lives in spec-validate.test.ts.</item></non-goals>
 </MODULE_CONTRACT>
-<CHANGE_SUMMARY><item>FIX: initial coverage — archived-implemented dependency unblocks front; top-level draft stays a blocker.</item></CHANGE_SUMMARY>
+<CHANGE_SUMMARY>
+  <item>FIX: initial coverage — archived-implemented dependency unblocks front; top-level draft stays a blocker.</item>
+  <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
+</CHANGE_SUMMARY>
 */
 
 import fs from "node:fs/promises";
@@ -126,5 +129,18 @@ describe("spec.status archived-RFC resolution", () => {
     expect(b.state).toBe("unmaterialized");
     expect(b.blockedBy).toEqual(["A"]);
     expect(spec.front).toEqual([]);
+  });
+});
+
+describe("spec.status SPEC-14 fail-closed (RFC-1363)", () => {
+  it("AC-3: exits non-zero when the spec has an unparseable amendment", async () => {
+    const workspaceRoot = await makeWorkspace();
+    await writeSpec(workspaceRoot, "journal", TWO_NODE_SPEC);
+    const dir = path.join(workspaceRoot, "docs/specs/journal/amendments");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "amd-bad.md"), "# no frontmatter\n");
+    const result = await runSpecStatus({ argv: [], flags: { spec: "journal" } }, ctx(workspaceRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("unparseable amendment");
   });
 });

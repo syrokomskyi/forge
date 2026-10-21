@@ -8,11 +8,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0394: initial spec.validate handler with SPEC-01..07 rules.</item>
   <item>Gap fix: resolve materialized RFCs recursively so terminal RFC archival does not invalidate accepted specs.</item>
   <item>RFC-1240: SPEC-12 consumers list hygiene, SPEC-13 consumer-identity warning; warnings no longer fail validation.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: sweep mode skips dirs without forge-spec.yaml (authored/live areas are not packages), reports them as skippedDirs; --spec keeps SPEC-02.</item>
   <item>RFC-1302: consumer-aware SPEC-07, narrowed SPEC-10, source-first bin entry (RFC-1302)</item>
+  <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
+  <history>RFC-0394</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +33,6 @@ import type {
 import {
   forgeSpecSchema,
   specIntegritySchema,
-  specAmendmentSchema,
   ownsSpecNode,
   type ForgeSpec,
   type SpecIntegrity,
@@ -40,6 +40,7 @@ import {
   type SpecViolation,
   type SpecValidateResult,
 } from "./spec-schema.ts";
+import { loadAmendments as loadAmendmentsShared, type LoadedAmendments } from "./spec-amendments.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -328,33 +329,11 @@ function checkConsumers(
 }
 
 // ---------------------------------------------------------------------------
-// SPEC-08..11: Amendment validation (RFC-0397)
+// SPEC-08..11: Amendment validation (RFC-0397); SPEC-14 fail-closed loader (RFC-1363)
 // ---------------------------------------------------------------------------
 
-async function loadAmendments(specDir: string): Promise<SpecAmendment[]> {
-  const amendmentsDir = path.join(specDir, "amendments");
-  if (!existsSync(amendmentsDir)) return [];
-
-  const entries = (await fs.readdir(amendmentsDir)).map((e) => e.name);
-  const amendments: SpecAmendment[] = [];
-
-  for (const entry of entries) {
-    if (!entry.endsWith(".md")) continue;
-    try {
-      const content = await fs.readFile(path.join(amendmentsDir, entry));
-      const fmMatch = content.match(/^---\n([\s\S]*?)\n---/);
-      if (!fmMatch) continue;
-      const raw = parseYaml(fmMatch[1]) as unknown;
-      const parsed = specAmendmentSchema.safeParse(raw);
-      if (parsed.success) {
-        amendments.push(parsed.data);
-      }
-    } catch {
-      // skip unreadable files
-    }
-  }
-
-  return amendments;
+async function loadAmendments(specDir: string): Promise<LoadedAmendments> {
+  return loadAmendmentsShared(specDir);
 }
 
 function checkAmendments(
@@ -545,8 +524,9 @@ export async function runSpecValidate(
     // SPEC-07: materializedAs
     await checkMaterializedAs(spec, rfcDir, localConsumer, violations);
 
-    // SPEC-08..11: Amendments (RFC-0397)
-    const amendments = await loadAmendments(specDir);
+    // SPEC-08..11: Amendments (RFC-0397); SPEC-14: fail-closed load (RFC-1363)
+    const { amendments, errors: amendmentLoadErrors } = await loadAmendments(specDir);
+    violations.push(...amendmentLoadErrors);
     checkAmendments(spec, amendments, violations);
 
     // SPEC-12/13: consumers hygiene + identity warning (RFC-1240)
