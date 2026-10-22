@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1254: forge.package.health lint-surface probe (PKG-HEALTH-06) + --compass-docs generates marked conditional for OWN-DUP-01 parity</item>
   <item>RFC-1255: forge.doctor next-steps are severity-aware — warn-only runs emit an optional "review the warnings" step instead of a required "fix the violations" one.</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
@@ -19,7 +18,8 @@ forge (fresh full-registry replay worklist: 151 ENV-INPUT-01, 60 commands).
 ForgeCommandMetadata gains the mirrored envInputs contract field. The
 npm_execpath ambient read in open-source-page.ts is removed for a
 deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251</history>
+  <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254</history>
 </CHANGE_SUMMARY>
 */
 
@@ -684,7 +684,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         execute: runReleasePrepare,
       },
       {
-        envInputs: ["R2_AXIOM_ACCESS_KEY_ID", "R2_AXIOM_ACCOUNT_ID", "R2_AXIOM_SECRET_ACCESS_KEY", "S3_ACCESS_KEY_ID", "S3_BUCKET", "S3_ENDPOINT", "S3_SECRET_ACCESS_KEY"],
+        envInputs: [{ name: "R2_AXIOM_ACCESS_KEY_ID", required: false }, { name: "R2_AXIOM_ACCOUNT_ID", required: false }, { name: "R2_AXIOM_SECRET_ACCESS_KEY", required: false }, { name: "S3_ACCESS_KEY_ID", required: false }, { name: "S3_BUCKET", required: false }, { name: "S3_ENDPOINT", required: false }, { name: "S3_SECRET_ACCESS_KEY", required: false }],
         name: "forge.release.publish",
         coverage: "operator" as const,
         coverageNote: "forge release publish step",
@@ -758,7 +758,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         execute: runKnowledgeCompact,
       },
       {
-        envInputs: ["FORGE_PINNED_OVERRIDE"],
+        envInputs: [{ name: "FORGE_PINNED_OVERRIDE", required: false }],
         name: "pinned.validate",
         coverage: "operator" as const,
         coverageNote: "pin-file hygiene",
