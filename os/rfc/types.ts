@@ -17,6 +17,7 @@
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1336: RfcFrontmatter.decidedBy — the granting human when an agent:&lt;id&gt; reviewer decided under an rfc.decision delegation; added to RFC_KNOWN_KEYS.</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
+  <item>RFC-1383: RfcImplementStampData.criteriaTotal — total parsed ACs for N-of-M reporting.</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -667,6 +668,8 @@ export interface RfcImplementStampData {
   implementationCommit: string;
   stampedAt: string;
   criteriaChecked: number;
+  /** RFC-1383: total acceptance criteria parsed (checked + unchecked). */
+  criteriaTotal: number;
   /** RFC-1322: criterion ids flipped `[ ]` → `[x]` by --check-criteria. */
   criteriaAutoChecked?: string[];
   /**
