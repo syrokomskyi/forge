@@ -15,6 +15,7 @@ verification evidence, and atomically mutates RFC frontmatter.
   <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
   <item>RFC-1330: origin gates wired into the shared evidence evaluator; non-blocking warnings surfaced in results.</item>
+  <item>RFC-1383: RFC-IMP-02 names the --check-criteria remedy; success output and result data report criteria N of M.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-IMP-07</history>
@@ -815,10 +816,14 @@ export async function runRfcImplementStamp(
   // candidates for the auto-check pass, and checkedWithoutEvidence re-runs on
   // the post-flip body — a flipped line always keeps its annotation.
   const criteriaEval = evaluateAcceptanceCriteria(body);
+  // RFC-1383: the unchecked violation names the remedy — --check-criteria
+  // auto-verifies resolvable criteria in-place. This branch only runs when
+  // the flag was NOT passed, so the hint can never offer a no-op.
+  const criteriaTotal = criteriaEval.totalChecked + criteriaEval.totalUnchecked;
   if (!checkCriteria && criteriaEval.totalUnchecked > 0) {
     violations.push({
       rule: "RFC-IMP-02",
-      message: `${criteriaEval.totalUnchecked} acceptance criteria are unchecked. All criteria must be checked before stamping: ${criteriaEval.uncheckedLines.join("; ")}`,
+      message: `${criteriaEval.totalUnchecked} acceptance criteria are unchecked. All criteria must be checked before stamping: ${criteriaEval.uncheckedLines.join("; ")}. Re-run with --check-criteria to auto-verify resolvable criteria, or annotate evidence on each criterion and re-run.`,
     });
   }
   if (!checkCriteria && criteriaEval.checkedWithoutEvidence.length > 0) {
@@ -1163,7 +1168,7 @@ export async function runRfcImplementStamp(
       if (outputFormat === "pretty") {
         logger.success(`[dry-run] ${targetId} would be stamped as implemented`);
         logger.info(`  implementation commit: ${implementationCommit}`);
-        logger.info(`  criteria checked: ${effectiveCriteriaChecked}`);
+        logger.info(`  criteria checked: ${effectiveCriteriaChecked} of ${criteriaTotal}`);
         if (criteriaAutoChecked && criteriaAutoChecked.length > 0) {
           logger.info(`  criteria auto-checked: ${criteriaAutoChecked.join(", ")}`);
         }
@@ -1187,6 +1192,7 @@ export async function runRfcImplementStamp(
             implementationCommit: implementationCommit!,
             stampedAt,
             criteriaChecked: effectiveCriteriaChecked,
+            criteriaTotal,
             ...(checkCriteria
               ? {
                   criteriaAutoChecked: criteriaAutoChecked ?? [],
@@ -1251,7 +1257,7 @@ export async function runRfcImplementStamp(
     if (outputFormat === "pretty") {
       logger.success(`${targetId} stamped as implemented`);
       logger.info(`  implementation commit: ${implementationCommit}`);
-      logger.info(`  criteria checked: ${effectiveCriteriaChecked}`);
+      logger.info(`  criteria checked: ${effectiveCriteriaChecked} of ${criteriaTotal}`);
       if (criteriaAutoChecked && criteriaAutoChecked.length > 0) {
         logger.info(`  criteria auto-checked: ${criteriaAutoChecked.join(", ")}`);
       }
@@ -1271,6 +1277,7 @@ export async function runRfcImplementStamp(
           implementationCommit: implementationCommit!,
           stampedAt,
           criteriaChecked: effectiveCriteriaChecked,
+          criteriaTotal,
           ...(checkCriteria ? { criteriaAutoChecked: criteriaAutoChecked ?? [] } : {}),
           ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
           ...(hasProbes ? { evidenceReEmitted } : {}),

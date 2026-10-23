@@ -13,6 +13,7 @@ Unit tests for implement stamp covering rfc.implement.stamp. It also guards the 
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — stale-envelope refresh, probes-less fail-closed, empty/dir/escape paths, line-ranges, --sync composition, fully-checked no-op</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
+  <item>RFC-1383: pins for the --check-criteria remedy hint, residual no-no-op, and N-of-M success output</item>
 </CHANGE_SUMMARY>
 */
 
@@ -342,6 +343,56 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.status).toBe("fail");
     const rules = result.data?.violations.map((v) => v.rule);
     expect(rules).toContain("RFC-IMP-02");
+    // RFC-1383 AC-1: the violation names the --check-criteria remedy.
+    const imp02 = result.data?.violations.find((v) => v.rule === "RFC-IMP-02");
+    expect(imp02?.message).toContain("--check-criteria");
+    expect(imp02?.message).toContain("First criterion");
+  });
+
+  it("RFC-1383: a residual RFC-IMP-02 under --check-criteria does not offer the flag again", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    // AC-1's evidence points at a file that does not exist and resolves no
+    // probe — it stays unchecked after the auto-verify pass.
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101", { ac1: "src/definitely-missing.ts:10" }));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const imp02 = result.data?.violations.find((v) => v.rule === "RFC-IMP-02");
+    expect(imp02).toBeDefined();
+    expect(imp02!.message).toContain("remain unchecked after the --check-criteria pass");
+    // The flag already ran — the message must not suggest re-running it.
+    expect(imp02!.message).not.toContain("Re-run with --check-criteria");
+  });
+
+  it("RFC-1383 AC-2: success output reports N of M criteria checked", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
+    await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", true));
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0001\n\nX-RFC: RFC-0001");
+
+    const infos: string[] = [];
+    const capturing: ForgeLogger = { ...noopLogger, info: (m) => infos.push(m) };
+    const ctx = {
+      ...makeContext(workspaceRoot),
+      logger: capturing,
+      outputFormat: "pretty" as const,
+    };
+
+    const result = await runRfcImplementStamp(makeInput("RFC-0001", commit), ctx);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.criteriaChecked).toBe(3);
+    expect(result.data?.data?.criteriaTotal).toBe(3);
+    expect(infos.some((m) => m === "  criteria checked: 3 of 3")).toBe(true);
   });
 
   it("rejects an RFC file with uncommitted changes (RFC-IMP-04)", async () => {
