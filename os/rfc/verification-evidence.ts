@@ -17,6 +17,7 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
   <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
   <item>RFC-1330: emit attaches git-derived origin; origin is volatile for --check.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <item>RFC-1372: getKernelVersion falls back to the workspace root package.json version — the packages/os/site-kernel path predates RFC-0776 and no longer resolves, so envelopes recorded kernelVersion: unknown</item>
   <history>RFC-0330, RFC-0999, RFC-1237</history>
 </CHANGE_SUMMARY>
 */
@@ -268,13 +269,15 @@ export async function captureGitContext(
 }
 
 export async function getKernelVersion(workspaceRoot: string): Promise<string> {
-  try {
-    const pkgPath = join(workspaceRoot, "packages", "os", "site-kernel", "package.json");
-    const pkg = JSON.parse(await io.readFile(pkgPath));
-    return String(pkg.version ?? "unknown");
-  } catch {
-    return "unknown";
+  for (const rel of [join("packages", "os", "site-kernel", "package.json"), "package.json"]) {
+    try {
+      const pkg = JSON.parse(await io.readFile(join(workspaceRoot, rel)));
+      if (pkg.version) return String(pkg.version);
+    } catch {
+      // try the next candidate path
+    }
   }
+  return "unknown";
 }
 
 export function byteHashHex(content: string): string {
