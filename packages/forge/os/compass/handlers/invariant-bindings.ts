@@ -1,11 +1,12 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1390: tagged `@ai-invariant[INV-<scope>-<NN>]` parsing, `checked-by`
-binding resolution, and COMPASS-INVARIANT-02..07 rule evaluation plus the
-`docs/invariants*.generated.yaml` index/baseline IO shared by compass.validate
-and compass.invariants.generate. The binding is structural — a binding names the
-check; whether the check truly enforces the statement stays a review concern
-(DNA-43, RFC-1392).</purpose>
+<purpose>RFC-1390: `checked-by` binding resolution and COMPASS-INVARIANT-02..07
+rule evaluation plus the `docs/invariants*.generated.yaml` index/baseline IO
+shared by compass.validate and compass.invariants.generate. The pure tagged
+`@ai-invariant[INV-<scope>-<NN>]` parser lives in src/compass/invariant-parser.ts
+(RFC-1392 extraction, re-exported here). The binding is structural — a binding
+names the check; whether the check truly enforces the statement stays a review
+concern (DNA-43, RFC-1392).</purpose>
 <non-goals>
   <item>Do not register commands — handlers and the module file do that.</item>
   <item>Do not judge semantic adequacy of a bound check — the binding is structural only.</item>
@@ -19,6 +20,7 @@ check; whether the check truly enforces the statement stays a review concern
   <item>retiredIds survive regeneration via merge-forward — the generated index is the only store of never-reused ids.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
+  <item>RFC-1392: pure parser extracted to src/compass/invariant-parser.ts (re-exported); this module keeps IO, binding resolution, and rule evaluation.</item>
   <item>RFC-1390: tagged invariant grammar, checked-by resolvers, rule table 02..07, index/baseline IO.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
@@ -27,12 +29,32 @@ check; whether the check truly enforces the statement stays a review concern
 </CHANGE_SUMMARY>
 */
 
-import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { buildGeneratedHeader } from "../../../src/utils/generated-marker.ts";
+import {
+  baselineKey,
+  BINDING_KINDS,
+  invariantStatementSha,
+  type ParsedInvariant,
+} from "../../../src/compass/invariant-parser.ts";
 import type { CompassRiskClass } from "../policy.ts";
+
+// The pure parser moved to src/compass/invariant-parser.ts (RFC-1392) so
+// cross-package consumers can import it via @warpgogol/forge/compass. These
+// re-exports keep existing os/ consumers on this module unchanged.
+export {
+  baselineKey,
+  extractInvariants,
+  invariantStatementSha,
+  normalizeInvariantStatement,
+  INVARIANT_ID_RE,
+  VACUOUS_INVARIANT_PATTERNS,
+  type InvariantBindingKind,
+  type ParsedInvariant,
+  type RawBinding,
+} from "../../../src/compass/invariant-parser.ts";
 
 const io = ambientIo;
 
@@ -44,7 +66,7 @@ function escapeRegExp(text: string): string {
 // Contracts (RFC-1390 TypeScript contracts section)
 // ---------------------------------------------------------------------------
 
-export type InvariantBindingKind = "test" | "type" | "lint" | "proof";
+import type { InvariantBindingKind } from "../../../src/compass/invariant-parser.ts";
 
 export interface InvariantBinding {
   kind: InvariantBindingKind;
@@ -91,223 +113,6 @@ export interface InvariantBaseline {
 export const INVARIANT_INDEX_PATH = "docs/invariants.generated.yaml";
 export const INVARIANT_BASELINE_PATH = "docs/invariants.baseline.generated.yaml";
 export const VALIDATOR_INVENTORY_PATH = "docs/validator-inventory.generated.yaml";
-
-// ---------------------------------------------------------------------------
-// Grammar
-// ---------------------------------------------------------------------------
-
-export const INVARIANT_ID_RE = /^INV-[a-z0-9]+(-[a-z0-9]+)*-\d{2,3}$/;
-
-const MARKER_RE = /^@ai-invariant(?:\[([^\]]*)\])?\s*:\s?(.*)$/;
-const CHECKED_BY_RE = /\(\s*checked-by\s*:\s*([^()]*)\)\s*$/i;
-const BINDING_KINDS = new Set<InvariantBindingKind>(["test", "type", "lint", "proof"]);
-
-/**
- * Boilerplate shapes observed in the seeded corpus. Extending the list needs
- * no RFC — it is a tunable constant next to the rule, like the V-40/V-41
- * trigger lists.
- */
-export const VACUOUS_INVARIANT_PATTERNS: RegExp[] = [
-  /preserve (its|the) core logic/i,
-  /this is a high-risk (module|file)/i,
-  /minimi[sz]e (external )?side effects/i,
-];
-
-const VACUOUS_MIN_WORDS = 6;
-
-export function normalizeInvariantStatement(statement: string): string {
-  return statement.replace(/\s+/g, " ").trim();
-}
-
-export function invariantStatementSha(statement: string): string {
-  return createHash("sha256").update(normalizeInvariantStatement(statement)).digest("hex");
-}
-
-/**
- * Comment-region spans of one line. Tracks `/* … *​/` and `<!-- … -->` blocks
- * across lines so markers are only recognised inside comments, and only when
- * the marker opens the comment payload (mid-comment mentions are prose).
- * This is a lexical heuristic, not a tokenizer: an opener immediately
- * preceded by `"`, `'`, `` ` ``, `:`, `/`, or an escape sequence (`\n//`…)
- * is treated as code (string/regex literal, URL scheme, or escaped text)
- * and skipped — a marker inside a *larger* string literal that embeds
- * comment sigils can still false-positive, so keep marker text out of
- * literals (split or escape it, as the test fixtures do).
- */
-const OPENER_CODE_PREFIX = new Set(['"', "'", "`", ":", "/"]);
-
-function commentSpans(
-  line: string,
-  block: "js" | "html" | null,
-): { spans: [number, number, boolean][]; block: "js" | "html" | null } {
-  const spans: [number, number, boolean][] = [];
-  let i = 0;
-  while (i < line.length) {
-    if (block) {
-      const closer = block === "html" ? "-->" : "*/";
-      const end = line.indexOf(closer, i);
-      if (end === -1) {
-        spans.push([i, line.length, true]);
-        return { spans, block };
-      }
-      spans.push([i, end, true]);
-      i = end + closer.length;
-      block = null;
-      continue;
-    }
-    const candidates: [number, "line" | "js" | "html"][] = [];
-    const lineIdx = line.indexOf("//", i);
-    if (lineIdx >= 0) candidates.push([lineIdx, "line"]);
-    const jsIdx = line.indexOf("/*", i);
-    if (jsIdx >= 0) candidates.push([jsIdx, "js"]);
-    const htmlIdx = line.indexOf("<!--", i);
-    if (htmlIdx >= 0) candidates.push([htmlIdx, "html"]);
-    if (candidates.length === 0) break;
-    candidates.sort((a, b) => a[0] - b[0]);
-    const [first, kind] = candidates[0]!;
-    // An opener glued to a quote, colon, or slash sits inside a literal or a
-    // different opener — resume the scan after it instead of opening a
-    // comment. A backslash can never precede a real comment outside a
-    // string/template/regex, so a sigil touching an escape (`\n//`, `\//`,
-    // `\\/*`, …) is literal text too.
-    if (
-      (first > 0 && (OPENER_CODE_PREFIX.has(line[first - 1]!) || line[first - 1] === "\\")) ||
-      (first > 1 && line[first - 2] === "\\")
-    ) {
-      i = first + 1;
-      continue;
-    }
-    if (kind === "line") {
-      spans.push([first + 2, line.length, false]);
-      break;
-    }
-    block = kind;
-    i = first + (kind === "html" ? 4 : 2);
-  }
-  return { spans, block };
-}
-
-/** Comment text of one line: span contents joined, block-continuation `*` stripped. */
-function commentTextOf(line: string, block: "js" | "html" | null) {
-  const { spans, block: nextBlock } = commentSpans(line, block);
-  if (spans.length === 0) return { text: null, block: nextBlock };
-  const text = spans
-    .map(([s, e, isBlock]) => {
-      const seg = line.slice(s, e);
-      return isBlock ? seg.replace(/^\s*\*\s?(?!\*)/, "") : seg;
-    })
-    .join(" ")
-    .trim();
-  return { text, block: nextBlock };
-}
-
-/**
- * Whether a comment line ends a multi-line invariant statement instead of
- * continuing it: annotations (`@param`), markup tags (`<purpose>`), delimiter
- * runs (`// ----`), and fresh invariant markers all start something new.
- */
-function isContinuationBoundary(commentText: string): boolean {
-  if (commentText.startsWith("@") || commentText.startsWith("<")) return true;
-  if (/^[-=_~*#|]{3,}/.test(commentText)) return true;
-  return MARKER_RE.test(commentText);
-}
-
-interface RawBinding {
-  kind: string;
-  target: string;
-}
-
-function parseBindingRef(ref: string): RawBinding {
-  const idx = ref.indexOf(":");
-  if (idx === -1) return { kind: ref.trim(), target: "" };
-  return { kind: ref.slice(0, idx).trim(), target: ref.slice(idx + 1).trim() };
-}
-
-export interface ParsedInvariant {
-  id: string | null;
-  malformedId?: string;
-  /** A `checked-by` group is present but is not the trailing parenthesised group. */
-  malformedCheckedBy?: boolean;
-  line: number;
-  statement: string;
-  rawBindings: RawBinding[];
-  vacuous: boolean;
-}
-
-/**
- * Extract every `@ai-invariant` from source text — legacy `// @ai-invariant …`
- * (id null) and tagged `// @ai-invariant[INV-x-01] … (checked-by: …)` forms.
- * The marker must open the comment payload — a `@ai-invariant` mention inside
- * a sentence is prose, not a declaration. A statement runs until a code line,
- * a blank comment line, a delimiter-prefixed line, a markup/annotation line,
- * or a fresh marker — contiguous comment lines are the statement (the
- * `(checked-by: …)` tail wraps the same way).
- */
-export function extractInvariants(source: string): ParsedInvariant[] {
-  const lines = source.split("\n");
-  const found: ParsedInvariant[] = [];
-
-  // Comment text per line — markers outside comments never declare invariants.
-  const commentTexts: (string | null)[] = [];
-  let block: "js" | "html" | null = null;
-  for (const line of lines) {
-    const { text, block: nextBlock } = commentTextOf(line, block);
-    commentTexts.push(text);
-    block = nextBlock;
-  }
-
-  for (let i = 0; i < lines.length; i += 1) {
-    const comment = commentTexts[i];
-    if (comment === null) continue;
-    const match = MARKER_RE.exec(comment);
-    if (!match) continue;
-
-    const bracket = match[1];
-    let text = match[2] ?? "";
-    const markerLine = i + 1;
-
-    // Join continuation comment lines: the statement runs until a code line,
-    // a blank comment line, a delimiter run, a markup/annotation line, or a
-    // new invariant marker (the `(checked-by: …)` tail may wrap the same way).
-    while (i + 1 < lines.length) {
-      const next = commentTexts[i + 1];
-      if (next === null || next === "" || isContinuationBoundary(next)) break;
-      i += 1;
-      text = `${text} ${next}`.trim();
-    }
-
-    let bindings: RawBinding[] = [];
-    let statement = text;
-    const checkedBy = CHECKED_BY_RE.exec(text);
-    if (checkedBy) {
-      statement = text.slice(0, checkedBy.index).trim();
-      bindings = checkedBy[1]!
-        .split(",")
-        .map((ref) => ref.trim())
-        .filter((ref) => ref.length > 0)
-        .map(parseBindingRef);
-    }
-
-    const normalized = normalizeInvariantStatement(statement);
-    const malformedId =
-      bracket !== undefined && !INVARIANT_ID_RE.test(bracket.trim()) ? bracket.trim() : undefined;
-    const malformedCheckedBy = !checkedBy && /\(\s*checked-by\s*:/i.test(statement);
-
-    found.push({
-      id: malformedId === undefined && bracket !== undefined ? bracket.trim() : null,
-      malformedId,
-      malformedCheckedBy: malformedCheckedBy || undefined,
-      line: markerLine,
-      statement: normalized,
-      rawBindings: bindings,
-      vacuous:
-        VACUOUS_INVARIANT_PATTERNS.some((re) => re.test(normalized)) ||
-        normalized.split(" ").filter((w) => w.length > 0).length < VACUOUS_MIN_WORDS,
-    });
-  }
-
-  return found;
-}
 
 // ---------------------------------------------------------------------------
 // Index + baseline IO
@@ -504,10 +309,6 @@ export async function resolveInvariantBindings(
     out.push(invariant);
   }
   return out;
-}
-
-export function baselineKey(path: string, statementSha256: string): string {
-  return `${path}#${statementSha256}`;
 }
 
 export function baselineSet(baseline: InvariantBaseline | null): Set<string> {
