@@ -12,13 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1330: origin contracts, RFC_ORIGIN_CUTOFF, RFC-IMP-10/11 rule ids, stamp warnings.</item>
-  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1336: RfcFrontmatter.decidedBy — the granting human when an agent:&lt;id&gt; reviewer decided under an rfc.decision delegation; added to RFC_KNOWN_KEYS.</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1383: RfcImplementStampData.criteriaTotal — total parsed ACs for N-of-M reporting.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322</history>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -345,6 +344,8 @@ export type AcceptanceProbe = (
       schemaInline: Record<string, unknown>;
       criterion?: string;
     }
+  // RFC-1391: run a forge/proof-spec@1 through its pinned checker; ok ⇔ verdict `proved`.
+  | { probe: "proof"; spec: string; criterion?: string }
 ) &
   AcceptanceProbeMeta;
 
@@ -353,6 +354,20 @@ export interface ProbeResult {
   ok: boolean;
   /** Actual exit code / resolution info. */
   detail: string;
+  /** RFC-1391: proof verdict payload — present when `probe` is `proof`. */
+  proof?: ProofProbeEvidence;
+}
+
+/** RFC-1391: evidence fields a `proof` probe records on probe results and envelopes. */
+export interface ProofProbeEvidence {
+  tool: string;
+  /** Observed checker version — `null` when no checker ran (unavailable/pre-check error). */
+  toolVersion: string | null;
+  verdict: "proved" | "refuted" | "unavailable" | "error";
+  specSha256: string;
+  entrySha256: string;
+  enumerated?: number;
+  counterexample?: string;
 }
 
 export interface RfcAcceptanceRunResult {
@@ -368,6 +383,8 @@ export interface VerificationEvidenceProbeRecord {
   durationMs: number;
   /** RFC-1330: git-derived origin — present for RFCs created on or after RFC_ORIGIN_CUTOFF. */
   origin?: ProbeOriginRecord;
+  /** RFC-1391: proof verdict payload — present when `probe` is `proof`. */
+  proof?: ProofProbeEvidence;
 }
 
 /**
@@ -701,6 +718,9 @@ export type RfcImplementStampRule =
   // RFC-1333: verificationTier high needs a passing, subagent-isolated
   // acceptance-verification report bound to the implementation commit.
   | "RFC-IMP-12"
+  // RFC-1391: verificationTier formal needs ≥1 proof probe, each with a
+  // proved envelope verdict. No waiver.
+  | "RFC-IMP-13"
   // RFC-1310: commit-time governance provenance — the implementation commit
   // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
   | "STAMP-GOV-01"

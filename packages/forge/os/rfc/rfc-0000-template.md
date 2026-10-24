@@ -83,6 +83,10 @@ nonGoals: []
 #     criterion: AC-4
 #     path: "AGENTS.md"
 #     pattern: "Some new governance paragraph"
+#   - probe: proof                        # RFC-1391: formal-tier evidence
+#     criterion: AC-8
+#     spec: "docs/specs/proofs/<id>.proof.yaml"   # forge/proof-spec@1 file;
+#     # ok ⇔ proof.check returns verdict "proved" from the pinned checker.
 ---
 
 # RFC-0000: Short imperative title

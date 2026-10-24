@@ -12,12 +12,11 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1322: fo-review fix pass — io-injected resolver hardening (empty/dir/escape paths fail closed, line-range strip, probes-less envelope guard), shared IMP-06/09 evaluator, dry-run JSON fields, helpers exported per plan</item>
-  <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
   <item>RFC-1330: origin gates wired into the shared evidence evaluator; non-blocking warnings surfaced in results.</item>
   <item>RFC-1383: RFC-IMP-02 names the --check-criteria remedy; success output and result data report criteria N of M.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
@@ -48,6 +47,7 @@ import {
 } from "../types.ts";
 import {
   createOriginGit,
+  createProofEntryResolver,
   deriveProbeOrigins,
   gitEnvForCwd,
   hasVerifierTrailers,
@@ -55,6 +55,7 @@ import {
 import {
   ACCEPTANCE_REPORTS_DIR,
   evaluateAcceptanceVerificationGate,
+  evaluateFormalProofGate,
   evaluateOriginGates,
 } from "./implement-stamp-origin.ts";
 import type {
@@ -534,6 +535,7 @@ async function evaluateStampEvidenceGates(opts: {
       rfcRelPath: relative(opts.workspaceRoot, rfcFilePath),
       frontmatter: opts.frontmatter,
       probes,
+      resolveProofEntry: createProofEntryResolver(opts.workspaceRoot),
     });
     const gate = evaluateOriginGates({
       targetId,
@@ -557,6 +559,18 @@ async function evaluateStampEvidenceGates(opts: {
   });
   violations.push(...acc.errors);
   warnings.push(...acc.warnings);
+
+  // ── RFC-IMP-13: formal tier requires proved proof probes (RFC-1391) ────────
+  // No waiver path — formal evidence is a mechanical checker verdict by
+  // definition. Reads the committed envelope's proof verdicts.
+  const formal = evaluateFormalProofGate({
+    targetId,
+    frontmatter: opts.frontmatter,
+    probes: (Array.isArray(acceptance) ? acceptance : []) as AcceptanceProbe[],
+    evidenceRecords: evidenceCheck.envelope?.probes,
+  });
+  violations.push(...formal.errors);
+  warnings.push(...formal.warnings);
 
   // ── RFC-IMP-06: probe-bearing post-cutoff RFCs need a passing envelope ────
   if (requiresEvidence) {

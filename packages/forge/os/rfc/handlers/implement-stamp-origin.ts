@@ -20,11 +20,18 @@ verificationTier: high RFC.
   <item>RFC-1330: RFC-IMP-10 (blocking) and RFC-IMP-11 (warning until RFC-1333) origin gates.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
 </CHANGE_SUMMARY>
 */
 
 import { RFC_ORIGIN_CUTOFF } from "../types.ts";
-import type { AcceptanceProbe, ProbeOriginRecord, RfcImplementStampViolation } from "../types.ts";
+import type {
+  AcceptanceProbe,
+  ProbeOriginRecord,
+  RfcImplementStampViolation,
+  VerificationEvidenceProbeRecord,
+} from "../types.ts";
+import { probeDeclarationKey } from "../verification-origin.ts";
 import { listBehavioralCriteria } from "./validate-rules.ts";
 
 /**
@@ -34,6 +41,21 @@ import { listBehavioralCriteria } from "./validate-rules.ts";
 export const RFC_IMP_11_BLOCKING = true;
 
 const NON_SELF = new Set(["requirement", "independent", "external"]);
+
+/** RFC-1391: tiers that require the strict (non-self + report-bound) evidence gates. */
+const NON_SELF_TIERS = new Set(["high", "formal"]);
+
+function describeProbe(probe: AcceptanceProbe, index: number): string {
+  const target =
+    probe.probe === "test"
+      ? probe.file
+      : probe.probe === "run"
+        ? probe.command
+        : probe.probe === "proof"
+          ? probe.spec
+          : probe.probe;
+  return `probe ${index} (${probe.probe}${probe.criterion ? ` → ${probe.criterion}` : ""}: ${target})`;
+}
 
 export interface OriginGateInput {
   targetId: string;
@@ -48,12 +70,6 @@ export interface OriginGateInput {
 export interface OriginGateResult {
   errors: RfcImplementStampViolation[];
   warnings: RfcImplementStampViolation[];
-}
-
-function describeProbe(probe: AcceptanceProbe, index: number): string {
-  const target =
-    probe.probe === "test" ? probe.file : probe.probe === "run" ? probe.command : probe.probe;
-  return `probe ${index} (${probe.probe}${probe.criterion ? ` → ${probe.criterion}` : ""}: ${target})`;
 }
 
 /** Evaluate RFC-IMP-10 / RFC-IMP-11 for a post-cutoff RFC. Pure function. */
@@ -75,7 +91,8 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
     }
   });
 
-  if (input.frontmatter["verificationTier"] === "high") {
+  if (NON_SELF_TIERS.has(String(input.frontmatter["verificationTier"] ?? ""))) {
+    const tier = String(input.frontmatter["verificationTier"]);
     const blocking = input.imp11Blocking ?? RFC_IMP_11_BLOCKING;
     for (const id of listBehavioralCriteria(input.body)) {
       const hasNonSelf = input.probes.some(
@@ -84,7 +101,7 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
       if (hasNonSelf) continue;
       const violation: RfcImplementStampViolation = {
         rule: "RFC-IMP-11",
-        message: `${input.targetId} is verificationTier: high but ${id} (WHEN/IF) has no bound probe with a non-self effective origin. Obtain independent evidence (post-commitment verification) for ${id}.`,
+        message: `${input.targetId} is verificationTier: ${tier} but ${id} (WHEN/IF) has no bound probe with a non-self effective origin. Obtain independent evidence (post-commitment verification) for ${id}.`,
       };
       (blocking ? errors : warnings).push(violation);
     }
@@ -113,9 +130,13 @@ export async function evaluateAcceptanceVerificationGate(
   const errors: RfcImplementStampViolation[] = [];
   const warnings: RfcImplementStampViolation[] = [];
   const fm = input.frontmatter;
-  if (String(fm["createdAt"] ?? "") < RFC_ORIGIN_CUTOFF || fm["verificationTier"] !== "high") {
+  if (
+    String(fm["createdAt"] ?? "") < RFC_ORIGIN_CUTOFF ||
+    !NON_SELF_TIERS.has(String(fm["verificationTier"] ?? ""))
+  ) {
     return { errors, warnings };
   }
+  const tier = String(fm["verificationTier"]);
   const passing = input.reports.filter((r) => r.frontmatter["verdict"] === "pass");
   const bound: typeof passing = [];
   for (const r of passing) {
@@ -132,7 +153,7 @@ export async function evaluateAcceptanceVerificationGate(
     }
     errors.push({
       rule: "RFC-IMP-12",
-      message: `${input.targetId} is verificationTier: high but has no committed verdict: pass acceptance report in ${ACCEPTANCE_REPORTS_DIR}/${input.targetId.toLowerCase()}/ bound to the current code (only verifier-trailer or docs commits may follow the candidate). Run the independent acceptance verification step.`,
+      message: `${input.targetId} is verificationTier: ${tier} but has no committed verdict: pass acceptance report in ${ACCEPTANCE_REPORTS_DIR}/${input.targetId.toLowerCase()}/ bound to the current code (only verifier-trailer or docs commits may follow the candidate). Run the independent acceptance verification step.`,
     });
     return { errors, warnings };
   }
@@ -147,6 +168,61 @@ export async function evaluateAcceptanceVerificationGate(
       errors.push({
         ...v,
         message: `${v.message} Re-run with a clean-context subagent, or the operator may waive with --waive-independent-verification "<reason>".`,
+      });
+    }
+  }
+  return { errors, warnings };
+}
+
+// ─── RFC-1391: RFC-IMP-13 formal proof verdict gate ─────────────────────────
+
+export interface FormalProofGateInput {
+  targetId: string;
+  frontmatter: Record<string, unknown>;
+  probes: AcceptanceProbe[];
+  /** Probe records from the committed verification envelope (may be absent). */
+  evidenceRecords?: VerificationEvidenceProbeRecord[];
+}
+
+/**
+ * RFC-IMP-13 — a `verificationTier: formal` RFC may stamp `implemented` only
+ * when it declares at least one `proof` probe AND every such probe's envelope
+ * record carries `proof.verdict: "proved"`. Hard error, no waiver flag:
+ * formal evidence exists only when a mechanical checker has run.
+ */
+export function evaluateFormalProofGate(input: FormalProofGateInput): OriginGateResult {
+  const errors: RfcImplementStampViolation[] = [];
+  const warnings: RfcImplementStampViolation[] = [];
+  if (input.frontmatter["verificationTier"] !== "formal") return { errors, warnings };
+
+  const proofIndexes = input.probes
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => p.probe === "proof");
+  if (proofIndexes.length === 0) {
+    errors.push({
+      rule: "RFC-IMP-13",
+      message:
+        `${input.targetId} is verificationTier: formal but declares no proof probe — ` +
+        `formal-tier evidence exists only as a mechanical checker verdict. Add a ` +
+        `\`probe: proof\` binding a forge/proof-spec@1 file.`,
+    });
+    return { errors, warnings };
+  }
+
+  const recordsByKey = new Map(
+    (input.evidenceRecords ?? []).map((r) => [probeDeclarationKey(r.probe), r]),
+  );
+  for (const { p, i } of proofIndexes) {
+    const record = recordsByKey.get(probeDeclarationKey(p));
+    const verdict = record?.proof?.verdict;
+    if (verdict !== "proved") {
+      errors.push({
+        rule: "RFC-IMP-13",
+        message:
+          `${input.targetId} ${describeProbe(p, i)} lacks proved evidence — ` +
+          `envelope verdict is "${verdict ?? "missing"}". Run \`proof.check --spec ` +
+          `${(p as { spec: string }).spec}\` then \`rfc.verification.emit --id ${input.targetId}\` ` +
+          `until the checker reports proved.`,
       });
     }
   }

@@ -17,12 +17,15 @@ prose checklist.
   <item>RFC-0998: added test and json-schema probe kinds — spawnVitest helper, Ajv validation, shape validation.</item>
   <item>RFC-1271: optional probe metadata — expectationSource enum-check, limitations pass-through.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
 </CHANGE_SUMMARY>
 */
 
 import { probeReachableCommand, probeReachableSymbol } from "./reachable-symbol.ts";
 import { spawn } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
+import { loadForgeConfig, type FormalToolEntry } from "../../src/config/forge-config.ts";
+import { runProofCheck } from "../../src/formal/index.ts";
 
 import path from "node:path";
 import { parse as yamlParse } from "yaml";
@@ -220,10 +223,19 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
         }
         break;
       }
+      case "proof": {
+        // RFC-1391: spec path required; spec CONTENT is validated by V-46
+        // (forge/proof-spec@1), not here — shape validation stays cheap.
+        const spec = (entry as Record<string, unknown>)["spec"];
+        if (typeof spec !== "string") {
+          issues.push({ index, message: 'probe "proof" requires a string "spec"' });
+        }
+        break;
+      }
       default:
         issues.push({
           index,
-          message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page, test, json-schema, reachable`,
+          message: `unknown probe kind "${String(probe)}" — expected one of: run, file-exists, file-contains, command-registered, page, test, json-schema, reachable, proof`,
         });
     }
 
@@ -439,6 +451,35 @@ export async function runProbe(
       } catch {
         return { probe, ok: false, detail: "schema compilation failed" };
       }
+    }
+    case "proof": {
+      // RFC-1391: the probe is ok ⇔ the mechanical checker verdict is `proved`.
+      // Shares the exact execution path with the `proof.check` command.
+      let tools: Record<string, FormalToolEntry> = {};
+      try {
+        tools = loadForgeConfig(workspaceRoot).formal?.tools ?? {};
+      } catch {
+        // No forge.yaml — only the built-in `exhaustive` tool resolves.
+      }
+      const verdict = await runProofCheck({
+        workspaceRoot,
+        specRelPath: probe.spec,
+        tools,
+      });
+      return {
+        probe,
+        ok: verdict.verdict === "proved",
+        detail: `${verdict.specId} → ${verdict.verdict} — ${verdict.message}`,
+        proof: {
+          tool: verdict.tool,
+          toolVersion: verdict.toolVersion,
+          verdict: verdict.verdict,
+          specSha256: verdict.specSha256,
+          entrySha256: verdict.entrySha256,
+          ...(verdict.enumerated !== undefined ? { enumerated: verdict.enumerated } : {}),
+          ...(verdict.counterexample ? { counterexample: verdict.counterexample } : {}),
+        },
+      };
     }
   }
 }

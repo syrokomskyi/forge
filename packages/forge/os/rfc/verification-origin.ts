@@ -22,10 +22,13 @@ the expectation instead of trusting the declared expectationSource.
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1330: git-derived probe origin — range anchoring, declaration/test/run rules, verifier trailers, presence classes, attachProbeOrigins.</item>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
 </CHANGE_SUMMARY>
 */
 
-import { execFile } from "../../src/utils/sync-fs.ts";
+import { join } from "node:path";
+import { parse as yamlParse } from "yaml";
+import { execFile, readFileSync } from "../../src/utils/sync-fs.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
 import { RFC_ORIGIN_CUTOFF } from "./types.ts";
 import type {
@@ -296,6 +299,28 @@ export interface DeriveProbeOriginsInput {
   probes: AcceptanceProbe[];
   /** Precomputed range (tests / callers that already resolved it). */
   range?: ImplementationRange;
+  /**
+   * RFC-1391: resolves a `proof` probe's spec to its declared `entry` path so
+   * entry bytes are origin-tracked alongside spec bytes. Returns null when the
+   * spec is unreadable/unparseable (the spec alone stays tracked then).
+   */
+  resolveProofEntry?: (specRelPath: string) => Promise<string | null>;
+}
+
+/** Default entry resolver — reads `spec.entry` out of the spec YAML. */
+export function createProofEntryResolver(
+  workspaceRoot: string,
+): (specRelPath: string) => Promise<string | null> {
+  return async (specRelPath) => {
+    try {
+      const parsed = yamlParse(readFileSync(join(workspaceRoot, specRelPath), "utf8")) as {
+        entry?: unknown;
+      };
+      return typeof parsed?.entry === "string" ? parsed.entry : null;
+    } catch {
+      return null;
+    }
+  };
 }
 
 /** Derive one origin record per probe, in probe order. */
@@ -368,6 +393,40 @@ export async function deriveProbeOrigins(
         );
         continue;
       }
+    } else if (probe.probe === "proof") {
+      // RFC-1391: same self/verifier rule as `test`, applied to the union of
+      // commits touching the spec AND its resolved entry — proof evidence
+      // binds to both byte streams.
+      const commits: RangeCommit[] = [];
+      for (const f of [
+        probe.spec,
+        await (input.resolveProofEntry ?? (async () => null))(probe.spec),
+      ]) {
+        if (!f) continue;
+        let fileCommits = fileCache.get(f);
+        if (!fileCommits) {
+          fileCommits = await commitsTouching(git, range, f);
+          fileCache.set(f, fileCommits);
+        }
+        for (const c of fileCommits) {
+          if (!commits.some((x) => x.sha === c.sha)) commits.push(c);
+        }
+      }
+      const nonVerifier = commits.filter((c) => !hasVerifierTrailers(c.body));
+      if (nonVerifier.length > 0) {
+        finish(
+          "self",
+          nonVerifier.map((c) => `${short(c.sha)} touched proof spec/entry`),
+        );
+        continue;
+      }
+      if (commits.length > 0) {
+        finish(
+          "verifier",
+          commits.map((c) => verifierReportOf(c.body) ?? short(c.sha)),
+        );
+        continue;
+      }
     } else if (probe.probe === "run") {
       const name = runCommandName(probe.command);
       if (name && rfcCommands.has(name)) {
@@ -409,6 +468,7 @@ export async function attachProbeOrigins(opts: {
     rfcRelPath: opts.rfcRelPath,
     frontmatter: opts.frontmatter,
     probes: opts.probes,
+    resolveProofEntry: createProofEntryResolver(opts.workspaceRoot),
   });
   origins.forEach((origin, i) => {
     const record = opts.records[i];
