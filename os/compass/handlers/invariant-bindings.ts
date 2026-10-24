@@ -22,11 +22,12 @@ check; whether the check truly enforces the statement stays a review concern
   <item>RFC-1390: tagged invariant grammar, checked-by resolvers, rule table 02..07, index/baseline IO.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
 import { createHash } from "node:crypto";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { buildGeneratedHeader } from "../../../src/utils/generated-marker.ts";
@@ -96,7 +97,7 @@ export const VALIDATOR_INVENTORY_PATH = "docs/validator-inventory.generated.yaml
 
 export const INVARIANT_ID_RE = /^INV-[a-z0-9]+(-[a-z0-9]+)*-\d{2,3}$/;
 
-const MARKER_RE = /@ai-invariant(?:\[([^\]]*)\])?\s*:\s?(.*)$/;
+const MARKER_RE = /^@ai-invariant(?:\[([^\]]*)\])?\s*:\s?(.*)$/;
 const CHECKED_BY_RE = /\(\s*checked-by\s*:\s*([^()]*)\)\s*$/i;
 const BINDING_KINDS = new Set<InvariantBindingKind>(["test", "type", "lint", "proof"]);
 
@@ -123,12 +124,14 @@ export function invariantStatementSha(statement: string): string {
 
 /**
  * Comment-region spans of one line. Tracks `/* … *​/` and `<!-- … -->` blocks
- * across lines so markers are only recognised inside comments. This is a
- * lexical heuristic, not a tokenizer: an opener immediately preceded by `"`,
- * `'`, `` ` ``, `:`, or `/` is treated as code (string/regex literal, URL
- * scheme, or a slash-star-slash edge) and skipped — a marker inside a *larger* string literal
- * that embeds comment sigils can still false-positive, so keep marker text
- * out of literals (split or escape it, as the test fixtures do).
+ * across lines so markers are only recognised inside comments, and only when
+ * the marker opens the comment payload (mid-comment mentions are prose).
+ * This is a lexical heuristic, not a tokenizer: an opener immediately
+ * preceded by `"`, `'`, `` ` ``, `:`, `/`, or an escape sequence (`\n//`…)
+ * is treated as code (string/regex literal, URL scheme, or escaped text)
+ * and skipped — a marker inside a *larger* string literal that embeds
+ * comment sigils can still false-positive, so keep marker text out of
+ * literals (split or escape it, as the test fixtures do).
  */
 const OPENER_CODE_PREFIX = new Set(['"', "'", "`", ":", "/"]);
 
@@ -162,8 +165,14 @@ function commentSpans(
     candidates.sort((a, b) => a[0] - b[0]);
     const [first, kind] = candidates[0]!;
     // An opener glued to a quote, colon, or slash sits inside a literal or a
-    // different opener — resume the scan after it instead of opening a comment.
-    if (first > 0 && OPENER_CODE_PREFIX.has(line[first - 1]!)) {
+    // different opener — resume the scan after it instead of opening a
+    // comment. An escape sequence ending at the sigil (`\n//`, `\\/*`, …)
+    // means the same: a backslash cannot precede a real comment outside a
+    // string/template, so the sigil is literal text.
+    if (
+      (first > 0 && OPENER_CODE_PREFIX.has(line[first - 1]!)) ||
+      (first > 1 && line[first - 2] === "\\")
+    ) {
       i = first + 1;
       continue;
     }
@@ -198,7 +207,7 @@ function commentTextOf(line: string, block: "js" | "html" | null) {
  */
 function isContinuationBoundary(commentText: string): boolean {
   if (commentText.startsWith("@") || commentText.startsWith("<")) return true;
-  if (/^[-=_~*#|]{3,}\s*$/.test(commentText)) return true;
+  if (/^[-=_~*#|]{3,}/.test(commentText)) return true;
   return MARKER_RE.test(commentText);
 }
 
@@ -227,9 +236,11 @@ export interface ParsedInvariant {
 /**
  * Extract every `@ai-invariant` from source text — legacy `// @ai-invariant …`
  * (id null) and tagged `// @ai-invariant[INV-x-01] … (checked-by: …)` forms.
- * A statement runs until a code line, a blank comment line, a delimiter run,
- * a markup/annotation line, or a fresh marker — contiguous comment lines are
- * the statement (the `(checked-by: …)` tail wraps the same way).
+ * The marker must open the comment payload — a `@ai-invariant` mention inside
+ * a sentence is prose, not a declaration. A statement runs until a code line,
+ * a blank comment line, a delimiter-prefixed line, a markup/annotation line,
+ * or a fresh marker — contiguous comment lines are the statement (the
+ * `(checked-by: …)` tail wraps the same way).
  */
 export function extractInvariants(source: string): ParsedInvariant[] {
   const lines = source.split("\n");
@@ -252,6 +263,7 @@ export function extractInvariants(source: string): ParsedInvariant[] {
 
     const bracket = match[1];
     let text = match[2] ?? "";
+    const markerLine = i + 1;
 
     // Join continuation comment lines: the statement runs until a code line,
     // a blank comment line, a delimiter run, a markup/annotation line, or a
@@ -284,7 +296,7 @@ export function extractInvariants(source: string): ParsedInvariant[] {
       id: malformedId === undefined && bracket !== undefined ? bracket.trim() : null,
       malformedId,
       malformedCheckedBy: malformedCheckedBy || undefined,
-      line: i + 1,
+      line: markerLine,
       statement: normalized,
       rawBindings: bindings,
       vacuous:
@@ -418,7 +430,8 @@ async function resolveOneBinding(
   }
   const abs = resolve(ctx.workspaceRoot, binding.target);
   const root = resolve(ctx.workspaceRoot);
-  if (abs !== root && !abs.startsWith(root + "/")) {
+  const rel = relative(root, abs);
+  if (rel.startsWith("..") || isAbsolute(rel)) {
     binding.resolved = false;
     binding.failure = `binding target ${binding.target} escapes the workspace root`;
     return;
@@ -450,9 +463,7 @@ export async function resolveInvariantBindings(
   const out: CodeInvariant[] = [];
   for (const parsed of invariants) {
     const bindings: InvariantBinding[] = parsed.rawBindings.map((raw) => ({
-      kind: (BINDING_KINDS.has(raw.kind as InvariantBindingKind)
-        ? raw.kind
-        : raw.kind) as InvariantBindingKind,
+      kind: raw.kind as InvariantBindingKind,
       target: raw.target,
       resolved: false,
       failure: BINDING_KINDS.has(raw.kind as InvariantBindingKind)

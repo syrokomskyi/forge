@@ -13,6 +13,7 @@ semantics, and the COMPASS-INVARIANT-02..07 rule table over tmp workspaces.
   <item>RFC-1390: binding-rule fixtures — parser, resolvers, severity table, baseline keying.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -387,6 +388,87 @@ describe("RFC-1390 invariant bindings", () => {
       (d) => d.ruleId === "COMPASS-INVARIANT-04" && d.file === LOW_FILE,
     );
     expect(diags).toEqual([]);
+  });
+
+  it("does not treat a marker after an escaped newline inside a template literal as a declaration", () => {
+    // The \\n// shape is the compass-migrate false-positive class: the sigil
+    // is glued to an escape sequence, i.e. string content, not a comment.
+    const parsed = extractInvariants(
+      [
+        `const s = \`first line\\n// ${AI_INV}: phantom marker inside a template\`;`,
+        `const t = "another\\n// ${AI_INV}: phantom inside a string";`,
+        `// ${AI_INV}: the only real declaration in this source`,
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.statement).toBe("the only real declaration in this source");
+  });
+
+  it("ignores an @ai-invariant mention mid-comment — the marker must open the comment", () => {
+    const parsed = extractInvariants(
+      [
+        `// Seeded items (e.g. ${AI_INV}: lines captured) keep their text.`,
+        `/* CHANGE_SUMMARY copies ${AI_INV}: comments into items. */`,
+        `// ${AI_INV}: marker at comment start is the real declaration`,
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.statement).toBe("marker at comment start is the real declaration");
+  });
+
+  it("extracts a marker inside an html comment", () => {
+    const parsed = extractInvariants(
+      [`<!-- ${AI_INV}: html-comment invariant statement text -->`, `<div>markup</div>`].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.statement).toBe("html-comment invariant statement text");
+  });
+
+  it("extracts invariants across mixed comment styles in one source", () => {
+    const parsed = extractInvariants(
+      [
+        `// ${AI_INV}: line-comment invariant statement text`,
+        `/*`,
+        ` * ${AI_INV}: block-comment invariant statement text`,
+        ` */`,
+        `const x = 1;`,
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]!.statement).toBe("line-comment invariant statement text");
+    expect(parsed[1]!.statement).toBe("block-comment invariant statement text");
+  });
+
+  it("records the marker line, not the last continuation line", () => {
+    const parsed = extractInvariants(
+      [
+        "const before = 0;", // line 1
+        `// ${AI_INV}: a statement that wraps`, // line 2 — the marker
+        "// onto this second comment line", // line 3 — continuation
+        "const after = 1;",
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.line).toBe(2);
+  });
+
+  it("ends a statement at a delimiter-prefixed comment line", () => {
+    const lineStyle = extractInvariants(
+      [`// ${AI_INV}: the statement must not absorb`, "// --- Section Start ---"].join("\n"),
+    );
+    expect(lineStyle).toHaveLength(1);
+    expect(lineStyle[0]!.statement).toBe("the statement must not absorb");
+
+    const blockStyle = extractInvariants(
+      [
+        "/*",
+        ` * ${AI_INV}: the statement must not absorb`,
+        "*************** <MODULE_CONTRACT>",
+        " */",
+      ].join("\n"),
+    );
+    expect(blockStyle).toHaveLength(1);
+    expect(blockStyle[0]!.statement).toBe("the statement must not absorb");
   });
 
   it("evaluateInvariantRules emits the severity table correctly", () => {

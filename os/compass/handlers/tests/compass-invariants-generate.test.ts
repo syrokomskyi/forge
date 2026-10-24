@@ -13,6 +13,7 @@ retiredIds merge-forward, and dry-run write-freedom over tmp workspaces.
   <item>RFC-1390: generator fixtures — index, baseline seed/shrink, retiredIds merge, dry-run.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -184,6 +185,37 @@ describe("compass.invariants.generate (RFC-1390)", () => {
     );
     expect(result.exitCode).toBe(1);
     expect(result.summary).toContain("mutually exclusive");
+    expect(existsSync(baselinePath())).toBe(false);
+  });
+
+  it("refuses writes under a scoped scan — index and baseline are whole-workspace artifacts", async () => {
+    writeSource(SRC_FILE, `// ${AI_INV}[INV-scope-01]: scoped fixture invariant`);
+    const scoped = await runCompassInvariantsGenerate(
+      makeInput({ packages: true }),
+      makeContext(tempDir),
+    );
+    expect(scoped.exitCode).toBe(1);
+    expect(scoped.summary).toContain("scoped scans write nothing");
+    expect(existsSync(indexPath())).toBe(false);
+
+    // A site-bound context scopes the scan even without an explicit flag.
+    const siteBound = await runCompassInvariantsGenerate(makeInput(), {
+      ...makeContext(tempDir),
+      site: { directory: join(tempDir, "site") },
+    } as ForgeRuntimeContext);
+    expect(siteBound.exitCode).toBe(1);
+    expect(existsSync(indexPath())).toBe(false);
+  });
+
+  it("a scoped scan still previews under --dry-run", async () => {
+    writeSource(SRC_FILE, `// ${AI_INV}: packages-scope preview invariant`);
+    const result = await runCompassInvariantsGenerate(
+      makeInput({ packages: true, "dry-run": true }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(dataOf(result).total).toBe(1);
+    expect(existsSync(indexPath())).toBe(false);
     expect(existsSync(baselinePath())).toBe(false);
   });
 
