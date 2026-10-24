@@ -137,7 +137,7 @@ rfc: create RFC-XXXX <short title>
 Draft RFC-XXXX (<title>) from template. Status: draft, awaiting human architecture review.
 ```
 
-Commit path-scoped (RFC-1361): `pnpm exec werkstatt run ecosystem.commit --message "rfc: create RFC-XXXX <short title>" --files "<rfc file path>"` — `--files` auto-stages the new RFC file and leaves foreign staged entries intact. On plain-git workshops (no `ecosystem.commit`): stage only the RFC file with `git add <path>` and commit — `git add -A` or `git add .` is forbidden; another agent may be working in a different session.
+Commit path-scoped: `pnpm exec werkstatt run ecosystem.commit --message "rfc: create RFC-XXXX <short title>" --files "<rfc file path>"` — `--files` auto-stages the new RFC file and leaves foreign staged entries intact. On plain-git workshops (no `ecosystem.commit`): stage only the RFC file with `git add <path>` and commit — `git add -A` or `git add .` is forbidden; another agent may be working in a different session.
 
 ## Constraints
 
