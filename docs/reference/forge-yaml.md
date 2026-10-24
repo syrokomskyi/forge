@@ -149,6 +149,22 @@ skillPacks:
 
 Each pack directory must contain a `forge.plugin.yaml` manifest with `id` and `version` fields.
 
+## formal
+
+Optional. Declares external proof checkers for `proof.check` and `probe: proof` (RFC-1391). Forge ships no checker binaries — every external tool is opt-in per workshop; the built-in `exhaustive` tool needs no declaration.
+
+```yaml
+formal:
+  tools:
+    tlc:
+      command: ["tlc2", "-config", "{entry}"]      # must contain the literal {entry} token — substituted with the spec's entry path
+      versionCommand: ["tlc2", "-version"]          # run before the check; must succeed
+      versionPattern: "TLC2 Version (\\S+)"         # first capture group (or whole match) is compared to the spec's toolVersion
+      installHint: "brew install tla-plus"          # optional — surfaced on `unavailable`
+```
+
+A spec selects a tool via `tool: tlc` and pins `toolVersion`. Missing executable → `unavailable` (non-zero); version mismatch → `error`; a `command` without `{entry}` is rejected at config validation.
+
 ## Extension points
 
 Packs can declare custom Compass contract blocks:

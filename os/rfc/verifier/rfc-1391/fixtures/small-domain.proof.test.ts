@@ -1,9 +1,9 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-Shared fixture builders for the RFC-1391 independent verifier checks —
-tmp-workspace and runtime-context helpers only. Nothing here re-implements
-production logic; expectations live in the *.acceptance.test.ts files.
+small-domain.proof.test.ts — RFC-1391 verifier fixture: a proof entry
+enumerating exactly 3 inputs through exhaustive(), used to exercise the
+proved path and the cardinality gate.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -14,6 +14,14 @@ Round-0 verdict counterexamples (CX-1: emit dead for proof-probe RFCs),
 fixed in 1342fe21a; round-1 verdict pass — 47/47 checks, AC-1..AC-10 all
 verified on the real implementation surface, non-vacuity re-verified by
 mutation.</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
