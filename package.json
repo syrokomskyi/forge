@@ -48,6 +48,10 @@
       "types": "./src/reachability/command-mentions.ts",
       "default": "./src/reachability/command-mentions.ts"
     },
+    "./compass": {
+      "types": "./src/compass/index.ts",
+      "default": "./src/compass/index.ts"
+    },
     "./os/core": {
       "types": "./os/core/core.module.ts",
       "default": "./os/core/core.module.ts"
