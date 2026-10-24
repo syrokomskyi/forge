@@ -164,6 +164,7 @@ test("compareSemver is antisymmetric: compare(a, b) == -compare(b, a)", () => {
 - **MUST** add `fast-check` as a dev dependency before writing PBT in a package.
 - **MUST** place PBT in `*.pbt.test.ts` files (not in regular `*.test.ts` files).
 - **MUST** use `fc.assert(fc.property(...))` or `fc.assert(fc.asyncProperty(...))` as the PBT idiom.
+- **MAY** use `fc.asyncModelRun` model-based testing (a pure reference model plus generated command sequences against a real stateful protocol) as an accepted DNA-101 application for stateful machines — journals, resumable pipelines, sweep passes — where the oracle is model equivalence, not a pure-function property.
 - **MUST** set a `numRuns` value when the default 100 is insufficient: `fc.assert(fc.property(...), { numRuns: 1000 })`.
 - **MUST NOT** use PBT for impure functions, I/O-bound code, UI components, or build pipelines.
 - **MUST NOT** replace existing example-based tests with PBT. PBT complements example-based tests.
