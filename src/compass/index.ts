@@ -19,6 +19,7 @@ numeric bound), bound @ai-invariant removed-reworded-unbound via the new
 covers implementation files and proof specs. Warn-only until the census
 is operator-accepted — TEST_WEAKEN_ENFORCED keeps {01..06}; EC-22 records
 advisory rules in the Test-Weakened trailer.</item>
+  <item>RFC-1392: close RFC-1392 review r1 — per-call-site generator and budget pairing</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +30,7 @@ export {
   baselineKey,
   INVARIANT_ID_RE,
   VACUOUS_INVARIANT_PATTERNS,
+  BINDING_KINDS,
   type InvariantBindingKind,
   type ParsedInvariant,
   type RawBinding,
