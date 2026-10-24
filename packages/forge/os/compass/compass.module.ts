@@ -6,14 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1251: step 3 — diagnostic.rule-id.validate gate + RULEID-CANONICAL-01, pipeline-wired</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
 Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
-  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248</history>
+  <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248, RFC-1251</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +32,7 @@ import { runCompassMigrate } from "./handlers/compass-migrate-handler.ts";
 import { runCompassHeaderScaffold } from "./handlers/compass-header-scaffold-handler.ts";
 import { runCompassDocsValidate } from "./handlers/compass-docs-validate.ts";
 import { runCompassDocsScaffold } from "./handlers/compass-docs-scaffold.ts";
+import { runCompassInvariantsGenerate } from "./handlers/compass-invariants-generate.ts";
 
 const compassScanFlags = {
   packages: {
@@ -88,7 +89,15 @@ export const forgeCompassModule: ForgeModule = {
       contract: "compass",
       // RFC-1323: first declared CS-family id — sibling CS-05/06/07 stay
       // undeclared (pre-existing inconsistency the RFC does not backfill).
-      rules: ["COMPASS-CS-08"],
+      rules: [
+        "COMPASS-CS-08",
+        "COMPASS-INVARIANT-02",
+        "COMPASS-INVARIANT-03",
+        "COMPASS-INVARIANT-04",
+        "COMPASS-INVARIANT-05",
+        "COMPASS-INVARIANT-06",
+        "COMPASS-INVARIANT-07",
+      ],
       description:
         "Validate authored source files against current Compass scaffolding requirements.",
       scope: "workspace",
@@ -101,6 +110,47 @@ export const forgeCompassModule: ForgeModule = {
         "docs/source-markup.xml",
       ],
       execute: runCompassValidation,
+    },
+    {
+      name: "compass.invariants.generate",
+      mutatesState: true,
+      contract: "compass",
+      rules: [],
+      writes: ["docs/invariants.generated.yaml", "docs/invariants.baseline.generated.yaml"],
+      generates: [
+        { path: "docs/invariants.generated.yaml", phase: "on-demand" },
+        { path: "docs/invariants.baseline.generated.yaml", phase: "on-demand" },
+      ],
+      description:
+        "RFC-1390: project every @ai-invariant into docs/invariants.generated.yaml and manage the shrink-only unbound-invariant baseline. --seed writes the baseline once; --shrink removes resolved entries only; plain runs refresh the index with retiredIds merged forward.",
+      scope: "workspace",
+      acceptsAllFlag: true,
+      flags: {
+        ...compassScanFlags,
+        seed: {
+          kind: "boolean",
+          description:
+            "Write docs/invariants.baseline.generated.yaml once from the current unbound corpus (refuses when the baseline exists).",
+        },
+        shrink: {
+          kind: "boolean",
+          description:
+            "Remove baseline entries whose invariants are now bound or deleted. Never adds entries — exits non-zero when the scan reveals unseeded unbound debt.",
+        },
+        "dry-run": {
+          kind: "boolean",
+          description: "Report the projection without writing any file.",
+        },
+      },
+      reads: [
+        "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
+        "docs/invariants.generated.yaml",
+        "docs/invariants.baseline.generated.yaml",
+        "docs/validator-inventory.generated.yaml",
+      ],
+      execute: runCompassInvariantsGenerate,
     },
     {
       name: "compass.summary.record",

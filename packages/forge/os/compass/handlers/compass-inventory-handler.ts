@@ -12,7 +12,6 @@ contract block specs alongside built-in MODULE_CONTRACT and CHANGE_SUMMARY check
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1094: --mode warning|error on compass.validate; mode-aware v2 diagnostics (KD/ORDER/PURPOSE) with severity field; inventory data.entries now carries full entries and XML gains v2 fields.</item>
   <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -21,7 +20,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
-  <history>RFC-0348, RFC-0350, RFC-0556, RFC-0943</history>
+  <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <history>RFC-0348, RFC-0350, RFC-0556, RFC-0943, RFC-1094</history>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +39,17 @@ import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { resolveCompassPolicy, type CompassPolicySource } from "../policy.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
+import {
+  evaluateInvariantRules,
+  extractInvariants,
+  loadInvariantBaseline,
+  loadInvariantIndex,
+  loadLintRuleIds,
+  resolveInvariantBindings,
+  resolveInvariantPaths,
+  baselineSet,
+  type CodeInvariant,
+} from "./invariant-bindings.ts";
 import {
   loadContractRegistry,
   findApplicablePackSpecs,
@@ -568,6 +579,50 @@ export async function runCompassValidation(
           }
         }
       }
+    }
+  }
+
+  // RFC-1390: tagged-invariant bindings (COMPASS-INVARIANT-02..07). Extraction
+  // runs over every authored entry's cached source; resolution + rules are
+  // corpus-wide (duplicate ids, retired reuse, baseline ratchet).
+  {
+    let compassOverrides: Parameters<typeof resolveInvariantPaths>[1];
+    try {
+      compassOverrides = loadForgeConfig(context.workspaceRoot, context.forgeRoot).bindings
+        ?.compass;
+    } catch {
+      compassOverrides = undefined;
+    }
+    const paths = resolveInvariantPaths(context.workspaceRoot, compassOverrides);
+    const baseline = await loadInvariantBaseline(paths.baselinePath);
+    const index = await loadInvariantIndex(paths.indexPath);
+    const lintRuleIds = await loadLintRuleIds(context.workspaceRoot);
+    const baselineKeys = baselineSet(baseline);
+    const allInvariants: CodeInvariant[] = [];
+    for (const entry of entries) {
+      if (entry.authoringStatus !== "authored" || entry.requiredScaffolding === "none") {
+        continue;
+      }
+      const absPath = resolve(context.workspaceRoot, entry.path);
+      const source = getEntrySource(entry) ?? (await io.readFile(absPath));
+      const parsed = extractInvariants(source);
+      if (parsed.length === 0) continue;
+      allInvariants.push(
+        ...(await resolveInvariantBindings(parsed, entry.path, entry.riskClass, baselineKeys, {
+          workspaceRoot: context.workspaceRoot,
+          lintRuleIds,
+        })),
+      );
+    }
+    for (const diag of evaluateInvariantRules(
+      allInvariants,
+      baseline,
+      new Set(index?.retiredIds ?? []),
+    )) {
+      const log = `[compass.validate] ${diag.ruleId}: ${diag.file}: ${diag.message}`;
+      if (diag.severity === "error") context.logger.error(log);
+      else context.logger.warn(log);
+      diagnostics.push(diag);
     }
   }
 
