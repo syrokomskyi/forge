@@ -37,6 +37,12 @@ without verdict/hashes and trip RFC-IMP-13 on next stamp; mirrored the emit
 spread and pinned it with a regression test. proof.check pretty output now
 prints the persisted log; every exhaustive verdict path carries vitest
 output as log.</item>
+  <item>RFC-1391: close RFC-1391 review r3 nits — pin log on exhaustive paths
+
+REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
+refuted and no-report tests; external-tool timedOut persists partial output
+as log (symmetric with exhaustive); log doc comments updated to reflect
+all-post-spawn-verdicts attachment.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -519,6 +525,12 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       toolVersion: observedVersion,
     });
   }
+  const log = persistLog(
+    workspaceRoot,
+    spec.id,
+    "log",
+    `${run.stdout}\n${run.stderr}\nexitCode=${String(run.exitCode)}`,
+  );
   if (run.timedOut) {
     return done(spec, {
       verdict: "error",
@@ -526,14 +538,9 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       specSha256,
       entrySha256,
       toolVersion: observedVersion,
+      ...(log ? { log } : {}),
     });
   }
-  const log = persistLog(
-    workspaceRoot,
-    spec.id,
-    "log",
-    `${run.stdout}\n${run.stderr}\nexitCode=${String(run.exitCode)}`,
-  );
   if (run.exitCode === 0) {
     return done(spec, {
       verdict: "proved",

@@ -12,7 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1336: RfcFrontmatter.decidedBy — the granting human when an agent:&lt;id&gt; reviewer decided under an rfc.decision delegation; added to RFC_KNOWN_KEYS.</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1383: RfcImplementStampData.criteriaTotal — total parsed ACs for N-of-M reporting.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
@@ -24,7 +23,13 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334</history>
+  <item>RFC-1391: close RFC-1391 review r3 nits — pin log on exhaustive paths
+
+REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
+refuted and no-report tests; external-tool timedOut persists partial output
+as log (symmetric with exhaustive); log doc comments updated to reflect
+all-post-spawn-verdicts attachment.</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -376,7 +381,7 @@ export interface ProofProbeEvidence {
   enumerated?: number;
   /** Refuted-path record — persisted counterexample. */
   counterexample?: string;
-  /** Persisted checker log path (proved/error diagnostics). */
+  /** Persisted checker log path — attached to all post-spawn verdicts. */
   log?: string;
 }
 
