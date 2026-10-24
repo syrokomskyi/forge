@@ -9,9 +9,11 @@ KERNEL-ARG-01 diagnostics, legacy heuristic path for schema-less commands).</pur
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>Initial cli-flags resolution tests — covers the `forge rfc.validate --id` crash regression (value-less declared string flag must produce KERNEL-FLAG-02, not a boolean).</item>
+  <item>RFC-1389: m message alias and honest positional fix hints in the forge CLI parser</item>
 </CHANGE_SUMMARY>
 */
 
+import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
 import { parseCliArgs, resolveCliFlags } from "../cli-flags.ts";
 import type { ForgeCommandDefinition, ForgeFlagSpec } from "../types.ts";
@@ -191,5 +193,145 @@ describe("parseCliArgs", () => {
     expect(flags["a"]).toBe("1");
     expect(flags["b"]).toBe("2");
     expect(flags["json"]).toBe(true);
+  });
+});
+
+describe("resolveCliFlags — RFC-1389 -m alias and honest hints", () => {
+  const withMessage = command({
+    message: { kind: "string", required: true, description: "Commit message." },
+  });
+
+  // -- AC-2: -m ⇔ --message only where the schema declares message -----------
+
+  test("-m resolves to --message when the schema declares it (parity with --message)", () => {
+    const viaAlias = resolveCliFlags(["-m", "msg"], withMessage);
+    const viaLong = resolveCliFlags(["--message", "msg"], withMessage);
+    expect(viaAlias.flags).toEqual(viaLong.flags);
+    expect(viaAlias.flags["message"]).toBe("msg");
+    expect(errorRuleIds(viaAlias.diagnostics)).toEqual([]);
+  });
+
+  test("-m=value is not alias-rewritten — stays a positional error", () => {
+    const { diagnostics } = resolveCliFlags(["-m=msg"], withMessage);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-FLAG-03"]);
+  });
+
+  test("-m stays a KERNEL-ARG-01 positional when message is not declared", () => {
+    const { diagnostics } = resolveCliFlags(["-m", "msg"], command({}));
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-ARG-01"]);
+    expect(diagnostics[0]!.fixHint).toContain("--help");
+    expect(diagnostics[0]!.fixHint).not.toContain("--message");
+  });
+
+  // -- AC-1: honest positional hints ----------------------------------------
+
+  test("post-`--` -m on a message-declaring command hints at the real alias", () => {
+    const { diagnostics } = resolveCliFlags(["--message", "m", "--", "-m"], withMessage);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
+    expect(diagnostics[0]!.fixHint).toBe('Convert "-m" to a flag, e.g. --message <value>.');
+  });
+
+  test("positional on a command with one unsatisfied required flag names that flag", () => {
+    const { diagnostics } = resolveCliFlags(["positional"], withMessage);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-FLAG-03"]);
+    expect(diagnostics[0]!.fixHint).toBe(
+      'Convert "positional" to a flag, e.g. --message "positional".',
+    );
+  });
+
+  test("positional on a command whose only candidate flag is not required falls back to --help", () => {
+    const noId = command({ id: { kind: "string", description: "Optional id." } });
+    const { diagnostics } = resolveCliFlags(["RFC-0609"], noId);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
+    expect(diagnostics[0]!.fixHint).toBe(
+      'Unexpected argument "RFC-0609" — see --help for declared flags.',
+    );
+    expect(diagnostics[0]!.fixHint).not.toContain("--id ");
+  });
+
+  test("a satisfied required flag is not offered as the hint", () => {
+    const cmd = command({
+      message: { kind: "string", required: true, description: "Msg." },
+      id: { kind: "string", description: "Optional." },
+    });
+    const { diagnostics } = resolveCliFlags(["--message", "m", "stray"], cmd);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
+    expect(diagnostics[0]!.fixHint).toContain("--help");
+    expect(diagnostics[0]!.fixHint).not.toContain("--message");
+  });
+
+  test("a required boolean is never a hint candidate", () => {
+    const cmd = command({
+      confirm: { kind: "boolean", required: true, description: "Confirm." },
+    });
+    const { diagnostics } = resolveCliFlags(["stray"], cmd);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-FLAG-03"]);
+    expect(diagnostics[0]!.fixHint).toContain("--help");
+    expect(diagnostics[0]!.fixHint).not.toContain("--confirm");
+  });
+
+  test("two unsatisfied required flags fall back to --help (no arbitrary pick)", () => {
+    const cmd = command({
+      a: { kind: "string", required: true, description: "A." },
+      b: { kind: "string", required: true, description: "B." },
+    });
+    const { diagnostics } = resolveCliFlags(["stray"], cmd);
+    expect(errorRuleIds(diagnostics)).toEqual([
+      "KERNEL-ARG-01",
+      "KERNEL-FLAG-03",
+      "KERNEL-FLAG-03",
+    ]);
+    expect(diagnostics[0]!.fixHint).toContain("--help");
+  });
+
+  // -- AC-3: alias-shaped tokens are never values; -- boundary; autonomy -----
+
+  test("-m is not consumed as a string flag's value — missing value is reported", () => {
+    const cmd = command({
+      id: { kind: "string", description: "Id." },
+      message: { kind: "string", description: "Msg." },
+    });
+    const { flags, diagnostics } = resolveCliFlags(["--id", "-m", "v"], cmd);
+    expect(flags["id"]).toBeUndefined();
+    expect(flags["message"]).toBe("v");
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-FLAG-02"]);
+    expect(diagnostics[0]!.message).toContain('"--id"');
+  });
+
+  test("string[] flag does not consume a following -m token", () => {
+    const cmd = command({
+      files: { kind: "string[]", description: "Files." },
+      message: { kind: "string", description: "Msg." },
+    });
+    const { flags, diagnostics } = resolveCliFlags(["--files", "a", "-m", "v"], cmd);
+    expect(flags["files"]).toBe("a");
+    expect(flags["message"]).toBe("v");
+    expect(errorRuleIds(diagnostics)).toEqual([]);
+  });
+
+  test("-m -m reports KERNEL-FLAG-02 instead of recording message=-m", () => {
+    const { flags, diagnostics } = resolveCliFlags(["-m", "-m"], withMessage);
+    expect(flags["message"]).toBeUndefined();
+    expect(errorRuleIds(diagnostics)).toEqual([
+      "KERNEL-FLAG-02",
+      "KERNEL-FLAG-02",
+      "KERNEL-FLAG-03",
+    ]);
+  });
+
+  test("schema-less parseCliArgs keeps -m positional with the --help fallback", () => {
+    const { diagnostics } = parseCliArgs(["-m", "x"]);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-ARG-01"]);
+    expect(diagnostics[0]!.fixHint).toContain("--help");
+    expect(diagnostics[0]!.fixHint).not.toContain("--id");
+    expect(diagnostics[0]!.fixHint).not.toContain("--message");
+  });
+
+  test("cli-flags.ts carries no @warpgogol/* runtime import (FORGE-AUTONOMY-01)", () => {
+    const source = readFileSync(new URL("../cli-flags.ts", import.meta.url), "utf8");
+    const runtimeImports =
+      source.match(/import\s+(?!type\b)[\s\S]*?from\s+["']@warpgogol\/[^"']*["']/g) ?? [];
+    const dynamicImports = source.match(/import\s*\(\s*["']@warpgogol\//g) ?? [];
+    expect([...runtimeImports, ...dynamicImports]).toEqual([]);
   });
 });
