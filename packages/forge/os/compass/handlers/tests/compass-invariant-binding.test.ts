@@ -14,6 +14,7 @@ semantics, and the COMPASS-INVARIANT-02..07 rule table over tmp workspaces.
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-3 review residue on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -397,6 +398,7 @@ describe("RFC-1390 invariant bindings", () => {
       [
         `const s = \`first line\\n// ${AI_INV}: phantom marker inside a template\`;`,
         `const t = "another\\n// ${AI_INV}: phantom inside a string";`,
+        `const u = "a\\\\// ${AI_INV}: sigil glued to an escaped backslash";`,
         `// ${AI_INV}: the only real declaration in this source`,
       ].join("\n"),
     );

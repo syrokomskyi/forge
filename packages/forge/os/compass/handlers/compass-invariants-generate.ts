@@ -21,6 +21,7 @@ plain runs refresh the index with retiredIds merged forward.</purpose>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-3 review residue on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -204,6 +205,14 @@ export async function runCompassInvariantsGenerate(
           ),
         ),
     };
+    // The emitted index must reflect the baseline being written — resolution
+    // ran against the (necessarily absent) pre-seed baseline, so re-mark now.
+    const seededKeys = baselineSet(newBaseline);
+    for (const inv of index.invariants) {
+      if (inv.bindings.length === 0) {
+        inv.baselined = seededKeys.has(baselineKey(inv.file, inv.statementSha256));
+      }
+    }
     if (!dryRun) {
       await writeFileIfChanged(paths.baselinePath, serializeInvariantBaseline(newBaseline), io);
       filesModified.push(relBaseline);
