@@ -17,6 +17,7 @@ bare tokens until the next --flag (`--files a b` → ["a","b"]), matching the
 kernel argv parser; bare positionals without a preceding string[] flag still
 emit KERNEL-ARG-01.</item>
   <item>RFC-1389 (port of RFC-1381): bare `-m` rewrites to `--message` when the merged schema declares `message` — other `-x` tokens stay KERNEL-ARG-01, now with honest hints (a known declared short alias, the command's single unsatisfied required non-boolean flag, or a truthful see-`--help` fallback) instead of the fabricated `--id <token>` template; alias-shaped tokens are never consumed as flag values.</item>
+  <item>RFC-1395: port --output → --json alias into forge CLI parser</item>
 </CHANGE_SUMMARY>
 */
 
@@ -77,6 +78,17 @@ const CLI_BOOLEAN_FLAGS = new Set<string>([
  */
 const CLI_SHORT_FLAG_ALIASES: Record<string, string> = {
   m: "message",
+};
+
+/**
+ * RFC-1395 (port of the kernel's KERNEL_FLAG_ALIASES): long-flag aliases —
+ * `--output` resolves to `--json` as a bare switch on both parse paths,
+ * matching the kernel's argv.ts. Aliases apply to bare switches only; an
+ * `--output=<value>` token keeps the raw flag name (unknown in strict mode,
+ * literal value in the heuristic path).
+ */
+const CLI_FLAG_ALIASES: Record<string, string> = {
+  output: "json",
 };
 
 /**
@@ -201,8 +213,12 @@ export function parseCliArgs(argv: string[]): {
 
     const withoutPrefix = entry.slice(2);
     const eqIndex = withoutPrefix.indexOf("=");
-    const flagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
+    const rawFlagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
     const inlineValue = eqIndex === -1 ? undefined : withoutPrefix.slice(eqIndex + 1);
+    // Aliases apply to bare switches only — `--output=<value>` keeps the raw
+    // flag name (heuristic path records the literal value under "output").
+    const flagName =
+      inlineValue === undefined ? (CLI_FLAG_ALIASES[rawFlagName] ?? rawFlagName) : rawFlagName;
     if (!flagName) continue;
 
     if (inlineValue !== undefined) {
@@ -270,8 +286,12 @@ function resolveStrict(
 
     const withoutPrefix = effectiveEntry.slice(2);
     const eqIndex = withoutPrefix.indexOf("=");
-    const flagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
+    const rawFlagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
     const inlineValue = eqIndex === -1 ? undefined : withoutPrefix.slice(eqIndex + 1);
+    // Aliases apply to bare switches only — `--output=<value>` keeps the raw
+    // flag name and fails KERNEL-FLAG-01 as an unknown flag.
+    const flagName =
+      inlineValue === undefined ? (CLI_FLAG_ALIASES[rawFlagName] ?? rawFlagName) : rawFlagName;
     if (!flagName) continue;
 
     const spec = schema[flagName];
