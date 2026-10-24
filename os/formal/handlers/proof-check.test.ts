@@ -22,6 +22,12 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1391: close RFC-1391 review r3 nits — pin log on exhaustive paths
+
+REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
+refuted and no-report tests; external-tool timedOut persists partial output
+as log (symmetric with exhaustive); log doc comments updated to reflect
+all-post-spawn-verdicts attachment.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -285,6 +291,8 @@ describe("runProofCheck — exhaustive tool (RFC-1391)", () => {
     expect(v.counterexample).toMatch(/counterexample\.json$/);
     const cx = JSON.parse(readFileSync(join(ws, v!.counterexample!), "utf8"));
     expect(cx).toEqual([{ input: 2, reason: "two fails" }]);
+    // RFC-1391 r3 nit: the vitest log is pinned on every post-spawn verdict.
+    expect(v.log).toMatch(/unit-proof\.log$/);
   });
 
   it("error when the entry writes no report (crashed or threw)", async () => {
@@ -296,6 +304,7 @@ describe("runProofCheck — exhaustive tool (RFC-1391)", () => {
     });
     expect(v.verdict).toBe("error");
     expect(v.message).toContain("no readable report");
+    expect(v.log).toMatch(/unit-proof\.log$/);
   });
 
   it("error when the spec pins a different exhaustive version or lacks cardinality", async () => {

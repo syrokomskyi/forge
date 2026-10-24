@@ -28,6 +28,12 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1391: close RFC-1391 review r3 nits — pin log on exhaustive paths
+
+REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
+refuted and no-report tests; external-tool timedOut persists partial output
+as log (symmetric with exhaustive); log doc comments updated to reflect
+all-post-spawn-verdicts attachment.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -118,7 +124,7 @@ export interface ProofCheckResult {
   enumerated?: number;
   /** Workspace-relative path to the persisted counterexample — the refuted-path record. */
   counterexample?: string;
-  /** Workspace-relative path to the persisted checker log (proved/error diagnostics). */
+  /** Workspace-relative path to the persisted checker log (all post-spawn verdicts). */
   log?: string;
   /** Wall time of the check run (ms). */
   durationMs: number;
