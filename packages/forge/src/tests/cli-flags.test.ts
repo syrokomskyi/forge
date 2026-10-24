@@ -11,6 +11,7 @@ KERNEL-ARG-01 diagnostics, legacy heuristic path for schema-less commands).</pur
   <item>Initial cli-flags resolution tests — covers the `forge rfc.validate --id` crash regression (value-less declared string flag must produce KERNEL-FLAG-02, not a boolean).</item>
   <item>RFC-1389: m message alias and honest positional fix hints in the forge CLI parser</item>
   <item>RFC-1389: add kernel-parity pins for non-alias tokens and argv-end -m</item>
+  <item>RFC-1395: port --output → --json alias into forge CLI parser</item>
 </CHANGE_SUMMARY>
 */
 
@@ -364,5 +365,56 @@ describe("resolveCliFlags — RFC-1389 -m alias and honest hints", () => {
       source.match(/import\s+(?!type\b)[\s\S]*?from\s+["']@warpgogol\/[^"']*["']/g) ?? [];
     const dynamicImports = source.match(/import\s*\(\s*["']@warpgogol\//g) ?? [];
     expect([...runtimeImports, ...dynamicImports]).toEqual([]);
+  });
+});
+
+describe("RFC-1395 --output → --json alias (kernel KERNEL_FLAG_ALIASES port)", () => {
+  const rfcValidate = command({
+    id: { kind: "string", description: "Target a single RFC by id." },
+  });
+
+  test("strict path: bare --output resolves to flags.json === true", () => {
+    const { flags, diagnostics } = resolveCliFlags(["--output"], rfcValidate);
+    expect(flags["json"]).toBe(true);
+    expect(flags["output"]).toBeUndefined();
+    expect(errorRuleIds(diagnostics)).toEqual([]);
+  });
+
+  test("strict path: --output=<value> keeps the raw name and fails KERNEL-FLAG-01", () => {
+    const { flags, diagnostics } = resolveCliFlags(["--output=xml"], rfcValidate);
+    expect(flags["json"]).toBeUndefined();
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-FLAG-01"]);
+    expect(diagnostics[0]!.message).toContain('"--output"');
+  });
+
+  test("strict path: --json stays unchanged alongside the alias", () => {
+    const { flags, diagnostics } = resolveCliFlags(["--json"], rfcValidate);
+    expect(flags["json"]).toBe(true);
+    expect(errorRuleIds(diagnostics)).toEqual([]);
+  });
+
+  test("schema-less path: bare --output resolves to flags.json === true", () => {
+    const { flags } = parseCliArgs(["--output"]);
+    expect(flags["json"]).toBe(true);
+    expect(flags["output"]).toBeUndefined();
+  });
+
+  test("schema-less path: --output=<value> keeps the literal value under output", () => {
+    const { flags } = parseCliArgs(["--output=xml"]);
+    expect(flags["output"]).toBe("xml");
+    expect(flags["json"]).toBeUndefined();
+  });
+
+  test("schema-less path: --output <token> sets json and diagnoses the bare token", () => {
+    const { flags, diagnostics } = parseCliArgs(["--output", "RFC-1"]);
+    expect(flags["json"]).toBe(true);
+    expect(flags["output"]).toBeUndefined();
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
+  });
+
+  test("-- boundary: tokens after -- are positional, alias still resolves", () => {
+    const { flags, diagnostics } = parseCliArgs(["--output", "--", "extra"]);
+    expect(flags["json"]).toBe(true);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
   });
 });
