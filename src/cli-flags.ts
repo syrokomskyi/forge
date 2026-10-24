@@ -16,6 +16,7 @@ with `TypeError: targetId.toLowerCase is not a function`.</purpose>
 bare tokens until the next --flag (`--files a b` → ["a","b"]), matching the
 kernel argv parser; bare positionals without a preceding string[] flag still
 emit KERNEL-ARG-01.</item>
+  <item>RFC-1389 (port of RFC-1381): bare `-m` rewrites to `--message` when the merged schema declares `message` — other `-x` tokens stay KERNEL-ARG-01, now with honest hints (a known declared short alias, the command's single unsatisfied required non-boolean flag, or a truthful see-`--help` fallback) instead of the fabricated `--id <token>` template; alias-shaped tokens are never consumed as flag values.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -67,6 +68,59 @@ const CLI_BOOLEAN_FLAGS = new Set<string>([
   "write",
 ]);
 
+/**
+ * RFC-1389 (port of RFC-1381): single-dash short aliases keyed on the letter —
+ * applied only when the resolved long flag is actually declared by the merged
+ * schema. Deliberately NOT a general short-flag system; `-m` exists because
+ * `git commit -m` is universal muscle memory and `--message` is the ecosystem's
+ * most common required flag.
+ */
+const CLI_SHORT_FLAG_ALIASES: Record<string, string> = {
+  m: "message",
+};
+
+/**
+ * RFC-1389: true when a token is a bare single-dash letter whose short alias
+ * resolves to a flag the schema declares — such tokens are flag-shaped, never
+ * value-shaped.
+ */
+function resolvesToDeclaredFlag(token: string, schema: Record<string, ForgeFlagSpec>): boolean {
+  if (!/^-[a-zA-Z]$/.test(token)) return false;
+  const long = CLI_SHORT_FLAG_ALIASES[token[1]!];
+  return long !== undefined && schema[long] !== undefined;
+}
+
+/**
+ * RFC-1389: honest KERNEL-ARG-01 hint — names a real declared flag where a
+ * plausible mapping exists (a known `-x` short alias, or a positional value
+ * on a command with exactly one required non-boolean flag still awaiting a
+ * value), otherwise declines to fabricate. Never emits the old arbitrary
+ * `--id <token>` template, and never names a flag that is already satisfied
+ * or cannot take a value.
+ */
+function positionalFixHint(
+  entry: string,
+  schema?: Record<string, ForgeFlagSpec>,
+  resolved?: Record<string, ForgeFlagValue>,
+): string {
+  if (schema) {
+    if (/^-[a-zA-Z]$/.test(entry)) {
+      const long = CLI_SHORT_FLAG_ALIASES[entry[1]!];
+      if (long && schema[long]) {
+        return `Convert "${entry}" to a flag, e.g. --${long} <value>.`;
+      }
+      return `Unexpected argument "${entry}" — see --help for declared flags.`;
+    }
+    const required = Object.keys(schema).filter(
+      (n) => schema[n]!.required && schema[n]!.kind !== "boolean" && resolved?.[n] === undefined,
+    );
+    if (required.length === 1) {
+      return `Convert "${entry}" to a flag, e.g. --${required[0]!} "${entry}".`;
+    }
+  }
+  return `Unexpected argument "${entry}" — see --help for declared flags.`;
+}
+
 function addFlagValue(
   target: Record<string, ForgeFlagValue>,
   key: string,
@@ -99,13 +153,18 @@ function addFlagValue(
   target[key] = value;
 }
 
-function positionalDiagnostic(entry: string, commandName?: string): Diagnostic {
+function positionalDiagnostic(
+  entry: string,
+  commandName?: string,
+  schema?: Record<string, ForgeFlagSpec>,
+  resolved?: Record<string, ForgeFlagValue>,
+): Diagnostic {
   const scope = commandName ? ` for command "${commandName}"` : "";
   return {
     ruleId: "KERNEL-ARG-01",
     severity: "error",
     message: `Unexpected positional argument "${entry}"${scope}. All arguments must be passed as flags.`,
-    fixHint: `Convert "${entry}" to a flag, e.g. --id ${entry}.`,
+    fixHint: positionalFixHint(entry, schema, resolved),
   };
 }
 
@@ -186,7 +245,7 @@ function resolveStrict(
     const entry = rawArgv[index]!;
 
     if (passthrough) {
-      diagnostics.push(positionalDiagnostic(entry, command.name));
+      diagnostics.push(positionalDiagnostic(entry, command.name, schema, flags));
       continue;
     }
 
@@ -195,12 +254,21 @@ function resolveStrict(
       continue;
     }
 
-    if (!entry.startsWith("--")) {
-      diagnostics.push(positionalDiagnostic(entry, command.name));
+    // RFC-1389 (port of RFC-1381): a bare single-dash letter token rewrites
+    // to its long alias when the command declares it (`-m` → `--message`);
+    // unknown short tokens fall through to KERNEL-ARG-01 with the honest hint.
+    let effectiveEntry = entry;
+    if (/^-[a-zA-Z]$/.test(entry)) {
+      const long = CLI_SHORT_FLAG_ALIASES[entry[1]!];
+      if (long && schema[long]) effectiveEntry = `--${long}`;
+    }
+
+    if (!effectiveEntry.startsWith("--")) {
+      diagnostics.push(positionalDiagnostic(entry, command.name, schema, flags));
       continue;
     }
 
-    const withoutPrefix = entry.slice(2);
+    const withoutPrefix = effectiveEntry.slice(2);
     const eqIndex = withoutPrefix.indexOf("=");
     const flagName = eqIndex === -1 ? withoutPrefix : withoutPrefix.slice(0, eqIndex);
     const inlineValue = eqIndex === -1 ? undefined : withoutPrefix.slice(eqIndex + 1);
@@ -233,10 +301,17 @@ function resolveStrict(
 
     // string[] flags consume every following bare token — mirrors the kernel's
     // resolveCommandFlags: positional args are never valid (KERNEL-ARG-01),
-    // so `--files a b` unambiguously means the value list [a, b].
+    // so `--files a b` unambiguously means the value list [a, b]. RFC-1389: a
+    // `-x` token that resolves to a declared flag is flag-shaped, not
+    // value-shaped — `-m -m` fails KERNEL-FLAG-02 instead of silently
+    // recording message="-m".
     if (spec.kind === "string[]") {
       let consumed = 0;
-      while (index + 1 < rawArgv.length && !rawArgv[index + 1]!.startsWith("--")) {
+      while (
+        index + 1 < rawArgv.length &&
+        !rawArgv[index + 1]!.startsWith("--") &&
+        !resolvesToDeclaredFlag(rawArgv[index + 1]!, schema)
+      ) {
         addFlagValue(flags, flagName, rawArgv[index + 1]!);
         index += 1;
         consumed += 1;
@@ -245,7 +320,11 @@ function resolveStrict(
       // fall through to the missing-value diagnostic
     } else {
       const next = rawArgv[index + 1];
-      if (typeof next === "string" && !next.startsWith("--")) {
+      if (
+        typeof next === "string" &&
+        !next.startsWith("--") &&
+        !resolvesToDeclaredFlag(next, schema)
+      ) {
         addFlagValue(flags, flagName, next);
         index += 1;
         continue;
