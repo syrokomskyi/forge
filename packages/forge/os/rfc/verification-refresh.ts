@@ -13,7 +13,6 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0999: initial implementation.</item>
   <item>RFC-1237: dual-read dry-run (context.dryRun || flags["dry-run"]),
 io.writeFile port routing, emit-canonical generated header — refresh owns
 content freshness, never envelope identity (ownerCommand stays
@@ -28,6 +27,15 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1391: close RFC-1391 review r2 findings — refresh proof passthrough, log surface
+
+REVIEW-CODE-2026-10-24-05 (warning): rfc.verification.refresh stripped the
+proof payload from probe records — a refresh would rewrite an envelope
+without verdict/hashes and trip RFC-IMP-13 on next stamp; mirrored the emit
+spread and pinned it with a regression test. proof.check pretty output now
+prints the persisted log; every exhaustive verdict path carries vitest
+output as log.</item>
+  <history>RFC-0999</history>
 </CHANGE_SUMMARY>
 */
 
@@ -161,6 +169,7 @@ export async function runRfcVerificationRefresh(
         ok: result.ok,
         detail: result.detail,
         durationMs,
+        ...(result.proof ? { proof: result.proof } : {}),
       });
     }
 
