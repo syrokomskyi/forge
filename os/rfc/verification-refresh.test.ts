@@ -9,6 +9,14 @@ Unit tests for verification refresh covering rfc.verification.refresh — sweep 
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the verification suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1391: close RFC-1391 review r2 findings — refresh proof passthrough, log surface
+
+REVIEW-CODE-2026-10-24-05 (warning): rfc.verification.refresh stripped the
+proof payload from probe records — a refresh would rewrite an envelope
+without verdict/hashes and trip RFC-IMP-13 on next stamp; mirrored the emit
+spread and pinned it with a regression test. proof.check pretty output now
+prints the persisted log; every exhaustive verdict path carries vitest
+output as log.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -549,6 +557,61 @@ describe("rfc.verification.refresh — AC-6: emittedAt preservation", () => {
       expect(raw).toContain("lastRefreshedAt:");
       // lastRefreshedAt should not equal emittedAt
       expect(raw).not.toMatch(/lastRefreshedAt: 2026-01-01T00:00:00\.000Z/);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("rfc.verification.refresh — RFC-1391: proof evidence passthrough", () => {
+  test("a refreshed envelope keeps the probe's proof payload (verdict + hashes)", async () => {
+    const PROOF_PROBE = { probe: "proof", spec: "specs/p.proof.yaml", criterion: "AC-1" };
+    const { workspaceRoot, cleanup } = await setupWorkspace({
+      rfcs: [
+        {
+          id: "RFC-0100",
+          status: "implemented",
+          probes: [PROOF_PROBE],
+        },
+      ],
+      envelopes: [{ id: "RFC-0100", emittedAt: "2026-01-01T00:00:00.000Z" }],
+    });
+
+    try {
+      mockRunProbe.mockResolvedValue({
+        probe: PROOF_PROBE,
+        ok: true,
+        detail: "claims-convergence → proved",
+        proof: {
+          tool: "exhaustive",
+          toolVersion: "1",
+          verdict: "proved",
+          specSha256: "a".repeat(64),
+          entrySha256: "b".repeat(64),
+          enumerated: 111150,
+          log: ".cache/proofs/claims-convergence.log",
+        },
+      });
+
+      const result = await runRfcVerificationRefresh(
+        { flags: { id: "RFC-0100" } } as unknown as ForgeCommandInput,
+        makeContext(workspaceRoot) as unknown as ForgeRuntimeContext,
+      );
+      expect(result.exitCode).toBe(0);
+
+      const envelopePath = path.join(
+        workspaceRoot,
+        "docs",
+        "rfcs",
+        "verification",
+        "rfc-0100.generated.yaml",
+      );
+      const raw = await fs.readFile(envelopePath, "utf-8");
+      expect(raw).toContain("verdict: proved");
+      expect(raw).toContain(`specSha256: ${"a".repeat(64)}`);
+      expect(raw).toContain(`entrySha256: ${"b".repeat(64)}`);
+      expect(raw).toContain("enumerated: 111150");
+      expect(raw).toContain("log: .cache/proofs/claims-convergence.log");
     } finally {
       await cleanup();
     }

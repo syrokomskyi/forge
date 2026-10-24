@@ -21,6 +21,14 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1391: close RFC-1391 review r2 findings — refresh proof passthrough, log surface
+
+REVIEW-CODE-2026-10-24-05 (warning): rfc.verification.refresh stripped the
+proof payload from probe records — a refresh would rewrite an envelope
+without verdict/hashes and trip RFC-IMP-13 on next stamp; mirrored the emit
+spread and pinned it with a regression test. proof.check pretty output now
+prints the persisted log; every exhaustive verdict path carries vitest
+output as log.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -73,7 +81,10 @@ export async function runProofCheckCommand(
     if (proved) context.logger.success(line);
     else context.logger.error(line);
     if (verdict.counterexample) {
-      context.logger.info(`  counterexample/log: ${verdict.counterexample}`);
+      context.logger.info(`  counterexample: ${verdict.counterexample}`);
+    }
+    if (verdict.log) {
+      context.logger.info(`  log: ${verdict.log}`);
     }
   }
   return {

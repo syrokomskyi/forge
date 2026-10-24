@@ -29,6 +29,14 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1391: close RFC-1391 review r2 findings — refresh proof passthrough, log surface
+
+REVIEW-CODE-2026-10-24-05 (warning): rfc.verification.refresh stripped the
+proof payload from probe records — a refresh would rewrite an envelope
+without verdict/hashes and trip RFC-IMP-13 on next stamp; mirrored the emit
+spread and pinned it with a regression test. proof.check pretty output now
+prints the persisted log; every exhaustive verdict path carries vitest
+output as log.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -381,6 +389,12 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       timeoutMs,
       env: { ...process.env, [FORGE_PROOF_REPORT_ENV]: reportAbs },
     });
+    const vitestLog = persistLog(
+      workspaceRoot,
+      spec.id,
+      "log",
+      `${outcome.stdout}\n${outcome.stderr}\nexitCode=${String(outcome.exitCode)}`,
+    );
     if (outcome.timedOut) {
       return done(spec, {
         verdict: "error",
@@ -388,6 +402,7 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
         specSha256,
         entrySha256,
         toolVersion: EXHAUSTIVE_TOOL_VERSION,
+        ...(vitestLog ? { log: vitestLog } : {}),
       });
     }
     let report: ExhaustiveResult | null = null;
@@ -397,19 +412,13 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       report = null;
     }
     if (report === null || typeof report.enumerated !== "number") {
-      const log = persistLog(
-        workspaceRoot,
-        spec.id,
-        "log",
-        `${outcome.stdout}\n${outcome.stderr}\nexitCode=${String(outcome.exitCode)}`,
-      );
       return done(spec, {
         verdict: "error",
         message: `entry produced no readable report (exit ${String(outcome.exitCode ?? "spawn-error")}) — the exhaustive() call may have thrown`,
         specSha256,
         entrySha256,
         toolVersion: EXHAUSTIVE_TOOL_VERSION,
-        ...(log ? { log } : {}),
+        ...(vitestLog ? { log: vitestLog } : {}),
       });
     }
     const v = exhaustiveVerdict(report, cardinality);
@@ -430,6 +439,7 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       toolVersion: EXHAUSTIVE_TOOL_VERSION,
       enumerated: report.enumerated,
       ...(counterexample ? { counterexample } : {}),
+      ...(vitestLog ? { log: vitestLog } : {}),
     });
   }
 
