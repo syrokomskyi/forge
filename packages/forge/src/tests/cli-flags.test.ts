@@ -10,6 +10,7 @@ KERNEL-ARG-01 diagnostics, legacy heuristic path for schema-less commands).</pur
 <CHANGE_SUMMARY>
   <item>Initial cli-flags resolution tests — covers the `forge rfc.validate --id` crash regression (value-less declared string flag must produce KERNEL-FLAG-02, not a boolean).</item>
   <item>RFC-1389: m message alias and honest positional fix hints in the forge CLI parser</item>
+  <item>RFC-1389: add kernel-parity pins for non-alias tokens and argv-end -m</item>
 </CHANGE_SUMMARY>
 */
 
@@ -221,6 +222,36 @@ describe("resolveCliFlags — RFC-1389 -m alias and honest hints", () => {
     expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-ARG-01"]);
     expect(diagnostics[0]!.fixHint).toContain("--help");
     expect(diagnostics[0]!.fixHint).not.toContain("--message");
+  });
+
+  test("post-`--` -m on a command without message falls back to --help", () => {
+    const { diagnostics } = resolveCliFlags(["--", "-m"], command({}));
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
+    expect(diagnostics[0]!.fixHint).toContain("--help");
+    expect(diagnostics[0]!.fixHint).not.toContain("--message");
+  });
+
+  test("a non-alias dash letter never fabricates the single required flag", () => {
+    const { diagnostics } = resolveCliFlags(["-x"], withMessage);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01", "KERNEL-FLAG-03"]);
+    expect(diagnostics[0]!.fixHint).toBe(
+      'Unexpected argument "-x" — see --help for declared flags.',
+    );
+    expect(diagnostics[0]!.fixHint).not.toContain("--message");
+  });
+
+  test("non-letter dash tokens and multi-char -mx stay positional", () => {
+    for (const token of ["-", "-5", "-mx", "-mm"]) {
+      const { diagnostics } = resolveCliFlags([token], command({}));
+      expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-ARG-01"]);
+      expect(diagnostics[0]!.fixHint).toContain("--help");
+    }
+  });
+
+  test("bare -m at argv end rewrites to --message then reports the missing value", () => {
+    const { diagnostics } = resolveCliFlags(["-m"], withMessage);
+    expect(errorRuleIds(diagnostics)).toEqual(["KERNEL-FLAG-02", "KERNEL-FLAG-03"]);
+    expect(diagnostics[0]!.message).toContain('"--message"');
   });
 
   // -- AC-1: honest positional hints ----------------------------------------
