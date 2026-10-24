@@ -7,7 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0694: replace html-attribute-pattern with attribute-pattern (elements array) for HTML+JSX support.</item>
   <item>ADR-0043: add scriptDir field for agent-generated script directory convention.</item>
   <item>RFC-0808: add link-resolution, frontmatter-required, path-exclusion check kinds for note vault validation.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -16,7 +15,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0638, RFC-0674, RFC-0675, RFC-0679, RFC-0680</history>
+  <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <history>RFC-0638, RFC-0674, RFC-0675, RFC-0679, RFC-0680, RFC-0694</history>
 </CHANGE_SUMMARY>
 */
 
@@ -338,6 +338,14 @@ export const compassPolicyOverridesSchema = z.object({
     )
     .optional(),
   workspaceKinds: z.record(z.string(), z.enum(["app", "package", "service"])).optional(),
+  // RFC-1390: optional path overrides for the invariant index and baseline
+  // (defaults docs/invariants.generated.yaml / docs/invariants.baseline.generated.yaml).
+  invariants: z
+    .object({
+      indexPath: z.string().min(1).optional(),
+      baselinePath: z.string().min(1).optional(),
+    })
+    .optional(),
   excludedPaths: z
     .array(
       z.object({
