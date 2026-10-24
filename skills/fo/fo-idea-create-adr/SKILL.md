@@ -135,7 +135,7 @@ adr: create ADR-XXXX <short title>
 Draft ADR-XXXX (<title>) from template. Status: proposed, awaiting decider acceptance.
 ```
 
-Commit path-scoped (RFC-1361): `pnpm exec werkstatt run ecosystem.commit --message "adr: create ADR-XXXX <short title>" --files "<adr file path>"` — `--files` auto-stages the new ADR file and leaves foreign staged entries intact. On plain-git workshops (no `ecosystem.commit`): stage only the ADR file with `git add <path>` and commit — `git add -A` or `git add .` is forbidden; another agent may be working in a different session.
+Commit path-scoped: `pnpm exec werkstatt run ecosystem.commit --message "adr: create ADR-XXXX <short title>" --files "<adr file path>"` — `--files` auto-stages the new ADR file and leaves foreign staged entries intact. On plain-git workshops (no `ecosystem.commit`): stage only the ADR file with `git add <path>` and commit — `git add -A` or `git add .` is forbidden; another agent may be working in a different session.
 
 ## Constraints
 
