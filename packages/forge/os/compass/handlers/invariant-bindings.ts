@@ -20,12 +20,12 @@ concern (DNA-43, RFC-1392).</purpose>
   <item>retiredIds survive regeneration via merge-forward — the generated index is the only store of never-reused ids.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1392: pure parser extracted to src/compass/invariant-parser.ts (re-exported); this module keeps IO, binding resolution, and rule evaluation.</item>
-  <item>RFC-1390: tagged invariant grammar, checked-by resolvers, rule table 02..07, index/baseline IO.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-3 review residue on invariant binding machinery</item>
+  <item>RFC-1392: close RFC-1392 review r1 — per-call-site generator and budget pairing</item>
+  <history>RFC-1390, RFC-1392</history>
 </CHANGE_SUMMARY>
 */
 
@@ -51,6 +51,7 @@ export {
   normalizeInvariantStatement,
   INVARIANT_ID_RE,
   VACUOUS_INVARIANT_PATTERNS,
+  BINDING_KINDS,
   type InvariantBindingKind,
   type ParsedInvariant,
   type RawBinding,
