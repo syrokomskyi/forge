@@ -18,6 +18,7 @@ plain runs refresh the index with retiredIds merged forward.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1390: generator handler — index projection, seed/shrink baseline, retiredIds merge-forward.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -110,6 +111,13 @@ export async function runCompassInvariantsGenerate(
   const seed = input.flags["seed"] === true;
   const shrink = input.flags["shrink"] === true;
   const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
+
+  if (seed && shrink) {
+    return {
+      exitCode: 1,
+      summary: `[compass.invariants.generate] --seed and --shrink are mutually exclusive — seed writes the baseline once, shrink only removes from it`,
+    };
+  }
 
   const baseline = await loadInvariantBaseline(paths.baselinePath);
   const previousIndex = await loadInvariantIndex(paths.indexPath);

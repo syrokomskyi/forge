@@ -12,6 +12,7 @@ handler across fixture workspaces in temp dirs.
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for FORBIDDEN-01/SYNTAX-01 parity.</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -194,8 +195,8 @@ describe("compass.migrate codemod (RFC-1097)", () => {
     expect(kdIdx).toBeLessThan(csIdx);
   });
 
-  it("seeded: medium-risk file with @ai-invariant comments gets real KEY_DECISIONS, ID prefix stripped", () => {
-    const source = `${wrap(MC(PURPOSE), CS(["RFC-1094: fixture."]))}\n// @ai-invariant RFC-0020: Widget tokens must stay deterministic.\n// @ai-invariant Widget tokens must stay deterministic.\n\n${BODY}\n`;
+  it("seeded: medium-risk file with @ai-invariant: comments gets real KEY_DECISIONS, ID prefix stripped", () => {
+    const source = `${wrap(MC(PURPOSE), CS(["RFC-1094: fixture."]))}\n// @ai-invariant: RFC-0020: Widget tokens must stay deterministic.\n// @ai-invariant: Widget tokens must stay deterministic.\n\n${BODY}\n`;
     const result = migrateFile(source, policy, MEDIUM_ROOT, MEDIUM_WS);
     expect(result.actions).toContain("seeded");
     const kdMatch = result.source.match(
@@ -210,7 +211,7 @@ describe("compass.migrate codemod (RFC-1097)", () => {
     expect((kdMatch![1].match(/<item>/g) ?? []).length).toBe(1);
   });
 
-  it("todo: medium-risk file without @ai-invariant gets the TODO placeholder", () => {
+  it("todo: medium-risk file without @ai-invariant: gets the TODO placeholder", () => {
     const result = migrate(wrap(MC(PURPOSE), CS(["RFC-1094: fixture."])));
     expect(result.actions).toContain("todo");
     expect(result.source).toContain("TODO: record current design decisions");

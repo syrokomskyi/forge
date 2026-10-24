@@ -10,6 +10,7 @@ check; whether the check truly enforces the statement stays a review concern
   <item>Do not register commands — handlers and the module file do that.</item>
   <item>Do not judge semantic adequacy of a bound check — the binding is structural only.</item>
   <item>Do not import from @warpgogol/* — forge is autonomous (FORGE-AUTONOMY-01).</item>
+  <item>Do not scan `#`/`;`-style comment syntaxes (.gd, .tscn, .tres) — marker extraction covers `//` line comments, slash-star block comments, and HTML comments only; no such files exist in this workspace.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
@@ -20,6 +21,7 @@ check; whether the check truly enforces the statement stays a review concern
 <CHANGE_SUMMARY>
   <item>RFC-1390: tagged invariant grammar, checked-by resolvers, rule table 02..07, index/baseline IO.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,9 +29,14 @@ import { createHash } from "node:crypto";
 import { resolve } from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo } from "../../../src/utils/io.ts";
+import { buildGeneratedHeader } from "../../../src/utils/generated-marker.ts";
 import type { CompassRiskClass } from "../policy.ts";
 
 const io = ambientIo;
+
+function escapeRegExp(text: string): string {
+  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
 
 // ---------------------------------------------------------------------------
 // Contracts (RFC-1390 TypeScript contracts section)
@@ -116,9 +123,15 @@ export function invariantStatementSha(statement: string): string {
 
 /**
  * Comment-region spans of one line. Tracks `/* … *​/` and `<!-- … -->` blocks
- * across lines so markers are only recognised inside comments — regex or
- * string literals in code never count as declarations.
+ * across lines so markers are only recognised inside comments. This is a
+ * lexical heuristic, not a tokenizer: an opener immediately preceded by `"`,
+ * `'`, `` ` ``, `:`, or `/` is treated as code (string/regex literal, URL
+ * scheme, or a slash-star-slash edge) and skipped — a marker inside a *larger* string literal
+ * that embeds comment sigils can still false-positive, so keep marker text
+ * out of literals (split or escape it, as the test fixtures do).
  */
+const OPENER_CODE_PREFIX = new Set(['"', "'", "`", ":", "/"]);
+
 function commentSpans(
   line: string,
   block: "js" | "html" | null,
@@ -138,22 +151,28 @@ function commentSpans(
       block = null;
       continue;
     }
+    const candidates: [number, "line" | "js" | "html"][] = [];
     const lineIdx = line.indexOf("//", i);
+    if (lineIdx >= 0) candidates.push([lineIdx, "line"]);
     const jsIdx = line.indexOf("/*", i);
+    if (jsIdx >= 0) candidates.push([jsIdx, "js"]);
     const htmlIdx = line.indexOf("<!--", i);
-    const first = Math.min(...[lineIdx, jsIdx, htmlIdx].filter((x) => x >= 0));
-    if (first === Number.POSITIVE_INFINITY) break;
-    if (first === lineIdx) {
+    if (htmlIdx >= 0) candidates.push([htmlIdx, "html"]);
+    if (candidates.length === 0) break;
+    candidates.sort((a, b) => a[0] - b[0]);
+    const [first, kind] = candidates[0]!;
+    // An opener glued to a quote, colon, or slash sits inside a literal or a
+    // different opener — resume the scan after it instead of opening a comment.
+    if (first > 0 && OPENER_CODE_PREFIX.has(line[first - 1]!)) {
+      i = first + 1;
+      continue;
+    }
+    if (kind === "line") {
       spans.push([first + 2, line.length, false]);
       break;
     }
-    if (first === jsIdx) {
-      block = "js";
-      i = jsIdx + 2;
-    } else {
-      block = "html";
-      i = htmlIdx + 4;
-    }
+    block = kind;
+    i = first + (kind === "html" ? 4 : 2);
   }
   return { spans, block };
 }
@@ -172,13 +191,15 @@ function commentTextOf(line: string, block: "js" | "html" | null) {
   return { text, block: nextBlock };
 }
 
-function parenBalance(text: string): number {
-  let balance = 0;
-  for (const ch of text) {
-    if (ch === "(") balance += 1;
-    else if (ch === ")") balance -= 1;
-  }
-  return balance;
+/**
+ * Whether a comment line ends a multi-line invariant statement instead of
+ * continuing it: annotations (`@param`), markup tags (`<purpose>`), delimiter
+ * runs (`// ----`), and fresh invariant markers all start something new.
+ */
+function isContinuationBoundary(commentText: string): boolean {
+  if (commentText.startsWith("@") || commentText.startsWith("<")) return true;
+  if (/^[-=_~*#|]{3,}\s*$/.test(commentText)) return true;
+  return MARKER_RE.test(commentText);
 }
 
 interface RawBinding {
@@ -195,6 +216,8 @@ function parseBindingRef(ref: string): RawBinding {
 export interface ParsedInvariant {
   id: string | null;
   malformedId?: string;
+  /** A `checked-by` group is present but is not the trailing parenthesised group. */
+  malformedCheckedBy?: boolean;
   line: number;
   statement: string;
   rawBindings: RawBinding[];
@@ -204,8 +227,9 @@ export interface ParsedInvariant {
 /**
  * Extract every `@ai-invariant` from source text — legacy `// @ai-invariant …`
  * (id null) and tagged `// @ai-invariant[INV-x-01] … (checked-by: …)` forms.
- * Continuation comment lines join with single spaces while a parenthesised
- * group stays open (the `(checked-by: …)` tail may wrap).
+ * A statement runs until a code line, a blank comment line, a delimiter run,
+ * a markup/annotation line, or a fresh marker — contiguous comment lines are
+ * the statement (the `(checked-by: …)` tail wraps the same way).
  */
 export function extractInvariants(source: string): ParsedInvariant[] {
   const lines = source.split("\n");
@@ -229,12 +253,12 @@ export function extractInvariants(source: string): ParsedInvariant[] {
     const bracket = match[1];
     let text = match[2] ?? "";
 
-    // Join continuation comment lines while a parenthesised group is open or
-    // the next comment line opens one (the `(checked-by: …)` tail may wrap).
+    // Join continuation comment lines: the statement runs until a code line,
+    // a blank comment line, a delimiter run, a markup/annotation line, or a
+    // new invariant marker (the `(checked-by: …)` tail may wrap the same way).
     while (i + 1 < lines.length) {
       const next = commentTexts[i + 1];
-      if (next === null) break;
-      if (parenBalance(text) <= 0 && !next.startsWith("(")) break;
+      if (next === null || next === "" || isContinuationBoundary(next)) break;
       i += 1;
       text = `${text} ${next}`.trim();
     }
@@ -254,10 +278,12 @@ export function extractInvariants(source: string): ParsedInvariant[] {
     const normalized = normalizeInvariantStatement(statement);
     const malformedId =
       bracket !== undefined && !INVARIANT_ID_RE.test(bracket.trim()) ? bracket.trim() : undefined;
+    const malformedCheckedBy = !checkedBy && /\(\s*checked-by\s*:/i.test(statement);
 
     found.push({
       id: malformedId === undefined && bracket !== undefined ? bracket.trim() : null,
       malformedId,
+      malformedCheckedBy: malformedCheckedBy || undefined,
       line: i + 1,
       statement: normalized,
       rawBindings: bindings,
@@ -287,49 +313,71 @@ export function resolveInvariantPaths(
   };
 }
 
+/**
+ * Loaders return null ONLY when the artifact is absent (ENOENT) — a corrupt
+ * or shape-wrong file is an integrity error and throws, never reads as
+ * "no baseline yet" (which would silently re-seed or downgrade the ratchet).
+ */
+function isEnoent(err: unknown): boolean {
+  return (err as NodeJS.ErrnoException | null)?.code === "ENOENT";
+}
+
 export async function loadInvariantIndex(indexPath: string): Promise<InvariantIndex | null> {
+  let raw: string;
   try {
-    const raw = await io.readFile(indexPath);
-    const parsed = yamlParse(raw) as Partial<InvariantIndex> | null;
-    if (!parsed || !Array.isArray(parsed.invariants)) return null;
-    return {
-      schema: "forge/invariant-index@1",
-      invariants: (parsed.invariants ?? []) as CodeInvariant[],
-      retiredIds: Array.isArray(parsed.retiredIds) ? (parsed.retiredIds as string[]) : [],
-    };
-  } catch {
-    return null;
+    raw = await io.readFile(indexPath);
+  } catch (err) {
+    if (isEnoent(err)) return null;
+    throw err;
   }
+  const parsed = yamlParse(raw) as Partial<InvariantIndex> | null;
+  if (!parsed || !Array.isArray(parsed.invariants)) {
+    throw new Error(`malformed invariant index at ${indexPath}`);
+  }
+  return {
+    schema: "forge/invariant-index@1",
+    invariants: (parsed.invariants ?? []) as CodeInvariant[],
+    retiredIds: Array.isArray(parsed.retiredIds) ? (parsed.retiredIds as string[]) : [],
+  };
 }
 
 export async function loadInvariantBaseline(
   baselinePath: string,
 ): Promise<InvariantBaseline | null> {
+  let raw: string;
   try {
-    const raw = await io.readFile(baselinePath);
-    const parsed = yamlParse(raw) as Partial<InvariantBaseline> | null;
-    if (!parsed || !Array.isArray(parsed.entries)) return null;
-    return {
-      schema: "forge/invariant-baseline@1",
-      entries: (parsed.entries as InvariantBaselineEntry[]).filter(
-        (e) => typeof e?.path === "string" && typeof e?.statementSha256 === "string",
-      ),
-    };
-  } catch {
-    return null;
+    raw = await io.readFile(baselinePath);
+  } catch (err) {
+    if (isEnoent(err)) return null;
+    throw err;
   }
+  const parsed = yamlParse(raw) as Partial<InvariantBaseline> | null;
+  if (!parsed || !Array.isArray(parsed.entries)) {
+    throw new Error(`malformed invariant baseline at ${baselinePath}`);
+  }
+  return {
+    schema: "forge/invariant-baseline@1",
+    entries: (parsed.entries as InvariantBaselineEntry[]).filter(
+      (e) => typeof e?.path === "string" && typeof e?.statementSha256 === "string",
+    ),
+  };
 }
 
 export function serializeInvariantIndex(index: InvariantIndex): string {
   return (
-    `# GENERATED by compass.invariants.generate — do not edit by hand.\n` +
-    yamlStringify(index, { indent: 2 })
+    buildGeneratedHeader({
+      filePath: INVARIANT_INDEX_PATH,
+      ownerCommand: "compass.invariants.generate",
+    }) + yamlStringify(index, { indent: 2 })
   );
 }
 
 export function serializeInvariantBaseline(baseline: InvariantBaseline): string {
   return (
-    `# GENERATED by compass.invariants.generate — shrink-only baseline.\n` +
+    buildGeneratedHeader({
+      filePath: INVARIANT_BASELINE_PATH,
+      ownerCommand: "compass.invariants.generate",
+    }) +
     `# Re-seeding is forbidden; entries leave only via --shrink.\n` +
     yamlStringify(baseline, { indent: 2 })
   );
@@ -369,6 +417,12 @@ async function resolveOneBinding(
     return;
   }
   const abs = resolve(ctx.workspaceRoot, binding.target);
+  const root = resolve(ctx.workspaceRoot);
+  if (abs !== root && !abs.startsWith(root + "/")) {
+    binding.resolved = false;
+    binding.failure = `binding target ${binding.target} escapes the workspace root`;
+    return;
+  }
   let content: string | null = null;
   try {
     content = await io.readFile(abs);
@@ -380,7 +434,7 @@ async function resolveOneBinding(
     binding.failure = `bound file ${binding.target} does not exist`;
     return;
   }
-  binding.resolved = content.includes(invariant.id);
+  binding.resolved = new RegExp(`${escapeRegExp(invariant.id)}\\b`).test(content);
   if (!binding.resolved) {
     binding.failure = `${binding.target} does not contain the invariant id ${invariant.id}`;
   }
@@ -405,6 +459,14 @@ export async function resolveInvariantBindings(
         ? undefined
         : `unknown binding kind "${raw.kind}"`,
     }));
+    if (parsed.malformedCheckedBy) {
+      bindings.push({
+        kind: "test",
+        target: "(checked-by: …)",
+        resolved: false,
+        failure: "checked-by group is not the trailing parenthesised group of the statement",
+      });
+    }
 
     const invariant: CodeInvariant = {
       id: parsed.id,
@@ -426,10 +488,7 @@ export async function resolveInvariantBindings(
     }
 
     invariant.bound =
-      invariant.id !== null &&
-      !invariant.malformedId &&
-      bindings.length > 0 &&
-      bindings.every((b) => b.resolved);
+      invariant.id !== null && bindings.length > 0 && bindings.every((b) => b.resolved);
     out.push(invariant);
   }
   return out;
@@ -450,27 +509,34 @@ export function baselineSet(baseline: InvariantBaseline | null): Set<string> {
  * advisory until `validator.inventory.generate` has run).
  */
 export async function loadLintRuleIds(workspaceRoot: string): Promise<Set<string> | null> {
+  let raw: string;
   try {
-    const raw = await io.readFile(resolve(workspaceRoot, VALIDATOR_INVENTORY_PATH));
-    const parsed = yamlParse(raw);
-    const ids = new Set<string>();
-    const visit = (node: unknown): void => {
-      if (Array.isArray(node)) {
-        for (const item of node) visit(item);
-        return;
-      }
-      if (node && typeof node === "object") {
-        for (const [key, value] of Object.entries(node)) {
-          if (key === "ruleId" && typeof value === "string") ids.add(value);
-          else visit(value);
+    raw = await io.readFile(resolve(workspaceRoot, VALIDATOR_INVENTORY_PATH));
+  } catch (err) {
+    if (isEnoent(err)) return null;
+    throw err;
+  }
+  const parsed = yamlParse(raw);
+  const ids = new Set<string>();
+  const visit = (node: unknown): void => {
+    if (Array.isArray(node)) {
+      for (const item of node) visit(item);
+      return;
+    }
+    if (node && typeof node === "object") {
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "rules" && Array.isArray(value)) {
+          for (const item of value) {
+            if (typeof item === "string") ids.add(item);
+          }
+        } else {
+          visit(value);
         }
       }
-    };
-    visit(parsed);
-    return ids;
-  } catch {
-    return null;
-  }
+    }
+  };
+  visit(parsed);
+  return ids;
 }
 
 // ---------------------------------------------------------------------------
@@ -548,7 +614,7 @@ export function evaluateInvariantRules(
         severity: "error",
         file: inv.file,
         message: `malformed invariant id "${inv.malformedId}" — expected INV-<scope>-<NN> (kebab scope, 2-3 digit tail)`,
-        fix: `fix: rename to a well-formed id, e.g. INV-${inv.file.split("/").at(-2) ?? "scope"}-01`,
+        fix: `fix: rename to a well-formed id, e.g. INV-${(inv.file.split("/").at(-2) ?? "scope").toLowerCase().replace(/[^a-z0-9]+/g, "-")}-01`,
       });
     }
     for (const binding of inv.bindings) {
@@ -568,7 +634,9 @@ export function evaluateInvariantRules(
         severity: "error",
         file: inv.file,
         message: `unresolved binding ${binding.kind}:${binding.target} on ${describe(inv)} — ${binding.failure}`,
-        fix: `fix: name the invariant id ${inv.id ?? ""} inside the bound file, or correct the binding target`,
+        fix: inv.id
+          ? `fix: name the invariant id ${inv.id} inside the bound file, or correct the binding target`
+          : `fix: tag the invariant with an id and name it inside the bound file, or correct the binding target`,
       });
     }
 

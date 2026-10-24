@@ -27,7 +27,7 @@ Blocks out of this order are a `COMPASS-ORDER-01` violation.
 
 - `<purpose>` must be specific to this file, under 100 characters, and contain at least one file-derived token (filename stem segment, parent-directory segment for generic stems, or an exported symbol name). Boilerplate openers ("This file…", "Utility…", "TODO…") are `COMPASS-PURPOSE-01`; a purpose with no file-derived token is `COMPASS-PURPOSE-02`.
 - `<non-goals>` must have at least one `<item>`.
-- Do not include `@ai-invariant` lines in `MODULE_CONTRACT` — they are inline comments in the file body.
+- Do not include `@ai-invariant` lines in `MODULE_CONTRACT` — they are inline comments in the file body. On `high`-risk files, write them in the tagged bound form: `// @ai-invariant[INV-<scope>-<NN>]: <statement> (checked-by: test:<file>|type:<file>|lint:<RULE-ID>|proof:<spec>)`.
 
 ## KEY_DECISIONS
 
@@ -51,6 +51,7 @@ Blocks out of this order are a `COMPASS-ORDER-01` violation.
 ```
 <CHANGE_SUMMARY>
   <item>RFC-1094: adopted v2 three-block contract.</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
   <history>RFC-0348, RFC-0349, RFC-0538</history>
 </CHANGE_SUMMARY>
 ```
@@ -73,7 +74,7 @@ The following legacy Compass blocks are forbidden and must be removed (`COMPASS-
 - `MODULE_MAP`, `keywords`, `responsibilities`, `COMPASS_BLOCK` — removed by RFC-0348.
 - `GRACE_MODULE_CONTRACT` — use `MODULE_CONTRACT` instead.
 - `GRACE_CHANGE_SUMMARY` — use `CHANGE_SUMMARY` instead.
-- `AI_INVARIANTS` — use inline `// @ai-invariant` comments instead.
+- `AI_INVARIANTS` — use inline `// @ai-invariant` comments instead (tagged bound form on `high`-risk files).
 - `COMPASS_AUDIT` — use the audit ledger via `compass.audit.record` instead.
 
 If `compass.validate` reports a `COMPASS-FORBIDDEN-01` violation, remove the forbidden block and run the `fo-compass-annotate` skill to generate correct headers.
