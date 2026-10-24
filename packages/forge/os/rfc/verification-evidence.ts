@@ -12,12 +12,20 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
   <item>RFC-1330: emit attaches git-derived origin; origin is volatile for --check.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1372: getKernelVersion falls back to the workspace root package.json version — the packages/os/site-kernel path predates RFC-0776 and no longer resolves, so envelopes recorded kernelVersion: unknown</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271</history>
+  <item>RFC-1391: unblock evidence emission for proof-probe RFCs (RFC-1391)
+
+probeArtifactCandidates lacked a `proof` branch — the default threw
+EVIDENCE-FRESH-03, so rfc.verification.emit could never produce an
+envelope for any RFC declaring `probe: proof`. The IMP-13 remediation
+path was dead end-to-end. A proof probe executes the checker live and
+carries no generated dependency — same mapping as run/test/page.
+
+Found by the independent acceptance verifier (rfc-1391 r0, CX-1).</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320</history>
 </CHANGE_SUMMARY>
 */
 
@@ -94,6 +102,11 @@ export function probeArtifactCandidates(probe: AcceptanceProbe): string[] {
     case "run":
     case "test":
     case "page":
+    case "proof":
+      // RFC-1391: a `proof` probe executes the checker live — the spec is
+      // authored input bound by sha256, not a generated artifact to freshness-
+      // check. Without this branch every formal-tier RFC was emit-blocked
+      // (EVIDENCE-FRESH-03), dead-ending the IMP-13 evidence path.
       return [];
     default:
       throw new Error(
