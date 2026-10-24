@@ -21,14 +21,34 @@ surfaces share one verdict path.
 <CHANGE_SUMMARY>
   <item>RFC-1391: shared runProofCheck execution path (tool resolution, version pin, report parsing, log persistence).</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
 import { createHash } from "node:crypto";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, relative, resolve } from "node:path";
 import { parse as yamlParse } from "yaml";
-import type { FormalToolEntry } from "../config/forge-config.ts";
-import { existsSync, mkdirSync, readFileSync, spawn, writeFileSync } from "../utils/sync-fs.ts";
+import {
+  loadForgeConfig,
+  type ForgeConfig,
+  type ForgePackageManager,
+  type FormalToolEntry,
+} from "../config/forge-config.ts";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  rmSync,
+  spawn,
+  writeFileSync,
+} from "../utils/sync-fs.ts";
 import {
   EXHAUSTIVE_TOOL_VERSION,
   exhaustiveVerdict,
@@ -46,8 +66,17 @@ export interface RunProofCheckOptions {
   workspaceRoot: string;
   /** Workspace-relative path to the forge/proof-spec@1 YAML file. */
   specRelPath: string;
-  /** `formal.tools` map from forge.yaml — absent means only `exhaustive` resolves. */
+  /**
+   * `formal.tools` map — explicit override. When absent (or `packageManager`
+   * is absent) the runner loads forge.yaml itself so the command and probe
+   * surfaces resolve config identically; a malformed forge.yaml then yields
+   * an `error` verdict rather than masquerading as "no tools configured".
+   */
   tools?: Record<string, FormalToolEntry>;
+  /** Project package manager — explicit override; default from forge.yaml / "pnpm". */
+  packageManager?: ForgePackageManager;
+  /** forge.yaml profile-resolution root — forwarded to `loadForgeConfig`. */
+  forgeRoot?: string;
   /**
    * Per-run timeout bound (ms) — the `proof.check --timeout-ms` flag value.
    * Defaults to PROOF_CHECK_DEFAULT_TIMEOUT_MS.
@@ -149,6 +178,49 @@ function persistLog(
   return rel;
 }
 
+/** Resolve `rel` under `root`, refusing paths that escape the workspace. */
+function confinedAbsPath(root: string, rel: string): string | null {
+  const abs = resolve(root, rel);
+  const back = relative(root, abs);
+  if (back.startsWith("..") || isAbsolute(back)) return null;
+  return abs;
+}
+
+/**
+ * Load forge.yaml for proof-tool resolution. Absent forge.yaml → `{ config:
+ * null }` (only `exhaustive` resolves); present-but-malformed →
+ * `{ configError }` so the verdict is `error`, not a misleading `unavailable`.
+ */
+function tryLoadForgeConfig(
+  workspaceRoot: string,
+  forgeRoot?: string,
+): { config: ForgeConfig | null; configError: string | null } {
+  try {
+    return { config: loadForgeConfig(workspaceRoot, forgeRoot), configError: null };
+  } catch (e) {
+    if (existsSync(join(workspaceRoot, "forge.yaml"))) {
+      return { config: null, configError: (e as Error).message };
+    }
+    return { config: null, configError: null };
+  }
+}
+
+/** The vitest invocation for the built-in `exhaustive` runner, per package manager. */
+function vitestExecArgv(pm: ForgePackageManager, entryAbsPath: string): string[] | null {
+  switch (pm) {
+    case "pnpm":
+      return ["pnpm", "exec", "vitest", "run", entryAbsPath];
+    case "npm":
+      return ["npm", "exec", "--", "vitest", "run", entryAbsPath];
+    case "yarn":
+      return ["yarn", "vitest", "run", entryAbsPath];
+    case "bun":
+      return ["bun", "x", "vitest", "run", entryAbsPath];
+    case "none":
+      return null;
+  }
+}
+
 function result(
   spec: Partial<ProofSpec>,
   fields: Pick<ProofCheckResult, "verdict" | "message"> & Partial<ProofCheckResult>,
@@ -172,7 +244,6 @@ function result(
  */
 export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCheckResult> {
   const { workspaceRoot, specRelPath } = opts;
-  const tools = opts.tools ?? {};
   const spawnFn = opts.spawnFn ?? spawnArgv;
   const startedAt = Date.now();
   const done = (
@@ -180,7 +251,13 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
     fields: Pick<ProofCheckResult, "verdict" | "message"> & Partial<ProofCheckResult>,
   ): ProofCheckResult => result(spec, { durationMs: Date.now() - startedAt, ...fields });
 
-  const specAbsPath = resolve(workspaceRoot, specRelPath);
+  const specAbsPath = confinedAbsPath(workspaceRoot, specRelPath);
+  if (specAbsPath === null) {
+    return done(
+      {},
+      { verdict: "error", message: `spec path escapes workspaceRoot: ${specRelPath}` },
+    );
+  }
   let specRaw: string;
   try {
     specRaw = readFileSync(specAbsPath, "utf8");
@@ -215,16 +292,49 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
     );
   }
 
-  const entryAbsPath = resolve(workspaceRoot, spec.entry);
+  const entryAbsPath = confinedAbsPath(workspaceRoot, spec.entry);
+  if (entryAbsPath === null) {
+    return done(spec, {
+      verdict: "error",
+      message: `entry path escapes workspaceRoot: ${spec.entry}`,
+      specSha256,
+    });
+  }
   let entrySha256 = "";
-  if (existsSync(entryAbsPath)) {
-    entrySha256 = sha256Hex(readFileSync(entryAbsPath, "utf8"));
-  } else {
+  if (!existsSync(entryAbsPath)) {
     return done(spec, {
       verdict: "error",
       message: `entry file not found: ${spec.entry}`,
       specSha256,
     });
+  }
+  try {
+    entrySha256 = sha256Hex(readFileSync(entryAbsPath, "utf8"));
+  } catch {
+    return done(spec, {
+      verdict: "error",
+      message: `entry file not readable: ${spec.entry}`,
+      specSha256,
+    });
+  }
+
+  // Resolve forge.yaml once, inside the runner — the command and probe
+  // surfaces share this exact path. A malformed forge.yaml is an `error`,
+  // never a silent "no tools configured".
+  let tools = opts.tools;
+  let packageManager = opts.packageManager;
+  if (tools === undefined || packageManager === undefined) {
+    const cfg = tryLoadForgeConfig(workspaceRoot, opts.forgeRoot);
+    if (cfg.configError !== null) {
+      return done(spec, {
+        verdict: "error",
+        message: `forge.yaml unresolvable — ${cfg.configError.split("\n")[0]}`,
+        specSha256,
+        entrySha256,
+      });
+    }
+    tools = tools ?? cfg.config?.formal?.tools ?? {};
+    packageManager = packageManager ?? cfg.config?.project.packageManager ?? "pnpm";
   }
 
   const timeoutMs = opts.timeoutMs ?? PROOF_CHECK_DEFAULT_TIMEOUT_MS;
@@ -251,7 +361,22 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
     }
     const reportRel = join(".cache", "proofs", `${spec.id}.report.json`);
     const reportAbs = join(workspaceRoot, reportRel);
-    const outcome = await spawnFn(["pnpm", "exec", "vitest", "run", entryAbsPath], {
+    const execArgv = vitestExecArgv(packageManager, entryAbsPath);
+    if (execArgv === null) {
+      return done(spec, {
+        verdict: "error",
+        message:
+          'project.packageManager "none" cannot exec vitest — run the entry through a configured external tool instead',
+        specSha256,
+        entrySha256,
+        toolVersion: EXHAUSTIVE_TOOL_VERSION,
+      });
+    }
+    // Freshness sweep: a stale report from a prior run must never stand in
+    // for the current run's checker output (the verdict binds to bytes that
+    // may have changed since that report was written).
+    rmSync(reportAbs, { force: true });
+    const outcome = await spawnFn(execArgv, {
       cwd: workspaceRoot,
       timeoutMs,
       env: { ...process.env, [FORGE_PROOF_REPORT_ENV]: reportAbs },
@@ -284,7 +409,7 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
         specSha256,
         entrySha256,
         toolVersion: EXHAUSTIVE_TOOL_VERSION,
-        ...(log ? { counterexample: log } : {}),
+        ...(log ? { log } : {}),
       });
     }
     const v = exhaustiveVerdict(report, cardinality);
@@ -318,6 +443,14 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       entrySha256,
     });
   }
+  if (!tool.command.includes("{entry}")) {
+    return done(spec, {
+      verdict: "error",
+      message: `formal.tools.${spec.tool}.command must contain the literal "{entry}" token — the checker receives the spec entry path`,
+      specSha256,
+      entrySha256,
+    });
+  }
   const versionRun = await spawnFn(tool.versionCommand, {
     cwd: workspaceRoot,
     timeoutMs,
@@ -332,9 +465,18 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       entrySha256,
     });
   }
-  const versionMatch = new RegExp(tool.versionPattern).exec(
-    versionRun.stdout + "\n" + versionRun.stderr,
-  );
+  let versionPattern: RegExp;
+  try {
+    versionPattern = new RegExp(tool.versionPattern);
+  } catch {
+    return done(spec, {
+      verdict: "error",
+      message: `versionPattern for "${spec.tool}" is not a valid regex: ${tool.versionPattern}`,
+      specSha256,
+      entrySha256,
+    });
+  }
+  const versionMatch = versionPattern.exec(versionRun.stdout + "\n" + versionRun.stderr);
   if (!versionMatch) {
     return done(spec, {
       verdict: "error",
@@ -389,7 +531,7 @@ export async function runProofCheck(opts: RunProofCheckOptions): Promise<ProofCh
       specSha256,
       entrySha256,
       toolVersion: observedVersion,
-      ...(log ? { counterexample: log } : {}),
+      ...(log ? { log } : {}),
     });
   }
   return done(spec, {

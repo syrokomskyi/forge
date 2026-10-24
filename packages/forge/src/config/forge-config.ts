@@ -6,13 +6,18 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
   <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -230,12 +235,18 @@ export interface ContractProducerEntry {
  * version, `installHint` surfaces on `unavailable`. Forge ships no binaries —
  * every external tool is opt-in per workshop.
  */
-export const formalToolSchema = z.object({
-  command: z.array(z.string().min(1)).min(1),
-  versionCommand: z.array(z.string().min(1)).min(1),
-  versionPattern: z.string().min(1),
-  installHint: z.string().optional(),
-});
+export const formalToolSchema = z
+  .object({
+    command: z.array(z.string().min(1)).min(1),
+    versionCommand: z.array(z.string().min(1)).min(1),
+    versionPattern: z.string().min(1),
+    installHint: z.string().optional(),
+  })
+  .refine((tool) => tool.command.includes("{entry}"), {
+    message:
+      'command must contain the literal "{entry}" token — the checker receives the spec entry path',
+    path: ["command"],
+  });
 
 export interface FormalToolEntry {
   command: string[];

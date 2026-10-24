@@ -14,6 +14,14 @@ node -e argv stubs — no real proof assistant is installed.
 <CHANGE_SUMMARY>
   <item>RFC-1391: proof.check handler + runProofCheck runner tests.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,7 +65,8 @@ const NODE = process.execPath;
 const NODE_VERSION = process.version.replace(/^v/, "");
 
 function forgeYaml(tools: Record<string, FormalToolEntry>): void {
-  const lines = ["formal:", "  tools:"];
+  const lines = ["formal:", "  tools: {}"];
+  if (Object.keys(tools).length > 0) lines[1] = "  tools:";
   for (const [name, t] of Object.entries(tools)) {
     lines.push(`    ${name}:`);
     lines.push(
@@ -126,7 +135,7 @@ function specBody(overrides: Record<string, unknown> = {}): Record<string, unkno
 }
 
 const stubTool = (exitCode: number): FormalToolEntry => ({
-  command: [NODE, "-e", `process.exit(${exitCode})`],
+  command: [NODE, "-e", `process.exit(${exitCode})`, "{entry}"],
   versionCommand: [NODE, "--version"],
   versionPattern: "v(\\d+\\.\\d+\\.\\d+)",
   installHint: "install the stub",

@@ -12,7 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: emit attaches git-derived origin; origin is volatile for --check.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1372: getKernelVersion falls back to the workspace root package.json version — the packages/os/site-kernel path predates RFC-0776 and no longer resolves, so envelopes recorded kernelVersion: unknown</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
@@ -25,7 +24,15 @@ path was dead end-to-end. A proof probe executes the checker live and
 carries no generated dependency — same mapping as run/test/page.
 
 Found by the independent acceptance verifier (rfc-1391 r0, CX-1).</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320</history>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330</history>
 </CHANGE_SUMMARY>
 */
 
@@ -535,7 +542,12 @@ export async function runRfcVerificationEmit(
 
     for (const probe of probes) {
       const start = performance.now();
-      const result = await runProbe(probe, workspaceRoot, context.commandRegistry);
+      const result = await runProbe(
+        probe,
+        workspaceRoot,
+        context.commandRegistry,
+        context.forgeRoot,
+      );
       const durationMs = Math.round(performance.now() - start);
       probeRecords.push({
         probe,

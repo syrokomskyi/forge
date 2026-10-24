@@ -20,6 +20,14 @@ caller derives the verdict from the report — never from an exit code alone.
 <CHANGE_SUMMARY>
   <item>RFC-1391: exhaustive runner + exhaustiveVerdict count/failure gate.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -56,12 +64,11 @@ export class ExhaustiveDomainError extends Error {
 
 /** One or more inputs violated the property (vitest assertion path). */
 export class ExhaustiveRefutedError extends Error {
-  constructor(
-    message: string,
-    public readonly failures: ExhaustiveFailure[],
-  ) {
+  readonly failures: ExhaustiveFailure[];
+  constructor(message: string, failures: ExhaustiveFailure[]) {
     super(message);
     this.name = "ExhaustiveRefutedError";
+    this.failures = failures;
   }
 }
 

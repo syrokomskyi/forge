@@ -20,6 +20,14 @@ boundary; evidence binds to the spec and entry bytes via sha256.
 <CHANGE_SUMMARY>
   <item>RFC-1391: forge/proof-spec@1 schema, ProofSpec/ProofTool/ProofVerdict/ProofCheckResult types.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -108,8 +116,10 @@ export interface ProofCheckResult {
   entrySha256: string;
   /** `exhaustive` only: number of domain inputs actually enumerated. */
   enumerated?: number;
-  /** Path (workspace-relative) or inline text of the counterexample/log. */
+  /** Workspace-relative path to the persisted counterexample — the refuted-path record. */
   counterexample?: string;
+  /** Workspace-relative path to the persisted checker log (proved/error diagnostics). */
+  log?: string;
   /** Wall time of the check run (ms). */
   durationMs: number;
 }

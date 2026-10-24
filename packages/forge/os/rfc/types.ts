@@ -12,12 +12,19 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1336: RfcFrontmatter.decidedBy — the granting human when an agent:&lt;id&gt; reviewer decided under an rfc.decision delegation; added to RFC_KNOWN_KEYS.</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1383: RfcImplementStampData.criteriaTotal — total parsed ACs for N-of-M reporting.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333</history>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -367,7 +374,10 @@ export interface ProofProbeEvidence {
   specSha256: string;
   entrySha256: string;
   enumerated?: number;
+  /** Refuted-path record — persisted counterexample. */
   counterexample?: string;
+  /** Persisted checker log path (proved/error diagnostics). */
+  log?: string;
 }
 
 export interface RfcAcceptanceRunResult {

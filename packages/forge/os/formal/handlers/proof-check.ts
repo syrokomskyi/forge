@@ -13,10 +13,17 @@ agent-written argument never satisfies a `proof` probe.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1391: proof.check handler over the shared runner.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
-import { loadForgeConfig, type FormalToolEntry } from "../../../src/config/forge-config.ts";
 import { runProofCheck } from "../../../src/formal/index.ts";
 import type { ProofCheckResult } from "../../../src/formal/index.ts";
 import type {
@@ -50,18 +57,16 @@ export async function runProofCheckCommand(
     return missingSpecResult("--spec <path> is required — a forge/proof-spec@1 YAML file");
   }
 
-  let tools: Record<string, FormalToolEntry> = {};
-  try {
-    tools = loadForgeConfig(workspaceRoot, context.forgeRoot).formal?.tools ?? {};
-  } catch {
-    // No forge.yaml (test workspace) — only the built-in `exhaustive` resolves.
-  }
-
   const timeoutFlag = input.flags["timeout-ms"];
   const parsedTimeout =
     typeof timeoutFlag === "string" && /^\d+$/.test(timeoutFlag) ? Number(timeoutFlag) : NaN;
   const timeoutMs = parsedTimeout > 0 ? parsedTimeout : undefined;
-  const verdict = await runProofCheck({ workspaceRoot, specRelPath, tools, timeoutMs });
+  const verdict = await runProofCheck({
+    workspaceRoot,
+    specRelPath,
+    forgeRoot: context.forgeRoot,
+    timeoutMs,
+  });
   const proved = verdict.verdict === "proved";
   if (context.outputFormat === "pretty") {
     const line = `${specRelPath}: ${verdict.verdict} — ${verdict.message}`;

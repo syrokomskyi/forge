@@ -13,18 +13,25 @@ prose checklist.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0268: initial implementation.</item>
   <item>RFC-0998: added test and json-schema probe kinds — spawnVitest helper, Ajv validation, shape validation.</item>
   <item>RFC-1271: optional probe metadata — expectationSource enum-check, limitations pass-through.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
+  <history>RFC-0268</history>
 </CHANGE_SUMMARY>
 */
 
 import { probeReachableCommand, probeReachableSymbol } from "./reachable-symbol.ts";
 import { spawn } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
-import { loadForgeConfig, type FormalToolEntry } from "../../src/config/forge-config.ts";
 import { runProofCheck } from "../../src/formal/index.ts";
 
 import path from "node:path";
@@ -345,6 +352,7 @@ export async function runProbe(
   probe: AcceptanceProbe,
   workspaceRoot: string,
   commandRegistry?: CommandRegistry,
+  forgeRoot?: string,
 ): Promise<ProbeResult> {
   switch (probe.probe) {
     case "run": {
@@ -454,17 +462,12 @@ export async function runProbe(
     }
     case "proof": {
       // RFC-1391: the probe is ok ⇔ the mechanical checker verdict is `proved`.
-      // Shares the exact execution path with the `proof.check` command.
-      let tools: Record<string, FormalToolEntry> = {};
-      try {
-        tools = loadForgeConfig(workspaceRoot).formal?.tools ?? {};
-      } catch {
-        // No forge.yaml — only the built-in `exhaustive` tool resolves.
-      }
+      // Shares the exact execution path — and forge.yaml resolution — with
+      // the `proof.check` command.
       const verdict = await runProofCheck({
         workspaceRoot,
         specRelPath: probe.spec,
-        tools,
+        forgeRoot,
       });
       return {
         probe,
@@ -478,6 +481,7 @@ export async function runProbe(
           entrySha256: verdict.entrySha256,
           ...(verdict.enumerated !== undefined ? { enumerated: verdict.enumerated } : {}),
           ...(verdict.counterexample ? { counterexample: verdict.counterexample } : {}),
+          ...(verdict.log ? { log: verdict.log } : {}),
         },
       };
     }
@@ -546,7 +550,7 @@ export async function runRfcAcceptanceRun(
         });
         continue;
       }
-      const result = await runProbe(raw, workspaceRoot, context.commandRegistry);
+      const result = await runProbe(raw, workspaceRoot, context.commandRegistry, context.forgeRoot);
       probeResults.push(result);
       if (!result.ok) {
         diagnostics.push({

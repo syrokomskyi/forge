@@ -20,6 +20,14 @@ content freshness, never envelope identity (ownerCommand stays
 rfc.verification.emit).</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1330: refresh attaches git-derived origin like emit.</item>
+  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
+
+REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
+fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
+config is error not unavailable, and both surfaces share one path; {entry} is
+required in formal.tools.command; spec/entry paths are confined to the
+workspace; the exhaustive entry dispatches per packageManager; proved runs
+record log, counterexample stays the refuted-path record.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -141,7 +149,12 @@ export async function runRfcVerificationRefresh(
 
     for (const probe of probes) {
       const start = performance.now();
-      const result = await runProbe(probe, workspaceRoot, context.commandRegistry);
+      const result = await runProbe(
+        probe,
+        workspaceRoot,
+        context.commandRegistry,
+        context.forgeRoot,
+      );
       const durationMs = Math.round(performance.now() - start);
       probeRecords.push({
         probe,
