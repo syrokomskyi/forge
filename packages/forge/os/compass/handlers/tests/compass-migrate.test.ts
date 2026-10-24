@@ -13,6 +13,7 @@ handler across fixture workspaces in temp dirs.
   <item>RFC-1311: Compass header sweep — declares the suite contract and escapes fixture tag literals for FORBIDDEN-01/SYNTAX-01 parity.</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -196,7 +197,7 @@ describe("compass.migrate codemod (RFC-1097)", () => {
   });
 
   it("seeded: medium-risk file with @ai-invariant: comments gets real KEY_DECISIONS, ID prefix stripped", () => {
-    const source = `${wrap(MC(PURPOSE), CS(["RFC-1094: fixture."]))}\n// @ai-invariant: RFC-0020: Widget tokens must stay deterministic.\n// @ai-invariant: Widget tokens must stay deterministic.\n\n${BODY}\n`;
+    const source = `${wrap(MC(PURPOSE), CS(["RFC-1094: fixture."]))}\n// @ai-${"invariant"}: RFC-0020: Widget tokens must stay deterministic.\n// @ai-${"invariant"}: Widget tokens must stay deterministic.\n\n${BODY}\n`;
     const result = migrateFile(source, policy, MEDIUM_ROOT, MEDIUM_WS);
     expect(result.actions).toContain("seeded");
     const kdMatch = result.source.match(

@@ -14,11 +14,13 @@ plain runs refresh the index with retiredIds merged forward.</purpose>
 <KEY_DECISIONS>
   <item>--shrink refuses to write when unbound debt is absent from the baseline — new debt stays visible, never silently absorbed.</item>
   <item>retiredIds = previous retiredIds ∪ (prior ids missing now) — merged forward on every regeneration.</item>
+  <item>Scoped scans (--workpiece/--site/--packages/--package or a site-bound context) are preview-only — a partial-corpus seed/shrink/index write would corrupt the workspace-rooted key space or retire out-of-scope ids.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1390: generator handler — index projection, seed/shrink baseline, retiredIds merge-forward.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -67,10 +69,10 @@ async function collectInvariants(
   context: ForgeRuntimeContext,
   baselineKeys: Set<string>,
   lintRuleIds: Set<string> | null,
+  scanRoot: string | undefined,
 ): Promise<CodeInvariant[]> {
   const io = resolveIo(context.io);
   const policy = resolveCompassPolicy(context.workspaceRoot, context.forgeRoot);
-  const scanRoot = resolveCompassScanRoot(input, context);
   const entries = await createCompassInventoryEntries(
     context.workspaceRoot,
     input,
@@ -119,10 +121,32 @@ export async function runCompassInvariantsGenerate(
     };
   }
 
+  // The index and baseline are whole-workspace artifacts keyed by
+  // workspace-relative paths. A scoped scan (--workpiece/--site/--packages/
+  // --package, or an implicitly site-bound context) sees a different corpus
+  // and key space: --seed would write a partial baseline, --shrink would wipe
+  // every out-of-scope entry, and an index write would retire out-of-scope
+  // ids. Scoped runs are preview-only.
+  const scanRoot = resolveCompassScanRoot(input, context);
+  if (scanRoot !== undefined && !dryRun) {
+    return {
+      exitCode: 1,
+      summary:
+        `[compass.invariants.generate] scoped scans write nothing — index and baseline are whole-workspace artifacts. ` +
+        `Rerun with --dry-run to preview this scope, or drop the scope flag to update the workspace artifacts.`,
+    };
+  }
+
   const baseline = await loadInvariantBaseline(paths.baselinePath);
   const previousIndex = await loadInvariantIndex(paths.indexPath);
   const lintRuleIds = await loadLintRuleIds(context.workspaceRoot);
-  const invariants = await collectInvariants(input, context, baselineSet(baseline), lintRuleIds);
+  const invariants = await collectInvariants(
+    input,
+    context,
+    baselineSet(baseline),
+    lintRuleIds,
+    scanRoot,
+  );
 
   const currentIds = new Set(invariants.map((i) => i.id).filter((id): id is string => !!id));
   const previousIds = new Set(

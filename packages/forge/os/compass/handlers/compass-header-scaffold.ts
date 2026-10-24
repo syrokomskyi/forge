@@ -14,11 +14,12 @@ deference, deterministic repair of known malformation shapes.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
+  <history>RFC-1318</history>
 </CHANGE_SUMMARY>
 */
 
@@ -374,7 +375,7 @@ function applyEdits(
 ): string {
   const sorted = [...edits].sort((a, b) => b.start - a.start || (b.order ?? 0) - (a.order ?? 0));
   // RFC-1323: every inserted payload is asserted against the header's own
-  // style — seeded/re-emitted item text (e.g. @ai-invariant: lines captured
+  // style — seeded/re-emitted item text (e.g. @ai-invariant lines captured
   // from // comments) can carry a terminator that means nothing there but
   // truncates the block/html header it lands in.
   if (guard) {
@@ -460,7 +461,7 @@ function scaffoldFileImpl(input: ScaffoldFileInput, policy: CompassPolicy): Scaf
   }
 
   // High-risk deference — a new header on a high-risk file requires an
-  // @ai-invariant: the codemod cannot invent; authorship stays agent work.
+  // authored @ai-invariant comment; the codemod cannot invent it.
   const aiInvariants = collectAiInvariants(source, policy);
   if (!span && riskClass === "high" && aiInvariants.length === 0) {
     return skipped(

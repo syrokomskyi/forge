@@ -110,6 +110,9 @@ bindings:
     layerRules:
       - { pattern: "src/pages/**", layer: page, risk: medium }
     workspaceKinds: { apps: app, packages: package, services: service }
+    invariants:
+      indexPath: docs/invariants.generated.yaml
+      baselinePath: docs/invariants.baseline.generated.yaml
     excludedPaths:
       - { pattern: "src/templates/**", reason: template-source }
 ```
@@ -118,6 +121,7 @@ Merge semantics per key:
 
 - **Union-merge** (`fileExtensions`, `testPatterns`, `ignoredDirs`, `ignoredDirPrefixes`, `highRiskPaths`, `excludedPaths`): values merge with the generic defaults; an entry prefixed with `!` removes it (for `excludedPaths`, `!` matches on `pattern`).
 - **Replace** (`scanRoots`, `idPattern`, `purposeBoilerplatePatterns`, `layerRules`, `workspaceKinds`): the consumer value replaces the whole list — repeat generic entries you still need.
+- **Replace** (`invariants.indexPath`, `invariants.baselinePath`): workspace-root-relative paths for the RFC-1390 invariant index and shrink-only baseline. Defaults shown above; moving either artifact changes where `compass.validate` reads it and where `compass.invariants.generate` writes it — the artifacts themselves carry no path information, so keep the two consumers consistent.
 
 `idPattern` must compile and match the `NAMESPACE-NUMBER` probe `ABC-123`, otherwise `resolveCompassPolicy` throws `CompassPolicyConfigError` naming the key. `layerRules` are evaluated first-match on the workspace-relative path; `highRiskPaths` are picomatch globs on the root-relative path that force `riskClass: high`. `excludedPaths` mark matching files `authoringStatus: excluded` with the given `reason` (they are still inventoried).
 
