@@ -23,6 +23,7 @@ triggerPhrases: ["manage Compass headers", "annotate source files with Compass",
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -75,6 +76,7 @@ If the file has no `MODULE_CONTRACT` and no `CHANGE_SUMMARY` block:
 4. Create a `CHANGE_SUMMARY` block with a single `<item>` carrying the governing RFC/ADR/ticket ID.
 5. Insert the blocks at the top of the file in canonical order `MODULE_CONTRACT` → `KEY_DECISIONS` → `CHANGE_SUMMARY`, after any existing license/comment header but before imports.
 6. Use `reference/comment-styles.md` to determine the correct comment syntax for the file extension.
+7. If the file's `riskClass` is `high`, add at least one inline `@ai-invariant` comment in the file body using the tagged bound form (see "Invariants" below).
 
 #### 2b. Update (file has headers but content has changed)
 
@@ -111,6 +113,22 @@ After processing all files:
 2. If any violations are found, attempt to fix them automatically (missing `<non-goals>`, empty `<purpose>`, missing `KEY_DECISIONS` on medium/high-risk files, etc.).
 3. Re-run `compass.validate` to confirm fixes.
 4. If violations persist after 3 retry attempts, report them to the operator.
+5. Run `compass.invariants.generate` to refresh the invariant index projection; a new unbound invariant fails `--shrink` — bind it or tag it before committing.
+
+#### Invariants (high-risk files)
+
+New `@ai-invariant` statements in `high`-risk files use the tagged bound form:
+
+```
+@ai-invariant[INV-<scope>-<NN>]: <statement> (checked-by: <kind>:<ref>)
+```
+
+(the line lives inside a `//`/`/* */` comment — do not copy a literal `// @ai-invariant[…]` example into a scanned file, the invariant scanner will parse it)
+
+- `<scope>` is a short lowercase-kebab domain word; `<NN>` is a 2–3 digit id unique workspace-wide (never reuse an id, even after the invariant is deleted — retired ids live in `docs/invariants.generated.yaml`).
+- `(checked-by: …)` is the trailing parenthesised group of the statement; it may wrap onto consecutive comment lines. Binding kinds: `test:<file>` and `type:<file>` and `proof:<spec>` — the workspace-relative file must exist and contain the invariant id literal; `lint:<RULE-ID>` — the rule id must exist in `docs/validator-inventory.generated.yaml`.
+- The binding is structural: it names the check that enforces the statement. Whether the check semantically enforces it stays a review concern.
+- Legacy untagged `// @ai-invariant: …` lines are grandfathered through `docs/invariants.baseline.generated.yaml` (shrink-only) — do not add new untagged invariants in high-risk files.
 
 ### 4. Cleanup (optional, with `--cleanup` flag)
 

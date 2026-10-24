@@ -10,6 +10,7 @@ uses kebab-case (lowercase letters, digits, hyphens only), with documented exemp
   <item>RFC-0303: split out of structure.ts (Phase 3 file-size split).</item>
   <item>RFC-0360: extend scan roots from apps/ and packages/ to the whole repo.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +29,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 
-// @ai-invariant The exception rules below are the canonical source for naming.convention.lint.
+// @ai-invariant: The exception rules below are the canonical source for naming.convention.lint.
 // Update naming-conventions.md (packages/site-kernel/docs/) when these rules change.
 
 // RFC-0360: Registered recursive roots — scanned recursively for filename violations.

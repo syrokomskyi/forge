@@ -12,6 +12,7 @@ semantics, and the COMPASS-INVARIANT-02..07 rule table over tmp workspaces.
 <CHANGE_SUMMARY>
   <item>RFC-1390: binding-rule fixtures — parser, resolvers, severity table, baseline keying.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -286,6 +287,106 @@ describe("RFC-1390 invariant bindings", () => {
     });
     expect(resolved[0]!.bound).toBe(true);
     expect(resolved[0]!.bindings[0]!.resolved).toBe(true);
+  });
+
+  it("joins a wrapped statement across consecutive comment lines", () => {
+    const parsed = extractInvariants(
+      [
+        `// ${AI_INV}: first half of the statement continues`,
+        "// onto a second comment line before the code resumes",
+        "export const x = 1;",
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.statement).toBe(
+      "first half of the statement continues onto a second comment line before the code resumes",
+    );
+  });
+
+  it("stops statement continuation at an unrelated comment after a code line", () => {
+    const parsed = extractInvariants(
+      [
+        `// ${AI_INV}: statement text here`,
+        "export const x = 1;",
+        "// an unrelated trailing comment that must not join",
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.statement).toBe("statement text here");
+  });
+
+  it("does not treat a marker inside a string or regex literal as a declaration", () => {
+    const parsed = extractInvariants(
+      [
+        `const re = /${AI_INV}: not an invariant/;`,
+        `const s = "${AI_INV}: also not an invariant";`,
+        `// ${AI_INV}: a real declaration follows`,
+      ].join("\n"),
+    );
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0]!.statement).toBe("a real declaration follows");
+  });
+
+  it("reports COMPASS-INVARIANT-04 when checked-by is not the trailing group", async () => {
+    writeSource(
+      LOW_FILE,
+      `// ${AI_INV}[INV-guard-10]: statement (checked-by: test:${TEST_FILE}) trailing prose after the group`,
+    );
+    const result = await validate();
+    const diags = dataOf(result).diagnostics.filter(
+      (d) => d.ruleId === "COMPASS-INVARIANT-04" && d.file === LOW_FILE,
+    );
+    expect(diags.length).toBeGreaterThan(0);
+  });
+
+  it("rejects a binding target that escapes the workspace via ../", async () => {
+    writeSource(
+      HIGH_FILE,
+      `// ${AI_INV}[INV-guard-11]: the guard fails closed (checked-by: test:../../outside.test.ts)`,
+    );
+    const result = await validate();
+    const diags = dataOf(result).diagnostics.filter(
+      (d) => d.ruleId === "COMPASS-INVARIANT-04" && d.file === HIGH_FILE,
+    );
+    expect(diags.length).toBeGreaterThan(0);
+  });
+
+  it("does not match an invariant id as a prefix of a longer id in the bound file", async () => {
+    writeSource(
+      HIGH_FILE,
+      `// ${AI_INV}[INV-guard-12]: the guard fails closed (checked-by: test:${TEST_FILE})`,
+    );
+    write(TEST_FILE, `// INV-guard-120 is asserted here\nit("INV-guard-120 holds", () => {});\n`);
+    const result = await validate();
+    const diags = dataOf(result).diagnostics.filter(
+      (d) => d.ruleId === "COMPASS-INVARIANT-04" && d.file === HIGH_FILE,
+    );
+    expect(diags.length).toBeGreaterThan(0);
+  });
+
+  it("resolves a lint binding against a real validator-inventory rules shape", async () => {
+    writeSource(
+      LOW_FILE,
+      `// ${AI_INV}[INV-guard-13]: statement bound to a lint rule (checked-by: lint:COMPASS-INVARIANT-01)`,
+    );
+    mkdirSync(join(tempDir, "docs"), { recursive: true });
+    writeFileSync(
+      join(tempDir, "docs/validator-inventory.generated.yaml"),
+      [
+        `contracts:`,
+        `  - contract: compass`,
+        `    validators:`,
+        `      - command: compass.validate`,
+        `        rules:`,
+        `          - COMPASS-INVARIANT-01`,
+        `          - COMPASS-INVARIANT-02`,
+      ].join("\n") + "\n",
+    );
+    const result = await validate();
+    const diags = dataOf(result).diagnostics.filter(
+      (d) => d.ruleId === "COMPASS-INVARIANT-04" && d.file === LOW_FILE,
+    );
+    expect(diags).toEqual([]);
   });
 
   it("evaluateInvariantRules emits the severity table correctly", () => {

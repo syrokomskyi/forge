@@ -12,7 +12,6 @@ contract block specs alongside built-in MODULE_CONTRACT and CHANGE_SUMMARY check
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1095: summary-record unit tests, commit integration tests, CS rules into compass.validate</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -21,7 +20,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
-  <history>RFC-0348, RFC-0350, RFC-0556, RFC-0943, RFC-1094</history>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <history>RFC-0348, RFC-0350, RFC-0556, RFC-0943, RFC-1094, RFC-1095</history>
 </CHANGE_SUMMARY>
 */
 
@@ -439,7 +439,7 @@ export async function runCompassValidation(
         fix = "fix: add a CHANGE_SUMMARY with at least one <item>";
       } else if (violation.includes("@ai-invariant")) {
         ruleId = "COMPASS-INVARIANT-01";
-        fix = "fix: add // @ai-invariant capturing the non-obvious constraint";
+        fix = "fix: add an @ai-invariant comment capturing the non-obvious constraint with a trailing (checked-by: test|type|lint|proof target) group";
       } else if (violation.includes("forbidden")) {
         ruleId = "COMPASS-FORBIDDEN-01";
         const marker = violation.replace(/forbidden: ([^ ]+) present/, "$1");

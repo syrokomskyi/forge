@@ -12,6 +12,7 @@ retiredIds merge-forward, and dry-run write-freedom over tmp workspaces.
 <CHANGE_SUMMARY>
   <item>RFC-1390: generator fixtures — index, baseline seed/shrink, retiredIds merge, dry-run.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -173,6 +174,17 @@ describe("compass.invariants.generate (RFC-1390)", () => {
     expect(result.exitCode).toBe(0);
     const baseline = readFileSync(baselinePath(), "utf8");
     expect(baseline).not.toContain(SRC_FILE);
+  });
+
+  it("--seed and --shrink are mutually exclusive", async () => {
+    writeSource(SRC_FILE, `// ${AI_INV}[INV-notes-07]: fixture invariant for flag exclusion`);
+    const result = await runCompassInvariantsGenerate(
+      makeInput({ seed: true, shrink: true }),
+      makeContext(tempDir),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("mutually exclusive");
+    expect(existsSync(baselinePath())).toBe(false);
   });
 
   it("merge-forward keeps retiredIds across regeneration", async () => {

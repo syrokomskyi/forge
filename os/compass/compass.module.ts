@@ -6,14 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
 Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
-  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248, RFC-1251</history>
+  <item>RFC-1390: close review findings on invariant binding machinery</item>
+  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248, RFC-1251, RFC-1318</history>
 </CHANGE_SUMMARY>
 */
 
@@ -104,6 +104,9 @@ export const forgeCompassModule: ForgeModule = {
       acceptsAllFlag: true,
       flags: { ...compassScanFlags, mode: compassModeFlag },
       reads: [
+        "docs/invariants.generated.yaml",
+        "docs/invariants.baseline.generated.yaml",
+        "docs/validator-inventory.generated.yaml",
         "packages/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
         "apps/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}", // scan-coverage: consumer-workshop root — apps/ exists in consumer workshops, not this monorepo
         "services/**/*.{ts,tsx,astro,js,mjs,css,cs,tscn,tres,gd,md}",
