@@ -23,6 +23,7 @@ check; whether the check truly enforces the statement stays a review concern
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
+  <item>RFC-1390: close round-3 review residue on invariant binding machinery</item>
 </CHANGE_SUMMARY>
 */
 
@@ -166,11 +167,11 @@ function commentSpans(
     const [first, kind] = candidates[0]!;
     // An opener glued to a quote, colon, or slash sits inside a literal or a
     // different opener — resume the scan after it instead of opening a
-    // comment. An escape sequence ending at the sigil (`\n//`, `\\/*`, …)
-    // means the same: a backslash cannot precede a real comment outside a
-    // string/template, so the sigil is literal text.
+    // comment. A backslash can never precede a real comment outside a
+    // string/template/regex, so a sigil touching an escape (`\n//`, `\//`,
+    // `\\/*`, …) is literal text too.
     if (
-      (first > 0 && OPENER_CODE_PREFIX.has(line[first - 1]!)) ||
+      (first > 0 && (OPENER_CODE_PREFIX.has(line[first - 1]!) || line[first - 1] === "\\")) ||
       (first > 1 && line[first - 2] === "\\")
     ) {
       i = first + 1;
