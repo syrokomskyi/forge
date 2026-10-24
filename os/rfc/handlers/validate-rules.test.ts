@@ -9,6 +9,7 @@ Unit tests for validate rules covering V-26: implemented RFCs must have all acce
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the validate suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,9 +21,9 @@ import {
   type AddViolationFn,
 } from "./validate-rules.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { tmpdir } from "node:os";
 
 const testWorkspace = join(tmpdir(), "test-workspace");
@@ -993,5 +994,69 @@ describe("V-34: batch slug format (RFC-0795)", () => {
     const violations = await runValidate(parsed);
     const v34 = filterRule(violations, "V-34");
     expect(v34).toHaveLength(1);
+  });
+});
+
+describe("V-46: proof spec validation (RFC-1391)", () => {
+  const specRel = "proofs/v46.proof.yaml";
+  const specAbs = join(testWorkspace, specRel);
+  const proofAcceptance = (spec: string) => ({
+    acceptance: [{ probe: "proof", spec, criterion: "AC-1" }],
+  });
+  const specYaml = (assumptions: string) =>
+    [
+      "schema: forge/proof-spec@1",
+      "id: v46-proof",
+      "invariantRefs: [INV-v46-01]",
+      "statement: stub theorem",
+      "tool: exhaustive",
+      "toolVersion: '1'",
+      "entry: entry.proof.test.ts",
+      "target: stub-target",
+      `assumptions: ${assumptions}`,
+      "trustedBase:",
+      "  - the forge exhaustive runner",
+      "unverifiedBoundaries:",
+      "  - stub boundary",
+    ].join("\n") + "\n";
+
+  test("V-46 rejects a proof spec with an empty assumptions list", async () => {
+    mkdirSync(dirname(specAbs), { recursive: true });
+    try {
+      writeFileSync(specAbs, specYaml("[]"));
+      const parsed = makeParsed("accepted", BASE_BODY, proofAcceptance(specRel));
+      const violations = await runValidate(parsed);
+      const v46 = filterRule(violations, "V-46");
+      expect(v46).toHaveLength(1);
+      expect(v46[0]!.severity).toBe("error");
+      expect(v46[0]!.message).toContain("forge/proof-spec@1");
+    } finally {
+      rmSync(specAbs, { force: true });
+    }
+  });
+
+  test("a valid proof spec produces no V-46", async () => {
+    mkdirSync(dirname(specAbs), { recursive: true });
+    try {
+      writeFileSync(specAbs, specYaml('\n  - "test assumption"'));
+      const parsed = makeParsed("accepted", BASE_BODY, proofAcceptance(specRel));
+      const violations = await runValidate(parsed);
+      expect(filterRule(violations, "V-46")).toHaveLength(0);
+    } finally {
+      rmSync(specAbs, { force: true });
+    }
+  });
+
+  test("a missing spec file warns on drafts and errors once accepted", async () => {
+    rmSync(specAbs, { force: true });
+    const draft = await runValidate(makeParsed("draft", BASE_BODY, proofAcceptance(specRel)));
+    const v46Draft = filterRule(draft, "V-46");
+    expect(v46Draft).toHaveLength(1);
+    expect(v46Draft[0]!.severity).toBe("warning");
+
+    const accepted = await runValidate(makeParsed("accepted", BASE_BODY, proofAcceptance(specRel)));
+    const v46Accepted = filterRule(accepted, "V-46");
+    expect(v46Accepted).toHaveLength(1);
+    expect(v46Accepted[0]!.severity).toBe("error");
   });
 });

@@ -10,9 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
-
-Extract pipeline-status derivation into packages/forge/src/pipeline-status.ts, refactor rfc.pipeline.status onto it, add os/queue module with queue.validate command, register in WORKSHOP_MODULE_MAP.forge + bin/cli.ts + package.json exports.</item>
   <item>Schema-driven flag resolution via src/cli-flags.ts — a value-less declared flag (e.g. `forge rfc.validate --id`) now exits with KERNEL-FLAG-02 instead of crashing on `flags.id === true`; per-command --help renders printCommandHelp.</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
@@ -22,7 +19,8 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
-  <history>RFC-0542, RFC-0543</history>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <history>RFC-0542, RFC-0543, RFC-1140</history>
 </CHANGE_SUMMARY>
 */
 
@@ -150,6 +148,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/conformance/conformance.module.ts").then((m) =>
       m.createForgeConformanceModule(),
     ),
+    await import("../os/formal/formal.module.ts").then((m) => m.createForgeFormalModule()),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {

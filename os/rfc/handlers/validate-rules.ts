@@ -6,15 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <item>RFC-1271: V-43 verificationTier enum check; V-23 archive exemption (isArchived paths skip evidence-presence — archive-freeze precedent).</item>
   <item>RFC-1322: fo-review fix pass — V-37 annotation extraction takes the LAST (evidence: ...) occurrence, matching the stamp resolver (prose mentions no longer shadow the real annotation).</item>
   <item>RFC-1330: V-44 presence-only behavioral criteria; shared listBehavioralCriteria.</item>
   <item>RFC-1336: V-25 admits agent:&lt;id&gt; reviewers iff frontmatter decidedBy names a human:&lt;handle&gt; AND an active rfc.decision delegation covers the agent under that grantor (authority.delegations.yaml).</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097</history>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271</history>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +26,7 @@ import {
 import { execFile } from "../../../src/utils/sync-fs.ts";
 
 import { parse as yamlParse } from "yaml";
+import { proofSpecSchema } from "../../../src/formal/proof-spec.ts";
 import { validateAcceptanceShape } from "../acceptance.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
@@ -1017,6 +1015,53 @@ export async function validateSingleRfc(
         `commands without a command-mode reachable probe: ${missing.join(", ")} — add \`probe: reachable\` with \`command: <name>\` per command.`,
         "warning",
       );
+    }
+  }
+
+  // V-46: `proof` probes must bind a spec that validates against forge/proof-spec@1
+  // (RFC-1391). Missing spec file — warning on drafts, error once `accepted`;
+  // a present-but-invalid spec is always an error (committed evidence garbage).
+  {
+    const acceptance = fm["acceptance"];
+    const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+    for (const [idx, probe] of probes.entries()) {
+      if (probe.probe !== "proof") continue;
+      const specRel = probe.spec;
+      if (typeof specRel !== "string" || specRel.length === 0) continue; // V-22 reports shape
+      let raw: string;
+      try {
+        raw = await io.readFile(path.join(workspaceRoot, specRel));
+      } catch {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-46",
+          `acceptance[${idx}] probe "proof" spec ${specRel} is missing — write a forge/proof-spec@1 file` +
+            (status === "draft" ? " before acceptance" : ""),
+          status === "draft" ? "warning" : "error",
+        );
+        continue;
+      }
+      try {
+        const parsed = proofSpecSchema.safeParse(yamlParse(raw));
+        if (!parsed.success) {
+          const issue = parsed.error.issues[0];
+          addViolation(
+            rfcId,
+            relFile,
+            "V-46",
+            `acceptance[${idx}] probe "proof" spec ${specRel} fails forge/proof-spec@1: ` +
+              `${issue ? `${issue.path.join(".") || "(root)"} — ${issue.message}` : "invalid"}`,
+          );
+        }
+      } catch (e) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-46",
+          `acceptance[${idx}] probe "proof" spec ${specRel} is not valid YAML: ${(e as Error).message}`,
+        );
+      }
     }
   }
 

@@ -12,13 +12,12 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
-  <item>RFC-1271: review wave — deep probe normalization, malformed-envelope fail-closed, post-stamp re-emit, honest repair hints</item>
   <item>RFC-1320: pre-probe generated-artifact freshness gate — EVIDENCE-FRESH-01 blocks emission on stale/missing probe dependencies via generated.drift.validate --target=workspace; EVIDENCE-FRESH-02 warns on unverifiable; EVIDENCE-FRESH-03 fails loudly on unknown probe kinds; emit-owned envelopes excluded; blocking diagnostics flip the run's exit code</item>
   <item>RFC-1330: emit attaches git-derived origin; origin is volatile for --check.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1372: getKernelVersion falls back to the workspace root package.json version — the packages/os/site-kernel path predates RFC-0776 and no longer resolves, so envelopes recorded kernelVersion: unknown</item>
-  <history>RFC-0330, RFC-0999, RFC-1237</history>
+  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271</history>
 </CHANGE_SUMMARY>
 */
 
@@ -530,6 +529,7 @@ export async function runRfcVerificationEmit(
         ok: result.ok,
         detail: result.detail,
         durationMs,
+        ...(result.proof ? { proof: result.proof } : {}),
       });
     }
 
