@@ -20,12 +20,12 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1317: unblock AC-7 — repair pre-existing fo-idea-implement SKILL-11/SKILL-17 violations (drop hardcoded werkstatt run literal + internal RFC ids), sync .agents copy</item>
   <item>RFC-1322: step 5 — prescribe --check-criteria stamp + single-commit post-shape</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
   <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
-  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310</history>
+  <item>COMMIT-02: commit templates — governed ids moved to the scope position (fix(rfc-xxxx): repair …, never fix: RFC-XXXX — …); illegal trace: prefix replaced with docs(adr-xxxx):</item>
+  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -115,7 +115,7 @@ Execute the plan's step sequence in order. For each step:
    <one-line description of what was done in this step>."
 ```
 
-For ADR work substitute `--adr ADR-XXXX`. A conversational id mention that must NOT declare governance (e.g. "revert an earlier RFC's behavior") passes `--allow-unlinked` instead — never drop the flag silently.
+For ADR work substitute `--adr ADR-XXXX`. A conversational id mention that must NOT declare governance (e.g. "revert an earlier RFC's behavior") passes `--allow-unlinked` instead — never drop the flag silently. Conventional-type subjects (`fix:`, `test:`, `docs:` …) must open the clause lowercase and carry the governed id in the scope position — `fix(rfc-xxxx): …`, never `fix: RFC-XXXX — …` (COMMIT-02; `extractGovernedId` still binds the id to the flag via `GOVERNED_SCOPE_RE`).
 
 Stage only the files touched by this step. Do not stage unrelated changes — another agent may be working in a different session.
 
@@ -162,7 +162,7 @@ Commits that add test files carry `Test-Reason: <reason>` (one line per file, or
 Commit tests alongside the implementation they cover, or as a separate commit if the step was large:
 
 ```txt
-test: RFC-XXXX step N — cover <module>
+test(rfc-xxxx): step N — cover <module>
 
 Add unit and PBT coverage for <what was implemented in this step>.
 ```
@@ -215,7 +215,7 @@ If any check in step 4.4 fails, fix every error:
 5. Commit each fix:
 
    ```txt
-   fix: RFC-XXXX — <error description>
+   fix(rfc-xxxx): repair <error description>
 
    <one-line description of the root cause and fix>.
    ```
@@ -465,7 +465,7 @@ Commits that add test files carry `Test-Reason: <reason>` (one line per file, or
 Commit tests alongside the implementation they cover:
 
 ```txt
-test: ADR-XXXX — cover <module>
+test(adr-xxxx): cover <module>
 
 Add unit and PBT coverage for <what was implemented>.
 ```
@@ -505,7 +505,7 @@ If any check fails, fix every error:
 5. Commit each fix:
 
    ```txt
-   fix: ADR-XXXX — <error description>
+   fix(adr-xxxx): repair <error description>
 
    <one-line description of the root cause and fix>.
    ```
@@ -579,7 +579,7 @@ Before stamping `implemented`, verify that the ADR is mentioned in the codebase 
    - Commit the trace:
 
      ```txt
-     trace: ADR-XXXX — add code mention
+     docs(adr-xxxx): add code trace mention in <file>
 
      Add ADR-XXXX reference to <file> to link the decision to the code.
      ```
