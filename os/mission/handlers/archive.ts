@@ -13,17 +13,14 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0982: fallback state detection for orphaned workpiece dirs (no mission.yaml) via .closed marker and cache-only heuristic; --clean-orphans flag; improved skip reasons.</item>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>RFC-1397: ship-in-flight guard — per-candidate isShipInFlight check in both move phases; SHIP-INFLIGHT-01 skip, SHIP-INFLIGHT-02 stale warn, --ship-op self-exemption for the ship's own terminal archive step.</item>
   <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
-  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804</history>
+  <item>RFC-1397: harden ship-in-flight guard per independent review (RFC-1397)</item>
+  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
@@ -38,13 +35,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { trashPath } from "../../../src/utils/fs-trash.ts";
-import {
-  isShipInFlight,
-  shipInflightMessage,
-  systemIdFromMissionDirName,
-  systemIdFromShipJournals,
-  type ShipInflightResult,
-} from "@warpgogol/werkstatt-shared/kernel/ship-inflight";
+import type { ShipInflightResult } from "@warpgogol/werkstatt-shared/kernel/ship-inflight";
 import type { WorkspaceIO } from "../../../src/types.ts";
 import {
   MISSIONS_DIR,
@@ -288,29 +279,45 @@ export async function runMissionArchive(
   const moved: MissionArchiveMove[] = [];
   const skipped: MissionArchiveSkip[] = [];
 
-  // RFC-1397: per-candidate ship-in-flight guard. Resolves systemId from the
-  // mission dir name (DNA-46) first, then mission.yaml; unresolvable →
-  // fail-closed skip marker rather than a move. --ship-op exempts the ship's
-  // own terminal archive step (internal marker, never passed by hand).
+  // RFC-1397: per-candidate ship-in-flight guard. Lazy bridge like
+  // workspace-deps.ts: werkstatt-shared is a devDependency — absent on
+  // standalone forge installs, where ship journals cannot exist anyway, so an
+  // import failure degrades to warn-once + proceed (the guard is vacuous
+  // there). --ship-op exempts the ship's own terminal archive step (internal
+  // marker, never passed by hand).
   const shipOp = typeof input.flags["ship-op"] === "string" ? input.flags["ship-op"] : undefined;
   const io: WorkspaceIO = context.io ?? fs;
+  let shipInflightMod: typeof import("@warpgogol/werkstatt-shared/kernel/ship-inflight") | null =
+    null;
+  try {
+    shipInflightMod = await import("@warpgogol/werkstatt-shared/kernel/ship-inflight");
+  } catch {
+    logger.warn(
+      "  ship-inflight guard unavailable (@warpgogol/werkstatt-shared not installed) — proceeding without it",
+    );
+  }
   const shipInflightFor = async (
     missionId: string,
     missionDir: string,
   ): Promise<ShipInflightResult | null> => {
+    if (!shipInflightMod) return null;
     // Resolution chain: DNA-46 dir name → mission.yaml systemId → journal glob.
     // The glob is exhaustive — when it finds nothing, no ship journal exists
     // for this missionId anywhere, so the mission is definitively not in flight.
     const systemId =
-      systemIdFromMissionDirName(missionId) ??
+      shipInflightMod.systemIdFromMissionDirName(missionId) ??
       (await readMissionSystemId(missionDir)) ??
-      (await systemIdFromShipJournals(workspaceRoot, missionId, io));
+      (await shipInflightMod.systemIdFromShipJournals(workspaceRoot, missionId, io));
     if (!systemId) return null;
-    const res = await isShipInFlight(workspaceRoot, systemId, missionId, io, {
+    const res = await shipInflightMod.isShipInFlight(workspaceRoot, systemId, missionId, io, {
       ignoreOpId: shipOp,
     });
     return res.inFlight ? res : null;
   };
+  const inflightMessage = (missionId: string, m: ShipInflightResult): string =>
+    shipInflightMod
+      ? shipInflightMod.shipInflightMessage(missionId, m)
+      : `SHIP-INFLIGHT-01 mission ${missionId} is being shipped`;
 
   // RFC-0733: Load pinned manifest once per invocation
   let pinnedManifest = null;
@@ -388,15 +395,15 @@ export async function runMissionArchive(
         skipped.push({
           missionId,
           dir: sourceRel,
-          reason: shipInflightMessage(missionId, orphanInflight),
+          reason: inflightMessage(missionId, orphanInflight),
         });
         if (outputFormat === "pretty") {
-          logger.warn(`  ${shipInflightMessage(missionId, orphanInflight)}`);
+          logger.warn(`  ${inflightMessage(missionId, orphanInflight)}`);
         }
         continue;
       }
       if (orphanInflight?.stale) {
-        logger.warn(`  ${shipInflightMessage(missionId, orphanInflight)}`);
+        logger.warn(`  ${inflightMessage(missionId, orphanInflight)}`);
       }
       if (!dryRun) {
         await trashPath(missionDir);
@@ -448,14 +455,14 @@ export async function runMissionArchive(
     // RFC-1397: never move a mission whose leitstand.ship op is still open.
     const inflight = await shipInflightFor(missionId, missionDir);
     if (inflight && !inflight.stale) {
-      skipped.push({ missionId, dir: sourceRel, reason: shipInflightMessage(missionId, inflight) });
+      skipped.push({ missionId, dir: sourceRel, reason: inflightMessage(missionId, inflight) });
       if (outputFormat === "pretty") {
-        logger.warn(`  ${shipInflightMessage(missionId, inflight)}`);
+        logger.warn(`  ${inflightMessage(missionId, inflight)}`);
       }
       continue;
     }
     if (inflight?.stale) {
-      logger.warn(`  ${shipInflightMessage(missionId, inflight)}`);
+      logger.warn(`  ${inflightMessage(missionId, inflight)}`);
     }
 
     // Warn when archiving a closed mission without a release — operator likely
@@ -555,15 +562,15 @@ export async function runMissionArchive(
           skipped.push({
             missionId,
             dir: `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${stateDirName}/${missionId}`,
-            reason: shipInflightMessage(missionId, inflightBack),
+            reason: inflightMessage(missionId, inflightBack),
           });
           if (outputFormat === "pretty") {
-            logger.warn(`  ${shipInflightMessage(missionId, inflightBack)}`);
+            logger.warn(`  ${inflightMessage(missionId, inflightBack)}`);
           }
           continue;
         }
         if (inflightBack?.stale) {
-          logger.warn(`  ${shipInflightMessage(missionId, inflightBack)}`);
+          logger.warn(`  ${inflightMessage(missionId, inflightBack)}`);
         }
 
         // Non-terminal in archive — move back to missions/
