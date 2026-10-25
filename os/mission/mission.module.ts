@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0573: initial forgeMissionModule registering mission.archive command.</item>
   <item>RFC-0982: add --clean-orphans flag for trashing orphaned remnant directories.</item>
+  <item>RFC-1397: declare internal --ship-op flag — ship's own opId marker for the terminal archive step exemption.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +50,13 @@ export async function createForgeMissionModule(): Promise<ForgeModule> {
             kind: "boolean",
             description:
               "Trash orphaned directories (no mission.yaml, only cache files) instead of archiving them.",
+          },
+          "ship-op": {
+            kind: "string",
+            description:
+              "Internal marker (RFC-1397): the leitstand.ship opId allowed to archive its own mission. " +
+              "Set only by ship's terminal mission-archive step — agents MUST NOT pass it by hand; " +
+              "a foreign opId self-inflicts an archive skip.",
           },
         },
         execute: runMissionArchive,
