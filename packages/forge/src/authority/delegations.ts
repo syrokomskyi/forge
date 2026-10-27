@@ -17,6 +17,7 @@ policy plus audit evidence — not a cryptographic security boundary.</purpose>
   <item>sites: "workspace" covers every site; an explicit id list bounds site scope. Site-scoped queries with no site never match a site-listed grant.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
+  <item>RFC-1400/AMD-014: DELEGABLE_SCOPES gains translation.contract.approve — an operator-confirmed agent may approve a site translation contract under delegation.</item>
   <item>RFC-1336: initial module — schema, scope catalog, loader, resolver, serializer.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1336: delegated editorial sign-off (RFC-1336 step 3)
@@ -60,6 +61,7 @@ export const DELEGABLE_SCOPES = [
   "version.major",
   "onboarding.decision",
   "fleet.notify",
+  "translation.contract.approve",
 ] as const;
 
 export const BORDBUCH_SCOPE_PREFIX = "bordbuch.";
