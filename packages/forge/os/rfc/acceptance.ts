@@ -17,6 +17,7 @@ prose checklist.
   <item>RFC-1271: optional probe metadata — expectationSource enum-check, limitations pass-through.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1401: test probes gain optional timeoutMs — the 120s default cannot host a ~10min cold e2e run; spawnVitest honours the per-probe bound.</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
 REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
@@ -173,6 +174,16 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
         if (testName !== undefined && typeof testName !== "string") {
           issues.push({ index, message: 'probe "test" testName must be a string if present' });
         }
+        const timeoutMs = (entry as Record<string, unknown>)["timeoutMs"];
+        if (
+          timeoutMs !== undefined &&
+          (typeof timeoutMs !== "number" || !Number.isFinite(timeoutMs) || timeoutMs <= 0)
+        ) {
+          issues.push({
+            index,
+            message: 'probe "test" timeoutMs must be a positive number if present',
+          });
+        }
         const expect = (entry as Record<string, unknown>)["expect"];
         if (
           !expect ||
@@ -312,11 +323,13 @@ async function spawnVitest(
   workspaceRoot: string,
   file: string,
   testName?: string,
+  timeoutMs?: number,
 ): Promise<{ exitCode: number | null; timedOut: boolean }> {
   const args = ["exec", "vitest", "run", file];
   if (testName) {
     args.push("-t", testName);
   }
+  const bound = timeoutMs ?? RUN_PROBE_TIMEOUT_MS;
 
   return new Promise((resolve) => {
     const child = spawn("pnpm", args, {
@@ -329,7 +342,7 @@ async function spawnVitest(
       settled = true;
       child.kill();
       resolve({ exitCode: null, timedOut: true });
-    }, RUN_PROBE_TIMEOUT_MS);
+    }, bound);
     timer.unref?.();
 
     child.on("close", (code) => {
@@ -407,9 +420,18 @@ export async function runProbe(
       };
     }
     case "test": {
-      const { exitCode, timedOut } = await spawnVitest(workspaceRoot, probe.file, probe.testName);
+      const { exitCode, timedOut } = await spawnVitest(
+        workspaceRoot,
+        probe.file,
+        probe.testName,
+        probe.timeoutMs,
+      );
       if (timedOut) {
-        return { probe, ok: false, detail: `timed out after ${RUN_PROBE_TIMEOUT_MS}ms` };
+        return {
+          probe,
+          ok: false,
+          detail: `timed out after ${probe.timeoutMs ?? RUN_PROBE_TIMEOUT_MS}ms`,
+        };
       }
       const ok = exitCode === probe.expect.exitCode;
       return { probe, ok, detail: `exitCode=${exitCode} (expected ${probe.expect.exitCode})` };

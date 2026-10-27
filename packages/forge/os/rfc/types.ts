@@ -12,7 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1383: RfcImplementStampData.criteriaTotal — total parsed ACs for N-of-M reporting.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
@@ -29,7 +28,8 @@ REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
 refuted and no-report tests; external-tool timedOut persists partial output
 as log (symmetric with exhaustive); log doc comments updated to reflect
 all-post-spawn-verdicts attachment.</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336</history>
+  <item>RFC-1401: give test acceptance probes an optional timeoutMs bound</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -338,10 +338,13 @@ export type AcceptanceProbe = (
       criterion?: string;
     }
   // RFC-0998: run a specific vitest file or test name and check exit code.
+  // timeoutMs overrides the 120s default for long-running e2e probes (RFC-1401:
+  // the golden cold run needs ~10 min).
   | {
       probe: "test";
       file: string;
       testName?: string;
+      timeoutMs?: number;
       expect: { exitCode: number };
       criterion?: string;
     }
