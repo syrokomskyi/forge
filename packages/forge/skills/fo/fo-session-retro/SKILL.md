@@ -1,6 +1,6 @@
 ---
 name: fo-session-retro
-description: Session-end insight triage — review what was discovered, categorize each insight, and route it to the right durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, or memory).
+description: Session-end insight triage — categorize each insight and auto-route to the durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, memory) — no operator prompts.
 invocation: user
 category: fo
 concerns: document-only
@@ -14,7 +14,7 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 
 <!--
 <MODULE_CONTRACT>
-<purpose>fo-session-retro skill — Session-end insight triage — review what was discovered, categorize each insight, and route it to the right durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, or memory).</purpose>
+<purpose>fo-session-retro skill — Session-end insight triage — categorize each insight and auto-route to the durable home (AGENTS.md rule, ADR, DNA invariant, forge pattern, memory) — no operator prompts.</purpose>
 <non-goals>
   <item>Do not execute skill logic — this document instructs agents; it is not runnable code.</item>
 </non-goals>
@@ -32,6 +32,8 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
 Before starting, read `PREFERENCES.md` at the repository root. If the file is missing or `aiLanguage` is unset, ask the operator once and create the file using the `my-preferences` skill semantics.
 
 Review the current session for discoveries that other agents would benefit from knowing. Categorize each insight and route it to the appropriate durable home. This skill is the **knowledge capture entry point** — it does not duplicate the work of `fo-extract-dna`, `fo-harvest`, or `fo-idea-create-adr`; it triages and delegates.
+
+**Insight acceptance is automatic (NON-NEGOTIABLE).** The session-end protocol never asks the operator which insights to keep — every insight that survives the filtering guidance is routed. The triage table is informational visibility, not a selection gate.
 
 ## When to invoke
 
@@ -222,9 +224,9 @@ Each discovered insight is categorized into exactly one of six types. The catego
 | Category | What it is | Destination | Mechanism |
 | --- | --- | --- | --- |
 | **Rule** | A convention or behavioral expectation that agents must follow | Nearest applicable `AGENTS.md` | Direct edit by this skill |
-| **Decision** | An architectural choice with rationale that should be preserved | `docs/adrs/` | Delegate to `fo-idea-create-adr` |
-| **Invariant** | A cross-workspace architectural rule that warrants DNA status | `ref(forge.yaml bindings.paths.invariantsFile)` | Delegate to `fo-extract-dna` |
-| **Pattern** | A reusable code pattern or abstraction worth porting to forge | `packages/forge/` | Delegate to `fo-harvest` |
+| **Decision** | An architectural choice with rationale that should be preserved | `docs/adrs/` | Delegate to `fo-idea-create-adr` via its accepted-decision fast path (no grilling) |
+| **Invariant** | A cross-workspace architectural rule that warrants DNA status | `ref(forge.yaml bindings.paths.invariantsFile)` | Record pending → suggest `fo-extract-dna` |
+| **Pattern** | A reusable code pattern or abstraction worth porting to forge | `packages/forge/` | Record pending → suggest `fo-harvest` |
 | **Operator** | A preference, communication style, or behavioral insight about the operator | `.agents/operator-profile.md` | Direct edit by this skill |
 | **Context** | Session-local knowledge with no durable home | `.agents/memory/daily/<today>.md` (default) or `MEMORY.md` (when durable); Memory DB optional mirror | Direct edit (daily log append) or curated edit (MEMORY.md); Memory DB via `create_memory` tool (optional mirror) |
 
@@ -313,7 +315,7 @@ For each candidate, ask: "Would another agent working in this area benefit from 
 
 ### 3. Categorize and present
 
-**Language requirement (NON-NEGOTIABLE):** The triage table, the `ask_user_question` confirmation prompt, and all inline commentary MUST be written in `PREFERENCES.md` `aiLanguage`. The English template below is structural only — translate ALL headings, column names, labels, and prose to `aiLanguage` before presenting. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated. Example: if `aiLanguage` is `ru`, the heading is «Сортировка инсайтов сессии», column headers are «№ | Инсайт | Категория | Назначение | Действие».
+**Language requirement (NON-NEGOTIABLE):** The triage table and all inline commentary MUST be written in `PREFERENCES.md` `aiLanguage`. The English template below is structural only — translate ALL headings, column names, labels, and prose to `aiLanguage` before presenting. Only identifiers (file paths, skill names, RFC/ADR ids) stay untranslated. Example: if `aiLanguage` is `ru`, the heading is «Сортировка инсайтов сессии», column headers are «№ | Инсайт | Категория | Назначение | Действие».
 
 Present each insight with a proposed category and routing:
 
@@ -323,18 +325,16 @@ Present each insight with a proposed category and routing:
 | # | <Insight> | <Category> | <Destination> | <Action> |
 | --- | --- | --- | --- | --- |
 | 1 | hydrateFromArtifacts is mandatory when steps write state | Rule | packages/AGENTS.md | Direct edit |
-| 2 | Model registry chosen over hardcoded clients | Decision | docs/adrs/ | Delegate to fo-idea-create-adr |
-| 3 | Gogol ID must not equal phase ID | Invariant | ref(forge.yaml bindings.paths.invariantsFile) | Delegate to fo-extract-dna |
-| 4 | Batch AI calls for large-context models | Pattern | packages/forge/ | Delegate to fo-harvest |
+| 2 | Model registry chosen over hardcoded clients | Decision | docs/adrs/ | fo-idea-create-adr (fast path) |
+| 3 | Gogol ID must not equal phase ID | Invariant | ref(forge.yaml bindings.paths.invariantsFile) | Pending → fo-extract-dna |
+| 4 | Batch AI calls for large-context models | Pattern | packages/forge/ | Pending → fo-harvest |
 | 5 | Operator prefers concise responses without code blocks | Operator | .agents/operator-profile.md | Direct edit |
 | 6 | Current pipeline state for mission X | Context | `.agents/memory/daily/` or `MEMORY.md` | Direct edit |
 ```
 
-Ask the operator to confirm, adjust categories, or drop items using `ask_user_question` — the question text MUST be in `aiLanguage`. Do not proceed without explicit confirmation.
+**Auto-accept (NON-NEGOTIABLE):** Every insight in the triage table is accepted and routed automatically — do NOT call `ask_user_question` to ask which insights to keep, and do not wait for any acknowledgment before proceeding to Step 4. The table gives the operator visibility into what was captured and where each insight lands; it is not a gate. When the agent is unsure about a categorization, it routes its best judgment — the operator can adjust afterwards from the report.
 
-**Confirmation format (NON-NEGOTIABLE):** Use `allowMultiple: true` and present each insight as a separate option, with the option label matching the insight number from the triage table (e.g. option 1 = "1: <insight summary>"). This ensures the operator's response ("1, 2", "3", etc.) unambiguously refers to insight numbers, not to abstract option ordinals. Never use abstract options like "confirm all", "only rules", "only context" — these create a numbering mismatch between the table and the confirmation prompt.
-
-### 4. Route each confirmed insight
+### 4. Route each insight
 
 #### 4a. Rule → AGENTS.md
 
@@ -348,15 +348,21 @@ For each rule insight:
 
 #### 4b. Decision → ADR
 
-Invoke `fo-idea-create-adr` via the `skill` tool with the decision title and rationale gathered from the session. Let it run fully — it will grill, create the file, and validate.
+Invoke `fo-idea-create-adr` via the `skill` tool in **accepted-decision fast-path mode** — that skill skips grilling when the caller explicitly states the decision is already made and supplies the justification. Signal the fast path and pass the session-derived rationale as the justification text. It creates the ADR and validates without operator questions.
 
-#### 4c. Invariant → DNA
+#### 4c. Invariant → DNA (pending)
 
-Invoke `fo-extract-dna` via the `skill` tool in convention description mode. Provide the invariant formulation from the session. Let it run fully — it will grill, create the RFC, and report.
+Do NOT invoke `fo-extract-dna` during session end — its contract grills the operator for every candidate and requires explicit confirmation before RFC creation, which would break the no-distraction protocol. Record a **pending routing** instead:
 
-#### 4d. Pattern → forge
+1. Append to `.agents/memory/daily/<today>.md` under a `## Pending insight routings` heading (create the file and heading if absent): `- [HH:MM] pending → fo-extract-dna: <invariant formulation>`.
+2. List it in the Step 7 report as a pending item with the suggested follow-up command (`fo-extract-dna`) so the operator can route it interactively later.
 
-Invoke `fo-harvest` via the `skill` tool with the pattern description. Let it run fully — it will grill on portability and port if accepted.
+#### 4d. Pattern → forge (pending)
+
+Do NOT invoke `fo-harvest` during session end — its contract grills the operator on portability per candidate ("no silent ports"). Record a **pending routing** instead:
+
+1. Append to `.agents/memory/daily/<today>.md` under `## Pending insight routings`: `- [HH:MM] pending → fo-harvest: <pattern description>`.
+2. List it in the Step 7 report as a pending item with the suggested follow-up command (`fo-harvest`).
 
 #### 4e. Operator → operator-profile.md
 
@@ -416,13 +422,13 @@ Cumulative knowledge about the operator. This file is gitignored by default to p
 
 #### 4f. Context → memory layer
 
-For each context insight, choose the destination with the operator:
+For each context insight, pick the destination by durability — no operator confirmation:
 
 1. **Daily log (default)** — append to `.agents/memory/daily/<today>.md` (create if absent). This is the ephemeral warm store — git-ignored, append-only. Format: `- [HH:MM] <insight>`. Redact API keys, passwords, and PII before appending.
 2. **MEMORY.md (when durable)** — if the insight is useful across sessions (not just today), append to `.agents/memory/MEMORY.md` under the most relevant section (`## Current focus`, `## Decisions in flight`, or `## Environment notes`). This is the curated hot store — versioned, so keep it concise.
 3. **Memory DB (optional mirror)** — use the `create_memory` tool to save the insight with appropriate tags. This is an optional mirror of the file-based layer, not the primary store.
 
-Both daily-log and MEMORY.md edits require operator confirmation. Files are the source of truth; Memory DB is a mirror.
+Files are the source of truth; Memory DB is a mirror.
 
 ### 5. Commit
 
@@ -436,16 +442,11 @@ Session retro: captured <N> rule(s) from session insights.
 
 Stage only the `AGENTS.md` files this skill edited. Do not stage unrelated changes. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
 
-If no rule insights were confirmed (all were delegated or context), skip this step — the delegated skills handle their own commits.
+If no rule insights were routed (all were delegated, pending, or context), skip this step — the delegated skills handle their own commits.
 
-### 6. Profile review
+### 6. Profile note
 
-If any operator insights were routed to `.agents/operator-profile.md`, offer the operator a profile review:
-
-1. **Show the current profile** (or the relevant sections that changed).
-2. **Ask:** "Would you like to review or adjust any of these entries?"
-3. **Apply adjustments** if the operator requests changes.
-4. **Remind the operator** that they can delete `.agents/operator-profile.md` at any time — it is their personal knowledge file.
+If any operator insights were routed to `.agents/operator-profile.md`, do not open a review dialogue — the profile was already updated. Mention the file path in the Step 7 report and note that the operator may review or delete it at any time; it is their personal knowledge file.
 
 ### 7. Report
 
@@ -461,17 +462,18 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ## <Session Retro Summary in aiLanguage>
 
 ### <Insights discovered>: <N>
-### <Insights confirmed>: <M>
+### <Insights accepted>: <M> (<auto-accepted>)
 
 | # | <Insight> | <Category> | <Routed to> | <Status> |
 | --- | --- | --- | --- | --- |
 | 1 | ... | Rule | packages/AGENTS.md | committed |
-| 2 | ... | Decision | fo-idea-create-adr | ADR-XXXX created |
-| 3 | ... | Invariant | fo-extract-dna | RFC-XXXX drafted |
-| 4 | ... | Pattern | fo-harvest | ported to forge |
+| 2 | ... | Decision | fo-idea-create-adr (fast path) | ADR-XXXX created |
+| 3 | ... | Invariant | `.agents/memory/daily/` pending → fo-extract-dna | pending |
+| 4 | ... | Pattern | `.agents/memory/daily/` pending → fo-harvest | pending |
 | 5 | ... | Operator | .agents/operator-profile.md | committed |
 | 6 | ... | Context | `.agents/memory/` | saved |
 
+### <Pending routings>: <K> — <list each pending item with its suggested follow-up command, or "none">
 ### <Delegated skills invoked>: <count>
 ### <Direct edits>: <count>
 ### <Commit>: <hash | none — no direct edits>
@@ -490,10 +492,11 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 
 ## Constraints
 
-- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights) and `.agents/operator-profile.md` (for operator insights, RFC-XXXX). All other routing is via delegation to skills that own their output.
+- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights, RFC-XXXX), and `.agents/memory/**` files (for context insights and pending routings). All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
-- **Operator confirmation is mandatory.** Do not route any insight without explicit confirmation of category and destination.
+- **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. The only operator-facing prompts that remain are the unrelated gates: unattributed dirty files (Step 3d) and non-terminal RFC status (Step 4c of Pre-retro steps).
+- **No interactive heavyweight routing at session end.** `fo-extract-dna` and `fo-harvest` grill the operator by contract — record pending routings in `.agents/memory/daily/<today>.md` instead of invoking them. `fo-idea-create-adr` runs only via its documented accepted-decision fast path.
 - **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.
 - **Read before edit.** Always read the target `AGENTS.md` before editing to preserve structure and avoid duplicates.
 - **Commit only your own files.** Stage only `AGENTS.md` files this skill edited. Delegated skills commit their own output. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
