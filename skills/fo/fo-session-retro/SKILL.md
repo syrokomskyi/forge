@@ -24,6 +24,7 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
+  <item>2026-10-28: session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
 </CHANGE_SUMMARY>
 -->
 
