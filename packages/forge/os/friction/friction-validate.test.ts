@@ -18,6 +18,8 @@ pass (lazy creation).
   <item>RFC-1433: review realignment — expectations remapped to the spec's
   failure-modes table; new fixtures for signature normalization and
   artifact-path existence.</item>
+  <item>RFC-1433: r2 review — absent required fields → FRICTION-01,
+  non-ENOENT read failure, and honest entries count on schema failure.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -91,6 +93,14 @@ describe("friction.validate — absent registry", () => {
     expect(result.exitCode).toBe(0);
     expect(result?.data?.entries).toBe(0);
   });
+
+  test("non-ENOENT read failure fails closed with FRICTION-01", async () => {
+    await fs.rm(path.join(tmpDir, "docs/frictions.yaml"), { force: true });
+    await fs.mkdir(path.join(tmpDir, "docs/frictions.yaml"));
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-01")).toBe(true);
+  });
 });
 
 describe("friction.validate — FRICTION-01 (shape + id)", () => {
@@ -132,6 +142,38 @@ describe("friction.validate — FRICTION-01 (shape + id)", () => {
     const result = await validate();
     expect(result.exitCode).toBe(1);
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-01")).toBe(true);
+  });
+
+  test("absent measure fails with FRICTION-01", async () => {
+    await writeRegistry(VALID_ENTRY.replace('    measure: "move gate earlier — RFC draft"\n', ""));
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-01")).toBe(true);
+  });
+
+  test("absent signature or artifacts fail with FRICTION-01", async () => {
+    await writeRegistry(
+      VALID_ENTRY.replace('    signature: "validator fired late"\n', "").replace(
+        "    artifacts: []\n",
+        "",
+      ),
+    );
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.violations.filter((v) => v.rule === "FRICTION-01").length).toBe(2);
+  });
+
+  test("entries reports the raw count when the schema fails", async () => {
+    await writeRegistry(
+      VALID_ENTRY +
+        VALID_ENTRY.replace("id: F-0001", "id: F-0002").replace(
+          '    measure: "move gate earlier — RFC draft"\n',
+          "",
+        ),
+    );
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.entries).toBe(2);
   });
 });
 
