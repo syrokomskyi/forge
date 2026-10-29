@@ -21,6 +21,13 @@ triggerPhrases: ["write tests for this code", "add unit tests", "add property-ba
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
+  <item>RFC-1440: fo-reproduce skill + pipeline wiring
+
+New fo-reproduce skill (bounded 5-attempt reproduction loop, no-source-
+modification boundary, verifier exit, honest inconclusive attempt log);
+wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
+verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
+compass inventory regenerated.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -220,7 +227,7 @@ Before writing tests, name the reason for each target:
 
 - When the operator invoked this skill directly for named code, the request counts as `requirement` — record the operator's wording as the reason.
 - Inside a pipeline, exactly one of `requirement <AC-N>`, `defect <ref>`, `invariant <ref>`, `regression <risk>` must apply; with no reason, write no test and say so in the report.
-- A `defect` test must be shown to fail against the pre-fix commit with `ref(forge.yaml bindings.commands.verifyReproduction)` before it is committed under that reason.
+- A `defect` test is produced by `fo-reproduce` (reproduction-first, RFC-1440): it must be shown to fail against the pre-fix commit via `ref(forge.yaml bindings.commands.verifyReproduction)` before it is committed under that reason.
 - Commit messages that add test files carry `Test-Reason: <reason>` (and `Repro-Verified: <sha>` for defects).
 
 ## TDD mode
