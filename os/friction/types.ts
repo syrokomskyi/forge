@@ -11,19 +11,15 @@ result type for friction.validate.</purpose>
   <item>RFC-1433: initial registry schema — append-only frictions with
   signature-based recurrence matching (open | addressed), five closed
   categories, FRICTION-01..05 rule ids.</item>
-  <item>RFC-1433: os/friction module, friction.validate, retro autopsy + RFC fast-path
-
-Add friction.validate (FRICTION-01..05, contract frictions) over the
-append-only docs/frictions.yaml registry; absent file passes with
-entries: 0 per lazy-creation contract. fo-session-retro gains the
-autopsy step (signal checklist, signature matching, harvest mode +
-triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
-registered in bin/cli.ts, WORKSHOP_MODULE_MAP.forge, package.json
-exports; AGENTS.md module row; 13 vitest cases.</item>
+  <item>RFC-1433: review realignment — signature demoted to optional
+  (empty is a FRICTION-05 warn, not a schema failure); result shape moved
+  to the spec's violations[] contract.</item>
 </CHANGE_SUMMARY>
 */
 
 import { z } from "zod";
+
+import type { Diagnostic } from "../../src/types.ts";
 
 export const FRICTION_CATEGORIES = [
   "tooling",
@@ -47,9 +43,9 @@ export const frictionEntrySchema = z.object({
   session: z.string().min(1),
   category: z.enum(FRICTION_CATEGORIES),
   friction: z.string().min(1),
-  signature: z.string().min(1),
-  // measure is deliberately not min(1) — an empty measure on an open entry
-  // is a FRICTION-04 warning, not a schema failure.
+  // signature is deliberately not min(1) — empty or non-normalized values
+  // are FRICTION-05 warnings, not schema failures.
+  signature: z.string().default(""),
   measure: z.string().default(""),
   artifacts: z.array(z.string().min(1)).default([]),
   status: z.enum(FRICTION_STATUSES),
@@ -70,11 +66,21 @@ export const FRICTION_RULE_IDS = [
 ] as const;
 export type FrictionRuleId = (typeof FRICTION_RULE_IDS)[number];
 
+/** A violation in the spec's documented shape — rule + optional entry id + severity. */
+export interface FrictionViolation {
+  rule: string;
+  entry?: string;
+  severity: "error" | "warning";
+  message: string;
+}
+
 export interface FrictionValidateResult {
   command: "friction.validate";
   status: "pass" | "fail";
-  file: string;
+  registry: string;
   entries: number;
-  errors: import("../../src/types.ts").Diagnostic[];
-  warnings: import("../../src/types.ts").Diagnostic[];
+  violations: FrictionViolation[];
+  /** Same violations split by severity — Diagnostic-shaped for house tooling. */
+  errors: Diagnostic[];
+  warnings: Diagnostic[];
 }
