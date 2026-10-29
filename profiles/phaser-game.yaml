@@ -485,7 +485,8 @@ workspace:
         if [ "$dirty" -eq 1 ]; then
           echo -e "$output" | head -40
           echo "---"
-          echo "Uncommitted changes detected. Commit before session end."
+          echo "Uncommitted changes detected. Commit session-attributed changes before"
+          echo "session end; leave files you did not produce untouched and report them."
           exit 1
         fi
         exit 0
