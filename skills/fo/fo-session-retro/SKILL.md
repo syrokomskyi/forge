@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [paths.invariantsFile]
-triggerPhrases: ["завершаем", "протокол завершения", "Завершаем эту сессию", "session retrospective", "End session"]
+triggerPhrases: ["завершаем", "протокол завершения", "разгребаем", "трения", "friction harvest"]
 ---
 
 <!--
@@ -25,6 +25,7 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>2026-10-28: session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
+  <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -59,7 +60,7 @@ When the operator says any of the following, the agent's response is **BLOCKED**
 
 **The agent MUST NOT produce any session-end output (summary, closing block, "session complete" message) before this skill is invoked and its report is presented. Producing a closing summary without running this skill is a CONTRACT VIOLATION.**
 
-This skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from this skill's report, not from the agent directly.
+This skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, the friction autopsy, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from this skill's report, not from the agent directly.
 
 ## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
 
@@ -431,6 +432,73 @@ For each context insight, pick the destination by durability — no operator con
 
 Files are the source of truth; Memory DB is a mirror.
 
+### Friction autopsy — registry write + recurrence flags
+
+Runs after insight routing (Step 4) and before the commit (Step 5) — every session end, no operator prompts. Friction capture is separate from insight triage: an insight is reusable knowledge; a friction is a problem + price + proposed prevention. The same observation may produce both.
+
+**a. Sweep the session against the signal checklist.** Self-report — walk the list and record every hit:
+
+- A gate or validator failed and was re-run (validate → fix → validate cycles)
+- The same command was retried with different flags before succeeding
+- A command was not known — code/docs had to be searched to discover it
+- The operator corrected a choice mid-flight («нет, не так»)
+- Documentation and code disagreed — the doc was followed first, code was the truth
+- A manual recovery was needed (reconcile → resume → re-ship, manual close)
+- Environment friction — missing tooling, RTK quirks, parallel-agent dirt in the tree
+- The agent's own error — wrong command, wrong scope, mixed commit, bad assumption
+
+Zero hits → append nothing; the report states «трений не было» in `aiLanguage`. Do not invent frictions to fill the registry.
+
+**b. Normalize a signature per friction.** Matching is `category` + `signature` (agent judgment). Normalize: lowercase, strip volatile tokens (dates, ids, paths, session stamps), keep the mechanism noun — "validator fired late before ship", not "QUEUE-07 fired 2026-10-29 in session x".
+
+**c. Classify into the closed category set:**
+
+| Category | Slowed by | Default artifact |
+| --- | --- | --- |
+| `tooling` | missing/inconvenient command, late gate, cryptic error | RFC draft / validator |
+| `docs` | unwritten convention, lying doc | rule in AGENTS.md / doc fix |
+| `process` | repeated cycles, manual recovery | RFC / runbook |
+| `environment` | toolchain, dev-server, parallel-session dirt | env doc / script |
+| `self` | the agent's own mistake | behavior rule / skill fix |
+
+**d. Match against `docs/frictions.yaml`.** Read the registry — an absent file is an empty registry; create it lazily on first append (`friction.validate` passes a missing file with `entries: 0`).
+
+- **No match** → append a new entry:
+
+  ```yaml
+  - id: F-<next free NNNN>   # ids need not be gapless; a duplicate flagged by
+                            # friction.validate means a parallel retro raced —
+                            # renumber to the next free id and re-validate
+    created: <today>
+    session: <this session's id>
+    category: <one of the five>
+    friction: "<what slowed the session — one line>"
+    signature: "<normalized match phrase>"
+    measure: "<proposed prevention + artifact type>"
+    artifacts: []
+    status: open
+    recurrences: 0
+    lastSeen: <today>
+  ```
+
+- **Match on `open`** → increment `recurrences`, update `lastSeen`, do NOT create a new entry; flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
+- **Match on `addressed`** → the prevention failed → increment `recurrences`, update `lastSeen`; flag it in the report and escalate the artifact class (rule → validator → RFC draft).
+- A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be appended directly as `status: addressed` with `artifacts` populated.
+
+**e. Self-check the write.** Run `rtk pnpm exec werkstatt run friction.validate` after appending — a `fail` must be repaired before continuing (most often a duplicate id from a racing parallel retro: renumber, re-validate).
+
+#### Harvest mode («разгребаем» / «трения» / "friction harvest")
+
+The same skill doubles as the harvest entry point. When the operator invokes it with a harvest phrase rather than a session-end phrase:
+
+1. Read `docs/frictions.yaml`; group `open` entries by category.
+2. Present the batch as proposed documents: per group, the prevention artifacts — RFC drafts (via the `fo-idea-create-rfc` friction fast-path), ADRs (accepted-decision fast-path), rules/doc fixes (direct instruction-layer edits).
+3. Writing happens only on «пиши» (or an explicit equivalent). Until then the batch is a proposal — plan confirmation is not an implementation command.
+4. On «пиши» execute each artifact, then flip the served entries `open → addressed` with `artifacts` populated with the created paths/ids, and re-run `friction.validate`.
+5. Recurrence-flagged entries (step d) jump the queue — they appear in every retro report immediately without waiting for a harvest.
+
+**Instruction-layer write allow-list.** Under an explicit «пиши» harvest command only, this skill may directly edit: `AGENTS.md` files, `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` (canonical + synced copy together), `docs/authoring/*.md`, `.agents/operator-profile.md`, `.agents/memory/**`. Everything else — code, RFCs, ADRs — goes through the owning skills; a draft RFC is created via the `fo-idea-create-rfc` friction fast-path, never written directly.
+
 ### 5. Commit
 
 Commit rule edits to `AGENTS.md` files separately from any delegated skill output (ADRs, RFCs, forge ports — those skills commit their own files).
@@ -478,6 +546,11 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ### <Delegated skills invoked>: <count>
 ### <Direct edits>: <count>
 ### <Commit>: <hash | none — no direct edits>
+
+### <Frictions in aiLanguage>
+<appended>: <N new registry entries, one line each with id + category>
+<recurrence flags>: <K — each flagged entry id, its open/addressed match, and the proposed documents or escalation>
+<ambient>: «Открытых трений: M (category×count, …)> — the open-backlog tally by category, always present; on a zero-friction session: «трений не было»
 ```
 
 After the summary table, emit the **Engineering Checkpoint closing block** following the format in `_shared/fo-session-summary.md` (full or lightweight mode). This closing block IS the session-end output — it replaces any ad-hoc summary.
@@ -493,7 +566,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 
 ## Constraints
 
-- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights, RFC-XXXX), and `.agents/memory/**` files (for context insights and pending routings). All other routing is via delegation to skills that own their output.
+- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights, RFC-XXXX), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
 - **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. The only operator-facing prompts that remain are the unrelated gates: unattributed dirty files (Step 3d) and non-terminal RFC status (Step 4c of Pre-retro steps).

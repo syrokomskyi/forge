@@ -25,6 +25,7 @@ triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC"
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>RFC-1361: path-scoped commits by default — EC-24 pre-commit message lint with governed-prefix exemption</item>
+  <item>RFC-1433: friction fast-path — step-3 grilling skipped when the caller supplies open/flagged docs/frictions.yaml entry ids; entries carry the justification, output stays draft.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -84,6 +85,16 @@ Before creating the file, invoke the `/grilling` skill to stress-test the propos
 
 Address every concern the grilling raises by adjusting the metadata, scope, or concept before proceeding. Do not create the RFC file until the grilling is satisfied with the concept.
 
+#### Friction fast-path
+
+Step 3 is skipped when the caller supplies `frictions: [F-NNNN, ...]` — ids of `open` or recurrence-flagged entries in `docs/frictions.yaml`. The registry entries are the justification: the friction and its measure already answer the grilling's "why" question, and the created file lands at `draft` under normal human architecture review — operator authority lives at the `draft → accepted` transition, not at file creation.
+
+Contract:
+
+1. **Verify the entries exist** — read `docs/frictions.yaml`; every supplied `F-NNNN` id must resolve to an entry with `status: open` (or a flagged recurrence). A caller without matching registry entries gets the standard grilling path — no exceptions.
+2. **Mine the entries for the RFC body** — `friction` + `measure` supply Context and Problem; the batch's shared `category`/theme supplies the Decision's scope. Do not invent justification beyond what the entries carry.
+3. **Proceed directly to step 4** — create, fill, validate, commit as usual. The RFC records the supplying entry ids in `related[]` (as `friction:F-NNNN` provenance in the body's Context section — `related[]` holds RFC ids) and the harvest caller flips the entries to `addressed` with the created file in `artifacts[]`.
+
 ### 4. Create the RFC file
 
 Run:
@@ -141,7 +152,7 @@ Commit path-scoped: `pnpm exec werkstatt run ecosystem.commit --message "rfc: cr
 
 ## Constraints
 
-- **Grilling is mandatory before file creation.** Do not skip step 3 — the concept must survive grilling before the RFC file is created.
+- **Grilling is mandatory before file creation.** Do not skip step 3 — the concept must survive grilling before the RFC file is created. Single documented carve-out: the friction fast-path (step 3) — caller supplies `docs/frictions.yaml` entry ids as justification; entries must exist and be `open`/flagged, otherwise grilling applies.
 - Use the **full** RFC template for every RFC. Lightweight local decisions now use ADRs instead.
 - Do not change `status` past `draft`.
 - Do not add self-authorizing language such as "implementation may start before acceptance."
