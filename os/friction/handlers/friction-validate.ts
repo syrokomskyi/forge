@@ -23,6 +23,12 @@ lazily created means absent equals empty.</purpose>
   output emits the documented violations[] shape.</item>
   <item>RFC-1433: r2 review — entries reports the raw entry count even when
   the schema parse fails (was: 0); rule ids typed as FrictionRuleId.</item>
+  <item>RFC-1433: r3 polish — measure min(1), consistent entries reporting
+
+F3-1: measure empty-string hole closed at shape level — absent or empty
+measure both fail FRICTION-01, matching the session/friction siblings.
+F3-2: pretty output reports reportedEntries (raw count on schema failure),
+consistent with the JSON payload. r3 review verdict: pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -245,12 +251,14 @@ export async function runFrictionValidate(
     }));
   const status = errors.length === 0 ? "pass" : "fail";
 
+  const reportedEntries = entries.length || rawEntryCount;
+
   if (outputFormat === "pretty") {
     logger.section("Friction registry");
     logger.info(
       absent
         ? `  ${REGISTRY_PATH} absent — lazily created, treated as empty`
-        : `  ${REGISTRY_PATH}: ${entries.length} entr${entries.length === 1 ? "y" : "ies"}`,
+        : `  ${REGISTRY_PATH}: ${reportedEntries} entr${reportedEntries === 1 ? "y" : "ies"}`,
     );
     for (const w of warnings) logger.warn(`  ${w.ruleId}: ${w.message}`);
     for (const e of errors) logger.error(`  ${e.ruleId}: ${e.message}`);
@@ -261,7 +269,7 @@ export async function runFrictionValidate(
       command: "friction.validate",
       status,
       registry: REGISTRY_PATH,
-      entries: entries.length || rawEntryCount,
+      entries: reportedEntries,
       violations,
       errors,
       warnings,

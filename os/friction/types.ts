@@ -16,6 +16,12 @@ result type for friction.validate.</purpose>
   <item>RFC-1433: r2 review — signature/measure/artifacts required again
   (absence is a FRICTION-01 shape failure); present-but-empty signature
   stays a FRICTION-05 warn.</item>
+  <item>RFC-1433: r3 polish — measure min(1), consistent entries reporting
+
+F3-1: measure empty-string hole closed at shape level — absent or empty
+measure both fail FRICTION-01, matching the session/friction siblings.
+F3-2: pretty output reports reportedEntries (raw count on schema failure),
+consistent with the JSON payload. r3 review verdict: pass.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -48,7 +54,7 @@ export const frictionEntrySchema = z.object({
   // signature is required but deliberately not min(1) — a present-but-empty
   // or non-normalized value is a FRICTION-05 warning, not a schema failure.
   signature: z.string(),
-  measure: z.string(),
+  measure: z.string().min(1),
   artifacts: z.array(z.string().min(1)),
   status: z.enum(FRICTION_STATUSES),
   recurrences: z.number().int().min(0),
