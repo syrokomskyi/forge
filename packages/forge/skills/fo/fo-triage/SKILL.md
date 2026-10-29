@@ -20,6 +20,13 @@ triggerPhrases: ["triage this issue", "categorize incoming bug report", "triage 
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1440: fo-reproduce skill + pipeline wiring
+
+New fo-reproduce skill (bounded 5-attempt reproduction loop, no-source-
+modification boundary, verifier exit, honest inconclusive attempt log);
+wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
+verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
+compass inventory regenerated.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -72,6 +79,7 @@ For bugs:
 - Can you reproduce it from the description?
 - Is there a clear expected vs actual behavior?
 - Are there steps to reproduce?
+- Attempt `fo-reproduce` (RFC-1440): a `reproduced` verdict puts the verified test path into the `ready-for-agent` brief as executable reproduction evidence; `inconclusive` records the attempt log; `untestable` keeps the prose path below.
 
 If the issue lacks enough info to verify, move to `needs-info` and ask the reporter for specifics.
 

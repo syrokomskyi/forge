@@ -20,12 +20,18 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1322: step 5 — prescribe --check-criteria stamp + single-commit post-shape</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
   <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
   <item>COMMIT-02: commit templates — governed ids moved to the scope position (fix(rfc-xxxx): repair …, never fix: RFC-XXXX — …); illegal trace: prefix replaced with docs(adr-xxxx):</item>
-  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317</history>
+  <item>RFC-1440: fo-reproduce skill + pipeline wiring
+
+New fo-reproduce skill (bounded 5-attempt reproduction loop, no-source-
+modification boundary, verifier exit, honest inconclusive attempt log);
+wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
+verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
+compass inventory regenerated.</item>
+  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -146,7 +152,7 @@ After implementing each plan step, add a test only when it has one of the four r
 
 No reason → no new test: run the existing suite and the document's probes instead. If the adjacency check flags a new source file, add its inline exemption with the reason (`// test-adjacency: exempt — no test reason: <why>`) rather than a stub test.
 
-For `defect`: write the test, then run `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`.
+For `defect`: the test is produced by invoking `fo-reproduce` **before** the fix code lands — reproduction-first, never retrofitted after. `fo-reproduce` runs its bounded loop and exits through `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason; an `inconclusive` exit carries its attempt log and never blocks the fix by itself. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`. A `regression <risk>` reason does NOT route through `fo-reproduce` — it keeps this section's path.
 
 Commits that add test files carry `Test-Reason: <reason>` (one line per file, or one shared line), plus `Repro-Verified: <pre-fix-sha>` for defect reasons.
 
@@ -449,7 +455,7 @@ After implementing the decision, add a test only when it has one of the four rea
 
 No reason → no new test: run the existing suite and the document's probes instead. If the adjacency check flags a new source file, add its inline exemption with the reason (`// test-adjacency: exempt — no test reason: <why>`) rather than a stub test.
 
-For `defect`: write the test, then run `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`.
+For `defect`: the test is produced by invoking `fo-reproduce` **before** the fix code lands — reproduction-first, never retrofitted after. `fo-reproduce` runs its bounded loop and exits through `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason; an `inconclusive` exit carries its attempt log and never blocks the fix by itself. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`. A `regression <risk>` reason does NOT route through `fo-reproduce` — it keeps this section's path.
 
 Commits that add test files carry `Test-Reason: <reason>` (one line per file, or one shared line), plus `Repro-Verified: <pre-fix-sha>` for defect reasons.
 
