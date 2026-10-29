@@ -532,6 +532,7 @@ workspace:
         from fo-session-retro's report.
         Protocol steps:
         1. Verify clean working trees — run: bash scripts/check-clean-trees.sh
+           Commit session-attributed changes; leave unattributed files untouched and report them.
         2. Invoke fo-session-retro via the skill tool
         3. The retro skill's report IS the session-end output
         EOF
