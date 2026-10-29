@@ -731,3 +731,16 @@ status: active
 - **Context:** 2026-08-14 — RFC-0854 enhancement, current Sternsystem cutover
 - **Question:** May the replaceable single site republish directly to Main, or must it prove the Node 24 build/deploy path through Alt first?
 - **Answer:** Require `Alt deploy → Alt smoke pass → Main deploy → Main smoke pass`. Any non-pass stops the transition and blocks RFC completion; the single-site topology does not justify bypassing the available staging proof.
+
+### K-0057: Session-end commit-question removal — never ask whether to commit
+
+```knowledge-entry
+id: K-0057
+layer: L0
+created: 2026-10-29
+status: active
+```
+
+- **Context:** 2026-10-29 — fo-session-retro Step 3d redesign (ADR-0121)
+- **Question:** When the session-end protocol finds dirty files it cannot attribute to this session, should it ask the operator whether to commit each one (per-file prompt), leave them silently, or leave them with a report line — and where should the no-commit-question rule live?
+- **Answer:** Unattributed files are left untouched and listed in the retro report (option A — visibility without a prompt); the rule is anchored globally in `_shared/fo-pipeline-conventions.md` §Commit discipline plus an explicit line in PREFERENCES.md (radius A); process = ADR + direct edits (option C). Session-attributed changes commit unconditionally — the operator is never asked whether to commit. Post-review arbitration extended the radius to the contradicting enforcement surfaces (AGENTS.md §Session-end, pre-user-prompt hook, check-clean-trees.sh, wg-mission-complete operator-edit gate).
