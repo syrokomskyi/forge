@@ -199,6 +199,14 @@
     "./os/formal-module": {
       "types": "./os/formal/formal.module.ts",
       "default": "./os/formal/formal.module.ts"
+    },
+    "./os/friction": {
+      "types": "./os/friction/index.ts",
+      "default": "./os/friction/index.ts"
+    },
+    "./os/friction-module": {
+      "types": "./os/friction/friction.module.ts",
+      "default": "./os/friction/friction.module.ts"
     }
   },
   "files": [
@@ -413,6 +421,14 @@
       "./os/formal-module": {
         "types": "./dist/os/formal/formal.module.d.ts",
         "default": "./dist/os/formal/formal.module.js"
+      },
+      "./os/friction": {
+        "types": "./dist/os/friction/index.d.ts",
+        "default": "./dist/os/friction/index.js"
+      },
+      "./os/friction-module": {
+        "types": "./dist/os/friction/friction.module.d.ts",
+        "default": "./dist/os/friction/friction.module.js"
       }
     }
   }

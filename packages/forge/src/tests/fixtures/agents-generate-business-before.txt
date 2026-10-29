@@ -141,7 +141,7 @@ When the operator expresses an intent in natural language, the agent routes to t
 | "sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"                           | `fo-memory-sync`                        |
 | "I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"                                            | `fo-qa`                                 |
 | "проверим всё ли сделали правильно", "проверь изменения", "review this session", "review this code diff", "check code against Forge standards"            | `fo-review`                             |
-| "завершаем", "протокол завершения", "Завершаем эту сессию", "session retrospective", "End session"                                                        | `fo-session-retro`                      |
+| "завершаем", "протокол завершения", "разгребаем", "трения", "friction harvest"                                                                            | `fo-session-retro`                      |
 | "save this session", "enhance session transcript with annotations", "save session with quality checks"                                                    | `fo-session-save`                       |
 | "ingest external specification", "vendor spec package into docs", "author spec skeleton"                                                                  | `fo-spec-ingest`                        |
 | "закоммитим", "commit after request", "auto-commit changes", "step commit"                                                                                | `fo-step-commit`                        |

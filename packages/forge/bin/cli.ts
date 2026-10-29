@@ -10,7 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Schema-driven flag resolution via src/cli-flags.ts — a value-less declared flag (e.g. `forge rfc.validate --id`) now exits with KERNEL-FLAG-02 instead of crashing on `flags.id === true`; per-command --help renders printCommandHelp.</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
 Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
@@ -20,6 +19,15 @@ surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1433: os/friction module, friction.validate, retro autopsy + RFC fast-path
+
+Add friction.validate (FRICTION-01..05, contract frictions) over the
+append-only docs/frictions.yaml registry; absent file passes with
+entries: 0 per lazy-creation contract. fo-session-retro gains the
+autopsy step (signal checklist, signature matching, harvest mode +
+triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
+registered in bin/cli.ts, WORKSHOP_MODULE_MAP.forge, package.json
+exports; AGENTS.md module row; 13 vitest cases.</item>
   <history>RFC-0542, RFC-0543, RFC-1140</history>
 </CHANGE_SUMMARY>
 */
@@ -149,6 +157,9 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
       m.createForgeConformanceModule(),
     ),
     await import("../os/formal/formal.module.ts").then((m) => m.createForgeFormalModule()),
+    await import("../os/friction/friction.module.ts").then((m) =>
+      m.createForgeFrictionModule(),
+    ),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {
