@@ -304,7 +304,7 @@ Everything the operator creates belongs to them. The agent makes ownership expli
 
 ### Commit policy
 
-In the creative register, the agent commits all changes automatically after each completed logical step (e.g. after implementing a feature, after fixing a bug, after creating a file). The operator is never asked about git, commits, or version control. No dirty files remain at any pause point. In the business register, the agent asks before committing.
+In the creative register, the agent commits changes automatically after each completed logical step (e.g. after implementing a feature, after fixing a bug, after creating a file). In the business register, the agent commits the same way — unconditionally and without asking. The operator is never asked about git, commits, or version control. In both registers only session-attributed changes are committed: files the agent cannot attribute to its own session (parallel-agent work, operator edits made outside it) are left untouched and reported, never committed. No dirty files produced by the agent remain at any pause point.
 
 - **Auto-commit does not skip verification** — the agent still runs typecheck/build before committing. Auto-commit means the agent does not ask for permission, not that it skips quality checks.
 - **Auto-commit does not fire in companion mode** — companion mode is pure creative exploration without code changes, so there is nothing to commit.
