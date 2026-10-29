@@ -20,8 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0121: Step 3d drops the commit-or-leave prompt — unattributed dirty files are left untouched and listed in the Step 7 report; session-attributed changes commit unconditionally and the operator is never asked about commits.</item>
-  <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>2026-10-28: session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
   <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
   <item>RFC-1433: realign friction.validate rules to the accepted spec table
@@ -37,7 +35,8 @@ FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
 One-off external outages are not frictions unless they expose a missing
 guard — the sentence was in the accepted design but missing from the
 shipped signal checklist. Synced to the .agents copy.</item>
-  <history>RFC-1097</history>
+  <item>ADR-0121: persist soft-block report, fix E2-E4 wording, park arbitration</item>
+  <history>ADR-0121, RFC-1097, RFC-1247</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -167,7 +166,7 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
   - You indirectly modified it by running a command (`run_command`) that generates or updates it (e.g. codegen pipelines, build commands, etc.).
   - It was produced by a session-end pipeline step in THIS session: session transcripts (`docs/sessions/*.md`), review reports (`docs/reviews/**/*.md`), or `docs.archive` moves.
   - It was created by a skill you invoked in this session (e.g. `fo-review` creating a review report, `fo-doc-audit` editing AGENTS.md, `fo-idea-create-adr` creating an ADR).
-- A file is "unattributed" if it appears dirty but you have no record of touching it in this session. Do NOT assume it belongs to a parallel agent — it may be an orphan from a previous session that was not committed. The previous session-end protocol should have caught it, but if it didn't, this session must not propagate the problem further.
+- A file is "unattributed" if it appears dirty but you have no record of touching it in this session. Do NOT assume it belongs to a parallel agent — it may be an orphan from a previous session that was not committed. Such orphans surface in the Step 7 report — visible to the operator, never silently propagated.
 
 **3c. Commit our changes (unconditionally — never ask):**
 
@@ -180,7 +179,7 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 
 - If any unattributed dirty files remain after committing ours, leave them untouched — do NOT commit them and do NOT ask the operator whether to commit. The session-end protocol never asks about commits.
 - When in doubt whether a file is ours, classify it as unattributed — leaving a file uncommitted is the safe leg; the report keeps it visible. Orphans from previous sessions surface in the report, where the operator may order a follow-up commit if desired.
-- List every unattributed file left dirty in the Step 7 report (the dirty-tree line), one per tree.
+- List every unattributed file left dirty on the `### <Left untouched>` line of the Step 7 report, one per tree.
 - If the tree is now clean (or was clean from the start), proceed silently.
 
 ### Step 4: RFC implementation verification (NON-NEGOTIABLE)
@@ -584,7 +583,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 - **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
-- **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. Commits are never prompted for either: session-attributed changes commit unconditionally, unattributed files are left untouched and reported (Step 3d). The only operator-facing prompt that remains is the unrelated non-terminal RFC status gate (Step 4c of Pre-retro steps).
+- **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. Commits are never prompted for either: session-attributed changes commit unconditionally, unattributed files are left untouched and reported (Step 3d). The only operator-facing gate that remains inside the protocol is the unrelated non-terminal RFC status prompt (Step 4c of Pre-retro steps); the PREFERENCES.md bootstrap ask at skill start is a setup exception, not a session-end gate.
 - **No interactive heavyweight routing at session end.** `fo-extract-dna` and `fo-harvest` grill the operator by contract — record pending routings in `.agents/memory/daily/<today>.md` instead of invoking them. `fo-idea-create-adr` runs only via its documented accepted-decision fast path.
 - **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.
 - **Read before edit.** Always read the target `AGENTS.md` before editing to preserve structure and avoid duplicates.
