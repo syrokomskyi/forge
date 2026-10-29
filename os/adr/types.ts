@@ -145,6 +145,8 @@ export interface AdrImplementStampData {
 export interface AdrImplementStampViolation {
   rule: AdrImplementStampRule;
   message: string;
+  /** Optional remediation hint (RFC-1422 diagnostic contract) — must never suggest an action another rule forbids. */
+  fixHint?: string;
 }
 
 export interface AdrImplementStampResult {

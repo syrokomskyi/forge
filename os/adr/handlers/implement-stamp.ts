@@ -258,6 +258,8 @@ export async function runAdrImplementStamp(
       violations.push({
         rule: "ADR-IMP-03",
         message: `Implementation commit ${implementationCommit} does not reference ${targetId} in its message or changed files.`,
+        fixHint:
+          `The message check is case-sensitive on the uppercase id (${targetId}, not a lowercase scope like "docs(adr-xxxx):"). For post-hoc ADRs whose historic implementation commit never mentions the id, pass the "adr: accept" or "trace:" commit instead — both qualify; a commit whose changed-file list contains the adr-xxxx-* slug also qualifies.`,
       });
     }
   }
