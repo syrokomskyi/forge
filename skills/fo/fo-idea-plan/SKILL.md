@@ -91,7 +91,7 @@ If all checks pass, proceed to step 0.3.
 
 If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruction to plan IS the architecture acceptance. Transition the RFC to `accepted`.
 
-**Collect mode exception:** inside an orchestrator-driven queue run the `draft → accepted` transition moves to the resolution phase — the answered decision window IS the acceptance act. In collect mode this skill persists the plan as a draft carrying `PENDING DECISION` markers and does NOT transition the RFC; the orchestrator's resolution phase finalizes (integrate answers, lift markers, transition + commit) after the window.
+**Collect mode exception:** inside an orchestrator-driven queue run the `draft → accepted` transition moves to the resolution phase — the answered decision window IS the acceptance act; when the window is skipped (zero `open` entries) the operator's orchestrator invocation is the acceptance act. In collect mode this skill persists the plan as a draft carrying `PENDING DECISION` markers and does NOT transition the RFC; the orchestrator's resolution phase finalizes (integrate answers, lift markers, transition + commit) after the window.
 
 Standalone/interview-mode flow:
 
