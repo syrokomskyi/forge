@@ -22,6 +22,8 @@ No pauses for recoverable tool errors. If a tool call fails with a recoverable e
 
 Stage only the files this skill produces or modifies. Another agent may be working in a different session; `git add -A` or `git add .` is forbidden.
 
+Never ask the operator whether to commit: session-attributed changes commit unconditionally; unattributed files are left untouched and reported, never prompted about.
+
 ## Pipeline reference
 
 - **RFC pipeline**: create → audit → enhance → plan → implement (includes review → fix)

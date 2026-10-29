@@ -20,6 +20,7 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>ADR-0121: Step 3d drops the commit-or-leave prompt — unattributed dirty files are left untouched and listed in the Step 7 report; session-attributed changes commit unconditionally and the operator is never asked about commits.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>2026-10-28: session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
   <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
@@ -168,18 +169,18 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
   - It was created by a skill you invoked in this session (e.g. `fo-review` creating a review report, `fo-doc-audit` editing AGENTS.md, `fo-idea-create-adr` creating an ADR).
 - A file is "unattributed" if it appears dirty but you have no record of touching it in this session. Do NOT assume it belongs to a parallel agent — it may be an orphan from a previous session that was not committed. The previous session-end protocol should have caught it, but if it didn't, this session must not propagate the problem further.
 
-**3c. Commit our changes:**
+**3c. Commit our changes (unconditionally — never ask):**
 
 - If there are "our" dirty files in the workspace root: `git add <files>` and `git commit -m "<descriptive message>"`.
 - If there are "our" dirty files in a workpiece: `git -C missions/<missionId>/workpiece add <files>` and `git -C missions/<missionId>/workpiece commit -m "<descriptive message>"`.
 - Use descriptive commit messages that explain what the changes are, not just "session cleanup".
+- Commit unconditionally — never ask the operator whether to commit session-attributed changes.
 
-**3d. Handle unattributed dirty files (NON-NEGOTIABLE):**
+**3d. Leave unattributed dirty files untouched + report (NON-NEGOTIABLE):**
 
-- If any unattributed dirty files remain after committing ours, present them to the operator via `ask_user_question` (in `aiLanguage`) and ask whether to commit or leave each one untouched. Do NOT silently proceed — unattributed files are often orphans from previous sessions that must be resolved, not propagated.
-- For each unattributed file, the operator can choose:
-  - **Commit** — the agent stages and commits the file with a descriptive message.
-  - **Leave untouched** — the operator explicitly acknowledges the file should remain dirty (e.g. it belongs to a parallel agent still running).
+- If any unattributed dirty files remain after committing ours, leave them untouched — do NOT commit them and do NOT ask the operator whether to commit. The session-end protocol never asks about commits.
+- When in doubt whether a file is ours, classify it as unattributed — leaving a file uncommitted is the safe leg; the report keeps it visible. Orphans from previous sessions surface in the report, where the operator may order a follow-up commit if desired.
+- List every unattributed file left dirty in the Step 7 report (the dirty-tree line), one per tree.
 - If the tree is now clean (or was clean from the start), proceed silently.
 
 ### Step 4: RFC implementation verification (NON-NEGOTIABLE)
@@ -559,6 +560,7 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ### <Delegated skills invoked>: <count>
 ### <Direct edits>: <count>
 ### <Commit>: <hash | none — no direct edits>
+### <Left untouched>: <N unattributed dirty files — list each as "<tree>: <path>", or "none">
 
 ### <Frictions in aiLanguage>
 <appended>: <N new registry entries, one line each with id + category>
@@ -582,7 +584,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 - **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
-- **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. The only operator-facing prompts that remain are the unrelated gates: unattributed dirty files (Step 3d) and non-terminal RFC status (Step 4c of Pre-retro steps).
+- **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. Commits are never prompted for either: session-attributed changes commit unconditionally, unattributed files are left untouched and reported (Step 3d). The only operator-facing prompt that remains is the unrelated non-terminal RFC status gate (Step 4c of Pre-retro steps).
 - **No interactive heavyweight routing at session end.** `fo-extract-dna` and `fo-harvest` grill the operator by contract — record pending routings in `.agents/memory/daily/<today>.md` instead of invoking them. `fo-idea-create-adr` runs only via its documented accepted-decision fast path.
 - **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.
 - **Read before edit.** Always read the target `AGENTS.md` before editing to preserve structure and avoid duplicates.
