@@ -1,12 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>friction.validate command handler (RFC-1433) — validates the
-append-only friction registry at docs/frictions.yaml. FRICTION-01 fails on
-unreadable/unparseable/schema-broken files; FRICTION-02 on malformed or
-duplicate ids; FRICTION-03 on out-of-enum category/status (folded into the
-schema check); FRICTION-04/05 warn on hygiene issues (missing measure on open
-entries, addressed without artifacts, lastSeen before created). An absent
-registry is not an error — lazily created means absent equals empty.</purpose>
+append-only friction registry at docs/frictions.yaml against the spec's
+failure-modes table: FRICTION-01 entry shape + id uniqueness/format (fail),
+FRICTION-02 closed category catalog (fail), FRICTION-03 status enum +
+addressed-requires-artifacts (fail), FRICTION-04 lastSeen >= created +
+recurrences >= 0 (fail), FRICTION-05 signature non-empty/lowercase-normalized
++ artifact path existence (warn). An absent registry is not an error —
+lazily created means absent equals empty.</purpose>
 <non-goals>
   <item>Do not mutate the registry file — read-only validation.</item>
   <item>Do not match frictions or compute recurrences — that is the retro
@@ -16,15 +17,10 @@ registry is not an error — lazily created means absent equals empty.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1433: initial validator — five rules over the append-only
   registry, ENOENT passes with entries: 0 per the lazy-creation contract.</item>
-  <item>RFC-1433: os/friction module, friction.validate, retro autopsy + RFC fast-path
-
-Add friction.validate (FRICTION-01..05, contract frictions) over the
-append-only docs/frictions.yaml registry; absent file passes with
-entries: 0 per lazy-creation contract. fo-session-retro gains the
-autopsy step (signal checklist, signature matching, harvest mode +
-triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
-registered in bin/cli.ts, WORKSHOP_MODULE_MAP.forge, package.json
-exports; AGENTS.md module row; 13 vitest cases.</item>
+  <item>RFC-1433: review realignment — rule ids remapped to the accepted
+  spec table (dup id → 01, category → 02, addressed-without-artifacts → 03
+  fail, lastSeen/recurrences → 04 fail unconditional, signature → 05 warn);
+  output emits the documented violations[] shape.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,17 +35,43 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { frictionsRegistrySchema } from "../types.ts";
-import type { FrictionEntry, FrictionValidateResult } from "../types.ts";
+import type { FrictionEntry, FrictionValidateResult, FrictionViolation } from "../types.ts";
 
 const REGISTRY_PATH = "docs/frictions.yaml";
 
-function diag(
-  ruleId: string,
+function violation(
+  rule: string,
   severity: "error" | "warning",
   message: string,
-  file?: string,
-): Diagnostic {
-  return { ruleId, severity, message, file };
+  entry?: string,
+): FrictionViolation {
+  return { rule, severity, message, ...(entry ? { entry } : {}) };
+}
+
+/** Map a zod issue's field path to the rule the spec's failure-modes table assigns. */
+function schemaIssueRule(issue: { path: PropertyKey[]; code: string }): string {
+  const field = issue.path[1];
+  if (field === "category") return "FRICTION-02";
+  if (field === "status") return "FRICTION-03";
+  // recurrences < 0 is the spec's FRICTION-04 check surfacing through the
+  // schema's min(0); other recurrences type issues are entry-shape (01).
+  if (field === "recurrences" && issue.code === "too_small") return "FRICTION-04";
+  return "FRICTION-01";
+}
+
+/** Best-effort entry id for a schema issue — raw list index → id when readable. */
+function schemaIssueEntry(issue: { path: PropertyKey[] }, raw: unknown): string | undefined {
+  const index = issue.path[0];
+  if (typeof index !== "number" || !Array.isArray(raw)) return undefined;
+  const candidate = raw[index];
+  return candidate && typeof candidate === "object" && typeof candidate.id === "string"
+    ? candidate.id
+    : undefined;
+}
+
+/** Artifact refs that name files (contain a path separator) must resolve. */
+function isPathLikeArtifact(ref: string): boolean {
+  return ref.includes("/");
 }
 
 export async function runFrictionValidate(
@@ -57,8 +79,7 @@ export async function runFrictionValidate(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<FrictionValidateResult>> {
   const { workspaceRoot, logger, outputFormat } = context;
-  const errors: Diagnostic[] = [];
-  const warnings: Diagnostic[] = [];
+  const violations: FrictionViolation[] = [];
 
   const absolutePath = path.join(workspaceRoot, REGISTRY_PATH);
   let entries: FrictionEntry[] = [];
@@ -74,12 +95,11 @@ export async function runFrictionValidate(
     if (code === "ENOENT") {
       absent = true;
     } else {
-      errors.push(
-        diag(
+      violations.push(
+        violation(
           "FRICTION-01",
           "error",
           `Cannot read ${REGISTRY_PATH}: ${e instanceof Error ? e.message : String(e)}`,
-          REGISTRY_PATH,
         ),
       );
     }
@@ -90,95 +110,130 @@ export async function runFrictionValidate(
     try {
       raw = YAML.parse(source);
     } catch (e) {
-      errors.push(
-        diag(
+      violations.push(
+        violation(
           "FRICTION-01",
           "error",
           `YAML parse error in ${REGISTRY_PATH}: ${e instanceof Error ? e.message : String(e)}`,
-          REGISTRY_PATH,
         ),
       );
     }
   }
 
-  if (source !== null && errors.length === 0) {
-    // FRICTION-03: category/status are enum-checked by the schema — a
-    // schema failure reports the offending path so the agent sees which
-    // enum or field broke.
+  if (source !== null && violations.length === 0) {
     const parsed = frictionsRegistrySchema.safeParse(raw ?? []);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
-        const field = issue.path.join(".") || "<root>";
-        errors.push(
-          diag(
-            issue.path.length >= 2 && (issue.path[1] === "category" || issue.path[1] === "status")
-              ? "FRICTION-03"
-              : "FRICTION-01",
+        const fieldPath = issue.path.join(".") || "<root>";
+        violations.push(
+          violation(
+            schemaIssueRule(issue),
             "error",
-            `Registry schema violation at ${field}: ${issue.message}`,
-            REGISTRY_PATH,
+            `Registry violation at ${fieldPath}: ${issue.message}`,
+            schemaIssueEntry(issue, raw),
           ),
         );
       }
     } else {
       entries = parsed.data;
 
-      // FRICTION-02: ids unique + well-formed (the regex half lives in the
-      // schema; duplicates need the whole list).
+      // FRICTION-01: ids unique (format lives in the schema's regex).
       const seen = new Map<string, number>();
       for (const entry of entries) {
         seen.set(entry.id, (seen.get(entry.id) ?? 0) + 1);
       }
       for (const [id, count] of seen) {
         if (count > 1) {
-          errors.push(
-            diag(
-              "FRICTION-02",
+          violations.push(
+            violation(
+              "FRICTION-01",
               "error",
               `Duplicate friction id "${id}" appears ${count} times — concurrent append collision? Renumber to the next free id and re-validate`,
-              REGISTRY_PATH,
+              id,
             ),
           );
         }
       }
 
-      // FRICTION-04/05: hygiene warnings — the registry still validates,
-      // but stale or incomplete entries degrade the harvest.
       for (const entry of entries) {
-        if (entry.status === "open" && entry.measure.trim().length === 0) {
-          warnings.push(
-            diag(
-              "FRICTION-04",
-              "warning",
-              `Entry ${entry.id} is open but carries no measure — a friction without a proposed prevention cannot be harvested`,
-              REGISTRY_PATH,
-            ),
-          );
-        }
+        // FRICTION-03: addressed entries must link their prevention artifacts.
         if (entry.status === "addressed" && entry.artifacts.length === 0) {
-          warnings.push(
-            diag(
-              "FRICTION-05",
-              "warning",
-              `Entry ${entry.id} is addressed but has no artifacts — link the document or file that carries the prevention`,
-              REGISTRY_PATH,
+          violations.push(
+            violation(
+              "FRICTION-03",
+              "error",
+              `Entry ${entry.id} is addressed but carries no artifacts — link the document or file that holds the prevention`,
+              entry.id,
             ),
           );
         }
-        if (entry.recurrences > 0 && entry.lastSeen < entry.created) {
-          warnings.push(
-            diag(
-              "FRICTION-05",
-              "warning",
-              `Entry ${entry.id} has recurrences but lastSeen (${entry.lastSeen}) predates created (${entry.created})`,
-              REGISTRY_PATH,
+
+        // FRICTION-04: date ordering — unconditional per the spec table.
+        if (entry.lastSeen < entry.created) {
+          violations.push(
+            violation(
+              "FRICTION-04",
+              "error",
+              `Entry ${entry.id} lastSeen (${entry.lastSeen}) predates created (${entry.created})`,
+              entry.id,
             ),
           );
+        }
+
+        // FRICTION-05: signature hygiene (warn — degrades matching, not integrity).
+        if (entry.signature.trim().length === 0) {
+          violations.push(
+            violation(
+              "FRICTION-05",
+              "warning",
+              `Entry ${entry.id} has an empty signature — recurrence matching cannot find it`,
+              entry.id,
+            ),
+          );
+        } else if (entry.signature !== entry.signature.toLowerCase()) {
+          violations.push(
+            violation(
+              "FRICTION-05",
+              "warning",
+              `Entry ${entry.id} signature is not lowercase-normalized: "${entry.signature}"`,
+              entry.id,
+            ),
+          );
+        }
+
+        // FRICTION-05: populated artifact refs that name files must resolve.
+        for (const ref of entry.artifacts) {
+          if (isPathLikeArtifact(ref) && !(await fs.exists(path.join(workspaceRoot, ref)))) {
+            violations.push(
+              violation(
+                "FRICTION-05",
+                "warning",
+                `Entry ${entry.id} artifact path does not exist: ${ref}`,
+                entry.id,
+              ),
+            );
+          }
         }
       }
     }
   }
 
+  const errors: Diagnostic[] = violations
+    .filter((v) => v.severity === "error")
+    .map((v) => ({
+      ruleId: v.rule,
+      severity: "error",
+      message: v.message,
+      file: REGISTRY_PATH,
+    }));
+  const warnings: Diagnostic[] = violations
+    .filter((v) => v.severity === "warning")
+    .map((v) => ({
+      ruleId: v.rule,
+      severity: "warning",
+      message: v.message,
+      file: REGISTRY_PATH,
+    }));
   const status = errors.length === 0 ? "pass" : "fail";
 
   if (outputFormat === "pretty") {
@@ -196,8 +251,9 @@ export async function runFrictionValidate(
     data: {
       command: "friction.validate",
       status,
-      file: REGISTRY_PATH,
+      registry: REGISTRY_PATH,
       entries: entries.length,
+      violations,
       errors,
       warnings,
     },

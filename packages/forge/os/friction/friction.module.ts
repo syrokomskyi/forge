@@ -18,10 +18,19 @@ autopsy step (signal checklist, signature matching, harvest mode +
 triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
 registered in bin/cli.ts, WORKSHOP_MODULE_MAP.forge, package.json
 exports; AGENTS.md module row; 13 vitest cases.</item>
+  <item>RFC-1433: realign friction.validate rules to the accepted spec table
+
+Independent review H1 finding: rule ids/severities were remapped vs the
+accepted failure-modes table. FRICTION-01 shape+id, 02 category, 03
+status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
+05 signature/artifact hygiene (warn). Output emits the documented
+violations[] shape; invented open-measure warn dropped; dead
+FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
+import { FRICTION_RULE_IDS } from "./types.ts";
 
 export async function createForgeFrictionModule(): Promise<ForgeModule> {
   const { runFrictionValidate } = await import("./handlers/friction-validate.ts");
@@ -35,22 +44,18 @@ export async function createForgeFrictionModule(): Promise<ForgeModule> {
         name: "friction.validate",
         description:
           "Validate the append-only friction registry (docs/frictions.yaml). " +
-          "FRICTION-01 fails on unreadable/unparseable/schema-broken files, " +
-          "FRICTION-02 on malformed or duplicate ids, FRICTION-03 on " +
-          "out-of-enum category/status values; FRICTION-04/05 warn on " +
-          "hygiene issues (open entry without a measure, addressed entry " +
-          "without artifacts, lastSeen before created). An absent registry " +
-          "passes with entries: 0 — the file is created lazily by the " +
-          "session-retro autopsy step (RFC-1433). Read-only.",
+          "FRICTION-01 fails on unreadable/unparseable files, entry-shape " +
+          "violations, and malformed or duplicate ids; FRICTION-02 on " +
+          "categories outside the closed catalog; FRICTION-03 on bad status " +
+          "or addressed entries without artifacts; FRICTION-04 on " +
+          "lastSeen before created or negative recurrences; FRICTION-05 " +
+          "warns on empty/non-normalized signatures and unresolvable " +
+          "artifact paths. An absent registry passes with entries: 0 — " +
+          "the file is created lazily by the session-retro autopsy step. " +
+          "Read-only.",
         scope: "workspace",
         contract: "frictions",
-        rules: [
-          "FRICTION-01",
-          "FRICTION-02",
-          "FRICTION-03",
-          "FRICTION-04",
-          "FRICTION-05",
-        ],
+        rules: [...FRICTION_RULE_IDS],
         mutatesState: false,
         execOnReadOnly: true,
         reads: ["docs/frictions.yaml"],

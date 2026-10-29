@@ -26,6 +26,14 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>2026-10-28: session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
   <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
+  <item>RFC-1433: realign friction.validate rules to the accepted spec table
+
+Independent review H1 finding: rule ids/severities were remapped vs the
+accepted failure-modes table. FRICTION-01 shape+id, 02 category, 03
+status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
+05 signature/artifact hygiene (warn). Output emits the documented
+violations[] shape; invented open-measure warn dropped; dead
+FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -566,7 +574,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 
 ## Constraints
 
-- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights, RFC-XXXX), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
+- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
 - **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. The only operator-facing prompts that remain are the unrelated gates: unattributed dirty files (Step 3d) and non-terminal RFC status (Step 4c of Pre-retro steps).
