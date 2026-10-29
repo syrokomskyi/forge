@@ -20,7 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0119 (2026-10-28): session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
   <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
   <item>RFC-1433: realign friction.validate rules to the accepted spec table
 
@@ -36,7 +35,8 @@ One-off external outages are not frictions unless they expose a missing
 guard — the sentence was in the accepted design but missing from the
 shipped signal checklist. Synced to the .agents copy.</item>
   <item>ADR-0121: persist soft-block report, fix E2-E4 wording, park arbitration</item>
-  <history>ADR-0121, RFC-1097, RFC-1247</history>
+  <item>ADR-0119: align retro delegation wording with pending routings; widen fo-idea-create-adr fast path</item>
+  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -227,7 +227,7 @@ If no RFCs were worked on in this session, skip this step silently.
 
 - It is not `fo-doc-audit` — that skill checks whether existing docs are in sync with code changes. This skill captures **new knowledge** that does not yet exist in any doc.
 - It is not `fo-harvest` — that skill scans for portable code patterns. This skill handles all insight types, including non-code knowledge.
-- It is not `fo-extract-dna` — that skill formalizes architectural invariants through RFCs. This skill may **delegate** to it when an insight is DNA-grade.
+- It is not `fo-extract-dna` — that skill formalizes architectural invariants through RFCs and grills the operator by contract. DNA-grade insights are recorded as pending routings in `.agents/memory/daily/<today>.md`, never delegated live during session end.
 - It is not a memory dump — memory DB is one of five routing targets, not the default. Most insights belong in version-controlled files, not ephemeral memory.
 
 ## Insight categories and routing
@@ -582,7 +582,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 
 - **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
-- **Delegation, not duplication.** For ADR, DNA, and pattern insights, delegate to the appropriate skill. Do not create ADRs, RFCs, or forge packages directly.
+- **Delegation, not duplication.** Decision insights delegate to `fo-idea-create-adr` via its accepted-decision fast path; DNA and pattern insights are recorded as pending routings for `fo-extract-dna`/`fo-harvest`, never delegated live at session end. Do not create ADRs, RFCs, or forge packages directly.
 - **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. Commits are never prompted for either: session-attributed changes commit unconditionally, unattributed files are left untouched and reported (Step 3d). The only operator-facing gate that remains inside the protocol is the unrelated non-terminal RFC status prompt (Step 4c of Pre-retro steps); the PREFERENCES.md bootstrap ask at skill start is a setup exception, not a session-end gate.
 - **No interactive heavyweight routing at session end.** `fo-extract-dna` and `fo-harvest` grill the operator by contract — record pending routings in `.agents/memory/daily/<today>.md` instead of invoking them. `fo-idea-create-adr` runs only via its documented accepted-decision fast path.
 - **Minimal edits.** Add rules in the most concise actionable form. Do not rewrite existing sections.

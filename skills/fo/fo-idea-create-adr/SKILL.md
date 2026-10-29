@@ -20,6 +20,7 @@ triggerPhrases: ["record this architectural decision", "create an ADR", "documen
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>ADR-0119 review fix: accepted-decision fast path widened — any caller carrying an already-made decision with supplied justification qualifies (fo-session-retro Decision routing alongside fo-idea), not only operator-provided text.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -74,7 +75,7 @@ If any item is false, use `fo-idea-create-rfc` instead and stop.
 
 ### 4. Grill the concept (skip if invoked with an accepted decision)
 
-**Skip condition:** If the caller (e.g. `fo-idea` accepted-decision fast path) explicitly states that the operator has already decided and provided justification, skip grilling and proceed directly to step 5. The operator's justification text will be used as the ADR's `Justification` section.
+**Skip condition:** If the caller explicitly signals an accepted-decision fast path — the decision is already made and the justification is supplied (e.g. `fo-idea` carrying an operator-made decision, or `fo-session-retro` routing a Decision insight with its session-derived rationale) — skip grilling and proceed directly to step 5. The supplied justification text will be used as the ADR's `Justification` section.
 
 Otherwise, before creating the file, invoke the `/grilling` skill to stress-test the proposed ADR concept. The grilling examines:
 
@@ -139,7 +140,7 @@ Commit path-scoped: `pnpm exec werkstatt run ecosystem.commit --message "adr: cr
 
 ## Constraints
 
-- **Grilling is mandatory before file creation — unless the caller explicitly signals an accepted-decision fast path.** When invoked from `fo-idea` with an already-made decision and operator-provided justification, skip step 4 and use the operator's text as the ADR's `Justification` section. In all other cases, do not skip step 4 — the concept must survive grilling before the ADR file is created.
+- **Grilling is mandatory before file creation — unless the caller explicitly signals an accepted-decision fast path.** When invoked with an already-made decision and supplied justification (`fo-idea` carrying an operator decision, `fo-session-retro` carrying a Decision insight's rationale), skip step 4 and use the supplied text as the ADR's `Justification` section. In all other cases, do not skip step 4 — the concept must survive grilling before the ADR file is created.
 - Do not change an ADR status out of `proposed`. Status transitions (`proposed → reviewing → accepted → implemented`) are handled by the implement skill or the named decider, not by this creation skill.
 - Do not use an ADR for command/policy/DNA-level decisions — those require a full RFC.
 - Do not create an ADR that contradicts an accepted/implemented RFC. If implementation reveals a conflict, escalate via `rfc.supersede.propose` or request a new RFC/ADR instead of silently working around it.
