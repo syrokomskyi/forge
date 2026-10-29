@@ -21,6 +21,8 @@ lazily created means absent equals empty.</purpose>
   spec table (dup id → 01, category → 02, addressed-without-artifacts → 03
   fail, lastSeen/recurrences → 04 fail unconditional, signature → 05 warn);
   output emits the documented violations[] shape.</item>
+  <item>RFC-1433: r2 review — entries reports the raw entry count even when
+  the schema parse fails (was: 0); rule ids typed as FrictionRuleId.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -35,12 +37,17 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { frictionsRegistrySchema } from "../types.ts";
-import type { FrictionEntry, FrictionValidateResult, FrictionViolation } from "../types.ts";
+import type {
+  FrictionEntry,
+  FrictionRuleId,
+  FrictionValidateResult,
+  FrictionViolation,
+} from "../types.ts";
 
 const REGISTRY_PATH = "docs/frictions.yaml";
 
 function violation(
-  rule: string,
+  rule: FrictionRuleId,
   severity: "error" | "warning",
   message: string,
   entry?: string,
@@ -49,7 +56,7 @@ function violation(
 }
 
 /** Map a zod issue's field path to the rule the spec's failure-modes table assigns. */
-function schemaIssueRule(issue: { path: PropertyKey[]; code: string }): string {
+function schemaIssueRule(issue: { path: PropertyKey[]; code: string }): FrictionRuleId {
   const field = issue.path[1];
   if (field === "category") return "FRICTION-02";
   if (field === "status") return "FRICTION-03";
@@ -120,7 +127,9 @@ export async function runFrictionValidate(
     }
   }
 
+  let rawEntryCount = 0;
   if (source !== null && violations.length === 0) {
+    rawEntryCount = Array.isArray(raw) ? raw.length : 0;
     const parsed = frictionsRegistrySchema.safeParse(raw ?? []);
     if (!parsed.success) {
       for (const issue of parsed.error.issues) {
@@ -252,7 +261,7 @@ export async function runFrictionValidate(
       command: "friction.validate",
       status,
       registry: REGISTRY_PATH,
-      entries: entries.length,
+      entries: entries.length || rawEntryCount,
       violations,
       errors,
       warnings,

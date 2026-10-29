@@ -11,9 +11,11 @@ result type for friction.validate.</purpose>
   <item>RFC-1433: initial registry schema — append-only frictions with
   signature-based recurrence matching (open | addressed), five closed
   categories, FRICTION-01..05 rule ids.</item>
-  <item>RFC-1433: review realignment — signature demoted to optional
-  (empty is a FRICTION-05 warn, not a schema failure); result shape moved
-  to the spec's violations[] contract.</item>
+  <item>RFC-1433: review realignment — result shape moved to the spec's
+  violations[] contract.</item>
+  <item>RFC-1433: r2 review — signature/measure/artifacts required again
+  (absence is a FRICTION-01 shape failure); present-but-empty signature
+  stays a FRICTION-05 warn.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,11 +45,11 @@ export const frictionEntrySchema = z.object({
   session: z.string().min(1),
   category: z.enum(FRICTION_CATEGORIES),
   friction: z.string().min(1),
-  // signature is deliberately not min(1) — empty or non-normalized values
-  // are FRICTION-05 warnings, not schema failures.
-  signature: z.string().default(""),
-  measure: z.string().default(""),
-  artifacts: z.array(z.string().min(1)).default([]),
+  // signature is required but deliberately not min(1) — a present-but-empty
+  // or non-normalized value is a FRICTION-05 warning, not a schema failure.
+  signature: z.string(),
+  measure: z.string(),
+  artifacts: z.array(z.string().min(1)),
   status: z.enum(FRICTION_STATUSES),
   recurrences: z.number().int().min(0),
   lastSeen: z.string().regex(DATE_PATTERN),
@@ -68,7 +70,7 @@ export type FrictionRuleId = (typeof FRICTION_RULE_IDS)[number];
 
 /** A violation in the spec's documented shape — rule + optional entry id + severity. */
 export interface FrictionViolation {
-  rule: string;
+  rule: FrictionRuleId;
   entry?: string;
   severity: "error" | "warning";
   message: string;
