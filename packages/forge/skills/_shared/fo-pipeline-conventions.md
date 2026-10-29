@@ -416,7 +416,9 @@ Mode trigger: collect/finalize activate only under an orchestrator run carrying 
 
 ## Decision window
 
-The decision window is the single scheduled operator interaction of a queue run — placed after maturation, before execution. It doubles as the batch acceptance act: `draft → accepted` transitions happen in the resolution phase that follows the window, so the operator signs off having seen every trade-off at once.
+The decision window is the single scheduled operator interaction of a queue run — placed after maturation, before execution. **It fires only when the ledger carries at least one `open` entry** (parked entries included — they are arbitration the operator owes). When it fires, it doubles as the batch acceptance act: `draft → accepted` transitions happen in the resolution phase that follows the window, so the operator signs off having seen every trade-off at once.
+
+**Empty agenda — no window, no question.** When maturation ends with zero `open` entries there is nothing to decide: the window is skipped and the run proceeds straight to the resolution phase. The orchestrator emits a one-line notice (e.g. `decision window — skipped, no open decisions`) and still renders `docs/queues/<id>.briefing.md` when the ledger exists — the resolved-by-inference rows are the run's durable decision record, disputable post-factum like any `auto-resolved` entry. Never substitute an "accept all for execution?" confirmation for the empty agenda — the operator's orchestrator invocation already carries the implement instruction and IS the acceptance authority for the `draft → accepted` transitions the resolution phase commits.
 
 Window mechanics:
 

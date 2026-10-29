@@ -84,12 +84,12 @@ The operator may provide either:
 - **An existing RFC/ADR id** — e.g. `RFC-XXXX` or `ADR-XXXX`. The skill skips idea creation and starts the pipeline from the appropriate step.
 - **A queue manifest** — `--queue <path>` or a `docs/queues/*.yaml` path in the invocation text. The skill loads it as the run's manifest (see §Queue mode — the four-phase model) and processes the manifest's `items[]` in order.
 - **A pasted document list** — >=2 `RFC-XXXX`/`ADR-XXXX` ids in the invocation text (e.g. another agent's ordered implementation plan). The skill materializes a session manifest (see §Queue mode → Manifest materialization).
-- **A single document id** — materializes a one-item manifest; the same four-phase model applies (the decision window still fires, usually small).
+- **A single document id** — materializes a one-item manifest; the same four-phase model applies (the decision window applies too — it fires only when the ledger carries `open` entries).
 - **Nothing** — if neither is provided, check session context and IDE for a recently created document. If none found, ask the operator: "Какую идею реализуем? Опишите идею или укажите RFC-XXXX / ADR-XXXX."
 
 ## Queue mode — the four-phase model
 
-**Every orchestrator run is a queue run.** The invocation carrying `--queue <path>`, a `docs/queues/*.yaml` path, a pasted document list, or a single `RFC-XXXX`/`ADR-XXXX` id all enter the same four-phase model; a single document materializes a one-item manifest. There is exactly one execution model — operator decisions are front-loaded into a single decision window, then execution runs uninterrupted.
+**Every orchestrator run is a queue run.** The invocation carrying `--queue <path>`, a `docs/queues/*.yaml` path, a pasted document list, or a single `RFC-XXXX`/`ADR-XXXX` id all enter the same four-phase model; a single document materializes a one-item manifest. There is exactly one execution model — operator decisions are front-loaded into a single decision window (skipped when the ledger carries zero `open` entries), then execution runs uninterrupted.
 
 **Manifest materialization (mandatory when no manifest path is given):** Build the manifest from the invocation text before anything else:
 
@@ -146,9 +146,11 @@ Process `items[]` in manifest order. Per item, run the existing per-doc pipeline
 4. **Batch-item checkpoint** — after each item, emit the context checkpoint per `_shared/fo-pipeline-conventions.md` §Context checkpoint between batch items.
 5. **Clean-tree gate** — before starting the next item, verify the working tree has no uncommitted leftovers from the completed item; warn and stop if dirty.
 
-### Phase 2 — Decision window (the single operator interaction)
+### Phase 2 — Decision window (the single scheduled operator interaction)
 
-Render `docs/queues/<id>.briefing.md` from the ledger per `_shared/fo-pipeline-conventions.md` §Decision window and present it: batch policies, per-document decision blocks with recommended options, the resolved-by-inference list, and the parked-items section — every `open`+`parked: true` entry is arbitration the operator owes here. The operator answers in one batch — free-text codes (`Q-03: B`, `all — per recommendations`, `Q-07: defer`); `ask_user_question` is legal only for ≤4 highest-risk decisions. The answered window IS the batch acceptance act.
+**Skip when the agenda is empty.** The window fires only when the ledger carries ≥1 `open` entry after Phase 1 (parked entries included — they are owed arbitration). With zero `open` entries there is nothing to decide — render the briefing when the ledger exists, emit a one-line notice (`decision window — skipped, no open decisions`), and proceed directly to Phase 3. Never emit an "accept all for execution (draft → accepted)?" confirmation for an empty agenda: the operator's invocation of this skill IS the acceptance act.
+
+When the window fires, render `docs/queues/<id>.briefing.md` from the ledger per `_shared/fo-pipeline-conventions.md` §Decision window and present it: batch policies, per-document decision blocks with recommended options, the resolved-by-inference list, and the parked-items section — every `open`+`parked: true` entry is arbitration the operator owes here. The operator answers in one batch — free-text codes (`Q-03: B`, `all — per recommendations`, `Q-07: defer`); `ask_user_question` is legal only for ≤4 highest-risk decisions. The answered window IS the batch acceptance act.
 
 ### Phase 3 — Resolution (no operator)
 
@@ -313,7 +315,7 @@ If the session was interrupted (agent stopped, context limit, crash, checkpoint 
 
 - **Pure orchestrator.** Delegate every step to the appropriate skill — this orchestrator does not implement code, write RFCs/ADRs, or run validation commands directly.
 - **No pauses between pipeline steps.** The operator's invocation is the instruction to run the entire pipeline. Proceed automatically.
-- **No inline questions inside orchestrated steps.** Under the four-phase model, pipeline steps run in collect mode — every operator-facing question materializes in the queue's decision ledger (`_shared/fo-pipeline-conventions.md` §Collect and finalize contract), and the single decision window is the only scheduled interaction. Standalone skill invocations keep interview behavior.
+- **No inline questions inside orchestrated steps.** Under the four-phase model, pipeline steps run in collect mode — every operator-facing question materializes in the queue's decision ledger (`_shared/fo-pipeline-conventions.md` §Collect and finalize contract), and the single decision window — firing only when the ledger carries `open` entries — is the only scheduled interaction. Standalone skill invocations keep interview behavior.
 - **Review and fix are inside implement.** `fo-idea-implement` runs `fo-review` and `fo-fix` internally. Do not invoke them as separate orchestrator steps.
 - **Fallback verification is MANDATORY.** After `fo-idea-implement` returns, always check that a review report exists in `docs/reviews/code/` for this session. If missing, invoke `fo-review` and `fo-fix` as a fallback. This ensures review and fix are never skipped.
 - **Commit only your own files** — see `_shared/fo-pipeline-conventions.md` §Commit discipline. Each invoked skill stages only its own files.
