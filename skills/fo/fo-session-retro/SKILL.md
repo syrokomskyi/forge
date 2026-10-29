@@ -20,9 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>2026-10-28: session-end insight acceptance is automatic — removed the operator multi-select gate; every triage-table insight routes without confirmation (invariant and pattern record pending routings since fo-extract-dna and fo-harvest grill by contract; decision uses fo-idea-create-adr fast path).</item>
   <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
@@ -34,6 +31,12 @@ status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
 05 signature/artifact hygiene (warn). Output emits the documented
 violations[] shape; invented open-measure warn dropped; dead
 FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
+  <item>RFC-1433: acceptance CX-1 — add the spec's negative filter to the checklist
+
+One-off external outages are not frictions unless they expose a missing
+guard — the sentence was in the accepted design but missing from the
+shipped signal checklist. Synced to the .agents copy.</item>
+  <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -454,6 +457,8 @@ Runs after insight routing (Step 4) and before the commit (Step 5) — every ses
 - A manual recovery was needed (reconcile → resume → re-ship, manual close)
 - Environment friction — missing tooling, RTK quirks, parallel-agent dirt in the tree
 - The agent's own error — wrong command, wrong scope, mixed commit, bad assumption
+
+Negative filter: one-off external outages (registry 502s, network blips, upstream downtime) are **not** frictions unless they expose a missing guard — a transient cause with no durable lesson appends nothing.
 
 Zero hits → append nothing; the report states «трений не было» in `aiLanguage`. Do not invent frictions to fill the registry.
 
