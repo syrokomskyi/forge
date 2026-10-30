@@ -12,16 +12,11 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1391: close RFC-1391 review r3 nits — pin log on exhaustive paths
-
-REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
-refuted and no-report tests; external-tool timedOut persists partial output
-as log (symmetric with exhaustive); log doc comments updated to reflect
-all-post-spawn-verdicts attachment.</item>
   <item>RFC-1401: give test acceptance probes an optional timeoutMs bound</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -314,7 +309,15 @@ export interface AcceptanceProbeMeta {
 }
 
 export type AcceptanceProbe = (
-  | { probe: "run"; command: string; expect: { exitCode: number }; criterion?: string }
+  // timeoutMs overrides the 120s default for long-running commands (e.g.
+  // the outcomeBuild binding — a real build+validate needs minutes).
+  | {
+      probe: "run";
+      command: string;
+      timeoutMs?: number;
+      expect: { exitCode: number };
+      criterion?: string;
+    }
   | { probe: "file-exists"; path: string; criterion?: string }
   | { probe: "file-contains"; path: string; pattern: string; criterion?: string }
   | { probe: "command-registered"; name: string; criterion?: string }
