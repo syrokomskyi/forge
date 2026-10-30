@@ -20,9 +20,6 @@ triggerPhrases: ["исправим", "примени findings", "fix all", "fix 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
   <item>RFC-1440: fo-reproduce skill + pipeline wiring
@@ -33,7 +30,8 @@ wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
   <item>RFC-1440: apply RFC-1440 review findings — frontmatter budgets, SKILL-17 ids, honest-exit routing</item>
-  <history>RFC-1250</history>
+  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <history>RFC-1097, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -101,6 +99,8 @@ For each finding:
 - If it is ambiguous, ask the user before changing — **except under an orchestrated queue run**: never call `ask_user_question` there. Auto-resolve the ambiguity with the recommended option and append a ledger entry `status: auto-resolved`; if the ambiguity falls in the hard-stop class (§Auto-resolve and log), append `status: open` + `parked: true` and park the item instead.
 - Do not delete or weaken existing tests without explicit direction.
 - Prefer minimal upstream fixes over downstream workarounds.
+
+**Design deviations (RFC-1454)** — when the review report's frontmatter carries `designDeviations`, handle them by `resolution`: a `fix` deviation is an ordinary finding — the code returns to the RFC. An `amend` deviation edits the RFC in the same change: add the entry to the RFC's `## Deviations` section (`- <id> (review <reviewId>): <what changed>`) and update the affected criterion text and its probe alongside — an `amend` absent from `## Deviations` blocks the stamp (RFC-IMP-15), and a dangling `(review <reviewId>)` fails `rfc.validate` (V-49). Under an orchestrated queue run, an `amend` deviation whose rationale is unclear auto-resolves to `fix` (code returns to the RFC) — the conservative direction — with a ledger entry.
 
 **Falsified-routes ledger** — before choosing a fix approach for a finding, read the plan's `## Falsified routes` section when the work item carries a plan file: a `Forbidden retry: yes` row rejects the approach unless you can state a new fact that invalidates its root cause. When a fix approach is abandoned after a real attempt, append a row (route, root cause, falsified-at evidence) before moving on — when no plan file exists, record the falsified route in the session output instead. See `_shared/fo-pipeline-conventions.md` §Falsified-routes ledger.
 

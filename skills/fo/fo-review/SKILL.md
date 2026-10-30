@@ -20,8 +20,6 @@ triggerPhrases: ["проверим всё ли сделали правильно
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: soft-block arbitration appends to the queue decision ledger
-  (open / stage: review) under orchestrated runs.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -39,6 +37,8 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
+  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -343,6 +343,12 @@ observations: []                                          # tracked warnings car
 diffRange: <fixed-point>...HEAD
 filesReviewed:
   - <file path>
+rfcId: RFC-NNNN                    # required when the diff implements an RFC
+designDeviations:                  # optional; omit or [] when none (RFC-1454)
+  - id: DEV-1                      # unique within the report
+    rfc: RFC-NNNN                  # the RFC the deviation amends/fixes
+    summary: "<what differs>"
+    resolution: <fix | amend>      # fix = code returns to the RFC; amend = RFC changes to the code
 ---
 
 # Code Review: <diff range or file list>
@@ -351,6 +357,8 @@ filesReviewed:
 ```
 
 The `reviewer.model` field must record the AI model identifier the skill is running on (e.g. `claude-sonnet-4-20250514`, `gpt-4o`). If the model cannot be determined, use `unknown`.
+
+For each finding where the implementation **intentionally differs** from the RFC's Design or an acceptance criterion, record it under `designDeviations` with a `resolution`: `fix` when the code returns to the RFC (it also appears as an ordinary finding — the deviation record is bookkeeping, not a separate channel), `amend` when the RFC changes to match the code. A malformed record (missing `id`/`resolution`, unknown resolution) blocks the RFC's stamp (RFC-IMP-15) just like an unrecorded `amend` — never emit a partial record.
 
 If the file already exists, overwrite it — the review is always the latest run.
 

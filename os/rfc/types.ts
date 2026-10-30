@@ -12,14 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
-
-REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
-fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
-config is error not unavailable, and both surfaces share one path; {entry} is
-required in formal.tools.command; spec/entry paths are confined to the
-workspace; the exhaustive entry dispatches per packageManager; proved runs
-record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1391: close RFC-1391 review r3 nits — pin log on exhaustive paths
 
 REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
@@ -29,6 +21,7 @@ all-post-spawn-verdicts attachment.</item>
   <item>RFC-1401: give test acceptance probes an optional timeoutMs bound</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
@@ -759,6 +752,9 @@ export type RfcImplementStampRule =
   // passing outcome probe in the evidence envelope. Operator-waivable via
   // --waive-outcome (records outcomeWaiver in the envelope).
   | "RFC-IMP-14"
+  // RFC-1454: a committed review report's amend designDeviation is absent
+  // from the RFC's "## Deviations" section, or the record is malformed.
+  | "RFC-IMP-15"
   // RFC-1310: commit-time governance provenance — the implementation commit
   // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
   | "STAMP-GOV-01"

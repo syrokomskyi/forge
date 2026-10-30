@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1383: RFC-IMP-02 names the --check-criteria remedy; success output and result data report criteria N of M.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-IMP-07</history>
+  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1383, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -36,7 +36,8 @@ import {
   rfcFileMatchesId,
   loadRfcStatusMap,
 } from "../frontmatter-io.ts";
-import { evaluateAcceptanceCriteria } from "./validate-rules.ts";
+import { evaluateAcceptanceCriteria, stripFencedCodeBlocks } from "./validate-rules.ts";
+import { evaluateDeviationGate } from "./implement-stamp-deviations.ts";
 import { toIsoDate } from "./shared.ts";
 import { byteHashHex, normalizeProbes, runRfcVerificationEmit } from "../verification-evidence.ts";
 import {
@@ -605,6 +606,23 @@ async function evaluateStampEvidenceGates(opts: {
       violations.push(...outcome.errors);
       warnings.push(...outcome.warnings);
     }
+  }
+
+  // ── RFC-IMP-15: amend review deviations recorded in ## Deviations (RFC-1454) ──
+  {
+    let reviewsDir: string | null = null;
+    try {
+      reviewsDir = loadForgeConfig(opts.workspaceRoot).bindings?.paths?.reviewsDir ?? null;
+    } catch {
+      // No readable forge.yaml → null reviewsDir → gate passes.
+    }
+    const deviations = await evaluateDeviationGate({
+      rfcId: targetId,
+      strippedRfcBody: stripFencedCodeBlocks(await opts.io.readFile(rfcFilePath)),
+      git: createOriginGit(opts.workspaceRoot),
+      reviewsDir,
+    });
+    violations.push(...deviations.errors);
   }
 
   // ── RFC-IMP-06: probe-bearing post-cutoff RFCs need a passing envelope ────
