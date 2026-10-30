@@ -44,6 +44,10 @@
       "types": "./src/config/forge-config.ts",
       "default": "./src/config/forge-config.ts"
     },
+    "./registry": {
+      "types": "./src/registry.ts",
+      "default": "./src/registry.ts"
+    },
     "./reachability": {
       "types": "./src/reachability/command-mentions.ts",
       "default": "./src/reachability/command-mentions.ts"
