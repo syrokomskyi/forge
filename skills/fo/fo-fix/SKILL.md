@@ -20,9 +20,6 @@ triggerPhrases: ["исправим", "примени findings", "fix all", "fix 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: orchestrated-run contract — ambiguous findings auto-resolve
-  with auto-resolved ledger entries; hard-stop class parks the item instead of
-  asking.</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -35,6 +32,8 @@ modification boundary, verifier exit, honest inconclusive attempt log);
 wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
+  <item>RFC-1440: apply RFC-1440 review findings — frontmatter budgets, SKILL-17 ids, honest-exit routing</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -107,7 +106,7 @@ For each finding:
 
 **Blind-spot pass after two failures on one approach** — after two failed attempts on the same fix approach, and before the next retry or pivot, run the clean-context blind-spot pass defined in `_shared/fo-pipeline-conventions.md` §Blind-spot pass.
 
-Reproduction-first (RFC-1440): when a finding is a reproducible defect, invoke `fo-reproduce` **before** applying the fix — the verified red test is the fix's acceptance oracle ("make this verified test green without weakening the suite", RFC-1331). An `inconclusive` reproduction attaches its attempt log and the fix proceeds best-effort; the commit then carries no `Repro-Verified:`. Add a test under `regression <risk>` only when the finding names a concrete regression risk (that reason does not route through `fo-reproduce`); otherwise rely on the existing suite. Run the relevant package tests before the full build when that saves time.
+Reproduction-first: when a finding is a reproducible defect, invoke `fo-reproduce` **before** applying the fix — the verified red test is the fix's acceptance oracle ("make this verified test green without weakening the suite"). An `inconclusive` reproduction attaches its attempt log and the fix proceeds best-effort; the commit then carries no `Repro-Verified:`. Add a test under `regression <risk>` only when the finding names a concrete regression risk (that reason does not route through `fo-reproduce`); otherwise rely on the existing suite. Run the relevant package tests before the full build when that saves time.
 
 ### 3. Run scoped typecheck verification
 
