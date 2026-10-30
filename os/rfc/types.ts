@@ -12,7 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
 REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
@@ -29,7 +28,8 @@ as log (symmetric with exhaustive); log doc comments updated to reflect
 all-post-spawn-verdicts attachment.</item>
   <item>RFC-1401: give test acceptance probes an optional timeoutMs bound</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383</history>
+  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -881,6 +881,9 @@ export const RFC_ORIGIN_CUTOFF = "2026-10-18";
 
 /** RFC-1334: cutoff for V-45 (proposed/added commands need a command-mode reachable probe). */
 export const RFC_REACHABLE_CUTOFF = "2026-10-18";
+
+/** RFC-1455: cutoff for V-50/V-51 (`## Fixed inputs` rows bound to outcome probes). */
+export const RFC_FIXED_INPUTS_CUTOFF = "2026-10-30";
 
 /**
  * RFC-0997: non-blocking probe coverage report per RFC.
