@@ -744,3 +744,16 @@ status: active
 - **Context:** 2026-10-29 — fo-session-retro Step 3d redesign (ADR-0121)
 - **Question:** When the session-end protocol finds dirty files it cannot attribute to this session, should it ask the operator whether to commit each one (per-file prompt), leave them silently, or leave them with a report line — and where should the no-commit-question rule live?
 - **Answer:** Unattributed files are left untouched and listed in the retro report (option A — visibility without a prompt); the rule is anchored globally in `_shared/fo-pipeline-conventions.md` §Commit discipline plus an explicit line in PREFERENCES.md (radius A); process = ADR + direct edits (option C). Session-attributed changes commit unconditionally — the operator is never asked whether to commit. Post-review arbitration extended the radius to the contradicting enforcement surfaces (AGENTS.md §Session-end, pre-user-prompt hook, check-clean-trees.sh, wg-mission-complete operator-edit gate).
+
+### K-0058: Section languages — generalize, compute fallbacks, keep projections whole
+
+```knowledge-entry
+id: K-0058
+layer: L0
+created: 2026-10-30
+status: active
+```
+
+- **Context:** 2026-10-30 — RFC-1444 grilling (dp7 German-in-section request; supersedes RFC-1436)
+- **Question:** How should a section show its content in additional languages — language axis, declaration, switching, projections, content location, rendering, fate of the per-field companion mechanism, reference resolution, and untranslated text?
+- **Answer:** Axis = page locale first + declared languages; one site declaration (`i18n.sectionLanguages`) with block opt-in; all renditions pre-rendered, instant ARIA-tabs switch via the existing `lang-switcher` (both `pill`/`text` variants kept, `scope: section`); no persistence, `#<blockId>-<lang>` deep link; one resolved model feeds every projection under a package-fixed policy with a parity check; non-routed languages live in same-shaped partial trees (`routed: false`), routed languages resolve by block id with zero authoring; the page builder renders the section's own component once per language (works for formatted sections); the new RFC supersedes RFC-1436 with no compatibility layer; references resolve in the rendition language with no fallback; missing German is agent-translated with `provenance: inferred` and client confirmation before main.
