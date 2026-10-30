@@ -18,6 +18,7 @@ prose checklist.
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1401: test probes gain optional timeoutMs — the 120s default cannot host a ~10min cold e2e run; spawnVitest honours the per-probe bound.</item>
+  <item>RFC-1453: page probes execute through an OutcomeSession (outcomeBuild/outcomeServe bindings); tri-state verdicts; RFC-ACC-03 skip removed; RFC-ACC-04 reports unverified.</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
 REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
@@ -31,6 +32,7 @@ record log, counterexample stays the refuted-path record.</item>
 */
 
 import { probeReachableCommand, probeReachableSymbol } from "./reachable-symbol.ts";
+import { createOutcomeSession, type OutcomeSession } from "./outcome-probe.ts";
 import { spawn } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 import { runProofCheck } from "../../src/formal/index.ts";
@@ -366,6 +368,7 @@ export async function runProbe(
   workspaceRoot: string,
   commandRegistry?: CommandRegistry,
   forgeRoot?: string,
+  outcomeSession?: OutcomeSession,
 ): Promise<ProbeResult> {
   switch (probe.probe) {
     case "run": {
@@ -413,11 +416,18 @@ export async function runProbe(
       return { probe, ok, detail: ok ? "registered" : "not registered" };
     }
     case "page": {
-      return {
-        probe,
-        ok: true,
-        detail: "page probe skipped — run qa.independent.run against a built dist",
-      };
+      // RFC-1453: page probes execute against the served output of their
+      // `target` via the outcomeBuild/outcomeServe bindings. A probe that
+      // cannot run reports `unverified` — never `ok` without executing.
+      if (outcomeSession) {
+        return outcomeSession.runPageProbe(probe);
+      }
+      const session = createOutcomeSession({ workspaceRoot, forgeRoot });
+      try {
+        return await session.runPageProbe(probe);
+      } finally {
+        await session.dispose();
+      }
     }
     case "test": {
       const { exitCode, timedOut } = await spawnVitest(
@@ -533,15 +543,19 @@ export async function runRfcAcceptanceRun(
   const results: RfcAcceptanceRunResult["results"] = [];
   const diagnostics: Diagnostic[] = [];
 
-  for (const fileName of allFiles) {
-    const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
-    if (!parsedFile) continue;
-    if ("error" in parsedFile) continue;
-    const fm = parsedFile.parsed.frontmatter;
-    const rfcId = String(fm["id"] ?? "");
+  // RFC-1453: one outcome session per invocation — page probes of the same
+  // target share one build + one serve; disposed in `finally`.
+  const session = createOutcomeSession({ workspaceRoot, forgeRoot: context.forgeRoot });
+  try {
+    for (const fileName of allFiles) {
+      const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
+      if (!parsedFile) continue;
+      if ("error" in parsedFile) continue;
+      const fm = parsedFile.parsed.frontmatter;
+      const rfcId = String(fm["id"] ?? "");
 
-    if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) continue;
-    if (targetStatus && String(fm["status"] ?? "") !== targetStatus) continue;
+      if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) continue;
+      if (targetStatus && String(fm["status"] ?? "") !== targetStatus) continue;
 
     const acceptance = fm["acceptance"];
     const relFile = path.join(RFC_DIR, fileName);
@@ -561,20 +575,23 @@ export async function runRfcAcceptanceRun(
     }
 
     const probeResults: ProbeResult[] = [];
-    let pageProbeCount = 0;
     for (const raw of acceptance as AcceptanceProbe[]) {
-      if (raw.probe === "page") {
-        pageProbeCount++;
-        probeResults.push({
-          probe: raw,
-          ok: true,
-          detail: "page probe skipped — run qa.independent.run against a built dist",
-        });
-        continue;
-      }
-      const result = await runProbe(raw, workspaceRoot, context.commandRegistry, context.forgeRoot);
+      const result = await runProbe(
+        raw,
+        workspaceRoot,
+        context.commandRegistry,
+        context.forgeRoot,
+        session,
+      );
       probeResults.push(result);
-      if (!result.ok) {
+      if (result.verdict === "unverified") {
+        diagnostics.push({
+          ruleId: "RFC-ACC-04",
+          severity: "error",
+          file: relFile,
+          message: `${rfcId}: probe "${raw.probe}" unverified — ${result.detail}.`,
+        });
+      } else if (!result.ok) {
         diagnostics.push({
           ruleId: "RFC-ACC-01",
           severity: "error",
@@ -582,14 +599,6 @@ export async function runRfcAcceptanceRun(
           message: `${rfcId}: probe "${raw.probe}" failed — ${result.detail}.`,
         });
       }
-    }
-    if (pageProbeCount > 0) {
-      diagnostics.push({
-        ruleId: "RFC-ACC-03",
-        severity: "info",
-        file: relFile,
-        message: `${pageProbeCount} page probe(s) skipped — run \`qa.independent.run --site <app>\` against a built dist.`,
-      });
     }
 
     let rfcCoverage: ProbeCoverageReport | undefined;
@@ -601,7 +610,10 @@ export async function runRfcAcceptanceRun(
       rfcCoverage = computeProbeCoverage(criteriaEval.criterionIds, acceptance);
     }
 
-    results.push({ rfcId, probeResults, coverage: rfcCoverage });
+      results.push({ rfcId, probeResults, coverage: rfcCoverage });
+    }
+  } finally {
+    await session.dispose();
   }
 
   const failedCount = diagnostics.filter((d) => d.severity === "error").length;

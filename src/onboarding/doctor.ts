@@ -8,11 +8,11 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1226: skills-unmanaged check — warn on SKILL.md-bearing dirs without .forge-managed marker</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1255: forge-version-sync check — warns when the installed @warpgogol/forge version diverges from forge.yaml syncedVersion (pnpm up drifts it silently); nested wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>agents.generate remediation counts marker-guarded semantic-layer injections as fixes — a hand-written file that only gained the region reports fixed instead of skipped (consumer field report follow-up to RFC-1253).</item>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -22,6 +22,7 @@ import { resolveIo } from "../utils/io.ts";
 import { hasEditableGeneratedMarker, mergeEditableGenerated } from "../utils/index.ts";
 import { readFileSync, existsSync } from "../utils/sync-fs.ts";
 import { join, relative, dirname, resolve } from "node:path";
+import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
 import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
 import type {
@@ -231,6 +232,93 @@ async function validateBindings(workspaceRoot: string, io: WorkspaceIO): Promise
   }
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Outcome probe config (RFC-1453)
+// ---------------------------------------------------------------------------
+
+/** Path segments before the first segment containing a glob wildcard. */
+function globStaticPrefix(glob: string): string {
+  const segments = glob.split("/");
+  const firstWildcard = segments.findIndex((s) => /[*?[\]{}]/.test(s));
+  const prefix = firstWildcard === -1 ? segments : segments.slice(0, firstWildcard);
+  return prefix.join("/");
+}
+
+const OUTCOME_SURFACE_SCAN_LIMIT = 50_000;
+
+async function outcomeSurfaceMatchesAnyFile(
+  workspaceRoot: string,
+  glob: string,
+  io: WorkspaceIO,
+): Promise<boolean> {
+  const staticPrefix = globStaticPrefix(glob);
+  const scanRoot = join(workspaceRoot, staticPrefix === "" ? "." : staticPrefix);
+  if (!(await pathExists(scanRoot, io))) {
+    // A purely static glob is a file path — check the file itself.
+    return staticPrefix === glob && (await pathExists(join(workspaceRoot, glob), io));
+  }
+  const isMatch = picomatch(glob);
+  let scanned = 0;
+  const walk = async (dir: string): Promise<boolean> => {
+    const entries = await io.readdir(dir).catch(() => []);
+    for (const entry of entries) {
+      if (scanned++ > OUTCOME_SURFACE_SCAN_LIMIT) return false;
+      const fullPath = join(dir, entry.name);
+      if (entry.isDirectory) {
+        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+        if (await walk(fullPath)) return true;
+      } else if (isMatch(relative(workspaceRoot, fullPath))) {
+        return true;
+      }
+    }
+    return false;
+  };
+  const stat = await io.stat(scanRoot).catch(() => null);
+  if (stat && !stat.isDirectory) {
+    return isMatch(relative(workspaceRoot, scanRoot));
+  }
+  return walk(scanRoot);
+}
+
+async function checkOutcomeConfig(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
+  let config;
+  try {
+    config = loadForgeConfig(workspaceRoot);
+  } catch {
+    return { name: "outcome-config", status: "pass", message: "No forge.yaml — outcome check skipped" };
+  }
+  const surfaces = config.outcomeSurfaces ?? [];
+  if (surfaces.length === 0) {
+    return { name: "outcome-config", status: "pass", message: "No outcomeSurfaces declared" };
+  }
+  const commands = config.bindings?.commands;
+  const missingBindings = [
+    commands?.outcomeBuild ? null : "outcomeBuild",
+    commands?.outcomeServe ? null : "outcomeServe",
+  ].filter((k): k is string => k !== null);
+  if (missingBindings.length > 0) {
+    return {
+      name: "outcome-config",
+      status: "warn",
+      message: `outcomeSurfaces declared without ${missingBindings.join("/")} binding(s) — page probes will report unverified`,
+    };
+  }
+  const dead: string[] = [];
+  for (const glob of surfaces) {
+    if (!(await outcomeSurfaceMatchesAnyFile(workspaceRoot, glob, io))) {
+      dead.push(glob);
+    }
+  }
+  return {
+    name: "outcome-config",
+    status: dead.length === 0 ? "pass" : "warn",
+    message:
+      dead.length === 0
+        ? `outcomeSurfaces: ${surfaces.length} glob(s), all matched`
+        : `outcomeSurfaces glob(s) match no file: ${dead.join(", ")}`,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -1539,6 +1627,10 @@ export async function runDoctor(
         ? `Bindings: ${bindingsResult.resolved.length} resolved, ${bindingsResult.absent.length} absent`
         : `Bindings: ${bindingsResult.invalid.length} invalid — ${bindingsResult.invalid.join(", ")}`,
   });
+
+  // RFC-1453: outcomeSurfaces without both outcome bindings, or globs that
+  // match no file, warn — page probes would report unverified at run time.
+  checks.push(await checkOutcomeConfig(workspaceRoot, fio));
 
   // Installed forge version vs forge.yaml syncedVersion — `pnpm up` bumps the
   // package without running forge.upgrade, leaving syncedVersion stale.

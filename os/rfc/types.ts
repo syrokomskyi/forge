@@ -12,7 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1383: RfcImplementStampData.criteriaTotal — total parsed ACs for N-of-M reporting.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
@@ -29,7 +28,8 @@ refuted and no-report tests; external-tool timedOut persists partial output
 as log (symmetric with exhaustive); log doc comments updated to reflect
 all-post-spawn-verdicts attachment.</item>
   <item>RFC-1401: give test acceptance probes an optional timeoutMs bound</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364</history>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -325,11 +325,14 @@ export type AcceptanceProbe = (
   | { probe: "file-exists"; path: string; criterion?: string }
   | { probe: "file-contains"; path: string; pattern: string; criterion?: string }
   | { probe: "command-registered"; name: string; criterion?: string }
-  // RFC-0333: black-box expectation against the rendered site. Executed
-  // ONLY by qa.independent.run (needs a built dist); rfc.acceptance.run
-  // reports it as skipped.
+  // RFC-1453: black-box expectation against the served output of a named
+  // `target`. Executed via the project's outcomeBuild/outcomeServe
+  // bindings (forge.yaml); reports `unverified` when it cannot run —
+  // never `ok` without having executed. `target` is required by V-47 on
+  // non-archived RFCs (optional in the type so archived files still parse).
   | {
       probe: "page";
+      target?: string;
       path: string;
       expectStatus?: number;
       selector?: string;
@@ -369,6 +372,12 @@ export interface ProbeResult {
   ok: boolean;
   /** Actual exit code / resolution info. */
   detail: string;
+  /**
+   * RFC-1453: tri-state verdict — `pass | fail | unverified`. `ok` equals
+   * `verdict === "pass"`. Absent on results emitted before this field
+   * existed; readers normalize `verdict ?? (ok ? "pass" : "fail")`.
+   */
+  verdict?: ProbeVerdict;
   /** RFC-1391: proof verdict payload — present when `probe` is `proof`. */
   proof?: ProofProbeEvidence;
 }
@@ -388,6 +397,9 @@ export interface ProofProbeEvidence {
   log?: string;
 }
 
+/** RFC-1453: executed observation outcomes; `unverified` means "could not be checked" and never satisfies a gate. */
+export type ProbeVerdict = "pass" | "fail" | "unverified";
+
 export interface RfcAcceptanceRunResult {
   command: "rfc.acceptance.run";
   status: "pass" | "fail";
@@ -399,6 +411,8 @@ export interface VerificationEvidenceProbeRecord {
   ok: boolean;
   detail: string;
   durationMs: number;
+  /** RFC-1453: tri-state verdict; absent in pre-RFC-1453 envelopes (read as ok?"pass":"fail"). */
+  verdict?: ProbeVerdict;
   /** RFC-1330: git-derived origin — present for RFCs created on or after RFC_ORIGIN_CUTOFF. */
   origin?: ProbeOriginRecord;
   /** RFC-1391: proof verdict payload — present when `probe` is `proof`. */
@@ -463,6 +477,8 @@ export interface VerificationEvidence {
   probes: VerificationEvidenceProbeRecord[];
   overall: "pass" | "fail";
   filesModified?: string[];
+  /** RFC-1453: operator waiver recorded when RFC-IMP-14 was bypassed via --waive-outcome. */
+  outcomeWaiver?: { reason: string; by: string };
 }
 
 export interface VerificationDelta {
@@ -739,6 +755,10 @@ export type RfcImplementStampRule =
   // RFC-1391: verificationTier formal needs ≥1 proof probe, each with a
   // proved envelope verdict. No waiver.
   | "RFC-IMP-13"
+  // RFC-1453: implementation diff touches an outcomeSurfaces glob without a
+  // passing outcome probe in the evidence envelope. Operator-waivable via
+  // --waive-outcome (records outcomeWaiver in the envelope).
+  | "RFC-IMP-14"
   // RFC-1310: commit-time governance provenance — the implementation commit
   // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
   | "STAMP-GOV-01"

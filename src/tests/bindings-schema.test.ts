@@ -10,6 +10,7 @@
   <item>RFC-1224: adrImplementStamp schema/default coverage; consumer-defined command key passthrough.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
 </CHANGE_SUMMARY>
 */
 
@@ -213,6 +214,7 @@ describe("RFC-0639: resolveTerminology", () => {
       skillsDir: ".agents/skills",
       sessionsDir: "docs/sessions",
     },
+    outcomeSurfaces: [],
     bindings: {
       schema: "forge/bindings@1",
       commands: {
@@ -231,6 +233,8 @@ describe("RFC-0639: resolveTerminology", () => {
         preview: null,
         lint: null,
         verifyReproduction: null,
+        outcomeBuild: null,
+        outcomeServe: null,
       },
       paths: {
         invariantsFile: null,

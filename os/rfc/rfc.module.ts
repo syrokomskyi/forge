@@ -7,14 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1322: steps 1-3 — --check-criteria flag, auto-check pass, atomic flip+stamp</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1351: step 2 — KERNEL-FLAG fixes, lint green
 
 asset.extract/asset.slot.fulfill resolve dry-run via context.dryRun fallback (KERNEL-FLAG-10); canonical.html-parity/canonical.url/semantic.coverage declare mode for resolveDeploymentMode (KERNEL-FLAG-07); rfc.verify.workspace, site.domain.adopt, test.repro.verify name required flags in descriptions (KERNEL-FLAG-06). kernel.flags.lint: 0 errors.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306</history>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322</history>
 </CHANGE_SUMMARY>
 */
 
@@ -314,6 +314,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             description:
               "Bounded parallelism across RFCs for sweep runs (default 1, capped at 16 — invalid values warn and fall back). Probe workers spawn subprocesses.",
           },
+          "waive-outcome": {
+            kind: "string",
+            description:
+              "RFC-1453: record an operator outcome-gate waiver ({reason, by}) in emitted envelopes — set by rfc.implement.stamp, not for direct use.",
+          },
         },
         execute: runRfcVerificationEmit,
       },
@@ -515,6 +520,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "string",
             description:
               "RFC-1333: operator-only waiver for a non-subagent acceptance report on a verificationTier: high RFC (RFC-IMP-12); the reason is recorded as a stamp warning.",
+          },
+          "waive-outcome": {
+            kind: "string",
+            description:
+              "RFC-1453: operator-only waiver for the RFC-IMP-14 outcome gate; the reason is recorded in the verification envelope and the stamp commit must carry an X-Outcome-Waiver: trailer. Agents MUST NOT pass it unless the operator directed it.",
           },
           id: {
             kind: "string",

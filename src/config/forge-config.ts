@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
@@ -18,6 +17,7 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -58,6 +58,10 @@ export const forgeBindingsSchema = z.object({
       lint: z.string().nullable().default(null),
       // RFC-1332: defect-reproduction verifier ({test}, {sha} placeholders).
       verifyReproduction: z.string().nullable().default(null),
+      // RFC-1453: outcome-probe bindings — build ({target} → exit 0) and
+      // serve ({target} → first stdout line {"url","pid"}, keep running).
+      outcomeBuild: z.string().nullable().default(null),
+      outcomeServe: z.string().nullable().default(null),
       // RFC-1224: consumer-defined command keys (e.g. createRfc) stay in the
       // parsed config so resolveBinding can resolve them.
     })
@@ -122,6 +126,9 @@ export interface ForgeBindings {
     lint: string | null;
     // RFC-1332: defect-reproduction verifier ({test}, {sha} placeholders).
     verifyReproduction: string | null;
+    // RFC-1453: outcome-probe bindings ({target} placeholder).
+    outcomeBuild: string | null;
+    outcomeServe: string | null;
   };
   paths: {
     invariantsFile: string | null;
@@ -307,6 +314,12 @@ export const forgeConfigSchema = z
     profile: z.union([z.string(), z.object({ id: z.string().min(1) }).passthrough()]).optional(),
     /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
     independentVersionPackages: z.array(z.string()).optional(),
+    /**
+     * RFC-1453: picomatch globs (repo-root-relative) naming files that decide
+     * what the user sees. An implementation diff touching one requires a
+     * passing outcome probe (RFC-IMP-14). Absent means no surfaces declared.
+     */
+    outcomeSurfaces: z.array(z.string()).default([]),
     // RFC-1224: consumer-owned top-level sections (e.g. `plugins:`) stay in the
     // parsed config so full-serialization writes do not silently drop them.
   })
@@ -352,6 +365,8 @@ export interface ForgeConfig {
   profileResolution?: "resolved" | "unknown" | "absent" | "catalog-unavailable";
   /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
   independentVersionPackages?: string[];
+  /** RFC-1453: picomatch globs naming user-visible outcome surfaces (RFC-IMP-14). */
+  outcomeSurfaces: string[];
 }
 
 // ---------------------------------------------------------------------------
@@ -421,6 +436,8 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     preview: null,
     lint: null,
     verifyReproduction: null,
+    outcomeBuild: null,
+    outcomeServe: null,
   };
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
     const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];
@@ -473,6 +490,7 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
       compass: {},
     },
     forge: { syncedVersion: null },
+    outcomeSurfaces: [],
   };
 }
 

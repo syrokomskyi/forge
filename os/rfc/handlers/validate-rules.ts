@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1322: fo-review fix pass — V-37 annotation extraction takes the LAST (evidence: ...) occurrence, matching the stamp resolver (prose mentions no longer shadow the real annotation).</item>
   <item>RFC-1330: V-44 presence-only behavioral criteria; shared listBehavioralCriteria.</item>
   <item>RFC-1336: V-25 admits agent:&lt;id&gt; reviewers iff frontmatter decidedBy names a human:&lt;handle&gt; AND an active rfc.decision delegation covers the agent under that grantor (authority.delegations.yaml).</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271</history>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322</history>
 </CHANGE_SUMMARY>
 */
 
@@ -48,6 +48,8 @@ import {
 } from "../types.ts";
 import type { ProbeCoverageReport, AcceptanceProbe } from "../types.ts";
 import { isPresenceProbe } from "../verification-origin.ts";
+import { loadForgeConfig } from "../../../src/config/forge-config.ts";
+import { runProbeMatchesOutcomeBuild } from "./implement-stamp-outcome.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -1061,6 +1063,81 @@ export async function validateSingleRfc(
           "V-46",
           `acceptance[${idx}] probe "proof" spec ${specRel} is not valid YAML: ${(e as Error).message}`,
         );
+      }
+    }
+  }
+
+  // V-47: `page` probes require `target` (RFC-1453, error) — non-archived
+  // files only; archived implemented RFCs declaring pre-field page probes
+  // stay frozen historical records.
+  if (!isArchived) {
+    const acceptance = fm["acceptance"];
+    const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+    for (const [idx, probe] of probes.entries()) {
+      if (
+        probe.probe === "page" &&
+        (typeof probe.target !== "string" || probe.target.trim() === "")
+      ) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-47",
+          `acceptance[${idx}] probe "page" has no "target" — declare the build/serve target id passed to the outcomeBuild/outcomeServe bindings (RFC-1453).`,
+        );
+      }
+    }
+  }
+
+  // V-48: outcome-surface packages need an outcome probe (RFC-1453, warning).
+  // A packagesImpacted entry `x` maps to `packages/x` (verbatim when it
+  // already contains "/"); it is touched when an outcomeSurfaces glob's
+  // static prefix overlaps that directory.
+  if (!isArchived) {
+    const impacted = Array.isArray(fm["packagesImpacted"])
+      ? (fm["packagesImpacted"] as unknown[]).map(String)
+      : [];
+    if (impacted.length > 0) {
+      try {
+        const cfg = loadForgeConfig(workspaceRoot);
+        const surfaces = cfg.outcomeSurfaces ?? [];
+        if (surfaces.length > 0) {
+          const acceptance = fm["acceptance"];
+          const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+          const hasOutcomeProbe = probes.some(
+            (p) =>
+              p.probe === "page" ||
+              (p.probe === "run" &&
+                runProbeMatchesOutcomeBuild(
+                  p.command,
+                  cfg.bindings?.commands.outcomeBuild ?? null,
+                )),
+          );
+          if (!hasOutcomeProbe) {
+            const touched = impacted.filter((entry) => {
+              const pkgDir = entry.includes("/") ? entry : `packages/${entry}`;
+              return surfaces.some((glob) => {
+                const staticPrefix = glob.split(/[\*\?\[\{]/)[0]!.replace(/\/+$/, "");
+                const dir = pkgDir.replace(/\/+$/, "");
+                return (
+                  staticPrefix === dir ||
+                  staticPrefix.startsWith(`${dir}/`) ||
+                  dir.startsWith(`${staticPrefix}/`)
+                );
+              });
+            });
+            if (touched.length > 0) {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-48",
+                `packagesImpacted entr(y|ies) on outcome surfaces (${touched.join(", ")}) but no outcome probe declared — add a \`page\` probe or a \`run\` probe equal to the outcomeBuild binding (RFC-1453).`,
+                "warning",
+              );
+            }
+          }
+        }
+      } catch {
+        // forge.yaml unreadable → no declared surfaces → nothing to warn on.
       }
     }
   }
