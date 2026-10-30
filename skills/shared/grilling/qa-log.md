@@ -757,3 +757,16 @@ status: active
 - **Context:** 2026-10-30 — RFC-1444 grilling (dp7 German-in-section request; supersedes RFC-1436)
 - **Question:** How should a section show its content in additional languages — language axis, declaration, switching, projections, content location, rendering, fate of the per-field companion mechanism, reference resolution, and untranslated text?
 - **Answer:** Axis = page locale first + declared languages; one site declaration (`i18n.sectionLanguages`) with block opt-in; all renditions pre-rendered, instant ARIA-tabs switch via the existing `lang-switcher` (both `pill`/`text` variants kept, `scope: section`); no persistence, `#<blockId>-<lang>` deep link; one resolved model feeds every projection under a package-fixed policy with a parity check; non-routed languages live in same-shaped partial trees (`routed: false`), routed languages resolve by block id with zero authoring; the page builder renders the section's own component once per language (works for formatted sections); the new RFC supersedes RFC-1436 with no compatibility layer; references resolve in the rendition language with no fallback; missing German is agent-translated with `provenance: inferred` and client confirmation before main.
+
+### K-0059: Acceptance must observe the shipped outcome, not the implementer's model
+
+```knowledge-entry
+id: K-0059
+layer: L0
+created: 2026-10-30
+status: active
+```
+
+- **Context:** 2026-10-30 — RFC-1444 post-mortem grilling (RFC-1453, RFC-1454, RFC-1455)
+- **Question:** How should Forge keep an implemented RFC from stamping green while the shipped product regressed (page probes silently skipped, no pilot validation, review deviations and decided values left in prose)?
+- **Answer:** Forge executes `page` probes through project bindings (`outcomeBuild`/`outcomeServe`, per-probe `target`) and reports `unverified` — blocking — when it cannot; an implementation diff touching declared `outcomeSurfaces` requires a passing outcome probe (pilot adoption becomes part of implementation); review design deviations are typed (`fix`/`amend`) and `amend` must land in the RFC's `## Deviations` before stamping; decided observable values live in `## Fixed inputs`, each bound to an outcome probe. Three separate Forge RFCs, outcome probes first.
