@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1336: V-25 admits agent:&lt;id&gt; reviewers iff frontmatter decidedBy names a human:&lt;handle&gt; AND an active rfc.decision delegation covers the agent under that grantor (authority.delegations.yaml).</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330</history>
+  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1336</history>
 </CHANGE_SUMMARY>
 */
 
@@ -52,6 +52,7 @@ import { isPresenceProbe } from "../verification-origin.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { runProbeMatchesOutcomeBuild } from "./implement-stamp-outcome.ts";
 import { evaluateFixedInputs } from "./fixed-inputs.ts";
+import { collectCommittedReviews, parseDeviationsSection } from "./implement-stamp-deviations.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -1155,6 +1156,47 @@ export async function validateSingleRfc(
       probes,
     )) {
       addViolation(rfcId, relFile, diag.ruleId, diag.message, diag.severity);
+    }
+  }
+
+  // V-49: `## Deviations` entries resolve to committed review reports
+  // (RFC-1454, error). No cutoff — the section is new, so no historical
+  // file can carry a dangling entry. Only evaluated when entries exist,
+  // so the committed-report scan stays off the common path.
+  {
+    const { entries, malformed } = parseDeviationsSection(stripFencedCodeBlocks(body));
+    for (const line of malformed) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-49",
+        `"## Deviations" entry does not match "- <id> (review <reviewId>):" grammar: ${line}`,
+        "error",
+      );
+    }
+    if (entries.length > 0) {
+      let reviewsDir: string | null = null;
+      try {
+        reviewsDir = loadForgeConfig(workspaceRoot).bindings?.paths?.reviewsDir ?? null;
+      } catch {
+        // forge.yaml unreadable → no committed-report index → entries dangle.
+      }
+      const reviews = await collectCommittedReviews(
+        { run: (args) => execGitLog(workspaceRoot, args) },
+        reviewsDir,
+      );
+      const known = new Set(reviews.map((r) => r.reviewId));
+      for (const entry of entries) {
+        if (!known.has(entry.reviewId)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-49",
+            `"## Deviations" entry ${entry.id} references review "${entry.reviewId}" with no committed report under ${reviewsDir ?? "(no reviewsDir configured)"}/code — dangling provenance (RFC-1454).`,
+            "error",
+          );
+        }
+      }
     }
   }
 
