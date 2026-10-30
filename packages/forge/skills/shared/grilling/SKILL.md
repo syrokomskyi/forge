@@ -25,6 +25,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1250: two modes — interview (standalone, interactive) and emit
   (orchestrated runs: questions land in the queue decision ledger with
   recommended answers, no interview).</item>
+  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -48,6 +49,8 @@ Ask the questions one at a time, waiting for feedback on each question before co
 If a _fact_ can be found by exploring the codebase, look it up rather than asking me. The _decisions_, though, are mine — put each one to me and wait for my answer.
 
 Do not ask a question whose answer is already obvious from the codebase, prior answers, or surrounding context. If you can infer the answer with reasonable confidence, state your inference as the recommended answer and let the operator correct you if wrong. Reserve questions for genuine uncertainty.
+
+When an answer fixes an observable value — verbatim copy, a label, a name, a decided option value — say so explicitly in the summary (mark it `fixes value`), so the RFC author carries the literal into the RFC's `## Fixed inputs` section with a bound criterion (RFC-1455).
 
 Do not enact the plan until I confirm we have reached a shared understanding.
 

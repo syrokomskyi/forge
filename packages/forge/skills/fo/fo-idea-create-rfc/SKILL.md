@@ -26,6 +26,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>RFC-1361: path-scoped commits by default — EC-24 pre-commit message lint with governed-prefix exemption</item>
   <item>RFC-1433: friction fast-path — step-3 grilling skipped when the caller supplies open/flagged docs/frictions.yaml entry ids; entries carry the justification, output stays draft.</item>
+  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -84,6 +85,8 @@ Before creating the file, invoke the `/grilling` skill to stress-test the propos
 - Are there alternative approaches that haven't been considered?
 
 Address every concern the grilling raises by adjusting the metadata, scope, or concept before proceeding. Do not create the RFC file until the grilling is satisfied with the concept.
+
+Every grilling answer that fixes an observable value — verbatim copy, a label, a name, a decided option value — becomes a row in the RFC's `## Fixed inputs` section plus the `AC-N` criterion and outcome probe that checks it (RFC-1455). Texts supplied by clients or operators are pasted into the row in full, never referenced by pointer.
 
 #### Friction fast-path
 

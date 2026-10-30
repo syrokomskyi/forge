@@ -47,6 +47,22 @@ Deliverables that are new exported modules or commands get a `probe: reachable` 
 
 When the RFC's `packagesImpacted` touches a project-declared `outcomeSurfaces` glob (files that decide what the user sees), the criteria set needs at least one **outcome probe**: a `page` probe, or a `run` probe equal to the project's `outcomeBuild` binding. Prefer `page` with a `target` and a `selector` naming the user-visible element the change alters — not `body`/`html`. `page` probes execute against the built, served output and return `pass`/`fail`/`unverified`; `unverified` blocks the stamp (RFC-IMP-14), so a page probe is a promise the implementation must keep, not a formality.
 
+## Fixed inputs (RFC-1455)
+
+When the RFC fixes a user-visible value — verbatim copy, a label, a name, a decided option value — record it in a `## Fixed inputs` section and bind it to a criterion whose outcome probe can see it:
+
+```md
+## Fixed inputs
+
+| ID | Value | Source | Checked by |
+| --- | --- | --- | --- |
+| FI-1 | `<literal>` | grilling Q-N / client message / ADR | AC-N |
+```
+
+- `Value` is the literal itself in backticks or guillemets — never a pointer like "verbatim from the client". A `|` inside a value is escaped as `\|`. Long client texts can be recorded in full while the probe binds a distinctive sentence.
+- `Checked by` names exactly one `AC-N`, and that criterion must bind a `page` probe (`textPattern` or `selector`) or a `file-contains` probe whose pattern contains the value — V-50 errors otherwise. Values without an observable artifact stay prose.
+- When the RFC fixes values, at least one fixed-input criterion belongs in the required mix alongside behavior, contract, negative, and sync.
+
 ## Phase separation (RFC-1006)
 
 RFCs have two phases of criteria:

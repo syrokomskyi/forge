@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: V-44 presence-only behavioral criteria; shared listBehavioralCriteria.</item>
   <item>RFC-1336: V-25 admits agent:&lt;id&gt; reviewers iff frontmatter decidedBy names a human:&lt;handle&gt; AND an active rfc.decision delegation covers the agent under that grantor (authority.delegations.yaml).</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322</history>
+  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330</history>
 </CHANGE_SUMMARY>
 */
 
@@ -43,6 +43,7 @@ import {
   RFC_VERSION_BUMP_CUTOFF,
   RFC_PROBE_BINDING_CUTOFF,
   RFC_CRITERIA_CONTENT_CUTOFF,
+  RFC_FIXED_INPUTS_CUTOFF,
   RFC_ORIGIN_CUTOFF,
   RFC_REACHABLE_CUTOFF,
 } from "../types.ts";
@@ -50,6 +51,7 @@ import type { ProbeCoverageReport, AcceptanceProbe } from "../types.ts";
 import { isPresenceProbe } from "../verification-origin.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { runProbeMatchesOutcomeBuild } from "./implement-stamp-outcome.ts";
+import { evaluateFixedInputs } from "./fixed-inputs.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -1139,6 +1141,20 @@ export async function validateSingleRfc(
       } catch {
         // forge.yaml unreadable → no declared surfaces → nothing to warn on.
       }
+    }
+  }
+
+  // V-50/V-51: `## Fixed inputs` rows bound to outcome probes (RFC-1455,
+  // post-cutoff only; archived files stay frozen).
+  if (createdAt >= RFC_FIXED_INPUTS_CUTOFF && !isArchived) {
+    const acceptance = fm["acceptance"];
+    const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+    for (const diag of evaluateFixedInputs(
+      stripFencedCodeBlocks(body),
+      criteriaEval.criterionIds,
+      probes,
+    )) {
+      addViolation(rfcId, relFile, diag.ruleId, diag.message, diag.severity);
     }
   }
 

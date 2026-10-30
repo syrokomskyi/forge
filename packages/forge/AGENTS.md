@@ -355,6 +355,10 @@ V-39..V-41 also apply to post-cutoff `implemented` ADRs via `adr.validate`. Pre-
 - **`outcomeSurfaces` are repo-root-relative picomatch globs.** `forge.doctor` warns when surfaces are declared without both bindings or when a glob matches no file.
 - **Forge stays project-agnostic:** it never names consumer commands (`mission.validate`, `outcome.serve`, `werkstatt`, …) — projects bind them under `outcomeBuild`/`outcomeServe`. The werkstatt host implementation is `outcome.serve` in `packages/werkstatt-site` (serves the active mission workpiece's dist on an ephemeral port and prints the handshake line).
 
+## Fixed inputs (RFC-1455)
+
+Values an RFC fixes for the shipped result (verbatim copy, labels, names, decided option values) are declared in a `## Fixed inputs` table — `| ID | Value | Source | Checked by |`, fence-stripped parse, `\|` escapes — and bound to one `AC-N`. **V-50 (error):** a row whose `Checked by` is missing/malformed/nonexistent, whose criterion binds no `page`/`file-contains` probe, or whose value is not literally contained in the bound probe's `textPattern`/`pattern`/`selector`. **V-51 (warning):** Design/Rollout verbatim markers without the section. Both gate on `createdAt >= RFC_FIXED_INPUTS_CUTOFF` and skip archived files; the parser/evaluator lives in `os/rfc/handlers/fixed-inputs.ts`.
+
 ## Re-entrant werkstatt locks (RFC-0616)
 
 `acquireLock` and `releaseLock` in `os/werkstatt/handlers/lock.ts` are re-entrant by PID. When the same process re-acquires a lock it already holds, `acquireLock` increments the `depth` counter instead of throwing. `releaseLock` decrements `depth` and only deletes the lock file when `depth` reaches `1` or is `undefined`. The `depth` field is `.optional()` in `werkstattLockSchema` — old lock files without `depth` parse successfully and are treated as `depth=1` via `?? 1` fallbacks. Agents MUST NOT assume `acquireLock` always throws on an existing lock file — it only throws when a **different** live process holds the lock.
