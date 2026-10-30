@@ -1,6 +1,6 @@
 ---
 name: fo-reproduce
-description: Bounded reproduction phase for claimed defects — produce a verified failing test BEFORE the fix, with an attempt-budgeted loop, a no-source-modification boundary, and an honest inconclusive exit carrying the attempt log.
+description: Bounded reproduction phase for claimed defects — a verified failing test BEFORE the fix, with an attempt-budgeted loop, a no-source-modification boundary, and an honest inconclusive exit.
 invocation: user
 category: fo
 concerns: code-mutation
@@ -9,7 +9,7 @@ languagePolicy: ref(PREFERENCES.md)
 bindings:
   requires: []
   optional: [commands.verifyReproduction]
-triggerPhrases: ["reproduce the bug", "reproduce this defect", "prove it fails first", "reproduction-first", "подтверди дефект тестом", "воспроизведи баг"]
+triggerPhrases: ["reproduce the bug", "reproduce this defect", "prove it fails first", "reproduction-first", "подтверди дефект тестом"]
 ---
 
 <!--
@@ -21,7 +21,6 @@ triggerPhrases: ["reproduce the bug", "reproduce this defect", "prove it fails f
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1440: initial skill — reproduce claimed defects in a bounded phase before the fix.</item>
   <item>RFC-1440: fo-reproduce skill + pipeline wiring
 
 New fo-reproduce skill (bounded 5-attempt reproduction loop, no-source-
@@ -29,6 +28,7 @@ modification boundary, verifier exit, honest inconclusive attempt log);
 wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
+  <item>RFC-1440: apply RFC-1440 review findings — frontmatter budgets, SKILL-17 ids, honest-exit routing</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -75,15 +75,15 @@ Up to **5 attempts**:
 
 Run `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the candidate test file and `{sha}` = the commit before the fix work began:
 
-- `reproduced` → the test earns `Test-Reason: defect <ref>` + `Repro-Verified: <sha>` in its commit (the RFC-1332 contract, unchanged).
+- `reproduced` → the test earns `Test-Reason: defect <ref>` + `Repro-Verified: <sha>` in its commit (the defect-reason contract, unchanged).
 - `not-reproduced` → return to the loop while budget remains.
 - `inconclusive` → restructure the test against the old public surface, or exit honestly per step 5.
 
-When the `verifyReproduction` binding is absent (foreign workshop), degrade exactly as RFC-1332 defines: record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`.
+When the `verifyReproduction` binding is absent (foreign workshop), degrade: record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`.
 
-### 5. Honest exhaustion
+### 5. Honest exit
 
-A loop that exhausts its budget exits `inconclusive` and reports the **attempt log**: what was tried in each attempt and where it failed. The defect claim is never committed under a `defect` reason without a `reproduced` verdict (or the degraded-mode red-run record) — and the failure is never silent. The fix may still proceed best-effort; the commit then MUST NOT carry `Repro-Verified:`.
+A loop that exhausts its budget or cannot reach the pre-fix surface exits `inconclusive` and reports the **attempt log**: what was tried in each attempt and where it failed. The defect claim is never committed under a `defect` reason without a `reproduced` verdict (or the degraded-mode red-run record) — and the failure is never silent. The fix may still proceed best-effort; the commit then MUST NOT carry `Repro-Verified:`.
 
 ## Quality bar (inherited from fo-add-tests)
 
@@ -113,4 +113,4 @@ Inside queue/batch runs this skill applies non-interactively: a defect claim ins
 
 - Not a fix skill — it stops at a verified red test. The fix belongs to the caller (`fo-fix`, `fo-idea-implement`, `fo-triage` routing).
 - Not a gate — `inconclusive` never halts work by itself.
-- Not for `regression <risk>` reasons — a regression risk is anticipatory; there is no defect to reproduce. It keeps the RFC-1332 path.
+- Not for `regression <risk>` reasons — a regression risk is anticipatory; there is no defect to reproduce. It keeps the defect-reason path.

@@ -28,6 +28,7 @@ modification boundary, verifier exit, honest inconclusive attempt log);
 wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
+  <item>RFC-1440: apply RFC-1440 review findings — frontmatter budgets, SKILL-17 ids, honest-exit routing</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -227,7 +228,7 @@ Before writing tests, name the reason for each target:
 
 - When the operator invoked this skill directly for named code, the request counts as `requirement` — record the operator's wording as the reason.
 - Inside a pipeline, exactly one of `requirement <AC-N>`, `defect <ref>`, `invariant <ref>`, `regression <risk>` must apply; with no reason, write no test and say so in the report.
-- A `defect` test is produced by `fo-reproduce` (reproduction-first, RFC-1440): it must be shown to fail against the pre-fix commit via `ref(forge.yaml bindings.commands.verifyReproduction)` before it is committed under that reason.
+- A `defect` test is produced by `fo-reproduce` (reproduction-first): it must be shown to fail against the pre-fix commit via `ref(forge.yaml bindings.commands.verifyReproduction)` before it is committed under that reason.
 - Commit messages that add test files carry `Test-Reason: <reason>` (and `Repro-Verified: <sha>` for defects).
 
 ## TDD mode

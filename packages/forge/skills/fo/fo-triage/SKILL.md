@@ -27,6 +27,7 @@ modification boundary, verifier exit, honest inconclusive attempt log);
 wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
+  <item>RFC-1440: apply RFC-1440 review findings — frontmatter budgets, SKILL-17 ids, honest-exit routing</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -79,7 +80,7 @@ For bugs:
 - Can you reproduce it from the description?
 - Is there a clear expected vs actual behavior?
 - Are there steps to reproduce?
-- Attempt `fo-reproduce` (RFC-1440): a `reproduced` verdict puts the verified test path into the `ready-for-agent` brief as executable reproduction evidence; `inconclusive` records the attempt log; `untestable` keeps the prose path below.
+- Attempt `fo-reproduce`: a `reproduced` verdict puts the verified test path into the `ready-for-agent` brief as executable reproduction evidence; `inconclusive` records the attempt log; `untestable` keeps the prose path below.
 
 If the issue lacks enough info to verify, move to `needs-info` and ask the reporter for specifics.
 
