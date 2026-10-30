@@ -43,6 +43,10 @@ A criterion in WHEN or IF form describes behavior; bind it to a probe that execu
 
 Deliverables that are new exported modules or commands get a `probe: reachable` (symbol or command mode) bound to an invariant-form criterion (for example "THE command SHALL be reachable from a pipeline or declared coverage").
 
+## Outcome-surface work needs an outcome probe (RFC-1453)
+
+When the RFC's `packagesImpacted` touches a project-declared `outcomeSurfaces` glob (files that decide what the user sees), the criteria set needs at least one **outcome probe**: a `page` probe, or a `run` probe equal to the project's `outcomeBuild` binding. Prefer `page` with a `target` and a `selector` naming the user-visible element the change alters — not `body`/`html`. `page` probes execute against the built, served output and return `pass`/`fail`/`unverified`; `unverified` blocks the stamp (RFC-IMP-14), so a page probe is a promise the implementation must keep, not a formality.
+
 ## Phase separation (RFC-1006)
 
 RFCs have two phases of criteria:

@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0538: added compass binding section tests.</item>
   <item>RFC-0540: added CLI binding defaults, pm-runner, and package-manager-aware defaultForgeConfig tests.</item>
   <item>RFC-1224: adrImplementStamp binding, schema passthrough retention, applyForgeYamlPatches tests.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
-  <history>RFC-0391</history>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <history>RFC-0391, RFC-0538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -236,6 +236,7 @@ const configWithBindings: ForgeConfig = {
     skillsDir: ".agents/skills",
     sessionsDir: "docs/sessions",
   },
+  outcomeSurfaces: [],
   bindings: {
     schema: "forge/bindings@1",
     commands: {
@@ -254,6 +255,8 @@ const configWithBindings: ForgeConfig = {
       preview: null,
       lint: null,
       verifyReproduction: null,
+      outcomeBuild: null,
+      outcomeServe: null,
     },
     paths: {
       invariantsFile: "docs/architecture-dna.md",

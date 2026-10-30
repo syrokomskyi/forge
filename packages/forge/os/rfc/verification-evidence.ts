@@ -12,7 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1372: getKernelVersion falls back to the workspace root package.json version — the packages/os/site-kernel path predates RFC-0776 and no longer resolves, so envelopes recorded kernelVersion: unknown</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: unblock evidence emission for proof-probe RFCs (RFC-1391)
@@ -32,7 +31,8 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330</history>
+  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334</history>
 </CHANGE_SUMMARY>
 */
 
@@ -44,6 +44,7 @@ import { performance } from "node:perf_hooks";
 import { byteHash } from "../../src/utils/hash.ts";
 
 import { runProbe } from "./acceptance.ts";
+import { createOutcomeSession } from "./outcome-probe.ts";
 import { attachProbeOrigins } from "./verification-origin.ts";
 import { EVIDENCE_SYNC_STEPS } from "./handlers/rfc-evidence-sync.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
@@ -401,6 +402,7 @@ export function buildEvidenceEnvelope(
   gitContext: { commit: string; workingTreeDirty: boolean },
   kernelVersion: string,
   emittedAt: string,
+  outcomeWaiver?: { reason: string; by: string },
 ): VerificationEvidence {
   const overall: "pass" | "fail" = probeRecords.every((r) => r.ok) ? "pass" : "fail";
   return {
@@ -415,6 +417,7 @@ export function buildEvidenceEnvelope(
     acceptanceHash: byteHashHex(normalizeProbes(probes)),
     probes: probeRecords,
     overall,
+    ...(outcomeWaiver ? { outcomeWaiver } : {}),
   };
 }
 
@@ -459,6 +462,16 @@ export async function runRfcVerificationEmit(
   // dispatch — the input.flags read stays for direct/programmatic callers.
   const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
   const concurrency = resolveConcurrency(input.flags["concurrency"], (m) => logger.warn(m));
+  // RFC-1453: the stamp passes --waive-outcome through so the emitted envelope
+  // records the operator waiver that bypassed RFC-IMP-14.
+  const waiveOutcomeFlag = input.flags["waive-outcome"];
+  const outcomeWaiver =
+    typeof waiveOutcomeFlag === "string" && waiveOutcomeFlag.trim()
+      ? {
+          reason: waiveOutcomeFlag.trim(),
+          by: process.env["USER"] ?? process.env["USERNAME"] ?? "operator",
+        }
+      : undefined;
 
   if (!targetId && !targetStatus) {
     return {
@@ -547,6 +560,7 @@ export async function runRfcVerificationEmit(
         workspaceRoot,
         context.commandRegistry,
         context.forgeRoot,
+        outcomeSession,
       );
       const durationMs = Math.round(performance.now() - start);
       probeRecords.push({
@@ -554,6 +568,7 @@ export async function runRfcVerificationEmit(
         ok: result.ok,
         detail: result.detail,
         durationMs,
+        verdict: result.verdict ?? (result.ok ? "pass" : "fail"),
         ...(result.proof ? { proof: result.proof } : {}),
       });
     }
@@ -577,6 +592,7 @@ export async function runRfcVerificationEmit(
       gitContext,
       kernelVersion,
       emittedAt,
+      outcomeWaiver,
     );
 
     const slug = rfcId.toLowerCase();
@@ -645,7 +661,18 @@ export async function runRfcVerificationEmit(
     };
   };
 
-  const results = await mapWithConcurrency(allFiles, concurrency, processFile);
+  // RFC-1453: one outcome session per emit — page probes of the same target
+  // share one build + one serve; disposed when every file is processed.
+  const outcomeSession = createOutcomeSession({
+    workspaceRoot,
+    forgeRoot: context.forgeRoot,
+  });
+  let results: Array<Awaited<ReturnType<typeof processFile>>>;
+  try {
+    results = await mapWithConcurrency(allFiles, concurrency, processFile);
+  } finally {
+    await outcomeSession.dispose();
+  }
   const checked: NonNullable<RfcVerificationEmitResult["check"]> = [];
   for (const r of results) {
     if (r.emittedEntry) emitted.push(r.emittedEntry);
