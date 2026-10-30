@@ -72,6 +72,7 @@ Treat these XML documents as the primary semantic layer for AI work and keep the
 | fo-knowledge-distill                  | fo       | user       | document-only    |
 | fo-memory-sync                        | fo       | user       | content-mutation |
 | fo-qa                                 | fo       | user       | document-only    |
+| fo-reproduce                          | fo       | user       | code-mutation    |
 | fo-review                             | fo       | user       | read-only        |
 | fo-session-retro                      | fo       | user       | document-only    |
 | fo-session-save                       | fo       | user       | document-only    |
@@ -140,6 +141,7 @@ When the operator expresses an intent in natural language, the agent routes to t
 | "distill knowledge", "compact skill knowledge", "knowledge lifecycle", "promote fix patterns"                                                             | `fo-knowledge-distill`                  |
 | "sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"                           | `fo-memory-sync`                        |
 | "I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"                                            | `fo-qa`                                 |
+| "reproduce the bug", "reproduce this defect", "prove it fails first", "reproduction-first", "подтверди дефект тестом"                                     | `fo-reproduce`                          |
 | "проверим всё ли сделали правильно", "проверь изменения", "review this session", "review this code diff", "check code against Forge standards"            | `fo-review`                             |
 | "завершаем", "протокол завершения", "разгребаем", "трения", "friction harvest"                                                                            | `fo-session-retro`                      |
 | "save this session", "enhance session transcript with annotations", "save session with quality checks"                                                    | `fo-session-save`                       |
