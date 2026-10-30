@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0538: added fo-compass-annotate skill (22nd fo skill) — full-lifecycle Compass header management replacing removed compass.annotate, compass.clear, compass.markup.migrate, compass.invariant.add kernel commands.</item>
   <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to warpgogol-skills as wg- pack skills).</item>
   <item>RFC-0941: discoverPackSkills now requires forge.plugin.yaml manifest at each pack root — throws on missing or invalid manifest (fail-fast).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -15,7 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0374, RFC-0395, RFC-0523, RFC-0524</history>
+  <item>RFC-1435: sync paired skill copies after commit-time CHANGE_SUMMARY injection</item>
+  <history>RFC-0374, RFC-0395, RFC-0523, RFC-0524, RFC-0538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -217,3 +217,45 @@ function resolveSkillsRoot(): string {
 }
 const SKILLS_ROOT = resolveSkillsRoot();
 export const FORGE_SKILLS: ForgeSkillEntry[] = discoverForgeSkills(SKILLS_ROOT);
+
+/**
+ * RFC-1435: map a canonical skill source file to its `.agents/skills` twin.
+ * Same mapping the skill-agents-sync gate encodes — forge skills drop the
+ * category dir (`skills/fo/fo-x/SKILL.md` → `<skillsDir>/fo-x/SKILL.md`),
+ * `_shared/` keeps its dir, `skills/shared/knowledge/*` maps to
+ * `shared-knowledge/*`, and pack skills keep their `<prefix>-<name>` dir.
+ * Returns the workspace-root-relative twin path, or null when the input is
+ * not a canonical forge/pack skill file.
+ */
+export function skillAgentsTwin(
+  repoRelPath: string,
+  workspaceRoot: string,
+  config: ForgeConfig,
+): string | null {
+  const rel = repoRelPath.replace(/\\/g, "/").replace(/^\.\//, "");
+  const skillsDir = config.paths.skillsDir.replace(/\\/g, "/").replace(/\/$/, "");
+
+  const forgeRel = path.relative(workspaceRoot, SKILLS_ROOT).replace(/\\/g, "/");
+  if (rel === forgeRel || rel.startsWith(`${forgeRel}/`)) {
+    const rest = rel.slice(forgeRel.length + 1);
+    if (rest.startsWith("_shared/")) return `${skillsDir}/${rest}`;
+    const sharedKnowledge = "shared/knowledge/";
+    if (rest.startsWith(sharedKnowledge)) {
+      return `${skillsDir}/shared-knowledge/${rest.slice(sharedKnowledge.length)}`;
+    }
+    const segs = rest.split("/");
+    if (segs.length < 3) return null;
+    return `${skillsDir}/${segs[1]}/${segs.slice(2).join("/")}`;
+  }
+
+  for (const pack of config.skillPacks ?? []) {
+    const packRel = pack.dir.replace(/\\/g, "/").replace(/\/$/, "");
+    if (!rel.startsWith(`${packRel}/`)) continue;
+    const rest = rel.slice(packRel.length + 1);
+    const segs = rest.split("/");
+    if (segs.length < 2) return null;
+    return `${skillsDir}/${segs[0]}/${segs.slice(1).join("/")}`;
+  }
+
+  return null;
+}
