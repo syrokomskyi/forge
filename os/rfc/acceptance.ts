@@ -13,9 +13,6 @@ prose checklist.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0998: added test and json-schema probe kinds — spawnVitest helper, Ajv validation, shape validation.</item>
-  <item>RFC-1271: optional probe metadata — expectationSource enum-check, limitations pass-through.</item>
-  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1401: test probes gain optional timeoutMs — the 120s default cannot host a ~10min cold e2e run; spawnVitest honours the per-probe bound.</item>
   <item>RFC-1453: page probes execute through an OutcomeSession (outcomeBuild/outcomeServe bindings); tri-state verdicts; RFC-ACC-03 skip removed; RFC-ACC-04 reports unverified.</item>
@@ -27,7 +24,8 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
-  <history>RFC-0268</history>
+  <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
+  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334</history>
 </CHANGE_SUMMARY>
 */
 
@@ -105,6 +103,16 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
           issues.push({
             index,
             message: `probe "run" command must be a string starting with "${RUN_PROBE_ALLOWED_PREFIX}"`,
+          });
+        }
+        const runTimeoutMs = (entry as Record<string, unknown>)["timeoutMs"];
+        if (
+          runTimeoutMs !== undefined &&
+          (typeof runTimeoutMs !== "number" || !Number.isFinite(runTimeoutMs) || runTimeoutMs <= 0)
+        ) {
+          issues.push({
+            index,
+            message: 'probe "run" timeoutMs must be a positive number if present',
           });
         }
         if (
@@ -284,6 +292,7 @@ export function validateAcceptanceShape(value: unknown): AcceptanceShapeIssue[] 
 async function spawnSiteKernel(
   workspaceRoot: string,
   commandLine: string,
+  timeoutMs?: number,
 ): Promise<{ exitCode: number | null; timedOut: boolean }> {
   const args = commandLine
     .slice(RUN_PROBE_ALLOWED_PREFIX.length)
@@ -303,7 +312,7 @@ async function spawnSiteKernel(
       settled = true;
       child.kill();
       resolve({ exitCode: null, timedOut: true });
-    }, RUN_PROBE_TIMEOUT_MS);
+    }, timeoutMs ?? RUN_PROBE_TIMEOUT_MS);
     timer.unref?.();
 
     child.on("close", (code) => {
@@ -379,9 +388,17 @@ export async function runProbe(
           detail: `rejected: command must start with "${RUN_PROBE_ALLOWED_PREFIX}"`,
         };
       }
-      const { exitCode, timedOut } = await spawnSiteKernel(workspaceRoot, probe.command);
+      const { exitCode, timedOut } = await spawnSiteKernel(
+        workspaceRoot,
+        probe.command,
+        probe.timeoutMs,
+      );
       if (timedOut) {
-        return { probe, ok: false, detail: `timed out after ${RUN_PROBE_TIMEOUT_MS}ms` };
+        return {
+          probe,
+          ok: false,
+          detail: `timed out after ${probe.timeoutMs ?? RUN_PROBE_TIMEOUT_MS}ms`,
+        };
       }
       const ok = exitCode === probe.expect.exitCode;
       return { probe, ok, detail: `exitCode=${exitCode} (expected ${probe.expect.exitCode})` };
