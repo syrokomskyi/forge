@@ -6,11 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0537: initial forgeSessionModule registering session.save, session.archive, session.validate, session.list commands.</item>
   <item>RFC-1053: register metrics.aggregate command for skill effectiveness metrics aggregation.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1471: session.audit Stage-A detectors + audit.report read-model — denied-retry, blocker omission, generated-edit, retry-after-denial, false-claim</item>
+  <item>RFC-1471: apply r1 repairs — AUDIT-10..14 corrected semantics, read-only --check, deterministic auditedAt, archive coverage, metrics artifact, Stage-B stub</item>
+  <history>RFC-0537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -166,35 +167,45 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
       },
       {
         name: "session.audit",
+        coverage: "operator" as const,
+        contract: "session",
         description:
-          "RFC-1471: deterministic Stage-A detectors over docs/sessions/*.md — AUDIT-01 denied-retry, AUDIT-02 blocker omission, AUDIT-03 generated-file edit, AUDIT-04 retry-after-denial, AUDIT-05 false completion claim. Writes docs/sessions/audit/<id>.audit.yaml sidecars. Flags: --id, --check.",
+          "RFC-1471: deterministic Stage-A detectors over docs/sessions/*.md (+ archive/) — AUDIT-01/02 coverage caveats, AUDIT-10 circumvention, AUDIT-11 blocker deception, AUDIT-12 generated-file edit, AUDIT-13 denied retry, AUDIT-14 false claim. Writes docs/sessions/audit/<id>.audit.yaml sidecars (deterministic auditedAt). Flags: --session, --check (read-only), --relabel, --deep.",
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/sessions/audit/*.audit.yaml"],
         generates: [],
         rules: [
           { id: "AUDIT-01", severity: "warning" },
-          { id: "AUDIT-02", severity: "error" },
-          { id: "AUDIT-03", severity: "error" },
-          { id: "AUDIT-04", severity: "error" },
-          { id: "AUDIT-05", severity: "warning" },
+          { id: "AUDIT-02", severity: "warning" },
+          { id: "AUDIT-10", severity: "error" },
+          { id: "AUDIT-11", severity: "error" },
+          { id: "AUDIT-12", severity: "error" },
+          { id: "AUDIT-13", severity: "warning" },
+          { id: "AUDIT-14", severity: "warning" },
         ],
-        coverage: "operator" as const,
         flags: {
-          id: { kind: "string", description: "Audit a single session by id fragment." },
-          check: { kind: "boolean", description: "Exit non-zero on any error-severity finding." },
+          session: { kind: "string", description: "Audit a single session by id fragment." },
+          check: { kind: "boolean", description: "Read-only audit — no sidecar writes; exits non-zero on critical findings." },
+          relabel: { kind: "boolean", description: "Force a fresh sidecar write even when findings are unchanged." },
+          deep: { kind: "boolean", description: "Request Stage-B model labeling — requires forge.yaml sessionAudit.modelBinding; warns AUDIT-02 when absent." },
         },
-        reads: ["docs/sessions/*.md"],
+        reads: ["docs/sessions/*.md", "docs/sessions/archive/*.md", "docs/sessions/.raw/*", "forge.yaml"],
         execute: runSessionAudit,
       },
       {
         name: "session.audit.report",
         coverage: "operator" as const,
+        contract: "session",
         description:
-          "RFC-1471: read-model over docs/sessions/audit/*.audit.yaml — per-rule frequency, verdict distribution, and finding classes with no friction on file.",
+          "RFC-1471: read-model over docs/sessions/audit/*.audit.yaml — per-rule frequency, verdict distribution, finding classes with no friction on file; writes docs/metrics/session-audit.generated.yaml. Flags: --window.",
         scope: "workspace",
-        mutatesState: false,
-        flags: {},
+        mutatesState: true,
+        writes: ["docs/metrics/session-audit.generated.yaml"],
+        generates: [{ path: "docs/metrics/session-audit.generated.yaml", phase: "on-demand" as const }],
+        flags: {
+          window: { kind: "string", description: "Restrict to sidecars newer than an ISO date (e.g. 2026-10-01)." },
+        },
         reads: ["docs/sessions/audit/*.audit.yaml", "docs/frictions.yaml"],
         execute: runSessionAuditReport,
       },
