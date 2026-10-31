@@ -7,12 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1463: composite gates report complete violation sets and self-ensure prerequisites — ensure/compositeGate metadata, executor ensure runner, blockedBy skip tracking, ENSURE-01..04 + GATE-CMP-01, runCompositeGate</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364</history>
+  <item>RFC-1474: per-rule check-execution counters
+
+Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage 8/14). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453</history>
 </CHANGE_SUMMARY>
 */
 
@@ -591,6 +593,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "(EVIDENCE-SYNC-02). --dry-run lists the steps without executing.",
         scope: "workspace",
         mutatesState: true,
+        contract: "rfc",
         rules: [{ id: "EVIDENCE-SYNC-01", severity: "error" }, { id: "EVIDENCE-SYNC-02", severity: "error" }],
         flags: {
           id: {
