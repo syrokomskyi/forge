@@ -211,6 +211,10 @@
     "./os/friction-module": {
       "types": "./os/friction/friction.module.ts",
       "default": "./os/friction/friction.module.ts"
+    },
+    "./os/resolver-module": {
+      "types": "./os/resolver/resolver.module.ts",
+      "default": "./os/resolver/resolver.module.ts"
     }
   },
   "files": [
