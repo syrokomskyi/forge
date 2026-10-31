@@ -63,6 +63,8 @@ describe("gate.probe.catalog (RFC-1469)", () => {
         severity: error
       - id: UNPROBED-01
         severity: error
+      - id: STALE-77
+        severity: warning
 `,
     );
     const res = await runGateProbeCatalog(flags({}), ctx({}));

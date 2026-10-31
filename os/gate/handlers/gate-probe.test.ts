@@ -26,26 +26,29 @@ expect:
 `;
 
 function ctx(opts: {
-  /** Mock the scratch-workspace exec — the check's real run happens there. */
-  execOut?: { stdout: string; stderr: string; exitCode: number };
+  /** The check's result under the live-tree injection — invoke returns ruleIds. */
+  invoke?: (cmd: string) => { exitCode: number; ok: boolean; data?: unknown };
 }): ForgeRuntimeContext {
   const io = {
     exists: async () => true,
     readFile: async (p: string) => p.endsWith("fixture.yaml") ? FIXTURE : "",
     writeFile: async () => {},
+    rm: async () => {},
     mkdir: async () => {},
     readdir: async (p: string) => {
       if (p.endsWith("gate-probes")) return [{ name: "demo", isDirectory: true, isFile: false }];
       if (p.endsWith("demo")) return [{ name: "DEMO-19", isDirectory: true, isFile: false }];
       return [{ name: "fixture.yaml", isDirectory: false, isFile: true }];
     },
-    exec: async () => opts.execOut ?? { stdout: '{"data":{"diagnostics":[{}]}}', stderr: "", exitCode: 1 },
   };
   return {
     workspaceRoot: root,
     outputFormat: "json",
     logger: { info() {}, warn() {}, error() {}, success() {}, section() {} },
     io: io as never,
+    invoke: opts.invoke
+      ? async (cmd: string) => ({ ...opts.invoke!(cmd), filesModified: [] })
+      : undefined,
   } as unknown as ForgeRuntimeContext;
 }
 
@@ -64,20 +67,30 @@ afterEach(async () => {
 });
 
 describe("gate.probe (RFC-1469)", () => {
-  test("AC-3: bound check fires on the seeded violation → pass", async () => {
+  test("AC-3: bound check fires the declared ruleId on the injected violation → pass", async () => {
     const res = await runGateProbe(
       flags({}),
-      ctx({ execOut: { stdout: '{"data":{"diagnostics":[{}]}}', stderr: "", exitCode: 1 } }),
+      ctx({ invoke: () => ({ exitCode: 1, ok: false, data: { diagnostics: [{ ruleId: "DEMO-19", file: "demo/broken.md" }] } }) }),
     );
     expect(res.data?.reports[0]?.status).toBe("pass");
     expect(res.data?.status).toBe("ok");
     expect(res.exitCode).toBe(0);
   });
 
-  test("AC-4: check silent on the seeded violation → fail (dead gate)", async () => {
+  test("AC-4: check emits diagnostics of a different ruleId → PROBE-02 binding drift", async () => {
     const res = await runGateProbe(
       flags({}),
-      ctx({ execOut: { stdout: '{"data":{"diagnostics":[]}}', stderr: "", exitCode: 0 } }),
+      ctx({ invoke: () => ({ exitCode: 1, ok: false, data: { diagnostics: [{ ruleId: "OTHER-99" }] } }) }),
+    );
+    expect(res.data?.reports[0]?.status).toBe("fail");
+    expect(res.data?.reports[0]?.detail).toContain("binding drift");
+    expect(res.data?.status).toBe("failures");
+  });
+
+  test("AC-4: check silent on the injected violation → fail (dead gate)", async () => {
+    const res = await runGateProbe(
+      flags({}),
+      ctx({ invoke: () => ({ exitCode: 0, ok: true, data: { diagnostics: [] } }) }),
     );
     expect(res.data?.reports[0]?.status).toBe("fail");
     expect(res.data?.reports[0]?.detail).toContain("dead");

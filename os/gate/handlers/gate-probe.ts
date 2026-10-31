@@ -1,21 +1,19 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1469: gate.probe — materialize a declared violation fixture in a temp
-workspace, invoke the bound check, compare the expect block. Proves a gate
-still fires on its seeded violation (liveness), vs silently passing.
-mutatesState: false for the repo — fixture files land under tmpdir only.
+RFC-1469: gate.probe — inject a declared violation at its real workspace path
+(backup → write → invoke the check → restore), compare the expect block by
+ruleId + pathPattern. A seeded violation the check can't see is a dead gate —
+the probe proves the gate still fires on its real scan path, not a fabricated
+fixture shape. mutatesState: true (in-tree writes, always restored).
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1469: gate.probe fixture-driven liveness runner</item>
-  <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
-  <item>RFC-1469: run probe checks inside the scratch workspace — context.invoke ran against the kernel root where fixture files don't exist</item>
+  <item>RFC-1469: gate.probe in-tree injection + invoke + restore (r1 repair)</item>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
-import { tmpdir } from "node:os";
 import { parse as yamlParse } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import type {
@@ -29,10 +27,11 @@ export interface ProbeFixture {
   contract: string;
   derivedFrom?: string;
   spec: { files?: Record<string, string>; from?: string };
-  expect: { rule: string; command?: string; minDiagnostics?: number; pathPattern?: string };
+  expect: { command?: string; rule: string; minDiagnostics?: number; pathPattern?: string };
 }
 
 export interface ProbeReport {
+  ruleId: "PROBE-01" | "PROBE-02" | "PROBE-05";
   fixture: string;
   rule: string;
   status: "pass" | "fail" | "error";
@@ -68,6 +67,16 @@ async function collectFixtures(root: string, io: ReturnType<typeof resolveIo>): 
   return out;
 }
 
+function shapeError(fp: string, fixture: ProbeFixture): string | null {
+  if (!fixture.expect || typeof fixture.expect.rule !== "string") return "missing expect.rule";
+  if (!fixture.spec || typeof fixture.spec !== "object") return "missing spec";
+  if (fixture.spec.from) return `spec.from: template unsupported in v1 — inline files only (${fp})`;
+  if (!fixture.spec.files || typeof fixture.spec.files !== "object" || Object.keys(fixture.spec.files).length === 0) {
+    return "missing spec.files";
+  }
+  return null;
+}
+
 export async function runGateProbe(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -90,6 +99,7 @@ export async function runGateProbe(
         status: "ok",
         probed: selected.length,
         reports: selected.map((f) => ({
+          ruleId: "PROBE-01" as const,
           fixture: f.path,
           rule: f.fixture.rule,
           status: "pass" as const,
@@ -102,51 +112,102 @@ export async function runGateProbe(
     };
   }
 
+  if (!context.invoke) {
+    return {
+      data: {
+        command: "gate.probe",
+        status: "failures",
+        probed: 0,
+        reports: [{ ruleId: "PROBE-01", fixture: "-", rule: "-", status: "error", diagnostics: 0, detail: "context.invoke absent — run under the kernel" }],
+      },
+      summary: "gate.probe failed — invoke port absent",
+      exitCode: 1,
+    };
+  }
+
   const reports: ProbeReport[] = [];
   for (const { path: fp, fixture } of selected) {
-    const scratch = path.join(tmpdir(), `gate-probe-${fixture.rule.replace(/[^a-z0-9-]/gi, "_")}-${Date.now()}`);
+    const shape = shapeError(fp, fixture);
+    if (shape !== null) {
+      reports.push({ ruleId: "PROBE-05", fixture: fp, rule: fixture.rule, status: "error", diagnostics: 0, detail: `fixture shape: ${shape}` });
+      continue;
+    }
+    const files = fixture.spec.files!;
+    // Path guard — fixture files must be workspace-relative, never escape.
+    const bad = Object.keys(files).find((rel) => rel.includes("..") || path.isAbsolute(rel));
+    if (bad !== undefined) {
+      reports.push({ ruleId: "PROBE-05", fixture: fp, rule: fixture.rule, status: "error", diagnostics: 0, detail: `fixture path "${bad}" escapes the workspace — rejected` });
+      continue;
+    }
+
+    // Inject at the real paths — a seeded violation only proves liveness when
+    // it lands inside the check's real scan path.
+    const backups: [string, string | null][] = [];
     try {
-      // Materialize the fixture files under the temp workspace — the seeded
-      // violation must be inside the check's real scan path.
-      for (const [rel, content] of Object.entries(fixture.spec.files ?? {})) {
-        const abs = path.join(scratch, rel);
+      for (const [rel, content] of Object.entries(files)) {
+        const abs = path.join(root, rel);
+        backups.push([abs, await io.readFile(abs).catch(() => null)]);
         await io.mkdir(path.dirname(abs));
         await io.writeFile(abs, content);
       }
-      // Minimal forge.yaml so the check's workspace resolver finds a root.
-      await io.writeFile(path.join(scratch, "forge.yaml"), "schema: forge/config@1\n");
-      // The check runs in the scratch workspace via the kernel — the probe
-      // contract is "the check fires its rule on the seeded violation".
-      const checkCmd = fixture.expect.command ?? fixture.expect.rule.split(":")[0] ?? fixture.rule;
-      const res = await io.exec?.(
-        "pnpm",
-        ["exec", "werkstatt", "run", checkCmd, "--json"],
-        { cwd: scratch, timeoutMs: 60_000 },
-      );
-      if (!res) throw new Error("io.exec absent — cannot run checks inside the scratch workspace");
-      let diagnostics = 0;
-      try {
-        const parsed = JSON.parse(res.stdout) as { data?: { diagnostics?: unknown[] } };
-        diagnostics = (parsed.data?.diagnostics ?? []).length;
-      } catch { /* non-JSON output — diagnostics stays 0 */ }
-      const ruleFired = (res.exitCode ?? 1) !== 0 && diagnostics >= (fixture.expect.minDiagnostics ?? 1);
-      reports.push({
-        fixture: fp,
-        rule: fixture.rule,
-        status: ruleFired ? "pass" : "fail",
-        diagnostics,
-        detail: ruleFired
-          ? `check fired ${diagnostics} diagnostic(s) on the seeded violation`
-          : `check did not fire ${fixture.rule} on the seeded violation (exit ${res.exitCode}, ${diagnostics} diagnostics) — gate is dead`,
-      });
+      const res = await context.invoke(fixture.expect.command ?? fixture.expect.rule, {});
+      const diags = ((res.data as { diagnostics?: { ruleId?: string; file?: string }[] } | undefined)?.diagnostics ?? []);
+      const fired = diags.filter((d) => d.ruleId === fixture.expect.rule);
+      const pathOk = !fixture.expect.pathPattern
+        || fired.some((d) => (d.file ?? "").includes(fixture.expect.pathPattern!));
+      const firedCount = fired.length;
+      if (firedCount >= (fixture.expect.minDiagnostics ?? 1) && pathOk) {
+        reports.push({
+          ruleId: "PROBE-01",
+          fixture: fp,
+          rule: fixture.rule,
+          status: "pass",
+          diagnostics: firedCount,
+          detail: `check fired ${firedCount} ${fixture.expect.rule} diagnostic(s) on the seeded violation`,
+        });
+      } else if (firedCount > 0 && !pathOk) {
+        reports.push({
+          ruleId: "PROBE-02",
+          fixture: fp,
+          rule: fixture.rule,
+          status: "fail",
+          diagnostics: firedCount,
+          detail: `check fired ${fixture.expect.rule} but not on ${fixture.expect.pathPattern} — the rule fires on the wrong scope`,
+        });
+      } else if (diags.length > 0) {
+        reports.push({
+          ruleId: "PROBE-02",
+          fixture: fp,
+          rule: fixture.rule,
+          status: "fail",
+          diagnostics: diags.length,
+          detail: `check emitted ${diags.length} diagnostic(s) but none of rule ${fixture.expect.rule} — binding drift`,
+        });
+      } else {
+        reports.push({
+          ruleId: "PROBE-01",
+          fixture: fp,
+          rule: fixture.rule,
+          status: "fail",
+          diagnostics: 0,
+          detail: `check did not fire ${fixture.expect.rule} on the seeded violation (exit ${res.exitCode}) — gate is dead`,
+        });
+      }
     } catch (err) {
       reports.push({
+        ruleId: "PROBE-01",
         fixture: fp,
         rule: fixture.rule,
         status: "error",
         diagnostics: 0,
         detail: err instanceof Error ? err.message : String(err),
       });
+    } finally {
+      // Restore — every injected file is unwound, prior bytes restored.
+      for (const [abs, prior] of backups.reverse()) {
+        if (prior === null) await io.rm(abs).catch(() => {});
+        else await io.writeFile(abs, prior).catch(() => {});
+      }
     }
   }
 
