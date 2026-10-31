@@ -10,20 +10,12 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: os/friction module, friction.validate, retro autopsy + RFC fast-path
-
-Add friction.validate (FRICTION-01..05, contract frictions) over the
-append-only docs/frictions.yaml registry; absent file passes with
-entries: 0 per lazy-creation contract. fo-session-retro gains the
-autopsy step (signal checklist, signature matching, harvest mode +
-triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
-registered in bin/cli.ts, WORKSHOP_MODULE_MAP.forge, package.json
-exports; AGENTS.md module row; 13 vitest cases.</item>
   <item>RFC-1465: canonical-reader parity audit — resolver.doors.audit with DOOR-01/02/03 over forge.yaml registry</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
-  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391</history>
+  <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
+  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433</history>
 </CHANGE_SUMMARY>
 */
 
@@ -163,6 +155,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/knowledge/knowledge.module.ts").then(
       (m) => m.forgeKnowledgeModule,
     ),
+    await import("../os/gate/gate.module.ts").then((m) => m.forgeGateModule),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {

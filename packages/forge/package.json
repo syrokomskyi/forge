@@ -235,6 +235,14 @@
     "./os/knowledge": {
       "types": "./os/knowledge/index.ts",
       "default": "./os/knowledge/index.ts"
+    },
+    "./os/gate-module": {
+      "types": "./os/gate/gate.module.ts",
+      "default": "./os/gate/gate.module.ts"
+    },
+    "./os/gate": {
+      "types": "./os/gate/index.ts",
+      "default": "./os/gate/index.ts"
     }
   },
   "files": [
@@ -483,6 +491,14 @@
       "./os/knowledge": {
         "types": "./dist/os/knowledge/index.d.ts",
         "default": "./dist/os/knowledge/index.js"
+      },
+      "./os/gate-module": {
+        "types": "./dist/os/gate/gate.module.d.ts",
+        "default": "./dist/os/gate/gate.module.js"
+      },
+      "./os/gate": {
+        "types": "./dist/os/gate/index.d.ts",
+        "default": "./dist/os/gate/index.js"
       }
     }
   }
