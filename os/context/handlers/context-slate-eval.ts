@@ -11,6 +11,7 @@ acceptance instrument and the regression gate for every ranker change.
   <item>RFC-1470: context.slate.eval recall@budget over the gold dev set</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
+  <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,6 +19,7 @@ import path from "node:path";
 import { parse as yamlParse } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { scoreUnit } from "./context-assemble.ts";
+import { tokenize, HEADER_TOKENS } from "./context-assemble.ts";
 import type { ContextUnit } from "./index-build.ts";
 import type {
   ForgeCommandInput,
@@ -58,13 +60,17 @@ export async function runSlateEval(
     if (src === null) continue;
     const d = yamlParse(src) as { task?: string; requiredUnits?: string[] } | null;
     if (!d?.task || !Array.isArray(d.requiredUnits)) continue;
-    const taskTokens = new Set(d.task.toLowerCase().split(/\W+/).filter((t) => t.length > 2));
+    const taskTokens = tokenize(d.task);
     const scored = units.map((u) => ({ u, ...scoreUnit(u, taskTokens, new Set()) })).sort((a, b) => b.score - a.score || a.u.id.localeCompare(b.u.id));
     const slateIds = new Set<string>();
+    const groupSeen = new Set<string>();
     let used = 0;
     for (const s of scored) {
-      if (used + s.u.tokens > budget) continue;
-      used += s.u.tokens;
+      const group = s.u.source.split("#")[0] ?? s.u.source;
+      const charge = groupSeen.has(group) ? Math.max(1, s.u.tokens - HEADER_TOKENS) : s.u.tokens;
+      if (used + charge > budget) continue;
+      used += charge;
+      groupSeen.add(group);
       slateIds.add(s.u.id);
       slateIds.add(s.u.source);
     }
