@@ -23,6 +23,7 @@ triggerPhrases: ["distill knowledge", "compact skill knowledge", "knowledge life
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -182,3 +183,9 @@ When `doctor` reports `knowledge-duplicate` warnings (cross-skill L2 entries wit
 - **Never promote project-specific knowledge from pack skills into the forge shared layer** — domain-neutrality is checked during grilling. If the principle is project-specific, it stays pack-local.
 - **Portability gate** — grilling must include the question: "Is this principle genuinely cross-skill, or is it specific to one skill's domain?" Only genuinely cross-skill principles promote.
 ```
+
+## Authorization relevance
+
+- **A log is evidence, not authority.** When a promoted entry constrains agent behavior (must / may / never), it is `class: authz-relevant` and MUST carry `authorityRefs:` naming the governing source — an RFC/ADR id, a decision-log row, or a catalog contract. A QA-log entry alone is never sufficient authority for a rule agents must obey.
+- Mark `class:` at promote time; `knowledge.authz.probe --classify-only` proposes candidates — confirm before marking. Unmarked authorization-shaped entries warn (knowledge.authz.probe grace warnings) during the grace window; `authz-relevant` without `authorityRefs` blocks (knowledge.authz.probe blocking).
+- Revocation propagates: when the authority changes, the knowledge entry follows via `knowledge.rebuild` — never re-anchor an orphaned line by editing the canonical copy inline.

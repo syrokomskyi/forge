@@ -24,6 +24,7 @@ triggerPhrases: ["sync memory from codex", "import external agent knowledge", "r
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -219,3 +220,8 @@ Output a structured summary:
 - **Commit knowledge files.** After each run, commit updated knowledge files to the forge repo. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
 - **Session limit.** Default 20 sessions. Prevents reading hundreds of old session files.
 - **Sensitive information.** Redact API keys, passwords, and PII from any imported knowledge. Same redaction pattern as `fo-handoff`.
+
+## Authorization relevance
+
+- MEMORY.md sections that constrain agent behavior must cite their **authoritative** source via `authorityRefs` on the knowledge entry — a session log is evidence of the rule's origin, never the authority itself.
+- Derived rule lists inside `<!-- knowledge-rebuild:begin source=<key> -->` regions are rebuilt by `knowledge.rebuild` from catalog/friction sources — never edit inside markers; `--check` drifts block.

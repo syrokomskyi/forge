@@ -9,6 +9,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial knowledge entry metadata schema with L0/L1/L2 layer-specific refinements.</item>
   <item>RFC-0663: added promotedFrom field for shared-layer provenance tracking.</item>
+  <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +33,10 @@ const baseMetaSchema = z.object({
   promotedTo: z.union([z.string().regex(PROMOTED_TO_PATTERN), z.null()]).optional(),
   promotedFrom: z.array(z.string().regex(PROMOTED_FROM_PATTERN)).optional(),
   status: z.enum(["active", "stale", "superseded", "archived"]),
+  // RFC-1468: closed class enum — authz-relevant entries must name their
+  // authoritative source(s); factual is the additive default.
+  class: z.enum(["factual", "authz-relevant"]).optional(),
+  authorityRefs: z.array(z.string().min(1)).optional(),
 });
 
 export const knowledgeEntryMetaSchema = baseMetaSchema.superRefine((data, ctx) => {
@@ -70,9 +75,13 @@ export const knowledgeEntryMetaSchema = baseMetaSchema.superRefine((data, ctx) =
   }
 });
 
+export type KnowledgeClass = "factual" | "authz-relevant";
+
 export interface KnowledgeEntryMeta {
   id: string;
   layer: KnowledgeLayer;
+  class?: KnowledgeClass;
+  authorityRefs?: string[];
   created: string;
   lastConfirmedAt?: string | null;
   confirmations?: number;
