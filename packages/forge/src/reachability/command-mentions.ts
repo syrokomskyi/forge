@@ -22,7 +22,16 @@ Extract the RUN_MENTION_* vocabulary into @warpgogol/forge/reachability (Q-1/A):
 import picomatch from "picomatch";
 
 /** Files scanned for `werkstatt run <name>` / `forge run <name>` mentions. */
-export const RUN_MENTION_FILES = ["forge.yaml", "package.json", "AGENTS.md"];
+export const RUN_MENTION_FILES = [
+  "forge.yaml",
+  "package.json",
+  "AGENTS.md",
+  // Dir-scoped guides — `packages/*|services/*|integrations/*/AGENTS.md` needs
+  // an intermediate segment and never matches the top-level dir file.
+  "packages/AGENTS.md",
+  "services/AGENTS.md",
+  "integrations/AGENTS.md",
+];
 
 export const RUN_MENTION_GLOBS = [
   ".github/workflows/*.yml",
