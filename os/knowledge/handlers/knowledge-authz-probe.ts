@@ -12,6 +12,7 @@ Autonomous — source-text scan only (FORGE-AUTONOMY-01).
   <item>RFC-1468: KAUTHZ-01..03 probe + classify-only assist</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
+  <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -56,7 +57,9 @@ function* blocks(src: string, file: string): Generator<KnowledgeEntryBlock> {
   // \`\`\`knowledge-entry yaml block — doc examples without the block are
   // inert. Meta checks (class/authorityRefs) run on the yaml; classification
   // runs on the full section.
-  const re = /###\s+(K-\d{4})\s*:[\s\S]*?```knowledge-entry\n([\s\S]*?)```([\s\S]*?)(?=\n###\s+|$)/g;
+  // Fence must appear before the next heading — a heading without a fence
+  // cannot bind the next entry's yaml to the wrong id.
+  const re = /###\s+(K-\d{4})\s*:(?:(?!###)[\s\S])*?```knowledge-entry\n([\s\S]*?)```([\s\S]*?)(?=\n###\s+|$)/g;
   for (const m of src.matchAll(re)) {
     yield { file, id: m[1]!, text: m[0], yaml: m[2]! };
   }
@@ -68,7 +71,7 @@ async function scan(root: string, io: ReturnType<typeof resolveIo>): Promise<Kno
   // Knowledge surfaces only — the entry convention is knowledge-file-shaped
   // (qa-log / learned-principles / MEMORY / *-knowledge*.md). Doc files that
   // merely mention entries (SKILL.md docs) are not classification surfaces.
-  const KNOWLEDGE_RE = /(qa-log|learned-principles|MEMORY|knowledge)/i;
+  const KNOWLEDGE_RE = /(qa-log|learned-principles|fix-patterns|MEMORY|knowledge)/i;
   const skillsRoot = path.join(root, ".agents", "skills");
   for (const e of await io.readdir(skillsRoot).catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
     if (!e.isDirectory) continue;
@@ -110,6 +113,7 @@ async function resolveRef(
   rfcFiles: Set<string>,
   adrFiles: Set<string>,
   decisionIds: Set<string>,
+  catalogIds: Set<string>,
 ): Promise<boolean> {
   if (/^(RFC|ADR)-\d+$/.test(ref)) {
     const id = ref.toLowerCase();
@@ -117,11 +121,12 @@ async function resolveRef(
     return set.has(id);
   }
   if (/^decision:/i.test(ref)) return decisionIds.has(ref);
-  // Catalog/friction ids — a row must exist in the authoritative files.
   if (/^F-\d{4}$/.test(ref)) {
     const src = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-    return src.includes(`id: ${ref}`);
+    return new RegExp(`^-\\s*id:\\s*${ref}\\s*$`, "m").test(src);
   }
+  // Catalog ruleIds (catalog contract refs) — a remediation row must exist.
+  if (/^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/.test(ref)) return catalogIds.has(ref);
   return false;
 }
 
@@ -132,16 +137,34 @@ export async function runKnowledgeAuthzProbe(
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
   const entries = await scan(root, io);
-  const rfcFiles = new Set(
-    (await io.readdir(path.join(root, "docs", "rfcs")).catch(() => [] as { name: string }[]))
-      .map((f) => f.name.match(/^((?:rfc|adr)-\d+)/)?.[1]).filter((v): v is string => !!v),
-  );
-  const adrFiles = new Set(
-    (await io.readdir(path.join(root, "docs", "adrs")).catch(() => [] as { name: string }[]))
-      .map((f) => f.name.match(/^((?:rfc|adr)-\d+)/)?.[1]).filter((v): v is string => !!v),
-  );
+  // Recursive walk — landed RFCs/ADRs live under archive/ subdirs.
+  const collectIds = async (dir: string): Promise<Set<string>> => {
+    const out = new Set<string>();
+    const stack = [dir];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      for (const e of await io.readdir(cur).catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
+        const abs = path.join(cur, e.name);
+        if (e.isDirectory) stack.push(abs);
+        else if (e.isFile) {
+          const m = e.name.match(/^((?:rfc|adr)-\d+)/);
+          if (m) out.add(m[1]!);
+        }
+      }
+    }
+    return out;
+  };
+  const rfcFiles = await collectIds(path.join(root, "docs", "rfcs"));
+  const adrFiles = await collectIds(path.join(root, "docs", "adrs"));
   const dlSrc = await io.readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml")).catch(() => "");
-  const decisionIds = new Set([...dlSrc.matchAll(/\b(decision:[\w:-]+)/g)].map((m) => m[1]!));
+  // decision:<doc-id> refs resolve against the log's rfcId column; literal
+  // decision:D-YYYY-MM-DD-NN ids resolve against queue ledgers' decisions.
+  const decisionIds = new Set<string>([
+    ...[...dlSrc.matchAll(/rfcId:\s*(\S+)/g)].map((m) => `decision:${m[1]}`),
+    ...[...dlSrc.matchAll(/\bdecision:D-[\w:-]+/g)].map((m) => m[0]!),
+  ]);
+  const catSrc = await io.readFile(path.join(root, "docs", "remediation-catalog.generated.yaml")).catch(() => "");
+  const catalogIds = new Set([...catSrc.matchAll(/ruleId:\s*(\S+)/g)].map((m) => m[1]!));
   const diagnostics: AuthzDiagnostic[] = [];
 
   for (const e of entries) {
@@ -171,7 +194,7 @@ export async function runKnowledgeAuthzProbe(
       // KAUTHZ-02: each authorityRef must resolve to a live source row —
       // an RFC/ADR doc id or a decision-log entry that exists on disk.
       for (const ref of refs) {
-        const live = await resolveRef(ref, root, io, rfcFiles, adrFiles, decisionIds);
+        const live = await resolveRef(ref, root, io, rfcFiles, adrFiles, decisionIds, catalogIds);
         if (!live) {
           diagnostics.push({
             ruleId: "KAUTHZ-02",

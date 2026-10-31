@@ -12,6 +12,7 @@ plain run rewrites the regions in place.
   <item>RFC-1468: marker-region rebuild over authoritative sources</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
+  <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -97,6 +98,15 @@ export async function runKnowledgeRebuild(
     for (const m of src.matchAll(MARKER_RE)) {
       const key = m[1]!;
       const rows = await sourceRows(root, io, key);
+      if (rows.length === 0) {
+        diagnostics.push({
+          ruleId: "REBUILD-MISSING",
+          severity: "warning",
+          file: rel,
+          message: `${rel}: source "${key}" produced no rows — refusing to blank-fill the region`,
+        });
+        continue;
+      }
       const wanted = rows.join("\n");
       const existing = m[2]!.trim();
       if (existing !== wanted) {
@@ -117,6 +127,14 @@ export async function runKnowledgeRebuild(
             severity: "warning",
             file: rel,
             message: `${rel}: source row "${id}" missing from the rebuild region`,
+          });
+        }
+        if (existingIds.length === wantedIds.length && existingIds.every((i) => wantedIds.includes(i))) {
+          diagnostics.push({
+            ruleId: "REBUILD-MISSING",
+            severity: "warning",
+            file: rel,
+            message: `${rel}: region rows match ids but drifted in wording — source-of-truth wording wins on rebuild`,
           });
         }
         next = next.replace(
