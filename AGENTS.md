@@ -26,7 +26,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeKnowledgeModule` | `knowledge.rebuild`, `knowledge.authz.probe` | `os/knowledge/` |
 | `forgeGateModule` | `gate.probe`, `gate.probe.catalog` | `os/gate/` |
 
-`gate.probe` materializes `docs/gate-probes/<contract>/<rule>/fixture.yaml` in a temp workspace and proves the bound check still fires on its seeded violation — a silent pass is a dead gate. `gate.probe.catalog` reports per-contract coverage + unprobed error-severity rules.
+`gate.probe` injects `docs/gate-probes/<contract>/<rule>/fixture.yaml` at its real workspace path (backup → invoke → restore) and proves the bound check still fires on its seeded violation — a silent pass is a dead gate. `gate.probe.catalog` reports per-contract coverage + unprobed error-severity rules.
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.record`, `compass.summary.trim`, `compass.migrate`, `compass.header.scaffold`, etc. All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). `compass.summary.record` appends governance-ID items to `CHANGE_SUMMARY` at commit time (RFC-1095). `compass.header.scaffold` authors/repairs v2 headers mechanically (`--census` for the writeless manifest, RFC-1318). | `os/compass/` |
 | `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate`, `werkstatt.session.open`/`close`/`status` (RFC-1462) | `os/werkstatt/` |
 | `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate`, `spec.live.rebuild` | `os/spec/` |
