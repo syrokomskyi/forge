@@ -16,6 +16,7 @@ Autonomous — scans source text only (FORGE-AUTONOMY-01).
 <CHANGE_SUMMARY>
   <item>RFC-1465: canonical-reader parity audit — DOOR-01/02/03 over the forge.yaml resolverDoors registry</item>
   <item>RFC-1465: canonical-reader parity audit — resolver.doors.audit with DOOR-01/02/03 over forge.yaml registry</item>
+  <item>RFC-1465: harden RFC-1465 door detection — module-level semantics, dynamic imports, comment stripping, wider corpus</item>
 </CHANGE_SUMMARY>
 */
 
@@ -53,12 +54,15 @@ export interface ResolverDoorsAuditData {
 }
 
 const IMPORT_RE =
-  /(?:^|\n)\s*import\s+(?:type\s+)?([^;]*?)\s+from\s+["'`]([^"'`]+)["'`]|(?:^|\n)\s*(?:export\s+[^;]+?\s+from\s+|require\s*\(\s*|import\s*\(\s*)["'`]([^"'`]+)["'`]/g;
+  /(?:^|\n)\s*import\s+(?:type\s+)?([^;]*?)\s+from\s+["'`]([^"'`]+)["'`]|(?:^|\n)\s*export\s+[^;]+?\s+from\s+["'`]([^"'`]+)["'`]/g;
+const DYNAMIC_IMPORT_RE = /(?:import|require)\s*\(\s*["'`]([^"'`]+)["'`]/g;
 const GLOB_RE = /(?:readdir|glob|collectFiles|readdirSync)\s*\(\s*[`"']?[^,)]*?docs\/|\.glob\s*\(|readdir\s*\(/;
 const SCAN_ROOTS = ["packages", "services", "tools"];
 const EXCLUDE_DIRS = new Set(["node_modules", "dist", ".turbo", ".sessions"]);
 const EXPORT_RE = (name: string) =>
-  new RegExp(`export\\s+(?:async\\s+)?(?:function|const|class|interface|type)\\s+${name}\\b|export\\s*\\{[^}]*\\b${name}\\b`);
+  new RegExp(
+    `export\\s+(?:async\\s+)?(?:function|const|let|var|class|interface|type|enum)\\s+${name}\\b|export\\s*\\{[^}]*\\b${name}\\b|export\\s+default\\s+${name}\\b`,
+  );
 
 function parseCanonical(canonical: string): { file: string; symbol: string } | null {
   const idx = canonical.lastIndexOf("#");
@@ -85,8 +89,11 @@ function validateRegistry(raw: unknown): Record<string, DoorSurface> {
     if (path.isAbsolute(c.file) || c.file.includes("..")) {
       throw new Error(`resolverDoors.${surface}.canonical must be a relative workspace path`);
     }
-    const doors = Array.isArray(e.doors) ? e.doors : [];
-    const domains = Array.isArray(e.domains) ? e.domains : [];
+    const doors = e.doors === undefined ? [] : e.doors;
+    const domains = e.domains === undefined ? [] : e.domains;
+    if (!Array.isArray(doors) || !Array.isArray(domains)) {
+      throw new Error(`resolverDoors.${surface}: doors and domains must be arrays`);
+    }
     for (const d of [...doors, ...domains]) {
       if (typeof d !== "string" || path.isAbsolute(d) || d.includes("..")) {
         throw new Error(`resolverDoors.${surface}: paths must be relative, no "..": ${d}`);
@@ -111,22 +118,32 @@ function stripExt(p: string): string {
 
 /** Import match → { clause, specifier }. Clause is undefined for require/dynamic/export-from. */
 function importRefs(src: string): { clause: string | undefined; specifier: string }[] {
-  return [...src.matchAll(IMPORT_RE)].map((m) => ({ clause: m[1], specifier: m[2] ?? m[3]! }));
+  const refs = [...src.matchAll(IMPORT_RE)].map((m) => ({
+    clause: m[1] as string | undefined,
+    specifier: (m[2] ?? m[3]) as string,
+  }));
+  for (const m of src.matchAll(DYNAMIC_IMPORT_RE)) {
+    refs.push({ clause: undefined, specifier: m[1]! });
+  }
+  return refs;
+}
+
+/** Strip line + block comments — the domain-dir glob check must not fire on
+ * commented examples or doc prose (the doctor.ts FP class). */
+function stripComments(src: string): string {
+  return src
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .replace(/\/\/[^\n]*/g, " ");
 }
 
 /**
- * Does an import both resolve to the canonical module AND bind the named
- * symbol? Named `{ symbol }`, namespace `* as x`, and default imports count;
- * an import of unrelated exports from the same module does not delegate to
- * the reader (the skills registry FP class).
+ * Module-level delegation: an import resolves to the canonical reader module
+ * — any binding counts (the reader owns existence AND shape; sibling exports
+ * are still the same door). Type-only imports count: delegating shape to the
+ * reader IS convergence.
  */
-function bindsCanonical(ref: { clause: string | undefined; specifier: string }, door: string, canonical: string, symbol: string): boolean {
-  if (!importsTarget(ref.specifier, door, canonical)) return false;
-  if (ref.clause === undefined) return true;
-  const c = ref.clause.trim();
-  if (c === "" || c.startsWith("*")) return true;
-  if (!c.startsWith("{")) return true; // default import
-  return c.includes(symbol);
+function bindsCanonical(ref: { clause: string | undefined; specifier: string }, door: string, canonical: string, _symbol: string): boolean {
+  return importsTarget(ref.specifier, door, canonical);
 }
 
 /** Does `specifier` (as written in `door`'s imports) resolve to `target` (repo-relative)? */
@@ -141,9 +158,10 @@ function importsTarget(specifier: string, door: string, target: string): boolean
   const want = stripExt(norm(target));
   const got = stripExt(resolved);
   if (got === want) return true;
+  if (specifier.startsWith(".")) return false; // resolved relative miss — no tail-match
   // Bare package specifier — match on the canonical's tail segments
   // (e.g. @warpgogol/forge/registry → packages/forge/src/registry).
-  return got.endsWith("/" + path.posix.basename(want)) && want.includes(path.posix.basename(got));
+  return want.endsWith("/" + path.posix.basename(got)) || got.endsWith("/" + path.posix.basename(want));
 }
 
 async function walk(dir: string, root: string, io: ReturnType<typeof resolveIo>): Promise<string[]> {
@@ -153,7 +171,7 @@ async function walk(dir: string, root: string, io: ReturnType<typeof resolveIo>)
     if (e.isDirectory && EXCLUDE_DIRS.has(e.name)) continue;
     const abs = path.join(dir, e.name);
     if (e.isDirectory) out.push(...(await walk(abs, root, io)));
-    else if (e.isFile && /\.(ts|mts)$/.test(e.name)) out.push(norm(path.relative(root, abs)));
+    else if (e.isFile && /\.(ts|tsx|mts|cts|astro|jsx)$/.test(e.name)) out.push(norm(path.relative(root, abs)));
   }
   return out;
 }
@@ -173,9 +191,11 @@ export async function runResolverDoorsAudit(
   // Workspace corpus for DOOR-01 — scanned once, reused per surface.
   const corpus = new Map<string, string>();
   for (const dir of SCAN_ROOTS) {
-    for (const rel of await walk(path.join(root, dir), root, io)) {
-      corpus.set(rel, await io.readFile(path.join(root, rel)).catch(() => ""));
-    }
+    const files = await walk(path.join(root, dir), root, io);
+    const contents = await Promise.all(
+      files.map((rel) => io.readFile(path.join(root, rel)).catch(() => "")),
+    );
+    files.forEach((rel, i) => corpus.set(rel, contents[i]!));
   }
 
   const diagnostics: DoorDiagnostic[] = [];
@@ -200,7 +220,7 @@ export async function runResolverDoorsAudit(
     for (const door of decl.doors) {
       const doorRel = norm(door);
       if (doorRel === canonRel) continue;
-      const src = corpus.get(doorRel);
+      const src = corpus.get(doorRel) ?? (await io.readFile(path.join(root, doorRel)).catch(() => undefined));
       if (src === undefined) {
         diagnostics.push({
           ruleId: "DOOR-02",
@@ -227,8 +247,9 @@ export async function runResolverDoorsAudit(
     for (const [file, src] of corpus) {
       if (file === canonRel || doorSet.has(file) || !src) continue;
       const importsCanon = importRefs(src).some((r) => bindsCanonical(r, file, canonRel, c.symbol));
+      const code = stripComments(src);
       const globsDomain =
-        GLOB_RE.test(src) && decl.domains.some((d) => src.includes(norm(d)));
+        GLOB_RE.test(code) && decl.domains.some((d) => code.includes(norm(d)));
       if (importsCanon || globsDomain) {
         diagnostics.push({
           ruleId: "DOOR-01",

@@ -87,14 +87,29 @@ describe("resolver.doors.audit (RFC-1465)", () => {
     expect(hits.length).toBe(1);
   });
 
-  test("AC-3: importer of an unrelated export from the canonical module is NOT a door", async () => {
+  test("AC-3: importing ANY export from the canonical module is a door (module-level semantics)", async () => {
     await seed({ canonicalBody: "export function loadDemos(){}\nexport const OTHER = 1;\n" });
     await writeFile(
       join(root, "packages", "a", "rogue.ts"),
       `import { OTHER } from "./canonical.ts";\n`,
     );
     const res = await runResolverDoorsAudit({ argv: [], flags: {} } as never, ctx());
-    expect(res.data?.diagnostics.filter((d) => d.file === "packages/a/rogue.ts")).toEqual([]);
+    expect(
+      res.data?.diagnostics.some((d) => d.ruleId === "DOOR-01" && d.file === "packages/a/rogue.ts"),
+    ).toBe(true);
+  });
+
+  test("mid-statement dynamic import of the canonical module → DOOR-01", async () => {
+    await seed({});
+    await writeFile(
+      join(root, "packages", "a", "rogue.ts"),
+      `const mod = await import("./canonical.ts");
+`,
+    );
+    const res = await runResolverDoorsAudit({ argv: [], flags: {} } as never, ctx());
+    expect(
+      res.data?.diagnostics.some((d) => d.ruleId === "DOOR-01" && d.file === "packages/a/rogue.ts"),
+    ).toBe(true);
   });
 
   test("AC-3: globbing a domain dir without declaration → DOOR-01", async () => {
