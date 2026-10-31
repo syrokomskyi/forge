@@ -10,12 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
-
-Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
-follows the parsed selector. Guard renamed assertAllSitesAllowed ->
-assertAllFlagAccepted, message updated. 417 declaration sites + type
-surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
@@ -28,7 +22,8 @@ autopsy step (signal checklist, signature matching, harvest mode +
 triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
 registered in bin/cli.ts, WORKSHOP_MODULE_MAP.forge, package.json
 exports; AGENTS.md module row; 13 vitest cases.</item>
-  <history>RFC-0542, RFC-0543, RFC-1140</history>
+  <item>RFC-1465: canonical-reader parity audit — resolver.doors.audit with DOOR-01/02/03 over forge.yaml registry</item>
+  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231</history>
 </CHANGE_SUMMARY>
 */
 
@@ -160,6 +155,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     await import("../os/friction/friction.module.ts").then((m) =>
       m.createForgeFrictionModule(),
     ),
+    await import("../os/resolver/resolver.module.ts").then((m) => m.forgeResolverModule),
   ].filter((m): m is ForgeModule => m !== null);
 
   for (const mod of modules) {
