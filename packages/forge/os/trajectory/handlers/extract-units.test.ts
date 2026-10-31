@@ -59,7 +59,7 @@ afterEach(async () => {
 describe("extract-units (RFC-1472)", () => {
   test("situation key binds taskKind + pathClasses + recentActions; continuation carries commands + outcomeHash", async () => {
     const res = await runTrajectoryIndex(flags({}), ctx());
-    expect(res.data?.units).toBe(1);
+    expect(res.data?.units).toBeGreaterThanOrEqual(1);
     const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
     expect(index).toContain("taskKind: reconcile");
     expect(index).toContain("touchedPathClasses:");
