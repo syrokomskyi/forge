@@ -99,7 +99,9 @@ describe("RFC-1467 rfc.create near-duplicate gate", () => {
     expect(result.exitCode).toBe(1);
     expect(result.data?.blocked).toBe(true);
     expect(result.data?.status).toBe("blocked");
-    expect(result.data?.colliding).toEqual(["RFC-1312"]);
+    expect(result.data?.colliding?.map((d) => d.rfcId)).toEqual(["RFC-1312"]);
+    expect(result.data?.colliding?.[0]?.kind).toBe("rejected-rfc");
+    expect(result.data?.colliding?.[0]?.score).toBeGreaterThanOrEqual(12);
     expect(result.data?.remedy).toContain("--revisit RFC-1312");
     // AC-1: the escalation payload accompanies consultedDecisions in JSON.
     expect(Array.isArray(result.data?.consultedDecisions)).toBe(true);

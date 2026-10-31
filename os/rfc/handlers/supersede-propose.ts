@@ -17,6 +17,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,7 +27,13 @@ import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { listRfcFiles, readAndParseRfc, rfcFileMatchesId } from "../frontmatter-io.ts";
-import { collectDecisionLog, scoreDecisions } from "../decision-log.ts";
+import {
+  collectDecisionLog,
+  scoreDecisions,
+  REPROPOSED_SCORE,
+  REVIEW_SCORE,
+  TERMINAL_KINDS,
+} from "../decision-log.ts";
 import { RFC_DIR } from "../types.ts";
 import { resolveRfcTemplate } from "./shared.ts";
 import type { ConsultedDecision, RfcSupersedeProposeResult } from "../types.ts";
@@ -162,11 +169,22 @@ export async function runRfcSupersedePropose(
   const kebabTitle = toKebabCase(title);
   const fileName = `${nextSlug}-${kebabTitle}.md`;
 
-  // Decision-log consultation (RFC-0329)
+  // Decision-log consultation (RFC-0329). RFC-1467: score untruncated for the
+  // collision bands — terminal-kind hits at the reproposal threshold surface
+  // as an escalation payload alongside the capped consultedDecisions.
   let consultedDecisions: ConsultedDecision[] = [];
+  let colliding: ConsultedDecision[] = [];
+  let reviewBand: ConsultedDecision[] = [];
   try {
     const logEntries = await collectDecisionLog(rfcDirPath);
-    consultedDecisions = scoreDecisions(title, logEntries);
+    const scoredAll = scoreDecisions(title, logEntries, Number.MAX_SAFE_INTEGER);
+    consultedDecisions = scoredAll.slice(0, 5);
+    colliding = scoredAll.filter(
+      (d) => TERMINAL_KINDS.has(d.kind) && d.score >= REPROPOSED_SCORE,
+    );
+    reviewBand = scoredAll.filter(
+      (d) => TERMINAL_KINDS.has(d.kind) && d.score >= REVIEW_SCORE && d.score < REPROPOSED_SCORE,
+    );
   } catch {
     // graceful degradation
   }
@@ -234,6 +252,19 @@ TODO(agent): expand — what was attempted, where exactly the conflict surfaces 
         logger.info(`  ${d.rfcId} [${d.kind}] (score ${d.score}): ${d.title}`);
       }
     }
+    // RFC-1467: terminal precedents at the reproposal threshold surface in
+    // both modes — a supersede proposal is inherently a revisit, so the gate
+    // informs rather than blocks.
+    if (colliding.length > 0) {
+      logger.warn(
+        `Terminal precedent(s) collide at the reproposal threshold: ${colliding.map((d) => d.rfcId).join(", ")} — the proposal must distinguish them in the Decision`,
+      );
+    }
+    if (reviewBand.length > 0) {
+      logger.info(
+        `Near-duplicate precedent(s) in the review band: ${reviewBand.map((d) => d.rfcId).join(", ")}`,
+      );
+    }
   }
 
   return {
@@ -245,6 +276,8 @@ TODO(agent): expand — what was attempted, where exactly the conflict surfaces 
       supersedesTarget: targetId,
       invariants: invariantIds,
       consultedDecisions,
+      ...(colliding.length > 0 ? { colliding } : {}),
+      ...(reviewBand.length > 0 ? { reviewBand } : {}),
     },
     summary: `Created ${nextId} proposing to supersede ${targetId} (conflict: ${invariantList})`,
   };

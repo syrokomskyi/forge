@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1453</history>
+  <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1453, RFC-1455</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -616,7 +616,9 @@ export interface RfcCreateResult {
   /** RFC-0329: prior decisions consulted at creation time. */
   consultedDecisions?: ConsultedDecision[];
   /** RFC-1467: terminal-kind collisions at/above the reproposal threshold. */
-  colliding?: string[];
+  colliding?: ConsultedDecision[];
+  /** RFC-1467: review-band precedents (REVIEW_SCORE..REPROPOSED_SCORE-1) cited in related. */
+  reviewBand?: ConsultedDecision[];
   /** RFC-1467: true when creation refused on unresolved terminal collisions. */
   blocked?: boolean;
   /** RFC-1467: the operator-visible remedy for a blocked create. */
