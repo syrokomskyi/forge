@@ -1,11 +1,11 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1464: agent.delegate.tiers.validate — DEL-01 undeclared gate ref (gate
-name not resolvable in the command manifest), DEL-02 gate name not a
-*validate/*check-style command, DEL-03 missing input schema, DEL-04 missing
-boundary note; plus literal secret/endpoint material in the binding
-(blocking) and unresolvable invoke bindings.
+RFC-1464: agent.delegate.tiers.validate — DEL-01 empty/missing gate[]
+(unverifiable delegation), DEL-02 gate ref unresolvable in the command
+manifest or not a validate/check-style command, DEL-03 missing input schema,
+DEL-04 missing boundary note; plus literal secret/endpoint material in the
+binding (blocking) and unresolvable invoke bindings.
 Autonomous — reads forge.yaml + the generated command manifest only.
 </purpose>
 </MODULE_CONTRACT>
@@ -13,6 +13,7 @@ Autonomous — reads forge.yaml + the generated command manifest only.
   <item>RFC-1464: DEL-01..04 tiers/delegable declaration lint</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
   <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
+  <item>RFC-1464: apply r2 repairs — raw-entry DEL-01 lint, pilot gate flags, endpoint scan, malformed-gate guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -53,7 +54,35 @@ export async function runAgentTiersValidate(
 
   const forgeYaml = await io.readFile(path.join(root, "forge.yaml")).catch(() => null);
   const parsed = forgeYaml === null ? null : yamlParse(forgeYaml);
+  // DEL-01 must see malformed entries — lint the raw list, not the filtered one.
+  const rawClasses = ((parsed as { delegable?: unknown[] } | null)?.delegable ?? []) as Record<string, unknown>[];
   const classes = loadDelegable(parsed);
+  const covered = new Set(classes.map((c) => c.class));
+  for (const d of rawClasses) {
+    const name = typeof d.class === "string" ? d.class : "(malformed)";
+    const gate = d.gate;
+    if (covered.has(name)) continue;
+    if (typeof d.class !== "string" || !Array.isArray(gate) || gate.length === 0) {
+      diagnostics.push({
+        ruleId: "DEL-01",
+        severity: "error",
+        target: name,
+        message: `${name}: gate[] empty or missing — an ungated delegation returns verdict:done without verification`,
+      });
+      continue;
+    }
+    const bad = gate.find(
+      (g) => typeof g !== "string" && !(typeof g === "object" && g !== null && typeof (g as { command?: unknown }).command === "string"),
+    );
+    if (bad !== undefined) {
+      diagnostics.push({
+        ruleId: "DEL-02",
+        severity: "error",
+        target: name,
+        message: `${name}: malformed gate entry ${JSON.stringify(bad)} — declare a command name or { command, flags }`,
+      });
+    }
+  }
 
   // Registered command names — the manifest is the autonomous source.
   const manifestSrc = await io
@@ -149,12 +178,13 @@ export async function runAgentTiersValidate(
       for (const [k, v] of Object.entries(inv.env)) scan(`invoke.env.${k}`, v);
     }
     // endpoint/key references must be env-ref names, never literal URLs/keys
-    if (typeof inv.endpoint === "string" && /^https?:\/\//.test(inv.endpoint)) {
+    const endpointValue = (binding as { endpoint?: unknown }).endpoint ?? inv.endpoint;
+    if (typeof endpointValue === "string" && /^https?:\/\//.test(endpointValue)) {
       diagnostics.push({
         ruleId: "DEL-05",
         severity: "error",
-        target: "agentTiers.cheap.invoke.endpoint",
-        message: "invoke.endpoint carries a literal URL — declare endpointRef: <env-var-name> instead",
+        target: "agentTiers.cheap.endpoint",
+        message: "endpoint carries a literal URL — declare endpointRef: <env-var-name> instead",
       });
     }
     if (typeof inv.keyRef === "string" && SECRET_RE.test(inv.keyRef)) {
