@@ -15,6 +15,7 @@ bullet (empty sections collapse), and journals refusals.
   <item>RFC-1466: scar bullet → remediation fragment migration with invariant refusal + journal</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1466: apply r1 repairs — fragment remedies reachable via lookupRemediation, pending-marker ordering, comment-preserving catalogRefs</item>
+  <item>RFC-1466: apply r2 repairs — extend-path diagnosticCodes merge, publishConfig exports, marker idempotency, walk-up fragment resolution</item>
 </CHANGE_SUMMARY>
 */
 
@@ -145,12 +146,19 @@ export async function runScarMigrate(
   }
 
   // Fragment entry — append or extend the named entry.
-  const id = entryId ?? `SCAR-${String(fragment.entries.length + 1).padStart(4, "0")}`;
-  const ruleText = bullet.replace(/^-\s+/, "").trim();
+  const markerMatch = bullet.match(/<!--\s*migrates-to:\s*(\S+)\s+pending\s*-->/);
+  const id = entryId ?? markerMatch?.[1] ?? `SCAR-${String(fragment.entries.length + 1).padStart(4, "0")}`;
+  const ruleText = bullet
+    .replace(/^-\s+/, "")
+    .replace(/\s*<!--\s*migrates-to:[^>]*-->\s*/g, "")
+    .trim();
   const existing = fragment.entries.find((e) => e.id === id);
   if (existing) {
     if (!existing.ruleText.includes(ruleText)) existing.ruleText += ` ${ruleText}`;
     existing.frictionIds = [...new Set([...(existing.frictionIds ?? []), ...frictionIds])];
+    existing.diagnosticCodes = [
+      ...new Set([...(existing.diagnosticCodes ?? []), ...(diagnosticCodes ?? [])]),
+    ];
     existing.migratedFrom = `${rel}:${line}`;
     existing.originLine = line;
     existing.migratedAt = new Date().toISOString();
@@ -192,12 +200,23 @@ export async function runScarMigrate(
           if (fLines[i]!.trim().startsWith("catalogRefs:")) refsIdx = i;
         }
         const indent = fLines[idx]!.match(/^\s*/)![0] + "  ";
-        if (refsIdx >= 0 && !fLines[refsIdx]!.includes(id)) {
-          fLines[refsIdx] = fLines[refsIdx]!.trimEnd().replace(/]$/, `, ${id}]`);
-          if (!fLines[refsIdx]!.includes("[")) {
-            fLines[refsIdx] = `${indent}catalogRefs: [${id}]`;
+        if (refsIdx >= 0) {
+          const row = fLines[refsIdx]!;
+          const hasId = new RegExp(`["'\\s,\\[]${id}["'\\s,\\]]`).test(row);
+          if (!hasId) {
+            const m = row.match(/^(\s*catalogRefs:\s*)\[([^\]]*)\](.*)$/);
+            if (m) {
+              const inner = m[2]!.trim();
+              fLines[refsIdx] = `${m[1]}[${inner === "" ? id : `${inner}, ${id}`}]${m[3]}`;
+            } else if (row.trim() === "catalogRefs:" || row.trim() === "catalogRefs: []") {
+              fLines[refsIdx] = `${indent}catalogRefs: [${id}]`;
+            }
+            // block-style `catalogRefs:` followed by `- item` rows — append a row
+            else if (row.trim() === "catalogRefs:") {
+              fLines.splice(refsIdx + 1, 0, `${indent}  - ${id}`);
+            }
           }
-        } else if (refsIdx < 0) {
+        } else {
           fLines.splice(end > idx ? end : idx + 1, 0, `${indent}catalogRefs: [${id}]`);
         }
       }
@@ -222,20 +241,18 @@ export async function runScarMigrate(
       else if (next.match(/^\s+\S/) && !next.startsWith("- ") && next.match(/^\s*/)![0].length > baseIndent) lines.splice(line - 1, 1);
       else break;
     }
-    // collapse an emptied section heading + double blank lines
+    // collapse double blank lines left behind
     for (let i = line - 1; i > 0 && i < lines.length; ) {
       if (lines[i] === "" && lines[i - 1] === "") lines.splice(i, 1);
       else break;
     }
-    if (
-      line - 2 >= 0 &&
-      /^#{2,3}\s/.test(lines[line - 2]!) &&
-      (line - 1 >= lines.length || lines[line - 1]!.trim() === "" || /^#{2,3}\s/.test(lines[line - 1]!))
-    ) {
-      const next = lines.find((l, j) => j > line - 2 && l.trim() !== "");
-      if (!next || /^#{2,3}\s/.test(next)) {
-        lines.splice(line - 2, 1);
-      }
+    // collapse an emptied section: nearest heading above the removal point is
+    // orphaned when the next non-blank line is another heading or EOF.
+    let h = line - 2;
+    while (h >= 0 && lines[h]!.trim() === "") h--;
+    if (h >= 0 && /^#{1,6}\s/.test(lines[h]!)) {
+      const next = lines.find((l, j) => j > h && l.trim() !== "");
+      if (!next || /^#{1,6}\s/.test(next)) lines.splice(h, 1);
     }
   }
   await io.writeFile(path.join(root, rel), lines.join("\n"));
