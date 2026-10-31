@@ -43,10 +43,9 @@ beforeEach(async () => {
             severity: error
 `,
   );
-  await writeFile(join(root, "docs", "frictions.yaml"), `frictions:
-  - id: F-0099
-    category: tooling
-    recurrences: 2
+  await writeFile(join(root, "docs", "frictions.yaml"), `- id: F-0099
+  category: tooling
+  recurrences: 2
 `);
   await writeFile(join(root, "forge.yaml"), `schema: forge/config@1
 checksContribution:
@@ -88,6 +87,14 @@ findings:
     expect(metrics).toContain("check-contribution@1");
     const fresh = await runContributionReport(flags({ check: true }), ctx());
     expect(fresh.exitCode).toBe(0);
+    // A sidecar addition changes the computed output → --check flags stale.
+    await writeFile(
+      join(root, "docs", "sessions", "audit", "s2.audit.yaml"),
+      `sessionId: s2\nfindings:\n  - ruleId: SKILL-19\n    signature: "sig-new"\nauditedAt: "2026-11-01"\n`,
+    );
+    const stale = await runContributionReport(flags({ check: true }), ctx());
+    expect(stale.exitCode).toBe(1);
+    expect(stale.summary).toContain("CONTRIB-02");
   });
 
   test("CONTRIB-01: missing inventory blocks, not a silent empty report", async () => {

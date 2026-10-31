@@ -14,6 +14,7 @@ earning|silent|redundant|guard (guard declared via checksContribution.guardRules
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1473: r1 repair — contract-root inventory join, effectiveCoverage, cross-rule signature dedup, escape mapping via forge.yaml, --check staleness diff, CONTRIB-01 blocking</item>
+  <item>RFC-1473: apply r2 repairs — bare-sequence frictions root, real contract names in escape mapping, stale-path --check test</item>
 </CHANGE_SUMMARY>
 */
 
@@ -143,7 +144,11 @@ export async function runContributionReport(
   const contractMappings = cc.contractMappings ?? {};
   const guardRules = new Set(cc.guardRules ?? []);
   const frictionsSrc = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-  const frictions = (yamlParse(frictionsSrc) as { frictions?: { id?: string; category?: string; contract?: string; tags?: string[] }[] } | null)?.frictions ?? [];
+  // frictions.yaml is a bare top-level sequence (- id: F-NNNN), not a {frictions:[]} map.
+  const frParsed = yamlParse(frictionsSrc) as unknown;
+  const frictions: { id?: string; category?: string; contract?: string; tags?: string[] }[] = Array.isArray(frParsed)
+    ? frParsed
+    : ((frParsed as { frictions?: typeof frictions } | null)?.frictions ?? []);
   const ungovernedContracts = [...new Set(frictions.map((f) => f.category).filter((c): c is string => !!c))].filter((c) => !Object.keys(contractMappings).includes(c));
 
   const records: ContributionRecord[] = [];
