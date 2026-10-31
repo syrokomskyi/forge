@@ -13,6 +13,7 @@ redundant (emits but uniqueEmitted ≈ 0 — shadowed by a sibling), guard
 <CHANGE_SUMMARY>
   <item>RFC-1473: checks.contribution.report per-rule marginal-contribution read-model</item>
   <item>RFC-1473: checks.contribution.report — per-rule marginal-contribution read-model over firing history + escapes</item>
+  <item>RFC-1473: deterministic metrics generatedAt — derived from window data, not wall-clock</item>
 </CHANGE_SUMMARY>
 */
 
@@ -78,9 +79,11 @@ export async function runContributionReport(
 
   const fired = new Map<string, { emitted: number; uniqueSignatures: Set<string>; sessions: number }>();
   const lastFiredAt = new Map<string, number>();
+  let windowTo = "";
   for (let i = 0; i < sidecars.length; i++) {
     const src = await io.readFile(path.join(auditDir, sidecars[i]!)).catch(() => "");
-    const sc = yamlParse(src) as { findings?: { ruleId?: string; signature?: string }[] } | null;
+    const sc = yamlParse(src) as { findings?: { ruleId?: string; signature?: string }[]; auditedAt?: string } | null;
+    if (typeof sc?.auditedAt === "string" && sc.auditedAt > windowTo) windowTo = sc.auditedAt;
     for (const f of sc?.findings ?? []) {
       if (!f.ruleId) continue;
       const g = fired.get(f.ruleId) ?? { emitted: 0, uniqueSignatures: new Set<string>(), sessions: 0 };
@@ -122,7 +125,9 @@ export async function runContributionReport(
   const metricsRel = "docs/metrics/check-contribution.generated.yaml";
   const metrics = {
     schema: "forge/check-contribution@1",
-    generatedAt: new Date().toISOString(),
+    // Deterministic — derived from the window's own data, not wall-clock, so a
+    // rerun over unchanged inputs produces an identical artifact.
+    generatedAt: windowTo || "no-window",
     window: { runs: sidecars.length, coverage: "partial" as const },
     rules: records,
     variantCandidates,
