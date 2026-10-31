@@ -13,14 +13,15 @@ sessions produce nothing. --export/--import for shard portability.
 <CHANGE_SUMMARY>
   <item>RFC-1472: trajectory.index green-verified procedure-unit extraction + shard export/import</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
+  <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { createHash } from "node:crypto";
-import { stringify as yamlStringify } from "yaml";
+import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import { listSessionFiles, readAndParseSession } from "../../session/frontmatter-io.ts";
+import { listSessionFiles, listArchivedSessionFiles, readAndParseSession } from "../../session/frontmatter-io.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -49,7 +50,7 @@ export interface TrajectoryIndexData {
   index: string;
 }
 
-const GREEN_RE = /green|pass|success|verified|ok/i;
+const GREEN_RE = /^(green|passed?|successful?|verified|ok|clean)$/i;
 
 function pathClass(p: string): string {
   const parts = p.split("/");
@@ -73,14 +74,18 @@ export async function runTrajectoryIndex(
   const exportPath = input.flags["export"] as string | undefined;
 
   const sessionsDir = path.join(root, "docs", "sessions");
-  const files = (await listSessionFiles(sessionsDir).catch(() => []))
-    .filter((f) => !sessionFilter || f.includes(sessionFilter))
-    .filter((f) => !since || f >= since);
+  const archiveBase = path.join(sessionsDir, "archive");
+  const files = [
+    ...(await listSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: sessionsDir })),
+    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: archiveBase })),
+  ]
+    .filter((f) => !sessionFilter || f.rel.includes(sessionFilter))
+    .filter((f) => !since || f.rel >= since);
 
   const units: ProcedureUnit[] = [];
   let admitted = 0, rejected = 0;
-  for (const rel of files) {
-    const result = await readAndParseSession(sessionsDir, rel).catch(() => null);
+  for (const { rel, base } of files) {
+    const result = await readAndParseSession(base, rel).catch(() => null);
     if (!result) continue;
     const fm = result.parsed.frontmatter;
     const verdict = typeof fm.verdict === "string" ? fm.verdict : "";
@@ -93,8 +98,8 @@ export async function runTrajectoryIndex(
     admitted++;
     const commands = Array.isArray(fm.commands) ? fm.commands as string[] : [];
     const decisions = Array.isArray(fm.decisions) ? (fm.decisions as string[]).filter((d): d is string => typeof d === "string") : [];
-    const paths = Array.isArray(fm.filesChanged) ? fm.filesChanged as string[] : [];
-    const taskKind = String(fm.taskKind ?? fm.purpose ?? "general");
+    const paths = Array.isArray(fm.files) ? fm.files as string[] : [];
+    const taskKind = Array.isArray(fm.types) && fm.types.length > 0 ? String(fm.types[0]) : String(fm.taskKind ?? "general");
     const sid = String(fm.id ?? path.basename(rel, ".md"));
     const seq = commands.slice(0, 8);
     const outcomeHash = createHash("sha1").update(JSON.stringify({ commands: seq, verdict })).digest("hex").slice(0, 12);
@@ -115,6 +120,47 @@ export async function runTrajectoryIndex(
       usedBy: { recalled: 0, helped: 0, hurt: 0 },
       utilityScore: 0,
     });
+  }
+
+  // Replay prior outcome labels — utility stats are the compounding asset;
+  // a rebuild must not zero them (outcomes.yaml is the durable journal).
+  const outcomesSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "outcomes.yaml")).catch(() => "");
+  const outcomes = (yamlParse(outcomesSrc) as { outcomes?: { recallId?: string; helped?: boolean; hurt?: boolean }[] } | null)?.outcomes ?? [];
+  const recallsSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "recalls.yaml")).catch(() => "");
+  const recalls = (yamlParse(recallsSrc) as { recalls?: { id?: string; unitsReturned?: string[] }[] } | null)?.recalls ?? [];
+  const unitsById = new Map(units.map((u) => [u.id, u]));
+  for (const r of recalls) {
+    for (const uid of r.unitsReturned ?? []) {
+      const u = unitsById.get(uid);
+      if (u) u.usedBy.recalled++;
+    }
+  }
+  const recallUnits = new Map(recalls.map((r) => [r.id, r.unitsReturned ?? []]));
+  for (const o of outcomes) {
+    for (const uid of recallUnits.get(o.recallId ?? "") ?? []) {
+      const u = unitsById.get(uid);
+      if (!u) continue;
+      if (o.helped) u.usedBy.helped++;
+      if (o.hurt) u.usedBy.hurt++;
+      u.utilityScore = u.usedBy.helped - u.usedBy.hurt;
+    }
+  }
+
+  // F3 — merge a vendored shard (origin: vendored, trust: review per RFC §4).
+  const importPath = input.flags["import"] as string | undefined;
+  if (importPath) {
+    const shardSrc = await io.readFile(path.join(root, importPath)).catch(() => null);
+    const shard = shardSrc ? (yamlParse(shardSrc) as { schema?: string; units?: ProcedureUnit[] } | null) : null;
+    if (shard?.schema !== "forge/trajectory-shard@1") {
+      return {
+        data: { command: "trajectory.index", status: "ok", units: 0, admitted: 0, rejected: 0, index: "" },
+        summary: `TRAJ-03 ${importPath} is not a forge/trajectory-shard@1`,
+        exitCode: 1,
+      };
+    }
+    for (const u of shard.units ?? []) {
+      if (!unitsById.has(u.id)) units.push({ ...u, source: `${importPath}#vendored` });
+    }
   }
 
   const indexDir = path.join(root, "docs", ".index", "trajectory");

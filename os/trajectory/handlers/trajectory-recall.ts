@@ -10,6 +10,7 @@ The recall invocation is journaled so marginal utility can be measured.
 <CHANGE_SUMMARY>
   <item>RFC-1472: trajectory.recall situation-similarity top-k + journaled invocation</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
+  <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
 </CHANGE_SUMMARY>
 */
 
@@ -74,11 +75,12 @@ export async function runTrajectoryRecall(
     return { ...u, score: Number(score.toFixed(3)), reasons };
   }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, k);
 
-  const recallId = `R-${new Date().toISOString().slice(0, 10).replace(/-/g, "")}-${createHashFallback(task).slice(0, 4)}`;
   // Journal the recall — marginal-utility measurement needs the invocation record.
   const journalRel = "docs/.index/trajectory/recalls.yaml";
   const journalSrc = await io.readFile(path.join(root, journalRel)).catch(() => "");
   const journal = (yamlParse(journalSrc) as { recalls?: unknown[] } | null)?.recalls ?? [];
+  const dayKey = new Date().toISOString().slice(0, 10).replace(/-/g, "");
+  const recallId = `R-${dayKey}-${String(journal.length + 1).padStart(2, "0")}-${createHashFallback(task).slice(0, 4)}`;
   journal.push({ id: recallId, task, unitsReturned: scored.map((u) => u.id), at: new Date().toISOString() });
   const { stringify } = await import("yaml");
   await io.mkdir(path.join(root, "docs", ".index", "trajectory")).catch(() => {});
