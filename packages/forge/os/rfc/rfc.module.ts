@@ -7,14 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1351: step 2 — KERNEL-FLAG fixes, lint green
 
 asset.extract/asset.slot.fulfill resolve dry-run via context.dryRun fallback (KERNEL-FLAG-10); canonical.html-parity/canonical.url/semantic.coverage declare mode for resolveDeploymentMode (KERNEL-FLAG-07); rfc.verify.workspace, site.domain.adopt, test.repro.verify name required flags in descriptions (KERNEL-FLAG-06). kernel.flags.lint: 0 errors.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322</history>
+  <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333</history>
 </CHANGE_SUMMARY>
 */
 
@@ -282,6 +282,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.verification.emit",
+        // RFC-1453 outcome waiver records the operator identity from USER/USERNAME.
+        envInputs: [
+          { name: "USER", required: false },
+          { name: "USERNAME", required: false },
+        ],
         modulePath: "packages/forge/os/rfc/rfc.module.ts",
         description:
           "RFC-0330: execute acceptance probes for target RFC(s) and write per-RFC verification " +
@@ -499,6 +504,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       },
       {
         name: "rfc.implement.stamp",
+        // RFC-1453 outcome waiver records the operator identity from USER/USERNAME.
+        envInputs: [
+          { name: "USER", required: false },
+          { name: "USERNAME", required: false },
+        ],
         description:
           "RFC-0476: the exclusive atomic path for accepted → implemented transitions. " +
           "Verifies preconditions (accepted status, checked+evidenced criteria, clean tree, " +
