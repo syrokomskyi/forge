@@ -10,11 +10,12 @@ rebuild from sources — no authority lives in the index.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1470: context.index.build rebuildable unit catalog</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
   <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
+  <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
+  <history>RFC-1470</history>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +31,7 @@ import type {
 
 export interface ContextUnit {
   id: string;
-  kind: "session-block" | "knowledge-entry" | "friction" | "remediation" | "rfc-header" | "adr-header" | "skill-manifest" | "handoff" | "decision";
+  kind: "session-block" | "knowledge-entry" | "friction" | "remediation" | "rfc-header" | "adr-header" | "skill-manifest" | "handoff" | "decision" | "trajectory";
   source: string;
   tokens: number;
   text: string;
@@ -180,6 +181,14 @@ export async function runIndexBuild(
       if (!it.id) continue;
       push({ id: `decision:${it.id}`, kind: "decision", source: `${rel}#${it.id}`, text: `${it.id}: ${it.question ?? ""} → ${it.answer ?? ""}`, meta: { decisionId: it.id } });
     }
+  }
+
+  // trajectory — RFC-1472's procedure units register as a kind in the catalog.
+  const trajSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml")).catch(() => "");
+  const trajUnits = (yamlParse(trajSrc) as { units?: { id?: string; situation?: { taskKind?: string }; producer?: { sessionId?: string }; text?: string }[] } | null)?.units ?? [];
+  for (const t of trajUnits) {
+    if (!t.id) continue;
+    push({ id: t.id, kind: "trajectory", source: `docs/.index/trajectory/units.yaml#${t.id}`, text: t.text ?? "", meta: { taskKind: t.situation?.taskKind, sessionId: t.producer?.sessionId } });
   }
 
   const indexDir = path.join(root, "docs", ".index", "context");
