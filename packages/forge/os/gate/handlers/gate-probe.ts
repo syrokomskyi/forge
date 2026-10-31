@@ -10,6 +10,7 @@ fixture shape. mutatesState: true (in-tree writes, always restored).
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1469: gate.probe in-tree injection + invoke + restore (r1 repair)</item>
+  <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
 </CHANGE_SUMMARY>
 */
 
@@ -143,11 +144,23 @@ export async function runGateProbe(
     // Inject at the real paths — a seeded violation only proves liveness when
     // it lands inside the check's real scan path.
     const backups: [string, string | null][] = [];
+    const createdDirs: string[] = [];
     try {
       for (const [rel, content] of Object.entries(files)) {
         const abs = path.join(root, rel);
         backups.push([abs, await io.readFile(abs).catch(() => null)]);
-        await io.mkdir(path.dirname(abs));
+        const dir = path.dirname(abs);
+        if (!(await io.exists(dir))) {
+          // Track the highest created ancestor so the skeleton can be swept.
+          let cur = dir;
+          while (!(await io.exists(cur))) {
+            createdDirs.push(cur);
+            const parent = path.dirname(cur);
+            if (parent === cur) break;
+            cur = parent;
+          }
+        }
+        await io.mkdir(dir);
         await io.writeFile(abs, content);
       }
       const res = await context.invoke(fixture.expect.command ?? fixture.expect.rule, {});
@@ -203,10 +216,18 @@ export async function runGateProbe(
         detail: err instanceof Error ? err.message : String(err),
       });
     } finally {
-      // Restore — every injected file is unwound, prior bytes restored.
+      // Restore — every injected file is unwound, prior bytes restored, and
+      // the created directory skeletons are swept deepest-first.
       for (const [abs, prior] of backups.reverse()) {
-        if (prior === null) await io.rm(abs).catch(() => {});
-        else await io.writeFile(abs, prior).catch(() => {});
+        try {
+          if (prior === null) await io.rm(abs);
+          else await io.writeFile(abs, prior);
+        } catch (err) {
+          context.logger.warn(`probe restore failed for ${path.relative(root, abs)}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+      for (const dir of createdDirs.sort((a, b) => b.length - a.length)) {
+        await io.rm(dir).catch(() => {});
       }
     }
   }

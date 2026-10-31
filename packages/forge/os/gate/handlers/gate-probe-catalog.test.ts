@@ -57,14 +57,15 @@ describe("gate.probe.catalog (RFC-1469)", () => {
     await mkdir(join(root, "docs"), { recursive: true });
     await writeFile(
       join(root, "docs", "validator-inventory.generated.yaml"),
-      `validators:
-  - rules:
-      - id: DEMO-19
-        severity: error
-      - id: UNPROBED-01
-        severity: error
-      - id: STALE-77
-        severity: warning
+      `contracts:
+  - validators:
+      - rules:
+          - id: DEMO-19
+            severity: error
+          - id: UNPROBED-01
+            severity: error
+          - id: STALE-77
+            severity: warning
 `,
     );
     const res = await runGateProbeCatalog(flags({}), ctx({}));

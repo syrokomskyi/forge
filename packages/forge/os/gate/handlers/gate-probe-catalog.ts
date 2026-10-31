@@ -6,6 +6,7 @@
   <item>RFC-1469: gate.probe.catalog fixture-inventory read-model</item>
   <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
   <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
+  <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,17 +59,22 @@ export async function runGateProbeCatalog(
   // Error-severity rules with no fixture — gates lacking liveness evidence.
   // The validator inventory carries the declared rules[] + severities.
   const manifestSrc = await io.readFile(path.join(root, "docs", "validator-inventory.generated.yaml")).catch(() => "");
-  const parsed = yamlParse(manifestSrc) as { validators?: { rules?: { id?: string; severity?: string }[] }[] } | null;
-  const errorRules = (parsed?.validators ?? []).flatMap((v) =>
-    (v.rules ?? []).filter((r) => r.severity === "error" && typeof r.id === "string").map((r) => r.id!),
+  const parsed = yamlParse(manifestSrc) as {
+    contracts?: { validators?: { rules?: { id?: string; severity?: string }[] }[] }[];
+  } | null;
+  const allRules = (parsed?.contracts ?? []).flatMap((c) =>
+    (c.validators ?? []).flatMap((v) => v.rules ?? []),
   );
+  const errorRules = allRules
+    .filter((r) => r.severity === "error" && typeof r.id === "string")
+    .map((r) => r.id!);
   const unprobedErrorRules = errorRules.filter((id) => !bound.has(id));
   // PROBE-05: fixture bindings pointing at rules no longer declared anywhere.
-  const allDeclared = new Set((parsed?.validators ?? []).flatMap((v) => (v.rules ?? []).map((r) => r.id).filter((i): i is string => !!i)));
+  const allDeclared = new Set(allRules.map((r) => r.id).filter((i): i is string => !!i));
   const staleBindings = [...bound].filter((id) => allDeclared.size > 0 && !allDeclared.has(id));
 
-  if (context.outputFormat === "pretty" && unprobedErrorRules.length > 0) {
-    context.logger.warn(`PROBE-03 ${unprobedErrorRules.length} error-severity rule(s) have no liveness fixture`);
+  if (context.outputFormat === "pretty") {
+    if (unprobedErrorRules.length > 0) context.logger.warn(`PROBE-03 ${unprobedErrorRules.length} error-severity rule(s) have no liveness fixture`);
     if (staleBindings.length > 0) context.logger.warn(`PROBE-05 stale fixture binding(s): ${staleBindings.join(", ")}`);
   }
   return {

@@ -2,13 +2,14 @@
 <MODULE_CONTRACT>
 <purpose>Register forgeGateModule — gate.probe + gate.probe.catalog (RFC-1469): fixture-driven gate liveness.</purpose>
 <non-goals>
-  <item>Autonomous module — fixture materialization lands under tmpdir; the repo tree is never touched (FORGE-AUTONOMY-01).</item>
+  <item>Autonomous module — fixtures inject at their real workspace path (backup → invoke → restore); the check runs against the live tree (FORGE-AUTONOMY-01).</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1469: forgeGateModule registering gate.probe + gate.probe.catalog</item>
   <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
   <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
+  <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,6 +31,7 @@ export const forgeGateModule: ForgeModule = {
       rules: [
         { id: "PROBE-01", severity: "error" },
         { id: "PROBE-02", severity: "warning" },
+        { id: "PROBE-05", severity: "warning" },
       ],
       description:
         "RFC-1469: inject a declared violation at its real workspace path (backup → invoke check → restore) — proves the gate still fires on its real scan path. Flags: --rule, --contract, --all, --list.",
@@ -50,8 +52,12 @@ export const forgeGateModule: ForgeModule = {
       coverage: "operator" as const,
       mutatesState: false,
       contract: "gate",
+      rules: [
+        { id: "PROBE-03", severity: "warning" },
+        { id: "PROBE-05", severity: "warning" },
+      ],
       description:
-        "RFC-1469: fixture-inventory read-model — per-contract coverage + unprobed error-severity rules (gates with no liveness evidence).",
+        "RFC-1469: fixture-inventory read-model — per-contract coverage + unprobed error-severity rules (PROBE-03) + stale fixture bindings (PROBE-05).",
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {},
