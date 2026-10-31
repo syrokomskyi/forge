@@ -78,9 +78,9 @@ Regenerated docs/command-manifest.generated.yaml via command.manifest.generate.
 
   test("AUDIT-13: retried after denial WITH a declared plan change → suppressed", () => {
     const suppressed = auditSessionBody("sess-planned", `### Assistant
-Ran \ — rejected: staged files outside scope.
+Ran \`werkstatt run rfc.validate --json\` — rejected: staged files outside scope.
 ### Assistant
-Switched to a different approach — split the scope, then ran \ again — passed.
+Switched to a different approach — split the scope, then ran \`werkstatt run rfc.validate --json\` again — passed.
 `, {});
     expect(suppressed.some((f) => f.ruleId === "AUDIT-13")).toBe(false);
   });
