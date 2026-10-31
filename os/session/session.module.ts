@@ -10,6 +10,7 @@
   <item>RFC-1053: register metrics.aggregate command for skill effectiveness metrics aggregation.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
+  <item>RFC-1471: session.audit Stage-A detectors + audit.report read-model — denied-retry, blocker omission, generated-edit, retry-after-denial, false-claim</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,8 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
   const { runSessionValidate } = await import("./handlers/validate.ts");
   const { runSessionList } = await import("./handlers/list.ts");
   const { runMetricsAggregate } = await import("./handlers/metrics-aggregate.ts");
+  const { runSessionAudit } = await import("./handlers/session-audit.ts");
+  const { runSessionAuditReport } = await import("./handlers/session-audit-report.ts");
   return {
     name: "forge-session",
     version: "0.1.0",
@@ -160,6 +163,40 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
         },
         reads: ["docs/metrics/**/*.yaml"],
         execute: runMetricsAggregate,
+      },
+      {
+        name: "session.audit",
+        description:
+          "RFC-1471: deterministic Stage-A detectors over docs/sessions/*.md — AUDIT-01 denied-retry, AUDIT-02 blocker omission, AUDIT-03 generated-file edit, AUDIT-04 retry-after-denial, AUDIT-05 false completion claim. Writes docs/sessions/audit/<id>.audit.yaml sidecars. Flags: --id, --check.",
+        scope: "workspace",
+        mutatesState: true,
+        writes: ["docs/sessions/audit/*.audit.yaml"],
+        generates: [],
+        rules: [
+          { id: "AUDIT-01", severity: "warning" },
+          { id: "AUDIT-02", severity: "error" },
+          { id: "AUDIT-03", severity: "error" },
+          { id: "AUDIT-04", severity: "error" },
+          { id: "AUDIT-05", severity: "warning" },
+        ],
+        coverage: "operator" as const,
+        flags: {
+          id: { kind: "string", description: "Audit a single session by id fragment." },
+          check: { kind: "boolean", description: "Exit non-zero on any error-severity finding." },
+        },
+        reads: ["docs/sessions/*.md"],
+        execute: runSessionAudit,
+      },
+      {
+        name: "session.audit.report",
+        coverage: "operator" as const,
+        description:
+          "RFC-1471: read-model over docs/sessions/audit/*.audit.yaml — per-rule frequency, verdict distribution, and finding classes with no friction on file.",
+        scope: "workspace",
+        mutatesState: false,
+        flags: {},
+        reads: ["docs/sessions/audit/*.audit.yaml", "docs/frictions.yaml"],
+        execute: runSessionAuditReport,
       },
     ],
     pipelines: [],
