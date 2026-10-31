@@ -14,6 +14,7 @@ Autonomous — reads forge.yaml + the generated command manifest only.
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
   <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
   <item>RFC-1464: apply r2 repairs — raw-entry DEL-01 lint, pilot gate flags, endpoint scan, malformed-gate guard</item>
+  <item>RFC-1464: apply r3 repairs — non-array delegable + null-element DEL-01 guards</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,10 +56,28 @@ export async function runAgentTiersValidate(
   const forgeYaml = await io.readFile(path.join(root, "forge.yaml")).catch(() => null);
   const parsed = forgeYaml === null ? null : yamlParse(forgeYaml);
   // DEL-01 must see malformed entries — lint the raw list, not the filtered one.
-  const rawClasses = ((parsed as { delegable?: unknown[] } | null)?.delegable ?? []) as Record<string, unknown>[];
+  const rawDelegable = (parsed as { delegable?: unknown } | null)?.delegable;
+  const rawClasses = Array.isArray(rawDelegable) ? (rawDelegable as (Record<string, unknown> | null)[]) : [];
+  if (rawDelegable !== undefined && rawDelegable !== null && !Array.isArray(rawDelegable)) {
+    diagnostics.push({
+      ruleId: "DEL-01",
+      severity: "error",
+      target: "delegable",
+      message: "delegable must be an array of class declarations",
+    });
+  }
   const classes = loadDelegable(parsed);
   const covered = new Set(classes.map((c) => c.class));
   for (const d of rawClasses) {
+    if (d == null || typeof d !== "object") {
+      diagnostics.push({
+        ruleId: "DEL-01",
+        severity: "error",
+        target: "(malformed)",
+        message: "delegable contains a malformed entry (null or non-object) — every entry requires { class, gate, schema, boundary }",
+      });
+      continue;
+    }
     const name = typeof d.class === "string" ? d.class : "(malformed)";
     const gate = d.gate;
     if (covered.has(name)) continue;
