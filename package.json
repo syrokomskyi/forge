@@ -243,6 +243,14 @@
     "./os/gate": {
       "types": "./os/gate/index.ts",
       "default": "./os/gate/index.ts"
+    },
+    "./os/checks-module": {
+      "types": "./os/checks/checks.module.ts",
+      "default": "./os/checks/checks.module.ts"
+    },
+    "./os/checks": {
+      "types": "./os/checks/index.ts",
+      "default": "./os/checks/index.ts"
     }
   },
   "files": [
@@ -499,6 +507,14 @@
       "./os/gate": {
         "types": "./dist/os/gate/index.d.ts",
         "default": "./dist/os/gate/index.js"
+      },
+      "./os/checks-module": {
+        "types": "./dist/os/checks/checks.module.d.ts",
+        "default": "./dist/os/checks/checks.module.js"
+      },
+      "./os/checks": {
+        "types": "./dist/os/checks/index.d.ts",
+        "default": "./dist/os/checks/index.js"
       }
     }
   }
