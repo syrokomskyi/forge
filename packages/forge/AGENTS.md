@@ -24,7 +24,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.record`, `compass.summary.trim`, `compass.migrate`, `compass.header.scaffold`, etc. All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). `compass.summary.record` appends governance-ID items to `CHANGE_SUMMARY` at commit time (RFC-1095). `compass.header.scaffold` authors/repairs v2 headers mechanically (`--census` for the writeless manifest, RFC-1318). | `os/compass/` |
-| `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate` | `os/werkstatt/` |
+| `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate`, `werkstatt.session.open`/`close`/`status` (RFC-1462) | `os/werkstatt/` |
 | `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate`, `spec.live.rebuild` | `os/spec/` |
 | `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive`, `adr.implement.stamp` | `os/adr/` |
 | `forgePlanModule` | `plan.archive` | `os/plan/` |
@@ -367,6 +367,10 @@ Values an RFC fixes for the shipped result (verbatim copy, labels, names, decide
 ## Review deviations (RFC-1454)
 
 When a code review finds the implementation intentionally differs from the RFC, `fo-review` records it in the report's `designDeviations` frontmatter (`id`, `rfc`, `summary`, `resolution: fix|amend`) and the RFC records each `amend` in `## Deviations` as `- <id> (review <reviewId>): <what changed>`. **RFC-IMP-15 (stamp block):** a committed review report under `bindings.paths.reviewsDir/code` carrying an `amend` absent from `## Deviations` — or a malformed record — blocks the stamp. **V-49 (error):** a `## Deviations` entry whose `(review <reviewId>)` resolves to no committed report, or a section list line breaking the entry grammar. Committed reports only (`git ls-tree`/`git show` at HEAD); fenced examples never parse as entries. Gate/parser live in `os/rfc/handlers/implement-stamp-deviations.ts`.
+
+## Per-session worktrees (RFC-1462)
+
+`werkstatt.session.open --agent <id>` creates `.sessions/<id>/` on `session/<id>` and registers it in the shared gitdir — second open for the same id refuses unless `--resume`. `werkstatt.session.close --session <id>` merges by default (refuses dirty worktrees without `--allow-dirty`, refuses base-branch drift without `--into`) or `--discard`s; closing a closed session is a no-op exit 0. `werkstatt.session.status` is read-only — all state lives in `.git/sessions/registry.yaml` + `git worktree list`. Handlers are thin wrappers; session logic lives in `packages/werkstatt-engine/src/werkstatt/session-worktree.ts`.
 
 ## Re-entrant werkstatt locks (RFC-0616)
 
