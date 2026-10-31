@@ -8,9 +8,6 @@ result type for friction.validate.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: initial registry schema — append-only frictions with
-  signature-based recurrence matching (open | addressed), five closed
-  categories, FRICTION-01..05 rule ids.</item>
   <item>RFC-1433: review realignment — result shape moved to the spec's
   violations[] contract.</item>
   <item>RFC-1433: r2 review — signature/measure/artifacts required again
@@ -23,6 +20,8 @@ measure both fail FRICTION-01, matching the session/friction siblings.
 F3-2: pretty output reports reportedEntries (raw count on schema failure),
 consistent with the JSON payload. r3 review verdict: pass.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
+  <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
 
@@ -70,6 +69,8 @@ export const frictionEntrySchema = z.object({
   signature: z.string(),
   measure: z.string().min(1),
   measureKind: z.enum(FRICTION_MEASURE_KINDS).optional(),
+  // RFC-1466: remediation-catalog ids this friction's scar was migrated into.
+  catalogRefs: z.array(z.string().min(1)).optional(),
   artifacts: z.array(z.string().min(1)),
   status: z.enum(FRICTION_STATUSES),
   recurrences: z.number().int().min(0),

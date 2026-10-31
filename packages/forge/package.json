@@ -215,6 +215,10 @@
     "./os/resolver-module": {
       "types": "./os/resolver/resolver.module.ts",
       "default": "./os/resolver/resolver.module.ts"
+    },
+    "./os/instructions-module": {
+      "types": "./os/instructions/instructions.module.ts",
+      "default": "./os/instructions/instructions.module.ts"
     }
   },
   "files": [
