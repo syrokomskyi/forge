@@ -28,6 +28,8 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list`, `metrics.aggregate`, `session.audit`, `session.audit.report` | `os/session/` |
 
+`trajectory.index` extracts procedure units from green-verified sessions only (admission at extraction); `trajectory.recall` returns top-k situation-matched procedures at decision points (journaled for marginal-utility measurement); `trajectory.outcome.record --helped|--hurt` feeds utilityScore + producerTrust. Units live in `docs/.index/trajectory/` (gitignored projection); `--export` emits a `forge/trajectory-shard@1` for cross-workshop vending.
+
 `context.index.build` rebuilds `docs/.index/context/index.yaml` — a pure-projection unit catalog (session blocks, K-entries, frictions, remediation, RFC/ADR headers, skill manifests, handoffs, decisions). `context.assemble --task "<desc>"` emits a budgeted slate ranked by lexical + recency + path-overlap channels (dense slot declared, lexical-only floor shipped); `context.slate.eval` reports recall@budget over `docs/context-devset/`.
 
 `checks.contribution.report` reads the firing history per rule (session sidecars until RFC-1469's checkExecution counters land — `coverage: partial`) and classifies each gate-catalog rule `earning|silent|redundant|guard` with a recommended action (`probe`/`scope`/`retire-rfc`/`keep`); the report lands at `docs/metrics/check-contribution.generated.yaml`.
