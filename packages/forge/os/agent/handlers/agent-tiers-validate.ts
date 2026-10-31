@@ -12,13 +12,14 @@ Autonomous — reads forge.yaml + the generated command manifest only.
 <CHANGE_SUMMARY>
   <item>RFC-1464: DEL-01..04 tiers/delegable declaration lint</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
+  <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { parse as yamlParse } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import { loadDelegable } from "./agent-delegate.ts";
+import { gateName, loadDelegable } from "./agent-delegate.ts";
 import { loadBinding, validateBindingShape } from "../invoke-adapter.ts";
 import type {
   ForgeCommandInput,
@@ -61,11 +62,29 @@ export async function runAgentTiersValidate(
   const manifest = manifestSrc === null ? null : (yamlParse(manifestSrc) as { commands?: { name?: string }[] } | null);
   const registered = new Set((manifest?.commands ?? []).map((c) => c.name).filter((n): n is string => typeof n === "string"));
 
+  if (registered.size === 0 && manifestSrc === null) {
+    diagnostics.push({
+      ruleId: "DEL-02",
+      severity: "warning",
+      target: "forge.yaml",
+      message: "docs/command-manifest.generated.yaml absent — gate resolution unverified; regenerate the manifest",
+    });
+  }
   for (const d of classes) {
-    for (const gateCmd of d.gate ?? []) {
+    if (!Array.isArray(d.gate) || d.gate.length === 0) {
+      diagnostics.push({
+        ruleId: "DEL-01",
+        severity: "error",
+        target: d.class,
+        message: `${d.class}: gate[] is empty — an ungated delegation returns verdict:done without verification (DNA-106 unverified-success surface)`,
+      });
+      continue;
+    }
+    for (const ref of d.gate) {
+      const gateCmd = gateName(ref);
       if (registered.size > 0 && !registered.has(gateCmd)) {
         diagnostics.push({
-          ruleId: "DEL-01",
+          ruleId: "DEL-02",
           severity: "error",
           target: d.class,
           message: `${d.class}: gate command "${gateCmd}" does not resolve to a registered command — a delegable class's gate must be verifiable`,
@@ -90,7 +109,7 @@ export async function runAgentTiersValidate(
     if (!Array.isArray(d.boundary) || d.boundary.length === 0) {
       diagnostics.push({
         ruleId: "DEL-04",
-        severity: "warning",
+        severity: "error",
         target: d.class,
         message: `${d.class}: missing boundary note — declare the write-scope paths the delegate may touch`,
       });
@@ -111,15 +130,35 @@ export async function runAgentTiersValidate(
     if (shape !== null) {
       diagnostics.push({ ruleId: "DEL-05", severity: "error", target: "agentTiers.cheap", message: `agentTiers.cheap: ${shape}` });
     }
-    for (const [k, v] of Object.entries(binding as unknown as Record<string, unknown>)) {
-      if (typeof v === "string" && /key|token|secret/i.test(k) && SECRET_RE.test(v)) {
+    const scan = (label: string, value: unknown): void => {
+      if (typeof value === "string" && SECRET_RE.test(value)) {
         diagnostics.push({
           ruleId: "DEL-05",
           severity: "error",
-          target: `agentTiers.cheap.${k}`,
-          message: `agentTiers.cheap.${k}: literal secret material in committed config — env refs only`,
+          target: `agentTiers.cheap.${label}`,
+          message: `agentTiers.cheap.${label}: literal secret material in committed config — env refs only`,
         });
       }
+    };
+    for (const [k, v] of Object.entries(binding as unknown as Record<string, unknown>)) {
+      if (typeof v === "string" && /key|token|secret/i.test(k)) scan(k, v);
+    }
+    const inv = binding.invoke as { argv?: unknown; env?: Record<string, unknown>; endpoint?: unknown; endpointRef?: unknown; keyRef?: unknown };
+    if (Array.isArray(inv.argv)) inv.argv.forEach((v, i) => { if (typeof v === "string") scan(`invoke.argv[${i}]`, v); });
+    if (inv.env && typeof inv.env === "object") {
+      for (const [k, v] of Object.entries(inv.env)) scan(`invoke.env.${k}`, v);
+    }
+    // endpoint/key references must be env-ref names, never literal URLs/keys
+    if (typeof inv.endpoint === "string" && /^https?:\/\//.test(inv.endpoint)) {
+      diagnostics.push({
+        ruleId: "DEL-05",
+        severity: "error",
+        target: "agentTiers.cheap.invoke.endpoint",
+        message: "invoke.endpoint carries a literal URL — declare endpointRef: <env-var-name> instead",
+      });
+    }
+    if (typeof inv.keyRef === "string" && SECRET_RE.test(inv.keyRef)) {
+      scan("invoke.keyRef", inv.keyRef);
     }
   }
 

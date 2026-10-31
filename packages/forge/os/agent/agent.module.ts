@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1464: forgeAgentModule registering agent.delegate + agent.delegate.tiers.validate</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
+  <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
 </CHANGE_SUMMARY>
 */
 
@@ -45,13 +46,13 @@ export const forgeAgentModule: ForgeModule = {
       contract: "agent",
       rules: [
         { id: "DEL-01", severity: "error" },
-        { id: "DEL-02", severity: "warning" },
+        { id: "DEL-02", severity: "error" },
         { id: "DEL-03", severity: "error" },
-        { id: "DEL-04", severity: "warning" },
+        { id: "DEL-04", severity: "error" },
         { id: "DEL-05", severity: "error" },
       ],
       description:
-        "RFC-1464: lint delegable[] + agentTiers declarations — DEL-01 unresolvable gate ref, DEL-02 non-validation gate, DEL-03 missing schema, DEL-04 missing boundary, DEL-05 broken binding or literal secrets.",
+        "RFC-1464: lint delegable[] + agentTiers declarations — DEL-01 empty/missing gate[], DEL-02 unresolvable or non-validation gate, DEL-03 missing schema, DEL-04 missing boundary, DEL-05 broken binding or literal secrets.",
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {},

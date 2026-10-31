@@ -12,6 +12,7 @@ and resolves env refs (transport deferred to binding operator config).
 <CHANGE_SUMMARY>
   <item>RFC-1464: command + openai-http invoke adapters (env-ref config only)</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
+  <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
 </CHANGE_SUMMARY>
 */
 
@@ -35,6 +36,8 @@ export interface InvokeResult {
   ok: boolean;
   output: string;
   error?: string;
+  /** Paths the delegate reported touching (parsed from output when emitted). */
+  filesModified?: string[];
 }
 
 export function loadBinding(raw: unknown, tier: string): DelegateBinding | null {
@@ -61,10 +64,19 @@ export function validateBindingShape(binding: DelegateBinding): string | null {
   return `unknown invoke.kind "${(inv as { kind?: string }).kind}"`;
 }
 
+export interface DelegateIo {
+  exec?(
+    cmd: string,
+    args: string[],
+    opts: { env?: Record<string, string>; cwd?: string; timeoutMs?: number },
+  ): Promise<{ stdout: string; stderr: string; exitCode: number | null }>;
+}
+
 export async function invokeCheapTier(
   binding: DelegateBinding,
   envelope: TaskEnvelope,
-  io: { exec?(cmd: string, args: string[], opts: { env?: Record<string, string>; stdin?: string }): Promise<{ stdout: string; stderr: string; exitCode: number }> },
+  io: DelegateIo,
+  workspaceRoot: string,
 ): Promise<InvokeResult> {
   const shape = validateBindingShape(binding);
   if (shape !== null) return { ok: false, output: "", error: shape };
@@ -81,14 +93,25 @@ export async function invokeCheapTier(
   }
   const [cmd, ...args] = binding.invoke.argv;
   try {
+    // The ExecOptions port has no stdin — the task envelope travels via a
+    // dedicated env var; the shim reads DELEGATE_ENVELOPE.
     const res = await io.exec(cmd!, args, {
-      env: binding.invoke.env,
-      stdin: JSON.stringify(envelope),
+      env: { ...(binding.invoke.env ?? {}), DELEGATE_ENVELOPE: JSON.stringify(envelope) },
+      cwd: workspaceRoot,
+      timeoutMs: 300_000,
     });
+    let filesModified: string[] | undefined;
+    try {
+      const out = JSON.parse(res.stdout) as { filesModified?: unknown };
+      if (Array.isArray(out.filesModified)) {
+        filesModified = out.filesModified.filter((f): f is string => typeof f === "string");
+      }
+    } catch { /* non-JSON output is fine */ }
     return {
       ok: res.exitCode === 0,
       output: res.stdout,
       error: res.exitCode === 0 ? undefined : res.stderr || `exit ${res.exitCode}`,
+      filesModified,
     };
   } catch (err) {
     return { ok: false, output: "", error: err instanceof Error ? err.message : String(err) };
