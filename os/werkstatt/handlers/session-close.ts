@@ -34,6 +34,9 @@ export async function runSessionClose(
   if (!session) {
     throw new Error("werkstatt.session.close requires --session <id>");
   }
+  if (input.flags["discard"] === true && input.flags["merge"] === true) {
+    throw new Error("werkstatt.session.close: --merge and --discard are mutually exclusive");
+  }
   const mode = input.flags["discard"] === true ? "discard" : "merge";
   const allowDirty = input.flags["allow-dirty"] === true;
   const into = input.flags["into"] as string | undefined;
