@@ -7,14 +7,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1351: step 2 — KERNEL-FLAG fixes, lint green
-
-asset.extract/asset.slot.fulfill resolve dry-run via context.dryRun fallback (KERNEL-FLAG-10); canonical.html-parity/canonical.url/semantic.coverage declare mode for resolveDeploymentMode (KERNEL-FLAG-07); rfc.verify.workspace, site.domain.adopt, test.repro.verify name required flags in descriptions (KERNEL-FLAG-06). kernel.flags.lint: 0 errors.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333</history>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351</history>
 </CHANGE_SUMMARY>
 */
 
@@ -584,7 +582,7 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "(EVIDENCE-SYNC-02). --dry-run lists the steps without executing.",
         scope: "workspace",
         mutatesState: true,
-        rules: ["EVIDENCE-SYNC-01", "EVIDENCE-SYNC-02"],
+        rules: [{ id: "EVIDENCE-SYNC-01", severity: "error" }, { id: "EVIDENCE-SYNC-02", severity: "error" }],
         flags: {
           id: {
             kind: "string",

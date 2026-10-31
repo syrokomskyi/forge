@@ -6,14 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
-
-Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
-  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248, RFC-1251, RFC-1318, RFC-1323</history>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <history>KERNEL-FLAG-02, RFC-0374, RFC-0538, RFC-0556, RFC-1095, RFC-1097, RFC-1173, RFC-1231, RFC-1242, RFC-1248, RFC-1251, RFC-1318, RFC-1323, RFC-1351</history>
 </CHANGE_SUMMARY>
 */
 
@@ -92,16 +90,7 @@ export const forgeCompassModule: ForgeModule = {
       // COMPASS-INVARIANT-01 (high-risk file without any @ai-invariant) is
       // emitted by compass-inventory-handler and declared so lint: bindings
       // can name it; 02..07 are the RFC-1390 binding rules.
-      rules: [
-        "COMPASS-CS-08",
-        "COMPASS-INVARIANT-01",
-        "COMPASS-INVARIANT-02",
-        "COMPASS-INVARIANT-03",
-        "COMPASS-INVARIANT-04",
-        "COMPASS-INVARIANT-05",
-        "COMPASS-INVARIANT-06",
-        "COMPASS-INVARIANT-07",
-      ],
+      rules: [{ id: "COMPASS-CS-08", severity: "error" }, { id: "COMPASS-INVARIANT-01", severity: "error" }, { id: "COMPASS-INVARIANT-02", severity: "warning" }, { id: "COMPASS-INVARIANT-03", severity: "error" }, { id: "COMPASS-INVARIANT-04", severity: "error" }, { id: "COMPASS-INVARIANT-05", severity: "error" }, { id: "COMPASS-INVARIANT-06", severity: "error" }, { id: "COMPASS-INVARIANT-07", severity: "warning" }],
       description:
         "Validate authored source files against current Compass scaffolding requirements.",
       scope: "workspace",
@@ -420,13 +409,7 @@ export const forgeCompassModule: ForgeModule = {
       modulePath: "packages/forge/os/compass/compass.module.ts",
       mutatesState: false,
       contract: "compass",
-      rules: [
-        "COMPASS-DOC-00",
-        "COMPASS-DOC-01",
-        "COMPASS-DOC-02",
-        "COMPASS-DOC-03",
-        "COMPASS-DOC-04",
-      ],
+      rules: [{ id: "COMPASS-DOC-00", severity: "error" }, { id: "COMPASS-DOC-01", severity: "error" }, { id: "COMPASS-DOC-02", severity: "error" }, { id: "COMPASS-DOC-03", severity: "error" }, { id: "COMPASS-DOC-04", severity: "warning" }],
       description:
         "Validate that the live docs/*.xml corpus ∪ bindings.paths.compassDocs resolves every path, workspace id, and knowledge-graph link target it references, and that corpus documents carry the forge/compass-docs@1 schema marker (RFC-1242, RFC-1253). Read-only.",
       scope: "workspace",

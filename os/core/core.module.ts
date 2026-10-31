@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1255: forge.doctor next-steps are severity-aware — warn-only runs emit an optional "review the warnings" step instead of a required "fix the violations" one.</item>
   <item>RFC-1351: step 4 — drop stale coverage declarations (COVERAGE-02)
 
 Remove coverage/coverageNote from 9 mechanically reachable commands: compass.header.scaffold, forge.agents.generate, journal.binding.validate, leitstand.state.reconcile, leitstand.verify, mission.deploy-preflight, onboarding.intake.validate, test.repro.verify, contract.ripple.apply (last — RFC-1349 acceptance stays green via its AGENTS.md doc edge). Manifest regenerated: 0 warnings.</item>
@@ -19,7 +18,8 @@ ForgeCommandMetadata gains the mirrored envInputs contract field. The
 npm_execpath ambient read in open-source-page.ts is removed for a
 deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254</history>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255</history>
 </CHANGE_SUMMARY>
 */
 
@@ -870,7 +870,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "Enforces SURFACE-01..05 rules: README length, Node version match, " +
           "no .tgz in root, docs/ structure, required root files (RFC-1080).",
         contract: "forge",
-        rules: ["SURFACE-01", "SURFACE-02", "SURFACE-03", "SURFACE-04", "SURFACE-05"],
+        rules: [{ id: "SURFACE-01", severity: "error" }, { id: "SURFACE-02", severity: "error" }, { id: "SURFACE-03", severity: "error" }, { id: "SURFACE-04", severity: "error" }, { id: "SURFACE-05", severity: "error" }],
         scope: "workspace",
         acceptsAllFlag: false,
         reads: ["README.md", "package.json", "docs/**"],
@@ -882,7 +882,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         name: "file.size.lint",
         mutatesState: true,
         contract: "file",
-        rules: ["SIZE-01"],
+        rules: [{ id: "SIZE-01", severity: "error" }],
         description:
           "SIZE-01: flags a packages/** .ts/.tsx source file exceeding a 600-line threshold (warning 601-1200, error 1200+), against a shrink-only ratchet baseline. Pass --write-baseline to regenerate the baseline. Pass --baseline-path to override the default baseline location (RFC-1088).",
         scope: "workspace",

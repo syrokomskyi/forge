@@ -9,12 +9,6 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
-
-Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
-follows the parsed selector. Guard renamed assertAllSitesAllowed ->
-assertAllFlagAccepted, message updated. 417 declaration sites + type
-surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1306: ForgeRuntimeContext.invoke — structurally-typed optional port mirroring the kernel contract; forge stays runtime-autonomous (no engine import).</item>
   <item>RFC-1354: review r2 — approved/info; closes three info notes: requiresNetwork on remaining remote commands, ForgeCommandMetadata mirror JSDoc, baseline widened to full module-slice blind spot</item>
   <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
@@ -25,7 +19,8 @@ ForgeCommandMetadata gains the mirrored envInputs contract field. The
 npm_execpath ambient read in open-source-page.ts is removed for a
 deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
-  <history>RFC-0518, RFC-1097, RFC-1147</history>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231</history>
 </CHANGE_SUMMARY>
 */
 
@@ -215,8 +210,8 @@ export interface ForgeCommandMetadata {
   acceptsAllFlag?: boolean;
   /** RFC-0963: validation contract this command belongs to (e.g. "content", "seo"). */
   contract?: string;
-  /** RFC-0963: rule IDs this validator can emit. Empty for non-emitting validators. */
-  rules?: string[];
+  /** RFC-0963: rules this validator can emit, with declared severity. Empty for non-emitting validators. */
+  rules?: CommandRuleDecl[];
   timeoutMs?: number;
   expectedDurationMs?: number;
   longRunning?: boolean;
@@ -242,6 +237,15 @@ export interface ForgeCommandMetadata {
 export type GateSeverity = "error" | "warning" | "mixed";
 export type GatePhase = "author" | "postbuild" | "workspace" | "mission" | "release";
 
+/** RFC-1461: declared severity for a rule id — structural mirror of the kernel type (FORGE-AUTONOMY-01). */
+export type CommandRuleSeverity = "error" | "warning";
+
+/** RFC-1461: `rules[]` entry — rule id plus its declared emission severity. */
+export interface CommandRuleDecl {
+  id: string;
+  severity: CommandRuleSeverity;
+}
+
 export interface GateConditional {
   kind: "entitlement" | "flag" | "config";
   ref: string;
@@ -253,7 +257,7 @@ export interface GateMetadata {
   phase: GatePhase;
   conditional?: GateConditional;
   surfaces?: string[];
-  rules?: string[];
+  rules?: CommandRuleDecl[];
   blocks?: string[];
 }
 

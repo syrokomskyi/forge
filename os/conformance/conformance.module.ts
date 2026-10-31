@@ -12,6 +12,7 @@ contract producers plus the CONF-01..06 declaration lint.</purpose>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -85,7 +86,7 @@ export async function createForgeConformanceModule(): Promise<ForgeModule> {
           "declared → pass with no work.",
         scope: "workspace",
         contract: "conformance",
-        rules: ["CONF-01", "CONF-02", "CONF-03", "CONF-04", "CONF-05", "CONF-06"],
+        rules: [{ id: "CONF-01", severity: "error" }, { id: "CONF-02", severity: "error" }, { id: "CONF-03", severity: "error" }, { id: "CONF-04", severity: "error" }, { id: "CONF-05", severity: "error" }, { id: "CONF-06", severity: "error" }],
         mutatesState: false,
         writes: [],
         coverage: "operator",
