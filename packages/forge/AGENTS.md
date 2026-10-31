@@ -256,6 +256,8 @@ Post-cutoff `rfc.create --kind=architecture|contract` requires `--satisfies DNA-
 
 The body H1 (`# RFC-XXXX: <title>`) must byte-match the frontmatter `title` field — markdown decoration (e.g. backticks around `werkstatt run`) in one but not the other trips V-15 ("title does not match body heading"). Author the H1 identical to the frontmatter scalar. `## Rollout` (and the other template sections) must exist as **top-level `## ` headings** — a `### Rollout` nested under `## Design` trips V-13 "Missing required section". Run `rfc.validate --id <id>` on every draft before committing; warnings are the last cheap gate. Discovered during the RFC-1309..1312 draft batch (2026-10-16).
 
+**Grep the rejected archive before drafting a re-proposal.** `rfc.create`'s prior-decision consult prints only in pretty-mode — agents running `--json` never see it, so a draft can re-propose a rejected RFC with zero linkage until a human catches it. Before authoring, run `grep -rl "<key terms>" docs/rfcs/archive/rejected/`; a near-duplicate must land in `related:` with an explicit reconsideration paragraph stating what changed since the rejection. Interim rule until RFC-1467 lands (blocking `--revisit` gate at create + V-52 at validate). Discovered during F-0051 (2026-10-31): RFC-1462 re-proposed rejected RFC-1312 unlinked; caught by operator review.
+
 ## RFC batch authoring: rfc.create serialization and V-18 cascade triage
 
 **Never invoke `rfc.create` concurrently.** ID allocation scans `docs/rfcs/` (and its archive) for the highest number, so two parallel creates race on the same next id — run creations sequentially within a batch. Discovered during the RFC-1412..1418 `site-surface-maturity` batch (2026-10-27).
