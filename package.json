@@ -443,6 +443,14 @@
       "./os/friction-module": {
         "types": "./dist/os/friction/friction.module.d.ts",
         "default": "./dist/os/friction/friction.module.js"
+      },
+      "./os/resolver-module": {
+        "types": "./dist/os/resolver/resolver.module.d.ts",
+        "default": "./dist/os/resolver/resolver.module.js"
+      },
+      "./os/instructions-module": {
+        "types": "./dist/os/instructions/instructions.module.d.ts",
+        "default": "./dist/os/instructions/instructions.module.js"
       }
     }
   }
