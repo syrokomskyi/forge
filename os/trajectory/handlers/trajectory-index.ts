@@ -14,6 +14,7 @@ sessions produce nothing. --export/--import for shard portability.
   <item>RFC-1472: trajectory.index green-verified procedure-unit extraction + shard export/import</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
+  <item>RFC-1472: apply r2 repairs — archive-source provenance, outcome-replay + provenance regression tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -76,15 +77,15 @@ export async function runTrajectoryIndex(
   const sessionsDir = path.join(root, "docs", "sessions");
   const archiveBase = path.join(sessionsDir, "archive");
   const files = [
-    ...(await listSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: sessionsDir })),
-    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: archiveBase })),
+    ...(await listSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: sessionsDir, prefix: "docs/sessions" })),
+    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: archiveBase, prefix: "docs/sessions/archive" })),
   ]
     .filter((f) => !sessionFilter || f.rel.includes(sessionFilter))
     .filter((f) => !since || f.rel >= since);
 
   const units: ProcedureUnit[] = [];
   let admitted = 0, rejected = 0;
-  for (const { rel, base } of files) {
+  for (const { rel, base, prefix } of files) {
     const result = await readAndParseSession(base, rel).catch(() => null);
     if (!result) continue;
     const fm = result.parsed.frontmatter;
@@ -114,7 +115,7 @@ export async function runTrajectoryIndex(
       },
       continuation: { commandSequence: seq, decisions: decisions.slice(0, 5), outcomeHash },
       producer: { workshopId: "werkstatt", sessionId: sid, completedAt: String(fm.date ?? ""), verdictRef: verdict || `commits:${commits.length}` },
-      source: `docs/sessions/${rel}`,
+      source: `${prefix}/${rel}`,
       tokens: Math.ceil(text.length / 4),
       text,
       usedBy: { recalled: 0, helped: 0, hurt: 0 },
