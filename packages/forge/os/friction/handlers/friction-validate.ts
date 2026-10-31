@@ -29,6 +29,7 @@ F3-1: measure empty-string hole closed at shape level — absent or empty
 measure both fail FRICTION-01, matching the session/friction siblings.
 F3-2: pretty output reports reportedEntries (raw count on schema failure),
 consistent with the JSON payload. r3 review verdict: pass.</item>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
 </CHANGE_SUMMARY>
 */
 
@@ -85,6 +86,30 @@ function schemaIssueEntry(issue: { path: PropertyKey[] }, raw: unknown): string 
 /** Artifact refs that name files (contain a path separator) must resolve. */
 function isPathLikeArtifact(ref: string): boolean {
   return ref.includes("/");
+}
+
+// RFC-1460: measure classes whose effect a recurrence counter can disprove.
+const DOCS_ONLY_KINDS = new Set(["docs-rule", "skill-step"]);
+const DOCS_ARTIFACT_PATTERN = /(?:^|\/)(AGENTS\.md|SKILL\.md)$|\.md$/i;
+// FRICTION-08 "names a mechanical obligation" — RFC/ADR id, queue item,
+// repo-relative path, or a backticked x.y command token.
+const MECHANICAL_TOKEN_PATTERN =
+  /RFC-\d{4}|ADR-\d{4}|docs\/queues\/|`[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+`|[\w.-]+\/[\w./-]+/;
+
+/**
+ * Resolved measure class for FRICTION-06 — the strongest declared artifact
+ * wins on mixed sets, so an entry is docs-only only when every artifact is
+ * prose (AGENTS.md/SKILL.md/docs markdown). Empty artifact sets resolve null.
+ */
+function inferDocsOnly(entry: FrictionEntry): boolean {
+  return entry.artifacts.length > 0 && entry.artifacts.every((ref) => DOCS_ARTIFACT_PATTERN.test(ref));
+}
+
+function resolvedMeasureKind(entry: FrictionEntry): "docs-rule" | "mechanical" | null {
+  if (entry.measureKind !== undefined) {
+    return DOCS_ONLY_KINDS.has(entry.measureKind) ? "docs-rule" : "mechanical";
+  }
+  return inferDocsOnly(entry) ? "docs-rule" : null;
 }
 
 export async function runFrictionValidate(
@@ -211,6 +236,41 @@ export async function runFrictionValidate(
               "FRICTION-05",
               "warning",
               `Entry ${entry.id} signature is not lowercase-normalized: "${entry.signature}"`,
+              entry.id,
+            ),
+          );
+        }
+
+        // RFC-1460 FRICTION-06/07/08 — escalation contract on recurring signatures.
+        if (entry.status === "addressed") {
+          const kind = resolvedMeasureKind(entry);
+          if (kind === "docs-rule" && entry.recurrences >= 2) {
+            violations.push(
+              violation(
+                "FRICTION-06",
+                "error",
+                `Entry ${entry.id} is addressed on a docs-only measure yet its signature recurred ${entry.recurrences} times — the documented rule did not bind. Flip to status: escalated and name the mechanical obligation: "${entry.signature}"`,
+                entry.id,
+              ),
+            );
+          }
+          if (entry.measureKind === undefined) {
+            violations.push(
+              violation(
+                "FRICTION-07",
+                "warning",
+                `Entry ${entry.id} is addressed but carries no measureKind — classification debt, declare the measure's class`,
+                entry.id,
+              ),
+            );
+          }
+        }
+        if (entry.status === "escalated" && !MECHANICAL_TOKEN_PATTERN.test(entry.measure)) {
+          violations.push(
+            violation(
+              "FRICTION-08",
+              "error",
+              `Entry ${entry.id} is escalated but its measure names no mechanical obligation — an RFC/ADR id, a docs/queues item, a repo-relative path, or a backticked command token is required`,
               entry.id,
             ),
           );

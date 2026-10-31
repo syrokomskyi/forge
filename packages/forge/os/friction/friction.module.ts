@@ -27,6 +27,7 @@ status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
 violations[] shape; invented open-measure warn dropped; dead
 FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
 </CHANGE_SUMMARY>
 */
 
@@ -50,12 +51,16 @@ export async function createForgeFrictionModule(): Promise<ForgeModule> {
           "or addressed entries without artifacts; FRICTION-04 on " +
           "lastSeen before created or negative recurrences; FRICTION-05 " +
           "warns on empty/non-normalized signatures and unresolvable " +
-          "artifact paths. An absent registry passes with entries: 0 — " +
+          "artifact paths; FRICTION-06 fails on addressed entries whose " +
+          "signature recurred twice on a docs-only measure; FRICTION-07 " +
+          "warns on addressed entries with no measureKind; FRICTION-08 " +
+          "fails on escalated entries whose measure names no mechanical " +
+          "obligation. An absent registry passes with entries: 0 — " +
           "the file is created lazily by the session-retro autopsy step. " +
           "Read-only.",
         scope: "workspace",
         contract: "frictions",
-        rules: [{ id: "FRICTION-01", severity: "error" }, { id: "FRICTION-02", severity: "error" }, { id: "FRICTION-03", severity: "error" }, { id: "FRICTION-04", severity: "error" }, { id: "FRICTION-05", severity: "error" }],
+        rules: [{ id: "FRICTION-01", severity: "error" }, { id: "FRICTION-02", severity: "error" }, { id: "FRICTION-03", severity: "error" }, { id: "FRICTION-04", severity: "error" }, { id: "FRICTION-05", severity: "warning" }, { id: "FRICTION-06", severity: "error" }, { id: "FRICTION-07", severity: "warning" }, { id: "FRICTION-08", severity: "error" }],
         mutatesState: false,
         execOnReadOnly: true,
         reads: ["docs/frictions.yaml"],

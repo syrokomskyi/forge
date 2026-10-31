@@ -20,7 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1332: step 4 — reason-gated tests in fo-idea-implement, fo-add-tests, fo-fix</item>
   <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
   <item>COMMIT-02: commit templates — governed ids moved to the scope position (fix(rfc-xxxx): repair …, never fix: RFC-XXXX — …); illegal trace: prefix replaced with docs(adr-xxxx):</item>
   <item>RFC-1440: fo-reproduce skill + pipeline wiring
@@ -31,6 +30,7 @@ wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332</history>
 </CHANGE_SUMMARY>
 -->
@@ -272,7 +272,7 @@ Transition the RFC to `implemented` using the `rfc.implement.stamp` command. Dir
 
    The command atomically validates all preconditions (accepted status, checked+evidenced criteria — flipped in-place when evidenced under the flag, clean tree, reachable RFC-referencing commit, passing probe evidence) and sets `status: implemented`, `implementedAt`, and `updatedAt` in one atomic write. The result reports `criteriaAutoChecked` — the criterion ids the stamp flipped.
 
-   **Troubleshooting:** If the stamp fails with `Could not parse target RFC` (RFC-IMP-01), the RFC frontmatter has a YAML syntax error — not a missing file. Check for unquoted backtick values in `successSignals`, `nonGoals`, or other list items. YAML plain scalars starting with a backtick must be double-quoted. If it fails STAMP-CHECK-01, the named criteria carry no resolvable `(evidence: ...)` annotation — fix the annotation (or verify the criterion is actually met), commit, and re-stamp; the flag never blank-checks. If it fails RFC-IMP-15, a committed review report carries an `amend` design deviation missing from the RFC's `## Deviations` section — record `- <id> (review <reviewId>): <what changed>` there, edit the affected criterion/probe in the same change, commit, and re-stamp (RFC-1454).
+   **Troubleshooting:** If the stamp fails with `Could not parse target RFC` (RFC-IMP-01), the RFC frontmatter has a YAML syntax error — not a missing file. Check for unquoted backtick values in `successSignals`, `nonGoals`, or other list items. YAML plain scalars starting with a backtick must be double-quoted. If it fails STAMP-CHECK-01, the named criteria carry no resolvable `(evidence: ...)` annotation — fix the annotation (or verify the criterion is actually met), commit, and re-stamp; the flag never blank-checks. If it fails RFC-IMP-15, a committed review report carries an `amend` design deviation missing from the RFC's `## Deviations` section — record `- <id> (review <reviewId>): <what changed>` there, edit the affected criterion/probe in the same change, commit, and re-stamp.
 
 4. Commit the stamped artifacts — **one commit** covering the stamped RFC file, the regenerated `docs/rfcs/verification/rfc-xxxx.generated.yaml` envelope, and `docs/metrics/rfcs/rfc-xxxx.metrics.yaml`:
 
