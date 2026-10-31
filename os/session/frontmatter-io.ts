@@ -73,7 +73,9 @@ export async function listSessionFiles(sessionDirPath: string): Promise<string[]
 
 /**
  * List all .md session files in the archive/ subdirectory.
- * Returns relative paths (relative to sessionDirPath) sorted alphabetically.
+ * Returns relative paths sorted alphabetically — relative to the archive dir
+ * (sessionDirPath/archive/), NOT sessionDirPath. Callers emitting provenance
+ * must prefix them with the archive segment.
  */
 export async function listArchivedSessionFiles(sessionDirPath: string): Promise<string[]> {
   const archiveDirPath = path.join(sessionDirPath, SESSION_ARCHIVE_SUBDIR);
