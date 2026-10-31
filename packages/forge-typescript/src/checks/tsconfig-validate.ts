@@ -7,13 +7,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — werkstatt-engine clean
-
-Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1099: rewrite tsconfig-validate.ts as a pure model-consuming rule via defineTsCheck.</item>
   <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <history>RFC-0889, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -120,13 +118,7 @@ export function createTsconfigValidateCommand(): KernelCommandDefinition<Tsconfi
     name: "ts.tsconfig.validate",
     contract: "ts",
     modulePath: "packages/werkstatt-typescript/src/checks/tsconfig-validate.ts",
-    rules: [
-      "TS-TSCONFIG-01",
-      "TS-TSCONFIG-02",
-      "TS-TSCONFIG-03",
-      "TS-TSCONFIG-04",
-      "TS-TSCONFIG-05",
-    ],
+    rules: [{ id: "TS-TSCONFIG-01", severity: "error" }, { id: "TS-TSCONFIG-02", severity: "error" }, { id: "TS-TSCONFIG-03", severity: "error" }, { id: "TS-TSCONFIG-04", severity: "error" }, { id: "TS-TSCONFIG-05", severity: "error" }],
     description:
       "Validate tsconfig.base.json and per-package tsconfig.json consistency: strict mode, moduleResolution, target (TS-001).",
     reads: ["tsconfig.base.json", "packages/*/tsconfig.json", "services/*/tsconfig.json"],

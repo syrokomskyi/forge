@@ -26,11 +26,11 @@ status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
 05 signature/artifact hygiene (warn). Output emits the documented
 violations[] shape; invented open-measure warn dropped; dead
 FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
-import { FRICTION_RULE_IDS } from "./types.ts";
 
 export async function createForgeFrictionModule(): Promise<ForgeModule> {
   const { runFrictionValidate } = await import("./handlers/friction-validate.ts");
@@ -55,7 +55,7 @@ export async function createForgeFrictionModule(): Promise<ForgeModule> {
           "Read-only.",
         scope: "workspace",
         contract: "frictions",
-        rules: [...FRICTION_RULE_IDS],
+        rules: [{ id: "FRICTION-01", severity: "error" }, { id: "FRICTION-02", severity: "error" }, { id: "FRICTION-03", severity: "error" }, { id: "FRICTION-04", severity: "error" }, { id: "FRICTION-05", severity: "error" }],
         mutatesState: false,
         execOnReadOnly: true,
         reads: ["docs/frictions.yaml"],

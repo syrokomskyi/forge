@@ -12,7 +12,6 @@ envelope for all six ts.*.validate commands (RFC-1099).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1099: initial check harness — replaces per-validator boilerplate (walk, read, envelope shaping) with one defineTsCheck seam.</item>
   <item>RFC-1099: steps 7+9 — self-application green + review fixes</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
@@ -22,10 +21,13 @@ follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <history>RFC-1099</history>
 </CHANGE_SUMMARY>
 */
 
 import type {
+  CommandRuleDecl,
   KernelCommandDefinition,
   KernelCommandResult,
   Diagnostic,
@@ -46,7 +48,7 @@ export interface DefineTsCheckInput {
   description: string;
   reads: string[];
   contract: string;
-  rules: string[];
+  rules: CommandRuleDecl[];
   modulePath: string;
   check: (model: TsWorkspaceModel) => Diagnostic[];
 }

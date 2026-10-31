@@ -9,6 +9,7 @@ Unit tests for run ts check covering defineTsCheck. It also guards the documente
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1099: initial harness tests at the definition.execute() seam.</item>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -86,11 +87,11 @@ describe("defineTsCheck", () => {
       description: "example",
       reads: ["packages/**"],
       contract: "ts",
-      rules: ["TS-EXAMPLE-01"],
+      rules: [{ id: "TS-EXAMPLE-01", severity: "error" }],
       check: () => [],
     });
     expect(def.contract).toBe("ts");
-    expect(def.rules).toEqual(["TS-EXAMPLE-01"]);
+    expect(def.rules).toEqual([{ id: "TS-EXAMPLE-01", severity: "error" }]);
     expect(def.flags?.globs?.kind).toBe("string");
   });
 
@@ -116,7 +117,7 @@ describe("defineTsCheck", () => {
       description: "example",
       reads: [],
       contract: "ts",
-      rules: ["TS-EXAMPLE-01"],
+      rules: [{ id: "TS-EXAMPLE-01", severity: "error" }],
       check: (model) => {
         expect(model.packages).toHaveLength(1);
         return [makeDiagnostic("TS-EXAMPLE-01", "error", "boom")];

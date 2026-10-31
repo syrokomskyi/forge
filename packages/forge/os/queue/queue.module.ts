@@ -6,22 +6,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
-
-REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
-(the park is the containment — a parked queue stays resumable and the
-decision window arbitrates it); loader fails open only on ENOENT —
-other read errors are QUEUE-01; ledger gains queue/id-stem binding
-(QUEUE-02), Q-N uniqueness (QUEUE-05), and QUEUE-08 hygiene warnings
-(missing answers, foreign doc ids); next excludes QUEUE-07-blocked
-items; top-level decision totals added. Orchestrator pre-flight treats
-QUEUE-07 as the window agenda — structural errors still stop the batch;
-maturation skips parked/deferred items; uncovered imperative ask sites
-gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
   <item>RFC-1350: review follow-ups — QUEUE-09 touched-set edge cases (empty window, quoted paths, rename source, malformed entries), strict baseline, manifest template/scope wording, generated artifacts resync</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
+  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <history>RFC-1140, RFC-1250</history>
 </CHANGE_SUMMARY>
 */
@@ -53,17 +42,7 @@ export async function createForgeQueueModule(): Promise<ForgeModule> {
           "Required flags: `--file`.",
         scope: "workspace",
         contract: "queue",
-        rules: [
-          "QUEUE-01",
-          "QUEUE-02",
-          "QUEUE-03",
-          "QUEUE-04",
-          "QUEUE-05",
-          "QUEUE-06",
-          "QUEUE-07",
-          "QUEUE-08",
-          "QUEUE-09",
-        ],
+        rules: [{ id: "QUEUE-01", severity: "error" }, { id: "QUEUE-02", severity: "error" }, { id: "QUEUE-03", severity: "error" }, { id: "QUEUE-04", severity: "error" }, { id: "QUEUE-05", severity: "error" }, { id: "QUEUE-06", severity: "error" }, { id: "QUEUE-07", severity: "error" }, { id: "QUEUE-08", severity: "error" }, { id: "QUEUE-09", severity: "warning" }],
         mutatesState: false,
         execOnReadOnly: true,
         reads: [
