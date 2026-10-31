@@ -219,6 +219,14 @@
     "./os/instructions-module": {
       "types": "./os/instructions/instructions.module.ts",
       "default": "./os/instructions/instructions.module.ts"
+    },
+    "./os/agent-module": {
+      "types": "./os/agent/agent.module.ts",
+      "default": "./os/agent/agent.module.ts"
+    },
+    "./os/agent": {
+      "types": "./os/agent/index.ts",
+      "default": "./os/agent/index.ts"
     }
   },
   "files": [
@@ -451,6 +459,14 @@
       "./os/instructions-module": {
         "types": "./dist/os/instructions/instructions.module.d.ts",
         "default": "./dist/os/instructions/instructions.module.js"
+      },
+      "./os/agent-module": {
+        "types": "./dist/os/agent/agent.module.d.ts",
+        "default": "./dist/os/agent/agent.module.js"
+      },
+      "./os/agent": {
+        "types": "./dist/os/agent/index.d.ts",
+        "default": "./dist/os/agent/index.js"
       }
     }
   }
