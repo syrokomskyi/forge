@@ -26,6 +26,7 @@ function flags(f: Record<string, unknown> = {}) {
 }
 
 const INDEX = `schema: forge/context-index@1
+sourceWatermark: docs/sessions/2026-10-30-12-00-00-aaaaaa.md
 units:
   - id: "friction:F-0009"
     kind: friction
@@ -67,6 +68,16 @@ describe("context.assemble (RFC-1470)", () => {
     // 50-token friction + 40-token session — only one fits in 60.
     expect(res.data?.usedTokens).toBeLessThanOrEqual(60);
     expect(res.data?.skipped).toBeGreaterThanOrEqual(0);
+  });
+
+  test("CTX-02: stale index vs a newer session source → warn", async () => {
+    await mkdir(join(root, "docs", "sessions"), { recursive: true });
+    await writeFile(join(root, "docs", "sessions", "2026-10-31-18-00-00-bbbbbb.md"), `---\nid: s-new\n---\nbody`);
+    const warns: string[] = [];
+    const c = ctx() as unknown as { logger: { warn: (m: string) => void } };
+    c.logger.warn = (m: string) => warns.push(m);
+    await runContextAssemble(flags({ task: "scars" }), c as never);
+    expect(warns.some((w) => w.startsWith("CTX-02"))).toBe(true);
   });
 
   test("missing index → CONTEXT-01 blocking hint", async () => {

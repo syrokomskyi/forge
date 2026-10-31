@@ -14,6 +14,7 @@ rebuild from sources — no authority lives in the index.
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
+  <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
 </CHANGE_SUMMARY>
 */
 
@@ -184,7 +185,12 @@ export async function runIndexBuild(
   const indexDir = path.join(root, "docs", ".index", "context");
   await io.mkdir(indexDir).catch(() => {});
   const indexRel = "docs/.index/context/index.yaml";
-  const sourceWatermark = units.map((u) => u.source.split("#")[0] ?? "").sort().at(-1) ?? "";
+  // Watermark = newest SESSION source path (the corpus the index tracks for
+  // staleness) — not the lexical max across all kinds (packages/… always wins).
+  const sourceWatermark = units
+    .map((u) => u.source.split("#")[0] ?? "")
+    .filter((p) => p.startsWith("docs/sessions/"))
+    .sort().at(-1) ?? "";
   await io.writeFile(path.join(root, indexRel), yamlStringify({ schema: "forge/context-index@1", sourceWatermark, units }) + "\n");
   const byKind: Record<string, number> = {};
   for (const u of units) byKind[u.kind] = (byKind[u.kind] ?? 0) + 1;
