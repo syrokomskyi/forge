@@ -15,6 +15,7 @@ Autonomous — scans repo files only (FORGE-AUTONOMY-01).
 <CHANGE_SUMMARY>
   <item>RFC-1466: INSTR-01/02/03 budget + scar-classification audit over AGENTS.md files</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
+  <item>RFC-1466: apply r1 repairs — fragment remedies reachable via lookupRemediation, pending-marker ordering, comment-preserving catalogRefs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -59,9 +60,6 @@ export const DEFAULT_BUDGET: InstructionsBudget = {
 
 const SCAR_RE =
   /Discovered during|after (?:the |an? )?incident|\bF-\d{4}\b|\b(?:fix(?:ed)?|landed|hardened) (?:in|at|by) [0-9a-f]{7,40}\b|\b[0-9a-f]{9}\b/;
-const INVARIANT_RE =
-  /\b(MUST|SHALL|NEVER|ALWAYS|invariant|forbidden|prohibited|hard guard|blocking)\b/i;
-
 export function isScar(line: string): boolean {
   return SCAR_RE.test(line);
 }
@@ -99,7 +97,8 @@ function sectionOf(lines: string[], idx: number): string {
 async function agentsFiles(root: string, io: ReturnType<typeof resolveIo>): Promise<string[]> {
   const files: string[] = [];
   if (await io.exists(path.join(root, "AGENTS.md"))) files.push("AGENTS.md");
-  for (const dir of ["packages", "apps"]) {
+  for (const dir of ["packages", "apps", "services"]) {
+    if (await io.exists(path.join(root, dir, "AGENTS.md"))) files.push(`${dir}/AGENTS.md`);
     const parent = path.join(root, dir);
     for (const e of await io.readdir(parent).catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
       if (e.isDirectory && (await io.exists(path.join(parent, e.name, "AGENTS.md")))) {
@@ -162,16 +161,14 @@ export async function runInstructionsBudgetValidate(
           message: `${rel}:${i + 1}: scar-classified bullet inside exempt section "${section}" — informational; invariant-shaped content is exempt from migration`,
         });
       }
-      if (INVARIANT_RE.test(line) && !budget.exemptSections.some((s) => section.toLowerCase() === s.toLowerCase())) {
-        // invariant keyword in a non-exempt section — still a migration
-        // candidate? No: invariant-shaped prose stays (conservative bias).
-        return;
-      }
     });
     for (const m of migrations) {
       if (m.file !== rel) continue;
       const idx = (m.originLine ?? 0) - 1;
-      if (idx >= 0 && idx < lines.length && isScar(lines[idx]!)) {
+      if (idx < 0 || idx >= lines.length) continue;
+      const lineText = lines[idx]!.replace(/^\s*-\s*/, "").replace(/\s*<!--\s*migrates-to:[^>]*-->/, "").trim();
+      const text = (m.ruleText ?? "").slice(0, 60).trim();
+      if (text !== "" && lineText.startsWith(text.slice(0, 30)) && !lines[idx]!.includes("<!-- migrates-to:")) {
         diagnostics.push({
           ruleId: "INSTR-03",
           severity: "warning",
