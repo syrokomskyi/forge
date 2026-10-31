@@ -32,7 +32,7 @@ beforeEach(async () => {
   await writeFile(
     join(root, "docs", "validator-inventory.generated.yaml"),
     `contracts:
-  - name: knowledge
+  - contract: knowledge
     validators:
       - rules:
           - id: SKILL-19
@@ -45,9 +45,14 @@ beforeEach(async () => {
   );
   await writeFile(join(root, "docs", "frictions.yaml"), `frictions:
   - id: F-0099
-    contract: knowledge
-    tags: [NEVER-FIRE-99]
+    category: tooling
     recurrences: 2
+`);
+  await writeFile(join(root, "forge.yaml"), `schema: forge/config@1
+checksContribution:
+  contractMappings:
+    tooling: knowledge
+  guardRules: [PROBE-01]
 `);
 });
 
@@ -74,12 +79,21 @@ findings:
     expect(never?.emitted).toBe(0);
     expect(never?.verdict).toBe("silent");
     expect(never?.escapeCount).toBe(1);
-    expect(res.data?.variantCandidates).toContain("SKILL-19");
+    expect(res.data?.variantCandidates.some((v) => v.rule === "SKILL-19")).toBe(true);
   });
 
-  test("metrics artifact written at docs/metrics/check-contribution.generated.yaml", async () => {
+  test("metrics artifact written; --check diffs vs committed for staleness", async () => {
     await runContributionReport(flags({}), ctx());
     const metrics = await readFile(join(root, "docs", "metrics", "check-contribution.generated.yaml"), "utf8").catch(() => "");
     expect(metrics).toContain("check-contribution@1");
+    const fresh = await runContributionReport(flags({ check: true }), ctx());
+    expect(fresh.exitCode).toBe(0);
+  });
+
+  test("CONTRIB-01: missing inventory blocks, not a silent empty report", async () => {
+    await rm(join(root, "docs", "validator-inventory.generated.yaml"));
+    const res = await runContributionReport(flags({}), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.summary).toContain("CONTRIB-01");
   });
 });

@@ -2,18 +2,18 @@
 <MODULE_CONTRACT>
 <purpose>
 RFC-1473: checks.contribution.report — per-rule marginal-contribution read-model.
-Joins the validator inventory (rule universe) + docs/sessions/audit/*.audit.yaml
-sidecars (what actually fired — coverage: partial until RFC-1469's engine-side
-checkExecution counters land) + docs/frictions.yaml (escapes by contract/tag).
-Verdicts: earning (unique findings), silent (zeroStreak ≥ threshold),
-redundant (emits but uniqueEmitted ≈ 0 — shadowed by a sibling), guard
-(declared low-frequency). Writes docs/metrics/check-contribution.generated.yaml.
+Joins the validator inventory (rule universe, contracts[].contract) + session
+audit sidecars (firing surface — coverage: partial until RFC-1469's
+checkExecution counters land; the report surfaces effectiveCoverage = fired ids
+∩ inventory ids, warned when 0) + frictions (escapes by forge.yaml
+checksContribution.contractMappings). uniqueEmitted = signatures seen under no
+sibling rule (cross-rule dedup — redundant is reachable). verdict:
+earning|silent|redundant|guard (guard declared via checksContribution.guardRules).
+--check diffs the computed artifact vs the committed file (freshness gate).
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1473: checks.contribution.report per-rule marginal-contribution read-model</item>
-  <item>RFC-1473: checks.contribution.report — per-rule marginal-contribution read-model over firing history + escapes</item>
-  <item>RFC-1473: deterministic metrics generatedAt — derived from window data, not wall-clock</item>
+  <item>RFC-1473: r1 repair — contract-root inventory join, effectiveCoverage, cross-rule signature dedup, escape mapping via forge.yaml, --check staleness diff, CONTRIB-01 blocking</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,25 +28,33 @@ import type {
 
 export interface ContributionRecord {
   ruleId: string;
+  contract: string;
   emitted: number;
   uniqueEmitted: number;
   zeroStreak: number;
-  escapeCount: number;
+  escapeCount: number | null;
   verdict: "earning" | "silent" | "redundant" | "guard";
   action?: "probe" | "scope" | "retire-rfc" | "keep";
+}
+
+export interface VariantCandidate {
+  rule: string;
+  firedOn: string[];
+  siblingScope: string;
 }
 
 export interface ContributionData {
   command: "checks.contribution.report";
   status: "ok";
-  window: { runs: number; coverage: "full" | "partial" };
+  window: { runs: number; coverage: "full" | "partial"; effective: number; observable: number };
   rules: ContributionRecord[];
-  variantCandidates: string[];
+  variantCandidates: VariantCandidate[];
+  ungovernedContracts: string[];
   metrics: string;
 }
 
-const ZERO_STREAK_THRESHOLD = 10;
-const GUARD_RULES = new Set(["PROBE-01", "PROBE-03", "PROBE-05", "AUDIT-01", "AUDIT-02"]);
+
+interface FiredRule { emitted: number; uniqueSignatures: Set<string>; sessions: number; firedOn: Set<string> }
 
 export async function runContributionReport(
   input: ForgeCommandInput,
@@ -55,21 +63,40 @@ export async function runContributionReport(
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
   const contractFilter = input.flags["contract"] as string | undefined;
-  const windowN = Number(input.flags["window"] ?? 20) || 20;
+  const windowN = Math.max(1, Number(input.flags["window"] ?? 20) || 20);
+  const check = input.flags["check"] === true;
 
-  // Rule universe: validator inventory's declared rules.
-  const invSrc = await io.readFile(path.join(root, "docs", "validator-inventory.generated.yaml")).catch(() => "");
+  // CONTRIB-01: the rule universe must exist — a missing inventory is a
+  // blocking input, not a silent empty report.
+  const invPath = path.join(root, "docs", "validator-inventory.generated.yaml");
+  const invSrc = await io.readFile(invPath).catch(() => null);
+  if (invSrc === null) {
+    return {
+      data: { command: "checks.contribution.report", status: "ok", window: { runs: 0, coverage: "partial", effective: 0, observable: 0 }, rules: [], variantCandidates: [], ungovernedContracts: [], metrics: "" },
+      summary: "CONTRIB-01 docs/validator-inventory.generated.yaml missing — rule universe unavailable",
+      exitCode: 1,
+    };
+  }
   const parsed = yamlParse(invSrc) as {
-    contracts?: { name?: string; validators?: { name?: string; rules?: { id?: string; severity?: string }[] }[] }[];
+    contracts?: { contract?: string; validators?: { rules?: { id?: string; severity?: string }[] }[] }[];
   } | null;
+  const inventoryContracts = (parsed?.contracts ?? []).map((c) => c.contract ?? "?");
+  if (contractFilter && !inventoryContracts.includes(contractFilter)) {
+    return {
+      data: { command: "checks.contribution.report", status: "ok", window: { runs: 0, coverage: "partial", effective: 0, observable: 0 }, rules: [], variantCandidates: [], ungovernedContracts: [], metrics: "" },
+      summary: `CONTRIB-01 unknown --contract "${contractFilter}" (declared: ${inventoryContracts.join(", ")})`,
+      exitCode: 1,
+    };
+  }
   const rules = (parsed?.contracts ?? []).flatMap((c) =>
     (c.validators ?? []).flatMap((v) =>
-      (v.rules ?? []).filter((r) => r.id && (!contractFilter || c.name === contractFilter)).map((r) => ({ id: r.id!, contract: c.name ?? "?", severity: r.severity ?? "warning" })),
+      (v.rules ?? []).filter((r) => r.id && (!contractFilter || c.contract === contractFilter)).map((r) => ({ id: r.id!, contract: c.contract ?? "?" })),
     ),
   );
+  const inventoryIds = new Set(rules.map((r) => r.id));
 
-  // Firing history: session audit sidecars (the only persisted per-rule firing
-  // surface until RFC-1469's checkExecution journal lands — coverage: partial).
+  // Firing surface: session audit sidecars' findings[].ruleId — the only
+  // persisted per-rule surface until RFC-1469 counters land.
   const auditDir = path.join(root, "docs", "sessions", "audit");
   const sidecars = (await io.readdir(auditDir).catch(() => [] as { name: string; isDirectory: boolean }[]))
     .filter((e) => !e.isDirectory && e.name.endsWith(".audit.yaml"))
@@ -77,82 +104,105 @@ export async function runContributionReport(
     .sort()
     .slice(-windowN);
 
-  const fired = new Map<string, { emitted: number; uniqueSignatures: Set<string>; sessions: number }>();
-  const lastFiredAt = new Map<string, number>();
+  const fired = new Map<string, FiredRule>();
+  const signatureOwners = new Map<string, Set<string>>();
+  const firedIds = new Set<string>();
   let windowTo = "";
   for (let i = 0; i < sidecars.length; i++) {
     const src = await io.readFile(path.join(auditDir, sidecars[i]!)).catch(() => "");
-    const sc = yamlParse(src) as { findings?: { ruleId?: string; signature?: string }[]; auditedAt?: string } | null;
+    const sc = yamlParse(src) as { findings?: { ruleId?: string; signature?: string; evidence?: { file?: string } }[]; auditedAt?: string } | null;
     if (typeof sc?.auditedAt === "string" && sc.auditedAt > windowTo) windowTo = sc.auditedAt;
     for (const f of sc?.findings ?? []) {
       if (!f.ruleId) continue;
-      const g = fired.get(f.ruleId) ?? { emitted: 0, uniqueSignatures: new Set<string>(), sessions: 0 };
+      firedIds.add(f.ruleId);
+      const g = fired.get(f.ruleId) ?? { emitted: 0, uniqueSignatures: new Set<string>(), sessions: 0, firedOn: new Set<string>() };
       g.emitted++;
       if (f.signature) g.uniqueSignatures.add(f.signature);
+      if (f.evidence?.file) g.firedOn.add(f.evidence.file);
       g.sessions++;
       fired.set(f.ruleId, g);
-      lastFiredAt.set(f.ruleId, i);
+      if (f.signature) {
+        const owners = signatureOwners.get(f.signature) ?? new Set<string>();
+        owners.add(f.ruleId);
+        signatureOwners.set(f.signature, owners);
+      }
     }
   }
+  const effectiveIds = [...firedIds].filter((id) => inventoryIds.has(id));
+  const lastIdxByRule = new Map<string, number>();
+  for (let i = 0; i < sidecars.length; i++) {
+    const src = await io.readFile(path.join(auditDir, sidecars[i]!)).catch(() => "");
+    const sc = yamlParse(src) as { findings?: { ruleId?: string }[] } | null;
+    for (const f of sc?.findings ?? []) if (f.ruleId) lastIdxByRule.set(f.ruleId, i);
+  }
 
-  // Escapes: friction entries whose signature matches a rule's contract/tag —
-  // evidence the guard missed a signature that mattered.
+  // Escape mapping — forge.yaml checksContribution: maps friction contracts/
+  // categories to the contract whose rules should have caught them.
+  const forgeYaml = await io.readFile(path.join(root, "forge.yaml")).catch(() => "");
+  const cc = (yamlParse(forgeYaml) as { checksContribution?: { contractMappings?: Record<string, string>; guardRules?: string[] } } | null)?.checksContribution ?? {};
+  const contractMappings = cc.contractMappings ?? {};
+  const guardRules = new Set(cc.guardRules ?? []);
   const frictionsSrc = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-  const frictions = (yamlParse(frictionsSrc) as { frictions?: { id?: string; contract?: string; tags?: string[]; recurrences?: number }[] } | null)?.frictions ?? [];
+  const frictions = (yamlParse(frictionsSrc) as { frictions?: { id?: string; category?: string; contract?: string; tags?: string[] }[] } | null)?.frictions ?? [];
+  const ungovernedContracts = [...new Set(frictions.map((f) => f.category).filter((c): c is string => !!c))].filter((c) => !Object.keys(contractMappings).includes(c));
 
   const records: ContributionRecord[] = [];
-  const variantCandidates: string[] = [];
+  const variantCandidates: VariantCandidate[] = [];
   for (const r of rules) {
-    const f = fired.get(r.id) ?? { emitted: 0, uniqueSignatures: new Set<string>(), sessions: 0 };
-    const lastIdx = lastFiredAt.get(r.id) ?? -1;
+    const f = fired.get(r.id) ?? { emitted: 0, uniqueSignatures: new Set<string>(), sessions: 0, firedOn: new Set<string>() };
+    const lastIdx = lastIdxByRule.get(r.id) ?? -1;
     const zeroStreak = lastIdx === -1 ? sidecars.length : sidecars.length - 1 - lastIdx;
-    const escapeCount = frictions.filter((fr) =>
-      fr.contract === r.contract || (fr.tags ?? []).includes(r.id),
-    ).length;
-    const uniqueEmitted = f.uniqueSignatures.size || f.emitted;
+    const escapeCount = Object.keys(contractMappings).length > 0
+      ? frictions.filter((fr) => contractMappings[fr.category ?? ""] === r.contract).length
+      : null;
+    const uniqueEmitted = [...f.uniqueSignatures].filter((s) => (signatureOwners.get(s)?.size ?? 0) === 1).length;
     let verdict: ContributionRecord["verdict"];
     let action: ContributionRecord["action"] | undefined;
-    if (GUARD_RULES.has(r.id)) { verdict = "guard"; action = "keep"; }
-    else if (uniqueEmitted > 0 || escapeCount === 0 && f.emitted > 0) verdict = "earning";
+    if (guardRules.has(r.id)) { verdict = "guard"; action = "keep"; }
+    else if (f.emitted > 0 && uniqueEmitted > 0) verdict = "earning";
     else if (f.emitted > 0 && uniqueEmitted === 0) { verdict = "redundant"; action = "scope"; }
-    else if (zeroStreak >= ZERO_STREAK_THRESHOLD || f.emitted === 0) { verdict = "silent"; action = "probe"; }
+    else if (f.emitted === 0) { verdict = "silent"; action = escapeCount === null || escapeCount > 0 ? "scope" : "probe"; }
     else verdict = "earning";
-    if (escapeCount > 0 && verdict === "silent") action = "scope";
-    if (f.emitted > 0 && uniqueEmitted >= 1) variantCandidates.push(r.id);
-    records.push({ ruleId: r.id, emitted: f.emitted, uniqueEmitted, zeroStreak, escapeCount, verdict, action });
+    if (uniqueEmitted > 0) {
+      variantCandidates.push({ rule: r.id, firedOn: [...f.firedOn], siblingScope: r.contract });
+    }
+    records.push({ ruleId: r.id, contract: r.contract, emitted: f.emitted, uniqueEmitted, zeroStreak, escapeCount, verdict, action });
   }
 
   const metricsRel = "docs/metrics/check-contribution.generated.yaml";
   const metrics = {
     schema: "forge/check-contribution@1",
-    // Deterministic — derived from the window's own data, not wall-clock, so a
-    // rerun over unchanged inputs produces an identical artifact.
     generatedAt: windowTo || "no-window",
-    window: { runs: sidecars.length, coverage: "partial" as const },
+    window: { runs: sidecars.length, coverage: "partial" as const, effective: effectiveIds.length, observable: firedIds.size },
     rules: records,
     variantCandidates,
+    ungovernedContracts,
   };
-  const check = input.flags["check"] === true;
-  if (!check) {
-    await io.mkdir(path.join(root, "docs", "metrics")).catch(() => {});
-    await io.writeFile(path.join(root, metricsRel), yamlStringify(metrics) + "\n");
+  const serialized = yamlStringify(metrics) + "\n";
+
+  if (check) {
+    const committed = await io.readFile(path.join(root, metricsRel)).catch(() => null);
+    const stale = committed !== serialized;
+    return {
+      data: { command: "checks.contribution.report", status: "ok", window: metrics.window, rules: records, variantCandidates, ungovernedContracts, metrics: metricsRel },
+      summary: stale ? "CONTRIB-02 committed report is stale — run checks.contribution.report" : "report fresh",
+      exitCode: stale ? 1 : 0,
+    };
   }
 
+  await io.mkdir(path.join(root, "docs", "metrics")).catch(() => {});
+  await io.writeFile(path.join(root, metricsRel), serialized);
   if (context.outputFormat === "pretty") {
+    if (effectiveIds.length === 0 && firedIds.size > 0) {
+      context.logger.warn(`observableCoverage: ${effectiveIds.length}/${firedIds.size} fired ids resolve in the inventory — firing surface is structurally disjoint from the rule universe`);
+    }
     for (const r of records.filter((r) => r.verdict === "silent" || r.verdict === "redundant")) {
       context.logger.warn(`${r.verdict.toUpperCase()} ${r.ruleId} — ${r.emitted} emitted, ${r.uniqueEmitted} unique, streak ${r.zeroStreak} → ${r.action}`);
     }
   }
   return {
-    data: {
-      command: "checks.contribution.report",
-      status: "ok",
-      window: { runs: sidecars.length, coverage: "partial" },
-      rules: records,
-      variantCandidates,
-      metrics: check ? "(check — not written)" : metricsRel,
-    },
-    summary: `${records.length} rule(s): ${records.filter((r) => r.verdict === "earning").length} earning, ${records.filter((r) => r.verdict === "silent").length} silent, ${records.filter((r) => r.verdict === "redundant").length} redundant`,
+    data: { command: "checks.contribution.report", status: "ok", window: metrics.window, rules: records, variantCandidates, ungovernedContracts, metrics: metricsRel },
+    summary: `${records.length} rule(s): ${records.filter((r) => r.verdict === "earning").length} earning, ${records.filter((r) => r.verdict === "silent").length} silent, ${records.filter((r) => r.verdict === "redundant").length} redundant (effectiveCoverage ${effectiveIds.length}/${firedIds.size})`,
     exitCode: 0,
   };
 }
