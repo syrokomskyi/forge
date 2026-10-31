@@ -61,7 +61,7 @@ describe("instructions.budget.validate (RFC-1466)", () => {
     await seed(true, `- scar bullet Discovered during RFC-1400\n`);
     await writeFile(
       join(root, "docs", "remediation-catalog.custom.yaml"),
-      `entries:\n  - id: SCAR-0001\n    ruleText: x\n    migratedFrom: AGENTS.md:1\n    migratedAt: t\n    originLine: 1\n`,
+      `entries:\n  - id: SCAR-0001\n    ruleText: "scar bullet Discovered during RFC-1400"\n    migratedFrom: AGENTS.md:1\n    migratedAt: t\n    originLine: 1\n`,
     );
     const res = await runInstructionsBudgetValidate(flags({}), ctx());
     expect(res.data?.diagnostics.some((d) => d.ruleId === "INSTR-03")).toBe(true);
@@ -69,14 +69,14 @@ describe("instructions.budget.validate (RFC-1466)", () => {
 });
 
 describe("scar.migrate (RFC-1466)", () => {
-  test("AC-4: scar bullet → fragment entry + bullet removed + catalogRefs on friction", async () => {
+  test("AC-4: bound scar bullet → fragment entry + bullet removed + catalogRefs on friction", async () => {
     await seed();
     await writeFile(
       join(root, "docs", "frictions.yaml"),
-      `- id: F-0007\n  created: "2026-01-01"\n  session: s\n  category: tooling\n  friction: x\n  signature: y\n  measure: z\n  artifacts: []\n  status: open\n  recurrences: 1\n  lastSeen: "2026-01-01"\n`,
+      `# authored header comment\n- id: F-0007\n  created: "2026-01-01"\n  session: s\n  category: tooling\n  friction: x\n  signature: y\n  measure: z\n  artifacts: []\n  status: open\n  recurrences: 1\n  lastSeen: "2026-01-01"\n`,
     );
     const res = await runScarMigrate(
-      flags({ file: "AGENTS.md", line: 2, friction: "F-0007" }),
+      flags({ file: "AGENTS.md", line: 2, friction: "F-0007", "diagnostic-codes": "FOO-01" }),
       ctx(),
     );
     expect(res.data?.status).toBe("migrated");
@@ -85,10 +85,27 @@ describe("scar.migrate (RFC-1466)", () => {
       await readFile(join(root, "docs", "remediation-catalog.custom.yaml"), "utf8"),
     );
     expect(fragment.entries[0].ruleText).toContain("Discovered during");
+    expect(fragment.entries[0].diagnosticCodes).toContain("FOO-01");
     const agents = await readFile(join(root, "AGENTS.md"), "utf8");
     expect(agents).not.toContain("scar bullet");
-    const frictions = yamlParse(await readFile(join(root, "docs", "frictions.yaml"), "utf8"));
-    expect(frictions[0].catalogRefs).toContain(res.data!.entryId);
+    const frictions = await readFile(join(root, "docs", "frictions.yaml"), "utf8");
+    expect(frictions).toContain("# authored header comment");
+    expect(frictions).toContain(`catalogRefs: [${res.data!.entryId}]`);
+  });
+
+  test("unbound remedy keeps the bullet with a pending marker (F-2 ordering)", async () => {
+    await seed();
+    const res = await runScarMigrate(flags({ file: "AGENTS.md", line: 2 }), ctx());
+    expect(res.data?.status).toBe("migrated");
+    expect(res.data?.pending).toBe(true);
+    const agents = await readFile(join(root, "AGENTS.md"), "utf8");
+    expect(agents).toContain(`<!-- migrates-to: ${res.data!.entryId} pending -->`);
+    expect(agents).toContain("scar bullet");
+    // --force removes the prose even when unbound
+    const forced = await runScarMigrate(flags({ file: "AGENTS.md", line: 2, force: true }), ctx());
+    expect(forced.data?.status).toBe("migrated");
+    const after = await readFile(join(root, "AGENTS.md"), "utf8");
+    expect(after).not.toContain("scar bullet");
   });
 
   test("AC-5: invariant-shaped bullet refuses without --force (journaled)", async () => {
