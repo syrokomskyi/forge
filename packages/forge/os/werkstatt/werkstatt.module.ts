@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0556: removed dynamic imports of @warpgogol/site-kernel-handoff and @warpgogol/site-kernel-checks, all handlers now inlined in forge/os/werkstatt/handlers/.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1231: step 1 — rename supportsAllSites to acceptsAllFlag
 
@@ -16,7 +15,8 @@ assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
   <item>RFC-1462: isolate parallel agent sessions in per-session git worktrees — session.open/close/status, registry, commit overlap warning</item>
-  <history>RFC-0374, RFC-1360</history>
+  <item>RFC-1462: repair RFC-1462 session-worktree r1 findings — last-commit status, real inside-worktree skip, loud residue commit</item>
+  <history>RFC-0374, RFC-0556, RFC-1360</history>
 </CHANGE_SUMMARY>
 */
 
@@ -113,7 +113,7 @@ export const forgeWerkstattModule: ForgeModule = {
           description: "Re-adopt an existing live session for the same agent id.",
         },
       },
-      writes: [".sessions/**"],
+      writes: [".sessions/**", ".git/**"],
       generates: [],
       reads: [".git/**"],
       cacheable: false,
@@ -150,7 +150,7 @@ export const forgeWerkstattModule: ForgeModule = {
           description: "Retarget the merge to a different base branch.",
         },
       },
-      writes: [".sessions/**"],
+      writes: [".sessions/**", ".git/**", "**"],
       generates: [],
       reads: [".git/**"],
       cacheable: false,
