@@ -10,6 +10,7 @@ mutatesState: false for the repo — fixture files land under tmpdir only.
 <CHANGE_SUMMARY>
   <item>RFC-1469: gate.probe fixture-driven liveness runner</item>
   <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
+  <item>RFC-1469: run probe checks inside the scratch workspace — context.invoke ran against the kernel root where fixture files don't exist</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +29,7 @@ export interface ProbeFixture {
   contract: string;
   derivedFrom?: string;
   spec: { files?: Record<string, string>; from?: string };
-  expect: { rule: string; minDiagnostics?: number; pathPattern?: string };
+  expect: { rule: string; command?: string; minDiagnostics?: number; pathPattern?: string };
 }
 
 export interface ProbeReport {
@@ -101,34 +102,34 @@ export async function runGateProbe(
     };
   }
 
-  if (!context.invoke) {
-    return {
-      data: {
-        command: "gate.probe",
-        status: "failures",
-        probed: 0,
-        reports: [{ fixture: "-", rule: "-", status: "error", diagnostics: 0, detail: "context.invoke absent — run under the kernel" }],
-      },
-      summary: "gate.probe failed — invoke port absent",
-      exitCode: 1,
-    };
-  }
-
   const reports: ProbeReport[] = [];
   for (const { path: fp, fixture } of selected) {
-    const scratch = path.join(tmpdir(), `gate-probe-${fixture.rule}-${Date.now()}`);
+    const scratch = path.join(tmpdir(), `gate-probe-${fixture.rule.replace(/[^a-z0-9-]/gi, "_")}-${Date.now()}`);
     try {
-      // Materialize the fixture files under the temp workspace.
+      // Materialize the fixture files under the temp workspace — the seeded
+      // violation must be inside the check's real scan path.
       for (const [rel, content] of Object.entries(fixture.spec.files ?? {})) {
         const abs = path.join(scratch, rel);
         await io.mkdir(path.dirname(abs));
         await io.writeFile(abs, content);
       }
-      // Invoke the bound check against the fixture workspace via the kernel —
-      // the probe contract is "the check fires its rule on the seeded violation".
-      const res = await context.invoke(fixture.expect.rule.split(":")[0] ?? fixture.rule, {});
-      const diagnostics = ((res.data as { diagnostics?: unknown[] } | undefined)?.diagnostics ?? []).length;
-      const ruleFired = res.exitCode !== 0 && diagnostics >= (fixture.expect.minDiagnostics ?? 1);
+      // Minimal forge.yaml so the check's workspace resolver finds a root.
+      await io.writeFile(path.join(scratch, "forge.yaml"), "schema: forge/config@1\n");
+      // The check runs in the scratch workspace via the kernel — the probe
+      // contract is "the check fires its rule on the seeded violation".
+      const checkCmd = fixture.expect.command ?? fixture.expect.rule.split(":")[0] ?? fixture.rule;
+      const res = await io.exec?.(
+        "pnpm",
+        ["exec", "werkstatt", "run", checkCmd, "--json"],
+        { cwd: scratch, timeoutMs: 60_000 },
+      );
+      if (!res) throw new Error("io.exec absent — cannot run checks inside the scratch workspace");
+      let diagnostics = 0;
+      try {
+        const parsed = JSON.parse(res.stdout) as { data?: { diagnostics?: unknown[] } };
+        diagnostics = (parsed.data?.diagnostics ?? []).length;
+      } catch { /* non-JSON output — diagnostics stays 0 */ }
+      const ruleFired = (res.exitCode ?? 1) !== 0 && diagnostics >= (fixture.expect.minDiagnostics ?? 1);
       reports.push({
         fixture: fp,
         rule: fixture.rule,

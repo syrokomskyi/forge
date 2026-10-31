@@ -26,15 +26,26 @@ expect:
 `;
 
 function ctx(opts: {
-  invoke?: (cmd: string) => { exitCode: number; ok: boolean; data?: unknown };
+  /** Mock the scratch-workspace exec — the check's real run happens there. */
+  execOut?: { stdout: string; stderr: string; exitCode: number };
 }): ForgeRuntimeContext {
+  const io = {
+    exists: async () => true,
+    readFile: async (p: string) => p.endsWith("fixture.yaml") ? FIXTURE : "",
+    writeFile: async () => {},
+    mkdir: async () => {},
+    readdir: async (p: string) => {
+      if (p.endsWith("gate-probes")) return [{ name: "demo", isDirectory: true, isFile: false }];
+      if (p.endsWith("demo")) return [{ name: "DEMO-19", isDirectory: true, isFile: false }];
+      return [{ name: "fixture.yaml", isDirectory: false, isFile: true }];
+    },
+    exec: async () => opts.execOut ?? { stdout: '{"data":{"diagnostics":[{}]}}', stderr: "", exitCode: 1 },
+  };
   return {
     workspaceRoot: root,
     outputFormat: "json",
     logger: { info() {}, warn() {}, error() {}, success() {}, section() {} },
-    invoke: opts.invoke
-      ? async (cmd: string) => ({ ...opts.invoke!(cmd), filesModified: [] })
-      : undefined,
+    io: io as never,
   } as unknown as ForgeRuntimeContext;
 }
 
@@ -56,7 +67,7 @@ describe("gate.probe (RFC-1469)", () => {
   test("AC-3: bound check fires on the seeded violation → pass", async () => {
     const res = await runGateProbe(
       flags({}),
-      ctx({ invoke: () => ({ exitCode: 1, ok: false, data: { diagnostics: [{}] } }) }),
+      ctx({ execOut: { stdout: '{"data":{"diagnostics":[{}]}}', stderr: "", exitCode: 1 } }),
     );
     expect(res.data?.reports[0]?.status).toBe("pass");
     expect(res.data?.status).toBe("ok");
@@ -66,7 +77,7 @@ describe("gate.probe (RFC-1469)", () => {
   test("AC-4: check silent on the seeded violation → fail (dead gate)", async () => {
     const res = await runGateProbe(
       flags({}),
-      ctx({ invoke: () => ({ exitCode: 0, ok: true, data: { diagnostics: [] } }) }),
+      ctx({ execOut: { stdout: '{"data":{"diagnostics":[]}}', stderr: "", exitCode: 0 } }),
     );
     expect(res.data?.reports[0]?.status).toBe("fail");
     expect(res.data?.reports[0]?.detail).toContain("dead");
