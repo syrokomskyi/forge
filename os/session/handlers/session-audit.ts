@@ -23,6 +23,7 @@ unchanged; --relabel forces a fresh write).
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1471: session.audit Stage-A detectors + sidecar write (r1 repair — RFC taxonomy, correct semantics, read-only --check, deterministic auditedAt, archive coverage, finding schema)</item>
+  <item>RFC-1471: apply r2 repairs — archive base-dir resolution (728 sessions audited), stale taxonomy, suppression fixture tokens</item>
 </CHANGE_SUMMARY>
 */
 
@@ -223,10 +224,13 @@ export async function runSessionAudit(
   const relabel = input.flags["relabel"] === true;
   const deep = input.flags["deep"] === true;
 
+  const active = await listSessionFiles(sessionsDir).catch(() => []);
+  const archived = await listArchivedSessionFiles(sessionsDir).catch(() => []);
+  const archiveBase = path.join(sessionsDir, "archive");
   const all = [
-    ...(await listSessionFiles(sessionsDir).catch(() => [])),
-    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])),
-  ].filter((f) => !sessionFilter || f.includes(sessionFilter));
+    ...active.map((rel) => ({ rel, base: sessionsDir })),
+    ...archived.map((rel) => ({ rel, base: archiveBase })),
+  ].filter((f) => !sessionFilter || f.rel.includes(sessionFilter));
   if (all.length === 0) {
     return { data: [], summary: "no sessions found", exitCode: 1 };
   }
@@ -235,8 +239,8 @@ export async function runSessionAudit(
   const auditDir = path.join(sessionsDir, "audit");
   if (!check) await io.mkdir(auditDir).catch(() => {});
 
-  for (const rel of all) {
-    const result = await readAndParseSession(sessionsDir, rel).catch(() => null);
+  for (const { rel, base } of all) {
+    const result = await readAndParseSession(base, rel).catch(() => null);
     if (!result) continue;
     const { frontmatter, body } = result.parsed;
     const id = String(frontmatter.id ?? path.basename(rel, ".md"));

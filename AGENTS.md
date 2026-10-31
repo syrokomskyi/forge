@@ -26,7 +26,9 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeKnowledgeModule` | `knowledge.rebuild`, `knowledge.authz.probe` | `os/knowledge/` |
 | `forgeGateModule` | `gate.probe`, `gate.probe.catalog` | `os/gate/` |
 
-`session.audit` runs deterministic Stage-A detectors over `docs/sessions/*.md` (AUDIT-01 denied-retry, AUDIT-02 blocker omission, AUDIT-03 generated-file edit, AUDIT-04 retry-after-denial, AUDIT-05 false completion) and writes `docs/sessions/audit/<id>.audit.yaml` sidecars; `session.audit.report` aggregates the sidecars + links finding classes to frictions.
+| `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list`, `metrics.aggregate`, `session.audit`, `session.audit.report` | `os/session/` |
+
+`session.audit` runs deterministic Stage-A detectors over `docs/sessions/*.md` + `archive/` — AUDIT-01/02 coverage caveats (.raw present, --deep without modelBinding), AUDIT-10 circumvention (denied gate → bypass route), AUDIT-11 blocker deception, AUDIT-12 generated-file edit, AUDIT-13 denied retry, AUDIT-14 false completion claim — and writes `docs/sessions/audit/<id>.audit.yaml` sidecars (deterministic `auditedAt` = session date). `session.audit.report` aggregates the sidecars into `docs/metrics/session-audit.generated.yaml` + links finding classes to frictions.
 
 `gate.probe` injects `docs/gate-probes/<contract>/<rule>/fixture.yaml` at its real workspace path (backup → invoke → restore) and proves the bound check still fires on its seeded violation — a silent pass is a dead gate. `gate.probe.catalog` reports per-contract coverage + unprobed error-severity rules.
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.record`, `compass.summary.trim`, `compass.migrate`, `compass.header.scaffold`, etc. All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). `compass.summary.record` appends governance-ID items to `CHANGE_SUMMARY` at commit time (RFC-1095). `compass.header.scaffold` authors/repairs v2 headers mechanically (`--census` for the writeless manifest, RFC-1318). | `os/compass/` |
