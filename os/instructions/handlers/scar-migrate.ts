@@ -16,6 +16,7 @@ bullet (empty sections collapse), and journals refusals.
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1466: apply r1 repairs — fragment remedies reachable via lookupRemediation, pending-marker ordering, comment-preserving catalogRefs</item>
   <item>RFC-1466: apply r2 repairs — extend-path diagnosticCodes merge, publishConfig exports, marker idempotency, walk-up fragment resolution</item>
+  <item>RFC-1466: apply r3 repairs — block-style catalogRefs append, marker-stack strip, remedy id whitelist</item>
 </CHANGE_SUMMARY>
 */
 
@@ -148,6 +149,9 @@ export async function runScarMigrate(
   // Fragment entry — append or extend the named entry.
   const markerMatch = bullet.match(/<!--\s*migrates-to:\s*(\S+)\s+pending\s*-->/);
   const id = entryId ?? markerMatch?.[1] ?? `SCAR-${String(fragment.entries.length + 1).padStart(4, "0")}`;
+  if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(id)) {
+    throw new Error(`scar.migrate: --catalog-remedy id "${id}" must match [A-Za-z0-9-]+`);
+  }
   const ruleText = bullet
     .replace(/^-\s+/, "")
     .replace(/\s*<!--\s*migrates-to:[^>]*-->\s*/g, "")
@@ -202,18 +206,27 @@ export async function runScarMigrate(
         const indent = fLines[idx]!.match(/^\s*/)![0] + "  ";
         if (refsIdx >= 0) {
           const row = fLines[refsIdx]!;
-          const hasId = new RegExp(`["'\\s,\\[]${id}["'\\s,\\]]`).test(row);
+          // scan the header line AND following block-style "- item" rows for the id
+          let blockEnd = refsIdx + 1;
+          const blockRows: number[] = [];
+          while (blockEnd < fLines.length && /^\s+-\s+/.test(fLines[blockEnd]!) && fLines[blockEnd]!.match(/^\s*/)![0].length > 0) {
+            blockRows.push(blockEnd);
+            blockEnd++;
+          }
+          const idRe = new RegExp(`["'\\s,\\[-]${id}["'\\s,\\]]`);
+          const hasId = idRe.test(row) || blockRows.some((j) => idRe.test(fLines[j]!));
           if (!hasId) {
             const m = row.match(/^(\s*catalogRefs:\s*)\[([^\]]*)\](.*)$/);
-            if (m) {
+            if (blockRows.length > 0) {
+              // block-style catalogRefs — append a "- item" row at the same indent
+              const itemIndent = fLines[blockRows[0]!]!.match(/^\s*/)![0];
+              fLines.splice(blockRows[blockRows.length - 1]! + 1, 0, `${itemIndent}- ${id}`);
+            } else if (m) {
               const inner = m[2]!.trim();
               fLines[refsIdx] = `${m[1]}[${inner === "" ? id : `${inner}, ${id}`}]${m[3]}`;
-            } else if (row.trim() === "catalogRefs:" || row.trim() === "catalogRefs: []") {
+            } else {
+              // bare header (possibly with a trailing comment) — convert to flow form
               fLines[refsIdx] = `${indent}catalogRefs: [${id}]`;
-            }
-            // block-style `catalogRefs:` followed by `- item` rows — append a row
-            else if (row.trim() === "catalogRefs:") {
-              fLines.splice(refsIdx + 1, 0, `${indent}  - ${id}`);
             }
           }
         } else {
@@ -229,7 +242,8 @@ export async function runScarMigrate(
   // bullet stays until a blocking diagnostic carries the remedy code.
   const unbound = (diagnosticCodes?.length ?? 0) === 0 && !force;
   if (unbound) {
-    lines[line - 1] = `${bullet} <!-- migrates-to: ${id} pending -->`;
+    const cleanBullet = bullet.replace(/\s*<!--\s*migrates-to:[^>]*-->\s*/g, "");
+    lines[line - 1] = `${cleanBullet} <!-- migrates-to: ${id} pending -->`;
   } else {
     lines.splice(line - 1, 1);
     // drop orphaned sub-bullets / continuation lines more indented than the bullet
