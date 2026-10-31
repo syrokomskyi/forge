@@ -32,7 +32,7 @@ beforeEach(async () => {
   await writeFile(
     join(root, "docs", "validator-inventory.generated.yaml"),
     `contracts:
-  - name: knowledge
+  - contract: knowledge
     validators:
       - rules:
           - id: FIRED-01
@@ -59,7 +59,7 @@ findings:
 `,
     );
     const res = await runContributionReport(flags({}), ctx());
-    expect(res.data?.variantCandidates).toContain("FIRED-01");
-    expect(res.data?.variantCandidates).not.toContain("QUIET-01");
+    expect(res.data?.variantCandidates.some((v) => v.rule === "FIRED-01" && v.siblingScope === "knowledge")).toBe(true);
+    expect(res.data?.variantCandidates.some((v) => v.rule === "QUIET-01")).toBe(false);
   });
 });
