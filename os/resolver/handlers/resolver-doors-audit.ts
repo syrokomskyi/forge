@@ -17,6 +17,7 @@ Autonomous — scans source text only (FORGE-AUTONOMY-01).
   <item>RFC-1465: canonical-reader parity audit — DOOR-01/02/03 over the forge.yaml resolverDoors registry</item>
   <item>RFC-1465: canonical-reader parity audit — resolver.doors.audit with DOOR-01/02/03 over forge.yaml registry</item>
   <item>RFC-1465: harden RFC-1465 door detection — module-level semantics, dynamic imports, comment stripping, wider corpus</item>
+  <item>RFC-1465: apply comment-stripped import scan and export-default coverage in resolver doors audit per RFC-1465 review</item>
 </CHANGE_SUMMARY>
 */
 
@@ -61,7 +62,7 @@ const SCAN_ROOTS = ["packages", "services", "tools"];
 const EXCLUDE_DIRS = new Set(["node_modules", "dist", ".turbo", ".sessions"]);
 const EXPORT_RE = (name: string) =>
   new RegExp(
-    `export\\s+(?:async\\s+)?(?:function|const|let|var|class|interface|type|enum)\\s+${name}\\b|export\\s*\\{[^}]*\\b${name}\\b|export\\s+default\\s+${name}\\b`,
+    `export\\s+(?:async\\s+)?(?:function|const|let|var|class|interface|type|enum)\\s+${name}\\b|export\\s*\\{[^}]*\\b${name}\\b|export\\s+default\\s+(?:async\\s+)?(?:function\\s+)?${name}\\b`,
   );
 
 function parseCanonical(canonical: string): { file: string; symbol: string } | null {
@@ -231,7 +232,7 @@ export async function runResolverDoorsAudit(
         });
         continue;
       }
-      if (!importRefs(src).some((r) => bindsCanonical(r, doorRel, canonRel, c.symbol))) {
+      if (!importRefs(stripComments(src)).some((r) => bindsCanonical(r, doorRel, canonRel, c.symbol))) {
         diagnostics.push({
           ruleId: "DOOR-02",
           severity: "warning",
@@ -246,8 +247,8 @@ export async function runResolverDoorsAudit(
     // the surface's domain dirs.
     for (const [file, src] of corpus) {
       if (file === canonRel || doorSet.has(file) || !src) continue;
-      const importsCanon = importRefs(src).some((r) => bindsCanonical(r, file, canonRel, c.symbol));
       const code = stripComments(src);
+      const importsCanon = importRefs(code).some((r) => bindsCanonical(r, file, canonRel, c.symbol));
       const globsDomain =
         GLOB_RE.test(code) && decl.domains.some((d) => code.includes(norm(d)));
       if (importsCanon || globsDomain) {
