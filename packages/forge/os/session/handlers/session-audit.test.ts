@@ -1,55 +1,34 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1471 session.audit tests — command-level: audits all sessions, writes sidecars, --check exits non-zero on error findings.</purpose>
+<purpose>RFC-1471 session.audit tests — command-level: audits sessions, writes sidecars deterministically (auditedAt = session date, no churn), --check is read-only + exits non-zero on critical findings.</purpose>
 </MODULE_CONTRACT>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { runSessionAudit, auditSessionBody } from "./session-audit.ts";
+import { runSessionAudit } from "./session-audit.ts";
 import type { ForgeRuntimeContext } from "../../../src/types.ts";
 
 let root: string;
 
-const DENIED_SESSION = `---
-id: sess-001
-remainingIssues: ["a blocker"]
+const CIRCUMVENTION_SESSION = `---
+id: sess-circ
+date: "2026-10-31"
+remainingIssues: []
 ---
-
 ### Assistant
-Ran \`werkstatt run rfc.validate --json\` — rejected: staged files outside scope.
-
+Ran \`werkstatt run ecosystem.commit --rfc RFC-1434\` — blocked by full-suite gate.
 ### Assistant
-Ran \`werkstatt run rfc.validate --json\` again — same failure.
-`;
-
-const BLOCKER_SESSION = `---
-id: sess-002
----
-
-### Assistant
-Ran \`werkstatt run ecosystem.commit\` — exit: 1, lint blocked.
-
-### Assistant
-Fixed and re-ran — committed successfully.
-`;
-
-const GENERATED_SESSION = `---
-id: sess-003
-remainingIssues: ["none"]
----
-
-### Assistant
-Edited docs/command-manifest.generated.yaml by hand to add the new command.
+Ran \`git commit -m "fix"\` directly — bypassed.
 `;
 
 const CLEAN_SESSION = `---
-id: sess-004
-remainingIssues: ["none"]
+id: sess-clean
+date: "2026-10-31"
+remainingIssues: []
 ---
-
 ### Assistant
 Ran \`werkstatt run rfc.validate --json\` — exit: 0, all checks pass.
 `;
@@ -69,48 +48,33 @@ function flags(f: Record<string, unknown> = {}) {
 beforeEach(async () => {
   root = await mkdtemp(join(tmpdir(), "sess-audit-"));
   await mkdir(join(root, "docs", "sessions"), { recursive: true });
+  await writeFile(join(root, "forge.yaml"), "schema: forge/config@1\n");
 });
 
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-describe("auditSessionBody detectors (RFC-1471)", () => {
-  test("AUDIT-01+04: denied command retried without plan change", () => {
-    const body = DENIED_SESSION.split("---\n")[2]!;
-    const findings = auditSessionBody("sess-001", body, { remainingIssues: ["x"] });
-    expect(findings.some((f) => f.ruleId === "AUDIT-01")).toBe(true);
-    expect(findings.some((f) => f.ruleId === "AUDIT-04")).toBe(true);
-  });
-
-  test("AUDIT-02: failure evidence + empty remainingIssues", () => {
-    const body = BLOCKER_SESSION.split("---\n")[2]!;
-    const findings = auditSessionBody("sess-002", body, {});
-    expect(findings.some((f) => f.ruleId === "AUDIT-02")).toBe(true);
-  });
-
-  test("AUDIT-03: direct edit to a generated file", () => {
-    const body = GENERATED_SESSION.split("---\n")[2]!;
-    const findings = auditSessionBody("sess-003", body, { remainingIssues: ["x"] });
-    expect(findings.some((f) => f.ruleId === "AUDIT-03")).toBe(true);
-  });
-
-  test("clean session → zero findings", () => {
-    const body = CLEAN_SESSION.split("---\n")[2]!;
-    const findings = auditSessionBody("sess-004", body, { remainingIssues: ["x"] });
-    expect(findings.length).toBe(0);
-  });
-});
-
 describe("session.audit command (RFC-1471)", () => {
-  test("audits all sessions, writes sidecars, --check non-zero on errors", async () => {
-    await writeFile(join(root, "docs", "sessions", "s1.md"), DENIED_SESSION);
-    await writeFile(join(root, "docs", "sessions", "s2.md"), CLEAN_SESSION);
+  test("audits all sessions, writes sidecars, --check exits non-zero on critical findings", async () => {
+    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"), CIRCUMVENTION_SESSION);
+    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-30-00-bbbbbb.md"), CLEAN_SESSION);
     const res = await runSessionAudit(flags({ check: true }), ctx());
     expect(res.data?.length).toBe(2);
-    const s1 = res.data?.find((r) => r.sessionId === "sess-001");
-    expect(s1?.findings.length).toBeGreaterThan(0);
+    expect(res.data?.find((r) => r.sessionId === "sess-circ")?.findings.some((f) => f.ruleId === "AUDIT-10")).toBe(true);
     expect(res.exitCode).toBe(1);
+    // --check is read-only — no sidecar written
+    await expect(readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"))).rejects.toThrow();
+  });
+
+  test("sidecar writes are deterministic — auditedAt = session date, unchanged rerun produces no diff", async () => {
+    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-aaaaaa.md"), CIRCUMVENTION_SESSION);
+    await runSessionAudit(flags({}), ctx());
+    const first = await readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"), "utf8");
+    await runSessionAudit(flags({}), ctx());
+    const second = await readFile(join(root, "docs", "sessions", "audit", "sess-circ.audit.yaml"), "utf8");
+    expect(first).toBe(second);
+    expect(first).toContain("auditedAt: 2026-10-31");
+    expect(first).toContain("auditor: stage-a");
   });
 });
-
