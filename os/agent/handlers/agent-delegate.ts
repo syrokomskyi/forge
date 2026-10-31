@@ -13,6 +13,7 @@ validator via the kernel invoke port. Verdict: done | escalated | failed.
   <item>RFC-1464: delegate orchestration — class resolution, adapter invoke, gate run, verdict</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
   <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
+  <item>RFC-1464: apply r2 repairs — raw-entry DEL-01 lint, pilot gate flags, endpoint scan, malformed-gate guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,7 +27,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 
-export type GateRef = string | { command: string; flags?: Record<string, string | number | boolean> };
+export type GateRef = string | { command: string; flags?: Record<string, boolean | string | string[]> };
 
 export interface DelegableClass {
   class: string;
@@ -36,7 +37,7 @@ export interface DelegableClass {
 }
 
 export function gateName(ref: GateRef): string {
-  return typeof ref === "string" ? ref : ref.command;
+  return typeof ref === "string" ? ref : (ref && typeof ref === "object" && typeof ref.command === "string" ? ref.command : String(ref));
 }
 
 export interface DelegateResult {
@@ -56,7 +57,10 @@ export function loadDelegable(raw: unknown): DelegableClass[] {
       typeof d === "object" && d !== null &&
       typeof (d as DelegableClass).class === "string" &&
       Array.isArray((d as DelegableClass).gate) &&
-      (d as DelegableClass).gate.length > 0,
+      (d as DelegableClass).gate.length > 0 &&
+      (d as DelegableClass).gate.every(
+        (g) => typeof g === "string" || (typeof g === "object" && g !== null && typeof (g as { command?: unknown }).command === "string"),
+      ),
   );
 }
 
@@ -184,7 +188,7 @@ export async function runAgentDelegate(
     const cmd = gateName(gateRef);
     const gateFlags = typeof gateRef === "object" ? (gateRef.flags ?? {}) : {};
     try {
-      const res = await context.invoke(cmd, gateFlags as never);
+      const res = await context.invoke(cmd, gateFlags);
       gateReport.push({
         command: cmd,
         exitCode: res.exitCode,
