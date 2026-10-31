@@ -9,7 +9,6 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1306: ForgeRuntimeContext.invoke — structurally-typed optional port mirroring the kernel contract; forge stays runtime-autonomous (no engine import).</item>
   <item>RFC-1354: review r2 — approved/info; closes three info notes: requiresNetwork on remaining remote commands, ForgeCommandMetadata mirror JSDoc, baseline widened to full module-slice blind spot</item>
   <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
 
@@ -20,7 +19,8 @@ npm_execpath ambient read in open-source-page.ts is removed for a
 deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
-  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231</history>
+  <item>RFC-1463: composite gates report complete violation sets and self-ensure prerequisites — ensure/compositeGate metadata, executor ensure runner, blockedBy skip tracking, ENSURE-01..04 + GATE-CMP-01, runCompositeGate</item>
+  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306</history>
 </CHANGE_SUMMARY>
 */
 
@@ -217,6 +217,23 @@ export interface ForgeCommandMetadata {
   longRunning?: boolean;
   cacheable?: boolean;
   hidden?: boolean;
+  /**
+   * RFC-1463: declared deterministic prerequisites — the executor runs each
+   * target inside pre-flight before the first check. Structurally mirrors
+   * KernelCommandMetadata; targets must be read-only or rerun-safe.
+   */
+  ensure?: Array<{ command: string; when?: string }>;
+  /**
+   * RFC-1463: named resolvers for ensure[].when — structurally mirrors
+   * KernelCommandMetadata. An unresolvable when is a declaration failure.
+   */
+  ensureConditions?: Record<string, (input: ForgeCommandInput) => boolean>;
+  /**
+   * RFC-1463: marks the command as a composite gate — it must emit the
+   * complete violation set in one invocation (GATE-CMP-01 lints the
+   * wiring). Structurally mirrors KernelCommandMetadata.
+   */
+  compositeGate?: boolean;
   /**
    * RFC-0518: declarative gate metadata. Optional. Structurally compatible
    * with GateMetadata from @warpgogol/site-kernel. Does NOT affect execution.
