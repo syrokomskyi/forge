@@ -18,6 +18,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
+  <item>RFC-1467: declare supersede.propose escalation fields + repair dead related-injector regex</item>
 </CHANGE_SUMMARY>
 */
 
@@ -220,8 +221,10 @@ TODO(agent): expand — what was attempted, where exactly the conflict surfaces 
   // Replace supersedes
   content = content.replace(/^supersedes: \[\]$/m, supersedesYaml);
 
-  // Replace related
-  content = content.replace(/^related:\n(  # .*\n)*$/m, relatedYaml);
+  // Replace related — `related:` plus its indented comment block (the
+  // previous pattern anchored at end-of-line and silently no-oped whenever
+  // non-comment content followed the comments, e.g. the # RFC-0331 hint).
+  content = content.replace(/^related:\n(?:  #[^\n]*\n)*/m, `${relatedYaml}\n`);
 
   // Replace Context section with consultation block
   content = content.replace(/## Context\n[\s\S]*?(?=\n## )/, consultationBlock);
