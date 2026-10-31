@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1469: forgeGateModule registering gate.probe + gate.probe.catalog</item>
   <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
+  <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,14 +25,14 @@ export const forgeGateModule: ForgeModule = {
     {
       name: "gate.probe",
       coverage: "operator" as const,
-      mutatesState: false,
+      mutatesState: true,
       contract: "gate",
       rules: [
         { id: "PROBE-01", severity: "error" },
         { id: "PROBE-02", severity: "warning" },
       ],
       description:
-        "RFC-1469: materialize a declared violation fixture in a temp workspace and invoke the bound check — proves the gate still fires on its seeded violation. Flags: --rule, --contract, --all, --list.",
+        "RFC-1469: inject a declared violation at its real workspace path (backup → invoke check → restore) — proves the gate still fires on its real scan path. Flags: --rule, --contract, --all, --list.",
       scope: "workspace",
       acceptsAllFlag: true,
       flags: {
@@ -39,7 +40,9 @@ export const forgeGateModule: ForgeModule = {
         contract: { kind: "string", description: "Probe every fixture under a contract." },
         list: { kind: "boolean", description: "Inventory the bound fixtures without executing." },
       },
-      reads: ["docs/gate-probes/**"],
+      reads: ["docs/gate-probes/**", ".agents/**", "packages/forge/skills/**"],
+      writes: [".agents/**", "packages/**"],
+      generates: [],
       execute: runGateProbe,
     },
     {
