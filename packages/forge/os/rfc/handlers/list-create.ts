@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1139: second hint fix (rfc.list empty-state) + read-only test fix</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
-  <history>RFC-0303, RFC-1097</history>
+  <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
+  <history>RFC-0303, RFC-1097, RFC-1138</history>
 </CHANGE_SUMMARY>
 */
 
@@ -231,30 +231,34 @@ export async function runRfcCreate(
   // until --revisit acknowledges one of the colliding ids; the review band
   // (REVIEW_SCORE..REPROPOSED_SCORE-1) cites hits via `related` + a NEEDS
   // CLARIFICATION marker. rejected-alternative stays informational.
-  const revisitRaw = input.flags["revisit"] as string | undefined;
-  const revisit = revisitRaw?.trim().toUpperCase() || undefined;
-  const colliding = [
-    ...new Set(
-      scoredAll
-        .filter((d) => TERMINAL_KINDS.has(d.kind) && d.score >= REPROPOSED_SCORE)
-        .map((d) => d.rfcId),
+  const revisitRaw = input.flags["revisit"];
+  const revisit =
+    typeof revisitRaw === "string" ? revisitRaw.trim().toUpperCase() || undefined : undefined;
+  // Best-score-per-id — the same RFC can collide via multiple log entries.
+  const byId = (hits: ConsultedDecision[]): ConsultedDecision[] => {
+    const best = new Map<string, ConsultedDecision>();
+    for (const h of hits) {
+      const prev = best.get(h.rfcId);
+      if (!prev || h.score > prev.score) best.set(h.rfcId, h);
+    }
+    return [...best.values()].sort((a, b) => b.score - a.score || a.rfcId.localeCompare(b.rfcId));
+  };
+  const colliding = byId(
+    scoredAll.filter((d) => TERMINAL_KINDS.has(d.kind) && d.score >= REPROPOSED_SCORE),
+  );
+  const collidingIds = colliding.map((d) => d.rfcId);
+  const reviewBand = byId(
+    scoredAll.filter(
+      (d) =>
+        TERMINAL_KINDS.has(d.kind) && d.score >= REVIEW_SCORE && d.score < REPROPOSED_SCORE,
     ),
-  ].sort();
-  const warningHits = [
-    ...new Set(
-      scoredAll
-        .filter(
-          (d) =>
-            TERMINAL_KINDS.has(d.kind) && d.score >= REVIEW_SCORE && d.score < REPROPOSED_SCORE,
-        )
-        .map((d) => d.rfcId),
-    ),
-  ].sort();
+  );
+  const reviewBandIds = reviewBand.map((d) => d.rfcId);
 
-  if (revisit && !colliding.includes(revisit)) {
+  if (revisit && !collidingIds.includes(revisit)) {
     const remedy =
-      colliding.length > 0
-        ? `--revisit must name a colliding precedent — valid candidates: ${colliding.join(", ")}.`
+      collidingIds.length > 0
+        ? `--revisit must name a colliding precedent — valid candidates: ${collidingIds.join(", ")}.`
         : "No terminal-kind precedent collides with this title — drop --revisit and scaffold normally.";
     if (outputFormat === "pretty") {
       logger.error(`rfc.create refused: ${remedy}`);
@@ -273,15 +277,15 @@ export async function runRfcCreate(
     };
   }
 
-  if (colliding.length > 0 && !revisit) {
+  if (collidingIds.length > 0 && !revisit) {
     const remedy =
-      `Re-run with --revisit ${colliding[0]} to acknowledge the precedent — the scaffold will cite it ` +
+      `Re-run with --revisit ${collidingIds[0]} to acknowledge the precedent — the scaffold will cite it ` +
       `in related with a NEEDS CLARIFICATION marker and the draft's Decision must state why it differs ` +
       `from the rejection/supersession rationale. If this is genuinely different work, sharpen the title ` +
       `so it no longer collides at the reproposal threshold (score ≥ ${REPROPOSED_SCORE}).`;
     if (outputFormat === "pretty") {
       logger.error(
-        `rfc.create blocked: ${colliding.length} terminal precedent(s) collide — ${colliding.join(", ")}`,
+        `rfc.create blocked: ${collidingIds.length} terminal precedent(s) collide — ${collidingIds.join(", ")}`,
       );
       logger.error(remedy);
     }
@@ -294,14 +298,15 @@ export async function runRfcCreate(
         remedy,
         consultedDecisions,
       },
-      summary: `rfc.create blocked: terminal precedent ${colliding.join(", ")} collides — re-run with --revisit ${colliding[0]} to acknowledge`,
+      summary: `rfc.create blocked: terminal precedent ${collidingIds.join(", ")} collides — re-run with --revisit ${collidingIds[0]} to acknowledge`,
       exitCode: 1,
     };
   }
 
-  // Ids to cite in the scaffold's `related`: the acknowledged terminal hit
-  // plus every warning-band precedent.
-  const citedIds = [...new Set([...(revisit ? [revisit] : []), ...warningHits])].sort();
+  // Ids cited in the scaffold's `related`: EVERY colliding precedent (a
+  // --revisit acknowledges the gate, but sibling collisions still need
+  // citation or the draft is born failing V-52) plus every review-band hit.
+  const citedIds = [...new Set([...collidingIds, ...reviewBandIds])].sort();
 
   // RFC-1138: atomic id allocation — scan → claim the id via wx on a
   // title-independent `rfc-NNNN.claim` file → write the real file → release.
@@ -366,19 +371,23 @@ export async function runRfcCreate(
           `satisfies:\n${satisfies.map((id) => `  - ${id}`).join("\n")}`,
         );
       }
-      // RFC-1467: cite the acknowledged/warning-band precedents in `related`
+      // RFC-1467: cite the acknowledged/review-band precedents in `related`
       // and leave a NEEDS CLARIFICATION marker in the Decision section.
       if (citedIds.length > 0) {
-        content = content.replace(
-          /^related:$/m,
-          `related:\n${citedIds.map((id) => `  - ${id}`).join("\n")}`,
-        );
+        const relatedEntries = citedIds.map((id) => `  - ${id}`).join("\n");
+        content = /^related:$/m.test(content)
+          ? content.replace(/^related:$/m, `related:\n${relatedEntries}`)
+          : content.replace(/^related: \[\]$/m, `related:\n${relatedEntries}`);
+        const siblingCollisions = collidingIds.filter((id) => id !== revisit);
         const marker = revisit
           ? `> NEEDS CLARIFICATION: ${revisit} is a rejected/superseded precedent acknowledged via --revisit — the Decision must state why this proposal differs from the earlier rejection or supersession rationale.` +
-            (warningHits.length > 0
-              ? `\n> NEEDS CLARIFICATION: near-duplicate precedent(s) ${warningHits.join(", ")} scored in the review band — cite them or distinguish scope in the Decision.`
+            (siblingCollisions.length > 0
+              ? `\n> NEEDS CLARIFICATION: additional terminal precedent(s) ${siblingCollisions.join(", ")} collide at the reproposal threshold — the Decision must also distinguish them.`
+              : "") +
+            (reviewBandIds.length > 0
+              ? `\n> NEEDS CLARIFICATION: near-duplicate precedent(s) ${reviewBandIds.join(", ")} scored in the review band — cite them or distinguish scope in the Decision.`
               : "")
-          : `> NEEDS CLARIFICATION: near-duplicate precedent(s) ${warningHits.join(", ")} scored in the review band — cite them or distinguish scope in the Decision.`;
+          : `> NEEDS CLARIFICATION: near-duplicate precedent(s) ${reviewBandIds.join(", ")} scored in the review band — cite them or distinguish scope in the Decision.`;
         content = content.replace(/^## Decision$/m, `## Decision\n\n${marker}\n`);
       }
       content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
@@ -415,9 +424,9 @@ export async function runRfcCreate(
     if (revisit) {
       logger.info(`Acknowledged precedent via --revisit: ${revisit} (cited in related)`);
     }
-    if (warningHits.length > 0) {
+    if (reviewBandIds.length > 0) {
       logger.info(
-        `Near-duplicate precedent(s) cited in related: ${warningHits.join(", ")} — distinguish or cite them in the Decision`,
+        `Near-duplicate precedent(s) cited in related: ${reviewBandIds.join(", ")} — distinguish or cite them in the Decision`,
       );
     }
     logger.info("Status: draft (only a human with role 'architecture' may change status)");
@@ -432,6 +441,7 @@ export async function runRfcCreate(
       satisfies,
       consultedDecisions,
       ...(colliding.length > 0 ? { colliding, blocked: false } : {}),
+      ...(reviewBand.length > 0 ? { reviewBand } : {}),
     },
     summary: `Created ${nextId}: ${title}`,
     nextSteps: [
