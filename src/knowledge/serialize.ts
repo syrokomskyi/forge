@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial round-trip serializer for structured knowledge entries.</item>
   <item>RFC-0663: added promotedFrom to FIELD_ORDER for shared-layer provenance.</item>
+  <item>RFC-1468: added class + authorityRefs — round-trip must not strip the authority binding.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +25,8 @@ const FIELD_ORDER: (keyof KnowledgeEntryMeta)[] = [
   "promotedTo",
   "promotedFrom",
   "status",
+  "class",
+  "authorityRefs",
 ];
 
 function formatYamlValue(value: unknown): string {

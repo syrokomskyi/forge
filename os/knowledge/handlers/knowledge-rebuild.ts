@@ -11,6 +11,7 @@ plain run rewrites the regions in place.
 <CHANGE_SUMMARY>
   <item>RFC-1468: marker-region rebuild over authoritative sources</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
+  <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,10 +58,10 @@ async function sourceRows(root: string, io: ReturnType<typeof resolveIo>, key: s
   }
   if (key === "decision-log") {
     const src = await io.readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml")).catch(() => "");
-    const parsed = yamlParse(src) as { decisions?: { id?: string; outcome?: string }[] } | null;
-    return (parsed?.decisions ?? [])
-      .filter((d) => d.id && d.outcome)
-      .map((d) => `- **${d.id}** — ${d.outcome}`);
+    const parsed = yamlParse(src) as { entries?: { rfcId?: string; title?: string; status?: string }[] } | null;
+    return (parsed?.entries ?? [])
+      .filter((e) => e.rfcId && e.title && e.status === "accepted")
+      .map((e) => `- **${e.rfcId}** — ${e.title}`);
   }
   return [];
 }
@@ -78,7 +79,9 @@ export async function runKnowledgeRebuild(
   const targets: string[] = [];
   if (typeof input.flags["target"] === "string") targets.push(input.flags["target"] as string);
   if (all) {
-    for (const t of [".agents/memory/MEMORY.md", "docs/knowledge/shared-knowledge.md", "AGENTS.md"]) {
+    const cfg = await io.readFile(path.join(root, "forge.yaml")).catch(() => "");
+    const parsed = yamlParse(cfg) as { knowledge?: { rebuildRegions?: string[] } } | null;
+    for (const t of parsed?.knowledge?.rebuildRegions ?? [".agents/memory/MEMORY.md"]) {
       if (await io.exists(path.join(root, t))) targets.push(t);
     }
   }
@@ -97,8 +100,9 @@ export async function runKnowledgeRebuild(
       const wanted = rows.join("\n");
       const existing = m[2]!.trim();
       if (existing !== wanted) {
-        const existingIds = [...existing.matchAll(/\*\*([A-Z]+-[A-Z0-9]+)\*\*/g)].map((r) => r[1]);
-        const wantedIds = [...wanted.matchAll(/\*\*([A-Z]+-[A-Z0-9]+)\*\*/g)].map((r) => r[1]);
+        const ID_RE = /\*\*([A-Z][A-Z0-9]*(?:[-.][A-Z0-9]+)+)\*\*/g;
+        const existingIds = [...existing.matchAll(ID_RE)].map((r) => r[1]);
+        const wantedIds = [...wanted.matchAll(ID_RE)].map((r) => r[1]);
         for (const id of existingIds.filter((i) => !wantedIds.includes(i))) {
           diagnostics.push({
             ruleId: "REBUILD-ORPHAN",
@@ -117,7 +121,7 @@ export async function runKnowledgeRebuild(
         }
         next = next.replace(
           m[0],
-          `<!-- knowledge-rebuild:begin source=${key} -->\n${wanted}\n<!-- knowledge-rebuild:end -->`,
+          () => `<!-- knowledge-rebuild:begin source=${key} -->\n${wanted}\n<!-- knowledge-rebuild:end -->`,
         );
       }
     }
