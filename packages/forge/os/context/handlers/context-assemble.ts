@@ -14,6 +14,7 @@ slot — absent binding → lexical-only floor (shipped default).
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
+  <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
 </CHANGE_SUMMARY>
 */
 
@@ -128,9 +129,11 @@ export async function runContextAssemble(
   const watermark = (yamlParse(indexSrc) as { sourceWatermark?: string } | null)?.sourceWatermark ?? "";
   const sessionDir = path.join(root, "docs", "sessions");
   const newestSrc = (await io.readdir(sessionDir).catch(() => [] as { name: string; isDirectory: boolean }[]))
-    .filter((e) => !e.isDirectory && e.name.endsWith(".md")).sort().at(-1)?.name ?? "";
-  if (watermark && newestSrc && newestSrc > watermark) {
-    context.logger.warn(`CTX-02 index is stale (watermark ${watermark} < newest source ${newestSrc}) — rerun context.index.build`);
+    .filter((e) => !e.isDirectory && /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}-[0-9a-f]{6}\.md$/.test(e.name))
+    .sort().at(-1)?.name ?? "";
+  const newestPath = newestSrc ? `docs/sessions/${newestSrc}` : "";
+  if (watermark && newestPath && newestPath > watermark) {
+    context.logger.warn(`CTX-02 index is stale (watermark ${watermark} < newest source ${newestPath}) — rerun context.index.build`);
   }
 
   const taskTokens = tokenize(task);
