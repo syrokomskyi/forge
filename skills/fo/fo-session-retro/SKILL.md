@@ -20,14 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: realign friction.validate rules to the accepted spec table
-
-Independent review H1 finding: rule ids/severities were remapped vs the
-accepted failure-modes table. FRICTION-01 shape+id, 02 category, 03
-status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
-05 signature/artifact hygiene (warn). Output emits the documented
-violations[] shape; invented open-measure warn dropped; dead
-FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
   <item>RFC-1433: acceptance CX-1 — add the spec's negative filter to the checklist
 
 One-off external outages are not frictions unless they expose a missing
@@ -36,6 +28,7 @@ shipped signal checklist. Synced to the .agents copy.</item>
   <item>ADR-0121: persist soft-block report, fix E2-E4 wording, park arbitration</item>
   <item>ADR-0119: align retro delegation wording with pending routings; widen fo-idea-create-adr fast path</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
   <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433</history>
 </CHANGE_SUMMARY>
 -->
@@ -496,6 +489,7 @@ Zero hits → append nothing; the report states «трений не было» i
 
 - **Match on `open`** → increment `recurrences`, update `lastSeen`, do NOT create a new entry; flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
 - **Match on `addressed`** → the prevention failed → increment `recurrences`, update `lastSeen`, and set `status: escalated`: leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
+- **Match on `escalated`** → the friction recurred while its mechanical fix is still pending → increment `recurrences`, update `lastSeen`, keep `status: escalated`, and flag it in the report as a recurrence pressing on the pending mechanism («рецидив — механическая мера ещё не внедрена»). Do NOT re-escalate, do NOT change `measure` — the counter pressing on an open mechanism is the escalation ladder's backlog pressure signal.
 - A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be appended directly as `status: addressed` with `artifacts` populated.
 
 **e. Self-check the write.** Run `rtk pnpm exec werkstatt run friction.validate` after appending — a `fail` must be repaired before continuing (most often a duplicate id from a racing parallel retro: renumber, re-validate).
@@ -504,7 +498,7 @@ Zero hits → append nothing; the report states «трений не было» i
 
 The same skill doubles as the harvest entry point. When the operator invokes it with a harvest phrase rather than a session-end phrase:
 
-1. Read `docs/frictions.yaml`; group `open` entries by category.
+1. Read `docs/frictions.yaml`; group `open` entries by category. `escalated` entries are the mechanical backlog — surface them as their own group keyed to the mechanism each `measure` names (RFC/ADR id, queue item, command token), not as new artifact proposals.
 2. Present the batch as proposed documents: per group, the prevention artifacts — RFC drafts (via the `fo-idea-create-rfc` friction fast-path), ADRs (accepted-decision fast-path), rules/doc fixes (direct instruction-layer edits).
 3. Writing happens only on «пиши» (or an explicit equivalent). Until then the batch is a proposal — plan confirmation is not an implementation command.
 4. On «пиши» execute each artifact, then flip the served entries `open → addressed` with `artifacts` populated with the created paths/ids, and re-run `friction.validate`.
@@ -564,7 +558,7 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ### <Frictions in aiLanguage>
 <appended>: <N new registry entries, one line each with id + category>
 <recurrence flags>: <K — each flagged entry id, its open/addressed match, and the proposed documents or escalation>
-<ambient>: «Открытых трений: M (category×count, …)> — the open-backlog tally by category, always present; on a zero-friction session: «трений не было»
+<ambient>: «Открытых трений: M (category×count, …); эскалировано: K> — the open-backlog tally by category plus the escalated mechanical-backlog count, always present; on a zero-friction session: «трений не было»
 ```
 
 After the summary table, emit the **Engineering Checkpoint closing block** following the format in `_shared/fo-session-summary.md` (full or lightweight mode). This closing block IS the session-end output — it replaces any ad-hoc summary.

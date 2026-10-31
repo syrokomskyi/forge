@@ -21,6 +21,7 @@ pass (lazy creation).
   <item>RFC-1433: r2 review — absent required fields → FRICTION-01,
   non-ENOENT read failure, and honest entries count on schema failure.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
 </CHANGE_SUMMARY>
 */
 
@@ -341,6 +342,17 @@ describe("friction.validate — FRICTION-06 (docs-only recurrence blocks)", () =
     const result = await validate();
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-06")).toBe(false);
   });
+
+  test("governance-doc artifacts (docs/rfcs, docs/adrs) do not infer docs-only", async () => {
+    await writeRegistry(
+      ADDR_DOCS.replace(
+        'artifacts: ["AGENTS.md"]',
+        'artifacts: ["docs/rfcs/rfc-1460-escalate-recurring-frictions-to-mechanical-measures-instead-of-prose-rules.md"]',
+      ).replace("recurrences: 0", "recurrences: 5"),
+    );
+    const result = await validate();
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-06")).toBe(false);
+  });
 });
 
 describe("friction.validate — FRICTION-07 (measureKind classification debt)", () => {
@@ -379,6 +391,20 @@ describe("friction.validate — FRICTION-08 (escalated needs an obligation token
     const result = await validate();
     expect(result.exitCode).toBe(1);
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-08" && v.entry === "F-0001")).toBe(true);
+  });
+
+  test("bare slash prose is not a path token — FRICTION-08 still fails", async () => {
+    for (const measure of [
+      "harden the input/output checks",
+      "split the sync/async path",
+    ]) {
+      await writeRegistry(ESC_BASE.replace('measure: "move gate earlier — RFC draft"', `measure: "${measure}"`));
+      const result = await validate();
+      expect(
+        result?.data?.violations.some((v) => v.rule === "FRICTION-08"),
+        `measure "${measure}" must not satisfy FRICTION-08`,
+      ).toBe(true);
+    }
   });
 
   test("escalated naming RFC id / queue item / path / backticked command passes FRICTION-08", async () => {

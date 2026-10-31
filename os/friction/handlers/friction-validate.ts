@@ -15,8 +15,6 @@ lazily created means absent equals empty.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: initial validator — five rules over the append-only
-  registry, ENOENT passes with entries: 0 per the lazy-creation contract.</item>
   <item>RFC-1433: review realignment — rule ids remapped to the accepted
   spec table (dup id → 01, category → 02, addressed-without-artifacts → 03
   fail, lastSeen/recurrences → 04 fail unconditional, signature → 05 warn);
@@ -30,6 +28,8 @@ measure both fail FRICTION-01, matching the session/friction siblings.
 F3-2: pretty output reports reportedEntries (raw count on schema failure),
 consistent with the JSON payload. r3 review verdict: pass.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
+  <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
 
@@ -91,10 +91,14 @@ function isPathLikeArtifact(ref: string): boolean {
 // RFC-1460: measure classes whose effect a recurrence counter can disprove.
 const DOCS_ONLY_KINDS = new Set(["docs-rule", "skill-step"]);
 const DOCS_ARTIFACT_PATTERN = /(?:^|\/)(AGENTS\.md|SKILL\.md)$|\.md$/i;
+// Governance-doc artifacts (docs/rfcs/**, docs/adrs/**) record landed mechanisms,
+// not prose rules — they never resolve an entry to docs-only.
+const GOVERNANCE_DOC_ARTIFACT_PATTERN = /^docs\/(rfcs|adrs)\//;
 // FRICTION-08 "names a mechanical obligation" — RFC/ADR id, queue item,
-// repo-relative path, or a backticked x.y command token.
+// repo-relative path (known top dir or extension-bearing last segment —
+// bare "and/or"-style prose does not count), or a backticked x.y command token.
 const MECHANICAL_TOKEN_PATTERN =
-  /RFC-\d{4}|ADR-\d{4}|docs\/queues\/|`[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+`|[\w.-]+\/[\w./-]+/;
+  /RFC-\d{4}|ADR-\d{4}|docs\/queues\/|`[a-z][a-z0-9-]*(?:\.[a-z0-9-]+)+`|(?:packages|apps|services|docs|tools|missions|systems|src|spec)\/[\w./-]+|[\w-]+(?:\/[\w.-]+)+\.[a-z0-9]{1,5}\b/;
 
 /**
  * Resolved measure class for FRICTION-06 — the strongest declared artifact
@@ -102,7 +106,9 @@ const MECHANICAL_TOKEN_PATTERN =
  * prose (AGENTS.md/SKILL.md/docs markdown). Empty artifact sets resolve null.
  */
 function inferDocsOnly(entry: FrictionEntry): boolean {
-  return entry.artifacts.length > 0 && entry.artifacts.every((ref) => DOCS_ARTIFACT_PATTERN.test(ref));
+  return entry.artifacts.length > 0 && entry.artifacts.every(
+    (ref) => DOCS_ARTIFACT_PATTERN.test(ref) && !GOVERNANCE_DOC_ARTIFACT_PATTERN.test(ref),
+  );
 }
 
 function resolvedMeasureKind(entry: FrictionEntry): "docs-rule" | "mechanical" | null {
