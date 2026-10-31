@@ -227,6 +227,14 @@
     "./os/agent": {
       "types": "./os/agent/index.ts",
       "default": "./os/agent/index.ts"
+    },
+    "./os/knowledge-module": {
+      "types": "./os/knowledge/knowledge.module.ts",
+      "default": "./os/knowledge/knowledge.module.ts"
+    },
+    "./os/knowledge": {
+      "types": "./os/knowledge/index.ts",
+      "default": "./os/knowledge/index.ts"
     }
   },
   "files": [
@@ -467,6 +475,14 @@
       "./os/agent": {
         "types": "./dist/os/agent/index.d.ts",
         "default": "./dist/os/agent/index.js"
+      },
+      "./os/knowledge-module": {
+        "types": "./dist/os/knowledge/knowledge.module.d.ts",
+        "default": "./dist/os/knowledge/knowledge.module.js"
+      },
+      "./os/knowledge": {
+        "types": "./dist/os/knowledge/index.d.ts",
+        "default": "./dist/os/knowledge/index.js"
       }
     }
   }
