@@ -12,6 +12,7 @@ rebuild from sources — no authority lives in the index.
 <CHANGE_SUMMARY>
   <item>RFC-1470: context.index.build rebuildable unit catalog</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
+  <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
 </CHANGE_SUMMARY>
 */
 
@@ -94,9 +95,21 @@ export async function runIndexBuild(
     if (src === null) continue;
     const rel = path.relative(root, kf).split(path.sep).join("/");
     for (const m of src.matchAll(KENTRY_RE)) {
-      const idMatch = src.slice(Math.max(0, (m.index ?? 0) - 200)).match(/###\s+(K-\d+)/);
-      const kid = idMatch?.[1] ?? `K-${units.length}`;
-      push({ id: `knowledge-entry:${kid}`, kind: "knowledge-entry", source: `${rel}#${kid}`, text: m[1]!.slice(0, 1500), meta: { kId: kid, file: rel } });
+      // The fence holds only the YAML sidecar (id/layer/created/status); the
+      // retrievable knowledge is the ### K-NNNN heading's prose AFTER the fence.
+      const before = src.slice(0, m.index ?? 0);
+      const headings = [...before.matchAll(/###\s+(K-\d+)/g)];
+      const kid = headings[headings.length - 1]?.[1] ?? `K-${units.length}`;
+      const fm = (yamlParse(m[1]!) as Record<string, unknown>) ?? {};
+      const prose = src.slice((m.index ?? 0) + m[0].length, undefined).split(/\n###\s/).at(0) ?? "";
+      const fileKid = `${path.basename(kf, ".md")}:${kid}`;
+      push({
+        id: `knowledge-entry:${fileKid}`,
+        kind: "knowledge-entry",
+        source: `${rel}#${kid}`,
+        text: `${String(fm.id ?? kid)}: ${prose.trim().slice(0, 1500)}`,
+        meta: { kId: kid, file: rel, layer: fm.layer, confirmations: fm.confirmations ?? 0, date: fm.created },
+      });
     }
   }
 
@@ -104,9 +117,9 @@ export async function runIndexBuild(
   const frictionsSrc = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
   const frParsed = yamlParse(frictionsSrc) as unknown;
   const frictions = Array.isArray(frParsed) ? frParsed : ((frParsed as { frictions?: unknown[] } | null)?.frictions ?? []);
-  for (const fr of frictions as { id?: string; friction?: string; category?: string; recurrences?: number }[]) {
+  for (const fr of frictions as { id?: string; friction?: string; category?: string; recurrences?: number; created?: string; lastSeen?: string }[]) {
     if (!fr.id) continue;
-    push({ id: `friction:${fr.id}`, kind: "friction", source: `docs/frictions.yaml#${fr.id}`, text: `${fr.id} [${fr.category ?? "?"}]: ${fr.friction ?? ""}`, meta: { fId: fr.id, category: fr.category, recurrences: fr.recurrences ?? 0 } });
+    push({ id: `friction:${fr.id}`, kind: "friction", source: `docs/frictions.yaml#${fr.id}`, text: `${fr.id} [${fr.category ?? "?"}]: ${fr.friction ?? ""}`, meta: { fId: fr.id, category: fr.category, recurrences: fr.recurrences ?? 0, date: (fr as { lastSeen?: string }).lastSeen ?? (fr as { created?: string }).created } });
   }
 
   // remediation — catalog entries.
@@ -116,7 +129,8 @@ export async function runIndexBuild(
     const cat = yamlParse(catSrc) as { entries?: { ruleId?: string; action?: string; contract?: string }[] } | null;
     for (const e of cat?.entries ?? []) {
       if (!e.ruleId) continue;
-      push({ id: `remediation:${e.ruleId}`, kind: "remediation", source: `${catPath}#${e.ruleId}`, text: `${e.ruleId}: ${e.contract ?? ""} — ${e.action ?? ""}`, meta: { ruleId: e.ruleId } });
+      const cat = path.basename(catPath).replace("remediation-catalog.", "").replace(".yaml", "");
+      push({ id: `remediation:${cat}:${e.ruleId}`, kind: "remediation", source: `${catPath}#${e.ruleId}`, text: `${e.ruleId}: ${e.contract ?? ""} — ${e.action ?? ""}`, meta: { ruleId: e.ruleId } });
     }
   }
 

@@ -10,6 +10,7 @@ acceptance instrument and the regression gate for every ranker change.
 <CHANGE_SUMMARY>
   <item>RFC-1470: context.slate.eval recall@budget over the gold dev set</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
+  <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
 </CHANGE_SUMMARY>
 */
 
@@ -67,7 +68,7 @@ export async function runSlateEval(
       slateIds.add(s.u.id);
       slateIds.add(s.u.source);
     }
-    const found = d.requiredUnits.filter((r) => slateIds.has(r) || [...slateIds].some((s) => s.includes(r))).length;
+    const found = d.requiredUnits.filter((r) => slateIds.has(r)).length;
     perTask.push({ task: tf.name, recall: d.requiredUnits.length > 0 ? found / d.requiredUnits.length : 1, found, required: d.requiredUnits.length });
   }
   const recall = perTask.length > 0 ? perTask.reduce((s, t) => s + t.recall, 0) / perTask.length : 0;
