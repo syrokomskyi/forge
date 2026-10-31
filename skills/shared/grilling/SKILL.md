@@ -26,6 +26,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   (orchestrated runs: questions land in the queue decision ledger with
   recommended answers, no interview).</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -50,7 +51,7 @@ If a _fact_ can be found by exploring the codebase, look it up rather than askin
 
 Do not ask a question whose answer is already obvious from the codebase, prior answers, or surrounding context. If you can infer the answer with reasonable confidence, state your inference as the recommended answer and let the operator correct you if wrong. Reserve questions for genuine uncertainty.
 
-When an answer fixes an observable value — verbatim copy, a label, a name, a decided option value — say so explicitly in the summary (mark it `fixes value`), so the RFC author carries the literal into the RFC's `## Fixed inputs` section with a bound criterion (RFC-1455).
+When an answer fixes an observable value — verbatim copy, a label, a name, a decided option value — say so explicitly in the summary (mark it `fixes value`), so the RFC author carries the literal into the RFC's `## Fixed inputs` section with a bound criterion.
 
 Do not enact the plan until I confirm we have reached a shared understanding.
 

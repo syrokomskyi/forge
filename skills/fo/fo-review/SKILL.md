@@ -20,9 +20,6 @@ triggerPhrases: ["проверим всё ли сделали правильно
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
@@ -38,7 +35,8 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
-  <history>RFC-1250</history>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <history>RFC-1097, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -344,7 +342,7 @@ diffRange: <fixed-point>...HEAD
 filesReviewed:
   - <file path>
 rfcId: RFC-NNNN                    # required when the diff implements an RFC
-designDeviations:                  # optional; omit or [] when none (RFC-1454)
+designDeviations:                  # optional; omit or [] when none
   - id: DEV-1                      # unique within the report
     rfc: RFC-NNNN                  # the RFC the deviation amends/fixes
     summary: "<what differs>"

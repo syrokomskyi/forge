@@ -22,6 +22,7 @@ F3-1: measure empty-string hole closed at shape level — absent or empty
 measure both fail FRICTION-01, matching the session/friction siblings.
 F3-2: pretty output reports reportedEntries (raw count on schema failure),
 consistent with the JSON payload. r3 review verdict: pass.</item>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,8 +39,21 @@ export const FRICTION_CATEGORIES = [
 ] as const;
 export type FrictionCategory = (typeof FRICTION_CATEGORIES)[number];
 
-export const FRICTION_STATUSES = ["open", "addressed"] as const;
+export const FRICTION_STATUSES = ["open", "addressed", "escalated"] as const;
 export type FrictionStatus = (typeof FRICTION_STATUSES)[number];
+
+// RFC-1460: closed measure-class enum — docs-rule/skill-step are the classes
+// whose effect a recurrence counter can disprove; the rest are mechanical.
+export const FRICTION_MEASURE_KINDS = [
+  "docs-rule",
+  "skill-step",
+  "validator",
+  "code-change",
+  "flag-default",
+  "pipeline",
+  "external",
+] as const;
+export type FrictionMeasureKind = (typeof FRICTION_MEASURE_KINDS)[number];
 
 export const FRICTION_ID_PATTERN = /^F-\d{4}$/;
 
@@ -55,6 +69,7 @@ export const frictionEntrySchema = z.object({
   // or non-normalized value is a FRICTION-05 warning, not a schema failure.
   signature: z.string(),
   measure: z.string().min(1),
+  measureKind: z.enum(FRICTION_MEASURE_KINDS).optional(),
   artifacts: z.array(z.string().min(1)),
   status: z.enum(FRICTION_STATUSES),
   recurrences: z.number().int().min(0),
@@ -71,6 +86,9 @@ export const FRICTION_RULE_IDS = [
   "FRICTION-03",
   "FRICTION-04",
   "FRICTION-05",
+  "FRICTION-06",
+  "FRICTION-07",
+  "FRICTION-08",
 ] as const;
 export type FrictionRuleId = (typeof FRICTION_RULE_IDS)[number];
 

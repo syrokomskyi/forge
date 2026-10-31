@@ -20,6 +20,7 @@ pass (lazy creation).
   artifact-path existence.</item>
   <item>RFC-1433: r2 review — absent required fields → FRICTION-01,
   non-ENOENT read failure, and honest entries count on schema failure.</item>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
 </CHANGE_SUMMARY>
 */
 
@@ -273,6 +274,143 @@ describe("friction.validate — FRICTION-05 (warnings)", () => {
     );
     const result = await validate();
     expect(result.exitCode, "violations: " + JSON.stringify(result?.data?.violations)).toBe(0);
-    expect(result?.data?.violations).toEqual([]);
+    expect(result?.data?.violations.filter((v) => v.rule !== "FRICTION-07")).toEqual([]);
+  });
+});
+
+// RFC-1460: escalation contract — recurring docs-only measures cannot stay
+// addressed; escalated entries must name a mechanical obligation.
+describe("friction.validate — FRICTION-06 (docs-only recurrence blocks)", () => {
+  const ADDR_DOCS = VALID_ENTRY.replace("status: open", "status: addressed").replace(
+    "artifacts: []",
+    'artifacts: ["AGENTS.md"]',
+  );
+
+  test("addressed + docs-rule + recurrences >= 2 fails with FRICTION-06 naming id + signature", async () => {
+    await writeRegistry(
+      ADDR_DOCS.replace("artifacts:", "measureKind: docs-rule\n    artifacts:")
+        .replace("recurrences: 0", "recurrences: 2"),
+    );
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    const v = result?.data?.violations.find((x) => x.rule === "FRICTION-06");
+    expect(v?.entry).toBe("F-0001");
+    expect(v?.message).toContain("validator fired late");
+  });
+
+  test("inferred docs-only (all-markdown artifacts, no measureKind) fires FRICTION-06", async () => {
+    await writeRegistry(ADDR_DOCS.replace("recurrences: 0", "recurrences: 3"));
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-06")).toBe(true);
+  });
+
+  test("mixed artifacts resolve mechanical — no FRICTION-06", async () => {
+    await writeRegistry(
+      VALID_ENTRY.replace("status: open", "status: addressed")
+        .replace("artifacts: []", 'artifacts: ["AGENTS.md", "packages/forge/os/friction/x.ts"]')
+        .replace("recurrences: 0", "recurrences: 5"),
+    );
+    const result = await validate();
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-06")).toBe(false);
+  });
+
+  test("mechanical measureKind never fires FRICTION-06 at any recurrence count (AC-3)", async () => {
+    for (const kind of ["validator", "code-change", "flag-default", "pipeline", "external"]) {
+      await writeRegistry(
+        ADDR_DOCS.replace("artifacts:", `measureKind: ${kind}\n    artifacts:`).replace(
+          "recurrences: 0",
+          "recurrences: 9",
+        ),
+      );
+      const result = await validate();
+      expect(
+        result?.data?.violations.some((v) => v.rule === "FRICTION-06"),
+        `kind ${kind} must not fire FRICTION-06`,
+      ).toBe(false);
+    }
+  });
+
+  test("recurrences < 2 on docs-rule does not fire FRICTION-06", async () => {
+    await writeRegistry(
+      ADDR_DOCS.replace("artifacts:", "measureKind: docs-rule\n    artifacts:").replace(
+        "recurrences: 0",
+        "recurrences: 1",
+      ),
+    );
+    const result = await validate();
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-06")).toBe(false);
+  });
+});
+
+describe("friction.validate — FRICTION-07 (measureKind classification debt)", () => {
+  test("addressed without measureKind warns FRICTION-07 but passes", async () => {
+    await writeRegistry(
+      VALID_ENTRY.replace("status: open", "status: addressed").replace(
+        "artifacts: []",
+        'artifacts: ["RFC-1433"]',
+      ),
+    );
+    const result = await validate();
+    expect(result.exitCode).toBe(0);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-07")).toBe(true);
+  });
+
+  test("open or declared entries do not warn FRICTION-07", async () => {
+    await writeRegistry(
+      VALID_ENTRY +
+        VALID_ENTRY.replace("id: F-0001", "id: F-0002")
+          .replace("status: open", "status: addressed")
+          .replace("artifacts: []", "measureKind: validator\n    artifacts: []"),
+    );
+    const result = await validate();
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-07")).toBe(false);
+  });
+});
+
+describe("friction.validate — FRICTION-08 (escalated needs an obligation token)", () => {
+  const ESC_BASE = VALID_ENTRY.replace("status: open", "status: escalated").replace(
+    "artifacts: []",
+    'artifacts: ["AGENTS.md"]',
+  );
+
+  test("escalated without a mechanical token in measure fails FRICTION-08", async () => {
+    await writeRegistry(ESC_BASE.replace('measure: "move gate earlier — RFC draft"', 'measure: "write another rule"'));
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-08" && v.entry === "F-0001")).toBe(true);
+  });
+
+  test("escalated naming RFC id / queue item / path / backticked command passes FRICTION-08", async () => {
+    for (const measure of [
+      "escalate to `ecosystem.commit` auto-derive",
+      "obligation tracked as RFC-1460",
+      "obligation tracked in docs/queues/session-x.yaml",
+      "mechanism lands in packages/forge/os/friction/handlers/x.ts",
+    ]) {
+      await writeRegistry(ESC_BASE.replace('measure: "move gate earlier — RFC draft"', `measure: "${measure}"`));
+      const result = await validate();
+      expect(
+        result?.data?.violations.some((v) => v.rule === "FRICTION-08"),
+        `measure "${measure}" must satisfy FRICTION-08`,
+      ).toBe(false);
+    }
+  });
+
+  test("unknown measureKind value is a FRICTION-01 shape failure", async () => {
+    await writeRegistry(
+      VALID_ENTRY.replace("artifacts: []", "measureKind: telepathy\n    artifacts: []"),
+    );
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-01")).toBe(true);
+  });
+
+  test("status: escalated is a valid enum value (AC-2)", async () => {
+    await writeRegistry(
+      ESC_BASE.replace('measure: "move gate earlier — RFC draft"', 'measure: "obligation: RFC-1460"'),
+    );
+    const result = await validate();
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-03")).toBe(false);
   });
 });

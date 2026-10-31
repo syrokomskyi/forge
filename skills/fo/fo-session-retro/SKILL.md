@@ -20,7 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: friction autopsy step — signal checklist, docs/frictions.yaml append contract with signature-based recurrence matching (open → flag, addressed → escalate), harvest mode behind «разгребаем»/«трения»/«friction harvest» triggerPhrases, friction section + ambient open-count in the report, instruction-layer edit allow-list under explicit «пиши».</item>
   <item>RFC-1433: realign friction.validate rules to the accepted spec table
 
 Independent review H1 finding: rule ids/severities were remapped vs the
@@ -36,7 +35,8 @@ guard — the sentence was in the accepted design but missing from the
 shipped signal checklist. Synced to the .agents copy.</item>
   <item>ADR-0121: persist soft-block report, fix E2-E4 wording, park arbitration</item>
   <item>ADR-0119: align retro delegation wording with pending routings; widen fo-idea-create-adr fast path</item>
-  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247</history>
+  <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -495,7 +495,7 @@ Zero hits → append nothing; the report states «трений не было» i
   ```
 
 - **Match on `open`** → increment `recurrences`, update `lastSeen`, do NOT create a new entry; flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
-- **Match on `addressed`** → the prevention failed → increment `recurrences`, update `lastSeen`; flag it in the report and escalate the artifact class (rule → validator → RFC draft).
+- **Match on `addressed`** → the prevention failed → increment `recurrences`, update `lastSeen`, and set `status: escalated`: leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
 - A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be appended directly as `status: addressed` with `artifacts` populated.
 
 **e. Self-check the write.** Run `rtk pnpm exec werkstatt run friction.validate` after appending — a `fail` must be repaired before continuing (most often a duplicate id from a racing parallel retro: renumber, re-validate).
