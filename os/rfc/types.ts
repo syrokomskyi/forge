@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1401: give test acceptance probes an optional timeoutMs bound</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391</history>
+  <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -413,6 +413,20 @@ export interface VerificationEvidenceProbeRecord {
   origin?: ProbeOriginRecord;
   /** RFC-1391: proof verdict payload — present when `probe` is `proof`. */
   proof?: ProofProbeEvidence;
+  /** RFC-1458: newest ingested deploy-smoke verdict for this criterion — external-origin evidence. */
+  externalVerdict?: ReleaseVerdictEvidence;
+}
+
+/** RFC-1458: the fields of a `werkstatt:verdict/v1` record carried into an evidence envelope. */
+export interface ReleaseVerdictEvidence {
+  requirement: string;
+  check: string;
+  outcome: "pass" | "fail" | "inconclusive";
+  releaseId: string;
+  site: string;
+  channel: string;
+  observedAt: string;
+  detail?: string;
 }
 
 /**

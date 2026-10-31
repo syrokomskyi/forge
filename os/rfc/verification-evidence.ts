@@ -12,7 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1372: getKernelVersion falls back to the workspace root package.json version — the packages/os/site-kernel path predates RFC-0776 and no longer resolves, so envelopes recorded kernelVersion: unknown</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: unblock evidence emission for proof-probe RFCs (RFC-1391)
 
@@ -32,7 +31,8 @@ required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334</history>
+  <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372</history>
 </CHANGE_SUMMARY>
 */
 
@@ -46,6 +46,7 @@ import { byteHash } from "../../src/utils/hash.ts";
 import { runProbe } from "./acceptance.ts";
 import { createOutcomeSession } from "./outcome-probe.ts";
 import { attachProbeOrigins } from "./verification-origin.ts";
+import { attachVerdictEvidence } from "./verification-verdicts.ts";
 import { EVIDENCE_SYNC_STEPS } from "./handlers/rfc-evidence-sync.ts";
 import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
 import { generatedHeaderFields } from "../../src/utils/generated-marker.ts";
@@ -581,6 +582,10 @@ export async function runRfcVerificationEmit(
       probes,
       records: probeRecords,
     });
+
+    // RFC-1458: ingest release verdicts as external-origin evidence (no-op
+    // when no releases/*/.test-evidence/verdicts.json exists).
+    await attachVerdictEvidence({ workspaceRoot, io, rfcId, records: probeRecords });
 
     const envelope = buildEvidenceEnvelope(
       rfcId,
