@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1336</history>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336</history>
 </CHANGE_SUMMARY>
 */
 
@@ -28,6 +28,12 @@ import { execFile } from "../../../src/utils/sync-fs.ts";
 import { parse as yamlParse } from "yaml";
 import { proofSpecSchema } from "../../../src/formal/proof-spec.ts";
 import { validateAcceptanceShape } from "../acceptance.ts";
+import {
+  scoreDecisions,
+  REPROPOSED_SCORE,
+  TERMINAL_KINDS,
+} from "../decision-log.ts";
+import type { DecisionLogEntry } from "../types.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
 import type { RfcStatus, RfcKind, RfcScope, RfcVerificationTier, Marker } from "../types.ts";
@@ -525,6 +531,8 @@ export async function validateSingleRfc(
   workspaceRoot: string,
   addViolation: AddViolationFn,
   seenFilenameNumbers?: Map<number, string>,
+  /** RFC-1467: memoized decision-log getter shared across drafts (V-52). */
+  decisionLog?: () => Promise<DecisionLogEntry[]>,
 ): Promise<Marker[]> {
   const fm = parsed.frontmatter;
   const body = parsed.body;
@@ -1377,6 +1385,42 @@ export async function validateSingleRfc(
   // V-22: well-formed acceptance probe shape
   for (const issue of validateAcceptanceShape(fm["acceptance"])) {
     addViolation(rfcId, relFile, "V-22", issue.message, "warning");
+  }
+
+  // V-52: a draft reproposing a rejected/superseded precedent must cite it —
+  // an uncited terminal-kind hit at the reproposal threshold is blocking
+  // (RFC-1467). Citation via related/amends/supersedes/supersededBy satisfies
+  // the rule; log-collection failure warns, never blocks.
+  if (status === "draft" && decisionLog) {
+    const cited = new Set(
+      [fm["related"], fm["amends"], fm["supersedes"], fm["supersededBy"]]
+        .flat()
+        .map((v) => String(v)),
+    );
+    try {
+      const logEntries = await decisionLog();
+      const title = String(fm["title"] ?? "");
+      const scored = scoreDecisions(title, logEntries, Number.MAX_SAFE_INTEGER);
+      const hits = scored.filter(
+        (d) => TERMINAL_KINDS.has(d.kind) && d.score >= REPROPOSED_SCORE && !cited.has(d.rfcId),
+      );
+      for (const hit of hits) {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-52",
+          `draft title reproposes terminal precedent ${hit.rfcId} (score ${hit.score} ≥ ${REPROPOSED_SCORE}) without citing it — list ${hit.rfcId} in related (or amends/supersedes/supersededBy) and state in the Decision why this proposal differs from the earlier rejection/supersession rationale`,
+        );
+      }
+    } catch (error) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-52",
+        `decision-log collection failed — reproposal check skipped: ${error instanceof Error ? error.message : String(error)}`,
+        "warning",
+      );
+    }
   }
 
   // V-23: verification evidence for post-cutoff, probe-bearing, implemented RFCs

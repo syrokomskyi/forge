@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401</history>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1453</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -609,12 +609,18 @@ export interface RfcListResult {
 
 export interface RfcCreateResult {
   command: "rfc.create";
-  status: "ok";
-  file: string;
-  id: string;
+  status: "ok" | "blocked";
+  file?: string;
+  id?: string;
   satisfies?: string[];
   /** RFC-0329: prior decisions consulted at creation time. */
   consultedDecisions?: ConsultedDecision[];
+  /** RFC-1467: terminal-kind collisions at/above the reproposal threshold. */
+  colliding?: string[];
+  /** RFC-1467: true when creation refused on unresolved terminal collisions. */
+  blocked?: boolean;
+  /** RFC-1467: the operator-visible remedy for a blocked create. */
+  remedy?: string;
 }
 
 export interface RfcNextIdResult {

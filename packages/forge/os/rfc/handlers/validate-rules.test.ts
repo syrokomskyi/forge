@@ -10,6 +10,7 @@ Unit tests for validate rules covering V-26: implemented RFCs must have all acce
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the validate suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
 </CHANGE_SUMMARY>
 */
 
@@ -1058,5 +1059,66 @@ describe("V-46: proof spec validation (RFC-1391)", () => {
     const v46Accepted = filterRule(accepted, "V-46");
     expect(v46Accepted).toHaveLength(1);
     expect(v46Accepted[0]!.severity).toBe("error");
+  });
+});
+
+describe("V-52: draft reproposing a terminal precedent must cite it (RFC-1467)", () => {
+  const TERMINAL_ENTRY = {
+    kind: "rejected-rfc" as const,
+    rfcId: "RFC-1312",
+    title: "Test RFC with overlapping title tokens for collision",
+    status: "rejected" as const,
+    file: "docs/rfcs/archive/rejected/rfc-1312-test.md",
+  };
+  const decisionLogOf = (entries: unknown[]) => async () =>
+    entries as Awaited<ReturnType<typeof import("../decision-log.ts").collectDecisionLog>>;
+
+  async function runValidateWithLog(
+    parsed: ParsedRfc,
+    entries: unknown[],
+  ): Promise<{ rfcId: string; rule: string; message: string; severity: string }[]> {
+    const { add, violations } = makeViolationsCollector();
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      testWorkspace,
+      add,
+      undefined,
+      decisionLogOf(entries),
+    );
+    return violations;
+  }
+
+  test("AC-4: an uncited terminal hit at the threshold is a blocking V-52", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      title: "Test RFC with overlapping title tokens for collision",
+    });
+    const violations = await runValidateWithLog(parsed, [TERMINAL_ENTRY]);
+    const v52 = filterRule(violations, "V-52");
+    expect(v52).toHaveLength(1);
+    expect(v52[0]!.severity).toBe("error");
+    expect(v52[0]!.message).toContain("RFC-1312");
+  });
+
+  test("a draft citing the precedent via related produces no V-52", async () => {
+    const parsed = makeParsed("draft", BASE_BODY, {
+      title: "Test RFC with overlapping title tokens for collision",
+      related: ["RFC-1312"],
+    });
+    const violations = await runValidateWithLog(parsed, [TERMINAL_ENTRY]);
+    expect(filterRule(violations, "V-52")).toHaveLength(0);
+  });
+
+  test("non-draft statuses skip the reproposal check entirely", async () => {
+    const parsed = makeParsed("accepted", BASE_BODY, {
+      title: "Test RFC with overlapping title tokens for collision",
+    });
+    const violations = await runValidateWithLog(parsed, [TERMINAL_ENTRY]);
+    expect(filterRule(violations, "V-52")).toHaveLength(0);
   });
 });

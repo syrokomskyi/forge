@@ -14,6 +14,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>KERNEL-FLAG-02: Guard --id against non-string values (boolean/array from unvalidated flag input) — throws a clear flag error instead of TypeError in rfcFileMatchesId.</item>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,6 +42,7 @@ import { DNA_DOCS, AP_DOCS, loadInvariantIds } from "./shared.ts";
 import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
 import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./validate-rules.ts";
 import { validateSingleRfc, checkFrontmatterYamlParse } from "./validate-rules.ts";
+import { collectDecisionLog } from "../decision-log.ts";
 
 export async function runRfcValidate(
   input: ForgeCommandInput,
@@ -108,6 +110,14 @@ export async function runRfcValidate(
   const seenIds = new Map<string, string>();
   const seenFilenameNumbers = new Map<number, string>();
 
+  // RFC-1467 V-52: the decision log is collected once per validate run —
+  // the getter memoizes so a multi-draft run pays the collection cost once.
+  let decisionLogPromise: Promise<Awaited<ReturnType<typeof collectDecisionLog>>> | undefined;
+  const decisionLog = () => {
+    decisionLogPromise ??= collectDecisionLog(rfcDirPath);
+    return decisionLogPromise;
+  };
+
   for (const fileName of filesToValidate) {
     const result = allParsedByFile.get(fileName);
     if (!result) continue;
@@ -123,6 +133,7 @@ export async function runRfcValidate(
       workspaceRoot,
       addViolation,
       seenFilenameNumbers,
+      decisionLog,
     );
     allMarkers.push(...markers);
 

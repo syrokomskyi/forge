@@ -6,13 +6,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — werkstatt-engine clean
-
-Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1139: second hint fix (rfc.list empty-state) + read-only test fix</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <history>RFC-0303, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -40,7 +38,13 @@ import type {
 } from "../types.ts";
 import { RFC_DIR, RFC_KINDS, RFC_SCOPES, RFC_METADATA_CUTOFF } from "../types.ts";
 import { DNA_DOCS, loadInvariantIds, toIsoDate, resolveRfcTemplate } from "./shared.ts";
-import { collectDecisionLog, scoreDecisions } from "../decision-log.ts";
+import {
+  collectDecisionLog,
+  scoreDecisions,
+  REPROPOSED_SCORE,
+  REVIEW_SCORE,
+  TERMINAL_KINDS,
+} from "../decision-log.ts";
 import type { ConsultedDecision } from "../types.ts";
 
 function parseSatisfiesFlag(value: unknown): string[] {
@@ -198,11 +202,15 @@ export async function runRfcCreate(
 
   const kebabTitle = toKebabCase(title);
 
-  // RFC-0329: consult decision log before scaffolding
+  // RFC-0329: consult decision log before scaffolding. RFC-1467: scoring
+  // runs untruncated for the collision bands — the `consultedDecisions`
+  // payload stays capped at the display limit.
   let consultedDecisions: ConsultedDecision[] = [];
+  let scoredAll: ConsultedDecision[] = [];
   try {
     const logEntries = await collectDecisionLog(rfcDirPath);
-    consultedDecisions = scoreDecisions(title, logEntries);
+    scoredAll = scoreDecisions(title, logEntries, Number.MAX_SAFE_INTEGER);
+    consultedDecisions = scoredAll.slice(0, 5);
   } catch {
     // graceful degradation — never block creation
   }
@@ -217,6 +225,83 @@ export async function runRfcCreate(
       logger.info("No related prior decisions found.");
     }
   }
+
+  // RFC-1467: near-duplicate gate — terminal-kind hits (rejected-rfc /
+  // superseded-rfc) at or above the reproposal threshold block creation
+  // until --revisit acknowledges one of the colliding ids; the review band
+  // (REVIEW_SCORE..REPROPOSED_SCORE-1) cites hits via `related` + a NEEDS
+  // CLARIFICATION marker. rejected-alternative stays informational.
+  const revisitRaw = input.flags["revisit"] as string | undefined;
+  const revisit = revisitRaw?.trim().toUpperCase() || undefined;
+  const colliding = [
+    ...new Set(
+      scoredAll
+        .filter((d) => TERMINAL_KINDS.has(d.kind) && d.score >= REPROPOSED_SCORE)
+        .map((d) => d.rfcId),
+    ),
+  ].sort();
+  const warningHits = [
+    ...new Set(
+      scoredAll
+        .filter(
+          (d) =>
+            TERMINAL_KINDS.has(d.kind) && d.score >= REVIEW_SCORE && d.score < REPROPOSED_SCORE,
+        )
+        .map((d) => d.rfcId),
+    ),
+  ].sort();
+
+  if (revisit && !colliding.includes(revisit)) {
+    const remedy =
+      colliding.length > 0
+        ? `--revisit must name a colliding precedent — valid candidates: ${colliding.join(", ")}.`
+        : "No terminal-kind precedent collides with this title — drop --revisit and scaffold normally.";
+    if (outputFormat === "pretty") {
+      logger.error(`rfc.create refused: ${remedy}`);
+    }
+    return {
+      data: {
+        command: "rfc.create",
+        status: "blocked",
+        blocked: true,
+        colliding,
+        remedy,
+        consultedDecisions,
+      },
+      summary: `rfc.create refused: ${remedy}`,
+      exitCode: 1,
+    };
+  }
+
+  if (colliding.length > 0 && !revisit) {
+    const remedy =
+      `Re-run with --revisit ${colliding[0]} to acknowledge the precedent — the scaffold will cite it ` +
+      `in related with a NEEDS CLARIFICATION marker and the draft's Decision must state why it differs ` +
+      `from the rejection/supersession rationale. If this is genuinely different work, sharpen the title ` +
+      `so it no longer collides at the reproposal threshold (score ≥ ${REPROPOSED_SCORE}).`;
+    if (outputFormat === "pretty") {
+      logger.error(
+        `rfc.create blocked: ${colliding.length} terminal precedent(s) collide — ${colliding.join(", ")}`,
+      );
+      logger.error(remedy);
+    }
+    return {
+      data: {
+        command: "rfc.create",
+        status: "blocked",
+        blocked: true,
+        colliding,
+        remedy,
+        consultedDecisions,
+      },
+      summary: `rfc.create blocked: terminal precedent ${colliding.join(", ")} collides — re-run with --revisit ${colliding[0]} to acknowledge`,
+      exitCode: 1,
+    };
+  }
+
+  // Ids to cite in the scaffold's `related`: the acknowledged terminal hit
+  // plus every warning-band precedent.
+  const citedIds = [...new Set([...(revisit ? [revisit] : []), ...warningHits])].sort();
 
   // RFC-1138: atomic id allocation — scan → claim the id via wx on a
   // title-independent `rfc-NNNN.claim` file → write the real file → release.
@@ -281,6 +366,21 @@ export async function runRfcCreate(
           `satisfies:\n${satisfies.map((id) => `  - ${id}`).join("\n")}`,
         );
       }
+      // RFC-1467: cite the acknowledged/warning-band precedents in `related`
+      // and leave a NEEDS CLARIFICATION marker in the Decision section.
+      if (citedIds.length > 0) {
+        content = content.replace(
+          /^related:$/m,
+          `related:\n${citedIds.map((id) => `  - ${id}`).join("\n")}`,
+        );
+        const marker = revisit
+          ? `> NEEDS CLARIFICATION: ${revisit} is a rejected/superseded precedent acknowledged via --revisit — the Decision must state why this proposal differs from the earlier rejection or supersession rationale.` +
+            (warningHits.length > 0
+              ? `\n> NEEDS CLARIFICATION: near-duplicate precedent(s) ${warningHits.join(", ")} scored in the review band — cite them or distinguish scope in the Decision.`
+              : "")
+          : `> NEEDS CLARIFICATION: near-duplicate precedent(s) ${warningHits.join(", ")} scored in the review band — cite them or distinguish scope in the Decision.`;
+        content = content.replace(/^## Decision$/m, `## Decision\n\n${marker}\n`);
+      }
       content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
 
       const targetPath = path.join(rfcDirPath, fileName);
@@ -312,6 +412,14 @@ export async function runRfcCreate(
     logger.success(`Created ${nextId}: ${title}`);
     logger.info(`File: ${relativeFile}`);
     logger.info(`Template: full`);
+    if (revisit) {
+      logger.info(`Acknowledged precedent via --revisit: ${revisit} (cited in related)`);
+    }
+    if (warningHits.length > 0) {
+      logger.info(
+        `Near-duplicate precedent(s) cited in related: ${warningHits.join(", ")} — distinguish or cite them in the Decision`,
+      );
+    }
     logger.info("Status: draft (only a human with role 'architecture' may change status)");
   }
 
@@ -323,6 +431,7 @@ export async function runRfcCreate(
       id: nextId,
       satisfies,
       consultedDecisions,
+      ...(colliding.length > 0 ? { colliding, blocked: false } : {}),
     },
     summary: `Created ${nextId}: ${title}`,
     nextSteps: [

@@ -7,12 +7,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1463: composite gates report complete violation sets and self-ensure prerequisites — ensure/compositeGate metadata, executor ensure runner, blockedBy skip tracking, ENSURE-01..04 + GATE-CMP-01, runCompositeGate</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354</history>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364</history>
 </CHANGE_SUMMARY>
 */
 
@@ -107,6 +107,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "string",
             description:
               "Comma-separated DNA ids this RFC satisfies. Required for architecture/contract RFCs.",
+          },
+          revisit: {
+            kind: "string",
+            description:
+              "RFC-1467: acknowledge a rejected/superseded precedent colliding with this title — required when a terminal-kind decision-log hit scores at or above the reproposal threshold.",
           },
         },
         execute: runRfcCreate,

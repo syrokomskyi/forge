@@ -13,6 +13,7 @@ keywords for rfc.create consultation, and generate/validate projections.
 <CHANGE_SUMMARY>
   <item>RFC-0329: initial implementation.</item>
   <item>RFC-1320 review-r1: writes migrated writeFileAtomic → context.io; dry-run returns renderedFiles for both projections (ambient writes bypassed dry-run interception and self-healed stale artifacts inside emit's freshness precheck).</item>
+  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
 </CHANGE_SUMMARY>
 */
 
@@ -61,6 +62,20 @@ function firstParagraph(text: string): string {
   const firstBreak = trimmed.indexOf("\n\n");
   return firstBreak === -1 ? trimmed : trimmed.slice(0, firstBreak).trim();
 }
+
+/**
+ * RFC-1467: reproposal bands — a terminal-kind hit (rejected/superseded RFC)
+ * scoring ≥ REPROPOSED_SCORE is a near-duplicate and blocks `rfc.create`
+ * until acknowledged via --revisit; the REVIEW_SCORE band (8..11) marks a
+ * warning-tier collision the scaffold cites via `related` + a NEEDS
+ * CLARIFICATION marker.
+ */
+export const REPROPOSED_SCORE = 12;
+export const REVIEW_SCORE = 8;
+export const TERMINAL_KINDS: ReadonlySet<string> = new Set([
+  "rejected-rfc",
+  "superseded-rfc",
+]);
 
 export async function collectDecisionLog(rfcDirPath: string): Promise<DecisionLogEntry[]> {
   const files = await listRfcFiles(rfcDirPath);
