@@ -251,6 +251,14 @@
     "./os/checks": {
       "types": "./os/checks/index.ts",
       "default": "./os/checks/index.ts"
+    },
+    "./os/context-module": {
+      "types": "./os/context/context.module.ts",
+      "default": "./os/context/context.module.ts"
+    },
+    "./os/context": {
+      "types": "./os/context/index.ts",
+      "default": "./os/context/index.ts"
     }
   },
   "files": [
@@ -515,6 +523,14 @@
       "./os/checks": {
         "types": "./dist/os/checks/index.d.ts",
         "default": "./dist/os/checks/index.js"
+      },
+      "./os/context-module": {
+        "types": "./dist/os/context/context.module.d.ts",
+        "default": "./dist/os/context/context.module.js"
+      },
+      "./os/context": {
+        "types": "./dist/os/context/index.d.ts",
+        "default": "./dist/os/context/index.js"
       }
     }
   }
