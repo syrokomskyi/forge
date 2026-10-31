@@ -13,6 +13,7 @@ Autonomous — source-text scan only (FORGE-AUTONOMY-01).
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
   <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
+  <item>RFC-1468: apply r3 repairs — dotted catalog ruleIds, queue-ledger decision refs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -126,7 +127,7 @@ async function resolveRef(
     return new RegExp(`^-\\s*id:\\s*${ref}\\s*$`, "m").test(src);
   }
   // Catalog ruleIds (catalog contract refs) — a remediation row must exist.
-  if (/^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$/.test(ref)) return catalogIds.has(ref);
+  if (/^[A-Z][A-Z0-9]*(?:[-.][A-Z0-9]+)+$/.test(ref)) return catalogIds.has(ref);
   return false;
 }
 
@@ -159,10 +160,15 @@ export async function runKnowledgeAuthzProbe(
   const dlSrc = await io.readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml")).catch(() => "");
   // decision:<doc-id> refs resolve against the log's rfcId column; literal
   // decision:D-YYYY-MM-DD-NN ids resolve against queue ledgers' decisions.
-  const decisionIds = new Set<string>([
-    ...[...dlSrc.matchAll(/rfcId:\s*(\S+)/g)].map((m) => `decision:${m[1]}`),
-    ...[...dlSrc.matchAll(/\bdecision:D-[\w:-]+/g)].map((m) => m[0]!),
-  ]);
+  const decisionIds = new Set<string>(
+    [...dlSrc.matchAll(/rfcId:\s*(\S+)/g)].map((m) => `decision:${m[1]}`),
+  );
+  // Literal decision:D-* ids live in queue ledgers — scan them for refs.
+  for (const q of await io.readdir(path.join(root, "docs", "queues")).catch(() => [] as { name: string; isFile: boolean }[])) {
+    if (!q.isFile || !q.name.endsWith(".decisions.yaml")) continue;
+    const qs = await io.readFile(path.join(root, "docs", "queues", q.name)).catch(() => "");
+    for (const m of qs.matchAll(/\bdecision:D-[\w:-]+/g)) decisionIds.add(m[0]!);
+  }
   const catSrc = await io.readFile(path.join(root, "docs", "remediation-catalog.generated.yaml")).catch(() => "");
   const catalogIds = new Set([...catSrc.matchAll(/ruleId:\s*(\S+)/g)].map((m) => m[1]!));
   const diagnostics: AuthzDiagnostic[] = [];
