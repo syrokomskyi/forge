@@ -13,6 +13,7 @@ slot — absent binding → lexical-only floor (shipped default).
   <item>RFC-1470: context.assemble budgeted slate over lexical + recency + path-overlap channels</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
+  <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,6 +48,8 @@ export interface AssembleData {
   skipped: number;
 }
 
+export const HEADER_TOKENS = 12;
+
 const STOPWORDS = new Set(["the", "for", "and", "run", "all", "can", "use", "with", "this", "that", "from"]);
 
 const KIND_WEIGHT: Record<string, number> = {
@@ -55,7 +58,7 @@ const KIND_WEIGHT: Record<string, number> = {
   "skill-manifest": 0.7, decision: 0.7, handoff: 0.5,
 };
 
-function tokenize(text: string): Set<string> {
+export function tokenize(text: string): Set<string> {
   return new Set(
     text.toLowerCase().replace(/[^a-zа-яё0-9_.-]+/g, " ").split(/\s+/).filter((t) => t.length > 2 && !STOPWORDS.has(t)),
   );
@@ -120,12 +123,14 @@ export async function runContextAssemble(
     }
   }
   const units = ((yamlParse(indexSrc) as { units?: ContextUnit[] } | null)?.units ?? []);
-  const auditDir = path.join(root, "docs", "sessions", "audit");
-  const newestSidecar = (await io.readdir(auditDir).catch(() => [] as { name: string }[]))
-    .filter((e) => e.name.endsWith(".audit.yaml")).sort().at(-1);
-  const indexUnits = new Set(units.map((u) => u.source.split("#")[0]));
-  if (newestSidecar && ![...indexUnits].some((s) => s.includes("audit"))) {
-    context.logger.warn(`CTX-02 index may be stale vs the newest session sidecar — rerun context.index.build`);
+  // CTX-02 staleness — the index's sourceWatermark (newest source date seen at
+  // build) vs the newest source file in the corpus.
+  const watermark = (yamlParse(indexSrc) as { sourceWatermark?: string } | null)?.sourceWatermark ?? "";
+  const sessionDir = path.join(root, "docs", "sessions");
+  const newestSrc = (await io.readdir(sessionDir).catch(() => [] as { name: string; isDirectory: boolean }[]))
+    .filter((e) => !e.isDirectory && e.name.endsWith(".md")).sort().at(-1)?.name ?? "";
+  if (watermark && newestSrc && newestSrc > watermark) {
+    context.logger.warn(`CTX-02 index is stale (watermark ${watermark} < newest source ${newestSrc}) — rerun context.index.build`);
   }
 
   const taskTokens = tokenize(task);
@@ -135,7 +140,6 @@ export async function runContextAssemble(
 
   // Source-group discount (AC-4): the second unit from the same source file
   // pays only its body cost — the header (source line + kind tag) is charged once.
-  const HEADER_TOKENS = 12;
   const slate: SlateUnit[] = [];
   const groupSeen = new Set<string>();
   let used = 0;
