@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1472: trajectory.index [--session <id>] [--since <date>] [--rebuild] —
+RFC-1472: trajectory.index [--session <id>] [--since <date>] —
 extracts procedure units from GREEN-VERIFIED sessions (verdict indicates
 success — admission at extraction, not recall). Each unit binds a situation
 key {taskKind, touchedPathClasses, recentActions} to a continuation
@@ -11,11 +11,11 @@ sessions produce nothing. --export/--import for shard portability.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
   <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
   <item>RFC-1475: apply review round-5 findings — shard units container guard, array-element migration convergence, confinement drop test</item>
+  <item>RFC-1480: trajectory-memory residual debt — rebuild flag, recallId derivation, TRAJ-07, confinement</item>
   <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -84,6 +84,16 @@ function deriveMissionId(fm: Record<string, unknown>): string | null {
 }
 
 /**
+ * RFC-1480: resolved-path confinement — a ref is inside root iff its resolved
+ * path equals root or descends from it. Admits `..wip/`-style dirs the naive
+ * `startsWith("..")` over-dropped; still refuses absolute and escaping refs.
+ */
+function insideWorkspaceRoot(rootReal: string, ref: string): boolean {
+  const resolved = path.resolve(rootReal, ref);
+  return resolved === rootReal || resolved.startsWith(`${rootReal}${path.sep}`);
+}
+
+/**
  * Re-resolve a unit's verdictRef post-admission (TRAJ-04): artifact-path refs
  * re-read the evidence file and re-test green; `verdict:<value>` refs re-test
  * the recorded value; `signal:commits` refs are exempt — self-contained.
@@ -97,8 +107,8 @@ async function verdictRefResolvesGreen(
   if (verdictRef.startsWith("verdict:")) return GREEN_RE.test(verdictRef.slice("verdict:".length));
   // Confinement — a shard-carried or hand-edited ref must not read outside
   // the workspace: absolute or `..`-escaping paths are unresolvable.
-  const normalized = path.normalize(verdictRef);
-  if (path.isAbsolute(verdictRef) || normalized.startsWith("..")) return false;
+  const rootReal = await io.realpath(root).catch(() => path.resolve(root));
+  if (!insideWorkspaceRoot(rootReal, verdictRef)) return false;
   const src = await io.readFile(path.join(root, verdictRef)).catch((e) => {
     if (isEnoent(e)) return null;
     throw e;
@@ -144,8 +154,8 @@ async function exportableVerdictRef(
 ): Promise<ProcedureUnit> {
   const ref = unit.producer.verdictRef;
   if (ref === "signal:commits" || ref.startsWith("verdict:")) return unit;
-  const normalized = path.normalize(ref);
-  if (path.isAbsolute(ref) || normalized.startsWith("..")) return unit;
+  const rootReal = await io.realpath(root).catch(() => path.resolve(root));
+  if (!insideWorkspaceRoot(rootReal, ref)) return unit;
   const src = await io.readFile(path.join(root, ref)).catch((e) => {
     if (isEnoent(e)) return null;
     throw e;
@@ -325,6 +335,7 @@ export async function runTrajectoryIndex(
   // vendored unit ids resolve on rebuild (origin: vendored, trust: review
   // per RFC §4). Malformed units are skipped — anything less than the minimal
   // shape crashes the drop/bucket loops.
+  const diagnostics: { ruleId?: string; severity?: string; message?: string }[] = [];
   const localIds = new Set(units.map((u) => u.id));
   const importPath = input.flags["import"] as string | undefined;
   let skippedShardUnits = 0;
@@ -350,6 +361,16 @@ export async function runTrajectoryIndex(
         summary: `TRAJ-03 ${importPath} is not a forge/trajectory-shard@1`,
         exitCode: 1,
       };
+    }
+    // TRAJ-07: a shard whose units container is not an array was previously
+    // merged as zero units with no voice — name it instead of swallowing.
+    if (!Array.isArray(shard.units)) {
+      skippedShardUnits += 1;
+      diagnostics.push({
+        ruleId: "TRAJ-07",
+        severity: "warning",
+        message: `${importPath}: shard.units is not an array — shard contributes no units`,
+      });
     }
     for (const candidate of Array.isArray(shard.units) ? shard.units : []) {
       if (!isShardUnit(candidate)) {
@@ -445,7 +466,6 @@ export async function runTrajectoryIndex(
     const shard = { schema: "forge/trajectory-shard@1", exportedFrom: workshopId, units: exportUnits, producerStats };
     await io.writeFile(path.join(root, exportPath), yamlStringify(shard) + "\n");
   }
-  const diagnostics: { ruleId?: string; severity?: string; message?: string }[] = [];
   if (dropped > 0) {
     diagnostics.push({ ruleId: "TRAJ-04", severity: "warning", message: `${dropped} unit(s) dropped — verdictRef no longer resolves green` });
   }
