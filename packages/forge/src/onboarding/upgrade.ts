@@ -11,17 +11,12 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
-  <item>RFC-1097: sweep — werkstatt-engine clean
-
-Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1154: sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-* SKILL.md references dangled for npm consumers</item>
   <item>RFC-1255: Knowledge conflicts land in .forge/knowledge-conflicts.txt (summary + path in console instead of a 60+ entry dump); exposed as knowledgeConflicts/knowledgeConflictsReport on UpgradeResult. Prettierignore plan now enumerates generated AGENTS.md paths.</item>
   <item>RFC-1481: add knowledge.conflicts.resolve next steps on same-version and regular upgrade results.</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1224</history>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 

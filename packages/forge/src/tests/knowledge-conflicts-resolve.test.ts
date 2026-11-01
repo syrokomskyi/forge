@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1481 behavior tests for conflict planning, identity deduplication, safe reference remapping, and deterministic local-ID allocation.</purpose>
+<purpose>knowledge-conflicts-resolve tests for planKnowledgeConflictResolution: identity deduplication, safe reference remapping, deterministic local-ID allocation.</purpose>
 <non-goals>
   <item>Not a contract source of truth — RFC-1481 and the knowledge resolver own the behavior.</item>
 </non-goals>
@@ -16,6 +16,7 @@ Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross
   <item>RFC-1481: honor kernel dry-run and expose resolver reachability
 
 Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
 </CHANGE_SUMMARY>
 */
 

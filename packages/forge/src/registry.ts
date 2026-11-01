@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to warpgogol-skills as wg- pack skills).</item>
-  <item>RFC-0941: discoverPackSkills now requires forge.plugin.yaml manifest at each pack root — throws on missing or invalid manifest (fail-fast).</item>
   <item>RFC-1481: add WorkspaceIO-backed pack skill discovery for mutating knowledge commands.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -16,7 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1435: sync paired skill copies after commit-time CHANGE_SUMMARY injection</item>
-  <history>RFC-0374, RFC-0395, RFC-0523, RFC-0524, RFC-0538</history>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <history>RFC-0374, RFC-0395, RFC-0523, RFC-0524, RFC-0538, RFC-0539, RFC-0941</history>
 </CHANGE_SUMMARY>
 */
 

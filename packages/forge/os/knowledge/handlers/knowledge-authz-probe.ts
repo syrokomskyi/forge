@@ -7,14 +7,17 @@ source row), KAUTHZ-03 skill-authored authz entry without the class marker
 (grace-window warning). --classify-only proposes markers, writes nothing.
 Autonomous — source-text scan only (FORGE-AUTONOMY-01).
 </purpose>
+<non-goals>
+  <item>Do not mutate knowledge files — diagnostics and marker proposals only.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1468: KAUTHZ-01..03 probe + classify-only assist</item>
-  <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
   <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
   <item>RFC-1468: apply r3 repairs — dotted catalog ruleIds, queue-ledger decision refs</item>
   <item>RFC-1481: recognize consumer-local L-K-NNNN knowledge headings.</item>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <history>RFC-1468</history>
 </CHANGE_SUMMARY>
 */
 

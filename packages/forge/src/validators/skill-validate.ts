@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0660: added SKILL-19 (knowledge entry schema validity) and SKILL-20 (entry identifier uniqueness) for structured knowledge files.</item>
-  <item>RFC-0661: added SKILL-21 (knowledge layer token budget warnings), refactored warning handling — warnings go to separate `warnings` array, not `violations`.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -16,7 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1481: accept consumer-local L-K-NNNN IDs while keeping Forge-authored source IDs in the upstream K-NNNN namespace.</item>
-  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553, RFC-0642, RFC-1225, RFC-1227, SKILL-00, SKILL-17</history>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553, RFC-0642, RFC-0660, RFC-0661, RFC-1225, RFC-1227, SKILL-00, SKILL-17</history>
 </CHANGE_SUMMARY>
 */
 

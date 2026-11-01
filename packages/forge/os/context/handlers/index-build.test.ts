@@ -1,9 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1470 context.index.build tests — unit catalog covers the required kinds (session-block, friction, rfc-header minimum); rebuild is pure projection.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — context.index.build and RFC-1470 own the behavior.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1481: context index retains consumer-local L-K-NNNN identity.</item>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
 </CHANGE_SUMMARY>
 */
 
