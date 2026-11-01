@@ -111,6 +111,28 @@ describe("readCountersJournal", () => {
     expect(malformedLines).toBe(2);
     expect(truncatedTail).toBe(false);
   });
+
+  test("a parseable-but-schema-invalid tail counts as malformed, not truncated", async () => {
+    await mkdir(join(root, "docs", ".index", "checks"), { recursive: true });
+    const file = join(root, COUNTERS_JOURNAL_PATH);
+    await writeFile(
+      file,
+      [
+        JSON.stringify(rec({ ruleId: "a/A-1" })),
+        JSON.stringify({ runId: "x", ruleId: "undefined/X-1", contract: "undefined", outcome: "bogus", at: "not-a-date" }),
+        "",
+      ].join("\n"),
+    );
+    const { records, malformedLines, truncatedTail } = await readCountersJournal(root);
+    expect(records.map((r) => r.ruleId)).toEqual(["a/A-1"]);
+    expect(malformedLines).toBe(1);
+    expect(truncatedTail).toBe(false);
+  });
+
+  test("non-ENOENT read errors propagate — an unreadable journal must not green", async () => {
+    await mkdir(join(root, COUNTERS_JOURNAL_PATH), { recursive: true }); // journal path is a directory → EISDIR
+    await expect(readCountersJournal(root)).rejects.toThrow();
+  });
 });
 
 describe("computeRunOutcomes", () => {
