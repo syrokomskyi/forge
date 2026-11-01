@@ -24,6 +24,7 @@ triggerPhrases: ["save this session", "enhance session transcript with annotatio
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -74,6 +75,7 @@ Enhance saved session transcripts with semantic annotations, summaries, and qual
    - `qa-log.md`: Log any questions asked and operator answers.
    - `learned-principles.md`: New principles learned across sessions.
    - `fix-patterns.md`: Patterns of errors in auto-extraction and their fixes.
+   - In a consumer workspace, allocate new local entries as `L-K-NNNN` (max existing local ordinal + 1); Forge source entries remain `K-NNNN`.
 
 8. **Report** what was annotated/changed.
 

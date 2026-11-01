@@ -20,6 +20,7 @@ languagePolicy: ref(PREFERENCES.md)
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: close RFC-1247 review r2 — CHANGE_SUMMARY items on six touched skills, fo-handoff in AGENTS enumeration, glossary applied-instance pointer, recorded per-skill phrase split</item>
+  <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -135,15 +136,17 @@ Not every skill needs all three. `grilling` uses L0 and L2 only (no fix patterns
 
 In addition to the three skill-local layers, there is a fourth tier: the **shared knowledge layer** at `packages/forge/skills/shared/knowledge/learned-principles.md`. This file holds promoted cross-skill principles with `shared/K-NNNN` identifiers.
 
+In a consumer workspace, Forge-authored upstream entries retain `K-NNNN`; consumer-authored entries use `L-K-NNNN`, including entries in the consumer's shared-knowledge copy. `forge.skill.validate` accepts both for consumer pack skills and rejects `L-K-NNNN` in Forge source. `forge knowledge.conflicts.resolve` is the explicit remediation path for existing collisions.
+
 - **Detection**: `doctor` reports cross-skill duplicate L2 entries via normalized-title matching (exact and bounded containment).
-- **Promotion**: `fo-knowledge-distill` executes promotions under operator grilling — the principle moves to the shared layer with summed confirmations and `promotedFrom` provenance; each skill-local copy is rewritten to a pointer entry (`promotedTo: shared/K-NNNN`, `status: superseded`).
-- **Consumption**: knowledge-adopting skills read the shared layer at run start and cite shared principles as `shared/K-NNNN`.
+- **Promotion**: `fo-knowledge-distill` executes promotions under operator grilling — the principle moves to the shared layer with summed confirmations and `promotedFrom` provenance; each skill-local copy is rewritten to a pointer entry (`promotedTo: shared/<entry-id>`, `status: superseded`).
+- **Consumption**: knowledge-adopting skills read the shared layer at run start and cite the canonical upstream or consumer-local shared ID.
 - **Validation**: `doctor` validates the shared layer file for schema validity and id uniqueness (it is not inside a skill directory, so `skill.validate` does not reach it).
 - **npm portability**: the shared layer ships as an empty template — accumulated promotions are project-specific.
 
 ### Entry format
 
-Each knowledge entry is a `### K-NNNN: title` heading followed by a `knowledge-entry` YAML metadata block and a markdown body:
+Each knowledge entry is a `### K-NNNN: title` heading followed by a `knowledge-entry` YAML metadata block and a markdown body. Consumer-local entries use `### L-K-NNNN: title`:
 
 ````markdown
 ### K-0001: Skip non-project sessions
@@ -165,15 +168,15 @@ status: active
 
 | Field | Type | Required | Layers | Meaning |
 | --- | --- | --- | --- | --- |
-| `id` | `K-NNNN` | all | all | Unique 4-digit identifier within the file |
+| `id` | `K-NNNN` upstream; `L-K-NNNN` consumer-local | all | all | Unique 4-digit identifier within the file |
 | `layer` | `L0` \| `L1` \| `L2` | all | all | Knowledge layer |
 | `created` | `YYYY-MM-DD` | all | all | Date the entry was first written |
 | `lastConfirmedAt` | `YYYY-MM-DD` \| `null` | L2 only | L2 | Date of last operator confirmation |
 | `confirmations` | integer ≥ 0 | L2 only | L2 | Confirmation counter for autonomous application |
 | `expiresAt` | `YYYY-MM-DD` \| `null` | optional | all | Date after which the entry is stale |
-| `supersedes` | `K-NNNN[]` | optional | all | Entries this one replaces (must resolve in same file) |
-| `promotedTo` | `shared/K-NNNN` \| `null` | optional | all | Cross-file promotion target |
-| `promotedFrom` | `<skill>/K-NNNN[]` | optional | shared | Provenance — which skill-local entries were promoted into this shared entry |
+| `supersedes` | `K-NNNN[]` or `L-K-NNNN[]` | optional | all | Entries this one replaces (must resolve in same file) |
+| `promotedTo` | `shared/K-NNNN` or `shared/L-K-NNNN` \| `null` | optional | all | Cross-file promotion target |
+| `promotedFrom` | `<skill>/K-NNNN[]` or `<skill>/L-K-NNNN[]` | optional | shared | Provenance — which skill-local entries were promoted into this shared entry |
 | `status` | `active` \| `stale` \| `superseded` \| `archived` | all | all | Lifecycle state |
 
 #### Layer-specific rules
@@ -184,13 +187,13 @@ status: active
 
 #### Knowledge-adjacent files
 
-Files declared in `knowledge:` frontmatter that do not use `### K-NNNN:` headings and have no `<!-- knowledge-layer: ... -->` preamble are **knowledge-adjacent** — they are exempt from SKILL-19/SKILL-20. Examples: `forge-about.md`, `operator-profile-template.md`, `project-narrative-template.md`.
+Files declared in `knowledge:` frontmatter that do not use `### K-NNNN:` or `### L-K-NNNN:` headings and have no `<!-- knowledge-layer: ... -->` preamble are **knowledge-adjacent** — they are exempt from SKILL-19/SKILL-20. Examples: `forge-about.md`, `operator-profile-template.md`, `project-narrative-template.md`.
 
 #### Validation
 
 `skill.validate` enforces:
 - **SKILL-19**: entry metadata schema validity (errors) and legacy section warnings (migration window).
-- **SKILL-20**: identifier uniqueness (`K-NNNN` format, no duplicates, `supersedes` references resolve, `promotedTo` format).
+- **SKILL-20**: identifier uniqueness (K or consumer-local L-K format, no duplicates, `supersedes` references resolve, `promotedTo` format, and local IDs are forbidden in Forge-authored source).
 - **SKILL-21**: hot (L2) and warm (L1) layer character budget warnings — warnings only, never build gates. Defaults: hot=4096, warm=8192. Override in `forge.yaml` under `bindings.knowledge.budgets`.
 
 `doctor` reports legacy section counts and knowledge budget summaries as informational warnings.
