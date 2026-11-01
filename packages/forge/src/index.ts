@@ -16,6 +16,7 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
 </CHANGE_SUMMARY>
 */
 
@@ -197,3 +198,10 @@ export { createForgeExplorationModule } from "../os/exploration/exploration.modu
 export { createForgeNotesModule } from "../os/notes/notes.module.ts";
 export { createForgeProgramModule } from "../os/program/program.module.ts";
 export { forgePluginModule } from "../os/plugin/plugin.module.ts";
+export { createForgeFlowModule } from "../os/flow/flow.module.ts";
+export type {
+  FlowBranchKind,
+  ParsedFlowBranch,
+  BranchClass,
+} from "../os/flow/branch-name.ts";
+export type { RepoKind, RepoKindDetection, GeneratedMarker } from "../os/flow/repo-kind.ts";

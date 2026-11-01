@@ -15,10 +15,12 @@ reader and the insert/replace/verify operations shared by flow.check
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 3 — managed-block constants and guard file helpers</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
+  <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
 </CHANGE_SUMMARY>
 */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 export const GUARD_BEGIN_MARKER = "# >>> forge flow guard (managed by flow.install) >>>";
@@ -35,10 +37,27 @@ export const HOOKS_DIR = "hooks";
 export const GUARD_FILE = "hooks/flow-guard.sh";
 export const PRECOMMIT_FILE = "hooks/pre-commit";
 
+/**
+ * Absolute path of the shipped guard asset — adjacent `assets/` in the
+ * source layout, then the walk-up fallback used by rfc/adr templates so the
+ * published package resolves `os/flow/assets/` from `dist/` too.
+ */
+export function resolveGuardAssetPath(): string {
+  const adjacent = fileURLToPath(new URL("./assets/flow-guard.sh", import.meta.url));
+  if (existsSync(adjacent)) return adjacent;
+  let dir = dirname(fileURLToPath(import.meta.url));
+  for (let i = 0; i < 10; i += 1) {
+    const candidate = join(dir, "os", "flow", "assets", "flow-guard.sh");
+    if (existsSync(candidate)) return candidate;
+    const parent = dirname(dir);
+    if (parent === dir) break;
+    dir = parent;
+  }
+  return adjacent;
+}
+
 /** Absolute path of the shipped guard asset. */
-export const GUARD_ASSET_PATH = fileURLToPath(
-  new URL("./assets/flow-guard.sh", import.meta.url),
-);
+export const GUARD_ASSET_PATH = resolveGuardAssetPath();
 
 /** Bytes of the shipped guard — the FLOW-03 byte-compare reference. */
 export function readGuardAsset(): string {
