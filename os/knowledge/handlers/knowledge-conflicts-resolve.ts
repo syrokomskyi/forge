@@ -15,14 +15,18 @@ mutating runs with an owner-recorded workspace lock.
   <item>RFC-1481: add knowledge collision resolution and surfacing
 
 Add the explicit resolver, namespace-aware parsing and validation, safe reference remapping, doctor/upgrade hints, and regression coverage.</item>
+  <item>RFC-1481: enforce resolver IO and path boundaries
+
+Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross-file provenance, and declare the mutating command's empty generation set.</item>
 </CHANGE_SUMMARY>
 */
 
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import path from "node:path";
-import { FORGE_SKILLS, discoverPackSkills } from "../../../src/registry.ts";
-import { loadForgeConfig } from "../../../src/config/forge-config.ts";
+import { parse as parseYaml } from "yaml";
+import { FORGE_SKILLS, discoverPackSkillsWithIO } from "../../../src/registry.ts";
+import { forgeConfigSchema, type ForgeConfig } from "../../../src/config/forge-config.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import type {
   ForgeCommandInput,
@@ -70,6 +74,22 @@ function resolveInside(root: string, ...segments: string[]): string {
     throw new Error(`Knowledge path escapes its declared root: ${segments.join("/")}`);
   }
   return target;
+}
+
+async function assertDestinationInsideWorkspace(
+  workspaceRoot: string,
+  destinationPath: string,
+  io: WorkspaceIO,
+): Promise<void> {
+  if (!(await io.exists(destinationPath))) return;
+  const [workspaceReal, destinationReal] = await Promise.all([
+    io.realpath(workspaceRoot),
+    io.realpath(destinationPath),
+  ]);
+  const relative = path.relative(workspaceReal, destinationReal);
+  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error(`Consumer knowledge destination resolves outside the workspace: ${destinationPath}`);
+  }
 }
 
 function lockOwnerPath(lockPath: string): string {
@@ -146,7 +166,7 @@ async function enumerateKnowledgeFiles(
   workspaceRoot: string,
   forgeRoot: string,
   skillsDir: string,
-  config: ReturnType<typeof loadForgeConfig>,
+  config: ForgeConfig,
   io: WorkspaceIO,
 ): Promise<ResolveFile[]> {
   const destinationRoot = resolveInside(workspaceRoot, skillsDir);
@@ -160,10 +180,12 @@ async function enumerateKnowledgeFiles(
     const destinationDir = resolveInside(destinationRoot, skill.name);
     for (const declared of skill.knowledge) {
       const source = resolveInside(skillDir, declared);
+      const destination = resolveInside(destinationDir, declared);
+      await assertDestinationInsideWorkspace(workspaceRoot, destination, io);
       files.push(
         ...(await collectDeclaredFiles(
           source,
-          resolveInside(destinationDir, declared),
+          destination,
           path.posix.join(skill.name, declared),
           io,
         )),
@@ -171,7 +193,7 @@ async function enumerateKnowledgeFiles(
     }
   }
 
-  const packSkills = discoverPackSkills(workspaceRoot, config);
+  const packSkills = await discoverPackSkillsWithIO(workspaceRoot, config, io);
   const forgeNames = new Set(FORGE_SKILLS.map((skill) => skill.name));
   for (const skill of packSkills) {
     if (!skill.knowledge?.length || forgeNames.has(skill.name)) continue;
@@ -179,10 +201,12 @@ async function enumerateKnowledgeFiles(
     const skillDir = path.dirname(skillSource);
     const destinationDir = resolveInside(destinationRoot, skill.name);
     for (const declared of skill.knowledge) {
+      const destination = resolveInside(destinationDir, declared);
+      await assertDestinationInsideWorkspace(workspaceRoot, destination, io);
       files.push(
         ...(await collectDeclaredFiles(
           resolveInside(skillDir, declared),
-          resolveInside(destinationDir, declared),
+          destination,
           path.posix.join(skill.name, declared),
           io,
         )),
@@ -197,10 +221,12 @@ async function enumerateKnowledgeFiles(
     "knowledge",
     "learned-principles.md",
   );
+  const sharedDestination = resolveInside(destinationRoot, "shared-knowledge", "learned-principles.md");
+  await assertDestinationInsideWorkspace(workspaceRoot, sharedDestination, io);
   files.push(
     ...(await collectDeclaredFiles(
       sharedSource,
-      resolveInside(destinationRoot, "shared-knowledge", "learned-principles.md"),
+      sharedDestination,
       "shared-knowledge/learned-principles.md",
       io,
     )),
@@ -265,6 +291,31 @@ function referenceRemaps(
   return { ids, ambiguous };
 }
 
+async function readForgeConfig(workspaceRoot: string, io: WorkspaceIO): Promise<ForgeConfig> {
+  const configPath = path.join(workspaceRoot, "forge.yaml");
+  let raw: string;
+  try {
+    raw = await io.readFile(configPath);
+  } catch {
+    throw new Error(`forge.yaml not found at ${configPath}.`);
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(raw);
+  } catch (error) {
+    throw new Error(`forge.yaml at ${configPath} is not valid YAML: ${(error as Error).message}`);
+  }
+  const result = forgeConfigSchema.safeParse(parsed);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
+      .join("\n");
+    throw new Error(`forge.yaml at ${configPath} failed schema validation:\n${issues}`);
+  }
+  return result.data as ForgeConfig;
+}
+
 export async function runKnowledgeConflictsResolve(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -272,8 +323,8 @@ export async function runKnowledgeConflictsResolve(
   const io = resolveIo(context.io);
   const root = context.workspaceRoot;
   const dryRun = input.flags["dry-run"] === true || input.flags.dryRun === true;
-  const forgeRoot = context.forgeRoot ?? path.join(root, "packages", "forge");
-  const config = loadForgeConfig(root, forgeRoot);
+  const forgeRoot = context.forgeRoot ?? path.resolve(import.meta.dirname, "../../..");
+  const config = await readForgeConfig(root, io);
   let lock: { lockPath: string; owner: LockOwner } | null = null;
 
   if (!dryRun) {
@@ -388,6 +439,19 @@ export async function runKnowledgeConflictsResolve(
       log(summary);
     }
     return { data, summary, exitCode: failed ? 1 : 0 };
+  } catch (error) {
+    const summary = `Knowledge resolution stopped before completion: ${(error as Error).message}`;
+    return {
+      data: {
+        command: "knowledge.conflicts.resolve",
+        status: "fail",
+        resolved: [],
+        unresolved: [],
+        dryRun,
+      },
+      summary,
+      exitCode: 1,
+    };
   } finally {
     if (lock) await releaseLock(lock, io);
   }

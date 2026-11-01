@@ -9,6 +9,7 @@ Unit tests for discover pack skills covering discoverPackSkills fail-fast (RFC-0
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the discover suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1481: test WorkspaceIO-backed pack discovery for the mutating resolver command.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -17,6 +18,8 @@ import fs from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { discoverPackSkills } from "../registry.ts";
+import { discoverPackSkillsWithIO } from "../registry.ts";
+import { ambientIo } from "../utils/io.ts";
 import { loadForgeConfig } from "../config/forge-config.ts";
 import { stringify as stringifyYaml } from "yaml";
 
@@ -115,6 +118,29 @@ describe("discoverPackSkills fail-fast (RFC-0941)", () => {
     expect(skills.length).toBe(1);
     expect(skills[0].name).toBe("wg-test");
     expect(skills[0].pack).toBe("wg");
+  });
+
+  test("WorkspaceIO discovery returns the same declared pack knowledge entries", async () => {
+    const packDir = createPackDir("wg", "skills/wg");
+    writeManifest(packDir, "wg", "1.0.0");
+    writeSkill(packDir, "wg", "test");
+    fs.writeFileSync(
+      path.join(packDir, "wg-test", "SKILL.md"),
+      `---\nname: wg-test\ndescription: Test skill\nconcerns: read-only\nknowledge: [learned-principles.md]\n---\n`,
+      "utf8",
+    );
+    writeForgeYaml([{ prefix: "wg", dir: "skills/wg" }]);
+
+    const config = loadForgeConfig(tmpDir);
+    const skills = await discoverPackSkillsWithIO(tmpDir, config, ambientIo);
+
+    expect(skills).toEqual([
+      expect.objectContaining({
+        name: "wg-test",
+        pack: "wg",
+        knowledge: ["learned-principles.md"],
+      }),
+    ]);
   });
 
   test("returns empty array when no skillPacks declared", () => {
