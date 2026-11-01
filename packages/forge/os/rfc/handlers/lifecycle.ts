@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0303: extracted lifecycle logic from handlers.ts into handlers/lifecycle.ts.</item>
   <item>RFC-0465: added RFC_METADATA_CUTOFF check to RFC-CMD-02 and RFC-CMD-03 rules — pre-cutoff RFCs are exempt from command registration checks.</item>
   <item>RFC-0465 fix: added manifest-based fallback in getLiveCommands — reads docs/command-manifest.generated.yaml when commandRegistry returns empty (site-kernel mode).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -15,6 +14,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <history>RFC-0303</history>
 </CHANGE_SUMMARY>
 */
 
@@ -158,20 +159,29 @@ export async function collectRfcCommandLifecycleViolations(
     }
 
     for (const command of buckets.changed) {
-      if (
-        isPostCutoff &&
-        status === "implemented" &&
-        !(await getLiveCommands()).has(command) &&
-        !removed.has(command)
-      ) {
-        addViolation(
-          rfcId,
-          relFile,
-          "RFC-CMD-03",
-          `implemented RFC lists "${command}" under commands.changed, but no live command is registered`,
-          "error",
-          { rfcId, command, status, bucket: "changed" },
-        );
+      if (!isPostCutoff || removed.has(command)) continue;
+      if (!(await getLiveCommands()).has(command)) {
+        if (status === "implemented") {
+          addViolation(
+            rfcId,
+            relFile,
+            "RFC-CMD-03",
+            `implemented RFC lists "${command}" under commands.changed, but no live command is registered`,
+            "error",
+            { rfcId, command, status, bucket: "changed" },
+          );
+        } else if (status === "draft" || status === "reviewing" || status === "accepted") {
+          // RFC-1482: the registered-name contract surfaces at authoring
+          // time — same rule id, warning below the implemented gate.
+          addViolation(
+            rfcId,
+            relFile,
+            "RFC-CMD-03",
+            `${status} RFC lists "${command}" under commands.changed, but no live command is registered (surfaced early per RFC-1482; becomes an error at implemented)`,
+            "warning",
+            { rfcId, command, status, bucket: "changed" },
+          );
+        }
       }
     }
 

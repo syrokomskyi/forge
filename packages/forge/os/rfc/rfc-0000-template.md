@@ -60,6 +60,10 @@ nonGoals: []
 # OPTIONAL machine-checkable acceptance probes, executed on-demand
 # via `pnpm exec forge rfc.acceptance.run --id <this-rfc-id>` (never
 # automatically inside build pipelines).
+# This skeleton satisfies V-45 (reachable probe per proposed/added command),
+# V-48 (outcome probe per outcome-surface package), and V-50 (`## Fixed
+# inputs` header schema, no unbound rows) by construction — commands seeded
+# via --proposed/--added gain a reachable stub automatically.
 # RFC-1271: a probe MAY declare `expectationSource` — who authored the
 # expected result: self | requirement | independent | external — and
 # `limitations`, a free-text caveat about coverage gaps. Both optional.
@@ -225,6 +229,18 @@ interface ExampleResult {
 - [ ] DR-2: The RFC enumerates every existing artifact it touches (evidence: file: <path:line>)
 - [ ] DR-3: The RFC states whether the decision is reversible and at what cost
 -->
+
+## Fixed inputs
+
+<!-- V-50 contract (RFC-1455): every value this RFC pins for the shipped
+     result (verbatim copy, labels, names, decided option values) is a row
+     bound to exactly one AC-N criterion whose probes observe the value.
+     Emit the header schema only — a live placeholder row would itself trip
+     V-50. Add rows only when the draft fixes real inputs; delete this
+     section's table when none exist. -->
+
+| ID | Value | Source | Checked by |
+| --- | --- | --- | --- |
 
 ## Acceptance criteria
 

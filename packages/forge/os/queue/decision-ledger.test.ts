@@ -10,6 +10,7 @@ Unit tests for decision ledger covering decisionLedgerSchema (RFC-1250); decisio
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the decision suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
+  <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,7 +19,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { decisionLedgerPath, loadDecisionLedger } from "./manifest.ts";
+import { decisionLedgerPath, loadDecisionLedger, loadQueueManifest } from "./manifest.ts";
 import { decisionLedgerSchema } from "./types.ts";
 
 let tmpDir: string;
@@ -221,5 +222,35 @@ describe("decisionLedgerPath / loadDecisionLedger (RFC-1250)", () => {
     expect(ledger).toBeNull();
     expect(errors.some((e) => e.ruleId === "QUEUE-01")).toBe(true);
     expect(errors[0]?.file).toBe("docs/queues/block-c.decisions.yaml");
+  });
+
+  // RFC-1482 AC-5: QUEUE-01 on the decisions-ledger path prints the minimal
+  // satisfying shape so the fix is readable from the diagnostic, not code.
+  test("schema violation carries the minimal required shape (AC-5)", async () => {
+    await fs.writeFile(
+      path.join(tmpDir, "docs/queues/block-d.decisions.yaml"),
+      "id: block-d.decisions\nqueue: block-d\nitems: []\n", // missing createdAt
+    );
+    const { ledger, errors } = await loadDecisionLedger(tmpDir, "docs/queues/block-d.yaml");
+    expect(ledger).toBeNull();
+    const queue01 = errors.filter((e) => e.ruleId === "QUEUE-01");
+    expect(queue01.length).toBeGreaterThan(0);
+    for (const e of queue01) {
+      expect(e.message).toContain("id:");
+      expect(e.message).toContain("queue:");
+      expect(e.message).toContain("createdAt:");
+      expect(e.message).toContain("items:");
+    }
+  });
+
+  test("manifest-side QUEUE-01 does not gain the ledger hint (scope check)", async () => {
+    await fs.writeFile(
+      path.join(tmpDir, "docs/queues/block-e.yaml"),
+      "items: not-a-list\n", // manifest schema violation — not a ledger
+    );
+    const { errors } = await loadQueueManifest(tmpDir, "docs/queues/block-e.yaml");
+    const queue01 = errors.filter((e) => e.ruleId === "QUEUE-01");
+    expect(queue01.length).toBeGreaterThan(0);
+    expect(queue01.every((e) => !e.message.includes("minimal shape"))).toBe(true);
   });
 });

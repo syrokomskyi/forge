@@ -17,7 +17,9 @@ import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import { mkdtemp, mkdir, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
 import { runRfcCreate } from "./list-create.ts";
+import { runRfcValidate } from "./validate.ts";
 
 const TEMPLATE = `id: RFC-0000
 title: "Template"
@@ -138,5 +140,80 @@ describe("RFC-1467 rfc.create near-duplicate gate", () => {
     expect(result.exitCode ?? 0).toBe(0);
     expect(result.data?.status).toBe("ok");
     expect(result.data?.colliding).toBeUndefined();
+  });
+});
+
+// RFC-1482: the emitted skeleton must satisfy the contracts that gates enforce —
+// seed the REAL canonical template so the assertions bind the shipped skeleton,
+// not a fixture twin.
+const REAL_TEMPLATE = fileURLToPath(
+  new URL("../../../../../docs/rfcs/rfc-0000-template.md", import.meta.url),
+);
+
+async function seedRealTemplate() {
+  root = await mkdtemp(join(tmpdir(), "rfc1482-create-"));
+  const rfcDir = join(root, "docs", "rfcs");
+  await mkdir(rfcDir, { recursive: true });
+  const realTemplate = await readFile(REAL_TEMPLATE, "utf8");
+  await writeFile(join(rfcDir, "rfc-0000-template.md"), realTemplate);
+}
+
+describe("RFC-1482 validation-compliant skeleton", () => {
+  beforeEach(async () => {
+    await seedRealTemplate();
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("AC-1: emitted draft passes rfc.validate with zero V-45/V-48/V-50 violations", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Rotate the cache eviction cadence" }) } as never,
+      context(),
+    );
+    expect(result.data?.status).toBe("ok");
+    const id = result.data!.id!;
+    const v = await runRfcValidate({ argv: [], flags: { id } } as never, context());
+    const violations = v.data?.violations ?? [];
+    const named = violations.filter((x) => ["V-45", "V-48", "V-50"].includes(x.rule));
+    expect(named, JSON.stringify(violations, null, 1)).toEqual([]);
+    expect(v.data?.status, JSON.stringify(violations, null, 1)).toBe("pass");
+  });
+
+  test("AC-2: --proposed/--added seed commands.* and emit one reachable stub each", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Tame the registry loader", proposed: "foo.bar,baz.qux", added: "foo.new" }) } as never,
+      context(),
+    );
+    expect(result.data?.status).toBe("ok");
+    const body = await readFile(join(root, result.data!.file!), "utf8");
+    expect(body).toContain("  proposed:\n    - foo.bar\n    - baz.qux");
+    expect(body).toContain("  added:\n    - foo.new");
+    const reachable = body.match(/^  - probe: reachable$/gm) ?? [];
+    expect(reachable).toHaveLength(3);
+    expect(body).toContain('command: "foo.bar"');
+    expect(body).toContain('command: "baz.qux"');
+    expect(body).toContain('command: "foo.new"');
+  });
+
+  test("AC-3: emitted skeleton carries '## Fixed inputs' header schema and no FI rows", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Rotate the cache eviction cadence" }) } as never,
+      context(),
+    );
+    const body = await readFile(join(root, result.data!.file!), "utf8");
+    expect(body).toContain("## Fixed inputs");
+    expect(body).toContain("| ID | Value | Source | Checked by |");
+    expect(body).not.toMatch(/^\|\s*FI-/m);
+  });
+
+  test("AC-6: no flags → zero reachable probe stubs in acceptance:", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Rotate the cache eviction cadence" }) } as never,
+      context(),
+    );
+    const body = await readFile(join(root, result.data!.file!), "utf8");
+    expect(body).not.toMatch(/^  - probe: reachable$/gm);
+    expect(body).not.toMatch(/^acceptance:/m);
   });
 });
