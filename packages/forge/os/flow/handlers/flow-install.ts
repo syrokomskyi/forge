@@ -19,6 +19,7 @@ embedded flow.check report.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 4 — flow.install two-phase adoption</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
+  <item>RFC-1486: final — guard-step detail names the fixed-branch-model guard install (AC-11 probe)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -349,7 +350,9 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   steps.push({
     step: "guard",
     status: "planned",
-    detail: guardIdentical ? "hooks/flow-guard.sh already matches the asset" : "write hooks/flow-guard.sh (0755)",
+    detail: guardIdentical
+      ? "hooks/flow-guard.sh already matches the asset"
+      : "install the fixed branch model guard as hooks/flow-guard.sh (0755)",
   });
 
   const preCommitPath = join(primary, PRECOMMIT_FILE);
