@@ -127,6 +127,22 @@ findings:
     expect(res.exitCode).toBe(1);
     expect(res.summary).toContain("CONTRIB-01");
   });
+
+  test("CONTRIB-01: malformed inventory blocks, not a thrown crash", async () => {
+    await writeFile(join(root, "docs", "validator-inventory.generated.yaml"), "contracts: [unclosed");
+    const res = await runContributionReport(flags({}), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.summary).toContain("CONTRIB-01");
+    expect(res.summary).toContain("malformed");
+  });
+
+  test("CONTRIB-01: empty-document inventory blocks — null doc is an unavailable universe", async () => {
+    await writeFile(join(root, "docs", "validator-inventory.generated.yaml"), "");
+    const res = await runContributionReport(flags({}), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.summary).toContain("CONTRIB-01");
+    expect(res.summary).toContain("empty");
+  });
 });
 
 describe("checks.contribution.report — counters journal firing source (RFC-1474)", () => {
