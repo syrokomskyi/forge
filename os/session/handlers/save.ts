@@ -85,8 +85,11 @@ function extractFilePaths(content: string): string[] {
 async function extractCommitHashes(content: string, cwd: string): Promise<string[]> {
   const matches = content.match(COMMIT_HASH_PATTERN);
   if (!matches) return [];
-  // Filter to plausible git hashes (7-40 hex chars, but exclude pure version numbers)
-  const candidates = [...new Set(matches.filter((h) => !/^\d+$/.test(h) || h.length > 8))];
+  // 7-40 hex candidates; all-digit tokens are NOT pre-filtered — a
+  // digit-only sha-prefix is a valid commit and `git cat-file` below
+  // is the authority on what resolves (digit tokens that are dates or
+  // ids simply report `missing` there).
+  const candidates = [...new Set(matches)];
   if (candidates.length === 0) return [];
 
   // A hex token is recorded as a commit only when it resolves to a commit

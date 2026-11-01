@@ -221,6 +221,53 @@ Commit: ${realSha}`;
     }
   });
 
+  test("records an all-digit short sha when it resolves to a commit (no version-number false positive)", async () => {
+    const gitDir = await makeTempDir();
+    try {
+      await mkdir(join(gitDir, "docs/sessions/.raw"), { recursive: true });
+      execFileSync("git", ["init", "--initial-branch=main"], { cwd: gitDir, stdio: "pipe" });
+      execFileSync("git", ["config", "user.email", "forge@warpgogol.dev"], {
+        cwd: gitDir,
+        stdio: "pipe",
+      });
+      execFileSync("git", ["config", "user.name", "Forge Test"], { cwd: gitDir, stdio: "pipe" });
+      await writeFile(join(gitDir, "seed.txt"), "seed", "utf-8");
+      execFileSync("git", ["add", "seed.txt"], { cwd: gitDir, stdio: "pipe" });
+      execFileSync("git", ["commit", "-m", "seed"], { cwd: gitDir, stdio: "pipe" });
+      const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], {
+        cwd: gitDir,
+        encoding: "utf8",
+      }).trim();
+
+      // Mint dangling commits until one's 7-char prefix is all digits — the
+      // shape `git rev-parse --short` may legitimately produce. Old code
+      // dropped digit-only tokens as "version numbers" before verifying.
+      let digitSha = "";
+      for (let i = 0; i < 400 && !digitSha; i++) {
+        const sha = execFileSync("git", ["commit-tree", tree, "-m", `probe-${i}`], {
+          cwd: gitDir,
+          encoding: "utf8",
+        }).trim();
+        if (/^\d{7}$/.test(sha.slice(0, 7))) digitSha = sha;
+      }
+      expect(digitSha).not.toBe("");
+      const shortSha = digitSha.slice(0, 7);
+
+      const atif = `2026-10-19T11:00:00+02:00
+User: landed the fix
+Assistant: Done.
+Commit: ${shortSha}`;
+      await writeFile(join(gitDir, "docs/sessions/.raw", "digit-sha.atif"), atif, "utf-8");
+
+      const result = await runSessionSave(makeInput(), makeContext(gitDir));
+      const data = result.data as SessionSaveResult;
+
+      expect(data.extractedMetadata.commits).toContain(shortSha);
+    } finally {
+      await rm(gitDir, { recursive: true, force: true });
+    }
+  });
+
   test("drops unverifiable commit hex in a non-git workspace (no repo to verify against)", async () => {
     const noGitDir = await makeTempDir();
     try {
