@@ -14,6 +14,7 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 1 — fixed branch-model grammar, marker detection contracts, git helpers</item>
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
 
@@ -110,24 +111,6 @@ export async function branchExists(repoRoot: string, io: WorkspaceIO, name: stri
   return result.exitCode === 0;
 }
 
-/**
- * `git merge-base --is-ancestor`: exit 0 → true, exit 1 → false, anything
- * else throws (DNA-106).
- */
-export async function isAncestor(
-  repoRoot: string,
-  io: WorkspaceIO,
-  ancestor: string,
-  descendant: string,
-): Promise<boolean> {
-  const result = await git(repoRoot, io, ["merge-base", "--is-ancestor", ancestor, descendant]);
-  if (result.exitCode === 0) return true;
-  if (result.exitCode === 1) return false;
-  throw new Error(
-    `git merge-base --is-ancestor failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
-  );
-}
-
 /** Commit count in a rev range, e.g. "develop..main". */
 export async function revListCount(
   repoRoot: string,
@@ -139,6 +122,62 @@ export async function revListCount(
     `git rev-list --count ${range}`,
   );
   return Number(result.stdout.trim());
+}
+
+/**
+ * True when `ref` carries a commit whose subject matches `grep` — git's
+ * default basic-regex --grep treats parentheses literally, so the adoption
+ * subject `chore(flow): …` matches without escaping.
+ */
+export async function revListHasSubject(
+  repoRoot: string,
+  io: WorkspaceIO,
+  ref: string,
+  grep: string,
+): Promise<boolean> {
+  const result = await git(repoRoot, io, ["rev-list", "-1", `--grep=${grep}`, ref]);
+  if (result.exitCode !== 0) return false;
+  return result.stdout.trim().length > 0;
+}
+
+/**
+ * True when `path` exists in the tree of `ref` (e.g. `develop`,
+ * `HEAD`). Uses `cat-file -e` — any non-zero exit means absent, including an
+ * unborn `ref` (exit 128).
+ */
+export async function fileInTree(
+  repoRoot: string,
+  io: WorkspaceIO,
+  ref: string,
+  path: string,
+): Promise<boolean> {
+  const result = await git(repoRoot, io, ["cat-file", "-e", `${ref}:${path}`]);
+  return result.exitCode === 0;
+}
+
+/**
+ * Decode one porcelain value — git C-quotes paths containing spaces or
+ * specials (`"a b"` → `"a\040b"` is octal-escaped inside the quotes).
+ */
+function unquotePorcelain(value: string): string {
+  if (value.length < 2 || !value.startsWith('"') || !value.endsWith('"')) return value;
+  const inner = value.slice(1, -1);
+  return inner
+    .replace(/\\([0-7]{3})/g, (_m, oct: string) => String.fromCharCode(parseInt(oct, 8)))
+    .replace(/\\(.)/g, (_m, ch: string) => {
+      switch (ch) {
+        case "n":
+          return "\n";
+        case "t":
+          return "\t";
+        case '"':
+          return '"';
+        case "\\":
+          return "\\";
+        default:
+          return ch;
+      }
+    });
 }
 
 /** Parse `git worktree list --porcelain`; first entry is always the primary. */
@@ -163,11 +202,15 @@ export async function worktreeList(repoRoot: string, io: WorkspaceIO): Promise<F
   for (const line of result.stdout.split("\n")) {
     if (line.startsWith("worktree ")) {
       flush();
-      current = { path: line.slice("worktree ".length), branch: null, bare: false };
+      current = {
+        path: unquotePorcelain(line.slice("worktree ".length)),
+        branch: null,
+        bare: false,
+      };
     } else if (current && line.startsWith("HEAD ")) {
       current.head = line.slice("HEAD ".length);
     } else if (current && line.startsWith("branch ")) {
-      current.branch = line.slice("branch refs/heads/".length);
+      current.branch = unquotePorcelain(line.slice("branch refs/heads/".length));
     } else if (current && line === "detached") {
       current.branch = null;
     } else if (current && line === "bare") {
@@ -188,16 +231,6 @@ export async function configGet(
   if (result.exitCode === 0) return result.stdout.trim();
   if (result.exitCode === 1) return null;
   throw new Error(`git config --get ${key} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
-}
-
-/** `git config <key> <value>` — writes the shared repository config (never --worktree). */
-export async function configSet(
-  repoRoot: string,
-  io: WorkspaceIO,
-  key: string,
-  value: string,
-): Promise<void> {
-  throwOnFailure(await git(repoRoot, io, ["config", key, value]), `git config ${key}`);
 }
 
 /**

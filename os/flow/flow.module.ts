@@ -12,6 +12,7 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
   <item>RFC-1486: step 5 — forge-flow module with flow.check + flow.install</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1486: steps 5-6 — flow.install generates declaration, FLOW remediation catalog, regenerated artifacts</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
 
@@ -82,6 +83,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-ADOPT-08", severity: "error" },
         ],
         mutatesState: true,
+        idempotency: "rerun-safe",
         execOnReadOnly: false,
         mutatingFlags: [],
         writes: ["hooks/pre-commit", "hooks/flow-guard.sh", ".git/**"],

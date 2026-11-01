@@ -20,6 +20,7 @@ embedded flow.check report.</purpose>
   <item>RFC-1486: step 4 — flow.install two-phase adoption</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: final — guard-step detail names the fixed-branch-model guard install (AC-11 probe)</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
 
@@ -35,10 +36,12 @@ import type {
 import { resolveIo } from "../../../src/utils/io.ts";
 import {
   currentBranch,
+  fileInTree,
   git,
   isBare,
   isUnborn,
   requireGit,
+  revListHasSubject,
   statusTracked,
   topLevel,
   worktreeList,
@@ -48,9 +51,10 @@ import {
 } from "../git.ts";
 import {
   ADOPTION_COMMIT_SUBJECT,
+  GUARD_BEGIN_MARKER,
+  GUARD_END_MARKER,
   GUARD_FILE,
   guardFileMatches,
-  hasManagedBlock,
   mergeManagedBlock,
   PRECOMMIT_FILE,
   readGuardAsset,
@@ -93,7 +97,11 @@ export interface InstallPlan {
   hooksPathAction: "set" | "already";
   checkoutAction: "switch" | "already";
   guardChange: "write" | "identical";
+  /** hooks/flow-guard.sh already exists in the commit's parent ref. */
+  guardCommitted: boolean;
   preCommitChange: PreCommitChange;
+  /** hooks/pre-commit already exists in the commit's parent ref. */
+  preCommitCommitted: boolean;
 }
 
 function refusalDiagnostic(ruleId: string, message: string, fixHint: string): Diagnostic {
@@ -118,7 +126,9 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       hooksPathAction: "already",
       checkoutAction: "already",
       guardChange: "identical",
+      guardCommitted: false,
       preCommitChange: "identical",
+      preCommitCommitted: false,
     };
   };
 
@@ -173,37 +183,25 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   }
   steps.push({ step: "primary", status: "done", detail: `clean: ${primary}` });
 
-  // Adoption state — all three FLOW-03 conditions hold. Once adopted, develop
-  // being ahead of main is the model's normal state (the adoption commit and
-  // later integrated work live there); the FLOW-ADOPT-01 leveling check only
-  // guards the not-yet-adopted bootstrap.
+  // Adoption state. Once flow.install has run, develop being ahead of main is
+  // the model's normal state (the adoption commit and later integrated work
+  // live there); the FLOW-ADOPT-01 leveling refusal only guards the
+  // not-yet-adopted bootstrap. Two committed-state signals mark a previous
+  // adoption: core.hooksPath === "hooks" (only install sets it), or the
+  // adoption-commit subject on develop (survives hooksPath drift). Working-
+  // tree guard bytes are deliberately NOT a signal — a drifted guard is the
+  // state the remedy re-runs install to repair.
   const earlyHooksPath = await configGet(repoRoot, io, "core.hooksPath");
-  const earlyGuardOk = await guardFileMatches(async () =>
-    (await io.exists(join(primary, GUARD_FILE))) ? io.readFile(join(primary, GUARD_FILE)) : null,
-  );
-  const earlyPreCommit = (await io.exists(join(primary, PRECOMMIT_FILE)))
-    ? await io.readFile(join(primary, PRECOMMIT_FILE))
-    : null;
-  const alreadyAdopted =
-    earlyHooksPath === "hooks" && earlyGuardOk && earlyPreCommit !== null &&
-    hasManagedBlock(earlyPreCommit);
 
   // 3. develop — resolve its shape relative to main (or an unborn HEAD).
   const developExists = await branchExists(repoRoot, io, "develop");
   const mainExists = await branchExists(repoRoot, io, "main");
+  const adoptedBefore =
+    earlyHooksPath === "hooks" ||
+    (developExists &&
+      (await revListHasSubject(repoRoot, io, "develop", ADOPTION_COMMIT_SUBJECT)));
   let developAction: DevelopAction | undefined;
-  if (alreadyAdopted && developExists) {
-    const devAhead = await revListCount(repoRoot, io, "main..develop");
-    if (devAhead > 0) {
-      developAction = { kind: "already-equal" };
-      steps.push({
-        step: "develop",
-        status: "planned",
-        detail: `already adopted — develop is ${devAhead} commit(s) ahead of main (normal state)`,
-      });
-    }
-  }
-  if (developAction === undefined) {
+  {
     if (!mainExists && !developExists) {
       if (!(await isUnborn(repoRoot, io))) {
         return refuse(
@@ -232,47 +230,57 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     } else {
       const devAhead = await revListCount(repoRoot, io, "main..develop");
       if (devAhead > 0) {
-        const mainAhead = await revListCount(repoRoot, io, "develop..main");
-        return refuse(
-          "develop",
-          refusalDiagnostic(
-            "FLOW-ADOPT-01",
-            `develop has ${devAhead} commit(s) that are not in main (main is ${mainAhead} ahead) — the fixed model needs develop to fast-forward to main, not to diverge`,
-            "rebase or merge develop's commits through an auto branch first",
-          ),
-        );
-      }
-      const mainAhead = await revListCount(repoRoot, io, "develop..main");
-      if (mainAhead === 0) {
-        developAction = { kind: "already-equal" };
-        steps.push({ step: "develop", status: "planned", detail: "develop already equals main" });
-      } else {
-        const devWorktree = worktrees.find((w) => w.branch === "develop");
-        if (devWorktree) {
-          const devDirty = await statusTracked(devWorktree.path, io);
-          if (devDirty.length > 0) {
-            return refuse(
-              "develop",
-              refusalDiagnostic(
-                "FLOW-ADOPT-04",
-                `develop is checked out in worktree ${devWorktree.path} which has tracked modifications: ${devDirty.join(", ")}`,
-                "commit or stash that worktree's tracked changes, then re-run",
-              ),
-            );
-          }
-          developAction = { kind: "merge-ff", worktree: devWorktree.path, count: mainAhead };
+        if (adoptedBefore) {
+          developAction = { kind: "already-equal" };
           steps.push({
             step: "develop",
             status: "planned",
-            detail: `fast-forward develop ${mainAhead} commit(s) to main inside ${devWorktree.path}`,
+            detail: `already adopted — develop is ${devAhead} commit(s) ahead of main (normal state)`,
           });
         } else {
-          developAction = { kind: "branch-f", count: mainAhead };
-          steps.push({
-            step: "develop",
-            status: "planned",
-            detail: `fast-forward develop ${mainAhead} commit(s) to main`,
-          });
+          const mainAhead = await revListCount(repoRoot, io, "develop..main");
+          return refuse(
+            "develop",
+            refusalDiagnostic(
+              "FLOW-ADOPT-01",
+              `develop has ${devAhead} commit(s) that are not in main (main is ${mainAhead} ahead) — the fixed model needs develop to fast-forward to main, not to diverge`,
+              "rebase or merge develop's commits through an auto branch first",
+            ),
+          );
+        }
+      } else {
+        const mainAhead = await revListCount(repoRoot, io, "develop..main");
+        if (mainAhead === 0) {
+          developAction = { kind: "already-equal" };
+          steps.push({ step: "develop", status: "planned", detail: "develop already equals main" });
+        } else {
+          const devWorktree = worktrees.find((w) => w.branch === "develop");
+          if (devWorktree) {
+            const devDirty = await statusTracked(devWorktree.path, io);
+            if (devDirty.length > 0) {
+              return refuse(
+                "develop",
+                refusalDiagnostic(
+                  "FLOW-ADOPT-04",
+                  `develop is checked out in worktree ${devWorktree.path} which has tracked modifications: ${devDirty.join(", ")}`,
+                  "commit or stash that worktree's tracked changes, then re-run",
+                ),
+              );
+            }
+            developAction = { kind: "merge-ff", worktree: devWorktree.path, count: mainAhead };
+            steps.push({
+              step: "develop",
+              status: "planned",
+              detail: `fast-forward develop ${mainAhead} commit(s) to main inside ${devWorktree.path}`,
+            });
+          } else {
+            developAction = { kind: "branch-f", count: mainAhead };
+            steps.push({
+              step: "develop",
+              status: "planned",
+              detail: `fast-forward develop ${mainAhead} commit(s) to main`,
+            });
+          }
         }
       }
     }
@@ -283,7 +291,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   }
 
   // 4. hooksPath — shared repository config, never --worktree.
-  const hooksPath = await configGet(repoRoot, io, "core.hooksPath");
+  const hooksPath = earlyHooksPath;
   let hooksPathAction: InstallPlan["hooksPathAction"];
   if (hooksPath === null) {
     hooksPathAction = "set";
@@ -340,18 +348,35 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     );
   }
 
-  // Steps 6/7 diffs — computed now so --dry-run reports real intent.
+  // Steps 6/7 diffs — computed now so --dry-run reports real intent. The
+  // parent ref the adoption commit lands on: post-leveling content is main's
+  // for create/ff actions; an already-equal develop is never leveled, so the
+  // committed-state check must look there (RFC-1487 worktrees check out
+  // committed content — byte-exact-but-uncommitted hook files still need the
+  // adoption commit).
+  const hookBaseRef =
+    developAction.kind === "adopt-unborn"
+      ? null
+      : developAction.kind === "already-equal" && developExists
+        ? "develop"
+        : "main";
+
   const guardIdentical = await guardFileMatches(async () =>
     (await io.exists(join(primary, GUARD_FILE)))
       ? io.readFile(join(primary, GUARD_FILE))
       : null,
   );
-  const guardChange: InstallPlan["guardChange"] = guardIdentical ? "identical" : "write";
+  const guardCommitted =
+    hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, GUARD_FILE));
+  const guardChange: InstallPlan["guardChange"] =
+    guardIdentical && guardCommitted ? "identical" : "write";
   steps.push({
     step: "guard",
     status: "planned",
     detail: guardIdentical
-      ? "hooks/flow-guard.sh already matches the asset"
+      ? guardCommitted
+        ? "hooks/flow-guard.sh already matches the asset"
+        : "hooks/flow-guard.sh matches the asset but is uncommitted — land it on develop"
       : "install the fixed branch model guard as hooks/flow-guard.sh (0755)",
   });
 
@@ -359,23 +384,36 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   const preCommitExisting = (await io.exists(preCommitPath))
     ? await io.readFile(preCommitPath)
     : null;
+  const preCommitCommitted =
+    hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, PRECOMMIT_FILE));
   let preCommitChange: PreCommitChange;
-  if (preCommitExisting === null) preCommitChange = "create";
-  else if (hasManagedBlock(preCommitExisting)) {
-    preCommitChange = mergeManagedBlock(preCommitExisting) === null ? "identical" : "replace";
+  if (preCommitExisting === null) {
+    preCommitChange = "create";
+  } else if (mergeManagedBlock(preCommitExisting) === null) {
+    preCommitChange = "identical";
   } else {
-    preCommitChange = "insert";
+    // Marker span present but block differs → merge replaces between the
+    // markers; absent/dangling markers → insert after the shebang.
+    const beginIdx = preCommitExisting.indexOf(GUARD_BEGIN_MARKER);
+    const endIdx = preCommitExisting.indexOf(GUARD_END_MARKER);
+    preCommitChange = beginIdx !== -1 && endIdx !== -1 && beginIdx < endIdx ? "replace" : "insert";
   }
   steps.push({
     step: "pre-commit",
     status: "planned",
     detail:
       preCommitChange === "identical"
-        ? "hooks/pre-commit already carries the managed block"
+        ? preCommitCommitted
+          ? "hooks/pre-commit already carries the managed block"
+          : "hooks/pre-commit carries the managed block but is uncommitted — land it on develop"
         : `${preCommitChange} managed block in hooks/pre-commit`,
   });
 
-  const commitNeeded = guardChange === "write" || preCommitChange !== "identical";
+  const commitNeeded =
+    guardChange === "write" ||
+    !guardCommitted ||
+    preCommitChange !== "identical" ||
+    !preCommitCommitted;
   steps.push({
     step: "commit",
     status: "planned",
@@ -395,7 +433,9 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     hooksPathAction,
     checkoutAction,
     guardChange,
+    guardCommitted,
     preCommitChange,
+    preCommitCommitted,
   };
 }
 
@@ -413,26 +453,53 @@ function setStep(
 }
 
 /**
- * Execute phase — steps 3–9 in order on an approved plan. Returns the step
- * the commit failed at (status "failed") or null on success.
+ * Execute phase — steps 3–9 in order on an approved plan. A failing step
+ * reports status "failed" into steps[] and every still-planned later step is
+ * marked "skipped" — the step trail stays complete for the report (DNA-106).
  */
 export async function executeInstall(
   plan: InstallPlan,
   io: WorkspaceIO,
 ): Promise<{ check: FlowCheckData | null; checkDiagnostics: Diagnostic[] }> {
   const { repoRoot, primary } = plan;
+  const STEP_ORDER: InstallStepReport["step"][] = [
+    "develop",
+    "hooksPath",
+    "checkout",
+    "guard",
+    "pre-commit",
+    "commit",
+    "report",
+  ];
+  const failStep = (
+    step: InstallStepReport["step"],
+    detail: string,
+  ): { check: FlowCheckData | null; checkDiagnostics: Diagnostic[] } => {
+    setStep(plan, step, "failed", detail);
+    const idx = STEP_ORDER.indexOf(step);
+    for (const s of plan.steps) {
+      if (STEP_ORDER.indexOf(s.step) > idx && s.status === "planned") {
+        setStep(plan, s.step, "skipped");
+      }
+    }
+    return { check: null, checkDiagnostics: [] };
+  };
 
   // 3. develop
   switch (plan.developAction.kind) {
     case "create-at-main": {
       const r = await git(repoRoot, io, ["branch", "develop", "main"]);
-      if (r.exitCode !== 0) throw new Error(`git branch develop main failed: ${r.stderr.trim()}`);
+      if (r.exitCode !== 0) {
+        return failStep("develop", `git branch develop main failed: ${r.stderr.trim()}`);
+      }
       setStep(plan, "develop", "done", "created develop at main");
       break;
     }
     case "branch-f": {
       const r = await git(repoRoot, io, ["branch", "-f", "develop", "main"]);
-      if (r.exitCode !== 0) throw new Error(`git branch -f develop main failed: ${r.stderr.trim()}`);
+      if (r.exitCode !== 0) {
+        return failStep("develop", `git branch -f develop main failed: ${r.stderr.trim()}`);
+      }
       setStep(
         plan,
         "develop",
@@ -444,7 +511,8 @@ export async function executeInstall(
     case "merge-ff": {
       const r = await git(plan.developAction.worktree, io, ["merge", "--ff-only", "main"]);
       if (r.exitCode !== 0) {
-        throw new Error(
+        return failStep(
+          "develop",
           `git -C ${plan.developAction.worktree} merge --ff-only main failed: ${r.stderr.trim()}`,
         );
       }
@@ -459,7 +527,10 @@ export async function executeInstall(
     case "adopt-unborn": {
       const r = await git(repoRoot, io, ["symbolic-ref", "HEAD", "refs/heads/develop"]);
       if (r.exitCode !== 0) {
-        throw new Error(`git symbolic-ref HEAD refs/heads/develop failed: ${r.stderr.trim()}`);
+        return failStep(
+          "develop",
+          `git symbolic-ref HEAD refs/heads/develop failed: ${r.stderr.trim()}`,
+        );
       }
       setStep(plan, "develop", "done", "pointed unborn HEAD at develop");
       break;
@@ -473,7 +544,7 @@ export async function executeInstall(
   if (plan.hooksPathAction === "set") {
     const r = await git(repoRoot, io, ["config", "core.hooksPath", "hooks"]);
     if (r.exitCode !== 0) {
-      throw new Error(`git config core.hooksPath hooks failed: ${r.stderr.trim()}`);
+      return failStep("hooksPath", `git config core.hooksPath hooks failed: ${r.stderr.trim()}`);
     }
     setStep(plan, "hooksPath", "done", "core.hooksPath set to 'hooks'");
   } else {
@@ -484,25 +555,30 @@ export async function executeInstall(
   if (plan.checkoutAction === "switch") {
     const r = await git(primary, io, ["switch", "develop"]);
     if (r.exitCode !== 0) {
-      throw new Error(`git -C ${primary} switch develop failed: ${r.stderr.trim()}`);
+      return failStep("checkout", `git -C ${primary} switch develop failed: ${r.stderr.trim()}`);
     }
     setStep(plan, "checkout", "done", "primary switched to develop");
   } else {
     setStep(plan, "checkout", "skipped");
   }
 
-  // 6. guard — byte copy of the shipped asset, mode 0755.
-  let hookFilesChanged = false;
+  // 6. guard — byte copy of the shipped asset, mode 0755. An already
+  // byte-exact but uncommitted file still needs staging for the adoption
+  // commit (worktrees check out committed content).
+  let hooksNeedCommit = false;
   const guardPath = join(primary, GUARD_FILE);
   if (plan.guardChange === "write") {
     await io.mkdir(join(primary, "hooks"));
     await io.writeFile(guardPath, readGuardAsset());
     const chmod = await io.exec("chmod", ["0755", guardPath]);
     if (chmod.exitCode !== 0) {
-      throw new Error(`chmod 0755 ${GUARD_FILE} failed: ${chmod.stderr.trim()}`);
+      return failStep("guard", `chmod 0755 ${GUARD_FILE} failed: ${chmod.stderr.trim()}`);
     }
-    hookFilesChanged = true;
+    hooksNeedCommit = true;
     setStep(plan, "guard", "done", "wrote hooks/flow-guard.sh (0755)");
+  } else if (!plan.guardCommitted) {
+    hooksNeedCommit = true;
+    setStep(plan, "guard", "done", "hooks/flow-guard.sh already byte-exact — staged for commit");
   } else {
     setStep(plan, "guard", "skipped", "hooks/flow-guard.sh already matches the asset");
   }
@@ -510,41 +586,46 @@ export async function executeInstall(
   // 7. pre-commit — create, insert after the shebang, or replace the block.
   const preCommitPath = join(primary, PRECOMMIT_FILE);
   if (plan.preCommitChange === "identical") {
-    setStep(plan, "pre-commit", "skipped", "managed block already present");
+    if (!plan.preCommitCommitted) {
+      hooksNeedCommit = true;
+      setStep(plan, "pre-commit", "done", "managed block already correct — staged for commit");
+    } else {
+      setStep(plan, "pre-commit", "skipped", "managed block already present");
+    }
   } else {
     const existing = (await io.exists(preCommitPath)) ? await io.readFile(preCommitPath) : null;
     const next =
       existing === null ? renderManagedPreCommit() : mergeManagedBlock(existing);
     if (next === null) {
-      setStep(plan, "pre-commit", "skipped", "managed block already present");
+      if (!plan.preCommitCommitted) {
+        hooksNeedCommit = true;
+        setStep(plan, "pre-commit", "done", "managed block already correct — staged for commit");
+      } else {
+        setStep(plan, "pre-commit", "skipped", "managed block already present");
+      }
     } else {
       await io.mkdir(join(primary, "hooks"));
       await io.writeFile(preCommitPath, next.endsWith("\n") ? next : `${next}\n`);
       const chmod = await io.exec("chmod", ["0755", preCommitPath]);
       if (chmod.exitCode !== 0) {
-        throw new Error(`chmod 0755 ${PRECOMMIT_FILE} failed: ${chmod.stderr.trim()}`);
+        return failStep("pre-commit", `chmod 0755 ${PRECOMMIT_FILE} failed: ${chmod.stderr.trim()}`);
       }
-      hookFilesChanged = true;
+      hooksNeedCommit = true;
       setStep(plan, "pre-commit", "done", `${plan.preCommitChange}d managed block in hooks/pre-commit`);
     }
   }
 
   // 8. adoption commit — under FORGE_FLOW_OP=install, nothing else staged.
-  // A failed commit reports status "failed" + stderr + exit 1 (DNA-106).
-  if (hookFilesChanged) {
+  if (hooksNeedCommit) {
     const add = await git(primary, io, ["add", GUARD_FILE, PRECOMMIT_FILE]);
     if (add.exitCode !== 0) {
-      setStep(plan, "commit", "failed", `git add failed: ${add.stderr.trim()}`);
-      setStep(plan, "report", "skipped");
-      return { check: null, checkDiagnostics: [] };
+      return failStep("commit", `git add failed: ${add.stderr.trim()}`);
     }
     const commit = await git(primary, io, ["commit", "-m", ADOPTION_COMMIT_SUBJECT], {
       env: { FORGE_FLOW_OP: "install" },
     });
     if (commit.exitCode !== 0) {
-      setStep(plan, "commit", "failed", `git commit failed: ${commit.stderr.trim()}`);
-      setStep(plan, "report", "skipped");
-      return { check: null, checkDiagnostics: [] };
+      return failStep("commit", `git commit failed: ${commit.stderr.trim()}`);
     }
     setStep(plan, "commit", "done", `committed '${ADOPTION_COMMIT_SUBJECT}' on develop`);
   } else {
@@ -610,7 +691,7 @@ export async function runFlowInstall(
   }
 
   const { check, checkDiagnostics } = await executeInstall(plan, io);
-  const refused = plan.steps.find((s) => s.status === "failed");
+  const failedStep = plan.steps.find((s) => s.status === "failed");
 
   if (outputFormat === "pretty") {
     logger.section("flow.install");
@@ -629,9 +710,9 @@ export async function runFlowInstall(
       check,
       checkDiagnostics,
     },
-    exitCode: refused ? 1 : 0,
-    summary: refused
-      ? `[flow.install] failed at ${refused.step}: ${refused.detail}`
+    exitCode: failedStep ? 1 : 0,
+    summary: failedStep
+      ? `[flow.install] failed at ${failedStep.step}: ${failedStep.detail}`
       : `[flow.install] adopted — ${plan.steps.filter((s) => s.status === "done").length} step(s) done, ${checkDiagnostics.length} check diagnostic(s)`,
   };
 }
