@@ -50,9 +50,7 @@ Confirm that the proposed change is not already covered by an accepted/implement
 
 > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
 
-```sh
-ref(forge.yaml bindings.commands.validateRfc) --status accepted --json
-```
+Read `docs/rfcs/index.yaml` — it carries per-RFC `status` — and check whether an accepted or implemented RFC already covers the proposed change (`rfc.validate` has no `--status` flag).
 
 If a relevant accepted RFC exists, point the user to it and stop. If an existing draft covers the topic, ask whether to enhance that draft instead of creating a duplicate.
 
