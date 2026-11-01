@@ -6,12 +6,16 @@ docs/context-devset/ of task → requiredUnits[] pairs scores recall@budget —
 the fraction of required units the slate contains. This is the RFC's own
 acceptance instrument and the regression gate for every ranker change.
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1470: context.slate.eval recall@budget over the gold dev set</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
+  <item>RFC-1485: sweep compass headers — forge-os-context</item>
 </CHANGE_SUMMARY>
 */
 

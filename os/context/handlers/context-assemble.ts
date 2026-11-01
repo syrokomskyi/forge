@@ -8,13 +8,17 @@ carries source + machine-readable reasons. Missing index → blocking hint (or
 lazy build via --auto-index). Dense channel is the declared EmbeddingGemma-2
 slot — absent binding → lexical-only floor (shipped default).
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1470: context.assemble budgeted slate over lexical + recency + path-overlap channels</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
   <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
+  <item>RFC-1485: sweep compass headers — forge-os-context</item>
+  <history>RFC-1470</history>
 </CHANGE_SUMMARY>
 */
 
