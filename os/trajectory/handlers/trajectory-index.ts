@@ -11,11 +11,11 @@ sessions produce nothing. --export/--import for shard portability.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1472: apply r2 repairs — archive-source provenance, outcome-replay + provenance regression tests</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
+  <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
   <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -26,7 +26,7 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { listSessionFiles, listArchivedSessionFiles, readAndParseSession } from "../../session/frontmatter-io.ts";
-import { isEnoent, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
+import { isEnoent, journalUnitIds, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -163,21 +163,24 @@ async function exportableVerdictRef(
 export function isShardUnit(u: unknown): u is ProcedureUnit {
   if (u === null || typeof u !== "object") return false;
   const p = u as ProcedureUnit;
+  const strings = (v: unknown): v is string[] => Array.isArray(v) && v.every((e) => typeof e === "string");
   return (
     typeof p.id === "string" &&
     p.producer !== null && typeof p.producer === "object" &&
     typeof p.producer.verdictRef === "string" &&
     typeof p.producer.workshopId === "string" &&
+    typeof p.producer.sessionId === "string" &&
+    typeof p.producer.completedAt === "string" &&
     (p.producer.sessionClass === undefined || p.producer.sessionClass === "mission" || p.producer.sessionClass === "adhoc") &&
     p.usedBy !== null && typeof p.usedBy === "object" &&
     Number.isFinite(p.usedBy.helped) && Number.isFinite(p.usedBy.hurt) && Number.isFinite(p.usedBy.recalled) &&
     Number.isFinite(p.utilityScore) &&
     p.situation !== null && typeof p.situation === "object" &&
     typeof p.situation.taskKind === "string" &&
-    Array.isArray(p.situation.recentActions) &&
-    Array.isArray(p.situation.touchedPathClasses) &&
+    strings(p.situation.recentActions) &&
+    strings(p.situation.touchedPathClasses) &&
     p.continuation !== null && typeof p.continuation === "object" &&
-    Array.isArray(p.continuation.commandSequence) &&
+    strings(p.continuation.commandSequence) &&
     typeof p.text === "string"
   );
 }
@@ -353,7 +356,7 @@ export async function runTrajectoryIndex(
       }
     }
     if (skippedShardUnits > 0) {
-      context.logger.warn(`${skippedShardUnits} shard unit(s) skipped — malformed shape (missing producer/usedBy/id)`);
+      context.logger.warn(`${skippedShardUnits} shard unit(s) skipped — malformed or missing required fields (id/producer/usedBy/situation/continuation/text)`);
     }
   }
 
@@ -374,12 +377,12 @@ export async function runTrajectoryIndex(
   const recalls = recallsRead.records;
   const unitsById = new Map(units.map((u) => [u.id, u]));
   for (const r of recalls) {
-    for (const uid of r.unitsReturned ?? []) {
+    for (const uid of journalUnitIds(r)) {
       const u = unitsById.get(uid);
       if (u) u.usedBy.recalled++;
     }
   }
-  const recallUnits = new Map(recalls.map((r) => [r.id, r.unitsReturned ?? []]));
+  const recallUnits = new Map(recalls.map((r) => [r.id, journalUnitIds(r)]));
   for (const o of outcomes) {
     for (const uid of recallUnits.get(o.recallId ?? "") ?? []) {
       const u = unitsById.get(uid);

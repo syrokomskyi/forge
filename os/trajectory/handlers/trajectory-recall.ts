@@ -8,12 +8,12 @@ The recall invocation is journaled so marginal utility can be measured.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1472: trajectory.recall situation-similarity top-k + journaled invocation</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
-  <history>RFC-1475</history>
+  <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
+  <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
 
@@ -92,6 +92,9 @@ export async function runTrajectoryRecall(
   // Element-level validation — an array of garbage is still TRAJ-02, and a
   // partially-corrupt index yields only its well-formed units.
   const units = index.units.filter(isShardUnit);
+  if (index.units.length > 0 && units.length === 0) {
+    return emptyResult(task, k, "TRAJ-02", "index holds no well-formed units — rerun trajectory.index");
+  }
 
   // RFC-1475 F6 — TRAJ-02 covers every present-but-unusable index state:
   // empty units, missing sourceWatermark (pre-upgrade index is stale by
