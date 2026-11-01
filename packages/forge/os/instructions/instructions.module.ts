@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Register forgeInstructionsModule — the instruction-budget validator and scar-migration surface (RFC-1466).</purpose>
+<purpose>Registers forgeInstructionsModule in the instructions module — the instruction-budget validator and scar-migration command surface.</purpose>
 <non-goals>
   <item>Autonomous module — no engine imports (FORGE-AUTONOMY-01).</item>
 </non-goals>
@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1466: forgeInstructionsModule registering instructions.budget.validate + scar.migrate</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

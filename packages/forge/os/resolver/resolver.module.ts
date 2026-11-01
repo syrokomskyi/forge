@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Register forgeResolverModule — the canonical-reader parity audit surface (RFC-1465).</purpose>
+<purpose>Registers forgeResolverModule in the resolver module — the canonical-reader parity audit surface exposing resolver.doors.audit.</purpose>
 <non-goals>
   <item>Autonomous module — no engine imports (FORGE-AUTONOMY-01).</item>
 </non-goals>
@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1465: forgeResolverModule registering resolver.doors.audit</item>
   <item>RFC-1465: canonical-reader parity audit — resolver.doors.audit with DOOR-01/02/03 over forge.yaml registry</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

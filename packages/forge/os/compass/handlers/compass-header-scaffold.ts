@@ -13,12 +13,17 @@ deference, deterministic repair of known malformation shapes.
   <item>Do not strip forbidden v1 blocks or reorder blocks — compass.migrate owns the transformer role.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>Merge is append-only — existing blocks/items survive; the codemod only inserts what is missing.</item>
+  <item>Every emission closes its opened blocks — a partial header can never be written.</item>
+  <item>High-risk files defer to agents — mechanical repair is refused where authored judgment is required.</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1318</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
   <history>RFC-1318</history>
 </CHANGE_SUMMARY>
 */

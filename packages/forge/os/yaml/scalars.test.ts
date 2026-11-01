@@ -1,12 +1,15 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Detector unit tests for collectScalarTraps (RFC-1478, F-0006) —
-loud one-line traps, silent continuation reinterpretation, and every
-documented exclusion class.</purpose>
+<purpose>scalars.test unit coverage for collectScalarTraps — loud one-line traps,
+silent continuation reinterpretation, and every documented exclusion class.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1478: initial suite — trap shapes, exclusions, frontmatter scope.</item>
   <item>RFC-1478: yaml.scalars.validate + EC-25 colon-space staged lint (F-0006)</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

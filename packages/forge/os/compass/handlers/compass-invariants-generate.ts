@@ -14,14 +14,15 @@ plain runs refresh the index with retiredIds merged forward.</purpose>
 <KEY_DECISIONS>
   <item>--shrink refuses to write when unbound debt is absent from the baseline — new debt stays visible, never silently absorbed.</item>
   <item>retiredIds = previous retiredIds ∪ (prior ids missing now) — merged forward on every regeneration.</item>
-  <item>Scoped scans (--workpiece/--site/--packages/--package or a site-bound context) are preview-only — a partial-corpus seed/shrink/index write would corrupt the workspace-rooted key space or retire out-of-scope ids.</item>
+  <item>Scoped scans are preview-only — a partial-corpus write would corrupt the workspace-rooted id key space.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1390: generator handler — index projection, seed/shrink baseline, retiredIds merge-forward.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-3 review residue on invariant binding machinery</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <history>RFC-1390</history>
 </CHANGE_SUMMARY>
 */
 
