@@ -1,9 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1468 knowledge.authz.probe tests — KAUTHZ-01 (authz-relevant without authorityRefs → error), KAUTHZ-03 (authorization-shaped entry without class → warning), clean entries green.</purpose>
+<non-goals>
+  <item>Not a contract source of truth — knowledge.authz.probe and RFC-1468 own the behavior.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1481: assert authorization probes preserve consumer-local knowledge IDs.</item>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
 </CHANGE_SUMMARY>
 */
 

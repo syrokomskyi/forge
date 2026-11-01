@@ -8,14 +8,16 @@ adr-header, skill-manifest, handoff, decision. Each unit carries id, kind,
 source (path#anchor), tokens, text, meta (dates, entity refs). Drop the dir,
 rebuild from sources — no authority lives in the index.
 </purpose>
+<non-goals>
+  <item>Do not treat index output as authoritative or merge authority back into sources.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
-  <item>RFC-1470: apply r1 repairs — post-fence knowledge prose, devset re-anchored to real unit ids, source-group discount, CTX-01/02, exact-match eval, file-scoped ids, meta fields</item>
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
   <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1481: index upstream K-NNNN and consumer-local L-K-NNNN knowledge entries.</item>
+  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <history>RFC-1470</history>
 </CHANGE_SUMMARY>
 */
