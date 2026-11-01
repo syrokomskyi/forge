@@ -21,6 +21,7 @@ embedded flow.check report.</purpose>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: final — guard-step detail names the fixed-branch-model guard install (AC-11 probe)</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -535,9 +536,11 @@ export async function executeInstall(
       setStep(plan, "develop", "done", "pointed unborn HEAD at develop");
       break;
     }
-    case "already-equal":
-      setStep(plan, "develop", "skipped", "develop already equals main");
+    case "already-equal": {
+      const planned = plan.steps.find((s) => s.step === "develop");
+      setStep(plan, "develop", "skipped", planned?.detail ?? "develop already equals main");
       break;
+    }
   }
 
   // 4. hooksPath — shared config only.
@@ -568,8 +571,12 @@ export async function executeInstall(
   let hooksNeedCommit = false;
   const guardPath = join(primary, GUARD_FILE);
   if (plan.guardChange === "write") {
-    await io.mkdir(join(primary, "hooks"));
-    await io.writeFile(guardPath, readGuardAsset());
+    try {
+      await io.mkdir(join(primary, "hooks"));
+      await io.writeFile(guardPath, readGuardAsset());
+    } catch (err) {
+      return failStep("guard", `writing ${GUARD_FILE} failed: ${(err as Error).message}`);
+    }
     const chmod = await io.exec("chmod", ["0755", guardPath]);
     if (chmod.exitCode !== 0) {
       return failStep("guard", `chmod 0755 ${GUARD_FILE} failed: ${chmod.stderr.trim()}`);
@@ -604,8 +611,15 @@ export async function executeInstall(
         setStep(plan, "pre-commit", "skipped", "managed block already present");
       }
     } else {
-      await io.mkdir(join(primary, "hooks"));
-      await io.writeFile(preCommitPath, next.endsWith("\n") ? next : `${next}\n`);
+      try {
+        await io.mkdir(join(primary, "hooks"));
+        await io.writeFile(preCommitPath, next.endsWith("\n") ? next : `${next}\n`);
+      } catch (err) {
+        return failStep(
+          "pre-commit",
+          `writing ${PRECOMMIT_FILE} failed: ${(err as Error).message}`,
+        );
+      }
       const chmod = await io.exec("chmod", ["0755", preCommitPath]);
       if (chmod.exitCode !== 0) {
         return failStep("pre-commit", `chmod 0755 ${PRECOMMIT_FILE} failed: ${chmod.stderr.trim()}`);
@@ -633,9 +647,13 @@ export async function executeInstall(
   }
 
   // 9. report — the flow.check rule set, embedded.
-  const outcome = await collectFlowCheck(repoRoot, io);
-  setStep(plan, "report", "done", `${outcome.diagnostics.length} diagnostic(s) embedded`);
-  return { check: outcome.data, checkDiagnostics: outcome.diagnostics };
+  try {
+    const outcome = await collectFlowCheck(repoRoot, io);
+    setStep(plan, "report", "done", `${outcome.diagnostics.length} diagnostic(s) embedded`);
+    return { check: outcome.data, checkDiagnostics: outcome.diagnostics };
+  } catch (err) {
+    return failStep("report", `flow.check failed: ${(err as Error).message}`);
+  }
 }
 
 export interface FlowInstallData {

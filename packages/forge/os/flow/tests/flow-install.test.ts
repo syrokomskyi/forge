@@ -11,6 +11,7 @@ files.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 4 — flow.install behavior tests</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
+  <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -211,6 +212,26 @@ describe("flow.install — adoption", () => {
 
     const after = await ambientIo.readFile(join(repo, "hooks", "pre-commit"));
     expect(after).toBe(`#!/bin/sh\n${MANAGED_BLOCK}echo custom\nexit 0\n`);
+  });
+
+  it("byte-exact but uncommitted hook files still land the adoption commit", async () => {
+    const repo = await governedRepo();
+    // Working tree already carries the exact hook bytes but they were never
+    // committed — the committedness gate must still plan the adoption commit
+    // (RFC-1487 worktrees check out committed content only).
+    const { mkdir, chmod } = await import("node:fs/promises");
+    const { readGuardAsset } = await import("../guard-files.ts");
+    await mkdir(join(repo, "hooks"));
+    await writeFile(join(repo, "hooks", "flow-guard.sh"), readGuardAsset());
+    await writeFile(join(repo, "hooks", "pre-commit"), `#!/bin/sh\n${MANAGED_BLOCK}`);
+    await chmod(join(repo, "hooks", "flow-guard.sh"), 0o755);
+    await chmod(join(repo, "hooks", "pre-commit"), 0o755);
+
+    const plan = await planInstall(repo, ambientIo);
+    expect(plan.refusal).toBeNull();
+    await executeInstall(plan, ambientIo);
+    expect((await gitExec(repo, ["cat-file", "-e", "develop:hooks/flow-guard.sh"])).exitCode).toBe(0);
+    expect((await gitExec(repo, ["cat-file", "-e", "develop:hooks/pre-commit"])).exitCode).toBe(0);
   });
 
   it("adopts an unborn repository: first commit lands on develop", async () => {
