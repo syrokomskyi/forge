@@ -21,15 +21,18 @@ Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross
   <item>RFC-1481: honor kernel dry-run and expose resolver reachability
 
 Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
+  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
 </CHANGE_SUMMARY>
 */
 
 import { randomUUID } from "node:crypto";
 import { hostname } from "node:os";
 import path from "node:path";
-import { parse as parseYaml } from "yaml";
-import { FORGE_SKILLS, discoverPackSkillsWithIO } from "../../../src/registry.ts";
-import { forgeConfigSchema, type ForgeConfig } from "../../../src/config/forge-config.ts";
+import { FORGE_SKILLS, discoverSkillPackWithIO } from "../../../src/registry.ts";
+import {
+  parseForgeConfigDocument,
+  type ForgeConfig,
+} from "../../../src/config/forge-config.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import type {
   ForgeCommandInput,
@@ -66,6 +69,8 @@ interface ResolveFile {
   relative: string;
 }
 
+const CLAIM_PREFIX = "knowledge-conflicts.resolve-claim-";
+
 function resolveInside(root: string, ...segments: string[]): string {
   if (segments.some((segment) => segment.length === 0)) {
     throw new Error("Knowledge paths must not contain empty segments.");
@@ -79,17 +84,27 @@ function resolveInside(root: string, ...segments: string[]): string {
   return target;
 }
 
+/**
+ * A lexical containment check cannot see symlinks, so realpath the deepest
+ * existing ancestor of the destination: a symlinked directory anywhere in the
+ * chain would redirect `io.writeFile` outside the workspace.
+ */
 async function assertDestinationInsideWorkspace(
   workspaceRoot: string,
   destinationPath: string,
   io: WorkspaceIO,
 ): Promise<void> {
-  if (!(await io.exists(destinationPath))) return;
-  const [workspaceReal, destinationReal] = await Promise.all([
+  let probe = destinationPath;
+  while (!(await io.exists(probe))) {
+    const parent = path.dirname(probe);
+    if (parent === probe) return;
+    probe = parent;
+  }
+  const [workspaceReal, probeReal] = await Promise.all([
     io.realpath(workspaceRoot),
-    io.realpath(destinationPath),
+    io.realpath(probe),
   ]);
-  const relative = path.relative(workspaceReal, destinationReal);
+  const relative = path.relative(workspaceReal, probeReal);
   if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
     throw new Error(`Consumer knowledge destination resolves outside the workspace: ${destinationPath}`);
   }
@@ -97,6 +112,20 @@ async function assertDestinationInsideWorkspace(
 
 function lockOwnerPath(lockPath: string): string {
   return path.join(lockPath, "owner.json");
+}
+
+async function sweepClaimDirs(forgeDir: string, io: WorkspaceIO): Promise<void> {
+  let entries;
+  try {
+    entries = await io.readdir(forgeDir);
+  } catch {
+    return;
+  }
+  for (const entry of entries) {
+    if (entry.isDirectory && entry.name.startsWith(CLAIM_PREFIX)) {
+      await io.rm(path.join(forgeDir, entry.name), { recursive: true }).catch(() => {});
+    }
+  }
 }
 
 async function acquireLock(
@@ -113,11 +142,17 @@ async function acquireLock(
     acquiredAt: new Date().toISOString(),
     token: randomUUID(),
   };
-  const claimPath = await io.mkdtemp(path.join(forgeDir, "knowledge-conflicts.resolve-claim-"));
+  const claimPath = await io.mkdtemp(path.join(forgeDir, CLAIM_PREFIX));
   await io.writeFile(lockOwnerPath(claimPath), JSON.stringify(owner, null, 2) + "\n");
 
+  // Lock acquisition is atomic by construction: POSIX rename(2) onto an
+  // existing non-empty directory fails ENOTEMPTY, so the claim either becomes
+  // the lock (with owner.json already inside — no ownerless window) or loses
+  // the race outright. Never mkdir-then-write, which would leave an
+  // unowned lock directory.
   try {
     await io.rename(claimPath, lockPath);
+    await sweepClaimDirs(forgeDir, io);
     return { lockPath, owner };
   } catch {
     await io.rm(claimPath, { recursive: true }).catch(() => {});
@@ -133,6 +168,7 @@ async function releaseLock(
     const current = JSON.parse(await io.readFile(lockOwnerPath(lock.lockPath))) as LockOwner;
     if (current.token === lock.owner.token) {
       await io.rm(lock.lockPath, { recursive: true });
+      await sweepClaimDirs(path.dirname(lock.lockPath), io);
     }
   } catch {
     // A missing or replaced lock is not ours to remove.
@@ -140,6 +176,7 @@ async function releaseLock(
 }
 
 async function collectDeclaredFiles(
+  workspaceRoot: string,
   sourcePath: string,
   destinationPath: string,
   relativePath: string,
@@ -148,13 +185,15 @@ async function collectDeclaredFiles(
   if (!(await io.exists(sourcePath))) return [];
   const stat = await io.stat(sourcePath);
   if (!stat.isDirectory) {
+    await assertDestinationInsideWorkspace(workspaceRoot, destinationPath, io);
     return [{ source: sourcePath, destination: destinationPath, relative: relativePath }];
   }
 
-  const entries = (await io.readdir(sourcePath)).sort((a, b) => a.name.localeCompare(b.name));
+  const entries = (await io.readdir(sourcePath)).sort((a, b) => (a.name < b.name ? -1 : 1));
   const files: ResolveFile[] = [];
   for (const entry of entries) {
     const nested = await collectDeclaredFiles(
+      workspaceRoot,
       path.join(sourcePath, entry.name),
       path.join(destinationPath, entry.name),
       path.posix.join(relativePath, entry.name),
@@ -165,76 +204,102 @@ async function collectDeclaredFiles(
   return files;
 }
 
+async function enumerateSkillFiles(
+  workspaceRoot: string,
+  destinationRoot: string,
+  skillName: string,
+  skillSourceDir: string,
+  declared: string[],
+  io: WorkspaceIO,
+): Promise<{ files: ResolveFile[]; failures: string[] }> {
+  const files: ResolveFile[] = [];
+  const failures: string[] = [];
+  const destinationDir = resolveInside(destinationRoot, skillName);
+  for (const entry of declared) {
+    try {
+      files.push(
+        ...(await collectDeclaredFiles(
+          workspaceRoot,
+          resolveInside(skillSourceDir, entry),
+          resolveInside(destinationDir, entry),
+          path.posix.join(skillName, entry),
+          io,
+        )),
+      );
+    } catch (error) {
+      failures.push(`${skillName}/${entry}: ${(error as Error).message}`);
+    }
+  }
+  return { files, failures };
+}
+
 async function enumerateKnowledgeFiles(
   workspaceRoot: string,
   forgeRoot: string,
   skillsDir: string,
   config: ForgeConfig,
   io: WorkspaceIO,
-): Promise<ResolveFile[]> {
+): Promise<{ files: ResolveFile[]; failures: string[] }> {
   const destinationRoot = resolveInside(workspaceRoot, skillsDir);
   const files: ResolveFile[] = [];
+  const failures: string[] = [];
 
   for (const skill of FORGE_SKILLS) {
     if (!skill.knowledge?.length) continue;
     const skillSource = resolveInside(forgeRoot, skill.path);
     if (!(await io.exists(skillSource))) continue;
-    const skillDir = path.dirname(skillSource);
-    const destinationDir = resolveInside(destinationRoot, skill.name);
-    for (const declared of skill.knowledge) {
-      const source = resolveInside(skillDir, declared);
-      const destination = resolveInside(destinationDir, declared);
-      await assertDestinationInsideWorkspace(workspaceRoot, destination, io);
-      files.push(
-        ...(await collectDeclaredFiles(
-          source,
-          destination,
-          path.posix.join(skill.name, declared),
-          io,
-        )),
-      );
-    }
-  }
-
-  const packSkills = await discoverPackSkillsWithIO(workspaceRoot, config, io);
-  const forgeNames = new Set(FORGE_SKILLS.map((skill) => skill.name));
-  for (const skill of packSkills) {
-    if (!skill.knowledge?.length || forgeNames.has(skill.name)) continue;
-    const skillSource = resolveInside(workspaceRoot, skill.dir, skill.path);
-    const skillDir = path.dirname(skillSource);
-    const destinationDir = resolveInside(destinationRoot, skill.name);
-    for (const declared of skill.knowledge) {
-      const destination = resolveInside(destinationDir, declared);
-      await assertDestinationInsideWorkspace(workspaceRoot, destination, io);
-      files.push(
-        ...(await collectDeclaredFiles(
-          resolveInside(skillDir, declared),
-          destination,
-          path.posix.join(skill.name, declared),
-          io,
-        )),
-      );
-    }
-  }
-
-  const sharedSource = resolveInside(
-    forgeRoot,
-    "skills",
-    "shared",
-    "knowledge",
-    "learned-principles.md",
-  );
-  const sharedDestination = resolveInside(destinationRoot, "shared-knowledge", "learned-principles.md");
-  await assertDestinationInsideWorkspace(workspaceRoot, sharedDestination, io);
-  files.push(
-    ...(await collectDeclaredFiles(
-      sharedSource,
-      sharedDestination,
-      "shared-knowledge/learned-principles.md",
+    const enumerated = await enumerateSkillFiles(
+      workspaceRoot,
+      destinationRoot,
+      skill.name,
+      path.dirname(skillSource),
+      skill.knowledge,
       io,
-    )),
-  );
-  return files.sort((a, b) => a.relative.localeCompare(b.relative));
+    );
+    files.push(...enumerated.files);
+    failures.push(...enumerated.failures);
+  }
+
+  const forgeNames = new Set(FORGE_SKILLS.map((skill) => skill.name));
+  for (const pack of config.skillPacks ?? []) {
+    let packSkills;
+    try {
+      packSkills = await discoverSkillPackWithIO(workspaceRoot, pack, io);
+    } catch (error) {
+      failures.push(`pack ${pack.prefix} (${pack.dir}): ${(error as Error).message}`);
+      continue;
+    }
+    for (const skill of packSkills) {
+      if (!skill.knowledge?.length || forgeNames.has(skill.name)) continue;
+      const skillSource = resolveInside(workspaceRoot, skill.dir, skill.path);
+      const enumerated = await enumerateSkillFiles(
+        workspaceRoot,
+        destinationRoot,
+        skill.name,
+        path.dirname(skillSource),
+        skill.knowledge,
+        io,
+      );
+      files.push(...enumerated.files);
+      failures.push(...enumerated.failures);
+    }
+  }
+
+  try {
+    files.push(
+      ...(await collectDeclaredFiles(
+        workspaceRoot,
+        resolveInside(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md"),
+        resolveInside(destinationRoot, "shared-knowledge", "learned-principles.md"),
+        "shared-knowledge/learned-principles.md",
+        io,
+      )),
+    );
+  } catch (error) {
+    failures.push(`shared-knowledge/learned-principles.md: ${(error as Error).message}`);
+  }
+  files.sort((a, b) => (a.relative < b.relative ? -1 : 1));
+  return { files, failures };
 }
 
 function knowledgeLedger(
@@ -263,32 +328,62 @@ function unresolvedBlocks(issue: KnowledgeConflictIssue): boolean {
   return issue.reason !== "non-cumulative";
 }
 
+/**
+ * Cross-file `promotedTo`/`promotedFrom` references are owner-scoped
+ * (`skill-name/entry-id`). A retarget is safe only when the old id no longer
+ * resolves anywhere else under the same owner after resolution — otherwise
+ * the reference may have meant a sibling file's entry, so it is reported
+ * ambiguous rather than guessed.
+ */
 function referenceRemaps(
   files: ResolveFile[],
-  plans: KnowledgeConflictResolution[],
+  plans: KnowledgeConflictResolutionPlan[],
 ): KnowledgeReferenceRemap {
   const ids = new Map<string, string>();
   const ambiguous = new Set<string>();
-  const add = (key: string, value: string) => {
+  const ownerOf = (relative: string) =>
+    relative.startsWith("shared-knowledge/") ? "shared" : relative.split("/")[0]!;
+
+  const filesByOwner = new Map<string, number[]>();
+  files.forEach((file, index) => {
+    const owner = ownerOf(file.relative);
+    filesByOwner.set(owner, [...(filesByOwner.get(owner) ?? []), index]);
+  });
+  const stillCarries = (owner: string, from: string, skip: number) =>
+    (filesByOwner.get(owner) ?? []).some(
+      (index) => index !== skip && plans[index]!.outputIds.includes(from),
+    );
+
+  const add = (key: string, value: string, unsafe: boolean) => {
+    if (unsafe || ambiguous.has(key)) {
+      ids.delete(key);
+      ambiguous.add(key);
+      return;
+    }
     const current = ids.get(key);
     if (current !== undefined && current !== value) {
       ids.delete(key);
       ambiguous.add(key);
       return;
     }
-    if (!ambiguous.has(key)) ids.set(key, value);
+    ids.set(key, value);
   };
 
   for (let index = 0; index < plans.length; index++) {
-    const file = files[index]!;
-    const owner = file.relative.startsWith("shared-knowledge/")
-      ? "shared"
-      : file.relative.split("/")[0]!;
-    for (const mapping of plans[index]!.renumbered) {
-      add(`${owner}/${mapping.from}`, `${owner}/${mapping.to}`);
+    const plan = plans[index]!;
+    if (plan.unresolved.length > 0) continue;
+    const owner = ownerOf(files[index]!.relative);
+    for (const mapping of plan.resolution.renumbered) {
+      const key = `${owner}/${mapping.from}`;
+      add(key, `${owner}/${mapping.to}`, stillCarries(owner, mapping.from, index));
     }
-    for (const mapping of plans[index]!.deduped) {
-      add(`${owner}/${mapping.localId}`, `${owner}/${mapping.canonicalId}`);
+    for (const mapping of plan.resolution.deduped) {
+      const key = `${owner}/${mapping.localId}`;
+      add(
+        key,
+        `${owner}/${mapping.canonicalId}`,
+        stillCarries(owner, mapping.localId, index),
+      );
     }
   }
   return { ids, ambiguous };
@@ -302,21 +397,35 @@ async function readForgeConfig(workspaceRoot: string, io: WorkspaceIO): Promise<
   } catch {
     throw new Error(`forge.yaml not found at ${configPath}.`);
   }
+  const config = parseForgeConfigDocument(raw, configPath);
+  config.profileResolution = config.profileDeclaredId ? "catalog-unavailable" : "absent";
+  delete config.profile;
+  return config;
+}
 
-  let parsed: unknown;
-  try {
-    parsed = parseYaml(raw);
-  } catch (error) {
-    throw new Error(`forge.yaml at ${configPath} is not valid YAML: ${(error as Error).message}`);
+function summarizeRun(
+  resolved: KnowledgeConflictResolution[],
+  unresolved: KnowledgeConflictIssue[],
+  failures: string[],
+  dryRun: boolean,
+): string {
+  const verb = dryRun ? "planned" : "resolved";
+  const lines = [`${resolved.length} knowledge file(s) ${verb}; ${unresolved.length} unresolved`];
+  for (const file of resolved) {
+    const dispositions = [
+      ...file.renumbered.map((mapping) => `renumbered ${mapping.from} -> ${mapping.to}`),
+      ...file.deduped.map((mapping) => `deduped ${mapping.localId} -> ${mapping.canonicalId}`),
+      ...file.adopted.map((id) => `adopted ${id}`),
+    ];
+    lines.push(`  ${file.file}: ${dispositions.join("; ") || "content updated"}`);
   }
-  const result = forgeConfigSchema.safeParse(parsed);
-  if (!result.success) {
-    const issues = result.error.issues
-      .map((issue) => `  - ${issue.path.join(".")}: ${issue.message}`)
-      .join("\n");
-    throw new Error(`forge.yaml at ${configPath} failed schema validation:\n${issues}`);
+  for (const issue of unresolved) {
+    lines.push(`  ${issue.file} -> unresolved:${issue.reason}`);
   }
-  return result.data as ForgeConfig;
+  for (const failure of failures) {
+    lines.push(`  ${failure}`);
+  }
+  return lines.join("\n");
 }
 
 export async function runKnowledgeConflictsResolve(
@@ -327,8 +436,26 @@ export async function runKnowledgeConflictsResolve(
   const root = context.workspaceRoot;
   const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
   const forgeRoot = context.forgeRoot ?? path.resolve(import.meta.dirname, "../../..");
-  const config = await readForgeConfig(root, io);
   let lock: { lockPath: string; owner: LockOwner } | null = null;
+
+  const fail = (summary: string): ForgeCommandResult<KnowledgeConflictsResolveData> => ({
+    data: {
+      command: "knowledge.conflicts.resolve",
+      status: "fail",
+      resolved: [],
+      unresolved: [],
+      dryRun,
+    },
+    summary,
+    exitCode: 1,
+  });
+
+  let config: ForgeConfig;
+  try {
+    config = await readForgeConfig(root, io);
+  } catch (error) {
+    return fail(`Knowledge resolution stopped before completion: ${(error as Error).message}`);
+  }
 
   if (!dryRun) {
     lock = await acquireLock(root, io);
@@ -341,22 +468,14 @@ export async function runKnowledgeConflictsResolve(
       } catch {
         // Report the lock path even when its metadata is unreadable.
       }
-      return {
-        data: {
-          command: "knowledge.conflicts.resolve",
-          status: "fail",
-          resolved: [],
-          unresolved: [],
-          dryRun,
-        },
-        summary: `Knowledge resolution is already locked (${ownerDetail}); verify the owner before removing ${lockPath}.`,
-        exitCode: 1,
-      };
+      return fail(
+        `Knowledge resolution is already locked (${ownerDetail}); verify the owner before removing ${lockPath}.`,
+      );
     }
   }
 
   try {
-    const files = await enumerateKnowledgeFiles(
+    const { files, failures } = await enumerateKnowledgeFiles(
       root,
       forgeRoot,
       config.paths.skillsDir,
@@ -364,50 +483,54 @@ export async function runKnowledgeConflictsResolve(
       io,
     );
     const initialPlans: KnowledgeConflictResolutionPlan[] = [];
-    for (const file of files) {
-      initialPlans.push(
-        await resolveKnowledgeConflicts(file.source, file.destination, io, true),
-      );
-    }
-    const externalReferences = referenceRemaps(
-      files,
-      initialPlans.map((plan) => plan.resolution),
-    );
-    const resolved: KnowledgeConflictResolution[] = [];
-    const unresolved: KnowledgeConflictIssue[] = [];
-    let writeFailure: string | null = null;
-
+    const planFailed = new Set<number>();
     for (let index = 0; index < files.length; index++) {
       const file = files[index]!;
-      const result = await resolveKnowledgeConflicts(
-        file.source,
-        file.destination,
-        io,
-        true,
-        externalReferences,
-      );
-      const resolution = {
-        ...result.resolution,
-        file: file.relative,
-      };
-      if (
-        result.content !== null ||
-        resolution.renumbered.length > 0 ||
-        resolution.deduped.length > 0 ||
-        resolution.adopted.length > 0
-      ) {
-        resolved.push(resolution);
+      try {
+        initialPlans.push(
+          await resolveKnowledgeConflicts(file.source, file.destination, io, { dryRun: true }),
+        );
+      } catch (error) {
+        planFailed.add(index);
+        initialPlans.push({
+          content: null,
+          resolution: { file: file.relative, renumbered: [], deduped: [], adopted: [] },
+          unresolved: [],
+          outputIds: [],
+        });
+        failures.push(`Could not plan ${file.relative}: ${(error as Error).message}`);
+      }
+    }
+    const externalReferences = referenceRemaps(files, initialPlans);
+    const resolved: KnowledgeConflictResolution[] = [];
+    const unresolved: KnowledgeConflictIssue[] = [];
+
+    for (let index = 0; index < files.length; index++) {
+      if (planFailed.has(index)) continue;
+      const file = files[index]!;
+      let result: KnowledgeConflictResolutionPlan;
+      try {
+        result = await resolveKnowledgeConflicts(file.source, file.destination, io, {
+          dryRun: true,
+          externalReferences,
+        });
+      } catch (error) {
+        failures.push(`Could not plan ${file.relative}: ${(error as Error).message}`);
+        continue;
       }
       unresolved.push(
         ...result.unresolved.map((issue) => ({ ...issue, file: file.relative })),
       );
-      if (!dryRun && result.content !== null) {
+      if (result.content === null) continue;
+      if (!dryRun) {
         try {
           await io.writeFile(file.destination, result.content);
         } catch (error) {
-          writeFailure = `Could not update ${file.relative}: ${(error as Error).message}`;
+          failures.push(`Could not update ${file.relative}: ${(error as Error).message}`);
+          continue;
         }
       }
+      resolved.push({ ...result.resolution, file: file.relative });
     }
 
     const ledgerPath = path.join(root, ".forge", "knowledge-conflicts.txt");
@@ -420,12 +543,12 @@ export async function runKnowledgeConflictsResolve(
           await io.rm(ledgerPath);
         }
       } catch (error) {
-        writeFailure = `Could not update ${ledgerPath}: ${(error as Error).message}`;
+        failures.push(`Could not update ${ledgerPath}: ${(error as Error).message}`);
       }
     }
 
     const failed =
-      writeFailure !== null ||
+      failures.length > 0 ||
       unresolved.some(unresolvedBlocks);
     const data: KnowledgeConflictsResolveData = {
       command: "knowledge.conflicts.resolve",
@@ -434,27 +557,14 @@ export async function runKnowledgeConflictsResolve(
       unresolved,
       dryRun,
     };
-    const summary =
-      writeFailure ??
-      `${resolved.length} knowledge file(s) resolved; ${unresolved.length} unresolved`;
+    const summary = summarizeRun(resolved, unresolved, failures, dryRun);
     if (context.outputFormat === "pretty") {
       const log = failed ? context.logger.warn : context.logger.success;
       log(summary);
     }
     return { data, summary, exitCode: failed ? 1 : 0 };
   } catch (error) {
-    const summary = `Knowledge resolution stopped before completion: ${(error as Error).message}`;
-    return {
-      data: {
-        command: "knowledge.conflicts.resolve",
-        status: "fail",
-        resolved: [],
-        unresolved: [],
-        dryRun,
-      },
-      summary,
-      exitCode: 1,
-    };
+    return fail(`Knowledge resolution stopped before completion: ${(error as Error).message}`);
   } finally {
     if (lock) await releaseLock(lock, io);
   }

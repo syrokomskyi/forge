@@ -10,6 +10,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial append-only knowledge sync — merge by entry-ID union, local wins conflicts, skip divergent non-cumulative files, recurse into declared directories.</item>
   <item>RFC-1481: pure conflict planner — preserve upstream canonical IDs, move divergent local entries into L-K-NNNN, deduplicate by exact title/body, and remap same-file references.</item>
+  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +58,13 @@ export interface KnowledgeConflictResolutionPlan {
   content: string | null;
   resolution: KnowledgeConflictResolution;
   unresolved: KnowledgeConflictIssue[];
+  /**
+   * Entry IDs present in the destination after this plan applies — destination
+   * IDs when the file stays untouched (unresolved or unchanged), output IDs
+   * when the plan rewrites it. Cross-file reference remapping uses this to
+   * prove an owner-scoped reference is unambiguous.
+   */
+  outputIds: string[];
 }
 
 export interface KnowledgeReferenceRemap {
@@ -105,10 +113,14 @@ export function planKnowledgeConflictResolution(
 ): KnowledgeConflictResolutionPlan {
   const file = destination.path;
   const resolution = emptyResolution(file);
-  const unresolved = (reason: KnowledgeConflictUnresolvedReason) => ({
+  const destinationIds = destination.entries.map((entry) => entry.meta.id);
+  // Unresolved files are never written — return an empty resolution so no
+  // partial mapping can leak into cross-file remaps or the resolved ledger.
+  const unresolved = (reason: KnowledgeConflictUnresolvedReason): KnowledgeConflictResolutionPlan => ({
     content: null,
-    resolution,
+    resolution: emptyResolution(file),
     unresolved: [{ file, reason }],
+    outputIds: destinationIds,
   });
 
   if (!isCumulative(source) || !isCumulative(destination)) {
@@ -128,7 +140,9 @@ export function planKnowledgeConflictResolution(
   const idMap = new Map<string, string>();
   const outputEntries: KnowledgeEntry[] = [];
   const localOutputEntries: KnowledgeEntry[] = [];
-  const localIds = destination.entries.map((entry) => entry.meta.id);
+  // Local-ID allocation must also skip L-K ids carried by the source file —
+  // upstream pack knowledge may legally ship consumer-namespace entries.
+  const localIds = [...destinationIds, ...source.entries.map((entry) => entry.meta.id)];
   let changed = false;
 
   for (const local of destination.entries) {
@@ -160,12 +174,9 @@ export function planKnowledgeConflictResolution(
     }
 
     if (sameId) {
-      let newId: string;
-      try {
-        newId = allocateLocalKnowledgeId(localIds);
-      } catch {
-        return unresolved("ambiguous-identity");
-      }
+      // Namespace exhaustion propagates as a RangeError — it is a capacity
+      // failure, not an identity ambiguity.
+      const newId = allocateLocalKnowledgeId(localIds);
       localIds.push(newId);
       idMap.set(local.meta.id, newId);
       resolution.renumbered.push({ from: local.meta.id, to: newId });
@@ -194,7 +205,7 @@ export function planKnowledgeConflictResolution(
     ...source.entries.map((entry) => entry.meta.id),
   ]);
   for (const entry of localOutputEntries) {
-    const meta = { ...entry.meta };
+    const meta = entry.meta;
     if (meta.supersedes) {
       const rewritten = meta.supersedes.map((id) => idMap.get(id) ?? id);
       if (rewritten.some((id) => !resolvableIds.has(id))) {
@@ -228,15 +239,17 @@ export function planKnowledgeConflictResolution(
         changed = true;
       }
     }
-    if (meta !== entry.meta) {
-      entry.meta = meta;
-    }
   }
 
   resolution.adopted = [...new Set(resolution.adopted)];
 
   if (!changed) {
-    return { content: null, resolution, unresolved: [] };
+    return {
+      content: null,
+      resolution,
+      unresolved: [],
+      outputIds: destinationIds,
+    };
   }
 
   const merged: ParsedKnowledgeFile = {
@@ -247,6 +260,7 @@ export function planKnowledgeConflictResolution(
     content: serializeKnowledgeFile(merged),
     resolution,
     unresolved: [],
+    outputIds: outputEntries.map((entry) => entry.meta.id),
   };
 }
 
@@ -255,39 +269,46 @@ export function planKnowledgeConflictResolution(
  * Missing source or destination files are left alone; upgrade owns first-copy
  * behavior, while this command only remediates files already present locally.
  */
+export interface ResolveKnowledgeConflictsOptions {
+  dryRun?: boolean;
+  externalReferences?: KnowledgeReferenceRemap;
+}
+
+/**
+ * Resolve one declared knowledge file through the caller's explicit IO port.
+ * Missing source or destination files are left alone; upgrade owns first-copy
+ * behavior, while this command only remediates files already present locally.
+ * IO and capacity errors propagate to the caller — they are not knowledge
+ * defects and must never masquerade as `parse-failure`.
+ */
 export async function resolveKnowledgeConflicts(
   srcPath: string,
   destPath: string,
   io: WorkspaceIO,
-  dryRun = false,
-  externalReferences: KnowledgeReferenceRemap = { ids: new Map(), ambiguous: new Set() },
+  options: ResolveKnowledgeConflictsOptions = {},
 ): Promise<KnowledgeConflictResolutionPlan> {
-  const empty = emptyResolution(destPath);
   if (!(await io.exists(srcPath)) || !(await io.exists(destPath))) {
-    return { content: null, resolution: empty, unresolved: [] };
-  }
-
-  try {
-    const [sourceText, destinationText] = await Promise.all([
-      io.readFile(srcPath),
-      io.readFile(destPath),
-    ]);
-    const plan = planKnowledgeConflictResolution(
-      parseKnowledgeContent(sourceText, srcPath),
-      parseKnowledgeContent(destinationText, destPath),
-      externalReferences,
-    );
-    if (plan.content !== null && !dryRun) {
-      await io.writeFile(destPath, plan.content);
-    }
-    return plan;
-  } catch {
     return {
       content: null,
-      resolution: empty,
-      unresolved: [{ file: destPath, reason: "parse-failure" }],
+      resolution: emptyResolution(destPath),
+      unresolved: [],
+      outputIds: [],
     };
   }
+
+  const [sourceText, destinationText] = await Promise.all([
+    io.readFile(srcPath),
+    io.readFile(destPath),
+  ]);
+  const plan = planKnowledgeConflictResolution(
+    parseKnowledgeContent(sourceText, srcPath),
+    parseKnowledgeContent(destinationText, destPath),
+    options.externalReferences,
+  );
+  if (plan.content !== null && options.dryRun !== true) {
+    await io.writeFile(destPath, plan.content);
+  }
+  return plan;
 }
 
 const ACTION_PRIORITY: Record<KnowledgeSyncAction, number> = {

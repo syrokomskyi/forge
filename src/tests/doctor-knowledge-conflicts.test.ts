@@ -10,6 +10,7 @@
   <item>RFC-1481: add knowledge collision resolution and surfacing
 
 Add the explicit resolver, namespace-aware parsing and validation, safe reference remapping, doctor/upgrade hints, and regression coverage.</item>
+  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
 </CHANGE_SUMMARY>
 */
 
@@ -110,4 +111,25 @@ test("knowledge-files warns with conflict count and resolver hint", async () => 
   expect(check?.status).toBe("warn");
   expect(check?.message).toContain("1 knowledge id conflict");
   expect(check?.message).toContain("forge knowledge.conflicts.resolve");
+});
+
+test("knowledge-files counts conflicts in the shared-knowledge file", async () => {
+  const forgeRoot = join(tempDir, "packages", "forge");
+  await mkdir(join(forgeRoot, "skills", "shared", "knowledge"), { recursive: true });
+  await writeFile(
+    join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md"),
+    `<!-- knowledge-layer: L2 -->\n\n${entry("K-0008", "Shared upstream canonical.")}`,
+  );
+  await mkdir(join(tempDir, ".agents", "skills", "shared-knowledge"), { recursive: true });
+  await writeFile(
+    join(tempDir, ".agents", "skills", "shared-knowledge", "learned-principles.md"),
+    `<!-- knowledge-layer: L2 -->\n\n${entry("K-0008", "Shared local divergent body.")}`,
+  );
+
+  const result = await runDoctor(input, makeContext());
+  const check = result.data?.checks.find((candidate) => candidate.name === "knowledge-files");
+
+  expect(check?.status).toBe("warn");
+  expect(check?.message).toContain("2 knowledge id conflict");
+  expect(check?.message).toContain("shared-knowledge/learned-principles.md#K-0008");
 });

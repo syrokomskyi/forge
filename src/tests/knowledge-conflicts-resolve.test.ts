@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1481: test first — pin knowledge collision remediation outcomes before implementation.</item>
   <item>RFC-1481: add knowledge collision resolution and surfacing
 
 Add the explicit resolver, namespace-aware parsing and validation, safe reference remapping, doctor/upgrade hints, and regression coverage.</item>
@@ -17,6 +16,8 @@ Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross
 
 Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
+  <history>RFC-1481</history>
 </CHANGE_SUMMARY>
 */
 
@@ -388,7 +389,6 @@ describe("knowledge.conflicts.resolve command", () => {
     const packDir = join(workspaceRoot, "skills", "wg");
     const maliciousSkillDir = join(packDir, "wg-malicious");
     const outsideFile = join(workspaceRoot, "outside.md");
-    const before = await readFile(destinationPath, "utf8");
     await mkdir(maliciousSkillDir, { recursive: true });
     await writeFile(join(packDir, "forge.plugin.yaml"), "id: wg\nversion: 1.0.0\n");
     await writeFile(
@@ -421,7 +421,228 @@ skillPacks:
 
     expect(result.data?.status).toBe("fail");
     expect(result.summary).toContain("escapes its declared root");
-    expect(await readFile(destinationPath, "utf8")).toBe(before);
     expect(await readFile(outsideFile, "utf8")).toBe("must remain untouched\n");
+  });
+});
+
+async function declareSkillPacks(prefix = "wg"): Promise<void> {
+  const forgeYaml = await readFile(join(workspaceRoot, "forge.yaml"), "utf8");
+  await writeFile(
+    join(workspaceRoot, "forge.yaml"),
+    `${forgeYaml}skillPacks:\n  - prefix: ${prefix}\n    dir: skills/${prefix}\n`,
+  );
+}
+
+async function writePackSkill(
+  skillName: string,
+  declared: string[],
+  sources: Record<string, string>,
+  destinations: Record<string, string>,
+  prefix = "wg",
+): Promise<void> {
+  const packDir = join(workspaceRoot, "skills", prefix);
+  const skillSourceDir = join(packDir, skillName);
+  await mkdir(skillSourceDir, { recursive: true });
+  await writeFile(join(packDir, "forge.plugin.yaml"), `id: ${prefix}\nversion: 1.0.0\n`);
+  await writeFile(
+    join(skillSourceDir, "SKILL.md"),
+    `---\nname: ${skillName}\ndescription: test\nconcerns: read-only\nknowledge: [${declared.join(", ")}]\n---\n`,
+  );
+  for (const [name, content] of Object.entries(sources)) {
+    const target = join(skillSourceDir, name);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+  const destinationDir = join(workspaceRoot, ".agents", "skills", skillName);
+  for (const [name, content] of Object.entries(destinations)) {
+    const target = join(destinationDir, name);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, content);
+  }
+}
+
+describe("knowledge.conflicts.resolve — REVIEW-CODE-2026-11-01-11 regression", () => {
+  test("renumbers past local IDs already present in the source file", () => {
+    const source = knowledgeFile([
+      entry("L-K-0001", "Upstream local", "Upstream-local body."),
+      entry("K-0007", "Upstream", "Canonical."),
+    ]);
+    const destination = knowledgeFile([entry("K-0007", "Local", "Local body.")]);
+
+    const result = plan(source, destination);
+
+    expect(result.resolution.renumbered).toEqual([{ from: "K-0007", to: "L-K-0002" }]);
+    const localIds = [...(result.content ?? "").matchAll(/^id: (L-K-\d{4})$/gm)].map(
+      (match) => match[1],
+    );
+    expect(new Set(localIds).size).toBe(localIds.length);
+  });
+
+  test("an unresolved plan leaks no mappings into cross-file remaps or resolved[]", async () => {
+    await declareSkillPacks();
+    const aDest = join(workspaceRoot, ".agents", "skills", "wg-multi", "a.md");
+    const bDest = join(workspaceRoot, ".agents", "skills", "wg-multi", "b.md");
+    await writePackSkill(
+      "wg-multi",
+      ["a.md", "b.md"],
+      {
+        "a.md": knowledgeFile([entry("K-0007", "Upstream A", "Upstream body A.")]),
+        "b.md": knowledgeFile([entry("K-0001", "Upstream B", "New upstream body.")]),
+      },
+      {
+        "a.md": knowledgeFile([
+          entry("K-0007", "Local A", "Local body A."),
+          entry("K-0099", "Local orphan ref", "Ref body.", { supersedes: ["K-7777"] }),
+        ]),
+        "b.md": knowledgeFile([
+          entry("L-K-0005", "Pointer", "Pointer body.").replace(
+            "status: active",
+            "promotedFrom: [wg-multi/K-0007]\nstatus: active",
+          ),
+        ]),
+      },
+    );
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext());
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.data?.unresolved).toContainEqual({
+      file: "wg-multi/a.md",
+      reason: "unmapped-reference",
+    });
+    expect(result.data?.resolved.map((entry) => entry.file)).not.toContain("wg-multi/a.md");
+    const bContent = await readFile(bDest, "utf8");
+    expect(bContent).toContain("promotedFrom: [wg-multi/K-0007]");
+    expect(bContent).not.toContain("wg-multi/L-K-0001");
+    void aDest;
+  });
+
+  test("an owner id still present in a sibling file is ambiguous and unretargeted", async () => {
+    await declareSkillPacks();
+    const cDest = join(workspaceRoot, ".agents", "skills", "wg-multi", "c.md");
+    await writePackSkill(
+      "wg-multi",
+      ["a.md", "b.md", "c.md"],
+      {
+        "a.md": knowledgeFile([entry("K-0007", "Upstream A", "Upstream body A.")]),
+        "b.md": knowledgeFile([entry("K-0002", "Upstream B", "Same body B.")]),
+        "c.md": knowledgeFile([entry("K-0003", "Upstream C", "New upstream body.")]),
+      },
+      {
+        "a.md": knowledgeFile([entry("K-0007", "Local A", "Local body A.")]),
+        "b.md": knowledgeFile([
+          entry("K-0002", "Upstream B", "Same body B."),
+          entry("K-0007", "Local only", "Unrelated local K-0007."),
+        ]),
+        "c.md": knowledgeFile([
+          entry("L-K-0009", "Pointer", "Pointer body.").replace(
+            "status: active",
+            "promotedFrom: [wg-multi/K-0007]\nstatus: active",
+          ),
+        ]),
+      },
+    );
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext());
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.data?.resolved.map((entry) => entry.file)).toContain("wg-multi/a.md");
+    expect(result.data?.unresolved).toContainEqual({
+      file: "wg-multi/c.md",
+      reason: "unmapped-reference",
+    });
+    expect(await readFile(cDest, "utf8")).toContain("promotedFrom: [wg-multi/K-0007]");
+  });
+
+  test("a missing forge.yaml returns a structured failure instead of throwing", async () => {
+    await rm(join(workspaceRoot, "forge.yaml"));
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext());
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("forge.yaml");
+  });
+
+  test("a per-file read failure is reported by name without mislabeling it parse-failure", async () => {
+    const io = {
+      ...ambientIo,
+      readFile: async (target: string) => {
+        if (target === destinationPath) throw new Error("EIO: simulated read failure");
+        return ambientIo.readFile(target);
+      },
+    };
+    const context = { ...commandContext(), io } as ForgeRuntimeContext;
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), context);
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.summary).toContain("learned-principles.md");
+    expect(result.data?.unresolved.some((issue) => issue.reason === "parse-failure")).toBe(false);
+  });
+
+  test("a destination write failure fails the run without listing the file as resolved", async () => {
+    const io = {
+      ...ambientIo,
+      writeFile: async (target: string, content: string | Uint8Array) => {
+        if (target === destinationPath) throw new Error("ENOSPC: simulated write failure");
+        return ambientIo.writeFile(target, content);
+      },
+    };
+    const context = { ...commandContext(), io } as ForgeRuntimeContext;
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), context);
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.summary).toContain("learned-principles.md");
+    expect(result.data?.resolved.map((entry) => entry.file)).not.toContain(
+      "fo-session-save/learned-principles.md",
+    );
+  });
+
+  test("a broken pack manifest degrades while other files still resolve", async () => {
+    await declareSkillPacks();
+    const packDir = join(workspaceRoot, "skills", "wg");
+    await mkdir(join(packDir, "wg-broken"), { recursive: true });
+    await writeFile(
+      join(packDir, "wg-broken", "SKILL.md"),
+      "---\nname: wg-broken\ndescription: test\nconcerns: read-only\nknowledge: [a.md]\n---\n",
+    );
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext());
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.summary).toContain("forge.plugin.yaml");
+    expect(result.data?.resolved.map((entry) => entry.file)).toContain(
+      "fo-session-save/learned-principles.md",
+    );
+  });
+
+  test("a symlinked nested destination cannot redirect writes outside the workspace", async () => {
+    await declareSkillPacks();
+    const outsideDir = await mkdtemp(join(tmpdir(), "knowledge-outside-"));
+    await writePackSkill(
+      "wg-docs",
+      ["docs"],
+      { "docs/a.md": knowledgeFile([entry("K-0001", "Upstream", "Body.")]) },
+      {},
+    );
+    const destinationDir = join(workspaceRoot, ".agents", "skills", "wg-docs", "docs");
+    await mkdir(dirname(destinationDir), { recursive: true });
+    const { symlink } = await import("node:fs/promises");
+    await symlink(outsideDir, destinationDir, "dir");
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext());
+
+    expect(result.data?.status).toBe("fail");
+    expect(existsSync(join(outsideDir, "a.md"))).toBe(false);
+  });
+
+  test("dry-run summary lists each file's planned renumbering", async () => {
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext(true));
+
+    expect(result.summary).toContain("fo-session-save/learned-principles.md");
+    expect(result.summary).toContain("K-0007");
+    expect(result.summary).toContain("L-K-0001");
   });
 });
