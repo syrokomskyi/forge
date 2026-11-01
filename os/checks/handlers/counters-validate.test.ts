@@ -157,4 +157,20 @@ describe("checks.counters.validate", () => {
     expect(result.exitCode).toBe(1);
     expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01")).toBe(true);
   });
+
+  test("malformed inventory surfaces COUNT-01, not a thrown crash", async () => {
+    await writeFile(join(root, "docs", "validator-inventory.generated.yaml"), "contracts: [unclosed");
+    await seedJournal([JSON.stringify(rec())]);
+    const result = await runCountersValidate(flags(), ctx());
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01" && d.message.includes("malformed"))).toBe(true);
+  });
+
+  test("empty-document inventory surfaces COUNT-01 — null doc is an unavailable universe", async () => {
+    await writeFile(join(root, "docs", "validator-inventory.generated.yaml"), "");
+    await seedJournal([JSON.stringify(rec())]);
+    const result = await runCountersValidate(flags(), ctx());
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-01" && d.message.includes("empty"))).toBe(true);
+  });
 });
