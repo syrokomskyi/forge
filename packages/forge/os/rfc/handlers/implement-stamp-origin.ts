@@ -14,14 +14,15 @@ verificationTier: high RFC.
 <KEY_DECISIONS>
   <item>Origins are derived fresh at stamp time (head = HEAD), never read from the committed envelope.</item>
   <item>`unresolved` never fires RFC-IMP-10 — no contradiction is proven without history.</item>
-  <item>RFC-IMP-11 severity is a module constant until RFC-1333 provides non-self evidence.</item>
+  <item>The high-tier evidence gate severity stays a module constant until the acceptance-report layer lands non-self evidence.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: RFC-IMP-10 (blocking) and RFC-IMP-11 (warning until RFC-1333) origin gates.</item>
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+  <history>RFC-1330</history>
 </CHANGE_SUMMARY>
 */
 

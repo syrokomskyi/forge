@@ -1,3 +1,15 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Unit tests for RFC-IMP-12 candidate binding — covers the imp12 binding acceptance suite surface and its observable contract.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+</CHANGE_SUMMARY>
+*/
+
 // RFC-1333 Design "Stamp gate RFC-IMP-12" — candidate binding: descendants of
 // candidateSha up to the implementation commit may touch only verifier-trailer
 // commits and docs/**.

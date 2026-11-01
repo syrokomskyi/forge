@@ -1,3 +1,15 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Unit tests for RFC-1333 rfc.verify.workspace — covers the verify workspace acceptance suite surface and its observable contract.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+</CHANGE_SUMMARY>
+*/
+
 // RFC-1333 AC-1, AC-2, AC-10, Design step 2/3 — rfc.verify.workspace export.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
