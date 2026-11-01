@@ -8,6 +8,7 @@ snapshot taken before and after.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 4 — flow.install rerun-safety test</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
+  <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -85,6 +86,46 @@ describe("flow.install rerun-safety (AC-8)", () => {
 
     expect(await hashTree(join(repo, "hooks"))).toBe(hooksHashBefore);
     expect(await refSnapshot(repo)).toBe(refsBefore);
+  });
+
+  it("repairs a drifted core.hooksPath on an adopted repo — committed adoption is the exemption signal, not working-tree state", async () => {
+    const repo = await initRepo({ prefix: "flow-drift-" });
+    dirs.push(repo);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await executeInstall(await planInstall(repo, ambientIo), ambientIo);
+
+    // Drift the config — the state whose remedy is "re-run flow.install".
+    await gitExec(repo, ["config", "--unset", "core.hooksPath"]);
+
+    // develop is ahead of main (the adoption commit): without the committed-
+    // state exemption this refuses FLOW-ADOPT-01 — the review-r1 dead-end.
+    const plan = await planInstall(repo, ambientIo);
+    expect(plan.refusal).toBeNull();
+    await executeInstall(plan, ambientIo);
+    const hooksPath = await gitExec(repo, ["config", "--get", "core.hooksPath"]);
+    expect(hooksPath.stdout.trim()).toBe("hooks");
+  });
+
+  it("repairs a drifted committed guard on an adopted repo", async () => {
+    const repo = await initRepo({ prefix: "flow-drift-guard-" });
+    dirs.push(repo);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await executeInstall(await planInstall(repo, ambientIo), ambientIo);
+
+    // Committed drift on develop — model-normal operation (backmerge op).
+    await writeFile(join(repo, "hooks", "flow-guard.sh"), "# drifted\n");
+    await gitExec(repo, ["add", "hooks/flow-guard.sh"]);
+    const drift = await gitExec(repo, ["commit", "-m", "drift guard"], {
+      FORGE_FLOW_OP: "backmerge",
+    });
+    expect(drift.exitCode).toBe(0);
+
+    const plan = await planInstall(repo, ambientIo);
+    expect(plan.refusal).toBeNull();
+    expect(plan.guardChange).toBe("write");
+    await executeInstall(plan, ambientIo);
+    const content = await gitExec(repo, ["show", "develop:hooks/flow-guard.sh"]);
+    expect(content.stdout).toContain("forge flow guard");
   });
 
   it("a third run after normal work landed on develop still skips", async () => {
