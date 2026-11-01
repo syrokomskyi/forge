@@ -81,6 +81,7 @@ export {
   defaultForgeConfig,
   loadForgeConfig,
   resolveForgeRoot,
+  isForgeSourceCheckout,
   resolveBinding,
   resolveTerminology,
   FORGE_CLI_BINDING_DEFAULTS,

@@ -19,9 +19,15 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 
 import type { WorkspaceIO } from "../types.ts";
 import { resolveIo } from "../utils/io.ts";
-import { hasEditableGeneratedMarker, mergeEditableGenerated } from "../utils/index.ts";
+import {
+  hasEditableGeneratedMarker,
+  mergeEditableGenerated,
+  CUSTOM_BOUNDARY_MARKERS,
+  CUSTOM_BOUNDARY_HINTS,
+  commentStyleForPath,
+} from "../utils/index.ts";
 import { readFileSync, existsSync } from "../utils/sync-fs.ts";
-import { join, relative, dirname, resolve } from "node:path";
+import { join, relative, dirname, resolve, sep } from "node:path";
 import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
 import { forgePluginManifestSchema } from "../plugin/forge-plugin-manifest.ts";
@@ -30,7 +36,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../types.ts";
-import { resolveForgeRoot, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
+import { resolveForgeRoot, isForgeSourceCheckout, loadForgeConfig, resolveBinding, resolveTerminology, FORGE_CLI_BINDING_DEFAULTS, resolvePmRunner } from "../config/forge-config.ts";
 import { FORGE_SKILLS, discoverPackSkills } from "../registry.ts";
 import { discoverWorkspaces, resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import { buildNestedAgentsMd, selectNestedTemplate } from "./nested-agents-templates.ts";
@@ -67,6 +73,8 @@ interface DoctorCheck {
   status: "pass" | "fail" | "warn";
   message: string;
   invariantViolations?: InvariantViolation[];
+  /** Repo-relative AGENTS.md paths with custom content but no resolvable boundary (nested-AGENTS.md check). */
+  unmappedFiles?: string[];
 }
 
 interface ForbiddenImport {
@@ -91,11 +99,53 @@ async function pathExists(target: string, io: WorkspaceIO): Promise<boolean> {
   return io.exists(target);
 }
 
+// FORGE-AUTONOMY-01 (RFC-0940, ADR-0019): `import type` statements are exempt
+// (erased at compile time); `os/werkstatt/` is the declared werkstatt-adapter
+// boundary and may import @warpgogol/*; other `os/` dirs may not import
+// @warpgogol/werkstatt-engine but may use @warpgogol/werkstatt-shared (exempt
+// shared infrastructure); `src/` and the rest of the tree may not carry any
+// runtime @warpgogol/* import. dist/, tests dirs, and *.test.ts/*.spec.ts/
+// *.d.ts are generated or fixture surfaces, not scanned source.
 const FORBIDDEN_IMPORT_PATTERN =
-  /(?:^|\n)\s*(?:import\s+[^;]+?\s+from\s+|require\s*\(\s*)["'`](@warpgogol\/[^"'`]+)["'`]/g;
+  /(?:^|\n)\s*(import\s+[^;]+?\s+from\s+|require\s*\(\s*)["'`](@warpgogol\/[^"'`]+)["'`]/g;
+
+const AUTONOMY_EXCLUDE_DIRS = new Set([
+  "node_modules",
+  "dist",
+  "tests",
+  "tests-handoff",
+  "templates",
+]);
+const AUTONOMY_EXCLUDE_SUFFIXES = [".test.ts", ".spec.ts", ".d.ts"];
+const ENGINE_SPECIFIER = "@warpgogol/werkstatt-engine";
+
+// Per-check fix hints for the pretty-output failure line — a generic
+// "run 'forge create'" hint is wrong for checks create cannot repair.
+const CHECK_FIX_HINTS: Record<string, string> = {
+  "forge.yaml": "run 'forge create' to fix",
+  "AGENTS.md": "restore the root AGENTS.md — run 'forge agents.generate'",
+  "PREFERENCES.md": "restore PREFERENCES.md — run 'forge init'",
+  ".agents/skills/": "run 'forge init' or 'forge upgrade' to redeploy skills",
+  "npm-token (@warpgogol)": "configure a @warpgogol npm token in .npmrc",
+  "git-branch": "rename the default branch to 'main'",
+  "domain-invariants": "fix the reported invariant violations",
+  "autonomy-guard":
+    "remove the flagged @warpgogol/* imports or place them behind the os/werkstatt/ adapter boundary (FORGE-AUTONOMY-01)",
+  bindings: "fix the invalid forge.yaml bindings",
+  "outcome-config": "declare the outcomeBuild/outcomeServe bindings or drop the outcomeSurfaces entry",
+};
+
+function isForbiddenSpecifier(specifier: string, relToForge: string): boolean {
+  if (relToForge.startsWith("os/werkstatt/")) return false;
+  if (relToForge.startsWith("os/")) {
+    return specifier === ENGINE_SPECIFIER || specifier.startsWith(`${ENGINE_SPECIFIER}/`);
+  }
+  return true;
+}
 
 async function scanForForbiddenImports(
   dir: string,
+  forgeRoot: string,
   workspaceRoot: string,
   io: WorkspaceIO,
 ): Promise<ForbiddenImport[]> {
@@ -106,17 +156,24 @@ async function scanForForbiddenImports(
     const fullPath = join(dir, entry.name);
 
     if (entry.isDirectory) {
-      if (entry.name === "node_modules" || entry.name === "tests") continue;
-      const sub = await scanForForbiddenImports(fullPath, workspaceRoot, io);
+      if (AUTONOMY_EXCLUDE_DIRS.has(entry.name)) continue;
+      const sub = await scanForForbiddenImports(fullPath, forgeRoot, workspaceRoot, io);
       violations.push(...sub);
-    } else if (entry.name.endsWith(".ts")) {
+    } else if (
+      entry.name.endsWith(".ts") &&
+      !AUTONOMY_EXCLUDE_SUFFIXES.some((suffix) => entry.name.endsWith(suffix))
+    ) {
+      const relToForge = relative(forgeRoot, fullPath).split(sep).join("/");
       const content = await io.readFile(fullPath).catch(() => "");
       let match: RegExpExecArray | null;
       const pattern = new RegExp(FORBIDDEN_IMPORT_PATTERN.source, "g");
       while ((match = pattern.exec(content)) !== null) {
+        if (/\bimport\s+type\b/.test(match[1]!)) continue;
+        const specifier = match[2]!;
+        if (!isForbiddenSpecifier(specifier, relToForge)) continue;
         violations.push({
           file: relative(workspaceRoot, fullPath),
-          specifier: match[1],
+          specifier,
         });
       }
     }
@@ -1055,6 +1112,7 @@ async function checkNestedAgentsMd(
   }
 
   const issues: string[] = [];
+  const unmappedFiles: string[] = [];
   let missing = 0;
   let stale = 0;
   let handwritten = 0;
@@ -1102,8 +1160,9 @@ async function checkNestedAgentsMd(
       const merged = mergeEditableGenerated(expected, actual, `${ws.path}/AGENTS.md`);
       if (merged === null && hasEditableGeneratedMarker(actual)) {
         unmapped++;
+        unmappedFiles.push(`${ws.path}/AGENTS.md`);
         issues.push(
-          `${ws.path}/AGENTS.md has custom content but no resolvable boundary — add <!-- forge:custom --> manually`,
+          `${ws.path}/AGENTS.md has custom content but no resolvable boundary — add <!-- forge:custom --> manually or run 'forge doctor --fix'`,
         );
       } else if (merged === null || merged !== actual.replace(/\r\n/g, "\n")) {
         stale++;
@@ -1132,6 +1191,7 @@ async function checkNestedAgentsMd(
     name: "nested-AGENTS.md",
     status: stale > 0 || unmapped > 0 ? "warn" : "pass",
     message: `${parts.join(", ")} — ${issues.slice(0, 3).join("; ")}${issues.length > 3 ? ` (+${issues.length - 3} more)` : ""}`,
+    ...(unmappedFiles.length > 0 ? { unmappedFiles } : {}),
   };
 }
 
@@ -1607,13 +1667,21 @@ export async function runDoctor(
         : `${invalidProfiles.length} profile(s) invalid (advisory): ${invalidProfiles.map((p) => p.id).join(", ")}`,
   });
 
-  const forbiddenImports = await scanForForbiddenImports(forgeRoot, workspaceRoot, fio);
+  // Source-scanning checks only make sense on a forge development checkout —
+  // the published tarball ships src/ and os/, but an installed package's
+  // source is immutable and a finding there is not actionable for consumers.
+  const forgeSourceCheckout = isForgeSourceCheckout(forgeRoot);
+  const forbiddenImports = forgeSourceCheckout
+    ? await scanForForbiddenImports(forgeRoot, forgeRoot, workspaceRoot, fio)
+    : [];
   checks.push({
     name: "autonomy-guard",
     status: forbiddenImports.length === 0 ? "pass" : "fail",
     message:
       forbiddenImports.length === 0
-        ? "No @warpgogol/* imports in forge source"
+        ? forgeSourceCheckout
+          ? "No @warpgogol/* imports in forge source"
+          : "npm-installed forge — source autonomy check skipped"
         : `${forbiddenImports.length} @warpgogol/* import(s) found in forge source — remove them`,
   });
 
@@ -1659,8 +1727,18 @@ export async function runDoctor(
   // RFC-0664: Check memory layer health (budget, gitignore coverage, leak risk)
   checks.push(checkMemoryLayer(workspaceRoot));
 
-  // RFC-1151: Check dist freshness — stale dist/ silently shadows src/ in source checkouts
-  checks.push(checkDistFreshness(forgeRoot));
+  // RFC-1151: Check dist freshness — stale dist/ silently shadows src/ in
+  // source checkouts. npm installs ship both dirs with tarball mtimes that
+  // order src after dist, so the check is skipped there like the guard above.
+  checks.push(
+    forgeSourceCheckout
+      ? checkDistFreshness(forgeRoot)
+      : {
+          name: "dist-freshness",
+          status: "pass",
+          message: "npm-installed forge — not a source checkout",
+        },
+  );
 
   // RFC-0539: Check pack skills — stale/missing copies and config validation
   const packCheck = await checkPackSkills(workspaceRoot, fio);
@@ -1728,7 +1806,12 @@ export async function runDoctor(
     if (allPass) {
       logger.success("All checks passed — forge is properly configured.");
     } else if (hasFails) {
-      logger.error("Some checks failed — run 'forge create' to fix.");
+      const hints = new Set(
+        finalChecks
+          .filter((c) => c.status === "fail")
+          .map((c) => CHECK_FIX_HINTS[c.name] ?? "run 'forge create' to fix"),
+      );
+      logger.error(`Some checks failed — ${[...hints].join("; ")}.`);
     } else {
       logger.warn("Some checks warn — review above.");
     }
@@ -1781,6 +1864,24 @@ function newestMtime(dir: string): number {
   return newest;
 }
 
+/**
+ * Insert the `forge:custom` preservation boundary before the first `## `
+ * heading — the position the manual adoption procedure uses. The generated
+ * head above is canonicalized on the next regeneration; everything below is
+ * preserved verbatim. Returns null when no `##` boundary exists (the file is
+ * left untouched — a marker at EOF would preserve nothing).
+ */
+function insertCustomBoundary(content: string, filePath: string): string | null {
+  const style = commentStyleForPath(filePath);
+  const lines = content.replace(/\r\n/g, "\n").split("\n");
+  const idx = lines.findIndex((line) => /^##\s/.test(line));
+  if (idx === -1) return null;
+  const head = lines.slice(0, idx);
+  while (head.length > 0 && head[head.length - 1]!.trim() === "") head.pop();
+  head.push("", CUSTOM_BOUNDARY_MARKERS[style], CUSTOM_BOUNDARY_HINTS[style], "");
+  return [...head, ...lines.slice(idx)].join("\n");
+}
+
 // RFC-1151: remediation dispatch — check name → safe fix action.
 // Remediations reuse existing generators; hand-written files are never touched
 // (generated-marker edit guard inside generateNestedAgentsMd).
@@ -1795,11 +1896,41 @@ async function applyDoctorRemediation(
     case "nested-AGENTS.md": {
       try {
         const config = loadForgeConfig(workspaceRoot);
+        // unmapped-customization: insert the forge:custom boundary before the
+        // first `## ` heading FIRST — the generate pass below then merges
+        // (canonical head + preserved custom tail) instead of skipping.
+        const boundaryFixed: string[] = [];
+        const boundarySkipped: string[] = [];
+        for (const relPath of check.unmappedFiles ?? []) {
+          const absPath = join(workspaceRoot, relPath);
+          const content = await io.readFile(absPath).catch(() => null);
+          const fixed = content === null ? null : insertCustomBoundary(content, relPath);
+          if (fixed === null) {
+            boundarySkipped.push(relPath);
+            continue;
+          }
+          if (!dryRun) {
+            await io.writeFile(absPath, fixed);
+          }
+          boundaryFixed.push(relPath);
+        }
         const res = await generateNestedAgentsMd(workspaceRoot, config, dryRun, workspaceTypes, io);
+        const fixedAny =
+          res.generated.length > 0 || res.injected.length > 0 || boundaryFixed.length > 0;
+        const parts = [
+          `${res.generated.length} file(s) ${dryRun ? "would be " : ""}regenerated, ${res.skipped.length} skipped`,
+        ];
+        if (res.injected.length > 0) parts.push(`${res.injected.length} semantic-layer injected`);
+        if (boundaryFixed.length > 0) {
+          parts.push(`${boundaryFixed.length} forge:custom boundary inserted`);
+        }
+        if (boundarySkipped.length > 0) {
+          parts.push(`${boundarySkipped.length} unmapped with no '## ' boundary`);
+        }
         return {
           check: check.name,
-          action: res.generated.length > 0 || res.injected.length > 0 ? "fixed" : "skipped",
-          detail: `${res.generated.length} file(s) ${dryRun ? "would be " : ""}regenerated, ${res.skipped.length} skipped${res.injected.length > 0 ? `, ${res.injected.length} semantic-layer injected` : ""}`,
+          action: fixedAny ? "fixed" : "skipped",
+          detail: parts.join(", "),
         };
       } catch (err) {
         return { check: check.name, action: "failed", detail: (err as Error).message };
