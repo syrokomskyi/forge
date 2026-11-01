@@ -160,6 +160,19 @@ describe("journal hardening edges (review round-1)", () => {
     expect(read2.records.length).toBe(0);
   });
 
+  test("array elements in YAML journal are never admitted — no unbounded re-append", async () => {
+    await mkdir(TRAJ_DIR(), { recursive: true });
+    await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "outcomes:\n  - {recallId: R-1, helped: true}\n  - [a, b]\n");
+    const first = await readOutcomesJournal(root);
+    expect(first.records.length).toBe(1);
+    const lines = (await readFile(OUTCOMES_JSONL(), "utf8")).trim().split("\n");
+    expect(lines.length).toBe(1);
+    // A second read must not re-append — array elements converge like dicts.
+    const second = await readOutcomesJournal(root);
+    expect(second.records.length).toBe(1);
+    expect((await readFile(OUTCOMES_JSONL(), "utf8")).trim().split("\n").length).toBe(1);
+  });
+
   test("non-array outcomes: value warns and migrates nothing", async () => {
     await mkdir(TRAJ_DIR(), { recursive: true });
     await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "schema: x\noutcomes: a-string-not-a-list\n");
