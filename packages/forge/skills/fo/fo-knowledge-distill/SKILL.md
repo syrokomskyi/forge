@@ -24,6 +24,7 @@ triggerPhrases: ["distill knowledge", "compact skill knowledge", "knowledge life
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
+  <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -133,7 +134,7 @@ Commit only the mutated knowledge files. Reference this skill and the knowledge 
 
 ## Knowledge file format
 
-All knowledge files use the structured knowledge entry format:
+All knowledge files use the structured knowledge entry format. In a consumer workspace, new consumer-authored entries use `L-K-NNNN` (max existing local ordinal + 1); Forge source entries keep upstream `K-NNNN`. Use `forge knowledge.conflicts.resolve --dry-run` to inspect collisions rather than manually renumbering an existing file.
 
 ````markdown
 <!-- knowledge-layer: L2 -->
@@ -171,15 +172,15 @@ When `doctor` reports `knowledge-duplicate` warnings (cross-skill L2 entries wit
 ### Promotion protocol
 
 1. **Present the pair** — show both titles, bodies, confirmations, and the proposed merged shared entry (merged body, summed confirmations, `promotedFrom` provenance). The operator approves, edits, or rejects via grilling.
-2. **Write the shared entry** — append to `packages/forge/skills/shared/knowledge/learned-principles.md` with the next `K-NNNN` id, `status: active`, `created: today`, `lastConfirmedAt: today`, `confirmations` (sum of sources), and `promotedFrom: ["<skill>/K-NNNN", ...]`.
-3. **Rewrite local copies** — each skill-local entry keeps its heading and id but its metadata is rewritten: `promotedTo: shared/K-NNNN`, `status: superseded`; body replaced with one line: "Promoted to shared layer as shared/K-NNNN." The next compact run archives these pointer entries out of the hot file.
-4. **Cite, don't copy** — future distill runs in any skill reference the shared id (`shared/K-NNNN`) instead of re-creating the principle locally.
+2. **Write the shared entry** — in a consumer workspace append to `.agents/skills/shared-knowledge/learned-principles.md` with the next `L-K-NNNN` id; in Forge source maintenance use the canonical source file and `K-NNNN`. Set `status: active`, `created: today`, `lastConfirmedAt: today`, `confirmations` (sum of sources), and `promotedFrom: ["<skill>/<entry-id>", ...]`.
+3. **Rewrite local copies** — each skill-local entry keeps its heading and ID but its metadata is rewritten: `promotedTo: shared/<shared-entry-id>`, `status: superseded`; body replaced with one line naming that shared ID. The next compact run archives these pointer entries out of the hot file.
+4. **Cite, don't copy** — future distill runs in any skill reference the shared ID (`shared/K-NNNN` upstream or `shared/L-K-NNNN` consumer-local) instead of re-creating the principle locally.
 5. **Commit** — shared file + all touched skill files in one commit.
 
 ### Promotion constraints
 
 - **Promotion requires operator approval inside grilling** — detection is deterministic, promotion is human. Never promote without explicit operator approval for each pair.
-- **Never copy shared-layer content into skill-local files** — cite via `shared/K-NNNN`, do not duplicate.
+- **Never copy shared-layer content into skill-local files** — cite via its `shared/<entry-id>`, do not duplicate.
 - **Never promote project-specific knowledge from pack skills into the forge shared layer** — domain-neutrality is checked during grilling. If the principle is project-specific, it stays pack-local.
 - **Portability gate** — grilling must include the question: "Is this principle genuinely cross-skill, or is it specific to one skill's domain?" Only genuinely cross-skill principles promote.
 ```

@@ -23,7 +23,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeRfcModule` | `rfc.list`, `rfc.validate`, `rfc.create`, `rfc.verification.emit`, `rfc.verification.refresh`, `rfc.evidence.sync`, etc. | `os/rfc/` |
 | `forgeWorkflowModule` | `workflow.lint`, `workflow.list` | `os/workflow/` |
 | `forgeNamingModule` | `naming.convention.lint` | `os/naming/` |
-| `forgeKnowledgeModule` | `knowledge.rebuild`, `knowledge.authz.probe` | `os/knowledge/` |
+| `forgeKnowledgeModule` | `knowledge.rebuild`, `knowledge.authz.probe`, `knowledge.conflicts.resolve` | `os/knowledge/` |
 | `forgeGateModule` | `gate.probe`, `gate.probe.catalog` | `os/gate/` |
 
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list`, `metrics.aggregate`, `session.audit`, `session.audit.report` | `os/session/` |
@@ -210,7 +210,7 @@ Skills live in `skills/` and are synced to `.agents/skills/` by `create`. Each s
 
 The `concerns` field uses a four-level taxonomy (RFC-0523): `read-only` (no file modifications), `document-only` (modifies `.md` files only), `content-mutation` (modifies content `.md`/`.yaml` but not executable code), `code-mutation` (modifies `.ts`/`.astro` code). `skill.validate` enforces this via SKILL-12.
 
-The optional `knowledge` field (RFC-0524) declares cumulative knowledge files as an array of file names relative to the SKILL.md directory (e.g. `knowledge: [qa-log.md, learned-principles.md]`). `skill.validate` enforces SKILL-13: declared knowledge files must exist. `create` syncs them to `.agents/skills/`. `doctor` detects stale copies. See `writing-great-skills` § Cumulative knowledge pattern for the three-layer reference pattern, entry format, and mutation contract. RFC-0660 adds SKILL-19 (entry schema validity) and SKILL-20 (identifier uniqueness) for structured knowledge entries, and `doctor` reports legacy-section counts. RFC-0661 adds SKILL-21 (hot/warm layer character budget warnings — warnings only, never build gates) and `doctor` reports budget summaries with headroom %.
+The optional `knowledge` field (RFC-0524) declares cumulative knowledge files as an array of file names relative to the SKILL.md directory (e.g. `knowledge: [qa-log.md, learned-principles.md]`). `skill.validate` enforces SKILL-13: declared knowledge files must exist. `create` syncs them to `.agents/skills/`. See `writing-great-skills` § Cumulative knowledge pattern for the entry format and mutation contract. RFC-0660 adds SKILL-19 (entry schema validity) and SKILL-20 (identifier uniqueness) for structured entries; RFC-0661 adds SKILL-21 budgets. RFC-1481 reserves upstream `K-NNNN` for Forge source entries and consumer-local `L-K-NNNN` for local entries. `forge doctor` warns on unresolved collisions; run `forge knowledge.conflicts.resolve --dry-run` to inspect the plan, then invoke it without `--dry-run` to resolve. The command serializes mutations; if it reports an existing lock, verify the owner before removing the stale `.forge/knowledge-conflicts.resolve.lock` directory.
 
 ### Validator return-type refactoring
 

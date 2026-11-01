@@ -25,6 +25,7 @@ triggerPhrases: ["sync memory from codex", "import external agent knowledge", "r
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
+  <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -174,6 +175,8 @@ After the run:
 2. If new filtering or import patterns emerged, propose them to the operator and append approved patterns to `fix-patterns.md` (L1).
 3. If recurring decisions were confirmed, distill principles and append to `learned-principles.md` (L2) with `confirmations: 1`. Increment existing principles if the same decision was made again.
 4. Commit knowledge file updates: `git add packages/forge/skills/fo/fo-memory-sync/ && git commit -m "chore: update fo-memory-sync knowledge from run"`.
+
+In a consumer workspace, allocate each new local entry as `L-K-NNNN` (max existing local ordinal + 1). Forge source entries keep `K-NNNN`; use `forge knowledge.conflicts.resolve --dry-run` before explicit collision remediation.
 
 ### 8. Final report
 

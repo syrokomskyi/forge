@@ -27,6 +27,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   recommended answers, no interview).</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -42,6 +43,8 @@ Grilling runs in one of two modes — the caller selects:
 Mode trigger: `emit` activates only when the invoking skill passes a queue manifest / ledger path; otherwise `interview`.
 
 Read `learned-principles.md` (L2) at the start of each session to improve recommended answers. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`. Principles with `confirmations >= 3` may be applied autonomously — but re-evaluate if context changes.
+
+When writing consumer-local knowledge entries, use the next `L-K-NNNN` ID (max existing local ordinal + 1). Upstream Forge source entries keep `K-NNNN`; do not hand-renumber collision cases — preview and use `forge knowledge.conflicts.resolve`.
 
 Interview me relentlessly about every aspect of this plan until we reach a shared understanding. Walk down each branch of the design tree, resolving dependencies between decisions one-by-one. For each question, provide your recommended answer.
 
