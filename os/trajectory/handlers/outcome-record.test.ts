@@ -110,6 +110,14 @@ describe("outcomes.jsonl append-only journal (RFC-1475 AC-7)", () => {
 });
 
 describe("unknown recall id (RFC-1475 AC-9)", () => {
+  test("a corrupt units index → TRAJ-02, never a raw exception", async () => {
+    const recallId = await seedIndexAndRecall();
+    await writeFile(join(TRAJ_DIR(), "units.yaml"), "units: [unclosed\n  - : :");
+    const res = await runOutcomeRecord(flags({ recall: recallId, helped: true }), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-02");
+  });
+
   test("TRAJ-05 — distinct from the index-staleness signal", async () => {
     await seedIndexAndRecall();
     const res = await runOutcomeRecord(flags({ recall: "R-9999-99-ffff", helped: true }), ctx());
@@ -127,5 +135,37 @@ describe("recalls.jsonl shared reader", () => {
     expect(res.data?.unitUpdates).toBeGreaterThan(0);
     const recalls = await readRecallsJournal(root);
     expect(recalls.records.some((r) => r.id === recallId)).toBe(true);
+  });
+});
+
+describe("journal hardening edges (review round-1)", () => {
+  test("a second label for the same recallId does not double-count `recalled`", async () => {
+    const recallId = await seedIndexAndRecall();
+    await runOutcomeRecord(flags({ recall: recallId, helped: true }), ctx());
+    await runOutcomeRecord(flags({ recall: recallId, hurt: true }), ctx());
+    const index = await readFile(join(TRAJ_DIR(), "units.yaml"), "utf8");
+    // replay semantics — one `recalled` per recall record, not per label.
+    expect(index).toContain("recalled: 1");
+    expect(index).toContain("helped: 1");
+    expect(index).toContain("hurt: 1");
+  });
+
+  test("wrong-shape YAML journal warns and migrates nothing", async () => {
+    await mkdir(TRAJ_DIR(), { recursive: true });
+    await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "- a\n- top-level\n- list\n");
+    const read = await readOutcomesJournal(root);
+    expect(read.records.length).toBe(0);
+    expect(read.warnings.some((w) => w.includes("not a outcomes journal"))).toBe(true);
+    const read2 = await readOutcomesJournal(root);
+    expect(read2.records.length).toBe(0);
+  });
+
+  test("non-object JSONL lines are malformed records — dropped like corrupt lines", async () => {
+    await mkdir(TRAJ_DIR(), { recursive: true });
+    await writeFile(OUTCOMES_JSONL(), `{"recallId":"R-1","helped":true}\n42\nnull\n{"recallId":"R-2","hurt":true}\n`);
+    const read = await readOutcomesJournal(root);
+    expect(read.records.length).toBe(2);
+    // The last line is a valid object — mid-file non-objects are skipped, not truncation.
+    expect(read.truncated).toBe(false);
   });
 });

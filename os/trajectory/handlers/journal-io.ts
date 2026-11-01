@@ -13,6 +13,7 @@ warns and skips — a partial JSONL is worse than none.
 <CHANGE_SUMMARY>
   <item>RFC-1475: appendJsonl/readJsonl + lazy YAML→JSONL migration for the trajectory journals</item>
   <item>RFC-1475: trajectory hardening — verdict-artifact binding, per-producer trust, TRAJ-02 staleness, JSONL journals</item>
+  <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,31 +45,53 @@ export interface JournalRead<T> {
   warnings: string[];
 }
 
+/** Absent-file errors are the only tolerable read failure — everything else propagates. */
+export function isEnoent(e: unknown): boolean {
+  return (e as NodeJS.ErrnoException)?.code === "ENOENT";
+}
+
+async function readFileOrNull(io: WorkspaceIO, absPath: string): Promise<string | null> {
+  try {
+    return await io.readFile(absPath);
+  } catch (e) {
+    if (isEnoent(e)) return null;
+    throw e;
+  }
+}
+
 /**
  * Append one JSON record as a single line — appendFile only, never rewrite.
  * An unterminated tail (crash mid-write) is quarantined with a newline first,
  * so the new record never glues onto the corrupt line and stays parseable.
  */
 export async function appendJsonl(io: WorkspaceIO, absPath: string, record: unknown): Promise<void> {
-  const tail = await io.readFile(absPath).catch(() => "");
+  const tail = (await readFileOrNull(io, absPath)) ?? "";
   const separator = tail.length > 0 && !tail.endsWith("\n") ? "\n" : "";
   await io.appendFile(absPath, `${separator}${JSON.stringify(record)}\n`);
 }
 
 /** Read a JSONL journal, tolerating a crash-truncated tail (TRAJ-06). */
 export async function readJsonl<T>(io: WorkspaceIO, absPath: string): Promise<JournalRead<T>> {
-  const src = await io.readFile(absPath).catch(() => null);
+  const src = await readFileOrNull(io, absPath);
   if (src === null || src.trim() === "") return { records: [], truncated: false, warnings: [] };
   const lines = src.split("\n").filter((l) => l.trim().length > 0);
   const records: T[] = [];
   let truncated = false;
   for (let i = 0; i < lines.length; i++) {
+    let parsed: unknown;
     try {
-      records.push(JSON.parse(lines[i]!) as T);
+      parsed = JSON.parse(lines[i]!);
     } catch {
-      if (i === lines.length - 1) truncated = true;
-      // Mid-file malformed lines are skipped silently — the journal survives.
+      parsed = undefined;
     }
+    // Only object records are admissible — a parseable scalar (null, 42) is a
+    // malformed journal record and takes the same corrupt-line path.
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      records.push(parsed as T);
+    } else if (i === lines.length - 1) {
+      truncated = true;
+    }
+    // Mid-file malformed lines are skipped silently — the journal survives.
   }
   return { records, truncated, warnings: [] };
 }
@@ -116,13 +139,34 @@ async function readJournalWithYamlMigration<T>(
   keyOf: (r: T) => string,
 ): Promise<JournalRead<T>> {
   const read = await readJsonl<T>(io, jsonlPath);
-  const yamlSrc = await io.readFile(yamlPath).catch(() => null);
+  let yamlSrc: string | null;
+  try {
+    yamlSrc = await io.readFile(yamlPath);
+  } catch (e) {
+    if (isEnoent(e)) return read;
+    read.warnings.push(
+      `trajectory journal migration skipped: ${path.basename(yamlPath)} is unreadable (${(e as Error).message}) — YAML left untouched`,
+    );
+    return read;
+  }
   if (yamlSrc === null) return read;
   let yamlRecords: T[] = [];
   try {
-    yamlRecords = ((yamlParse(yamlSrc) as Record<string, T[] | undefined> | null)?.[yamlKey] ?? []).filter(
-      (r): r is T => r !== null && typeof r === "object",
-    );
+    const parsed = yamlParse(yamlSrc) as Record<string, T[] | undefined> | null;
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      read.warnings.push(
+        `trajectory journal migration skipped: ${path.basename(yamlPath)} is not a ${yamlKey} journal — YAML left untouched`,
+      );
+      return read;
+    }
+    const list = parsed[yamlKey];
+    if (list === undefined) {
+      read.warnings.push(
+        `trajectory journal migration skipped: ${path.basename(yamlPath)} carries no ${yamlKey}: key — YAML left untouched`,
+      );
+      return read;
+    }
+    yamlRecords = (Array.isArray(list) ? list : []).filter((r): r is T => r !== null && typeof r === "object");
   } catch {
     read.warnings.push(
       `trajectory journal migration skipped: ${path.basename(yamlPath)} is unparseable — YAML left untouched`,
@@ -130,14 +174,18 @@ async function readJournalWithYamlMigration<T>(
     return read;
   }
   const seen = new Set(read.records.map(keyOf));
-  const toAppend = yamlRecords.filter((r) => !seen.has(keyOf(r)));
-  for (const record of toAppend) {
+  let appended = 0;
+  for (const record of yamlRecords) {
+    const key = keyOf(record);
+    if (seen.has(key)) continue;
+    seen.add(key);
     await appendJsonl(io, jsonlPath, record);
     read.records.push(record);
+    appended++;
   }
-  if (toAppend.length > 0) {
+  if (appended > 0) {
     read.warnings.push(
-      `trajectory journal migration: appended ${toAppend.length} record(s) from ${path.basename(yamlPath)} to ${path.basename(jsonlPath)}`,
+      `trajectory journal migration: appended ${appended} record(s) from ${path.basename(yamlPath)} to ${path.basename(jsonlPath)}`,
     );
   }
   return read;

@@ -6,7 +6,7 @@
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, basename } from "node:path";
 import { tmpdir } from "node:os";
 import { runTrajectoryIndex } from "./trajectory-index.ts";
 import { runTrajectoryRecall } from "./trajectory-recall.ts";
@@ -97,17 +97,15 @@ date: 2026-10-28`);
 
   test("a label on one bucket never leaks into another bucket", async () => {
     await runTrajectoryIndex(flags({}), ctx());
-    // Recall matching only the mission-class unit (task token hits only its recentActions/taskKind bucket — both share reconcile, so filter by returned ids instead).
+    // Recall k=1 returns the newest unit (mission class) — the hurt label
+    // lands only on its bucket; the other stays at the sparse-bucket 0.5.
     const recall = await runTrajectoryRecall(flags({ task: "reconcile", k: 1 }), ctx());
     await runOutcomeRecord(flags({ recall: recall.data?.recallId, hurt: true }), ctx());
     const re = await runTrajectoryRecall(flags({ task: "reconcile", k: 20 }), ctx());
     const mission = re.data?.units.find((u) => u.producer.sessionClass === "mission");
     const adhoc = re.data?.units.find((u) => u.producer.sessionClass === "adhoc");
-    // The hurt label lands only on the returned unit's bucket; the other bucket stays unlabeled (no trust: reason).
-    const missionTrust = mission?.reasons.find((r) => r.startsWith("trust:"));
-    const adhocTrust = adhoc?.reasons.find((r) => r.startsWith("trust:"));
-    expect(missionTrust ?? adhocTrust).toBeDefined();
-    expect(missionTrust === undefined || adhocTrust === undefined).toBe(true);
+    expect(mission?.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.00");
+    expect(adhoc?.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.50");
   });
 
   test("vendored unit scores under its origin's bucket — werkstatt labels never smear across", async () => {
@@ -125,7 +123,7 @@ date: 2026-10-28`);
     // Label the local bucket — the vendored unit does not match this task, so
     // the hurt label lands only on the returned werkstatt unit.
     const recall = await runTrajectoryRecall(flags({ task: "reconcile", k: 1 }), ctx());
-    expect(recall.data?.units[0]?.producer.workshopId).toBe("werkstatt");
+    expect(recall.data?.units[0]?.producer.workshopId).toBe(basename(root));
     await runOutcomeRecord(flags({ recall: recall.data?.recallId, hurt: true }), ctx());
     const re = await runTrajectoryRecall(flags({ task: "reconcile", k: 20 }), ctx());
     const vendored = re.data?.units.find((u) => u.id === "trajectory:vendored");
@@ -134,11 +132,11 @@ date: 2026-10-28`);
     expect(vendoredTrust).toBe("trust:0.75");
   });
 
-  test("unlabeled bucket scores neutral — no trust: reason (sparse-bucket 0.5)", async () => {
+  test("unlabeled bucket scores at the neutral 0.5 — never below a fresh producer", async () => {
     await runTrajectoryIndex(flags({}), ctx());
     const re = await runTrajectoryRecall(flags({ task: "reconcile", k: 20 }), ctx());
     for (const u of re.data?.units ?? []) {
-      expect(u.reasons.find((r) => r.startsWith("trust:"))).toBeUndefined();
+      expect(u.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.50");
     }
   });
 
@@ -148,7 +146,8 @@ date: 2026-10-28`);
     await runTrajectoryIndex(flags({ export: out }), ctx());
     const shard = await readFile(join(root, out), "utf8");
     expect(shard).toContain("producerStats:");
-    expect(shard).toContain("workshopId: werkstatt");
+    expect(shard).toContain(`workshopId: ${basename(root)}`);
+    expect(shard).toContain(`exportedFrom: ${basename(root)}`);
     expect(shard).toContain("sessionClass: mission");
     expect(shard).toContain("sessionClass: adhoc");
   });
