@@ -25,8 +25,13 @@ forge agents.generate
 forge rfc.list
 forge rfc.validate [--json]
 forge rfc.create --title <title> --kind <kind> [--satisfies DNA-N]
+forge rfc.acceptance.run --id <rfc-id>
 forge rfc.verification.emit --id <rfc-id>
+forge rfc.evidence.sync --id <rfc-id>
 forge rfc.implement.stamp --id <rfc-id> --implementation-commit <sha>
+forge rfc.supersede.propose --id <rfc-id>
+forge rfc.decision-log.generate
+forge rfc.verify.workspace --id <rfc-id>
 ```
 
 ## ADR
@@ -110,6 +115,8 @@ forge session.save
 forge session.archive
 forge session.validate
 forge session.list
+forge session.audit
+forge session.audit.report
 forge metrics.aggregate
 ```
 
@@ -142,4 +149,125 @@ forge package.health
 
 ```sh
 forge autonomy.validate
+```
+
+## Authority delegations (RFC-1336)
+
+```sh
+forge authority.delegate
+forge authority.delegate.revoke
+forge authority.delegation.list
+forge authority.delegation.validate
+```
+
+## Agent delegation tiers (RFC-1464)
+
+```sh
+forge agent.delegate
+forge agent.delegate.tiers.validate
+```
+
+## Resolution doors (RFC-1465)
+
+```sh
+forge resolver.doors.audit
+```
+
+## Instruction budget (RFC-1466)
+
+```sh
+forge instructions.budget.validate
+forge scar.migrate
+```
+
+## Knowledge
+
+```sh
+forge knowledge.rebuild
+forge knowledge.authz.probe
+forge knowledge.conflicts.resolve
+```
+
+## Gate probes (RFC-1469)
+
+```sh
+forge gate.probe
+forge gate.probe.catalog
+```
+
+## Context assembly (RFC-1470)
+
+```sh
+forge context.index.build
+forge context.assemble
+forge context.slate.eval
+```
+
+## Trajectory memory (RFC-1472)
+
+```sh
+forge trajectory.index
+forge trajectory.recall
+forge trajectory.outcome.record
+```
+
+## Check counters (RFC-1473/1474)
+
+```sh
+forge checks.counters.validate
+forge checks.counters.export
+forge checks.contribution.report
+```
+
+## YAML scalars (RFC-1478)
+
+```sh
+forge yaml.scalars.validate
+```
+
+## Conformance (RFC-1365)
+
+```sh
+forge conformance.run
+forge conformance.validate
+```
+
+## Formal proofs (RFC-1391)
+
+```sh
+forge proof.check
+```
+
+## Frictions (RFC-1433)
+
+```sh
+forge friction.validate
+```
+
+## Queue (RFC-1140)
+
+```sh
+forge queue.validate
+```
+
+## Werkstatt adapter
+
+```sh
+forge werkstatt.lock.status
+forge werkstatt.lock.recover
+forge werkstatt.operation.validate
+forge werkstatt.session.open
+forge werkstatt.session.close
+forge werkstatt.session.status
+```
+
+## Explorations & notes
+
+```sh
+forge exploration.list
+forge exploration.show
+forge exploration.archive
+forge note.link.validate
+forge note.frontmatter.validate
+forge note.orphan.detect
 ```
