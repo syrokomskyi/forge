@@ -160,7 +160,7 @@ describe("computeRunOutcomes", () => {
       contract: "gate",
       rules,
       diagnosticRuleIds: new Set(["gate/GATE-CMP-01"]),
-      at: "t",
+      at: "2026-11-01T00:00:00.000Z",
     });
     expect(records[0]!.outcome).toBe("diagnostic");
     expect(records[1]!.outcome).toBe("pass");
@@ -173,7 +173,7 @@ describe("computeRunOutcomes", () => {
       rules: ["COUNT-01", "COUNT-02"],
       diagnosticRuleIds: new Set(["COUNT-01"]),
       outcome: "ensured",
-      at: "t",
+      at: "2026-11-01T00:00:00.000Z",
     });
     expect(records.every((r) => r.outcome === "ensured")).toBe(true);
     expect(records.map((r) => r.ruleId)).toEqual(["checks/COUNT-01", "checks/COUNT-02"]);
@@ -181,7 +181,7 @@ describe("computeRunOutcomes", () => {
 
   test("undefined/empty rules yield no records", () => {
     expect(
-      computeRunOutcomes({ runId: "r", contract: "c", rules: undefined, diagnosticRuleIds: new Set(), at: "t" }),
+      computeRunOutcomes({ runId: "r", contract: "c", rules: undefined, diagnosticRuleIds: new Set(), at: "2026-11-01T00:00:00.000Z" }),
     ).toEqual([]);
   });
 });

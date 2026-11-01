@@ -17,8 +17,9 @@ earning|silent|redundant|guard (guard declared via checksContribution.guardRules
   <item>RFC-1473: apply r2 repairs — bare-sequence frictions root, real contract names in escape mapping, stale-path --check test</item>
   <item>RFC-1474: per-rule check-execution counters
 
-Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage 8/14). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply review findings (F-1..F-9)</item>
+  <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -116,13 +117,14 @@ export async function runContributionReport(
   // runIds ordered by each run's first `at`.
   const { records: counterRecords } = await readCountersJournal(root);
   const computeWindowStats = (source: readonly CheckCounterRecord[]) => {
-    const runFirstAt = new Map<string, string>();
+    const runFirstAt = new Map<string, number>();
     for (const r of source) {
+      const atMs = Date.parse(r.at);
       const cur = runFirstAt.get(r.runId);
-      if (cur === undefined || r.at < cur) runFirstAt.set(r.runId, r.at);
+      if (cur === undefined || atMs < cur) runFirstAt.set(r.runId, atMs);
     }
-    const orderedRuns = [...runFirstAt.keys()].sort((a, b) =>
-      runFirstAt.get(a)! < runFirstAt.get(b)! ? -1 : 1,
+    const orderedRuns = [...runFirstAt.keys()].sort(
+      (a, b) => runFirstAt.get(a)! - runFirstAt.get(b)!,
     );
     const windowRunIds = orderedRuns.slice(-windowN);
     const windowRunSet = new Set(windowRunIds);
@@ -131,8 +133,13 @@ export async function runContributionReport(
 
     const stats = new Map<string, CounterStats>();
     let to = "";
+    let toMs = Number.NEGATIVE_INFINITY;
     for (const r of windowRecords) {
-      if (r.at > to) to = r.at;
+      const atMs = Date.parse(r.at);
+      if (atMs > toMs) {
+        toMs = atMs;
+        to = r.at;
+      }
       const s = stats.get(r.ruleId) ?? { emitted: 0, evaluated: 0, lastFiredAt: "", lastDiagRunIdx: -1, evalRunIdxs: new Set<number>() };
       if (r.outcome !== "skipped") {
         s.evaluated++;
@@ -140,7 +147,7 @@ export async function runContributionReport(
       }
       if (r.outcome === "diagnostic") {
         s.emitted++;
-        if (r.at > s.lastFiredAt) s.lastFiredAt = r.at;
+        if (s.lastFiredAt === "" || atMs > Date.parse(s.lastFiredAt)) s.lastFiredAt = r.at;
         s.lastDiagRunIdx = Math.max(s.lastDiagRunIdx, runIndex.get(r.runId) ?? -1);
       }
       stats.set(r.ruleId, s);
