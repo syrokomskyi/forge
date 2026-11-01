@@ -7,18 +7,19 @@ per-producer trust (helped/(helped+hurt)).
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: TRAJ-05 unknown recall id, append-only outcomes.jsonl, recalls.jsonl lookup, sourceWatermark-preserving units.yaml update</item>
   <item>RFC-1472: trajectory.outcome.record helped/hurt labels → utilityScore + producerTrust</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
+  <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
+  <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
-import { appendJsonl, isEnoent, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
+import { appendJsonl, isEnoent, journalUnitIds, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
 import { isShardUnit } from "./trajectory-index.ts";
 import type {
@@ -124,7 +125,7 @@ export async function runOutcomeRecord(
   // second label for the same recallId must not double-count until rebuild.
   const firstLabel = !outcomesRead.records.some((o) => o.recallId === recallId);
   let updated = 0;
-  for (const uid of recall.unitsReturned ?? []) {
+  for (const uid of journalUnitIds(recall)) {
     const u = units.find((x) => x.id === uid);
     if (!u) continue;
     if (firstLabel) u.usedBy.recalled++;

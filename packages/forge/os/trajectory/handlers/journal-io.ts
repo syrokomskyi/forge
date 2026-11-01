@@ -15,6 +15,7 @@ warns and skips — a partial JSONL is worse than none.
   <item>RFC-1475: trajectory hardening — verdict-artifact binding, per-producer trust, TRAJ-02 staleness, JSONL journals</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
+  <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
 </CHANGE_SUMMARY>
 */
 
@@ -98,6 +99,16 @@ export async function readJsonl<T>(io: WorkspaceIO, absPath: string): Promise<Jo
 }
 
 const TRAJECTORY_DIR = path.join("docs", ".index", "trajectory");
+
+/**
+ * Normalize a journal record's `unitsReturned` — the journal is untrusted
+ * input: non-array values, non-string elements, and duplicate ids would
+ * throw or double-count at consumption. Returns a deduped string list.
+ */
+export function journalUnitIds(r: { unitsReturned?: unknown }): string[] {
+  if (!Array.isArray(r.unitsReturned)) return [];
+  return [...new Set(r.unitsReturned.filter((x): x is string => typeof x === "string"))];
+}
 
 /**
  * Read the outcomes journal: outcomes.jsonl plus a lazy one-time migration
