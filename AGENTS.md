@@ -49,6 +49,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeTrajectoryModule` | `trajectory.index`, `trajectory.recall`, `trajectory.outcome.record` — trajectory memory (RFC-1472/1475/1480) | `os/trajectory/` |
 | `forgeChecksModule` | `checks.counters.validate`, `checks.counters.export`, `checks.contribution.report` — per-rule firing counters + marginal-contribution report (RFC-1473/1474) | `os/checks/` |
 | `forgeYamlModule` | `yaml.scalars.validate` — lints authored YAML for unquoted plain-scalar colon-space traps (RFC-1478, F-0006): YAML-SCALAR-01 flags the loud one-line shape and the silent flat→nested-map continuation; .md scans frontmatter only; quoted scalars, block scalars, flow collections, anchors, comments, generated/template files excluded. `--files` error-tier ad-hoc; `werkstatt run yaml.scalars.validate --all` errors on governance surfaces and warns elsewhere. The shared `collectScalarTraps` backs the ecosystem.commit EC-25 staged-YAML gate. | `os/yaml/` |
+| `forgeFlowModule` | `flow.check`, `flow.install` — fixed branch model with guard hooks and repository adoption (RFC-1486) | `os/flow/` |
 
 Module notes:
 
@@ -63,6 +64,15 @@ Every evaluated rule is journaled by the kernel executor into `docs/.index/check
 `session.audit` runs deterministic Stage-A detectors over `docs/sessions/*.md` + `archive/` — AUDIT-01/02 coverage caveats (.raw present, --deep without modelBinding), AUDIT-10 circumvention (denied gate → bypass route), AUDIT-11 blocker deception, AUDIT-12 generated-file edit, AUDIT-13 denied retry, AUDIT-14 false completion claim — and writes `docs/sessions/audit/<id>.audit.yaml` sidecars (deterministic `auditedAt` = session date). `session.audit.report` aggregates the sidecars into `docs/metrics/session-audit.generated.yaml` + links finding classes to frictions.
 
 `gate.probe` injects `docs/gate-probes/<contract>/<rule>/fixture.yaml` at its real workspace path (backup → invoke → restore) and proves the bound check still fires on its seeded violation — a silent pass is a dead gate. `gate.probe.catalog` reports per-contract coverage + unprobed error-severity rules.
+
+## Fixed branch model (RFC-1486)
+
+- Branch classes: protected `develop`/`main`, and conforming `auto/<kind>-<YYMMDD>-<NN>-<slug>` where `kind` is `task|session|fix`, `YYMMDD` a real UTC calendar date, `NN` a 01–99 sequence, and `slug` lowercase alphanumeric words joined by single hyphens (3–48 chars).
+- `flow.check` audits the checkout (FLOW-01..05): stray local branches, missing `develop`, guard absent or drifting from the shipped asset, `main` commits absent from `develop` (warning), malformed `forge.generated.yaml`. `flow.install` plans and executes adoption — creates/fast-forwards `develop`, pins `core.hooksPath` to `hooks`, installs the guard, and lands one adoption commit.
+- The guard is portable POSIX `sh` at `os/flow/assets/flow-guard.sh`, installed byte-identically as `hooks/flow-guard.sh` plus a managed `pre-commit` block. It refuses direct commits on protected `develop`/`main` (FLOW-GUARD-01), branch names outside the grammar (FLOW-GUARD-02), commits on a detached HEAD outside a rebase or cherry-pick (FLOW-GUARD-03), and a `FORGE_FLOW_OP` value outside the closed vocabulary (FLOW-GUARD-04).
+- Only Forge flow commands set `FORGE_FLOW_OP`. Agents never set it manually, never commit with `--no-verify`, and never hand-edit the managed hook block — repair goes through `flow.install`.
+- A repo with a valid `forge.generated.yaml` (`schema: forge/generated@1`) is exempt from the model; an invalid marker is an error, never an exemption. Repos without `forge.yaml` are ungoverned.
+- The model is dormant until the wave-4 switch-over — shipping the module does not adopt this or any other repository.
 
 ## Golden contract conformance (RFC-1365, DNA-115)
 
