@@ -18,6 +18,7 @@ earning|silent|redundant|guard (guard declared via checksContribution.guardRules
   <item>RFC-1474: per-rule check-execution counters
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage 8/14). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+  <item>RFC-1474: check-execution counters — apply review findings (F-1..F-9)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -68,7 +69,7 @@ export interface ContributionData {
 
 
 interface FiredRule { uniqueSignatures: Set<string>; sessions: number; firedOn: Set<string> }
-interface CounterStats { emitted: number; evaluated: number; lastFiredAt: string; lastDiagRunIdx: number }
+interface CounterStats { emitted: number; evaluated: number; lastFiredAt: string; lastDiagRunIdx: number; evalRunIdxs: Set<number> }
 
 export async function runContributionReport(
   input: ForgeCommandInput,
@@ -132,8 +133,11 @@ export async function runContributionReport(
     let to = "";
     for (const r of windowRecords) {
       if (r.at > to) to = r.at;
-      const s = stats.get(r.ruleId) ?? { emitted: 0, evaluated: 0, lastFiredAt: "", lastDiagRunIdx: -1 };
-      if (r.outcome !== "skipped") s.evaluated++;
+      const s = stats.get(r.ruleId) ?? { emitted: 0, evaluated: 0, lastFiredAt: "", lastDiagRunIdx: -1, evalRunIdxs: new Set<number>() };
+      if (r.outcome !== "skipped") {
+        s.evaluated++;
+        s.evalRunIdxs.add(runIndex.get(r.runId) ?? -1);
+      }
       if (r.outcome === "diagnostic") {
         s.emitted++;
         if (r.at > s.lastFiredAt) s.lastFiredAt = r.at;
@@ -197,8 +201,11 @@ export async function runContributionReport(
     const candidates: VariantCandidate[] = [];
     for (const r of rules) {
       const f = fired.get(r.id) ?? { uniqueSignatures: new Set<string>(), sessions: 0, firedOn: new Set<string>() };
-      const cs = ws.stats.get(`${r.contract}/${r.id}`) ?? { emitted: 0, evaluated: 0, lastFiredAt: "", lastDiagRunIdx: -1 };
-      const zeroStreak = cs.lastDiagRunIdx === -1 ? ws.runCount : ws.runCount - 1 - cs.lastDiagRunIdx;
+      const cs = ws.stats.get(`${r.contract}/${r.id}`) ?? { emitted: 0, evaluated: 0, lastFiredAt: "", lastDiagRunIdx: -1, evalRunIdxs: new Set<number>() };
+      // Streak counts evaluation opportunities, not the whole run universe —
+      // operational commands journal their own rules, so foreign runs must not
+      // inflate a rule's silence (RFC-1474 review F-6).
+      const zeroStreak = [...cs.evalRunIdxs].filter((i) => i > cs.lastDiagRunIdx).length;
       const escapeCount = Object.keys(contractMappings).length > 0
         ? frictions.filter((fr) => contractMappings[fr.category ?? ""] === r.contract).length
         : null;
@@ -216,7 +223,7 @@ export async function runContributionReport(
     }
     const metrics = {
       schema: "forge/check-contribution@1",
-      generatedAt: ws.windowTo || "no-window",
+      generatedAt: ws.windowTo || "no-data",
       window: { runs: ws.runCount, coverage: ws.coverage, effective: effectiveIds.length, observable: ws.evaluated.length },
       rules: recs,
       variantCandidates: candidates,

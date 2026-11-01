@@ -23,6 +23,7 @@ readCountersJournal.</purpose>
   <item>RFC-1474: per-rule check-execution counters
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage 8/14). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+  <item>RFC-1474: check-execution counters — apply review findings (F-1..F-9)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -46,7 +47,7 @@ export const checkCounterRecordSchema = z
     contract: z.string().min(1),
     outcome: z.enum(CHECK_COUNTER_OUTCOMES),
     /** ISO-8601 evaluation timestamp — informational; file order is canonical. */
-    at: z.string().min(1),
+    at: z.string().datetime(),
   })
   .strict();
 export type CheckCounterRecord = z.infer<typeof checkCounterRecordSchema>;
@@ -73,7 +74,7 @@ export async function recordRuleEvaluations(
 
 export interface CountersJournalRead {
   records: CheckCounterRecord[];
-  /** Non-tail lines that failed JSON/schema parsing — COUNT-01 surface. */
+  /** Lines that failed JSON or schema parsing — COUNT-01 surface. */
   malformedLines: number;
   /** The final line was a partial (crash-truncated) record — dropped, not fatal. */
   truncatedTail: boolean;
@@ -81,11 +82,22 @@ export interface CountersJournalRead {
 
 /**
  * Tolerant reader: absent file → empty; each line parses against the strict
- * record schema; an unparseable FINAL line counts as a crash-truncated tail
- * (dropped silently), unparseable middle lines count as malformed.
+ * record schema; a JSON-parse failure on the FINAL line counts as a
+ * crash-truncated tail (dropped silently), everything else unparseable —
+ * including a schema-invalid tail — counts as malformed. Read errors other
+ * than ENOENT propagate: an integrity gate must not green on a journal it
+ * could not read.
  */
 export async function readCountersJournal(workspaceRoot: string): Promise<CountersJournalRead> {
-  const src = await readFile(join(workspaceRoot, COUNTERS_JOURNAL_PATH), "utf8").catch(() => "");
+  let src: string;
+  try {
+    src = await readFile(join(workspaceRoot, COUNTERS_JOURNAL_PATH), "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { records: [], malformedLines: 0, truncatedTail: false };
+    }
+    throw error;
+  }
   if (src === "") return { records: [], malformedLines: 0, truncatedTail: false };
   const lines = src.split("\n");
   if (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
@@ -99,15 +111,16 @@ export async function readCountersJournal(workspaceRoot: string): Promise<Counte
       continue;
     }
     let parsed: unknown;
+    let jsonFailed = false;
     try {
       parsed = JSON.parse(line);
     } catch {
-      parsed = undefined;
+      jsonFailed = true;
     }
-    const validated = checkCounterRecordSchema.safeParse(parsed);
-    if (validated.success) {
+    const validated = jsonFailed ? undefined : checkCounterRecordSchema.safeParse(parsed);
+    if (validated?.success) {
       records.push(validated.data);
-    } else if (i === lines.length - 1) {
+    } else if (i === lines.length - 1 && jsonFailed) {
       truncatedTail = true;
     } else {
       malformedLines++;
