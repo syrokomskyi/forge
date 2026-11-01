@@ -1,3 +1,18 @@
+/*
+<MODULE_CONTRACT>
+<purpose>The eslintconfig flat-config for forge — tseslint recommended over src/os trees plus the local no-as-any rule.</purpose>
+<non-goals>
+  <item>Do not carry repo-wide rules — root and per-package configs own their own scope.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>no-as-any is a narrow local rule — `as any` assertions blocked, plain `any` annotations allowed.</item>
+</KEY_DECISIONS>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
+</CHANGE_SUMMARY>
+*/
+
 import tseslint from "typescript-eslint";
 
 /** Narrow rule: blocks only `as any` (TSAsExpression → TSAnyKeyword), not every `any` annotation. */

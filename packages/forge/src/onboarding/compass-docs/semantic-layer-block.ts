@@ -12,7 +12,7 @@
   <item>Regions beat stray sentinels — the block appears at most once per file.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>created — shared read-first block renderer, marker-guarded injection for hand-written AGENTS.md, and ensureSemanticLayerBlock for renders that bypass the fallback template (consumer field report follow-up to RFC-1253).</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 

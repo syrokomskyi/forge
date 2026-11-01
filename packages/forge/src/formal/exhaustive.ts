@@ -14,8 +14,8 @@ caller derives the verdict from the report — never from an exit code alone.
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Two-pass enumeration: a domain that cannot be iterated twice with equal counts is non-deterministic (one-shot generator, seeded source) and is refused — exhaustive proof requires reproducible coverage.</item>
-  <item>Report mode suppresses the throw so a refuted run still writes its counterexample report instead of dying as an unparseable test crash.</item>
+  <item>Two-pass enumeration: a domain not iterable twice with equal counts is non-deterministic and refused.</item>
+  <item>Report mode suppresses the throw — a refuted run still writes its counterexample report.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1391: exhaustive runner + exhaustiveVerdict count/failure gate.</item>
@@ -28,6 +28,7 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 

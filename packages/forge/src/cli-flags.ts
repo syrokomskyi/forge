@@ -11,13 +11,9 @@ with `TypeError: targetId.toLowerCase is not a function`.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Standalone port of kernel argv resolution for the forge CLI (RFC-0260 lineage): strict KERNEL-FLAG-01/02/03 + KERNEL-ARG-01 diagnostics for schema-carrying commands, legacy heuristic parse (with KERNEL-ARG-01) for schema-less commands; repeated single-value string flags diagnose instead of silently promoting to an array that crashes handlers; indexOf-based inline-value split preserves values containing "=" that split("=", 2) silently truncated.</item>
-  <item>Session-retro 2026-10-08: string[] flags greedily consume consecutive
-bare tokens until the next --flag (`--files a b` → ["a","b"]), matching the
-kernel argv parser; bare positionals without a preceding string[] flag still
-emit KERNEL-ARG-01.</item>
   <item>RFC-1389 (port of RFC-1381): bare `-m` rewrites to `--message` when the merged schema declares `message` — other `-x` tokens stay KERNEL-ARG-01, now with honest hints (a known declared short alias, the command's single unsatisfied required non-boolean flag, or a truthful see-`--help` fallback) instead of the fabricated `--id <token>` template; alias-shaped tokens are never consumed as flag values.</item>
   <item>RFC-1395: port --output → --json alias into forge CLI parser</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 
