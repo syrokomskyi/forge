@@ -52,11 +52,12 @@ Forge is project-agnostic. Stack profiles provide ready-made starting points.
 
 | Profile       | Use case                                              |
 | ------------- | ----------------------------------------------------- |
-| `forge-shell` | Governance-only projects, libraries, non-web projects |
-| `typescript`  | TypeScript monorepo with best-practice validators     |
-| `phaser-game` | Browser games, interactive experiences                |
-| `godot-game`  | Desktop/mobile games with Godot 4.x + C#              |
-| `knowledge`   | Evidence-backed knowledge bases                       |
+| `forge-shell`   | Governance-only projects, libraries, non-web projects |
+| `typescript`    | TypeScript monorepo with best-practice validators     |
+| `phaser-game`   | Browser games, interactive experiences                |
+| `godot-game`    | Desktop/mobile games with Godot 4.x + C#              |
+| `knowledge`     | Evidence-backed knowledge bases                       |
+| `site-workshop` | Per-client Werkstatt workshops                        |
 
 ```sh
 # List available profiles
@@ -135,7 +136,7 @@ Agents can change. Models can change. IDEs can change. Engineering rules stay wi
 
 ## What you get
 
-- **37 skills** — idea-to-RFC pipeline, grilling, preferences, skill authoring
+- **38 skills** — idea-to-RFC pipeline, grilling, preferences, skill authoring
 - **RFC workflow** — create, validate, list, graph, archive, acceptance probes
 - **ADR workflow** — lightweight architectural decision records
 - **Spec vendoring** — vendor external specs as immutable snapshots
@@ -143,6 +144,12 @@ Agents can change. Models can change. IDEs can change. Engineering rules stay wi
 - **Workflow linting** — validate `.agents/workflows/` frontmatter
 - **Stack scaffolding** — pnpm + Turborepo monorepo from a profile
 - **Bindings contract** — de-hardcode project-specific commands via `forge.yaml`
+- **Session audit** — deterministic detectors over saved agent sessions: circumvention, blocker deception, false completion claims
+- **Trajectory memory** — extract proven procedures from verified sessions and recall them at decision points
+- **Context assembly** — budgeted, ranked context slates for a task description
+- **Gate probes** — prove governance gates still fire on seeded violations
+- **YAML scalar lint** — catch unquoted colon-space traps before they corrupt frontmatter
+- **Golden conformance** — run producer→consumer contract conformance across declared surfaces
 - **Agent operating model** — EXPLORE/ROUTINE/GOVERNED work modes with explicit authority boundaries (the operator owns intent and significant decisions; the agent owns implementation inside them, and escalates rather than guesses when a boundary is crossed), a proportionate verification portfolio with tiers (tests are one tool — rigor scales to risk, not a mandatory-TDD rule; skills declare `notApplicableWhen`/`costNotes` so a mismatching skill is not force-applied), and separated completion vocabulary (IMPLEMENTED / VERIFIED / ACCEPTED / RELEASED), shipped as a shared skill and synced by `forge upgrade`
 - **Doctor** — project health check
 - **Upgrade** — additive, idempotent skill and config sync
@@ -244,9 +251,9 @@ Full API reference: [docs/reference/programmatic-api.md](docs/reference/programm
 | Directory | Purpose |
 | --- | --- |
 | `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
-| `os/` | ForgeModule registrations. `compass` and `werkstatt` are fully autonomous — all handlers inlined. |
+| `os/` | ForgeModule registrations. All `os/` modules are autonomous except `werkstatt` — the only adapter importing `@warpgogol/werkstatt-engine`. |
 | `bin/` | CLI entrypoint (`forge` command). |
-| `skills/` | 37 skill definitions (29 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
+| `skills/` | 38 skill definitions (30 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
 | `profiles/` | Stack profiles for `scaffold`. |
 
 ---

@@ -11,6 +11,7 @@ A stack profile defines the project scaffold: directory structure, dependencies,
 | `phaser-game` | Browser game | `games/my-game` | Browser games, interactive experiences |
 | `godot-game` | Godot game | `games/my-game` | Desktop/mobile games, Godot-based projects |
 | `knowledge` | Knowledge system | `knowledge/my-kb` | Evidence-backed knowledge bases |
+| `site-workshop` | Client workshop | — | Per-client Werkstatt workshops (RFC-1125) |
 
 ## Using a profile
 

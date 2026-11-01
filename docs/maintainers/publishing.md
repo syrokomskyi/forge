@@ -12,12 +12,18 @@
 From the werkstatt monorepo root:
 
 ```sh
-# 1. Bump the version in packages/forge/package.json
-# 2. Run the extraction (extracts + commits + pushes to github.com:syrokomskyi/forge.git)
-pnpm exec repo-extract --config packages/forge/extract.config.yaml --verbose
-
-# 3. CI picks up the push and publishes to npm automatically
+pnpm run publish:forge patch   # or: minor | ALLOW_MAJOR_BUMP=1 pnpm run publish:forge major
 ```
+
+`scripts/publish-forge.mjs` (RFC-1252) is the **only** supported export path. In one run it:
+
+1. Bumps `packages/forge/package.json` + `forge.yaml` `syncedVersion` and commits the bump into HEAD — `--from-head` exports committed content only, so an uncommitted bump would silently export the old version.
+2. Runs `repo-extract --from-head --no-push` into `../packages/forge`.
+3. Verifies the extracted repo with `scripts/verify-extract.mjs` — the same script surface standalone CI runs (install, lint, typecheck, build:check, test, build) plus a changelog gate that requires a `[<version>]` section in `CHANGELOG.md`.
+4. Pushes to `github.com:syrokomskyi/forge.git`. On a non-fast-forward rejection it reconciles once with `merge -s ours` (the local tree stays the authoritative export) — never force-push.
+5. CI on GitHub picks up the push and publishes to npm automatically.
+
+**Do NOT invoke `repo-extract` directly for releases** — it bypasses verification and the clean-source contract. `--skip-verify` exists only as an explicit, loud operator override.
 
 After CI completes, verify the new version on [npmjs.com/package/@warpgogol/forge](https://www.npmjs.com/package/@warpgogol/forge).
 
