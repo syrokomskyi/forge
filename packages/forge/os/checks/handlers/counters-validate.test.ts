@@ -125,6 +125,17 @@ describe("checks.counters.validate", () => {
     expect(diag).toBeDefined();
   });
 
+  test("COUNT-02 compares numerically — second-precision ISO does not false-flag against millisecond stamps", async () => {
+    // Lexically "...:00Z" > "...:00.500Z" ('Z' > '.'), but numerically
+    // 23:00:00.000 < 23:00:00.500 — a lexical compare would flag a clean tail.
+    await seedJournal([
+      JSON.stringify(rec({ at: "2026-10-31T23:00:00Z" })),
+      JSON.stringify(rec({ ruleId: "gate/GATE-CMP-02", at: "2026-10-31T23:00:00.500Z" })),
+    ]);
+    const result = await runCountersValidate(flags(), ctx());
+    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-02")).toBe(false);
+  });
+
   test("crash-truncated tail is tolerated (no diagnostic, records still gated)", async () => {
     await mkdir(join(root, "docs", ".index", "checks"), { recursive: true });
     await appendFile(

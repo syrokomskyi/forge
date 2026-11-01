@@ -12,7 +12,8 @@ record is tolerated (dropped, still surfaced as truncatedTail in data).
   <item>RFC-1474: checks.counters.validate — COUNT-01 unknown-rule/malformed + COUNT-02 non-monotonic gates</item>
   <item>RFC-1474: per-rule check-execution counters
 
-Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage 8/14). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+  <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -96,8 +97,12 @@ export async function runCountersValidate(
   }
 
   let prevAt = "";
+  let prevAtMs = Number.NEGATIVE_INFINITY;
   records.forEach((r, i) => {
-    if (prevAt !== "" && r.at < prevAt) {
+    const atMs = Date.parse(r.at);
+    // Numeric ordering, not lexical — z.datetime() admits second-precision
+    // ISO whose string sort would misorder against millisecond stamps.
+    if (prevAt !== "" && atMs < prevAtMs) {
       diagnostics.push({
         ruleId: "COUNT-02",
         severity: "error",
@@ -105,7 +110,10 @@ export async function runCountersValidate(
         file: "docs/.index/checks/counters.jsonl",
       });
     }
-    if (r.at > prevAt) prevAt = r.at;
+    if (atMs > prevAtMs) {
+      prevAtMs = atMs;
+      prevAt = r.at;
+    }
   });
 
   const errors = diagnostics.filter((d) => d.severity === "error").length;

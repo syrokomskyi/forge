@@ -13,7 +13,8 @@ wall-clock. --check diffs the computed artifact against the committed file
   <item>RFC-1474: checks.counters.export — deterministic journal projection + COUNT-03 --check gate</item>
   <item>RFC-1474: per-rule check-execution counters
 
-Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage 8/14). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
+  <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -66,10 +67,15 @@ interface CountersArtifact {
 function computeArtifact(records: readonly CheckCounterRecord[]): CountersArtifact {
   const runIds = new Set<string>();
   let generatedAt = "";
+  let generatedAtMs = Number.NEGATIVE_INFINITY;
   const totals = new Map<string, CounterRuleTotal & { lastSeq: number }>();
   records.forEach((r, seq) => {
     runIds.add(r.runId);
-    if (r.at > generatedAt) generatedAt = r.at;
+    const atMs = Date.parse(r.at);
+    if (atMs > generatedAtMs) {
+      generatedAtMs = atMs;
+      generatedAt = r.at;
+    }
     const t = totals.get(r.ruleId) ?? {
       ruleId: r.ruleId,
       contract: r.contract,
