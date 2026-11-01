@@ -1,10 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Append-only sync for declared skill knowledge files. Copies files that are
-missing at the destination, merges cumulative K-NNNN files by entry-ID union (local
-entries always win), and never overwrites existing local content. Fixes the data-loss
-bug where forge.upgrade wiped project-accumulated knowledge entries by overwriting
-the synced copy with the package version.</purpose>
+<purpose>Append-only sync and explicit collision planning for declared skill knowledge files. Copies files that are missing at the destination, merges cumulative entries by ID union (local entries always win), and resolves K-ID collisions only through an explicit remediation path.</purpose>
 <non-goals>
   <item>Do not validate entry metadata — SKILL-19/SKILL-20 handle schema checks.</item>
   <item>Do not sync SKILL.md itself — callers handle that separately.</item>
@@ -13,14 +9,16 @@ the synced copy with the package version.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial append-only knowledge sync — merge by entry-ID union, local wins conflicts, skip divergent non-cumulative files, recurse into declared directories.</item>
+  <item>RFC-1481: pure conflict planner — preserve upstream canonical IDs, move divergent local entries into L-K-NNNN, deduplicate by exact title/body, and remap same-file references.</item>
 </CHANGE_SUMMARY>
 */
 
 import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
-import { parseKnowledgeFile } from "./parse.ts";
+import { parseKnowledgeContent, parseKnowledgeFile } from "./parse.ts";
 import { serializeKnowledgeFile } from "./serialize.ts";
 import type { KnowledgeEntry, ParsedKnowledgeFile } from "./schema.ts";
+import type { WorkspaceIO } from "../types.ts";
 
 export type KnowledgeSyncAction = "copied" | "merged" | "unchanged" | "skipped";
 
@@ -35,6 +33,261 @@ export interface KnowledgeSyncResult {
 export interface KnowledgeSyncPlan extends KnowledgeSyncResult {
   /** Serialized content to write at the destination, or null when no write is needed. */
   content: string | null;
+}
+
+export interface KnowledgeConflictResolution {
+  file: string;
+  renumbered: { from: string; to: string }[];
+  deduped: { localId: string; canonicalId: string }[];
+  adopted: string[];
+}
+
+export type KnowledgeConflictUnresolvedReason =
+  | "non-cumulative"
+  | "parse-failure"
+  | "ambiguous-identity"
+  | "unmapped-reference";
+
+export interface KnowledgeConflictIssue {
+  file: string;
+  reason: KnowledgeConflictUnresolvedReason;
+}
+
+export interface KnowledgeConflictResolutionPlan {
+  content: string | null;
+  resolution: KnowledgeConflictResolution;
+  unresolved: KnowledgeConflictIssue[];
+}
+
+export interface KnowledgeReferenceRemap {
+  ids: ReadonlyMap<string, string>;
+  ambiguous: ReadonlySet<string>;
+}
+
+const emptyResolution = (file: string): KnowledgeConflictResolution => ({
+  file,
+  renumbered: [],
+  deduped: [],
+  adopted: [],
+});
+
+function sameIdentity(left: KnowledgeEntry, right: KnowledgeEntry): boolean {
+  return left.title === right.title && left.body === right.body;
+}
+
+function hasDuplicateIds(entries: KnowledgeEntry[]): boolean {
+  return new Set(entries.map((entry) => entry.meta.id)).size !== entries.length;
+}
+
+/**
+ * Allocate the next local namespace ID in one cumulative knowledge file.
+ */
+export function allocateLocalKnowledgeId(existingIds: string[]): string {
+  const ordinals = existingIds
+    .map((id) => id.match(/^L-K-(\d{4})$/)?.[1])
+    .filter((ordinal): ordinal is string => ordinal !== undefined)
+    .map(Number);
+  const next = Math.max(0, ...ordinals) + 1;
+  if (next > 9999) {
+    throw new RangeError("No free L-K-NNNN identifier remains in this file.");
+  }
+  return `L-K-${String(next).padStart(4, "0")}`;
+}
+
+/**
+ * Plan one file's collision resolution without performing filesystem writes.
+ * The command layer owns workspace enumeration, locking, and persistence.
+ */
+export function planKnowledgeConflictResolution(
+  source: ParsedKnowledgeFile,
+  destination: ParsedKnowledgeFile,
+  externalReferences: KnowledgeReferenceRemap = { ids: new Map(), ambiguous: new Set() },
+): KnowledgeConflictResolutionPlan {
+  const file = destination.path;
+  const resolution = emptyResolution(file);
+  const unresolved = (reason: KnowledgeConflictUnresolvedReason) => ({
+    content: null,
+    resolution,
+    unresolved: [{ file, reason }],
+  });
+
+  if (!isCumulative(source) || !isCumulative(destination)) {
+    return unresolved("non-cumulative");
+  }
+  if (
+    source.parseIssues.length > 0 ||
+    destination.parseIssues.length > 0 ||
+    hasDuplicateIds(source.entries) ||
+    hasDuplicateIds(destination.entries)
+  ) {
+    return unresolved("parse-failure");
+  }
+
+  const sourceById = new Map(source.entries.map((entry) => [entry.meta.id, entry]));
+  const usedSourceIds = new Set<string>();
+  const idMap = new Map<string, string>();
+  const outputEntries: KnowledgeEntry[] = [];
+  const localOutputEntries: KnowledgeEntry[] = [];
+  const localIds = destination.entries.map((entry) => entry.meta.id);
+  let changed = false;
+
+  for (const local of destination.entries) {
+    const identityMatches = source.entries.filter((upstream) => sameIdentity(local, upstream));
+    if (identityMatches.length > 1) {
+      return unresolved("ambiguous-identity");
+    }
+
+    const sameId = sourceById.get(local.meta.id);
+    if (sameId && sameIdentity(local, sameId)) {
+      outputEntries.push(sameId);
+      usedSourceIds.add(sameId.meta.id);
+      if (!sameEntryContent(local, sameId)) {
+        resolution.adopted.push(sameId.meta.id);
+        changed = true;
+      }
+      continue;
+    }
+
+    const identityMatch = identityMatches[0];
+    if (identityMatch) {
+      idMap.set(local.meta.id, identityMatch.meta.id);
+      resolution.deduped.push({
+        localId: local.meta.id,
+        canonicalId: identityMatch.meta.id,
+      });
+      changed = true;
+      continue;
+    }
+
+    if (sameId) {
+      let newId: string;
+      try {
+        newId = allocateLocalKnowledgeId(localIds);
+      } catch {
+        return unresolved("ambiguous-identity");
+      }
+      localIds.push(newId);
+      idMap.set(local.meta.id, newId);
+      resolution.renumbered.push({ from: local.meta.id, to: newId });
+      outputEntries.push({
+        ...local,
+        meta: { ...local.meta, id: newId },
+      });
+      localOutputEntries.push(outputEntries[outputEntries.length - 1]!);
+      changed = true;
+      continue;
+    }
+
+    outputEntries.push(local);
+    localOutputEntries.push(local);
+  }
+
+  for (const upstream of source.entries) {
+    if (usedSourceIds.has(upstream.meta.id)) continue;
+    outputEntries.push(upstream);
+    resolution.adopted.push(upstream.meta.id);
+    changed = true;
+  }
+
+  const resolvableIds = new Set([
+    ...outputEntries.map((entry) => entry.meta.id),
+    ...source.entries.map((entry) => entry.meta.id),
+  ]);
+  for (const entry of localOutputEntries) {
+    const meta = { ...entry.meta };
+    if (meta.supersedes) {
+      const rewritten = meta.supersedes.map((id) => idMap.get(id) ?? id);
+      if (rewritten.some((id) => !resolvableIds.has(id))) {
+        return unresolved("unmapped-reference");
+      }
+      if (rewritten.some((id, index) => id !== meta.supersedes?.[index])) {
+        meta.supersedes = rewritten;
+        changed = true;
+      }
+    }
+    if (meta.promotedTo) {
+      if (externalReferences.ambiguous.has(meta.promotedTo)) {
+        return unresolved("unmapped-reference");
+      }
+      const rewritten = externalReferences.ids.get(meta.promotedTo);
+      if (rewritten && rewritten !== meta.promotedTo) {
+        meta.promotedTo = rewritten;
+        changed = true;
+      }
+    }
+    if (meta.promotedFrom) {
+      const rewritten = meta.promotedFrom.map((reference) => {
+        if (externalReferences.ambiguous.has(reference)) return null;
+        return externalReferences.ids.get(reference) ?? reference;
+      });
+      if (rewritten.some((reference) => reference === null)) {
+        return unresolved("unmapped-reference");
+      }
+      if (rewritten.some((reference, index) => reference !== meta.promotedFrom?.[index])) {
+        meta.promotedFrom = rewritten as string[];
+        changed = true;
+      }
+    }
+    if (meta !== entry.meta) {
+      entry.meta = meta;
+    }
+  }
+
+  resolution.adopted = [...new Set(resolution.adopted)];
+
+  if (!changed) {
+    return { content: null, resolution, unresolved: [] };
+  }
+
+  const merged: ParsedKnowledgeFile = {
+    ...destination,
+    entries: outputEntries,
+  };
+  return {
+    content: serializeKnowledgeFile(merged),
+    resolution,
+    unresolved: [],
+  };
+}
+
+/**
+ * Resolve one declared knowledge file through the caller's explicit IO port.
+ * Missing source or destination files are left alone; upgrade owns first-copy
+ * behavior, while this command only remediates files already present locally.
+ */
+export async function resolveKnowledgeConflicts(
+  srcPath: string,
+  destPath: string,
+  io: WorkspaceIO,
+  dryRun = false,
+  externalReferences: KnowledgeReferenceRemap = { ids: new Map(), ambiguous: new Set() },
+): Promise<KnowledgeConflictResolutionPlan> {
+  const empty = emptyResolution(destPath);
+  if (!(await io.exists(srcPath)) || !(await io.exists(destPath))) {
+    return { content: null, resolution: empty, unresolved: [] };
+  }
+
+  try {
+    const [sourceText, destinationText] = await Promise.all([
+      io.readFile(srcPath),
+      io.readFile(destPath),
+    ]);
+    const plan = planKnowledgeConflictResolution(
+      parseKnowledgeContent(sourceText, srcPath),
+      parseKnowledgeContent(destinationText, destPath),
+      externalReferences,
+    );
+    if (plan.content !== null && !dryRun) {
+      await io.writeFile(destPath, plan.content);
+    }
+    return plan;
+  } catch {
+    return {
+      content: null,
+      resolution: empty,
+      unresolved: [{ file: destPath, reason: "parse-failure" }],
+    };
+  }
 }
 
 const ACTION_PRIORITY: Record<KnowledgeSyncAction, number> = {
@@ -85,7 +338,7 @@ function planFileSync(srcPath: string, destPath: string): KnowledgeSyncPlan {
   const srcParsed = parseKnowledgeFile(srcPath);
   const destParsed = parseKnowledgeFile(destPath);
 
-  // Both files use the cumulative K-NNNN format → append-only merge:
+  // Both files use the cumulative K/L-K entry format → append-only merge:
   // local entries always win; source entries with new IDs are appended.
   if (isCumulative(srcParsed) && isCumulative(destParsed)) {
     const destEntries = new Map(destParsed.entries.map((entry) => [entry.meta.id, entry]));

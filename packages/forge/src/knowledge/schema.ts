@@ -10,6 +10,7 @@
   <item>RFC-0660: initial knowledge entry metadata schema with L0/L1/L2 layer-specific refinements.</item>
   <item>RFC-0663: added promotedFrom field for shared-layer provenance tracking.</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
+  <item>RFC-1481: accept upstream K-NNNN and consumer-local L-K-NNNN entry IDs and references.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -18,12 +19,12 @@ import { z } from "zod";
 export type KnowledgeLayer = "L0" | "L1" | "L2";
 export type KnowledgeEntryStatus = "active" | "stale" | "superseded" | "archived";
 
-const ENTRY_ID_PATTERN = /^K-\d{4}$/;
-const PROMOTED_TO_PATTERN = /^shared\/K-\d{4}$/;
-const PROMOTED_FROM_PATTERN = /^[a-z0-9-]+\/K-\d{4}$/;
+const ENTRY_ID_PATTERN = /^(?:L-)?K-\d{4}$/;
+const PROMOTED_TO_PATTERN = /^shared\/(?:L-)?K-\d{4}$/;
+const PROMOTED_FROM_PATTERN = /^[a-z0-9-]+\/(?:L-)?K-\d{4}$/;
 
 const baseMetaSchema = z.object({
-  id: z.string().regex(ENTRY_ID_PATTERN, "id must match ^K-\\d{4}$"),
+  id: z.string().regex(ENTRY_ID_PATTERN, "id must match ^(?:L-)?K-\\d{4}$"),
   layer: z.enum(["L0", "L1", "L2"]),
   created: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "created must be YYYY-MM-DD"),
   lastConfirmedAt: z.union([z.string().regex(/^\d{4}-\d{2}-\d{2}$/), z.null()]).optional(),

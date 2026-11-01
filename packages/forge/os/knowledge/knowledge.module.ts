@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Register forgeKnowledgeModule — knowledge.rebuild + knowledge.authz.probe (RFC-1468): authorization-relevant agent knowledge bound to authoritative sources and periodic rebuilds.</purpose>
+<purpose>Register Forge knowledge commands for rebuild, authorization probes, and explicit consumer-local ID conflict remediation.</purpose>
 <non-goals>
   <item>Autonomous module — source-text scan + marker-region writes only (FORGE-AUTONOMY-01).</item>
 </non-goals>
@@ -8,12 +8,14 @@
 <CHANGE_SUMMARY>
   <item>RFC-1468: forgeKnowledgeModule registering knowledge.rebuild + knowledge.authz.probe</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
+  <item>RFC-1481: register knowledge.conflicts.resolve for explicit K-ID collision remediation.</item>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 import { runKnowledgeRebuild } from "./handlers/knowledge-rebuild.ts";
 import { runKnowledgeAuthzProbe } from "./handlers/knowledge-authz-probe.ts";
+import { runKnowledgeConflictsResolve } from "./handlers/knowledge-conflicts-resolve.ts";
 
 export const forgeKnowledgeModule: ForgeModule = {
   name: "forge-knowledge",
@@ -59,6 +61,25 @@ export const forgeKnowledgeModule: ForgeModule = {
       },
       reads: [".agents/**/*.md", "docs/knowledge/**/*.md", "docs/rfcs/**", "docs/adrs/**"],
       execute: runKnowledgeAuthzProbe,
+    },
+    {
+      name: "knowledge.conflicts.resolve",
+      coverage: "operator" as const,
+      mutatesState: true,
+      contract: "knowledge",
+      description:
+        "RFC-1481: explicitly resolves consumer-local knowledge ID collisions; --dry-run previews file rewrites and reference mappings without writing.",
+      scope: "workspace",
+      acceptsAllFlag: false,
+      flags: {
+        "dry-run": {
+          kind: "boolean",
+          description: "Print the full conflict resolution plan without writing files.",
+        },
+      },
+      reads: ["forge.yaml", "packages/forge/skills/**/*.md", ".agents/skills/**/*.md"],
+      writes: [".agents/skills/**/*.md", ".forge/knowledge-conflicts.txt"],
+      execute: runKnowledgeConflictsResolve,
     },
   ],
   pipelines: [],

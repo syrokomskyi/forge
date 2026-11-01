@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1468 knowledge.authz.probe tests — KAUTHZ-01 (authz-relevant without authorityRefs → error), KAUTHZ-03 (authorization-shaped entry without class → warning), clean entries green.</purpose>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1481: assert authorization probes preserve consumer-local knowledge IDs.</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
@@ -82,5 +85,19 @@ The build uses turbo.`,
     const res = await runKnowledgeAuthzProbe(flags({}), ctx());
     expect(res.data?.diagnostics).toHaveLength(0);
     expect(res.exitCode).toBe(0);
+  });
+
+  test("RFC-1481: authorization diagnostics retain consumer-local L-K IDs", async () => {
+    await seed(
+      ".agents/skills/demo/qa-log.md",
+      `### L-K-0042: local rule
+\`\`\`knowledge-entry
+layer: L1
+\`\`\`
+Agents must never run the forbidden action.`,
+    );
+    const res = await runKnowledgeAuthzProbe(flags({}), ctx());
+
+    expect(res.data?.diagnostics[0]?.entry).toBe("L-K-0042");
   });
 });
