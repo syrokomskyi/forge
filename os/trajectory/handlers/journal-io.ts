@@ -11,11 +11,11 @@ warns and skips — a partial JSONL is worse than none.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: trajectory hardening — verdict-artifact binding, per-producer trust, TRAJ-02 staleness, JSONL journals</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
   <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
+  <item>RFC-1475: apply review round-5 findings — shard units container guard, array-element migration convergence, confinement drop test</item>
   <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -185,7 +185,7 @@ async function readJournalWithYamlMigration<T>(
       );
       return read;
     }
-    yamlRecords = list.filter((r): r is T => r !== null && typeof r === "object");
+    yamlRecords = list.filter((r): r is T => r !== null && typeof r === "object" && !Array.isArray(r));
   } catch {
     read.warnings.push(
       `trajectory journal migration skipped: ${path.basename(yamlPath)} is unparseable — YAML left untouched`,

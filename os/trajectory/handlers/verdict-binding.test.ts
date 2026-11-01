@@ -156,6 +156,23 @@ date: 2026-10-30`);
     expect(index).not.toContain("trajectory:vendored-1");
   });
 
+  test("verdictRef escaping the workspace root is unresolvable — unit dropped (confinement)", async () => {
+    await writeSession("2026-10-30-12-00-00-aaaaaa.md", `id: s-green
+verdict: green
+taskKind: reconcile
+commands: [mission.reconcile]
+date: 2026-10-30`);
+    const shard = await writeShard([
+      vendoredUnit({ id: "trajectory:escape", producer: { workshopId: "other-shop", sessionId: "v1", completedAt: "2026-10-01", verdictRef: "../../outside.json", sessionClass: "adhoc", origin: "vendored" } }),
+      vendoredUnit({ id: "trajectory:absolute", producer: { workshopId: "other-shop", sessionId: "v2", completedAt: "2026-10-01", verdictRef: "/etc/passwd", sessionClass: "adhoc", origin: "vendored" } }),
+    ]);
+    const res = await runTrajectoryIndex(flags({ import: shard }), ctx());
+    expect(res.data?.dropped).toBe(2);
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).not.toContain("trajectory:escape");
+    expect(index).not.toContain("trajectory:absolute");
+  });
+
   test("vendored units with resolvable bindings survive — verdict:<green> and signal:commits exempt", async () => {
     await writeSession("2026-10-30-12-00-00-aaaaaa.md", `id: s-green
 verdict: green
