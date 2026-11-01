@@ -1,0 +1,120 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Throwaway-repository scaffolding for os/flow tests (RFC-1486): every
+git command runs inside a fresh repo under the OS temp dir — never against the
+enclosing workspace — and the guard hook is installed exactly the way
+flow.install does it (committed hooks dir + core.hooksPath).</purpose>
+<non-goals>
+  <item>No production code — test scaffolding only.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>Hooks live in &lt;repo&gt;/hooks (committed), never .git/hooks — worktrees check out committed content (AUDIT-RFC-1486-G1).</item>
+  <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
+</KEY_DECISIONS>
+<CHANGE_SUMMARY>
+  <item>RFC-1486: step 2 — throwaway-repo test helpers</item>
+  <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
+</CHANGE_SUMMARY>
+*/
+
+import { chmod, copyFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import type { ExecResult } from "../../../src/types.ts";
+import { ambientIo } from "../../../src/utils/io.ts";
+
+export const GUARD_ASSET = fileURLToPath(
+  new URL("../assets/flow-guard.sh", import.meta.url),
+);
+
+export const GUARD_BEGIN_MARKER = "# >>> forge flow guard (managed by flow.install) >>>";
+export const GUARD_END_MARKER = "# <<< forge flow guard <<<";
+export const MANAGED_BLOCK = `${GUARD_BEGIN_MARKER}
+sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" pre-commit || exit 1
+${GUARD_END_MARKER}
+`;
+
+export function gitExec(
+  repo: string,
+  args: string[],
+  env?: Record<string, string>,
+): Promise<ExecResult> {
+  return ambientIo.exec("git", ["-C", repo, ...args], { env });
+}
+
+/**
+ * `git init` in a fresh temp dir with deterministic local config (no global
+ * git config may leak in). `seedCommit` creates a root commit — skipped for
+ * unborn-HEAD cases.
+ */
+export async function initRepo(opts?: {
+  branch?: string;
+  seedCommit?: boolean;
+  prefix?: string;
+}): Promise<string> {
+  const dir = await mkdtemp(join(tmpdir(), opts?.prefix ?? "flow-test-"));
+  const init = await gitExec(dir, ["init", "-b", opts?.branch ?? "main"]);
+  if (init.exitCode !== 0) throw new Error(`git init failed: ${init.stderr}`);
+  await gitExec(dir, ["config", "user.email", "flow-test@example.invalid"]);
+  await gitExec(dir, ["config", "user.name", "flow-test"]);
+  await gitExec(dir, ["config", "commit.gpgsign", "false"]);
+  if (opts?.seedCommit !== false) {
+    await writeFile(join(dir, "seed.txt"), "seed\n");
+    await gitExec(dir, ["add", "seed.txt"]);
+    const seed = await gitExec(dir, ["commit", "-m", "seed"]);
+    if (seed.exitCode !== 0) throw new Error(`seed commit failed: ${seed.stderr}`);
+  }
+  return dir;
+}
+
+/**
+ * Install the guard the way flow.install does it: hooks/flow-guard.sh byte
+ * copy of the asset, hooks/pre-commit carrying the managed block right after
+ * the shebang, core.hooksPath pointing at the committed dir.
+ */
+export async function installGuard(repo: string): Promise<void> {
+  const hooksDir = join(repo, "hooks");
+  await mkdir(hooksDir, { recursive: true });
+  await copyFile(GUARD_ASSET, join(hooksDir, "flow-guard.sh"));
+  await writeFile(join(hooksDir, "pre-commit"), `#!/bin/sh\n${MANAGED_BLOCK}`);
+  await chmod(join(hooksDir, "flow-guard.sh"), 0o755);
+  await chmod(join(hooksDir, "pre-commit"), 0o755);
+  const hooksPath = await gitExec(repo, ["config", "core.hooksPath", hooksDir]);
+  if (hooksPath.exitCode !== 0) {
+    throw new Error(`core.hooksPath failed: ${hooksPath.stderr}`);
+  }
+}
+
+/** Attempt a commit; env overrides merge over process.env (set "" to neutralize). */
+export function tryCommit(
+  repo: string,
+  env?: Record<string, string>,
+): Promise<ExecResult> {
+  return gitExec(repo, ["commit", "--allow-empty", "-m", "probe"], env);
+}
+
+/** Invoke the installed guard directly with HEAD on the current branch. */
+export function runGuardDirect(
+  repo: string,
+  env?: Record<string, string>,
+): Promise<ExecResult> {
+  return ambientIo.exec("sh", [join(repo, "hooks", "flow-guard.sh"), "pre-commit"], {
+    cwd: repo,
+    env,
+  });
+}
+
+/** Switch to a branch, creating it when it does not exist yet. */
+export async function checkoutOrCreate(repo: string, name: string): Promise<void> {
+  const exists =
+    (await gitExec(repo, ["branch", "--list", name])).stdout.trim().length > 0;
+  const result = exists
+    ? await gitExec(repo, ["switch", name])
+    : await gitExec(repo, ["switch", "-c", name]);
+  if (result.exitCode !== 0) {
+    throw new Error(`switch to ${name} failed: ${result.stderr}`);
+  }
+}
