@@ -11,11 +11,12 @@ warns and skips — a partial JSONL is worse than none.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: appendJsonl/readJsonl + lazy YAML→JSONL migration for the trajectory journals</item>
   <item>RFC-1475: trajectory hardening — verdict-artifact binding, per-producer trust, TRAJ-02 staleness, JSONL journals</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
+  <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
+  <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
 
@@ -178,7 +179,13 @@ async function readJournalWithYamlMigration<T>(
       );
       return read;
     }
-    yamlRecords = (Array.isArray(list) ? list : []).filter((r): r is T => r !== null && typeof r === "object");
+    if (!Array.isArray(list)) {
+      read.warnings.push(
+        `trajectory journal migration skipped: ${path.basename(yamlPath)} ${yamlKey}: is not a record list — YAML left untouched`,
+      );
+      return read;
+    }
+    yamlRecords = list.filter((r): r is T => r !== null && typeof r === "object");
   } catch {
     read.warnings.push(
       `trajectory journal migration skipped: ${path.basename(yamlPath)} is unparseable — YAML left untouched`,

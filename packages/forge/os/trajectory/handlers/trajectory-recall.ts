@@ -8,11 +8,11 @@ The recall invocation is journaled so marginal utility can be measured.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
+  <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
   <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -108,7 +108,7 @@ export async function runTrajectoryRecall(
     const name = path.basename(rel);
     return name > max ? name : max;
   }, "");
-  const watermark = index?.sourceWatermark;
+  const watermark = typeof index.sourceWatermark === "string" ? index.sourceWatermark : null;
   if (units.length === 0) {
     return emptyResult(task, k, "TRAJ-02", "index is empty — run trajectory.index after green sessions exist");
   }

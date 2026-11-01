@@ -190,6 +190,41 @@ describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
     expect(res.data?.units).toBe(2);
   });
 
+  test("malformed frontmatter element types cannot crash extraction (R4-1)", async () => {
+    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-dddddd.md"), `---
+id: s-weird
+verdict: green
+taskKind: reconcile
+commands: [mission.reconcile, 42]
+files: [42, {a: 1}, null]
+date: 2026-10-31
+---
+body
+`);
+    const res = await runTrajectoryIndex(flags({}), ctx());
+    expect(res.exitCode).toBe(0);
+    expect(res.data?.admitted).toBe(3);
+  });
+
+  test("malformed journal records cannot crash replay — unitsReturned non-array (R3-2)", async () => {
+    await runTrajectoryIndex(flags({}), ctx());
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(
+      join(root, "docs", ".index", "trajectory", "recalls.jsonl"),
+      `{"id":"R-1","unitsReturned":42}\n{"id":"R-2","unitsReturned":"trajectory:s-green"}\n{"id":"R-3","unitsReturned":["trajectory:s-green","trajectory:s-green"]}\n`,
+    );
+    await writeFile(
+      join(root, "docs", ".index", "trajectory", "outcomes.jsonl"),
+      `{"recallId":"R-3","helped":true}\n`,
+    );
+    const res = await runTrajectoryIndex(flags({}), ctx());
+    expect(res.exitCode).toBe(0);
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    // deduped distinct-id count — the string record iterates no chars, R-3 counts once.
+    expect(index).toContain("recalled: 1");
+    expect(index).toContain("helped: 1");
+  });
+
   test("shard export rewrites artifact-path verdictRefs to portable verdict:<value>", async () => {
     await mkdir(join(root, "missions", "dp7", "evidence"), { recursive: true });
     await writeFile(join(root, "missions", "dp7", "evidence", "validation-report.json"), JSON.stringify({ verdict: "green" }));
