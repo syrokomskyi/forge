@@ -5,6 +5,9 @@
   <item>Not a contract source of truth — fixtures are minimal scaffolding only.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";

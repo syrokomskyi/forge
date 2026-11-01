@@ -14,9 +14,9 @@
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1253: created — six-doc scaffold, KG node merge, binding patch, dry-run manifest.</item>
-  <item>Derive workspace node id prefixes from directory location (apps/→app-, packages/→pkg-, services/→svc-, dotted elsewhere) — COMPASS-DOC-02 resolves prefixes to paths, so type-derived ids failed validation on apps/ repos (consumer field report).</item>
   <item>RFC-1323: write-time comment-terminator safety — shared comment-safety seam, authored CS-08 reject, injected neutralization, header-region scan</item>
   <item>RFC-1323: review pass — still-open enclosing-style detection, per-file pre-pass parity, scaffold never-throws, docs.scaffold raw-leaf assert, trim per-file skip, CS-08 always-error severity</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

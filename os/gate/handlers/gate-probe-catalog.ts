@@ -1,12 +1,16 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1469: gate.probe.catalog — read-model over the fixture inventory: per-contract coverage, per-rule fixture binding, unprobed error-severity rules (gates with no liveness evidence).</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1469: gate.probe.catalog fixture-inventory read-model</item>
   <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
   <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
   <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

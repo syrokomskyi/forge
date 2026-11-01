@@ -5,6 +5,9 @@
   <item>No session logic here — packages/werkstatt-engine/src/werkstatt/session-worktree.ts owns it.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+</CHANGE_SUMMARY>
 */
 
 import { loadSessionEngine } from "./session-engine.ts";

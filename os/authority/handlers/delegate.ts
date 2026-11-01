@@ -11,11 +11,12 @@ unknown sites, and past expirations before any write.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>Registry write is the durable act; the Bordbuch event is audit evidence fanned out per site and never authoritative.</item>
-  <item>--site absent means a workspace grant; --site values must resolve to systems-cache siblings — a site that does not exist makes the grant meaningless.</item>
+  <item>--site absent means a workspace grant; --site values must resolve to real systems-cache sites.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1336: initial handler — grant append, site probe, optional --sign, per-site Bordbuch fan-out.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

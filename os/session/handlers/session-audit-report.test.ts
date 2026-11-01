@@ -1,7 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1471 session.audit.report tests — sidecar aggregation into docs/metrics/session-audit.generated.yaml, --window filter, unlinked finding classes.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";

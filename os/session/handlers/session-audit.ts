@@ -20,10 +20,14 @@ own frontmatter `date` — reruns produce identical content when findings are
 unchanged; --relabel forces a fresh write).
 --check: read-only + exits non-zero on critical findings (no sidecar writes).
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1471: session.audit Stage-A detectors + sidecar write (r1 repair — RFC taxonomy, correct semantics, read-only --check, deterministic auditedAt, archive coverage, finding schema)</item>
   <item>RFC-1471: apply r2 repairs — archive base-dir resolution (728 sessions audited), stale taxonomy, suppression fixture tokens</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

@@ -8,13 +8,17 @@ DEL-04 missing boundary note; plus literal secret/endpoint material in the
 binding (blocking) and unresolvable invoke bindings.
 Autonomous — reads forge.yaml + the generated command manifest only.
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1464: DEL-01..04 tiers/delegable declaration lint</item>
   <item>RFC-1464: delegate mechanical task classes to cheap tier — agent.delegate, tiers.validate, invoke adapters</item>
   <item>RFC-1464: apply r1 repairs — envelope via DELEGATE_ENVELOPE env, real boundary diff, gate flags, DEL renumber</item>
   <item>RFC-1464: apply r2 repairs — raw-entry DEL-01 lint, pilot gate flags, endpoint scan, malformed-gate guard</item>
   <item>RFC-1464: apply r3 repairs — non-array delegable + null-element DEL-01 guards</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <history>RFC-1464</history>
 </CHANGE_SUMMARY>
 */
 

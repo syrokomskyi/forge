@@ -7,10 +7,14 @@ ruleId + pathPattern. A seeded violation the check can't see is a dead gate —
 the probe proves the gate still fires on its real scan path, not a fabricated
 fixture shape. mutatesState: true (in-tree writes, always restored).
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1469: gate.probe in-tree injection + invoke + restore (r1 repair)</item>
   <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
 </CHANGE_SUMMARY>
 */
 

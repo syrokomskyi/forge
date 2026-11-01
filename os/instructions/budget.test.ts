@@ -1,7 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1466 instructions tests — AC-3 (over-budget → INSTR-01), AC-4 (scar.migrate → fragment entry + bullet removed + catalogRefs), AC-5 (invariant-shaped bullet → blocking refusal).</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
