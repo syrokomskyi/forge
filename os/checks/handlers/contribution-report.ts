@@ -1,25 +1,30 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1473: checks.contribution.report — per-rule marginal-contribution read-model.
-Joins the validator inventory (rule universe, contracts[].contract) + session
-audit sidecars (firing surface — coverage: partial until RFC-1469's
-checkExecution counters land; the report surfaces effectiveCoverage = fired ids
-∩ inventory ids, warned when 0) + frictions (escapes by forge.yaml
+RFC-1473/1474: checks.contribution.report — per-rule marginal-contribution
+read-model. Joins the validator inventory (rule universe, contracts[].contract)
++ the counters journal docs/.index/checks/counters.jsonl as the PRIMARY firing
+surface (one record per evaluated rule; emitted/zeroStreak/lastFiredAt derive
+from it; coverage none|partial|complete vs the --window run count; CONTRIB-03
+warns on absent/empty journal, effectiveCoverage = fired ids ∩ inventory ids) +
+session audit sidecars as SECONDARY diagnostic-signature history
+(uniqueEmitted/firedOn/variantCandidates) + frictions (escapes by forge.yaml
 checksContribution.contractMappings). uniqueEmitted = signatures seen under no
 sibling rule (cross-rule dedup — redundant is reachable). verdict:
 earning|silent|redundant|guard (guard declared via checksContribution.guardRules).
---check diffs the computed artifact vs the committed file (freshness gate).
+--check diffs the computed artifact vs the committed file (freshness gate,
+producer-tail tolerated).
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1473: r1 repair — contract-root inventory join, effectiveCoverage, cross-rule signature dedup, escape mapping via forge.yaml, --check staleness diff, CONTRIB-01 blocking</item>
   <item>RFC-1473: apply r2 repairs — bare-sequence frictions root, real contract names in escape mapping, stale-path --check test</item>
   <item>RFC-1474: per-rule check-execution counters
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply review findings (F-1..F-9)</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
+  <item>RFC-1474: check-execution counters — close emission-shape extraction class (round-3 review)</item>
+  <history>RFC-1473</history>
 </CHANGE_SUMMARY>
 */
 
@@ -83,9 +88,13 @@ export async function runContributionReport(
   const check = input.flags["check"] === true;
 
   // CONTRIB-01: the rule universe must exist — a missing inventory is a
-  // blocking input, not a silent empty report.
+  // blocking input, not a silent empty report. Only ENOENT means "absent" —
+  // other read failures surface as real I/O errors.
   const invPath = path.join(root, "docs", "validator-inventory.generated.yaml");
-  const invSrc = await io.readFile(invPath).catch(() => null);
+  const invSrc = await io.readFile(invPath).catch((error: unknown) => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
   if (invSrc === null) {
     return {
       data: { command: "checks.contribution.report", status: "ok", window: { runs: 0, coverage: "none", effective: 0, observable: 0 }, rules: [], variantCandidates: [], ungovernedContracts: [], metrics: "" },
@@ -93,9 +102,22 @@ export async function runContributionReport(
       exitCode: 1,
     };
   }
-  const parsed = yamlParse(invSrc) as {
-    contracts?: { contract?: string; validators?: { rules?: { id?: string; severity?: string }[] }[] }[];
-  } | null;
+  const parsed = (() => {
+    try {
+      return yamlParse(invSrc) as {
+        contracts?: { contract?: string; validators?: { rules?: { id?: string; severity?: string }[] }[] }[];
+      } | null;
+    } catch {
+      return undefined;
+    }
+  })();
+  if (parsed === undefined) {
+    return {
+      data: { command: "checks.contribution.report", status: "ok", window: { runs: 0, coverage: "none", effective: 0, observable: 0 }, rules: [], variantCandidates: [], ungovernedContracts: [], metrics: "" },
+      summary: "CONTRIB-01 docs/validator-inventory.generated.yaml malformed — rule universe unparseable",
+      exitCode: 1,
+    };
+  }
   const inventoryContracts = (parsed?.contracts ?? []).map((c) => c.contract ?? "?");
   if (contractFilter && !inventoryContracts.includes(contractFilter)) {
     return {

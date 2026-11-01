@@ -14,6 +14,7 @@ record is tolerated (dropped, still surfaced as truncatedTail in data).
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
+  <item>RFC-1474: check-execution counters — close emission-shape extraction class (round-3 review)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,7 +59,12 @@ export async function runCountersValidate(
     });
   }
 
-  const invSrc = await io.readFile(path.join(root, INVENTORY_PATH)).catch(() => null);
+  const invSrc = await io.readFile(path.join(root, INVENTORY_PATH)).catch((error: unknown) => {
+    // Only ENOENT means "absent" — EACCES/EISDIR etc. must surface as real
+    // I/O failures, not misreport as a missing rule universe.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  });
   let inventoryIds: Set<string> | undefined;
   if (invSrc === null) {
     if (records.length > 0) {
@@ -69,16 +75,32 @@ export async function runCountersValidate(
       });
     }
   } else {
-    const parsed = yamlParse(invSrc) as {
-      contracts?: { contract?: string; validators?: { rules?: { id?: string }[] }[] }[];
-    } | null;
-    inventoryIds = new Set(
-      (parsed?.contracts ?? []).flatMap((c) =>
-        (c.validators ?? []).flatMap((v) => (v.rules ?? []).map((r) => `${c.contract}/${r.id}`)),
-      ),
-    );
+    const parsed = (() => {
+      try {
+        return yamlParse(invSrc) as {
+          contracts?: { contract?: string; validators?: { rules?: { id?: string }[] }[] }[];
+        } | null;
+      } catch {
+        return undefined;
+      }
+    })();
+    if (parsed === undefined) {
+      diagnostics.push({
+        ruleId: "COUNT-01",
+        severity: "error",
+        message: `${INVENTORY_PATH} malformed — rule universe unparseable, journal records cannot resolve`,
+      });
+    }
+    inventoryIds =
+      parsed === undefined || parsed === null
+        ? undefined
+        : new Set(
+            (parsed.contracts ?? []).flatMap((c) =>
+              (c.validators ?? []).flatMap((v) => (v.rules ?? []).map((r) => `${c.contract}/${r.id}`)),
+            ),
+          );
     records.forEach((r, i) => {
-      if (!inventoryIds!.has(r.ruleId)) {
+      if (inventoryIds !== undefined && !inventoryIds.has(r.ruleId)) {
         diagnostics.push({
           ruleId: "COUNT-01",
           severity: "error",
