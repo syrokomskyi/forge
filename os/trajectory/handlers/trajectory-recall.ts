@@ -8,6 +8,7 @@ The recall invocation is journaled so marginal utility can be measured.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1475: TRAJ-01/02 split (absent vs empty/stale/missing-watermark), {workshopId, sessionClass} trust buckets, recalls.jsonl append-only journal</item>
   <item>RFC-1472: trajectory.recall situation-similarity top-k + journaled invocation</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
@@ -17,6 +18,8 @@ The recall invocation is journaled so marginal utility can be measured.
 import path from "node:path";
 import { parse as yamlParse } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { listSessionFiles, listArchivedSessionFiles } from "../../session/frontmatter-io.ts";
+import { appendJsonl, readRecallsJournal } from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
 import type {
   ForgeCommandInput,
@@ -36,6 +39,23 @@ export interface RecallData {
   k: number;
   recallId: string;
   units: RecallUnit[];
+  diagnostics?: { ruleId?: string; severity?: string; message?: string }[];
+}
+
+function emptyResult(task: string, k: number, ruleId: string, message: string): ForgeCommandResult<RecallData> {
+  return {
+    data: {
+      command: "trajectory.recall",
+      status: "ok",
+      task,
+      k,
+      recallId: "",
+      units: [],
+      diagnostics: [{ ruleId, severity: "error", message }],
+    },
+    summary: `${ruleId} ${message}`,
+    exitCode: 1,
+  };
 }
 
 export async function runTrajectoryRecall(
@@ -52,9 +72,50 @@ export async function runTrajectoryRecall(
   }
   const indexSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml")).catch(() => null);
   if (indexSrc === null) {
-    return { data: { command: "trajectory.recall", status: "ok", task, k, recallId: "", units: [] }, summary: "TRAJ-01 index missing — run trajectory.index", exitCode: 1 };
+    return emptyResult(task, k, "TRAJ-01", "index missing — run trajectory.index");
   }
-  const units = ((yamlParse(indexSrc) as { units?: ProcedureUnit[] } | null)?.units ?? []);
+  const index = yamlParse(indexSrc) as { sourceWatermark?: string; units?: ProcedureUnit[] } | null;
+  const units = index?.units ?? [];
+
+  // RFC-1475 F6 — TRAJ-02 covers every present-but-unusable index state:
+  // empty units, missing sourceWatermark (pre-upgrade index is stale by
+  // construction), or a watermark older than the newest session FILENAME —
+  // basenames compare like-for-like across sessions/ and sessions/archive/.
+  const sessionsDir = path.join(root, "docs", "sessions");
+  const newestSource = [
+    ...(await listSessionFiles(sessionsDir).catch(() => [])),
+    ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])),
+  ].reduce((max, rel) => {
+    const name = path.basename(rel);
+    return name > max ? name : max;
+  }, "");
+  const watermark = index?.sourceWatermark;
+  if (units.length === 0) {
+    return emptyResult(task, k, "TRAJ-02", "index is empty — run trajectory.index after green sessions exist");
+  }
+  if (!watermark) {
+    return emptyResult(task, k, "TRAJ-02", "index predates watermark support — rerun trajectory.index");
+  }
+  if (newestSource > watermark) {
+    return emptyResult(task, k, "TRAJ-02", `index stale — watermark ${watermark} predates ${newestSource}; rerun trajectory.index`);
+  }
+
+  // RFC-1475 F10 — per-producer trust: aggregate helped/(helped+hurt) per
+  // {workshopId, sessionClass} bucket across the whole unit set; a vendored
+  // unit scores under its origin's bucket, never smeared across units.
+  const buckets = new Map<string, { helped: number; hurt: number }>();
+  for (const u of units) {
+    const key = `${u.producer.workshopId}|${u.producer.sessionClass ?? "adhoc"}`;
+    const bucket = buckets.get(key) ?? { helped: 0, hurt: 0 };
+    bucket.helped += u.usedBy.helped;
+    bucket.hurt += u.usedBy.hurt;
+    buckets.set(key, bucket);
+  }
+  const bucketTrust = (u: ProcedureUnit): { trust: number; labeled: boolean } => {
+    const bucket = buckets.get(`${u.producer.workshopId}|${u.producer.sessionClass ?? "adhoc"}`);
+    if (!bucket || bucket.helped + bucket.hurt === 0) return { trust: 0.5, labeled: false };
+    return { trust: bucket.helped / (bucket.helped + bucket.hurt), labeled: true };
+  };
 
   const taskTokens = new Set(task.toLowerCase().split(/[^a-z0-9_.-]+/).filter((t) => t.length > 2));
   const scored = units.map((u) => {
@@ -65,8 +126,8 @@ export async function runTrajectoryRecall(
     if (hits > 0) { reasons.push(`lexical:${hits}`); score += hits * 2; }
     const pathOverlap = u.situation.touchedPathClasses.filter((p) => [...pathTerms].some((t) => p.includes(t))).length;
     if (pathOverlap > 0) { reasons.push(`path:${pathOverlap}`); score += pathOverlap * 3; }
-    const trust = u.usedBy.helped + u.usedBy.hurt > 0 ? u.usedBy.helped / (u.usedBy.helped + u.usedBy.hurt) : 0.5;
-    if (u.usedBy.helped > 0) { reasons.push(`trust:${trust.toFixed(2)}`); score += trust * 2; }
+    const { trust, labeled } = bucketTrust(u);
+    if (labeled) { reasons.push(`trust:${trust.toFixed(2)}`); score += trust * 2; }
     score += u.utilityScore * 0.5;
     const days = u.producer.completedAt ? Math.max(0, (Date.now() - new Date(u.producer.completedAt).getTime()) / 86_400_000) : 365;
     const recency = Math.max(0, 1 - days / 365);
@@ -75,16 +136,20 @@ export async function runTrajectoryRecall(
     return { ...u, score: Number(score.toFixed(3)), reasons };
   }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, k);
 
-  // Journal the recall — marginal-utility measurement needs the invocation record.
-  const journalRel = "docs/.index/trajectory/recalls.yaml";
-  const journalSrc = await io.readFile(path.join(root, journalRel)).catch(() => "");
-  const journal = (yamlParse(journalSrc) as { recalls?: unknown[] } | null)?.recalls ?? [];
+  // Journal the recall — append-only recalls.jsonl (RFC-1475 F11); the
+  // marginal-utility measurement needs the invocation record.
+  const journalRead = await readRecallsJournal(root, io);
+  for (const warning of journalRead.warnings) context.logger.warn(warning);
+  if (journalRead.truncated) {
+    context.logger.warn("TRAJ-06 recalls.jsonl carried a truncated tail record — partial record dropped, journal survives");
+  }
   const dayKey = new Date().toISOString().slice(0, 10).replace(/-/g, "");
-  const recallId = `R-${dayKey}-${String(journal.length + 1).padStart(2, "0")}-${createHashFallback(task).slice(0, 4)}`;
-  journal.push({ id: recallId, task, unitsReturned: scored.map((u) => u.id), at: new Date().toISOString() });
-  const { stringify } = await import("yaml");
-  await io.mkdir(path.join(root, "docs", ".index", "trajectory")).catch(() => {});
-  await io.writeFile(path.join(root, journalRel), stringify({ schema: "forge/trajectory-recalls@1", recalls: journal }) + "\n");
+  const recallId = `R-${dayKey}-${String(journalRead.records.length + 1).padStart(2, "0")}-${createHashFallback(task).slice(0, 4)}`;
+  await appendJsonl(
+    io,
+    path.join(root, "docs", ".index", "trajectory", "recalls.jsonl"),
+    { id: recallId, task, unitsReturned: scored.map((u) => u.id), at: new Date().toISOString() },
+  );
 
   return {
     data: { command: "trajectory.recall", status: "ok", task, k, recallId, units: scored },

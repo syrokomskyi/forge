@@ -101,3 +101,32 @@ describe("trajectory.index (RFC-1472)", () => {
     expect(index).toContain("trajectory:s-green");
   });
 });
+
+describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
+  test("index carries sourceWatermark = newest session filename (AC-5)", async () => {
+    const res = await runTrajectoryIndex(flags({}), ctx());
+    // Filename, not the full path — basenames compare like-for-like across
+    // sessions/ and sessions/archive/ (a full-path compare would let
+    // "archive/" outrank every live filename and mask staleness).
+    expect(res.data?.sourceWatermark).toBe("2026-10-30-12-00-00-aaaaaa.md");
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).toContain("sourceWatermark: 2026-10-30-12-00-00-aaaaaa.md");
+  });
+
+  test("JSONL journals feed the replay — usedBy/utilityScore survive rebuilds (AC-8)", async () => {
+    await runTrajectoryIndex(flags({}), ctx());
+    const recall = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
+    await runOutcomeRecord(flags({ recall: recall.data?.recallId, helped: true }), ctx());
+    // Journals are JSONL now — one record per line, no YAML rewrite.
+    const outcomes = await readFile(join(root, "docs", ".index", "trajectory", "outcomes.jsonl"), "utf8");
+    expect(outcomes.trim().split("\n").length).toBe(1);
+    expect(JSON.parse(outcomes.trim()).recallId).toBe(recall.data?.recallId);
+    const recalls = await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8");
+    expect(recalls.trim().split("\n").length).toBe(1);
+    // Rebuild replays from the JSONL journals.
+    await runTrajectoryIndex(flags({}), ctx());
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).toContain("helped: 1");
+    expect(index).toContain("utilityScore: 1");
+  });
+});

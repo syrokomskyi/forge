@@ -7,6 +7,7 @@ per-producer trust (helped/(helped+hurt)).
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1475: TRAJ-05 unknown recall id, append-only outcomes.jsonl, recalls.jsonl lookup, sourceWatermark-preserving units.yaml update</item>
   <item>RFC-1472: trajectory.outcome.record helped/hurt labels → utilityScore + producerTrust</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
 </CHANGE_SUMMARY>
@@ -15,6 +16,7 @@ per-producer trust (helped/(helped+hurt)).
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { appendJsonl, readRecallsJournal } from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
 import type {
   ForgeCommandInput,
@@ -29,6 +31,7 @@ export interface OutcomeData {
   helped: number;
   hurt: number;
   unitUpdates: number;
+  diagnostics?: { ruleId?: string; severity?: string; message?: string }[];
 }
 
 export async function runOutcomeRecord(
@@ -44,19 +47,45 @@ export async function runOutcomeRecord(
   if (!recallId || (!helped && !hurt)) {
     return { data: { command: "trajectory.outcome.record", status: "ok", recallId, helped: 0, hurt: 0, unitUpdates: 0 }, summary: "missing --recall or --helped/--hurt", exitCode: 1 };
   }
-  const journalRel = "docs/.index/trajectory/recalls.yaml";
-  const journalSrc = await io.readFile(path.join(root, journalRel)).catch(() => "");
-  const journal = (yamlParse(journalSrc) as { recalls?: { id?: string; unitsReturned?: string[] }[] } | null)?.recalls ?? [];
-  const recall = journal.find((r) => r.id === recallId);
+  const journalRead = await readRecallsJournal(root, io);
+  for (const warning of journalRead.warnings) context.logger.warn(warning);
+  if (journalRead.truncated) {
+    context.logger.warn("TRAJ-06 recalls.jsonl carried a truncated tail record — partial record dropped, journal survives");
+  }
+  const recall = journalRead.records.find((r) => r.id === recallId);
   if (!recall) {
-    return { data: { command: "trajectory.outcome.record", status: "ok", recallId, helped: 0, hurt: 0, unitUpdates: 0 }, summary: `TRAJ-02 recall ${recallId} not found`, exitCode: 1 };
+    return {
+      data: {
+        command: "trajectory.outcome.record",
+        status: "ok",
+        recallId,
+        helped: 0,
+        hurt: 0,
+        unitUpdates: 0,
+        diagnostics: [{ ruleId: "TRAJ-05", severity: "error", message: `recall ${recallId} not found` }],
+      },
+      summary: `TRAJ-05 recall ${recallId} not found`,
+      exitCode: 1,
+    };
   }
   const indexRel = path.join(root, "docs", ".index", "trajectory", "units.yaml");
   const indexSrc = await io.readFile(indexRel).catch(() => null);
   if (indexSrc === null) {
-    return { data: { command: "trajectory.outcome.record", status: "ok", recallId, helped: 0, hurt: 0, unitUpdates: 0 }, summary: "TRAJ-01 units index missing", exitCode: 1 };
+    return {
+      data: {
+        command: "trajectory.outcome.record",
+        status: "ok",
+        recallId,
+        helped: 0,
+        hurt: 0,
+        unitUpdates: 0,
+        diagnostics: [{ ruleId: "TRAJ-01", severity: "error", message: "units index missing" }],
+      },
+      summary: "TRAJ-01 units index missing",
+      exitCode: 1,
+    };
   }
-  const parsed = yamlParse(indexSrc) as { units?: ProcedureUnit[] } | null;
+  const parsed = yamlParse(indexSrc) as { sourceWatermark?: string; units?: ProcedureUnit[] } | null;
   const units = parsed?.units ?? [];
   let updated = 0;
   for (const uid of recall.unitsReturned ?? []) {
@@ -68,12 +97,18 @@ export async function runOutcomeRecord(
     u.utilityScore = u.usedBy.helped - u.usedBy.hurt;
     updated++;
   }
-  const outcomesRel = "docs/.index/trajectory/outcomes.yaml";
-  const outcomesSrc = await io.readFile(path.join(root, outcomesRel)).catch(() => "");
-  const outcomes = (yamlParse(outcomesSrc) as { outcomes?: unknown[] } | null)?.outcomes ?? [];
-  outcomes.push({ recallId, helped, hurt, note, at: new Date().toISOString() });
-  await io.writeFile(indexRel, yamlStringify({ schema: "forge/trajectory-index@1", units }) + "\n");
-  await io.writeFile(path.join(root, outcomesRel), yamlStringify({ schema: "forge/trajectory-outcomes@1", outcomes }) + "\n");
+  // RFC-1475 F11 — append-only outcomes.jsonl: appendFile only, never
+  // read-modify-write; the eager units.yaml update keeps recall-time
+  // trust buckets fresh without an index rebuild (plan step 4).
+  await appendJsonl(
+    io,
+    path.join(root, "docs", ".index", "trajectory", "outcomes.jsonl"),
+    { recallId, helped, hurt, note, at: new Date().toISOString() },
+  );
+  await io.writeFile(
+    indexRel,
+    yamlStringify({ schema: "forge/trajectory-index@1", sourceWatermark: parsed?.sourceWatermark, units }) + "\n",
+  );
   return {
     data: { command: "trajectory.outcome.record", status: "ok", recallId, helped: helped ? 1 : 0, hurt: hurt ? 1 : 0, unitUpdates: updated },
     summary: `recorded ${helped ? "helped" : "hurt"} for ${recallId} — ${updated} unit(s) updated`,
