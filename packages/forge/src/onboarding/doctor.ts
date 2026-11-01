@@ -8,12 +8,12 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1255: forge-version-sync check — warns when the installed @warpgogol/forge version diverges from forge.yaml syncedVersion (pnpm up drifts it silently); nested wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>agents.generate remediation counts marker-guarded semantic-layer injections as fixes — a hand-written file that only gained the region reports fixed instead of skipped (consumer field report follow-up to RFC-1253).</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1481: knowledge-files doctor check reports unresolved ID conflicts and the explicit remediation command.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
-  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224, RFC-1226, RFC-1249</history>
+  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
+  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224, RFC-1226, RFC-1249, RFC-1255</history>
 </CHANGE_SUMMARY>
 */
 
@@ -455,6 +455,19 @@ async function checkStaleKnowledgeFiles(
           conflicts.push(`${skill.name}/${kf}#${id}`);
         }
       }
+    }
+  }
+
+  // Shared knowledge file — same surface forge.upgrade and the resolver cover.
+  const sharedSrc = join(forgeRoot, "skills", "shared", "knowledge", "learned-principles.md");
+  const sharedDest = join(agentsSkillsDir, "shared-knowledge", "learned-principles.md");
+  if ((await pathExists(sharedSrc, io)) && (await pathExists(sharedDest, io))) {
+    const plan = planKnowledgeSync(sharedSrc, sharedDest);
+    if (plan.action === "merged") {
+      stale.push("shared-knowledge/learned-principles.md");
+    }
+    for (const id of plan.conflicts) {
+      conflicts.push(`shared-knowledge/learned-principles.md#${id}`);
     }
   }
 

@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
@@ -18,7 +17,8 @@ required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224</history>
+  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332</history>
 </CHANGE_SUMMARY>
 */
 
@@ -498,16 +498,13 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
 // Loader
 // ---------------------------------------------------------------------------
 
-export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: string): ForgeConfig {
-  const configPath = path.join(workspaceRoot, "forge.yaml");
-
-  if (!fs.existsSync(configPath)) {
-    throw new Error(
-      `forge.yaml not found at ${configPath}. Run 'forge create' to create project configuration.`,
-    );
-  }
-
-  const raw = fs.readFileSync(configPath, "utf8");
+/**
+ * Parse and schema-validate a forge.yaml document — the pure part of
+ * `loadForgeConfig` shared with WorkspaceIO-backed readers that must not touch
+ * the ambient filesystem. Recovers the declared profile id (RFC-1118) but does
+ * not resolve the profile catalog; callers set `profileResolution` themselves.
+ */
+export function parseForgeConfigDocument(raw: string, configPath: string): ForgeConfig {
   let parsed: unknown;
   try {
     parsed = parseYaml(raw);
@@ -536,6 +533,24 @@ export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: strin
         ? String((rawProfile as { id: unknown }).id)
         : undefined;
 
+  const config = { ...rawData } as unknown as ForgeConfig;
+  config.profileDeclaredId = profileId;
+  return config;
+}
+
+export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: string): ForgeConfig {
+  const configPath = path.join(workspaceRoot, "forge.yaml");
+
+  if (!fs.existsSync(configPath)) {
+    throw new Error(
+      `forge.yaml not found at ${configPath}. Run 'forge create' to create project configuration.`,
+    );
+  }
+
+  const raw = fs.readFileSync(configPath, "utf8");
+  const config = parseForgeConfigDocument(raw, configPath);
+  const profileId = config.profileDeclaredId;
+
   // RFC-0643: load stack profile when `profile` field is present in forge.yaml
   let loadedProfile: StackProfile | undefined;
   let catalogAvailable = false;
@@ -555,9 +570,7 @@ export function loadForgeConfig(workspaceRoot: string, forgeRootOverride?: strin
     }
   }
 
-  const config = { ...rawData } as unknown as ForgeConfig;
   // RFC-1118: preserve the declared id and its resolution status — never silently drop it
-  config.profileDeclaredId = profileId;
   config.profileResolution = !profileId
     ? "absent"
     : loadedProfile
