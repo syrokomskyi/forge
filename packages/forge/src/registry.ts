@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-0539: added discoverPackSkills helper and PackSkillEntry interface for project-declared skill packs. Removed mission-complete and fo-site-scan entries (relocated to warpgogol-skills as wg- pack skills).</item>
   <item>RFC-0941: discoverPackSkills now requires forge.plugin.yaml manifest at each pack root — throws on missing or invalid manifest (fail-fast).</item>
+  <item>RFC-1481: add WorkspaceIO-backed pack skill discovery for mutating knowledge commands.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -23,6 +24,7 @@ import * as fs from "./utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import type { ForgeConfig } from "./config/forge-config.ts";
+import type { WorkspaceIO } from "./types.ts";
 import { forgePluginManifestSchema } from "./plugin/forge-plugin-manifest.ts";
 
 /**
@@ -139,6 +141,90 @@ export function discoverPackSkills(workspaceRoot: string, config: ForgeConfig): 
     }
   }
 
+  return result;
+}
+
+/**
+ * WorkspaceIO-backed pack discovery for kernel commands that must not use
+ * ambient filesystem access (DNA-105).
+ */
+export async function discoverPackSkillsWithIO(
+  workspaceRoot: string,
+  config: ForgeConfig,
+  io: WorkspaceIO,
+): Promise<PackSkillEntry[]> {
+  const result: PackSkillEntry[] = [];
+  for (const pack of config.skillPacks ?? []) {
+    const packDir = path.resolve(workspaceRoot, pack.dir);
+    const relativePackDir = path.relative(path.resolve(workspaceRoot), packDir);
+    if (
+      relativePackDir === ".." ||
+      relativePackDir.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relativePackDir)
+    ) {
+      throw new Error(`Declared skill pack directory escapes the workspace: ${pack.dir}`);
+    }
+    if (!(await io.exists(packDir))) continue;
+    const manifestPath = path.join(packDir, "forge.plugin.yaml");
+    if (!(await io.exists(manifestPath))) {
+      throw new Error(
+        `forge.plugin.yaml not found at ${packDir} for pack prefix "${pack.prefix}". ` +
+          "Run `forge init` to create manifests for declared skill packs (RFC-0941).",
+      );
+    }
+
+    let manifestRaw: string;
+    try {
+      manifestRaw = await io.readFile(manifestPath);
+    } catch (error) {
+      throw new Error(
+        `Failed to read forge.plugin.yaml at ${manifestPath}: ${(error as Error).message}`,
+      );
+    }
+    let manifestParsed: unknown;
+    try {
+      manifestParsed = parseYaml(manifestRaw);
+    } catch (error) {
+      throw new Error(
+        `forge.plugin.yaml at ${manifestPath} is not valid YAML: ${(error as Error).message}`,
+      );
+    }
+    const manifestResult = forgePluginManifestSchema.safeParse(manifestParsed);
+    if (!manifestResult.success) {
+      const issues = manifestResult.error.issues
+        .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
+        .join("; ");
+      throw new Error(`forge.plugin.yaml at ${manifestPath} failed schema validation: ${issues}`);
+    }
+
+    const entries = await io.readdir(packDir);
+    for (const entry of entries) {
+      if (!entry.isDirectory || !entry.name.startsWith(`${pack.prefix}-`)) continue;
+      const skillMdPath = path.join(packDir, entry.name, "SKILL.md");
+      if (!(await io.exists(skillMdPath))) continue;
+      const content = await io.readFile(skillMdPath);
+      const frontmatter = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+      const skill: PackSkillEntry = {
+        name: entry.name,
+        pack: pack.prefix,
+        dir: pack.dir,
+        path: path.relative(packDir, skillMdPath).replace(/\\/g, "/"),
+      };
+      if (frontmatter) {
+        try {
+          const parsed = parseYaml(frontmatter[1]) as Record<string, unknown>;
+          if (Array.isArray(parsed["knowledge"])) {
+            skill.knowledge = (parsed["knowledge"] as unknown[]).filter(
+              (value): value is string => typeof value === "string",
+            );
+          }
+        } catch {
+          // Skill validation owns malformed frontmatter diagnostics.
+        }
+      }
+      result.push(skill);
+    }
+  }
   return result;
 }
 

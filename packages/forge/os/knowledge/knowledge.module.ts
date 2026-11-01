@@ -9,6 +9,9 @@
   <item>RFC-1468: forgeKnowledgeModule registering knowledge.rebuild + knowledge.authz.probe</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1481: register knowledge.conflicts.resolve for explicit K-ID collision remediation.</item>
+  <item>RFC-1481: enforce resolver IO and path boundaries
+
+Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross-file provenance, and declare the mutating command's empty generation set.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -79,6 +82,7 @@ export const forgeKnowledgeModule: ForgeModule = {
       },
       reads: ["forge.yaml", "packages/forge/skills/**/*.md", ".agents/skills/**/*.md"],
       writes: [".agents/skills/**/*.md", ".forge/knowledge-conflicts.txt"],
+      generates: [],
       execute: runKnowledgeConflictsResolve,
     },
   ],

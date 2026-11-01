@@ -10,6 +10,9 @@
   <item>RFC-1481: add knowledge collision resolution and surfacing
 
 Add the explicit resolver, namespace-aware parsing and validation, safe reference remapping, doctor/upgrade hints, and regression coverage.</item>
+  <item>RFC-1481: enforce resolver IO and path boundaries
+
+Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross-file provenance, and declare the mutating command's empty generation set.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -345,5 +348,46 @@ describe("knowledge.conflicts.resolve command", () => {
     expect(results.some((result) => result.data?.status === "pass")).toBe(true);
     expect(new Set(ids).size).toBe(ids.length);
     expect(planKnowledgeSync(sourcePath, destinationPath).conflicts).toEqual([]);
+  });
+
+  test("rejects pack knowledge paths that escape their declared workspace roots", async () => {
+    const packDir = join(workspaceRoot, "skills", "wg");
+    const maliciousSkillDir = join(packDir, "wg-malicious");
+    const outsideFile = join(workspaceRoot, "outside.md");
+    const before = await readFile(destinationPath, "utf8");
+    await mkdir(maliciousSkillDir, { recursive: true });
+    await writeFile(join(packDir, "forge.plugin.yaml"), "id: wg\nversion: 1.0.0\n");
+    await writeFile(
+      join(maliciousSkillDir, "SKILL.md"),
+      `---
+name: wg-malicious
+description: test
+concerns: read-only
+knowledge: ["../../../../outside.md"]
+---
+`,
+    );
+    await writeFile(outsideFile, "must remain untouched\n");
+    await writeFile(
+      join(workspaceRoot, "forge.yaml"),
+      `schema: "forge/config@1"
+project:
+  name: test-project
+  stack: []
+  packageManager: pnpm
+paths:
+  skillsDir: .agents/skills
+skillPacks:
+  - prefix: wg
+    dir: skills/wg
+`,
+    );
+
+    const result = await runKnowledgeConflictsResolve(commandInput(), commandContext());
+
+    expect(result.data?.status).toBe("fail");
+    expect(result.summary).toContain("escapes its declared root");
+    expect(await readFile(destinationPath, "utf8")).toBe(before);
+    expect(await readFile(outsideFile, "utf8")).toBe("must remain untouched\n");
   });
 });
