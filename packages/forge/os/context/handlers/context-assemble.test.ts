@@ -1,7 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1470 context.assemble tests — budgeted slate ranks task-relevant units first, every unit carries source + reasons, missing index blocks.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-context</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
