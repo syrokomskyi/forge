@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.0.0] — 2026-11-01
+
+_Major line 9: fifteen governance RFCs (1461–1475) land in one release — agent-session isolation, composite gates, a remediation catalog bound to blocking diagnostics, knowledge authorization binding, gate liveness probes, budgeted context assembly, session audit, trajectory memory, and per-rule execution counters. Ten new `os/` modules ship with matching package exports and standalone CLI registrations._
+
+### Added
+
+- **Remediation catalog for blocking diagnostics** (RFC-1461): `REMEDIATION_CATALOG` entries declare their violated `contract`, a `docRef`, and resolve their own `werkstatt run`/`x.y` command tokens — dead fix-hint tokens are rejected (REMEDIATION-04) so a diagnostic can never prescribe a forbidden action.
+- **Per-session worktree isolation** (RFC-1462): `werkstatt.session.open` / `werkstatt.session.close` / `werkstatt.session.status` give each parallel agent session its own git worktree, with resume re-materializing the worktree after interruption.
+- **Composite gates** (RFC-1463): commands declaring `compositeGate: true` accumulate the complete violation set in one invocation via `runCompositeGate` — ordering-dependent successors report `skipped: dependency-failed` with the blocking step id; `ensure:` prerequisites run inside pre-flight and land on the report as `ensured[]`; GATE-CMP-01 lints marker'd commands lacking the wiring.
+- **Cheap-tier delegation** (RFC-1464): `agent.delegate` + `agent.delegate.tiers.validate` delegate declared mechanical task classes (`delegable[]` in `forge.yaml`) to a verified cheap execution tier, gated per class with schema and boundary constraints.
+- **Canonical-reader parity** (RFC-1465): `resolver.doors.audit` audits every declared resolution door in `forge.yaml resolverDoors` against its canonical reader (DOOR-* checks) so multi-door surfaces cannot drift apart.
+- **Instruction-layer budget** (RFC-1466): `instructions.budget.validate` enforces `instructions.budget` ceilings on `AGENTS.md` files with exempt-section support; `scar.migrate` moves friction scars into the remediation catalog.
+- **Near-duplicate RFC gate** (RFC-1467): `rfc.create` blocks on terminal-kind near-duplicates until `--revise` acknowledges the precedent; `rfc.supersede.propose` surfaces rejected/superseded near-duplicates with declared escalation fields.
+- **Knowledge authorization binding** (RFC-1468): `knowledge.rebuild` + `knowledge.authz.probe` bind authz-relevant knowledge regions (`knowledge.rebuildRegions`) to authoritative sources and periodic rebuilds — KAUTHZ-01..03.
+- **Gate liveness probes** (RFC-1469): `gate.probe` injects a seeded violation fixture at its real workspace path (backup → invoke → restore) to prove the bound check still fires — a silent pass exposes a dead gate; `gate.probe.catalog` reports per-contract coverage and unprobed error-severity rules.
+- **Budgeted context assembly** (RFC-1470): `context.index.build` rebuilds the pure-projection unit catalog at `docs/.index/context/`; `context.assemble --task "<desc>"` emits a budgeted slate ranked over lexical + recency + path-overlap channels; `context.slate.eval` reports recall@budget over `docs/context-devset/`.
+- **Session audit** (RFC-1471): `session.audit` runs deterministic Stage-A detectors over saved sessions — coverage caveats, circumvention (denied gate → bypass route), blocker deception, generated-file edits, denied retries, false completion claims — and writes per-session `.audit.yaml` sidecars; `session.audit.report` aggregates them into `docs/metrics/session-audit.generated.yaml` and links finding classes to frictions.
+- **Trajectory memory** (RFC-1472): `trajectory.index` extracts procedure units from green-verified sessions; `trajectory.recall` returns top-k situation-matched procedures at decision points; `trajectory.outcome.record --helped|--hurt` feeds utility scoring; `--export` emits `forge/trajectory-shard@1` bundles for cross-workshop vending.
+- **Per-check marginal contribution** (RFC-1473): `checks.contribution.report` reads the counters journal as the canonical firing source and classifies each gate-catalog rule `earning|silent|redundant|guard` with a recommended action.
+- **Check-execution counters** (RFC-1474): every evaluated rule is journaled append-only into `docs/.index/checks/counters.jsonl` (`{runId, ruleId, contract, outcome, at}`); `checks.counters.validate` audits the journal (COUNT-01..02); `checks.counters.export` projects per-rule totals into `docs/metrics/check-counters.generated.yaml` (COUNT-03).
+- **Module surface**: conformance, formal, friction, resolver, instructions, agent, knowledge, gate, checks, context, and trajectory modules are registered in the standalone `forge` CLI and exported via new `package.json` subpaths (`./conformance`, `./formal`, `./registry`, `./reachability`, `./compass`, `./os/*-module`).
+
+### Changed
+
+- **Trajectory hardening** (RFC-1475): unit admission binds to resolvable verdict artifacts — a verdict invalidated post-admission drops the unit at rebuild (TRAJ-04); recall/outcome history moved to append-only `recalls.jsonl`/`outcomes.jsonl` (YAML journals retired as write targets and lazy-migrated; a truncated tail drops only the partial record, TRAJ-06); vendored units score under per-producer trust buckets keyed by `{workshopId, sessionClass}`; stale-index detection distinguishes a missing index (TRAJ-01) from an empty/stale one (TRAJ-02).
+- Metrics `generatedAt` is deterministic — derived from window data rather than wall-clock.
+- Import scanning strips comments before analysis and covers `export default` reachability.
+
 ## [8.0.4] — 2026-10-19
 
 _8.0.3 was never published — its extraction push failed CI on a test-level `EPIPE` regression, fixed here; 8.0.4 is the published release._
