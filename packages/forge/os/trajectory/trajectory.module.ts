@@ -3,6 +3,7 @@
 <purpose>Register forgeTrajectoryModule — trajectory.index, trajectory.recall, trajectory.outcome.record (RFC-1472): procedural-memory retrieval.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1475: rules[] per emitter (TRAJ-01/02/03/04/05/06) + JSONL journal paths in reads/writes</item>
   <item>RFC-1472: forgeTrajectoryModule registering the trajectory commands</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
 </CHANGE_SUMMARY>
@@ -23,6 +24,7 @@ export const forgeTrajectoryModule: ForgeModule = {
       name: "trajectory.index",
       coverage: "operator" as const,
       contract: "trajectory",
+      rules: [{ id: "TRAJ-03", severity: "error" }, { id: "TRAJ-04", severity: "warning" }, { id: "TRAJ-06", severity: "warning" }],
       mutatesState: true,
       description:
         "RFC-1472: extract procedure units from GREEN-verified sessions into docs/.index/trajectory/units.yaml — admission at extraction (non-green sessions produce nothing). Flags: --session, --since, --rebuild, --export <file>, --import <file>.",
@@ -44,9 +46,10 @@ export const forgeTrajectoryModule: ForgeModule = {
       name: "trajectory.recall",
       coverage: "operator" as const,
       contract: "trajectory",
+      rules: [{ id: "TRAJ-01", severity: "error" }, { id: "TRAJ-02", severity: "error" }, { id: "TRAJ-06", severity: "warning" }],
       mutatesState: true,
       description:
-        "RFC-1472: top-k procedure units by situation similarity — decision-point recall (task start, approach selection, unfamiliar diagnostic). Journaled to docs/.index/trajectory/recalls.yaml. Flags: --task, --paths, --k.",
+        "RFC-1472: top-k procedure units by situation similarity — decision-point recall (task start, approach selection, unfamiliar diagnostic). Journaled to docs/.index/trajectory/recalls.jsonl. Flags: --task, --paths, --k.",
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {
@@ -55,7 +58,7 @@ export const forgeTrajectoryModule: ForgeModule = {
         k: { kind: "string", description: "Top-k units (default 5)." },
       },
       reads: ["docs/.index/trajectory/units.yaml"],
-      writes: ["docs/.index/trajectory/recalls.yaml"],
+      writes: ["docs/.index/trajectory/recalls.jsonl"],
       generates: [],
       execute: runTrajectoryRecall,
     },
@@ -63,6 +66,7 @@ export const forgeTrajectoryModule: ForgeModule = {
       name: "trajectory.outcome.record",
       coverage: "operator" as const,
       contract: "trajectory",
+      rules: [{ id: "TRAJ-01", severity: "error" }, { id: "TRAJ-05", severity: "error" }, { id: "TRAJ-06", severity: "warning" }],
       mutatesState: true,
       description:
         "RFC-1472: record helped/hurt for a recall — feeds utilityScore re-ranking + producerTrust. Flags: --recall <id>, --helped | --hurt, --note.",
@@ -74,8 +78,8 @@ export const forgeTrajectoryModule: ForgeModule = {
         hurt: { kind: "boolean", description: "The recall hurt." },
         note: { kind: "string", description: "Free-text annotation." },
       },
-      reads: ["docs/.index/trajectory/recalls.yaml", "docs/.index/trajectory/units.yaml"],
-      writes: ["docs/.index/trajectory/units.yaml", "docs/.index/trajectory/outcomes.yaml"],
+      reads: ["docs/.index/trajectory/recalls.jsonl", "docs/.index/trajectory/units.yaml"],
+      writes: ["docs/.index/trajectory/units.yaml", "docs/.index/trajectory/outcomes.jsonl"],
       generates: [],
       execute: runOutcomeRecord,
     },
