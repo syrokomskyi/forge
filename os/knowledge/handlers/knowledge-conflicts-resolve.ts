@@ -18,6 +18,9 @@ Add the explicit resolver, namespace-aware parsing and validation, safe referenc
   <item>RFC-1481: enforce resolver IO and path boundaries
 
 Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross-file provenance, and declare the mutating command's empty generation set.</item>
+  <item>RFC-1481: honor kernel dry-run and expose resolver reachability
+
+Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -322,7 +325,7 @@ export async function runKnowledgeConflictsResolve(
 ): Promise<ForgeCommandResult<KnowledgeConflictsResolveData>> {
   const io = resolveIo(context.io);
   const root = context.workspaceRoot;
-  const dryRun = input.flags["dry-run"] === true || input.flags.dryRun === true;
+  const dryRun = context.dryRun === true || input.flags["dry-run"] === true;
   const forgeRoot = context.forgeRoot ?? path.resolve(import.meta.dirname, "../../..");
   const config = await readForgeConfig(root, io);
   let lock: { lockPath: string; owner: LockOwner } | null = null;

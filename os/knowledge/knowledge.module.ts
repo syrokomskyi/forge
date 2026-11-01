@@ -12,6 +12,9 @@
   <item>RFC-1481: enforce resolver IO and path boundaries
 
 Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross-file provenance, and declare the mutating command's empty generation set.</item>
+  <item>RFC-1481: honor kernel dry-run and expose resolver reachability
+
+Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -68,6 +71,7 @@ export const forgeKnowledgeModule: ForgeModule = {
     {
       name: "knowledge.conflicts.resolve",
       coverage: "operator" as const,
+      coverageNote: "operator-invoked remediation after previewing consumer knowledge conflicts",
       mutatesState: true,
       contract: "knowledge",
       description:
@@ -80,7 +84,13 @@ export const forgeKnowledgeModule: ForgeModule = {
           description: "Print the full conflict resolution plan without writing files.",
         },
       },
-      reads: ["forge.yaml", "packages/forge/skills/**/*.md", ".agents/skills/**/*.md"],
+      reads: [
+        "forge.yaml",
+        "packages/forge/skills/**/*.md",
+        "skills/**/*.md",
+        "**/forge.plugin.yaml",
+        ".agents/skills/**/*.md",
+      ],
       writes: [".agents/skills/**/*.md", ".forge/knowledge-conflicts.txt"],
       generates: [],
       execute: runKnowledgeConflictsResolve,

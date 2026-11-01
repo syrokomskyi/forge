@@ -13,12 +13,16 @@ Add the explicit resolver, namespace-aware parsing and validation, safe referenc
   <item>RFC-1481: enforce resolver IO and path boundaries
 
 Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross-file provenance, and declare the mutating command's empty generation set.</item>
+  <item>RFC-1481: honor kernel dry-run and expose resolver reachability
+
+Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
 </CHANGE_SUMMARY>
 */
 
 // @vitest-environment node
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -243,14 +247,14 @@ ${body}
 `;
 }
 
-function commandContext(): ForgeRuntimeContext {
+function commandContext(dryRun = false): ForgeRuntimeContext {
   return {
     workspaceRoot,
     forgeRoot,
     io: ambientIo,
     logger: { section() {}, success() {}, warn() {}, error() {}, info() {} },
     outputFormat: "json",
-    dryRun: false,
+    dryRun,
   } as unknown as ForgeRuntimeContext;
 }
 
@@ -302,6 +306,22 @@ afterEach(async () => {
 });
 
 describe("knowledge.conflicts.resolve command", () => {
+  test("consumer-authing guidance teaches the local namespace", async () => {
+    const forgePackageRoot = join(import.meta.dirname, "../..");
+    const docs = [
+      "skills/fo/fo-session-save/SKILL.md",
+      "skills/shared/grilling/SKILL.md",
+      "skills/fo/fo-memory-sync/SKILL.md",
+      "skills/fo/fo-knowledge-distill/SKILL.md",
+      "skills/shared/writing-great-skills/SKILL.md",
+    ];
+    const contents = await Promise.all(
+      docs.map((relative) => readFile(join(forgePackageRoot, relative), "utf8")),
+    );
+
+    expect(contents.every((content) => content.includes("L-K-NNNN"))).toBe(true);
+  });
+
   test("is registered in the standalone Forge knowledge module", () => {
     expect(
       forgeKnowledgeModule.commands.some((command) => command.name === "knowledge.conflicts.resolve"),
@@ -312,8 +332,8 @@ describe("knowledge.conflicts.resolve command", () => {
     const before = await readFile(destinationPath, "utf8");
 
     const result = await runKnowledgeConflictsResolve(
-      commandInput({ dryRun: true }),
-      commandContext(),
+      commandInput(),
+      commandContext(true),
     );
 
     expect(result.data?.status).toBe("pass");
@@ -322,6 +342,19 @@ describe("knowledge.conflicts.resolve command", () => {
     ]);
     expect(result.data?.resolved[0]?.adopted).toEqual(["K-0007"]);
     expect(await readFile(destinationPath, "utf8")).toBe(before);
+    expect(existsSync(join(workspaceRoot, ".forge"))).toBe(false);
+  });
+
+  test("programmatic dry-run flag also suppresses every write", async () => {
+    const before = await readFile(destinationPath, "utf8");
+    const result = await runKnowledgeConflictsResolve(
+      commandInput({ "dry-run": true }),
+      commandContext(),
+    );
+
+    expect(result.data?.dryRun).toBe(true);
+    expect(await readFile(destinationPath, "utf8")).toBe(before);
+    expect(existsSync(join(workspaceRoot, ".forge"))).toBe(false);
   });
 
   test("resolves the collision, clears the sync conflict, and is idempotent", async () => {
