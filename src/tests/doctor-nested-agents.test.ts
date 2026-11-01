@@ -12,7 +12,7 @@ workspace discovery exclusions via bindings.workspaces.skipDirs (RFC-1150).</pur
 */
 
 import { test, expect, beforeEach, afterEach } from "vitest";
-import { mkdtemp, rm, mkdir, writeFile, appendFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile, appendFile, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { runDoctor } from "../onboarding/doctor.ts";
@@ -159,5 +159,34 @@ test("AC-6: divergent file without a resolvable boundary reports unmapped-custom
   expect(check).toBeDefined();
   expect(check!.status).toBe("warn");
   expect(check!.message).toContain("unmapped-customization");
+  expect(check!.message).not.toContain("stale");
+});
+
+test("--fix inserts forge:custom boundary into unmapped files, then generate merges", async () => {
+  await writeFile(join(tempDir, "forge.yaml"), forgeYaml([]), "utf8");
+  await mkdir(join(tempDir, "packages", "legacy"), { recursive: true });
+  await writeFile(join(tempDir, "packages", "legacy", "package.json"), '{"name":"legacy"}', "utf8");
+  await writeFile(
+    join(tempDir, "packages", "legacy", "AGENTS.md"),
+    `${buildGeneratedHeader({ filePath: "AGENTS.md", ownerCommand: "forge.agents.generate", editable: true })}\n# Hand-maintained\n\n## Custom section\n\ndivergent body\n`,
+    "utf8",
+  );
+
+  const fixed = await runDoctor({ argv: [], flags: { fix: true } }, makeContext());
+  const fixResult = fixed.data!.fixes?.find((f) => f.check === "nested-AGENTS.md");
+  expect(fixResult?.detail).toContain("forge:custom boundary inserted");
+
+  const content = await readFile(join(tempDir, "packages", "legacy", "AGENTS.md"), "utf8");
+  expect(content).toContain("<!-- forge:custom -->");
+  expect(content.indexOf("<!-- forge:custom -->")).toBeLessThan(
+    content.indexOf("## Custom section"),
+  );
+  // The custom tail survives; the divergent head was canonicalized by the
+  // same pass (boundary inserted before generate ran).
+  expect(content).toContain("divergent body");
+
+  const after = await runDoctor({ argv: [], flags: {} }, makeContext());
+  const check = after.data!.checks.find((c) => c.name === "nested-AGENTS.md");
+  expect(check!.message).not.toContain("unmapped-customization");
   expect(check!.message).not.toContain("stale");
 });

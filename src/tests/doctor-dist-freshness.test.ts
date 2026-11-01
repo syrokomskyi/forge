@@ -118,6 +118,30 @@ test("dist-freshness passes when dist is absent (npm consumer layout)", async ()
   expect(check!.status).toBe("pass");
 });
 
+test("dist-freshness skips an npm-installed forge even with a stale dist", async () => {
+  await writeFile(join(tempDir, "forge.yaml"), FORGE_YAML, "utf8");
+  // The published tarball ships src/ and dist/ with tarball mtimes ordering
+  // src after dist — the mtime heuristic misfires on every install.
+  const pkg = join(tempDir, "node_modules", "@warpgogol", "forge");
+  await mkdir(join(pkg, "src"), { recursive: true });
+  await mkdir(join(pkg, "dist"), { recursive: true });
+  await writeFile(join(pkg, "package.json"), JSON.stringify({ name: "@warpgogol/forge" }));
+  await writeFile(join(pkg, "src", "index.ts"), "export {};\n");
+  await writeFile(join(pkg, "dist", "index.js"), "export {};\n");
+  const old = new Date("2026-01-01T00:00:00Z");
+  const recent = new Date("2026-09-01T00:00:00Z");
+  await utimes(join(pkg, "src", "index.ts"), recent, recent);
+  await utimes(join(pkg, "dist", "index.js"), old, old);
+
+  const input: ForgeCommandInput = { argv: [], flags: {} };
+  const result = await runDoctor(input, makeContext());
+
+  const check = result.data!.checks.find((c) => c.name === "dist-freshness");
+  expect(check).toBeDefined();
+  expect(check!.status).toBe("pass");
+  expect(check!.message).toContain("npm-installed forge");
+});
+
 test("dist-freshness passes when dist is newer than src", async () => {
   await writeFile(join(tempDir, "forge.yaml"), FORGE_YAML, "utf8");
   const old = new Date("2026-01-01T00:00:00Z");

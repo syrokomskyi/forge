@@ -655,6 +655,19 @@ export function resolveForgeRoot(workspaceRoot: string): string {
 }
 
 /**
+ * True when `forgeRoot` is a development checkout (monorepo `packages/forge`,
+ * or the forge repo itself) rather than an npm-installed package. The
+ * published tarball ships `src/` and `os/` via the `files` field, so source
+ * dirs alone cannot distinguish the two — the `node_modules` path segment
+ * can, because npm layouts always resolve through it. Source-scanning
+ * checks (autonomy-guard, dist-freshness) gate on this: an installed
+ * package's source is immutable, so violations are not actionable there.
+ */
+export function isForgeSourceCheckout(forgeRoot: string): boolean {
+  return !forgeRoot.split(/[\\/]/).includes("node_modules");
+}
+
+/**
  * Resolve the forge package root from inside the package's own modules.
  * Handles both source layout (`src/<dir>/` → package root is two levels up)
  * and compiled layout (`dist/src/<dir>/` → package root is three levels up)
