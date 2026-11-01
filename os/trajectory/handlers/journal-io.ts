@@ -11,11 +11,11 @@ warns and skips — a partial JSONL is worse than none.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
   <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
   <item>RFC-1475: apply review round-5 findings — shard units container guard, array-element migration convergence, confinement drop test</item>
+  <item>RFC-1475: apply review round-6 residual — normalize non-string recalls keyOf for migration convergence</item>
   <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -140,7 +140,7 @@ export async function readRecallsJournal(
   const jsonlPath = path.join(root, TRAJECTORY_DIR, "recalls.jsonl");
   const yamlPath = path.join(root, TRAJECTORY_DIR, "recalls.yaml");
   return readJournalWithYamlMigration<RecallJournalRecord>(resolved, jsonlPath, yamlPath, "recalls", (r) =>
-    r.id ?? "",
+    typeof r.id === "string" ? r.id : "",
   );
 }
 

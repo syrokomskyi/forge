@@ -206,5 +206,22 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
     const lines = (await readFile(join(root, "docs", ".index", "trajectory", "recalls.jsonl"), "utf8")).trim().split("\n");
     expect(lines.some((l) => l.includes("R-legacy-1"))).toBe(true);
   });
+
+  test("crafted non-string id dedups — migration converges instead of unbounded re-append", async () => {
+    await runTrajectoryIndex(flags({}), ctx());
+    const jsonl = join(root, "docs", ".index", "trajectory", "recalls.jsonl");
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(
+      join(root, "docs", ".index", "trajectory", "recalls.yaml"),
+      "schema: forge/trajectory-recalls@1\nrecalls:\n  - {id: {nested: 1}, task: x, unitsReturned: [], at: \"2026-10-01T00:00:00Z\"}\n",
+    );
+    await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
+    const first = (await readFile(jsonl, "utf8")).trim().split("\n").length;
+    await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
+    const second = (await readFile(jsonl, "utf8")).trim().split("\n").length;
+    // Second recall appends only its own journal line — the object-id record
+    // must not be re-migrated (it dedups under the "" key on both sides).
+    expect(second).toBe(first + 1);
+  });
 });
 
