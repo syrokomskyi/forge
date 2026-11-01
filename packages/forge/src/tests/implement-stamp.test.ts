@@ -8,12 +8,12 @@ Unit tests for implement stamp covering rfc.implement.stamp. It also guards the 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1311: Compass header sweep — declares the implement suite's contract for test-file scaffold coverage.</item>
-  <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1322: fo-review fix pass — stale-envelope refresh, probes-less fail-closed, empty/dir/escape paths, line-ranges, --sync composition, fully-checked no-op</item>
   <item>RFC-1322: evidence annotation extraction takes the last occurrence — prose mentions no longer shadow the annotation</item>
   <item>RFC-1383: pins for the --check-criteria remedy hint, residual no-no-op, and N-of-M success output</item>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
+  <history>RFC-1310, RFC-1311</history>
 </CHANGE_SUMMARY>
 */
 
@@ -289,6 +289,18 @@ function makeInputWithCriteriaFlag(
   };
 }
 
+// RFC-1483: --no-repair restores the pre-self-repair blocking gate.
+function makeInputNoRepair(id: string, commit: string): ForgeCommandInput {
+  return {
+    argv: [],
+    flags: {
+      id,
+      "implementation-commit": commit,
+      "no-repair": true,
+    },
+  };
+}
+
 const evidenceEnvelopePath = (root: string, id: string) =>
   join(root, "docs", "rfcs", "verification", `${id.toLowerCase()}.generated.yaml`);
 
@@ -329,13 +341,15 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.violations[0]?.rule).toBe("RFC-IMP-01");
   });
 
-  it("rejects unchecked criteria (RFC-IMP-02)", async () => {
+  it("rejects unchecked criteria under --no-repair (RFC-IMP-02)", async () => {
     const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0001-test-rfc.md");
     await writeFile(rfcFile, RFC_BODY("RFC-0001", "accepted", false));
     const commit = await commitAll(workspaceRoot, "Implement RFC-0001");
 
+    // RFC-1483: a bare run self-repairs — the IMP-02 blocking branch only
+    // exists behind --no-repair now.
     const result = await runRfcImplementStamp(
-      makeInput("RFC-0001", commit),
+      makeInputNoRepair("RFC-0001", commit),
       makeContext(workspaceRoot),
     );
 
@@ -343,9 +357,8 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.status).toBe("fail");
     const rules = result.data?.violations.map((v) => v.rule);
     expect(rules).toContain("RFC-IMP-02");
-    // RFC-1383 AC-1: the violation names the --check-criteria remedy.
     const imp02 = result.data?.violations.find((v) => v.rule === "RFC-IMP-02");
-    expect(imp02?.message).toContain("--check-criteria");
+    expect(imp02?.message).toContain("--no-repair");
     expect(imp02?.message).toContain("First criterion");
   });
 
@@ -369,8 +382,8 @@ describe("rfc.implement.stamp", () => {
     expect(result.exitCode).toBe(1);
     const imp02 = result.data?.violations.find((v) => v.rule === "RFC-IMP-02");
     expect(imp02).toBeDefined();
-    expect(imp02!.message).toContain("remain unchecked after the --check-criteria pass");
-    // The flag already ran — the message must not suggest re-running it.
+    expect(imp02!.message).toContain("remain unchecked after the repair pass");
+    // The repair already ran — the message must not suggest re-running it.
     expect(imp02!.message).not.toContain("Re-run with --check-criteria");
   });
 
@@ -1056,5 +1069,175 @@ describe("rfc.implement.stamp", () => {
     expect(result.data?.data?.criteriaAutoChecked).toEqual(["AC-1", "AC-2", "AC-3"]);
     const content = await readFile(rfcFile, "utf-8");
     expect(content).toContain("status: implemented");
+  });
+
+  // ── RFC-1483: self-repairing default ────────────────────────────────────
+
+  it("repairs unchecked-but-evidenced criteria + missing envelope by default and stamps (AC-1, AC-2)", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    // No --check-criteria flag — the repair machinery is the default path.
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.status).toBe("pass");
+    const repaired = result.data?.data?.repaired ?? [];
+    expect(repaired.map((r) => r.kind)).toEqual(["envelope-emitted", "criteria-checked"]);
+    expect(repaired.find((r) => r.kind === "criteria-checked")?.detail).toBe("AC-1,AC-2,AC-3");
+
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: implemented");
+    expect(content).not.toContain("- [ ]");
+    expect(await pathExists(evidenceEnvelopePath(workspaceRoot, "RFC-0101"))).toBe(true);
+  });
+
+  it("dry-run reports computed repairs with dryRun: true and writes nothing", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0101", commit, true),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.data?.dryRun).toBe(true);
+    const repaired = result.data?.data?.repaired ?? [];
+    expect(repaired.some((r) => r.kind === "envelope-emitted")).toBe(true);
+    expect(repaired.some((r) => r.kind === "criteria-checked")).toBe(true);
+
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: accepted");
+    expect(content).toContain("- [ ] AC-1:");
+    expect(await pathExists(evidenceEnvelopePath(workspaceRoot, "RFC-0101"))).toBe(false);
+  });
+
+  it("unrepairable failures print the ordered remediation checklist — sorted violations carrying fixHint (AC-3, AC-4)", async () => {
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    // Commit WITHOUT the X-RFC trailer → STAMP-GOV-01 fires.
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101");
+    // Uncommitted edit to the RFC file itself → RFC-IMP-04 fires.
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101") + "\n<!-- dirty -->\n");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const violations = result.data?.violations ?? [];
+    const rules = violations.map((v) => v.rule);
+    const imp04 = rules.indexOf("RFC-IMP-04");
+    const gov = rules.indexOf("STAMP-GOV-01");
+    expect(imp04).toBeGreaterThanOrEqual(0);
+    expect(gov).toBeGreaterThan(imp04);
+    for (const v of violations) {
+      if (
+        ["RFC-IMP-02", "RFC-IMP-04", "RFC-IMP-06", "RFC-IMP-09", "STAMP-GOV-01"].includes(
+          v.rule,
+        )
+      ) {
+        expect(v.fixHint, `${v.rule} must carry a remediation binding`).toBeTruthy();
+      }
+    }
+  });
+
+  it("never auto-checks a criterion without resolvable evidence — reported unrepairable (AC-5)", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    // AC-1's annotation resolves nothing — the repair pass must not flip it.
+    await writeFile(
+      rfcFile,
+      RFC_BODY_FLAGGED("RFC-0101", { ac1: "test: src/definitely-missing.test.ts" }),
+    );
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const check01 = result.data?.violations.find((v) => v.rule === "STAMP-CHECK-01");
+    expect(check01).toBeDefined();
+    expect(check01?.fixHint).toBeTruthy();
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: accepted");
+    expect(content).toContain("- [ ] AC-1");
+  });
+
+  it("--no-repair restores the blocking gate; --check-criteria remains an accepted alias (AC-6)", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: true, detail: "exists" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const blocked = await runRfcImplementStamp(
+      makeInputNoRepair("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+    expect(blocked.exitCode).toBe(1);
+    const imp02 = blocked.data?.violations.find((v) => v.rule === "RFC-IMP-02");
+    expect(imp02).toBeDefined();
+    expect(imp02?.fixHint).toBeTruthy();
+    expect(blocked.data?.data?.repaired).toBeUndefined();
+    const stillAccepted = await readFile(rfcFile, "utf-8");
+    expect(stillAccepted).toContain("status: accepted");
+    expect(stillAccepted).toContain("- [ ] AC-1:");
+
+    // --check-criteria remains accepted — identical effect to the default.
+    const aliased = await runRfcImplementStamp(
+      makeInputWithCriteriaFlag("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+    expect(aliased.exitCode).toBe(0);
+    expect(aliased.data?.status).toBe("pass");
+  });
+
+  it("repair mid-chain: resolvable criteria but failing emit — the envelope defect surfaces, nothing is written", async () => {
+    mockRunProbe.mockResolvedValue({ probe: {}, ok: false, detail: "missing" });
+    const rfcFile = join(workspaceRoot, "docs", "rfcs", "rfc-0101-flagged.md");
+    await mkdir(join(workspaceRoot, "src"), { recursive: true });
+    await writeFile(rfcFile, RFC_BODY_FLAGGED("RFC-0101"));
+    await writeFile(join(workspaceRoot, "src", "index.ts"), "export {};\n");
+    await writeFile(join(workspaceRoot, "src", "x.test.ts"), "// test\n");
+    await writeFile(join(workspaceRoot, "src", "foo.ts"), "// foo\n");
+    const commit = await commitAll(workspaceRoot, "Implement RFC-0101\n\nX-RFC: RFC-0101");
+
+    const result = await runRfcImplementStamp(
+      makeInput("RFC-0101", commit),
+      makeContext(workspaceRoot),
+    );
+
+    expect(result.exitCode).toBe(1);
+    const rules = (result.data?.violations ?? []).map((v) => v.rule);
+    expect(rules.some((r) => r === "RFC-IMP-06" || r === "EVIDENCE-SYNC-02" || r === "STAMP-CHECK-01")).toBe(true);
+    const content = await readFile(rfcFile, "utf-8");
+    expect(content).toContain("status: accepted");
   });
 });

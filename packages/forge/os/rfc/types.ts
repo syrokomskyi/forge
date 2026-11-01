@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
   <item>RFC-1467: declare supersede.propose escalation fields + repair dead related-injector regex</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1453, RFC-1454, RFC-1455</history>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -755,6 +755,17 @@ export interface RfcImplementStampData {
   evidencePath?: string;
   evidenceReEmitted?: boolean;
   metricsPath?: string;
+  /** RFC-1483: prerequisite repairs applied (or, under --dry-run, computed) in-flight. */
+  repaired?: StampRepair[];
+  /** RFC-1483: true when the result is a dry-run projection — repaired[] then lists computed-not-written repairs. */
+  dryRun?: boolean;
+}
+
+/** RFC-1483: one prerequisite repair applied inside the atomic stamp write. */
+export interface StampRepair {
+  kind: "criteria-checked" | "envelope-emitted";
+  /** e.g. "AC-3,AC-7" for flipped criteria, or the regenerated envelope path. */
+  detail: string;
 }
 
 export type RfcImplementStampRule =
@@ -799,7 +810,26 @@ export type RfcImplementStampRule =
 export interface RfcImplementStampViolation {
   rule: RfcImplementStampRule;
   message: string;
+  /** RFC-1483: the satisfying command or edit — printed as part of the ordered remediation checklist. */
+  fixHint?: string;
 }
+
+/**
+ * RFC-1483: the prerequisite chain order — emit envelope → check/annotate
+ * criteria → clean tree → implementation commit → provenance → hash tail.
+ * violations[] are sorted by this list before the report prints: the printed
+ * list IS the ordered remediation checklist. Unlisted rules keep their
+ * original relative order, appended after the listed ones.
+ */
+export const PREREQUISITE_ORDER: readonly RfcImplementStampRule[] = [
+  "RFC-IMP-06",
+  "RFC-IMP-02",
+  "STAMP-CHECK-01",
+  "RFC-IMP-04",
+  "RFC-IMP-03",
+  "STAMP-GOV-01",
+  "RFC-IMP-09",
+];
 
 export interface RfcImplementStampResult {
   command: "rfc.implement.stamp";

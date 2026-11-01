@@ -19,6 +19,7 @@ provenance in `## Deviations` entries.
 <CHANGE_SUMMARY>
   <item>RFC-1454: deviation gate — committed-review index, RFC-IMP-15, deviations-section parser for V-49.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
 </CHANGE_SUMMARY>
 */
 
@@ -131,7 +132,7 @@ export interface DeviationGateInput {
 }
 
 export interface DeviationGateResult {
-  errors: Array<{ rule: "RFC-IMP-15"; message: string }>;
+  errors: Array<{ rule: "RFC-IMP-15"; message: string; fixHint?: string }>;
 }
 
 export async function evaluateDeviationGate(
@@ -164,6 +165,7 @@ export async function evaluateDeviationGate(
           message:
             `${input.rfcId}: review ${review.reviewId} (${review.path}) carries a malformed designDeviations ` +
             `entry (id + resolution ∈ {fix, amend} required) — a corrupt record grants nothing (RFC-1454).`,
+          fixHint: `fix the designDeviations entry in ${review.path} — every entry needs id + resolution ∈ {fix, amend}`,
         });
         continue;
       }
@@ -175,6 +177,7 @@ export async function evaluateDeviationGate(
             `${input.rfcId}: review ${review.reviewId} (${review.path}) records amend deviation ${dev.id} ` +
             `absent from "## Deviations" — add "- ${dev.id} (review ${review.reviewId}): <what changed>" ` +
             `and edit the affected criterion/probe in the same change (RFC-1454).`,
+          fixHint: `add "- ${dev.id} (review ${review.reviewId}): <what changed>" to the RFC's "## Deviations" section and edit the affected criterion/probe in the same change`,
         });
       }
     }

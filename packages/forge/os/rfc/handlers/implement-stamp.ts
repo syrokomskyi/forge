@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1383, RFC-IMP-07</history>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -41,6 +41,7 @@ import { evaluateDeviationGate } from "./implement-stamp-deviations.ts";
 import { toIsoDate } from "./shared.ts";
 import { byteHashHex, normalizeProbes, runRfcVerificationEmit } from "../verification-evidence.ts";
 import {
+  PREREQUISITE_ORDER,
   RFC_DIR,
   RFC_METADATA_CUTOFF,
   RFC_ORIGIN_CUTOFF,
@@ -66,6 +67,7 @@ import type {
   RfcImplementStampViolation,
   RfcImplementStampResult,
   AcceptanceProbe,
+  StampRepair,
   VerificationEvidence,
 } from "../types.ts";
 import type { WorkspaceIO } from "../../../src/types.ts";
@@ -522,6 +524,22 @@ async function evaluateStampEvidenceGates(opts: {
   implementationCommit?: string;
   /** RFC-1453: operator waiver for the outcome gate (--waive-outcome). */
   waiveOutcome?: string;
+  /**
+   * RFC-1483: restrict evaluation to one phase of the gateset.
+   * - "independent" — gates that do not read the evidence envelope
+   *   (RFC-IMP-10/11/12/15); runs pre-lock so composite reporting is
+   *   preserved while the envelope refresh is still pending.
+   * - "dependent" — envelope-reading gates (RFC-IMP-06/09/13/14); runs
+   *   in-lock after the emit-if-needed refresh.
+   * Omitted — the full gateset (no-repair path, stale-state evaluation).
+   */
+  gatePhase?: "independent" | "dependent";
+  /**
+   * RFC-1483: used only for the doomed-run composite report — skips the
+   * repairable staleness findings (RFC-IMP-06/09) that the refresh would
+   * fix anyway, while still naming envelope-record verdicts (IMP-13/14).
+   */
+  suppressRepairable?: boolean;
 }): Promise<{
   violations: RfcImplementStampViolation[];
   warnings: RfcImplementStampViolation[];
@@ -531,11 +549,13 @@ async function evaluateStampEvidenceGates(opts: {
   const violations: RfcImplementStampViolation[] = [];
   const warnings: RfcImplementStampViolation[] = [];
   let evidenceRelPath: string | undefined;
+  const runIndependent = opts.gatePhase !== "dependent";
+  const runDependent = opts.gatePhase !== "independent";
 
   // ── RFC-IMP-10 / RFC-IMP-11: git-derived origin gates (RFC-1330) ─────────
   // Derived fresh at stamp time (head = HEAD) — the committed envelope's
   // origin records are volatile context and may predate later commits.
-  if (hasProbes && String(opts.frontmatter["createdAt"] ?? "") >= RFC_ORIGIN_CUTOFF) {
+  if (runIndependent && hasProbes && String(opts.frontmatter["createdAt"] ?? "") >= RFC_ORIGIN_CUTOFF) {
     const probes = acceptance as AcceptanceProbe[];
     const origins = await deriveProbeOrigins({
       git: createOriginGit(opts.workspaceRoot),
@@ -557,31 +577,35 @@ async function evaluateStampEvidenceGates(opts: {
 
   // RFC-IMP-12 applies to every post-cutoff HIGH-tier RFC, probe-bearing or not.
   // ── RFC-IMP-12: acceptance-verification report (RFC-1333) ─────────────
-  const acc = await evaluateAcceptanceVerificationGate({
-    targetId,
-    frontmatter: opts.frontmatter,
-    reports: await readAcceptanceReports(opts.workspaceRoot, targetId),
-    isCandidateBound: (sha) => candidateBoundToHead(opts.workspaceRoot, sha),
-    waiverReason: opts.waiverReason,
-  });
-  violations.push(...acc.errors);
-  warnings.push(...acc.warnings);
+  if (runIndependent) {
+    const acc = await evaluateAcceptanceVerificationGate({
+      targetId,
+      frontmatter: opts.frontmatter,
+      reports: await readAcceptanceReports(opts.workspaceRoot, targetId),
+      isCandidateBound: (sha) => candidateBoundToHead(opts.workspaceRoot, sha),
+      waiverReason: opts.waiverReason,
+    });
+    violations.push(...acc.errors);
+    warnings.push(...acc.warnings);
+  }
 
   // ── RFC-IMP-13: formal tier requires proved proof probes (RFC-1391) ────────
   // No waiver path — formal evidence is a mechanical checker verdict by
   // definition. Reads the committed envelope's proof verdicts.
-  const formal = evaluateFormalProofGate({
-    targetId,
-    frontmatter: opts.frontmatter,
-    probes: (Array.isArray(acceptance) ? acceptance : []) as AcceptanceProbe[],
-    evidenceRecords: evidenceCheck.envelope?.probes,
-  });
-  violations.push(...formal.errors);
-  warnings.push(...formal.warnings);
+  if (runDependent) {
+    const formal = evaluateFormalProofGate({
+      targetId,
+      frontmatter: opts.frontmatter,
+      probes: (Array.isArray(acceptance) ? acceptance : []) as AcceptanceProbe[],
+      evidenceRecords: evidenceCheck.envelope?.probes,
+    });
+    violations.push(...formal.errors);
+    warnings.push(...formal.warnings);
+  }
 
   // ── RFC-IMP-14: outcome-surface diffs need a passing outcome probe (RFC-1453) ──
   // Evaluates the committed envelope's recorded verdicts — never re-executes.
-  {
+  if (runDependent) {
     let outcomeSurfaces: string[] = [];
     let outcomeBuild: string | null = null;
     try {
@@ -609,7 +633,7 @@ async function evaluateStampEvidenceGates(opts: {
   }
 
   // ── RFC-IMP-15: amend review deviations recorded in ## Deviations (RFC-1454) ──
-  {
+  if (runIndependent) {
     let reviewsDir: string | null = null;
     try {
       reviewsDir = loadForgeConfig(opts.workspaceRoot).bindings?.paths?.reviewsDir ?? null;
@@ -626,11 +650,12 @@ async function evaluateStampEvidenceGates(opts: {
   }
 
   // ── RFC-IMP-06: probe-bearing post-cutoff RFCs need a passing envelope ────
-  if (requiresEvidence) {
+  if (requiresEvidence && runDependent && !opts.suppressRepairable) {
     if (!evidenceCheck.exists || evidenceCheck.overall !== "pass") {
       violations.push({
         rule: "RFC-IMP-06",
         message: `RFC ${targetId} declares acceptance probes but evidence file is missing or overall is not "pass" (got "${evidenceCheck.overall}"). Run: site-kernel run rfc.verification.emit --id ${targetId}`,
+        fixHint: `run rfc.verification.emit --id ${targetId} and fix the failing probe(s) — the default repair pass emits a missing/stale envelope in-process but cannot make a failing probe pass`,
       });
     } else {
       evidenceRelPath = join(VERIFICATION_DIR, `${targetId.toLowerCase()}.generated.yaml`);
@@ -642,16 +667,18 @@ async function evaluateStampEvidenceGates(opts: {
   // (the RFC file must be committed-clean to stamp) the compared bytes are
   // effectively the committed bytes — deliberate, keeps the gate honest
   // without a second git read.
-  if (evidenceCheck.exists) {
+  if (evidenceCheck.exists && runDependent && !opts.suppressRepairable) {
     if (evidenceCheck.malformed || !evidenceCheck.envelope) {
       violations.push({
         rule: "RFC-IMP-09",
         message: `RFC ${targetId} evidence envelope is malformed (unreadable YAML or non-object content). Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope — or delete the stale envelope file.`,
+        fixHint: `re-run rfc.verification.emit --id ${targetId} and commit the envelope, or delete the stale envelope file`,
       });
     } else if (!hasProbes) {
       violations.push({
         rule: "RFC-IMP-09",
         message: `RFC ${targetId} has a committed evidence envelope but no acceptance: list — probes were deleted after emission, which is a criteria change. Either restore the probes and re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope — or delete the stale envelope file (rfc.verification.emit skips probe-less RFCs, so re-emit alone cannot clear this).`,
+        fixHint: `restore the deleted probes and re-run rfc.verification.emit --id ${targetId}, or delete the stale envelope file`,
       });
     } else {
       const rfcMarkdown = await opts.io.readFile(rfcFilePath);
@@ -662,6 +689,7 @@ async function evaluateStampEvidenceGates(opts: {
         violations.push({
           rule: "RFC-IMP-09",
           message: `RFC ${targetId} evidence envelope lacks hash fields (pre-RFC-0330 format). Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+          fixHint: `re-run rfc.verification.emit --id ${targetId} and commit the refreshed envelope`,
         });
       } else if (
         env.rfcFileHash !== currentFileHash ||
@@ -676,6 +704,7 @@ async function evaluateStampEvidenceGates(opts: {
         violations.push({
           rule: "RFC-IMP-09",
           message: `RFC ${targetId} evidence is stale: ${staleFields} mismatch — the RFC file or its acceptance list changed after emission. Re-run: site-kernel run rfc.verification.emit --id ${targetId}, then commit the envelope.`,
+          fixHint: `re-run rfc.verification.emit --id ${targetId} after committing the RFC bytes, then commit the refreshed envelope`,
         });
       }
     }
@@ -801,7 +830,12 @@ export async function runRfcImplementStamp(
   // RFC-1322: the stamp performs the checkbox flips itself — but only for
   // criteria whose (evidence: ...) annotation resolves — and refreshes a
   // missing/stale envelope in-process before the gates evaluate it.
-  const checkCriteria = input.flags["check-criteria"] === true;
+  // RFC-1483: the --check-criteria repair machinery is the default path —
+  // the flag stays an accepted alias for script stability; --no-repair
+  // restores fail-fast gating and wins when both are passed.
+  const noRepair = input.flags["no-repair"] === true;
+  const repairEnabled = !noRepair;
+  const repaired: StampRepair[] = [];
 
   // ── Find the target RFC ───────────────────────────────────────────────────
   const files = await listRfcFiles(rfcDirPath);
@@ -879,24 +913,28 @@ export async function runRfcImplementStamp(
   }
 
   // ── RFC-IMP-02: criterion checks (V-26/V-27 semantics) ────────────────────
-  // Under --check-criteria both branches defer: unchecked lines become flip
-  // candidates for the auto-check pass, and checkedWithoutEvidence re-runs on
-  // the post-flip body — a flipped line always keeps its annotation.
+  // Under the default repair pass both branches defer: unchecked lines become
+  // flip candidates for the auto-check pass, and checkedWithoutEvidence
+  // re-runs on the post-flip body — a flipped line always keeps its
+  // annotation. --no-repair restores these blocking branches.
   const criteriaEval = evaluateAcceptanceCriteria(body);
-  // RFC-1383: the unchecked violation names the remedy — --check-criteria
-  // auto-verifies resolvable criteria in-place. This branch only runs when
-  // the flag was NOT passed, so the hint can never offer a no-op.
+  // RFC-1383: the unchecked violation names the remedy — dropping --no-repair
+  // lets the default repair pass auto-verify resolvable criteria in-place.
+  // This branch only runs under --no-repair, so the hint can never offer a
+  // no-op.
   const criteriaTotal = criteriaEval.totalChecked + criteriaEval.totalUnchecked;
-  if (!checkCriteria && criteriaEval.totalUnchecked > 0) {
+  if (!repairEnabled && criteriaEval.totalUnchecked > 0) {
     violations.push({
       rule: "RFC-IMP-02",
-      message: `${criteriaEval.totalUnchecked} acceptance criteria are unchecked. All criteria must be checked before stamping: ${criteriaEval.uncheckedLines.join("; ")}. Re-run with --check-criteria to auto-verify resolvable criteria, or annotate evidence on each criterion and re-run.`,
+      message: `${criteriaEval.totalUnchecked} acceptance criteria are unchecked. All criteria must be checked before stamping: ${criteriaEval.uncheckedLines.join("; ")}. Re-run without --no-repair to let the default repair pass auto-verify resolvable criteria, or annotate evidence on each criterion and re-run.`,
+      fixHint: `re-run without --no-repair (the default repair pass flips criteria whose (evidence: test:<path>|file:<path>|<path>:<line>|probe:AC-N) annotation resolves), or annotate evidence on each listed criterion`,
     });
   }
-  if (!checkCriteria && criteriaEval.checkedWithoutEvidence.length > 0) {
+  if (!repairEnabled && criteriaEval.checkedWithoutEvidence.length > 0) {
     violations.push({
       rule: "RFC-IMP-02",
       message: `${criteriaEval.checkedWithoutEvidence.length} checked criteria lack inline (evidence: ...) annotation: ${criteriaEval.checkedWithoutEvidence.join("; ")}`,
+      fixHint: `add an inline (evidence: ...) annotation to each listed checked criterion`,
     });
   }
 
@@ -935,6 +973,7 @@ export async function runRfcImplementStamp(
       violations.push({
         rule: "RFC-IMP-03",
         message: `No commit referencing ${targetId} found in git history. Pass --implementation-commit <SHA> explicitly.`,
+        fixHint: `land an implementation commit via ecosystem.commit referencing ${targetId}, then pass --implementation-commit <sha>`,
       });
     } else {
       // Auto-resolve when exactly one candidate looks like an implementation
@@ -965,6 +1004,7 @@ export async function runRfcImplementStamp(
         violations.push({
           rule: "RFC-IMP-03",
           message: `Multiple commits reference ${targetId}:\n${candidateList}\nPass --implementation-commit <SHA> to specify which one.${suggestion}`,
+          fixHint: `pass --implementation-commit <sha> naming the commit that carries the implementation payload`,
         });
       }
     }
@@ -980,6 +1020,7 @@ export async function runRfcImplementStamp(
     violations.push({
       rule: "RFC-IMP-04",
       message: `RFC file ${rfcRelPath} has uncommitted changes. Commit the RFC file before stamping.`,
+      fixHint: `commit or stash the uncommitted changes to ${rfcRelPath}, then re-run`,
     });
   }
 
@@ -990,6 +1031,7 @@ export async function runRfcImplementStamp(
       violations.push({
         rule: "RFC-IMP-03",
         message: `Implementation commit ${implementationCommit} is not reachable from HEAD. The commit must be an ancestor of the current HEAD.`,
+        fixHint: `pass --implementation-commit <sha> naming an ancestor of HEAD`,
       });
     } else {
       const referencesRfc = await commitReferencesRfc(
@@ -1001,6 +1043,7 @@ export async function runRfcImplementStamp(
         violations.push({
           rule: "RFC-IMP-03",
           message: `Implementation commit ${implementationCommit} does not reference ${targetId} in its message or changed files.`,
+          fixHint: `pass --implementation-commit <sha> naming a commit that references ${targetId} in its message or changed files`,
         });
       } else {
         // ── RFC-1310 STAMP-GOV-01: commit-time governance provenance ──────
@@ -1023,6 +1066,7 @@ export async function runRfcImplementStamp(
           violations.push({
             rule: "STAMP-GOV-01",
             message: `Implementation commit(s) for ${targetId} carry no governance provenance (no X-RFC: ${targetId} trailer, no injected CHANGE_SUMMARY item) — scanned: ${scanShas.join(", ")}. Retro-fix: hand-edit CHANGE_SUMMARY <item>${targetId}: …</item> entries into the touched files' headers in the worktree, then land a follow-up ecosystem.commit --rfc ${targetId} --message "docs(${targetId.toLowerCase()}): retrofit governance provenance" and re-stamp.`,
+            fixHint: `re-commit the implementation via ecosystem.commit so it carries governance provenance (or apply the retro-fix in the message), then pass --implementation-commit <sha>`,
           });
         }
       }
@@ -1054,13 +1098,16 @@ export async function runRfcImplementStamp(
   // must also be evaluated when hasProbes is now false, because probe
   // deletion IS a criteria change and would otherwise slip past
   // requiresEvidence entirely (RFC-IMP-08 exempts policy/deprecation kinds).
-  // let — --check-criteria re-reads the envelope after the emit-if-needed pass.
+  // let — the repair pass re-reads the envelope after the emit-if-needed pass.
   let evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
 
-  // Default path: IMP-06 + IMP-09 fire pre-lock via the shared evaluator —
-  // under --check-criteria the same ruleset runs inside the lock, after the
-  // emit-if-needed pass may have refreshed the envelope.
-  if (!checkCriteria) {
+  // Default path: the shared evaluator fires pre-lock. --no-repair runs the
+  // full gateset here; the default repair pass runs only the
+  // envelope-independent subset (RFC-IMP-10/11/12/15) so composite reporting
+  // is preserved — the envelope-dependent gates (RFC-IMP-06/09/13/14)
+  // evaluate in-lock after the emit-if-needed pass may have refreshed the
+  // envelope.
+  {
     const gates = await evaluateStampEvidenceGates({
       evidenceCheck,
       requiresEvidence,
@@ -1074,6 +1121,7 @@ export async function runRfcImplementStamp(
       waiverReason,
       implementationCommit,
       waiveOutcome,
+      gatePhase: repairEnabled ? "independent" : undefined,
     });
     violations.push(...gates.violations);
     stampWarnings.push(...gates.warnings);
@@ -1093,15 +1141,43 @@ export async function runRfcImplementStamp(
     });
   }
 
+  // RFC-1463 composite reporting under the default repair pass: when the
+  // run is already doomed pre-lock, the envelope-dependent gates still
+  // evaluate on the current state (minus the repairable staleness findings
+  // the refresh would fix anyway) so one report names every real blocker
+  // instead of surfacing them serially across re-runs.
+  if (repairEnabled && violations.length > 0) {
+    const gates = await evaluateStampEvidenceGates({
+      evidenceCheck,
+      requiresEvidence,
+      hasProbes,
+      targetId,
+      rfcFilePath,
+      acceptance,
+      io,
+      frontmatter: fm,
+      workspaceRoot,
+      waiverReason,
+      implementationCommit,
+      waiveOutcome,
+      gatePhase: "dependent",
+      suppressRepairable: true,
+    });
+    violations.push(...gates.violations);
+    stampWarnings.push(...gates.warnings);
+    for (const w of gates.warnings) logger.warn(`${w.rule}: ${w.message}`);
+    if (gates.evidenceRelPath) evidenceRelPath = gates.evidenceRelPath;
+  }
+
   // If any violations found, return without mutation
   if (violations.length > 0) {
     return stampFailResult(violations, isDryRun, outputFormat, logger);
   }
 
   // ── RFC-IMP-05: acquire RFC-specific exclusive lock ───────────────────────
-  // Under --check-criteria the lock must precede the FIRST write — which is
-  // the emit-if-needed envelope refresh, not the stamp mutation — so all
-  // envelope-independent gates above abort before this point.
+  // Under the default repair pass the lock must precede the FIRST write —
+  // which is the emit-if-needed envelope refresh, not the stamp mutation —
+  // so all envelope-independent gates above abort before this point.
   const { acquired, lockPath } = await acquireRfcLock(workspaceRoot, targetId);
   if (!acquired) {
     violations.push({
@@ -1114,15 +1190,16 @@ export async function runRfcImplementStamp(
   try {
     // ── Atomic mutation ──────────────────────────────────────────────────────
     const rfcSource = await io.readFile(rfcFilePath);
-    // RFC-1322: the mutation-bound source — under --check-criteria it carries
-    // the auto-check flips; without the flag it is the committed file text.
+    // RFC-1322: the mutation-bound source — under the default repair pass it
+    // carries the auto-check flips; under --no-repair it is the committed
+    // file text.
     let stampSource = rfcSource;
     let criteriaAutoChecked: string[] | undefined;
     let criteriaPendingRefresh: string[] = [];
     let evidenceWouldRefresh = false;
     let effectiveCriteriaChecked = criteriaEval.totalChecked;
 
-    if (checkCriteria) {
+    if (repairEnabled) {
       // Emit-if-needed (RFC-1322 order step 4): a missing, malformed, or
       // hash-stale envelope is refreshed in-process through the same direct
       // runRfcVerificationEmit call the post-stamp re-emit uses — on the
@@ -1130,6 +1207,14 @@ export async function runRfcImplementStamp(
       // freshness precheck (RFC-1320) gates this emit exactly as a manual one.
       const needsEmit = hasProbes && envelopeNeedsRefresh(evidenceCheck, rfcSource, acceptance);
       evidenceWouldRefresh = needsEmit;
+      // RFC-1483: the envelope emit is the first link of the repair chain —
+      // computed for dry-run too, executed only on a real run.
+      if (needsEmit) {
+        repaired.push({
+          kind: "envelope-emitted",
+          detail: join(VERIFICATION_DIR, `${targetId.toLowerCase()}.generated.yaml`),
+        });
+      }
       if (needsEmit && !isDryRun) {
         let emitOk = false;
         let emitSummary = "";
@@ -1150,6 +1235,7 @@ export async function runRfcImplementStamp(
           violations.push({
             rule: "EVIDENCE-SYNC-02",
             message: `pre-stamp evidence emit for ${targetId} threw: ${emitErr instanceof Error ? emitErr.message : String(emitErr)}. Resolve the failing step and re-run the stamp.`,
+            fixHint: `resolve the failing emit step, then re-run the stamp`,
           });
           return stampFailResult(violations, isDryRun, outputFormat, logger);
         }
@@ -1157,10 +1243,34 @@ export async function runRfcImplementStamp(
           violations.push({
             rule: "EVIDENCE-SYNC-02",
             message: `pre-stamp evidence emit for ${targetId} failed${emitSummary ? `: ${emitSummary}` : ""}. Resolve the failing step and re-run the stamp.`,
+            fixHint: `resolve the failing emit step, then re-run the stamp`,
           });
+          // Composite-gate semantics (RFC-1463): the failed emit is not the
+          // whole story — evaluate the envelope-dependent gates against the
+          // unrefreshed state so the report still names the violations the
+          // refresh would have had to satisfy (e.g. RFC-IMP-13 on a missing
+          // envelope). The independent subset already ran pre-lock.
+          const stale = await evaluateStampEvidenceGates({
+            evidenceCheck,
+            requiresEvidence,
+            hasProbes,
+            targetId,
+            rfcFilePath,
+            acceptance,
+            io,
+            frontmatter: fm,
+            workspaceRoot,
+            waiverReason,
+            implementationCommit,
+            waiveOutcome,
+            gatePhase: "dependent",
+          });
+          violations.push(...stale.violations);
+          stampWarnings.push(...stale.warnings);
+          for (const w of stale.warnings) logger.warn(`${w.rule}: ${w.message}`);
           return stampFailResult(violations, isDryRun, outputFormat, logger);
         }
-        logger.info(`[rfc.implement.stamp] --check-criteria: refreshed stale/missing envelope`);
+        logger.info(`[rfc.implement.stamp] repair: refreshed stale/missing envelope`);
         evidenceCheck = await checkExistingEvidence(workspaceRoot, targetId);
       }
 
@@ -1184,11 +1294,13 @@ export async function runRfcImplementStamp(
             `${auto.failures.length} unchecked acceptance criteria lack resolvable (evidence: ...) annotations — ` +
             `supply a resolvable reference (test:<path>, file:<path>, <path>:<line>, or probe:AC-N bound to a passing envelope probe): ` +
             auto.failures.map((f) => `${f.criterion} [${f.annotation}]`).join("; "),
+          fixHint: `annotate each listed criterion with a resolvable evidence reference — test:<path>, file:<path>, <path>:<line>, or probe:AC-N bound to a passing envelope probe`,
         });
       }
 
       if (auto.flippable.length > 0) {
         stampSource = flipCriteriaInSource(rfcSource, new Set(auto.flippable));
+        repaired.push({ kind: "criteria-checked", detail: auto.flippedIds.join(",") });
       }
 
       // Post-flip criteria gates on the mutation-bound bytes (step 6): a
@@ -1203,21 +1315,24 @@ export async function runRfcImplementStamp(
       if (residualUnchecked.length > 0) {
         violations.push({
           rule: "RFC-IMP-02",
-          message: `${residualUnchecked.length} acceptance criteria remain unchecked after the --check-criteria pass: ${residualUnchecked.join("; ")}`,
+          message: `${residualUnchecked.length} acceptance criteria remain unchecked after the repair pass: ${residualUnchecked.join("; ")}`,
+          fixHint: `the repair pass could not flip these criteria — annotate a resolvable evidence reference on each and re-run`,
         });
       }
       if (postFlipEval.checkedWithoutEvidence.length > 0) {
         violations.push({
           rule: "RFC-IMP-02",
           message: `${postFlipEval.checkedWithoutEvidence.length} checked criteria lack inline (evidence: ...) annotation: ${postFlipEval.checkedWithoutEvidence.join("; ")}`,
+          fixHint: `add an inline (evidence: ...) annotation to each listed checked criterion`,
         });
       }
       effectiveCriteriaChecked = postFlipEval.totalChecked;
 
-      // IMP-06 + IMP-09 against the (possibly just-refreshed) envelope via
-      // the shared evaluator — skipped in dry-run when a refresh would run,
-      // since committed-bytes verdicts are not predictive of the post-emit
-      // state the real stamp evaluates.
+      // Envelope-dependent gates (RFC-IMP-06/09/13/14) against the (possibly
+      // just-refreshed) envelope — skipped in dry-run when a refresh would
+      // run, since committed-bytes verdicts are not predictive of the
+      // post-emit state the real stamp evaluates. The independent subset
+      // already reported pre-lock.
       if (!(isDryRun && needsEmit)) {
         const gates = await evaluateStampEvidenceGates({
           evidenceCheck,
@@ -1232,6 +1347,7 @@ export async function runRfcImplementStamp(
           waiverReason,
           implementationCommit,
           waiveOutcome,
+          gatePhase: "dependent",
         });
         violations.push(...gates.violations);
         stampWarnings.push(...gates.warnings);
@@ -1277,13 +1393,15 @@ export async function runRfcImplementStamp(
             stampedAt,
             criteriaChecked: effectiveCriteriaChecked,
             criteriaTotal,
-            ...(checkCriteria
+            dryRun: true,
+            ...(repairEnabled
               ? {
                   criteriaAutoChecked: criteriaAutoChecked ?? [],
                   criteriaPendingRefresh,
                   evidenceWouldRefresh,
                 }
               : {}),
+            ...(repaired.length > 0 ? { repaired } : {}),
             ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
           },
           violations: [],
@@ -1293,7 +1411,7 @@ export async function runRfcImplementStamp(
       };
     }
 
-    // Write the mutated RFC file atomically — under --check-criteria this
+    // Write the mutated RFC file atomically — under the repair pass this
     // single write carries the checkbox flips AND the frontmatter mutation.
     await writeFileAtomic(rfcFilePath, mutatedSource);
 
@@ -1368,7 +1486,8 @@ export async function runRfcImplementStamp(
           stampedAt,
           criteriaChecked: effectiveCriteriaChecked,
           criteriaTotal,
-          ...(checkCriteria ? { criteriaAutoChecked: criteriaAutoChecked ?? [] } : {}),
+          ...(repairEnabled ? { criteriaAutoChecked: criteriaAutoChecked ?? [] } : {}),
+          ...(repaired.length > 0 ? { repaired } : {}),
           ...(evidenceRelPath ? { evidencePath: evidenceRelPath } : {}),
           ...(hasProbes ? { evidenceReEmitted } : {}),
           ...(metricsPath ? { metricsPath } : {}),
@@ -1396,18 +1515,29 @@ function stampFailResult(
   logger: { warn: (msg: string) => void; info: (msg: string) => void },
 ): ForgeCommandResult<RfcImplementStampResult> {
   const prefix = isDryRun ? "[dry-run] " : "";
+  // RFC-1483: the printed list IS the ordered remediation checklist —
+  // prerequisite-rule violations sort by PREREQUISITE_ORDER; unlisted rules
+  // keep their original relative order after the listed ones.
+  const ordered = [...violations].sort((a, b) => {
+    const ai = PREREQUISITE_ORDER.indexOf(a.rule);
+    const bi = PREREQUISITE_ORDER.indexOf(b.rule);
+    if (ai === -1 && bi === -1) return 0;
+    if (ai === -1) return 1;
+    if (bi === -1) return -1;
+    return ai - bi;
+  });
   if (outputFormat === "pretty") {
-    for (const v of violations) {
-      logger.warn(`${prefix}${v.rule}: ${v.message}`);
+    for (const v of ordered) {
+      logger.warn(`${prefix}${v.rule}: ${v.message}${v.fixHint ? `\n  fix: ${v.fixHint}` : ""}`);
     }
   }
   return {
     data: {
       command: "rfc.implement.stamp",
       status: "fail",
-      violations,
+      violations: ordered,
     },
     exitCode: 1,
-    summary: `${prefix}rfc.implement.stamp: ${violations.length} violation${violations.length === 1 ? "" : "s"}`,
+    summary: `${prefix}rfc.implement.stamp: ${ordered.length} violation${ordered.length === 1 ? "" : "s"}`,
   };
 }
