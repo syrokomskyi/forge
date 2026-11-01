@@ -13,6 +13,7 @@ with candidates listed.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+  <item>RFC-1482: extract-safe RFC-1482 template path + changelog for 9.1.0</item>
 </CHANGE_SUMMARY>
 */
 
@@ -148,10 +149,10 @@ describe("RFC-1467 rfc.create near-duplicate gate", () => {
 
 // RFC-1482: the emitted skeleton must satisfy the contracts that gates enforce —
 // seed the REAL canonical template so the assertions bind the shipped skeleton,
-// not a fixture twin.
-const REAL_TEMPLATE = fileURLToPath(
-  new URL("../../../../../docs/rfcs/rfc-0000-template.md", import.meta.url),
-);
+// not a fixture twin. `os/rfc/` carries the canonical template forge ships to
+// consumers — the path must stay inside the package so the test also resolves
+// in the standalone extracted layout (RFC-1252).
+const REAL_TEMPLATE = fileURLToPath(new URL("../rfc-0000-template.md", import.meta.url));
 
 async function seedRealTemplate() {
   root = await mkdtemp(join(tmpdir(), "rfc1482-create-"));

@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.1.0] — 2026-11-01
+
+_Ten implemented RFCs (1476–1485): the ecosystem.commit hardening line (governance linkage, argv validation, staged-ownership and index-scope guards), validation-compliant RFC skeletons, a self-sufficient implement stamp, knowledge collision resolution, YAML scalar linting, trajectory-memory residual debt, and the compass header debt sweep._
+
+### Added
+
+- **Governance linkage + baseline debt inference** (RFC-1476): ecosystem.commit gates infer governance linkage and scope env-input dependencies; baseline debt is detected and scoped.
+- **Schema-first argv validation** (RFC-1477): unknown argv flags and enum values are rejected against declared command specs before dispatch.
+- **YAML plain-scalar lint** (RFC-1478): `yaml.scalars.validate` flags unquoted colon-space traps in authored YAML (the loud one-line shape and the silent flat→nested-map continuation); the EC-25 staged-YAML gate enforces it at commit time.
+- **Staged-ownership guard** (RFC-1479): COMMIT-FGN-01 detects foreign-authorship staged files before ecosystem.commit sweeps the index; `--ignore-foreign` overrides.
+- **Knowledge collision resolution** (RFC-1481): `knowledge.conflicts.resolve` resolves K-id collisions; remediation identity dedup and doctor surfacing.
+- **Validation-compliant RFC skeletons** (RFC-1482): `rfc.create` emits skeletons satisfying V-45/V-48/V-50 by construction and surfaces contract breaches at authoring time.
+- **Self-sufficient implement stamp** (RFC-1483): `rfc.implement.stamp` runs a default repair pass over its ordered prerequisite chain — unchecked-but-evidenced criteria flip and a missing/stale envelope re-emits inside the atomic write (reported under `repaired[]`); `--no-repair` restores the blocking gate.
+
+### Changed
+
+- **ecosystem.commit hardening** (RFC-1484): staged deletions, foreign module-load failures, and ambiguous index scope are handled instead of crashing or sweeping foreign files.
+- **Trajectory-memory residual debt** (RFC-1480): rebuild flag, recallId derivation, and hardened malformed-shard handling.
+- **Compass header debt sweep** (RFC-1485): the mechanical `compass.header.scaffold` codemod (`--census` writeless manifest) swept the header baseline across the forge, engine, and site trees.
+
+### Fixed
+
+- **Standalone-extract compatibility**: lazy `werkstatt-engine` bridge for session commands keeps `os/werkstatt` handlers loadable inside the standalone repo.
+- **doctor checks**: source-scanning checks are gated on an npm-installed forge rather than the monorepo source tree, and the autonomy guard is aligned with FORGE-AUTONOMY-01.
+- **session.save**: all-digit short SHAs are accepted in commit extraction.
+- **Index builders**: `context.index.build` and `trajectory.index` declare their generated index files.
+- **fo-memory-sync**: knowledge files backported from the `.agents` twin.
+
 ## [9.0.0] — 2026-11-01
 
 _Major line 9: fifteen governance RFCs (1461–1475) land in one release — agent-session isolation, composite gates, a remediation catalog bound to blocking diagnostics, knowledge authorization binding, gate liveness probes, budgeted context assembly, session audit, trajectory memory, and per-rule execution counters. Ten new `os/` modules ship with matching package exports and standalone CLI registrations._
