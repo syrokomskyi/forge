@@ -11,12 +11,12 @@ sessions produce nothing. --export/--import for shard portability.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1472: trajectory.index green-verified procedure-unit extraction + shard export/import</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1472: apply r2 repairs — archive-source provenance, outcome-replay + provenance regression tests</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
-  <history>RFC-1475</history>
+  <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
+  <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
 
@@ -116,11 +116,13 @@ async function verdictRefResolvesGreen(
  * literal that collapses every consumer into one bucket. Fall back to the
  * workspace dir name when no forge.yaml exists (fixture/test roots).
  */
-function localWorkshopId(root: string): string {
+function localWorkshopId(root: string, warn?: (msg: string) => void): string {
   try {
     return loadForgeConfig(root).project.name || path.basename(root);
   } catch {
-    return path.basename(root);
+    const fallback = path.basename(root);
+    warn?.(`forge.yaml missing or invalid — workshopId falls back to workspace dir name "${fallback}"`);
+    return fallback;
   }
 }
 
@@ -153,8 +155,12 @@ async function exportableVerdictRef(
   return { ...unit, producer: { ...unit.producer, verdictRef: `verdict:${verdict}` } };
 }
 
-/** Minimal shard-unit shape — anything less crashes the drop/bucket loops. */
-function isShardUnit(u: unknown): u is ProcedureUnit {
+/**
+ * Minimal shard-unit shape — anything less crashes the drop/bucket/score
+ * loops. Also guards the numeric usedBy/utilityScore fields and sessionClass
+ * so a crafted shard cannot inject NaN trust or smear a foreign bucket key.
+ */
+export function isShardUnit(u: unknown): u is ProcedureUnit {
   if (u === null || typeof u !== "object") return false;
   const p = u as ProcedureUnit;
   return (
@@ -162,11 +168,16 @@ function isShardUnit(u: unknown): u is ProcedureUnit {
     p.producer !== null && typeof p.producer === "object" &&
     typeof p.producer.verdictRef === "string" &&
     typeof p.producer.workshopId === "string" &&
+    (p.producer.sessionClass === undefined || p.producer.sessionClass === "mission" || p.producer.sessionClass === "adhoc") &&
     p.usedBy !== null && typeof p.usedBy === "object" &&
+    Number.isFinite(p.usedBy.helped) && Number.isFinite(p.usedBy.hurt) && Number.isFinite(p.usedBy.recalled) &&
+    Number.isFinite(p.utilityScore) &&
     p.situation !== null && typeof p.situation === "object" &&
+    typeof p.situation.taskKind === "string" &&
     Array.isArray(p.situation.recentActions) &&
     Array.isArray(p.situation.touchedPathClasses) &&
     p.continuation !== null && typeof p.continuation === "object" &&
+    Array.isArray(p.continuation.commandSequence) &&
     typeof p.text === "string"
   );
 }
@@ -188,7 +199,7 @@ export async function runTrajectoryIndex(
 ): Promise<ForgeCommandResult<TrajectoryIndexData>> {
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
-  const workshopId = localWorkshopId(root);
+  const workshopId = localWorkshopId(root, (m) => context.logger.warn(m));
   const sessionFilter = input.flags["session"] as string | undefined;
   const since = input.flags["since"] as string | undefined;
   const exportPath = input.flags["export"] as string | undefined;
@@ -357,7 +368,7 @@ export async function runTrajectoryIndex(
   }
   const journalTruncated = outcomesRead.truncated || recallsRead.truncated;
   if (journalTruncated) {
-    context.logger.warn("TRAJ-06 trajectory journal carried a truncated tail record — partial record dropped, journal survives");
+    context.logger.warn("TRAJ-06 trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives");
   }
   const outcomes = outcomesRead.records;
   const recalls = recallsRead.records;
@@ -430,7 +441,7 @@ export async function runTrajectoryIndex(
     diagnostics.push({ ruleId: "TRAJ-04", severity: "warning", message: `${dropped} unit(s) dropped — verdictRef no longer resolves green` });
   }
   if (journalTruncated) {
-    diagnostics.push({ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated tail record — partial record dropped, journal survives" });
+    diagnostics.push({ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives" });
   }
   return {
     data: {

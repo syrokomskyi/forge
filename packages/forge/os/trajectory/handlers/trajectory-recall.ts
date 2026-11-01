@@ -8,11 +8,12 @@ The recall invocation is journaled so marginal utility can be measured.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: TRAJ-01/02 split (absent vs empty/stale/missing-watermark), {workshopId, sessionClass} trust buckets, recalls.jsonl append-only journal</item>
   <item>RFC-1472: trajectory.recall situation-similarity top-k + journaled invocation</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
+  <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
+  <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,7 @@ import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { listSessionFiles, listArchivedSessionFiles } from "../../session/frontmatter-io.ts";
 import { appendJsonl, isEnoent, readRecallsJournal } from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
+import { isShardUnit } from "./trajectory-index.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -87,7 +89,9 @@ export async function runTrajectoryRecall(
   if (index === null || typeof index !== "object" || !Array.isArray(index.units)) {
     return emptyResult(task, k, "TRAJ-02", "index unparseable or not a unit index — rerun trajectory.index");
   }
-  const units = index.units;
+  // Element-level validation — an array of garbage is still TRAJ-02, and a
+  // partially-corrupt index yields only its well-formed units.
+  const units = index.units.filter(isShardUnit);
 
   // RFC-1475 F6 — TRAJ-02 covers every present-but-unusable index state:
   // empty units, missing sourceWatermark (pre-upgrade index is stale by
@@ -148,7 +152,6 @@ export async function runTrajectoryRecall(
     const days = u.producer.completedAt ? Math.max(0, (Date.now() - new Date(u.producer.completedAt).getTime()) / 86_400_000) : 365;
     const recency = Math.max(0, 1 - days / 365);
     if (recency > 0.5) { reasons.push(`recent:${days.toFixed(0)}d`); score += recency; }
-    if (reasons.length === 0) reasons.push("baseline");
     return { ...u, score: Number(score.toFixed(3)), reasons };
   }).sort((a, b) => b.score - a.score || a.id.localeCompare(b.id)).slice(0, k);
 
@@ -158,7 +161,7 @@ export async function runTrajectoryRecall(
   for (const warning of journalRead.warnings) context.logger.warn(warning);
   const journalTruncated = journalRead.truncated;
   if (journalTruncated) {
-    context.logger.warn("TRAJ-06 recalls.jsonl carried a truncated tail record — partial record dropped, journal survives");
+    context.logger.warn("TRAJ-06 recalls.jsonl carried a truncated or malformed tail record — partial record dropped, journal survives");
   }
   const dayKey = new Date().toISOString().slice(0, 10).replace(/-/g, "");
   const recallId = `R-${dayKey}-${String(journalRead.records.length + 1).padStart(2, "0")}-${createHashFallback(task).slice(0, 4)}`;
@@ -177,7 +180,7 @@ export async function runTrajectoryRecall(
       recallId,
       units: scored,
       diagnostics: journalTruncated
-        ? [{ ruleId: "TRAJ-06", severity: "warning", message: "recalls.jsonl carried a truncated tail record — partial record dropped, journal survives" }]
+        ? [{ ruleId: "TRAJ-06", severity: "warning", message: "recalls.jsonl carried a truncated or malformed tail record — partial record dropped, journal survives" }]
         : undefined,
     },
     summary: `${scored.length}/${units.length} unit(s) recalled for "${task.slice(0, 50)}" (recall ${recallId})`,

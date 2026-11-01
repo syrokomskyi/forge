@@ -7,6 +7,7 @@
   <item>RFC-1472: forgeTrajectoryModule registering the trajectory commands</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
+  <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,7 +40,7 @@ export const forgeTrajectoryModule: ForgeModule = {
         export: { kind: "string", description: "Write a forge/trajectory-shard@1 file." },
         import: { kind: "string", description: "Merge a vendored shard read-only." },
       },
-      reads: ["docs/sessions/**/*.md", "missions/*/evidence/validation-report.json", "docs/.index/trajectory/*.jsonl"],
+      reads: ["docs/sessions/**/*.md", "missions/*/evidence/validation-report.json", "docs/.index/trajectory/*.jsonl", "forge.yaml"],
       writes: ["docs/.index/trajectory/**"],
       generates: [{ path: "docs/.index/trajectory/units.yaml", phase: "on-demand" as const }],
       execute: runTrajectoryIndex,
@@ -85,7 +86,7 @@ export const forgeTrajectoryModule: ForgeModule = {
         note: { kind: "string", description: "Free-text annotation." },
       },
       reads: ["docs/.index/trajectory/recalls.jsonl", "docs/.index/trajectory/outcomes.jsonl", "docs/.index/trajectory/units.yaml"],
-      writes: ["docs/.index/trajectory/units.yaml", "docs/.index/trajectory/outcomes.jsonl"],
+      writes: ["docs/.index/trajectory/units.yaml", "docs/.index/trajectory/outcomes.jsonl", "docs/.index/trajectory/recalls.jsonl"],
       generates: [],
       execute: runOutcomeRecord,
     },

@@ -14,6 +14,7 @@ warns and skips — a partial JSONL is worse than none.
   <item>RFC-1475: appendJsonl/readJsonl + lazy YAML→JSONL migration for the trajectory journals</item>
   <item>RFC-1475: trajectory hardening — verdict-artifact binding, per-producer trust, TRAJ-02 staleness, JSONL journals</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
+  <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
 </CHANGE_SUMMARY>
 */
 
@@ -155,7 +156,7 @@ async function readJournalWithYamlMigration<T>(
     const parsed = yamlParse(yamlSrc) as Record<string, T[] | undefined> | null;
     if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
       read.warnings.push(
-        `trajectory journal migration skipped: ${path.basename(yamlPath)} is not a ${yamlKey} journal — YAML left untouched`,
+        `trajectory journal migration skipped: ${path.basename(yamlPath)} has unexpected shape for a ${yamlKey} journal — YAML left untouched`,
       );
       return read;
     }

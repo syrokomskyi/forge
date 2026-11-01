@@ -155,7 +155,7 @@ describe("journal hardening edges (review round-1)", () => {
     await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "- a\n- top-level\n- list\n");
     const read = await readOutcomesJournal(root);
     expect(read.records.length).toBe(0);
-    expect(read.warnings.some((w) => w.includes("not a outcomes journal"))).toBe(true);
+    expect(read.warnings.some((w) => w.includes("unexpected shape"))).toBe(true);
     const read2 = await readOutcomesJournal(root);
     expect(read2.records.length).toBe(0);
   });

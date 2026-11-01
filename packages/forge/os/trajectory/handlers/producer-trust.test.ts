@@ -97,15 +97,24 @@ date: 2026-10-28`);
 
   test("a label on one bucket never leaks into another bucket", async () => {
     await runTrajectoryIndex(flags({}), ctx());
-    // Recall k=1 returns the newest unit (mission class) — the hurt label
-    // lands only on its bucket; the other stays at the sparse-bucket 0.5.
+    // Recall k=1 returns exactly one unit — its {workshopId, sessionClass}
+    // bucket receives the hurt label; the other bucket stays at 0.5. The
+    // labeled bucket is read off the recall result, not a hardcoded class —
+    // the winner depends on recency vs wall clock and ages out otherwise.
     const recall = await runTrajectoryRecall(flags({ task: "reconcile", k: 1 }), ctx());
+    const labeled = recall.data?.units[0]?.producer.sessionClass ?? "adhoc";
     await runOutcomeRecord(flags({ recall: recall.data?.recallId, hurt: true }), ctx());
     const re = await runTrajectoryRecall(flags({ task: "reconcile", k: 20 }), ctx());
-    const mission = re.data?.units.find((u) => u.producer.sessionClass === "mission");
-    const adhoc = re.data?.units.find((u) => u.producer.sessionClass === "adhoc");
-    expect(mission?.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.00");
-    expect(adhoc?.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.50");
+    const labeledUnits = re.data?.units.filter((u) => u.producer.sessionClass === labeled) ?? [];
+    const otherUnits = re.data?.units.filter((u) => u.producer.sessionClass !== labeled) ?? [];
+    expect(labeledUnits.length).toBeGreaterThan(0);
+    expect(otherUnits.length).toBeGreaterThan(0);
+    for (const u of labeledUnits) {
+      expect(u.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.00");
+    }
+    for (const u of otherUnits) {
+      expect(u.reasons.find((r) => r.startsWith("trust:"))).toBe("trust:0.50");
+    }
   });
 
   test("vendored unit scores under its origin's bucket — werkstatt labels never smear across", async () => {
