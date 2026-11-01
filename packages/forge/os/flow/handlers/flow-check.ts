@@ -17,10 +17,9 @@ by flow.install step 9.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 3 — flow.check handler + collectFlowCheck</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
-
-import { join } from "node:path";
 
 import type {
   CheckResult,
@@ -47,7 +46,7 @@ import {
   hasManagedBlock,
   PRECOMMIT_FILE,
 } from "../guard-files.ts";
-import { detectRepoKind } from "../repo-kind.ts";
+import { detectRepoKind, readRepoRootFile } from "../repo-kind.ts";
 
 export interface FlowCheckBranches {
   protected: string[];
@@ -71,20 +70,6 @@ export interface FlowCheckOutcome {
 }
 
 const EMPTY_BRANCHES: FlowCheckBranches = { protected: [], flow: [], nonconforming: [] };
-
-async function readRepoFile(
-  repoRoot: string,
-  name: string,
-  io: WorkspaceIO,
-  bare: boolean,
-): Promise<string | null> {
-  if (bare) {
-    const result = await io.exec("git", ["-C", repoRoot, "show", `HEAD:${name}`]);
-    return result.exitCode === 0 ? result.stdout : null;
-  }
-  const path = join(repoRoot, name);
-  return (await io.exists(path)) ? io.readFile(path) : null;
-}
 
 /**
  * Evaluate FLOW-01..05 over `repoRoot` (a git top level). Purely read-only;
@@ -176,7 +161,7 @@ export async function collectFlowCheck(
         : `core.hooksPath is '${hooksPath}', expected 'hooks'`,
     );
   }
-  const preCommit = await readRepoFile(repoRoot, PRECOMMIT_FILE, io, bare);
+  const preCommit = await readRepoRootFile(repoRoot, PRECOMMIT_FILE, io, bare);
   if (preCommit === null || !hasManagedBlock(preCommit)) {
     guardReasons.push(
       preCommit === null
@@ -184,7 +169,7 @@ export async function collectFlowCheck(
         : "hooks/pre-commit does not carry the managed flow-guard block",
     );
   }
-  if (!(await guardFileMatches(() => readRepoFile(repoRoot, GUARD_FILE, io, bare)))) {
+  if (!(await guardFileMatches(() => readRepoRootFile(repoRoot, GUARD_FILE, io, bare)))) {
     guardReasons.push("hooks/flow-guard.sh is missing or differs from the shipped asset");
   }
   diagnostics.push(

@@ -15,6 +15,7 @@ Generated repositories are never blocked by the guard or by flow.check.</purpose
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 1 — fixed branch-model grammar, marker detection contracts, git helpers</item>
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +25,8 @@ import { parse as yamlParse } from "yaml";
 import { z } from "zod";
 
 import type { WorkspaceIO } from "../../src/types.ts";
+
+import { isBare } from "./git.ts";
 
 export const GENERATED_MARKER_FILE = "forge.generated.yaml";
 export const FORGE_CONFIG_FILE = "forge.yaml";
@@ -56,7 +59,7 @@ export async function detectRepoKind(
   repoRoot: string,
   io: WorkspaceIO,
 ): Promise<RepoKindDetection> {
-  const bare = await isBareRepo(repoRoot, io);
+  const bare = await isBare(repoRoot, io);
   const markerText = await readRepoRootFile(repoRoot, GENERATED_MARKER_FILE, io, bare);
   if (markerText !== null) {
     let markerData: unknown;
@@ -88,17 +91,12 @@ export async function detectRepoKind(
   };
 }
 
-async function isBareRepo(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
-  const result = await io.exec("git", ["-C", repoRoot, "rev-parse", "--is-bare-repository"]);
-  return result.exitCode === 0 && result.stdout.trim() === "true";
-}
-
 /**
  * Read a file at the repository top level: from the working tree for non-bare
  * repositories, from `git show HEAD:<name>` for bare ones. Returns null when
  * the file does not exist.
  */
-async function readRepoRootFile(
+export async function readRepoRootFile(
   repoRoot: string,
   name: string,
   io: WorkspaceIO,

@@ -16,10 +16,11 @@ reader and the insert/replace/verify operations shared by flow.check
   <item>RFC-1486: step 3 — managed-block constants and guard file helpers</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "../../src/utils/sync-fs.ts";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -37,31 +38,52 @@ export const HOOKS_DIR = "hooks";
 export const GUARD_FILE = "hooks/flow-guard.sh";
 export const PRECOMMIT_FILE = "hooks/pre-commit";
 
+const GUARD_ASSET_RELATIVE = join("os", "flow", "assets", "flow-guard.sh");
+
 /**
- * Absolute path of the shipped guard asset — adjacent `assets/` in the
- * source layout, then the walk-up fallback used by rfc/adr templates so the
- * published package resolves `os/flow/assets/` from `dist/` too.
+ * Absolute path of the shipped guard asset — resolved lazily, never at
+ * module-eval time: under the kernel's vite module loader `import.meta.url`
+ * is not a `file:` URL, so the file-scheme probe is guarded and the walk-up
+ * falls back to `process.cwd()` (checking both `os/flow/assets` and the
+ * monorepo `packages/forge/os/flow/assets` layout).
  */
 export function resolveGuardAssetPath(): string {
-  const adjacent = fileURLToPath(new URL("./assets/flow-guard.sh", import.meta.url));
-  if (existsSync(adjacent)) return adjacent;
-  let dir = dirname(fileURLToPath(import.meta.url));
-  for (let i = 0; i < 10; i += 1) {
-    const candidate = join(dir, "os", "flow", "assets", "flow-guard.sh");
-    if (existsSync(candidate)) return candidate;
-    const parent = dirname(dir);
-    if (parent === dir) break;
-    dir = parent;
+  const seeds: string[] = [];
+  try {
+    const url = new URL(import.meta.url);
+    if (url.protocol === "file:") {
+      const moduleDir = dirname(fileURLToPath(url));
+      const adjacent = join(moduleDir, "assets", "flow-guard.sh");
+      if (existsSync(adjacent)) return adjacent;
+      seeds.push(moduleDir);
+    }
+  } catch {
+    // import.meta.url unavailable or non-file — fall through to cwd search.
   }
-  return adjacent;
+  seeds.push(process.cwd());
+  for (const seed of seeds) {
+    let dir = seed;
+    for (let i = 0; i < 10; i += 1) {
+      for (const base of [dir, join(dir, "packages", "forge")]) {
+        const candidate = join(base, GUARD_ASSET_RELATIVE);
+        if (existsSync(candidate)) return candidate;
+      }
+      const parent = dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  throw new Error(
+    `flow guard asset not found — searched ${GUARD_ASSET_RELATIVE} from the module dir and ${process.cwd()}`,
+  );
 }
 
-/** Absolute path of the shipped guard asset. */
-export const GUARD_ASSET_PATH = resolveGuardAssetPath();
+let cachedGuardAssetPath: string | undefined;
 
 /** Bytes of the shipped guard — the FLOW-03 byte-compare reference. */
 export function readGuardAsset(): string {
-  return readFileSync(GUARD_ASSET_PATH, "utf8");
+  cachedGuardAssetPath ??= resolveGuardAssetPath();
+  return readFileSync(cachedGuardAssetPath, "utf8");
 }
 
 /** True when the pre-commit content carries a complete managed block. */

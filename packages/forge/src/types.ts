@@ -9,7 +9,6 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1354: review r2 — approved/info; closes three info notes: requiresNetwork on remaining remote commands, ForgeCommandMetadata mirror JSDoc, baseline widened to full module-slice blind spot</item>
   <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
 
 Declare every reachable env read on its owning command across engine/site/
@@ -20,7 +19,8 @@ deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</ite
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1463: composite gates report complete violation sets and self-ensure prerequisites — ensure/compositeGate metadata, executor ensure runner, blockedBy skip tracking, ENSURE-01..04 + GATE-CMP-01, runCompositeGate</item>
-  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306</history>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306, RFC-1354</history>
 </CHANGE_SUMMARY>
 */
 
@@ -189,6 +189,15 @@ export interface ForgeCommandMetadata {
    * KernelCommandMetadata.
    */
   mutatingFlags?: string[];
+  /**
+   * RFC-1327: rerun-safety class for mutating commands — structurally
+   * mirrors KernelCommandMetadata. `rerun-safe` requires a sibling
+   * `*.rerun.test.ts` (command.idempotency.validate IDEMP-02); meaningful
+   * only with `mutatesState: true`.
+   */
+  idempotency?: "rerun-safe" | "resume-only" | "not-idempotent";
+  /** RFC-1327: explains the class — required for `not-idempotent`. */
+  idempotencyNote?: string;
   /**
    * RFC-1303: environment variable names whose values this command reads
    * (`process.env.*` reachable from its handler). Names only

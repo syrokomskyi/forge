@@ -16,6 +16,7 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>RFC-1486: step 2 — throwaway-repo test helpers</item>
   <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
+  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,10 +27,10 @@ import { join } from "node:path";
 import type { ExecResult } from "../../../src/types.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
 import {
-  GUARD_ASSET_PATH,
   GUARD_BEGIN_MARKER,
   GUARD_END_MARKER,
   MANAGED_BLOCK,
+  resolveGuardAssetPath,
 } from "../guard-files.ts";
 
 export {
@@ -38,7 +39,8 @@ export {
   MANAGED_BLOCK,
 };
 
-export const GUARD_ASSET = GUARD_ASSET_PATH;
+/** Absolute path of the shipped guard asset — resolved on first use. */
+export const GUARD_ASSET = resolveGuardAssetPath();
 
 export function gitExec(
   repo: string,
@@ -81,7 +83,7 @@ export async function initRepo(opts?: {
 export async function installGuard(repo: string): Promise<void> {
   const hooksDir = join(repo, "hooks");
   await mkdir(hooksDir, { recursive: true });
-  await copyFile(GUARD_ASSET, join(hooksDir, "flow-guard.sh"));
+  await copyFile(resolveGuardAssetPath(), join(hooksDir, "flow-guard.sh"));
   await writeFile(join(hooksDir, "pre-commit"), `#!/bin/sh\n${MANAGED_BLOCK}`);
   await chmod(join(hooksDir, "flow-guard.sh"), 0o755);
   await chmod(join(hooksDir, "pre-commit"), 0o755);
