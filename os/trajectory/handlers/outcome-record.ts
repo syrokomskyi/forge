@@ -11,6 +11,7 @@ per-producer trust (helped/(helped+hurt)).
   <item>RFC-1472: trajectory.outcome.record helped/hurt labels → utilityScore + producerTrust</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
+  <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,6 +20,7 @@ import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { appendJsonl, isEnoent, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
+import { isShardUnit } from "./trajectory-index.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -52,8 +54,11 @@ export async function runOutcomeRecord(
   const outcomesRead = await readOutcomesJournal(root, io);
   for (const warning of [...journalRead.warnings, ...outcomesRead.warnings]) context.logger.warn(warning);
   const journalTruncated = journalRead.truncated || outcomesRead.truncated;
+  const trah06 = journalTruncated
+    ? [{ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives" }]
+    : [];
   if (journalTruncated) {
-    context.logger.warn("TRAJ-06 trajectory journal carried a truncated tail record — partial record dropped, journal survives");
+    context.logger.warn("TRAJ-06 trajectory journal carried a truncated or malformed tail record — partial record dropped, journal survives");
   }
   const recall = journalRead.records.find((r) => r.id === recallId);
   if (!recall) {
@@ -65,7 +70,7 @@ export async function runOutcomeRecord(
         helped: 0,
         hurt: 0,
         unitUpdates: 0,
-        diagnostics: [{ ruleId: "TRAJ-05", severity: "error", message: `recall ${recallId} not found` }],
+        diagnostics: [{ ruleId: "TRAJ-05", severity: "error", message: `recall ${recallId} not found` }, ...trah06],
       },
       summary: `TRAJ-05 recall ${recallId} not found`,
       exitCode: 1,
@@ -85,7 +90,7 @@ export async function runOutcomeRecord(
         helped: 0,
         hurt: 0,
         unitUpdates: 0,
-        diagnostics: [{ ruleId: "TRAJ-01", severity: "error", message: "units index missing" }],
+        diagnostics: [{ ruleId: "TRAJ-01", severity: "error", message: "units index missing" }, ...trah06],
       },
       summary: "TRAJ-01 units index missing",
       exitCode: 1,
@@ -97,7 +102,10 @@ export async function runOutcomeRecord(
   } catch {
     parsed = null;
   }
-  if (parsed === null || typeof parsed !== "object" || !Array.isArray(parsed.units)) {
+  const units = parsed !== null && typeof parsed === "object" && Array.isArray(parsed.units)
+    ? parsed.units.filter(isShardUnit)
+    : null;
+  if (units === null || units.length === 0) {
     return {
       data: {
         command: "trajectory.outcome.record",
@@ -106,13 +114,12 @@ export async function runOutcomeRecord(
         helped: 0,
         hurt: 0,
         unitUpdates: 0,
-        diagnostics: [{ ruleId: "TRAJ-02", severity: "error", message: "units index unparseable or not a unit index — rerun trajectory.index" }],
+        diagnostics: [{ ruleId: "TRAJ-02", severity: "error", message: "units index unparseable, empty, or not a unit index — rerun trajectory.index" }, ...trah06],
       },
-      summary: "TRAJ-02 units index unparseable",
+      summary: "TRAJ-02 units index unusable",
       exitCode: 1,
     };
   }
-  const units = parsed.units;
   // `recalled` mirrors replay semantics — one count per recall record, so a
   // second label for the same recallId must not double-count until rebuild.
   const firstLabel = !outcomesRead.records.some((o) => o.recallId === recallId);
@@ -146,9 +153,7 @@ export async function runOutcomeRecord(
       helped: helped ? 1 : 0,
       hurt: hurt ? 1 : 0,
       unitUpdates: updated,
-      diagnostics: journalTruncated
-        ? [{ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated tail record — partial record dropped, journal survives" }]
-        : undefined,
+      diagnostics: trah06.length > 0 ? trah06 : undefined,
     },
     summary: `recorded ${helped ? "helped" : "hurt"} for ${recallId} — ${updated} unit(s) updated`,
     exitCode: 0,
