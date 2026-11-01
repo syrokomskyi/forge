@@ -11,11 +11,11 @@ sessions produce nothing. --export/--import for shard portability.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1472: apply r2 repairs — archive-source provenance, outcome-replay + provenance regression tests</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
+  <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
   <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -95,6 +95,10 @@ async function verdictRefResolvesGreen(
 ): Promise<boolean> {
   if (verdictRef === "signal:commits") return true;
   if (verdictRef.startsWith("verdict:")) return GREEN_RE.test(verdictRef.slice("verdict:".length));
+  // Confinement — a shard-carried or hand-edited ref must not read outside
+  // the workspace: absolute or `..`-escaping paths are unresolvable.
+  const normalized = path.normalize(verdictRef);
+  if (path.isAbsolute(verdictRef) || normalized.startsWith("..")) return false;
   const src = await io.readFile(path.join(root, verdictRef)).catch((e) => {
     if (isEnoent(e)) return null;
     throw e;
@@ -140,6 +144,8 @@ async function exportableVerdictRef(
 ): Promise<ProcedureUnit> {
   const ref = unit.producer.verdictRef;
   if (ref === "signal:commits" || ref.startsWith("verdict:")) return unit;
+  const normalized = path.normalize(ref);
+  if (path.isAbsolute(ref) || normalized.startsWith("..")) return unit;
   const src = await io.readFile(path.join(root, ref)).catch((e) => {
     if (isEnoent(e)) return null;
     throw e;
@@ -281,9 +287,9 @@ export async function runTrajectoryIndex(
     }
     if (!green) { rejected++; continue; }
     admitted++;
-    const commands = Array.isArray(fm.commands) ? fm.commands as string[] : [];
-    const decisions = Array.isArray(fm.decisions) ? (fm.decisions as string[]).filter((d): d is string => typeof d === "string") : [];
-    const paths = Array.isArray(fm.files) ? fm.files as string[] : [];
+    const commands = (Array.isArray(fm.commands) ? fm.commands : []).filter((c): c is string => typeof c === "string");
+    const decisions = Array.isArray(fm.decisions) ? (fm.decisions as unknown[]).filter((d): d is string => typeof d === "string") : [];
+    const paths = (Array.isArray(fm.files) ? fm.files : []).filter((p): p is string => typeof p === "string");
     const taskKind = Array.isArray(fm.types) && fm.types.length > 0 ? String(fm.types[0]) : String(fm.taskKind ?? "general");
     const sessionClass = Array.isArray(fm.types) && fm.types.includes("mission") ? ("mission" as const) : ("adhoc" as const);
     const sid = String(fm.id ?? path.basename(rel, ".md"));
@@ -356,7 +362,7 @@ export async function runTrajectoryIndex(
       }
     }
     if (skippedShardUnits > 0) {
-      context.logger.warn(`${skippedShardUnits} shard unit(s) skipped — malformed or missing required fields (id/producer/usedBy/situation/continuation/text)`);
+      context.logger.warn(`${skippedShardUnits} shard unit(s) skipped — malformed or missing required fields (id/producer/usedBy/situation/continuation/text/utilityScore)`);
     }
   }
 
@@ -387,8 +393,8 @@ export async function runTrajectoryIndex(
     for (const uid of recallUnits.get(o.recallId ?? "") ?? []) {
       const u = unitsById.get(uid);
       if (!u) continue;
-      if (o.helped) u.usedBy.helped++;
-      if (o.hurt) u.usedBy.hurt++;
+      if (o.helped === true) u.usedBy.helped++;
+      if (o.hurt === true) u.usedBy.hurt++;
       u.utilityScore = u.usedBy.helped - u.usedBy.hurt;
     }
   }

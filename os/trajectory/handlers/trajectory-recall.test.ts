@@ -132,6 +132,26 @@ body
     expect(res.exitCode).toBe(0);
   });
 
+  test("non-string sourceWatermark counts as stale → TRAJ-02 (R4-2)", async () => {
+    await writeIndex(`schema: forge/trajectory-index@1
+sourceWatermark: 42
+units:
+  - id: trajectory:u1
+    kind: trajectory
+    situation: {taskKind: reconcile, touchedPathClasses: [], recentActions: [reconcile]}
+    continuation: {commandSequence: [], decisions: [], outcomeHash: abc}
+    producer: {workshopId: w, sessionId: u1, completedAt: "2026-10-01", verdictRef: "verdict:green"}
+    source: docs/sessions/x.md
+    tokens: 10
+    text: reconcile
+    usedBy: {recalled: 0, helped: 0, hurt: 0}
+    utilityScore: 0
+`);
+    const res = await runTrajectoryRecall(flags({ task: "x" }), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-02");
+  });
+
   test("corrupt units.yaml → TRAJ-02, never a raw exception", async () => {
     await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
     await writeFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "units: {a: map, not: a-list}\n");

@@ -160,6 +160,14 @@ describe("journal hardening edges (review round-1)", () => {
     expect(read2.records.length).toBe(0);
   });
 
+  test("non-array outcomes: value warns and migrates nothing", async () => {
+    await mkdir(TRAJ_DIR(), { recursive: true });
+    await writeFile(join(TRAJ_DIR(), "outcomes.yaml"), "schema: x\noutcomes: a-string-not-a-list\n");
+    const read = await readOutcomesJournal(root);
+    expect(read.records.length).toBe(0);
+    expect(read.warnings.some((w) => w.includes("not a record list"))).toBe(true);
+  });
+
   test("non-object JSONL lines are malformed records — dropped like corrupt lines", async () => {
     await mkdir(TRAJ_DIR(), { recursive: true });
     await writeFile(OUTCOMES_JSONL(), `{"recallId":"R-1","helped":true}\n42\nnull\n{"recallId":"R-2","hurt":true}\n`);
