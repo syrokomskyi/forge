@@ -212,6 +212,14 @@
       "types": "./os/friction/friction.module.ts",
       "default": "./os/friction/friction.module.ts"
     },
+    "./os/yaml": {
+      "types": "./os/yaml/index.ts",
+      "default": "./os/yaml/index.ts"
+    },
+    "./os/yaml-module": {
+      "types": "./os/yaml/yaml.module.ts",
+      "default": "./os/yaml/yaml.module.ts"
+    },
     "./os/resolver-module": {
       "types": "./os/resolver/resolver.module.ts",
       "default": "./os/resolver/resolver.module.ts"
@@ -491,6 +499,14 @@
       "./os/friction-module": {
         "types": "./dist/os/friction/friction.module.d.ts",
         "default": "./dist/os/friction/friction.module.js"
+      },
+      "./os/yaml": {
+        "types": "./dist/os/yaml/index.d.ts",
+        "default": "./dist/os/yaml/index.js"
+      },
+      "./os/yaml-module": {
+        "types": "./dist/os/yaml/yaml.module.d.ts",
+        "default": "./dist/os/yaml/yaml.module.js"
       },
       "./os/resolver-module": {
         "types": "./dist/os/resolver/resolver.module.d.ts",
