@@ -11,6 +11,7 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 5 — forge-flow module with flow.check + flow.install</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
+  <item>RFC-1486: steps 5-6 — flow.install generates declaration, FLOW remediation catalog, regenerated artifacts</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,6 +85,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         execOnReadOnly: false,
         mutatingFlags: [],
         writes: ["hooks/pre-commit", "hooks/flow-guard.sh", ".git/**"],
+        generates: [],
         coverage: "operator",
         coverageNote:
           "run once per repository at adoption — wired into forge.upgrade by the wave-4 switch-over RFC",
