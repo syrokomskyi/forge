@@ -12,12 +12,11 @@ policy plus audit evidence — not a cryptographic security boundary.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Registry absence is tolerance-neutral — ENOENT yields an empty registry; consumers treat "no file" and "no grant" identically (RFC-1336 unchanged-behavior rule).</item>
-  <item>DelegationQuery carries an optional grantedBy — consumers that already know the deciding human (e.g. bordbuch.append --delegated-by) bind the query to the grantor so delegatedBy provenance cannot be fabricated against a different human's grant.</item>
-  <item>sites: "workspace" covers every site; an explicit id list bounds site scope. Site-scoped queries with no site never match a site-listed grant.</item>
+  <item>Registry absence is tolerance-neutral — ENOENT yields an empty registry; "no file" and "no grant" are identical.</item>
+  <item>DelegationQuery's optional grantedBy binds the query to the deciding human — provenance cannot be fabricated cross-grant.</item>
+  <item>sites: "workspace" covers every site; explicit id lists bound scope — site-scoped queries never match site-less grants.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1400/AMD-014: DELEGABLE_SCOPES gains translation.contract.approve — an operator-confirmed agent may approve a site translation contract under delegation.</item>
   <item>RFC-1336: initial module — schema, scope catalog, loader, resolver, serializer.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1336: delegated editorial sign-off (RFC-1336 step 3)
@@ -32,6 +31,8 @@ delegate — a journaled no-op with no delegation, so the operator path is
 unchanged. certify/promote precondition remediation now names an active
 delegation when one covers the site.</item>
   <item>RFC-1336: delegated rfc.decision/version.major/onboarding.decision + docs (RFC-1336 steps 4-5)</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
+  <history>RFC-1400</history>
 </CHANGE_SUMMARY>
 */
 

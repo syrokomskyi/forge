@@ -14,8 +14,8 @@ boundary; evidence binds to the spec and entry bytes via sha256.
 <KEY_DECISIONS>
   <item>`.strict()` — unknown keys are rejected: a proof spec is evidence, so silent stripping would hide author typos.</item>
   <item>`domain.cardinality` stays schema-optional (external checkers need no declared domain); the `exhaustive` runner errors on its absence.</item>
-  <item>`assumptions`, `trustedBase`, and `unverifiedBoundaries` are each `.min(1)` — a spec claiming to prove the whole system is refused by shape, not review.</item>
-  <item>`tool` is the closed ProofTool enum — the set grows only by RFC, so a spec can never name a runner nobody implemented.</item>
+  <item>`assumptions`, `trustedBase`, `unverifiedBoundaries` are `.min(1)` — prove-everything specs are refused by shape.</item>
+  <item>`tool` is the closed ProofTool enum — the set grows only by RFC.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1391: forge/proof-spec@1 schema, ProofSpec/ProofTool/ProofVerdict/ProofCheckResult types.</item>
@@ -34,6 +34,7 @@ REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
 refuted and no-report tests; external-tool timedOut persists partial output
 as log (symmetric with exhaustive); log doc comments updated to reflect
 all-post-spawn-verdicts attachment.</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 

@@ -14,12 +14,11 @@ surfaces share one verdict path.
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>specSha256/entrySha256 are computed whenever the files are readable — evidence binds to bytes for every verdict, including error/unavailable.</item>
-  <item>`exhaustive` runs the entry through vitest with FORGE_PROOF_REPORT — the report file, not the exit code, carries the verdict so an incidental co-located test failure cannot masquerade as a refutation.</item>
+  <item>specSha256/entrySha256 are computed whenever readable — evidence binds to bytes for every verdict.</item>
+  <item>`exhaustive` runs via vitest with FORGE_PROOF_REPORT — the report file, not the exit code, carries the verdict.</item>
   <item>External tools map exit 0 → proved, non-zero → refuted (captured output persisted), ENOENT → unavailable, version-regex miss/mismatch → error.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: shared runProofCheck execution path (tool resolution, version pin, report parsing, log persistence).</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
@@ -43,6 +42,8 @@ REVIEW-CODE-2026-10-24-06 (approved): log is now asserted on the exhaustive
 refuted and no-report tests; external-tool timedOut persists partial output
 as log (symmetric with exhaustive); log doc comments updated to reflect
 all-post-spawn-verdicts attachment.</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
+  <history>RFC-1391</history>
 </CHANGE_SUMMARY>
 */
 

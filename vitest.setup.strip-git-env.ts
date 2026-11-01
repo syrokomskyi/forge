@@ -6,7 +6,7 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Added after fixture git commands ran under an inherited GIT_DIR and committed into the workspace repository (2026-10-18).</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 

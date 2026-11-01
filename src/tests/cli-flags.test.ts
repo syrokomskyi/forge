@@ -8,10 +8,10 @@ KERNEL-ARG-01 diagnostics, legacy heuristic path for schema-less commands).</pur
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Initial cli-flags resolution tests — covers the `forge rfc.validate --id` crash regression (value-less declared string flag must produce KERNEL-FLAG-02, not a boolean).</item>
   <item>RFC-1389: m message alias and honest positional fix hints in the forge CLI parser</item>
   <item>RFC-1389: add kernel-parity pins for non-alias tokens and argv-end -m</item>
   <item>RFC-1395: port --output → --json alias into forge CLI parser</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 

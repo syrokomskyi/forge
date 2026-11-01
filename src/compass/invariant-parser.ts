@@ -13,7 +13,7 @@ cross-package consumers (e.g. werkstatt-site TEST-WEAKEN-10) via
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>A marker must open the comment payload — a mid-comment `@ai-invariant` mention is prose, not a declaration.</item>
-  <item>The statement runs over contiguous comment lines until a code line, blank comment line, delimiter run, markup/annotation line, or a fresh marker; the `(checked-by: …)` tail wraps the same way.</item>
+  <item>The statement runs over contiguous comment lines until code, blank, delimiter, or a fresh marker; `(checked-by: …)` wraps likewise.</item>
   <item>Statement identity is sha256 over whitespace-normalized text — re-indentation and reflow are not weakening; word changes are.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
@@ -28,6 +28,7 @@ numeric bound), bound @ai-invariant removed-reworded-unbound via the new
 covers implementation files and proof specs. Warn-only until the census
 is operator-accepted — TEST_WEAKEN_ENFORCED keeps {01..06}; EC-22 records
 advisory rules in the Test-Weakened trailer.</item>
+  <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
 </CHANGE_SUMMARY>
 */
 
