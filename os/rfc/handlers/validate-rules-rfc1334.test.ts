@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>RFC-1334: V-45 tests — post-cutoff proposed/added commands without a command-mode reachable probe warn.</purpose>
+<purpose>validate-rules-rfc1334 coverage — RFC-1334 V-45: post-cutoff proposed/added commands without a command-mode reachable probe warn.</purpose>
 <non-goals>
   <item>Not a probe-execution suite.</item>
 </non-goals>
@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1334: tests for AC-8.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
 </CHANGE_SUMMARY>
 */
 

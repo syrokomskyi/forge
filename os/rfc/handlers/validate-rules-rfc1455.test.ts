@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1455: V-50/V-51 tests — `## Fixed inputs` rows must bind exactly one
+RFC-1455: validate-rules-rfc1455 V-50/V-51 tests — `## Fixed inputs` rows must bind exactly one
 existing AC-N whose outcome probe (page or file-contains) contains the
 declared value (V-50 error); verbatim prose without the section earns a
 V-51 warning. Covers fence-stripped parsing, escaped pipes, header-row
@@ -14,6 +14,7 @@ location, marked-literal extraction, and the createdAt cutoff.
 <CHANGE_SUMMARY>
   <item>RFC-1455: V-50/V-51 fixed-inputs binding validation tests.</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
 </CHANGE_SUMMARY>
 */
 

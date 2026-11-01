@@ -1,3 +1,15 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Unit tests for RFC-1333 skills/types — covers the skills and types acceptance suite surface and its observable contract.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+</CHANGE_SUMMARY>
+*/
+
 // RFC-1333 AC-3, AC-4, AC-7, AC-8, AC-9.
 import { readFileSync } from "node:fs";
 import { describe, expect, expectTypeOf, it } from "vitest";

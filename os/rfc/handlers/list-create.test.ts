@@ -11,6 +11,9 @@ with candidates listed.
   <item>Not a template-content contract — fixtures carry the minimal template shape the handler rewrites.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";

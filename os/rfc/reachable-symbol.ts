@@ -18,16 +18,18 @@ manifest's `reachableVia` edges and unions them with live doc-mention edges
   <item>Type-only imports and re-exports alone never count as usage.</item>
   <item>Barrel re-exports are followed to depth 5; bare specifiers resolve through workspace package.json exports.</item>
   <item>The tracked-file scan is memoized per workspace so several probes in one run share it.</item>
-  <item>Command mode unions manifest edges with doc-mention edges over the same surface command.coverage.validate scans — a mention under a frozen tree (docs/rfcs, archives, …) never counts. The mention enumeration is git ls-files --cached --others --exclude-standard (tracked + untracked-non-ignored, for fs.glob parity — symbol mode stays tracked-only); a git failure surfaces in the probe detail rather than degrading to a bare no-edge result.</item>
+  <item>Command mode unions manifest edges with live doc-mention edges; mentions under frozen trees never count.</item>
+  <item>Mention enumeration is `git ls-files --cached --others --exclude-standard`; a git failure surfaces in the probe detail.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1334: initial implementation.</item>
   <item>RFC-1334: step 4 — reachable acceptance probe (symbol and command modes) and V-45</item>
   <item>RFC-1351: step 1 — command mode unions reachableVia with live doc-mention edges via @warpgogol/forge/reachability (Q-1/A; manifest stays structural-only)</item>
   <item>RFC-1351: review F-1/F-2 — doc-scan fs.glob parity + surfaced scan failure + guarded-initializer note</item>
   <item>RFC-1351: review report persisted + KEY_DECISIONS enumeration note
 
 fo-review REVIEW-CODE-2026-10-20-01 (subagent isolation, blockLevel warning) — F-1/F-2 fixed in the previous commit; reachable-symbol KEY_DECISIONS item now records the doc-mention enumeration contract.</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+  <history>RFC-1334</history>
 </CHANGE_SUMMARY>
 */
 

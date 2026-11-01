@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1453: V-47/V-48 tests — `page` probes require `target` on non-archived
+RFC-1453: validate-rules-rfc1453 V-47/V-48 tests — `page` probes require `target` on non-archived
 files (error), archived files exempt; V-48 warns when packagesImpacted
 touches an outcomeSurfaces glob without a declared outcome probe (AC-8).
 </purpose>
@@ -12,6 +12,7 @@ touches an outcomeSurfaces glob without a declared outcome probe (AC-8).
 <CHANGE_SUMMARY>
   <item>RFC-1453: V-47 page-target + V-48 outcome-surface validation tests.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
 </CHANGE_SUMMARY>
 */
 

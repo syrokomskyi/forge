@@ -5,6 +5,9 @@ Shared fixture builders for the RFC-1391 independent verifier checks —
 tmp-workspace and runtime-context helpers only. Nothing here re-implements
 production logic; expectations live in the *.acceptance.test.ts files.
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1391 r1 verification: shared verifier support module.</item>
@@ -22,6 +25,7 @@ config is error not unavailable, and both surfaces share one path; {entry} is
 required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
 </CHANGE_SUMMARY>
 */
 

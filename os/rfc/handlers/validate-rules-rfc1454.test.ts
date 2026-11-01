@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>
-RFC-1454: V-49 tests — every `## Deviations` entry's `(review <reviewId>)`
+RFC-1454: validate-rules-rfc1454 V-49 tests — every `## Deviations` entry's `(review <reviewId>)`
 provenance must resolve to a committed review report under the configured
 reviewsDir at HEAD (AC-4). Covers dangling review ids, resolvable entries,
 malformed section lines, and the no-entries fast path. Uses a real tmp git
@@ -14,6 +14,7 @@ repo because the committed-report index reads `git ls-tree`/`git show`.
 <CHANGE_SUMMARY>
   <item>RFC-1454: V-49 deviation-provenance validation tests.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
 </CHANGE_SUMMARY>
 */
 
