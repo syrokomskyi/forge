@@ -5,6 +5,9 @@
   <item>Do not use static imports — that would break npm installs without workspace deps.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>Lazy engine bridge for standalone-safe session handlers</item>
+</CHANGE_SUMMARY>
 */
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
