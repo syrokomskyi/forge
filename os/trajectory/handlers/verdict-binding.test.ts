@@ -207,3 +207,37 @@ date: 2026-10-30`);
     expect(second.data?.rejected).toBe(1);
   });
 });
+
+describe("resolved-path confinement (RFC-1480 AC-5)", () => {
+  test("verdictRef inside a ..-prefixed directory resolves — the over-drop is closed", async () => {
+    await writeSession("2026-10-30-12-00-00-aaaaaa.md", `id: s-green
+verdict: green
+taskKind: reconcile
+commands: [mission.reconcile]
+date: 2026-10-30`);
+    await mkdir(join(root, "..wip"), { recursive: true });
+    await writeFile(join(root, "..wip", "verdict.json"), JSON.stringify({ verdict: "green" }));
+    const shard = await writeShard([
+      vendoredUnit({ id: "trajectory:dotdot-dir", producer: { workshopId: "other-shop", sessionId: "v1", completedAt: "2026-10-01", verdictRef: "..wip/verdict.json", sessionClass: "adhoc", origin: "vendored" } }),
+    ]);
+    const res = await runTrajectoryIndex(flags({ import: shard }), ctx());
+    expect(res.data?.dropped).toBe(0);
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).toContain("trajectory:dotdot-dir");
+  });
+
+  test("verdictRef genuinely escaping the root still drops", async () => {
+    await writeSession("2026-10-30-12-00-00-aaaaaa.md", `id: s-green
+verdict: green
+taskKind: reconcile
+commands: [mission.reconcile]
+date: 2026-10-30`);
+    const shard = await writeShard([
+      vendoredUnit({ id: "trajectory:real-escape", producer: { workshopId: "other-shop", sessionId: "v1", completedAt: "2026-10-01", verdictRef: "../outside/verdict.json", sessionClass: "adhoc", origin: "vendored" } }),
+    ]);
+    const res = await runTrajectoryIndex(flags({ import: shard }), ctx());
+    expect(res.data?.dropped).toBe(1);
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).not.toContain("trajectory:real-escape");
+  });
+});

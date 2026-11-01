@@ -225,3 +225,24 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
   });
 });
 
+
+describe("recallId sequence derivation (RFC-1480 AC-2)", () => {
+  test("next recall seq derives from journal id segments, not records.length — a dropped line cannot collide", async () => {
+    await runTrajectoryIndex(flags({}), ctx());
+    // Journal with two records whose seqs are 03 and 07 — records.length=2
+    // would mint -03- again; the derived seq must exceed the recorded max.
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(
+      join(root, "docs", ".index", "trajectory", "recalls.jsonl"),
+      [
+        JSON.stringify({ id: "R-20261030-03-aaaa", task: "x", unitsReturned: [], at: "2026-10-30T01:00:00Z" }),
+        JSON.stringify({ id: "R-20261030-07-bbbb", task: "y", unitsReturned: [], at: "2026-10-30T02:00:00Z" }),
+        "",
+      ].join("\n"),
+    );
+    const res = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
+    expect(res.exitCode).toBe(0);
+    const seq = Number.parseInt(res.data!.recallId.split("-")[2]!, 10);
+    expect(seq).toBe(8);
+  });
+});

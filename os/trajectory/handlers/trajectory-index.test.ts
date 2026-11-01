@@ -244,3 +244,26 @@ body
     expect(shard).toContain("verdictRef: verdict:green");
   });
 });
+
+describe("RFC-1480 — dead flag + silent shard diagnostics", () => {
+  test("--rebuild is no longer a declared flag — KERNEL-FLAG-01 rejects it (AC-1)", async () => {
+    const { forgeTrajectoryModule } = await import("../trajectory.module.ts");
+    const { resolveCliFlags } = await import("../../../src/cli-flags.ts");
+    const decl = forgeTrajectoryModule.commands.find((c) => c.name === "trajectory.index")!;
+    expect(decl.flags).not.toHaveProperty("rebuild");
+    const { diagnostics } = resolveCliFlags(["--rebuild"], decl as never);
+    expect(diagnostics.some((d) => d.ruleId === "KERNEL-FLAG-01")).toBe(true);
+  });
+
+  test("non-array shard.units emits TRAJ-07 and counts the skip (AC-3, AC-4)", async () => {
+    const rel = "docs/.index/trajectory/broken-shard.yaml";
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(join(root, rel), "schema: forge/trajectory-shard@1\nunits: notanarray\n");
+    const res = await runTrajectoryIndex(flags({ import: rel }), ctx());
+    expect(res.exitCode).toBe(0);
+    const diags = res.data?.diagnostics as { ruleId?: string }[] | undefined;
+    expect(diags?.some((d) => d.ruleId === "TRAJ-07")).toBe(true);
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).not.toContain("trajectory:vendored");
+  });
+});

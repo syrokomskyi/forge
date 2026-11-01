@@ -11,11 +11,11 @@ warns and skips — a partial JSONL is worse than none.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
   <item>RFC-1475: apply review round-4 findings — frontmatter element guards, watermark type narrow, verdictRef workspace confinement, strict-boolean journal labels</item>
   <item>RFC-1475: apply review round-5 findings — shard units container guard, array-element migration convergence, confinement drop test</item>
   <item>RFC-1475: apply review round-6 residual — normalize non-string recalls keyOf for migration convergence</item>
+  <item>RFC-1480: trajectory-memory residual debt — rebuild flag, recallId derivation, TRAJ-07, confinement</item>
   <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -109,6 +109,21 @@ const TRAJECTORY_DIR = path.join("docs", ".index", "trajectory");
 export function journalUnitIds(r: { unitsReturned?: unknown }): string[] {
   if (!Array.isArray(r.unitsReturned)) return [];
   return [...new Set(r.unitsReturned.filter((x): x is string => typeof x === "string"))];
+}
+
+/**
+ * RFC-1480: derive the next recall sequence from the journal's own ids —
+ * `R-<dayKey>-<seq>-<hash>` (third segment is the counter), not from
+ * `records.length` (a dropped/migrated journal would collide). padStart(2)
+ * overflow (`seq > 99`) grows naturally — uniqueness is what matters.
+ */
+export function nextRecallSeq(records: { id?: string }[]): number {
+  let max = 0;
+  for (const r of records) {
+    const m = /^R-\d+-(\d+)-/.exec(typeof r.id === "string" ? r.id : "");
+    if (m) max = Math.max(max, Number.parseInt(m[1]!, 10));
+  }
+  return max + 1;
 }
 
 /**
