@@ -8,6 +8,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial tolerant parser for structured knowledge entries.</item>
+  <item>RFC-1481: parse both upstream K-NNNN and consumer-local L-K-NNNN headings from explicit content.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,7 +25,7 @@ import {
   type ParsedKnowledgeFile,
 } from "./schema.ts";
 
-const ENTRY_HEADING_PATTERN = /^###\s+(K-\d{4})\s*:\s*(.+)$/;
+const ENTRY_HEADING_PATTERN = /^###\s+((?:L-)?K-\d{4})\s*:\s*(.+)$/;
 const KNOWLEDGE_ENTRY_FENCE = "knowledge-entry";
 const LAYER_COMMENT_PATTERN = /<!--\s*knowledge-layer:\s*(L[012])\s*-->/;
 
@@ -42,22 +43,7 @@ function detectLayer(content: string, fileName: string): KnowledgeLayer | null {
   return FILENAME_LAYER_MAP[fileName] ?? null;
 }
 
-export function parseKnowledgeFile(filePath: string): ParsedKnowledgeFile {
-  let content: string;
-  try {
-    content = fs.readFileSync(filePath, "utf-8");
-  } catch {
-    // File read errors (EISDIR, ENOENT, etc.) — return empty result
-    return {
-      path: filePath,
-      layer: null,
-      preamble: "",
-      entries: [],
-      legacySections: [],
-      parseIssues: [],
-      isKnowledgeAdjacent: true,
-    };
-  }
+export function parseKnowledgeContent(content: string, filePath: string): ParsedKnowledgeFile {
   const fileName = path.basename(filePath);
   const lines = content.split(/\r?\n/);
   const layer = detectLayer(content, fileName);
@@ -224,4 +210,21 @@ export function parseKnowledgeFile(filePath: string): ParsedKnowledgeFile {
     parseIssues,
     isKnowledgeAdjacent: false,
   };
+}
+
+export function parseKnowledgeFile(filePath: string): ParsedKnowledgeFile {
+  try {
+    return parseKnowledgeContent(fs.readFileSync(filePath, "utf-8"), filePath);
+  } catch {
+    // File read errors (EISDIR, ENOENT, etc.) — return empty result
+    return {
+      path: filePath,
+      layer: null,
+      preamble: "",
+      entries: [],
+      legacySections: [],
+      parseIssues: [],
+      isKnowledgeAdjacent: true,
+    };
+  }
 }

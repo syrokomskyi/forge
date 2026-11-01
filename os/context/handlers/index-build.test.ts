@@ -2,6 +2,9 @@
 <MODULE_CONTRACT>
 <purpose>RFC-1470 context.index.build tests — unit catalog covers the required kinds (session-block, friction, rfc-header minimum); rebuild is pure projection.</purpose>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1481: context index retains consumer-local L-K-NNNN identity.</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
@@ -64,5 +67,31 @@ describe("context.index.build (RFC-1470)", () => {
     expect(kinds).toContain("rfc-header");
     const index = await readFile(join(root, "docs", ".index", "context", "index.yaml"), "utf8");
     expect(index).toContain("forge/context-index@1");
+  });
+
+  test("indexes consumer-local L-K-NNNN knowledge entries by their full ID", async () => {
+    const knowledgeDir = join(root, ".agents", "skills", "consumer-skill");
+    await mkdir(knowledgeDir, { recursive: true });
+    await writeFile(
+      join(knowledgeDir, "qa-log.md"),
+      `<!-- knowledge-layer: L0 -->
+
+### L-K-0001: Local identity
+\`\`\`knowledge-entry
+id: L-K-0001
+layer: L0
+created: 2026-08-03
+status: active
+\`\`\`
+
+Indexed local knowledge body.
+`,
+    );
+
+    await runIndexBuild(flags({}), ctx());
+
+    const index = await readFile(join(root, "docs", ".index", "context", "index.yaml"), "utf8");
+    expect(index).toContain("qa-log:L-K-0001");
+    expect(index).toContain("L-K-0001");
   });
 });

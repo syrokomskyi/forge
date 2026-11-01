@@ -12,6 +12,9 @@ Unit tests for upgrade covering its documented public contract and regression-se
   <item>RFC-0552: add test for Forge-vs-pack skill name conflict detection in upgrade.</item>
   <item>RFC-1224: forge.yaml preservation test — consumer keys, comments, and unknown sections survive upgrade rewrites.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
+  <item>RFC-1481: add knowledge collision resolution and surfacing
+
+Add the explicit resolver, namespace-aware parsing and validation, safe reference remapping, doctor/upgrade hints, and regression coverage.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -185,6 +188,36 @@ test("forge.upgrade with syncedVersion matching installed version returns noop",
   // re-synced are reported in skillsUpdated.
   expect(result.data?.skillsUpdated).toContain("fo-idea");
   expect(result.exitCode).toBe(0);
+});
+
+test("same-version forge.upgrade noop surfaces the knowledge conflict resolver", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "SKILL.md"),
+    "---\nname: fo-idea\nknowledge: [qa-log.md]\n---\n# fo-idea\n",
+    "utf8",
+  );
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "qa-log.md"),
+    qaLog([{ id: "K-0001", title: "First", body: "Upstream body." }]),
+    "utf8",
+  );
+  await setupConsumerForgeYaml(tempDir, "0.2.0");
+  await mkdir(join(tempDir, ".agents", "skills", "fo-idea"), { recursive: true });
+  await writeFile(
+    join(tempDir, ".agents", "skills", "fo-idea", "qa-log.md"),
+    qaLog([{ id: "K-0001", title: "First", body: "Local body." }]),
+    "utf8",
+  );
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("noop");
+  expect(result.nextSteps).toContainEqual(
+    expect.objectContaining({
+      action: expect.stringContaining("forge knowledge.conflicts.resolve"),
+    }),
+  );
 });
 
 test("forge.upgrade never overwrites a non-null operator-set binding", async () => {
@@ -672,6 +705,11 @@ test("forge.upgrade preserves project-accumulated knowledge entries (append-only
   // Divergence is surfaced in result data and a durable report, not a
   // single-line console dump.
   expect(result.data?.knowledgeConflicts).toEqual(["fo-idea/qa-log.md#K-0001"]);
+  expect(result.nextSteps).toContainEqual(
+    expect.objectContaining({
+      action: expect.stringContaining("forge knowledge.conflicts.resolve"),
+    }),
+  );
   expect(result.data?.knowledgeConflictsReport).toBe(".forge/knowledge-conflicts.txt");
   const report = await readFile(join(tempDir, ".forge", "knowledge-conflicts.txt"), "utf8");
   expect(report).toContain("fo-idea/qa-log.md#K-0001");

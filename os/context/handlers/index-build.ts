@@ -15,6 +15,7 @@ rebuild from sources — no authority lives in the index.
   <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
   <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
+  <item>RFC-1481: index upstream K-NNNN and consumer-local L-K-NNNN knowledge entries.</item>
   <history>RFC-1470</history>
 </CHANGE_SUMMARY>
 */
@@ -91,7 +92,7 @@ export async function runIndexBuild(
     }
   }
 
-  // knowledge-entry — K-NNNN blocks in .agents knowledge files + MEMORY.md.
+  // knowledge-entry — K-NNNN and L-K-NNNN blocks in agent knowledge files.
   const kfiles = (await walk(path.join(root, ".agents"), io)).filter((p) => /\.(md)$/.test(p) && /(qa-log|learned-principles|fix-patterns|MEMORY)/.test(p));
   for (const kf of kfiles) {
     const src = await io.readFile(kf).catch(() => null);
@@ -99,9 +100,9 @@ export async function runIndexBuild(
     const rel = path.relative(root, kf).split(path.sep).join("/");
     for (const m of src.matchAll(KENTRY_RE)) {
       // The fence holds only the YAML sidecar (id/layer/created/status); the
-      // retrievable knowledge is the ### K-NNNN heading's prose AFTER the fence.
+      // Retrievable knowledge is the entry heading's prose after the metadata fence.
       const before = src.slice(0, m.index ?? 0);
-      const headings = [...before.matchAll(/###\s+(K-\d+)/g)];
+      const headings = [...before.matchAll(/###\s+((?:L-)?K-\d+)/g)];
       const kid = headings[headings.length - 1]?.[1] ?? `K-${units.length}`;
       const fm = (yamlParse(m[1]!) as Record<string, unknown>) ?? {};
       const prose = src.slice((m.index ?? 0) + m[0].length, undefined).split(/\n###\s/).at(0) ?? "";

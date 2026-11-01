@@ -9,11 +9,12 @@ Unit tests for knowledge parse covering RFC-0660: knowledge file parser; RFC-066
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the knowledge suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1481: parse and round-trip consumer-local L-K-NNNN entries.</item>
 </CHANGE_SUMMARY>
 */
 
 import { test, expect, describe } from "vitest";
-import { parseKnowledgeFile } from "../knowledge/parse.ts";
+import { parseKnowledgeContent, parseKnowledgeFile } from "../knowledge/parse.ts";
 import { serializeKnowledgeFile } from "../knowledge/serialize.ts";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,6 +28,30 @@ function writeTempFile(content: string, fileName: string): string {
 }
 
 describe("RFC-0660: knowledge file parser", () => {
+  test("RFC-1481: parses consumer-local L-K-NNNN IDs and same-file references", () => {
+    const parsed = parseKnowledgeContent(
+      `<!-- knowledge-layer: L1 -->
+# Fix Patterns
+
+### L-K-0007: Local principle
+\`\`\`knowledge-entry
+id: L-K-0007
+layer: L1
+created: 2026-08-03
+supersedes: [K-0003]
+status: active
+\`\`\`
+
+Local body.
+`,
+      "fix-patterns.md",
+    );
+
+    expect(parsed.entries[0]?.meta.id).toBe("L-K-0007");
+    expect(parsed.entries[0]?.meta.supersedes).toEqual(["K-0003"]);
+    expect(parsed.parseIssues).toEqual([]);
+  });
+
   test("valid L0 entry with minimal metadata parses correctly", () => {
     const content = `<!-- knowledge-layer: L0 -->
 # Q&A Log

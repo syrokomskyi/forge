@@ -13,6 +13,7 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
   <item>RFC-1255: forge-version-sync check — warns when the installed @warpgogol/forge version diverges from forge.yaml syncedVersion (pnpm up drifts it silently); nested wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>agents.generate remediation counts marker-guarded semantic-layer injections as fixes — a hand-written file that only gained the region reports fixed instead of skipped (consumer field report follow-up to RFC-1253).</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <item>RFC-1481: knowledge-files doctor check reports unresolved ID conflicts and the explicit remediation command.</item>
   <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -388,6 +389,7 @@ async function checkStaleKnowledgeFiles(
   io: WorkspaceIO,
 ): Promise<DoctorCheck> {
   const stale: string[] = [];
+  const conflicts: string[] = [];
 
   let config;
   try {
@@ -416,6 +418,9 @@ async function checkStaleKnowledgeFiles(
         const plan = planKnowledgeSync(srcPath, destPath);
         if (plan.action === "merged") {
           stale.push(`${skill.name}/${kf}`);
+        }
+        for (const id of plan.conflicts) {
+          conflicts.push(`${skill.name}/${kf}#${id}`);
         }
       }
       // If source exists but dest doesn't, skip — expected on first install
@@ -447,17 +452,27 @@ async function checkStaleKnowledgeFiles(
         if (plan.action === "merged") {
           stale.push(`${skill.name}/${kf}`);
         }
+        for (const id of plan.conflicts) {
+          conflicts.push(`${skill.name}/${kf}#${id}`);
+        }
       }
     }
   }
 
+  const messages: string[] = [];
+  if (stale.length > 0) {
+    messages.push(`${stale.length} stale knowledge file(s): ${stale.join(", ")} — run 'forge create' to sync`);
+  }
+  if (conflicts.length > 0) {
+    messages.push(
+      `${conflicts.length} knowledge id conflict(s): ${conflicts.join(", ")} — run 'forge knowledge.conflicts.resolve'`,
+    );
+  }
+
   return {
     name: "knowledge-files",
-    status: stale.length === 0 ? "pass" : "warn",
-    message:
-      stale.length === 0
-        ? "All knowledge files in sync"
-        : `${stale.length} stale knowledge file(s): ${stale.join(", ")} — run 'forge create' to sync`,
+    status: messages.length === 0 ? "pass" : "warn",
+    message: messages.length === 0 ? "All knowledge files in sync" : messages.join("; "),
   };
 }
 

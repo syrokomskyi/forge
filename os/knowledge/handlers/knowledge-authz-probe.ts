@@ -14,6 +14,7 @@ Autonomous — source-text scan only (FORGE-AUTONOMY-01).
   <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
   <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
   <item>RFC-1468: apply r3 repairs — dotted catalog ruleIds, queue-ledger decision refs</item>
+  <item>RFC-1481: recognize consumer-local L-K-NNNN knowledge headings.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -60,7 +61,7 @@ function* blocks(src: string, file: string): Generator<KnowledgeEntryBlock> {
   // runs on the full section.
   // Fence must appear before the next heading — a heading without a fence
   // cannot bind the next entry's yaml to the wrong id.
-  const re = /###\s+(K-\d{4})\s*:(?:(?!###)[\s\S])*?```knowledge-entry\n([\s\S]*?)```([\s\S]*?)(?=\n###\s+|$)/g;
+  const re = /###\s+((?:L-)?K-\d{4})\s*:(?:(?!###)[\s\S])*?```knowledge-entry\n([\s\S]*?)```([\s\S]*?)(?=\n###\s+|$)/g;
   for (const m of src.matchAll(re)) {
     yield { file, id: m[1]!, text: m[0], yaml: m[2]! };
   }

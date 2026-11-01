@@ -20,6 +20,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1154: sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-* SKILL.md references dangled for npm consumers</item>
   <item>RFC-1255: Knowledge conflicts land in .forge/knowledge-conflicts.txt (summary + path in console instead of a 60+ entry dump); exposed as knowledgeConflicts/knowledgeConflictsReport on UpgradeResult. Prettierignore plan now enumerates generated AGENTS.md paths.</item>
+  <item>RFC-1481: add knowledge.conflicts.resolve next steps on same-version and regular upgrade results.</item>
   <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -774,9 +775,15 @@ export async function runUpgrade(
         knowledgeConflicts: reconcile.knowledgeConflicts,
         knowledgeConflictsReport: noopConflictsReport,
       },
-      nextSteps: npmCheck.warning
-        ? [{ action: npmCheck.warning, kind: "optional" }]
-        : [],
+      nextSteps: [
+        ...(npmCheck.warning ? [{ action: npmCheck.warning, kind: "optional" as const }] : []),
+        ...(reconcile.knowledgeConflicts.length > 0
+          ? [{
+              action: `Run 'forge knowledge.conflicts.resolve' to resolve ${reconcile.knowledgeConflicts.length} knowledge ID conflict(s)`,
+              kind: "optional" as const,
+            }]
+          : []),
+      ],
       exitCode: 0,
       summary: npmCheck.warning
         ? `[forge.upgrade] Already up to date (v${toVersion}) — ⚠ ${npmCheck.warning}`
@@ -895,6 +902,12 @@ export async function runUpgrade(
         kind: "optional",
       });
     }
+  }
+  if (knowledgeConflicts.length > 0) {
+    nextSteps.push({
+      action: `Run 'forge knowledge.conflicts.resolve' to resolve ${knowledgeConflicts.length} knowledge ID conflict(s)`,
+      kind: "optional",
+    });
   }
 
   const status: UpgradeResult["status"] = "pass";

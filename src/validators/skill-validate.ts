@@ -15,6 +15,7 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten â
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1481: accept consumer-local L-K-NNNN IDs while keeping Forge-authored source IDs in the upstream K-NNNN namespace.</item>
   <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553, RFC-0642, RFC-1225, RFC-1227, SKILL-00, SKILL-17</history>
 </CHANGE_SUMMARY>
 */
@@ -704,12 +705,12 @@ function checkSkill17(skillName: string, content: string): Violation[] {
   return result;
 }
 
-interface Skill19And20Result {
+export interface Skill19And20Result {
   errors: Violation[];
   warnings: Warning[];
 }
 
-function checkSkill19And20(
+export function checkSkill19And20(
   skillName: string,
   fileName: string,
   filePath: string,
@@ -751,16 +752,19 @@ function checkSkill19And20(
 
   // SKILL-20: Identifier uniqueness and reference validity (errors)
   const seenIds = new Map<string, number>(); // id â†’ first line
+  const allowedIdPattern = pack ? /^(?:L-)?K-\d{4}$/ : /^K-\d{4}$/;
   for (const entry of parsed.entries) {
     // Check id format
-    if (!/^K-\d{4}$/.test(entry.meta.id)) {
+    if (!allowedIdPattern.test(entry.meta.id)) {
       errors.push({
         skill: skillName,
         rule: "SKILL-20",
         file: fileName,
         line: entry.lineStart,
         severity: "error",
-        message: `Entry id '${entry.meta.id}' does not match ^K-\d{4}$`,
+        message: pack
+          ? `Entry id '${entry.meta.id}' does not match ^(?:L-)?K-\d{4}$`
+          : `Forge source entry id '${entry.meta.id}' must use the upstream K-NNNN namespace; L-K-NNNN is consumer-local`,
         pack,
       });
       continue;
@@ -803,17 +807,42 @@ function checkSkill19And20(
 
     // Check promotedTo format
     if (entry.meta.promotedTo !== null && entry.meta.promotedTo !== undefined) {
-      if (!/^shared\/K-\d{4}$/.test(entry.meta.promotedTo)) {
+      if (!/^shared\/(?:L-)?K-\d{4}$/.test(entry.meta.promotedTo)) {
         errors.push({
           skill: skillName,
           rule: "SKILL-20",
           file: fileName,
           line: entry.lineStart,
           severity: "error",
-          message: `Entry ${entry.meta.id}: promotedTo '${entry.meta.promotedTo}' does not match ^shared/K-\d{4}$`,
+          message: `Entry ${entry.meta.id}: promotedTo '${entry.meta.promotedTo}' does not match ^shared/(?:L-)?K-\d{4}$`,
+          pack,
+        });
+      } else if (!pack && entry.meta.promotedTo.startsWith("shared/L-K-")) {
+        errors.push({
+          skill: skillName,
+          rule: "SKILL-20",
+          file: fileName,
+          line: entry.lineStart,
+          severity: "error",
+          message: `Forge source entry ${entry.meta.id}: promotedTo cannot target consumer-local ${entry.meta.promotedTo}`,
           pack,
         });
       }
+    }
+
+    if (
+      !pack &&
+      entry.meta.promotedFrom?.some((reference) => /\/L-K-\d{4}$/.test(reference))
+    ) {
+      errors.push({
+        skill: skillName,
+        rule: "SKILL-20",
+        file: fileName,
+        line: entry.lineStart,
+        severity: "error",
+        message: `Forge source entry ${entry.meta.id}: promotedFrom cannot reference consumer-local L-K-NNNN entries`,
+        pack,
+      });
     }
   }
 

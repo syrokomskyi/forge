@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Barrel export for the knowledge module — parser, serializer, schema, and types (RFC-0660).</purpose>
+<purpose>Barrel export for the knowledge module — parser, serializer, schema, lifecycle operations, and explicit conflict resolution.</purpose>
 <non-goals>
   <item>Do not re-export from @warpgogol/* — forge src/ is portable.</item>
 </non-goals>
@@ -8,10 +8,11 @@
 <CHANGE_SUMMARY>
   <item>RFC-0660: initial knowledge module barrel export.</item>
   <item>RFC-0663: added promote.ts exports for cross-skill duplicate detection and promotion planning.</item>
+  <item>RFC-1481: export content parsing, conflict planning, local-ID allocation, and explicit-IO resolution.</item>
 </CHANGE_SUMMARY>
 */
 
-export { parseKnowledgeFile } from "./parse.ts";
+export { parseKnowledgeContent, parseKnowledgeFile } from "./parse.ts";
 export { serializeKnowledgeFile } from "./serialize.ts";
 export {
   knowledgeEntryMetaSchema,
@@ -53,7 +54,15 @@ export {
 } from "./promote.ts";
 export {
   planKnowledgeSync,
+  planKnowledgeConflictResolution,
+  resolveKnowledgeConflicts,
+  allocateLocalKnowledgeId,
   syncKnowledgeFile,
+  type KnowledgeConflictResolution,
+  type KnowledgeConflictResolutionPlan,
+  type KnowledgeConflictIssue,
+  type KnowledgeConflictUnresolvedReason,
+  type KnowledgeReferenceRemap,
   type KnowledgeSyncAction,
   type KnowledgeSyncResult,
   type KnowledgeSyncPlan,
