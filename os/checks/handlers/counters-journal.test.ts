@@ -4,7 +4,13 @@
 docs/.index/checks/counters.jsonl, outcome computation per declared rule, and
 executor-hook semantics (dryRun suppression, non-fatal append failure,
 truncated-tail tolerance).</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-checks</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";

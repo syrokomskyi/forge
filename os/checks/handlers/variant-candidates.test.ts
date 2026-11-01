@@ -1,7 +1,13 @@
 /*
 <MODULE_CONTRACT>
 <purpose>RFC-1473 variantCandidates tests — rules with ≥1 unique emitted finding join the variant-candidate list for sibling sweeps; silent/redundant rules are excluded.</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-checks</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";

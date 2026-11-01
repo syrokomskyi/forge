@@ -4,7 +4,13 @@
 deterministic docs/metrics/check-counters.generated.yaml artifact (per-rule
 evaluated/diagnostic/lastRunId/lastAt), generatedAt derived from the max
 journal `at` (never wall-clock), --check staleness gate (COUNT-03).</purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1485: sweep compass headers — forge-os-checks</item>
+</CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
