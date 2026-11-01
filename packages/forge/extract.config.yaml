@@ -37,6 +37,14 @@ excludePathSegments:
   - .npmrc
   - pnpm-lock.yaml
   - lifecycle-handlers.test.ts
+  # Monorepo-bound tests — they exercise workspace deps (@warpgogol/werkstatt-shared,
+  # werkstatt-engine) or monorepo-root artifacts (module-map.ts, generated command
+  # manifest, .agents mirror) that do not exist inside the standalone repo. They
+  # stay full-strength in the monorepo suite; shipping them would only produce
+  # guaranteed failures there. Discovered during the 9.0.0 export.
+  - ship-inflight.test.ts
+  - ac8-ac9-registry-reachability.acceptance.test.ts
+  - ac10-operating-model-policy.acceptance.test.ts
   # monorepo-scoped agent guide — not meaningful inside the standalone repo
   - AGENTS.md
 

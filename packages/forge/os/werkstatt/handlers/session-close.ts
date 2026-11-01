@@ -7,7 +7,9 @@
 </MODULE_CONTRACT>
 */
 
-import { sessionClose } from "@warpgogol/werkstatt-engine/werkstatt";
+import { loadSessionEngine } from "./session-engine.ts";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
 import type { SessionEntry } from "@warpgogol/werkstatt-engine/werkstatt";
 import type {
   ForgeCommandInput,
@@ -41,7 +43,8 @@ export async function runSessionClose(
   const allowDirty = input.flags["allow-dirty"] === true;
   const into = input.flags["into"] as string | undefined;
 
-  const result = await sessionClose((context.io ?? ambientIo), context.workspaceRoot, {
+  const engine = await loadSessionEngine();
+  const result = await engine.sessionClose((context.io ?? ambientIo), context.workspaceRoot, {
     session,
     mode,
     allowDirty,

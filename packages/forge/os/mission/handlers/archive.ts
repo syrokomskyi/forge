@@ -35,6 +35,8 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { trashPath } from "../../../src/utils/fs-trash.ts";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
 import type { ShipInflightResult } from "@warpgogol/werkstatt-shared/kernel/ship-inflight";
 import type { WorkspaceIO } from "../../../src/types.ts";
 import {
@@ -287,9 +289,13 @@ export async function runMissionArchive(
   // marker, never passed by hand).
   const shipOp = typeof input.flags["ship-op"] === "string" ? input.flags["ship-op"] : undefined;
   const io: WorkspaceIO = context.io ?? fs;
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
   let shipInflightMod: typeof import("@warpgogol/werkstatt-shared/kernel/ship-inflight") | null =
     null;
   try {
+    // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+    // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
     shipInflightMod = await import("@warpgogol/werkstatt-shared/kernel/ship-inflight");
   } catch {
     logger.warn(

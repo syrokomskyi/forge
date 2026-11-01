@@ -7,7 +7,9 @@
 </MODULE_CONTRACT>
 */
 
-import { sessionOpen } from "@warpgogol/werkstatt-engine/werkstatt";
+import { loadSessionEngine } from "./session-engine.ts";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
 import type { SessionEntry } from "@warpgogol/werkstatt-engine/werkstatt";
 import type {
   ForgeCommandInput,
@@ -34,7 +36,12 @@ export async function runSessionOpen(
   const brief = input.flags["brief"] as string | undefined;
   const resume = input.flags["resume"] === true;
 
-  const result = await sessionOpen(context.io ?? ambientIo, context.workspaceRoot, { agent, brief, resume });
+  const engine = await loadSessionEngine();
+  const result = await engine.sessionOpen(context.io ?? ambientIo, context.workspaceRoot, {
+    agent,
+    brief,
+    resume,
+  });
   if (context.outputFormat === "pretty") {
     context.logger.success(
       `${result.adopted ? "Re-adopted" : "Opened"} session ${result.session.id} → ${result.session.worktree} (branch ${result.session.branch})`,
