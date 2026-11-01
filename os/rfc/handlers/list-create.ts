@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1139: CLI hint accuracy and agent-safety hygiene — rfc.create hint, EC-14-PARTIAL, amend delegation, ledger scope, sync footer, mission.open remnants</item>
   <item>RFC-1139: second hint fix (rfc.list empty-state) + read-only test fix</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
-  <history>RFC-0303, RFC-1097, RFC-1138</history>
+  <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139</history>
 </CHANGE_SUMMARY>
 */
 
@@ -173,6 +173,11 @@ export async function runRfcCreate(
   const kind = (input.flags["kind"] as string | undefined) ?? "architecture";
   const scope = (input.flags["scope"] as string | undefined) ?? "workspace";
   const satisfies = parseSatisfiesFlag(input.flags["satisfies"]);
+  // RFC-1482: seed commands.proposed/commands.added at authoring time so the
+  // draft's acceptance block can carry reachable-probe stubs (V-45) instead of
+  // discovering the breach on the first validate cycle.
+  const proposed = parseSatisfiesFlag(input.flags["proposed"]);
+  const added = parseSatisfiesFlag(input.flags["added"]);
 
   if (!RFC_KINDS.includes(kind as RfcKind)) {
     throw new Error(`Invalid kind: ${kind}. Must be one of: ${RFC_KINDS.join(", ")}`);
@@ -370,6 +375,33 @@ export async function runRfcCreate(
           /^satisfies: \[\]$/m,
           `satisfies:\n${satisfies.map((id) => `  - ${id}`).join("\n")}`,
         );
+      }
+      if (proposed.length > 0) {
+        content = content.replace(
+          /^  proposed: \[\]$/m,
+          `  proposed:\n${proposed.map((name) => `    - ${name}`).join("\n")}`,
+        );
+      }
+      if (added.length > 0) {
+        content = content.replace(
+          /^  added: \[\]$/m,
+          `  added:\n${added.map((name) => `    - ${name}`).join("\n")}`,
+        );
+      }
+      // RFC-1482: one reachable-probe stub per seeded command — V-45 covered at
+      // emission; with both buckets empty the commented template shape stays.
+      const probeSeeds = [...proposed, ...added];
+      if (probeSeeds.length > 0) {
+        const stubs = probeSeeds
+          .map((name) => `  - probe: reachable\n    criterion: AC-1\n    command: "${name}"`)
+          .join("\n");
+        const closing = content.indexOf("\n---\n");
+        if (closing !== -1) {
+          content =
+            content.slice(0, closing + 1) +
+            `acceptance:\n${stubs}\n` +
+            content.slice(closing + 1);
+        }
       }
       // RFC-1467: cite the acknowledged/review-band precedents in `related`
       // and leave a NEEDS CLARIFICATION marker in the Decision section.

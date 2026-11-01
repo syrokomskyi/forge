@@ -10,12 +10,6 @@ Also loads the decision-ledger sibling (RFC-1250).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: loadDecisionLedger — sibling stem.decisions.yaml resolution,
-  ENOENT-only absence (other read errors are QUEUE-01 blocking), schema check,
-  ledger↔manifest binding (queue/id stem QUEUE-02, duplicate Q-N QUEUE-05),
-  hygiene warnings QUEUE-08 (missing answers, foreign doc ids);
-  LoadedQueueManifest exposes resolved dependsOn edges for the parking
-  cascade.</item>
   <item>RFC-1140: initial manifest loader and validator.</item>
   <item>RFC-1140: steps 1-4 — shared resolver, queue module, registration
 
@@ -33,6 +27,8 @@ QUEUE-07 as the window agenda — structural errors still stop the batch;
 maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
+  <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 */
 
@@ -294,12 +290,17 @@ export async function loadDecisionLedger(
 
   const parsed = decisionLedgerSchema.safeParse(raw);
   if (!parsed.success) {
+    // RFC-1482 AC-5: the diagnostic prints the minimal satisfying shape —
+    // the fix is readable from the message, not mined from the schema.
+    const ledgerStem = path.basename(absolutePath).replace(/\.(ya?ml)$/i, "");
+    const queueId = manifest?.id ?? ledgerStem.replace(/\.decisions$/, "");
+    const hint = `; minimal shape — id: ${ledgerStem}; queue: ${queueId}; createdAt: <ISO-8601>; items: []`;
     for (const issue of parsed.error.issues) {
       errors.push(
         diag(
           "QUEUE-01",
           "error",
-          `Decision ledger schema violation at ${issue.path.join(".") || "<root>"}: ${issue.message}`,
+          `Decision ledger schema violation at ${issue.path.join(".") || "<root>"}: ${issue.message}${hint}`,
           displayPath,
         ),
       );
