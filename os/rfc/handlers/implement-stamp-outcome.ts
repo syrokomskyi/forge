@@ -17,6 +17,7 @@ evaluates a deterministic file set.
 <CHANGE_SUMMARY>
   <item>RFC-1453: outcome gate evaluator — diff/surface match, outcome-probe satisfaction, --waive-outcome warning path.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
 </CHANGE_SUMMARY>
 */
 
@@ -50,8 +51,8 @@ export interface OutcomeGateInput {
 }
 
 export interface OutcomeGateResult {
-  errors: Array<{ rule: "RFC-IMP-14"; message: string }>;
-  warnings: Array<{ rule: "RFC-IMP-14"; message: string }>;
+  errors: Array<{ rule: "RFC-IMP-14"; message: string; fixHint?: string }>;
+  warnings: Array<{ rule: "RFC-IMP-14"; message: string; fixHint?: string }>;
   /** True when a touched surface + waived gate fired — the caller records the waiver in the envelope. */
   waived: boolean;
 }
@@ -139,6 +140,7 @@ export async function evaluateOutcomeGate(input: OutcomeGateInput): Promise<Outc
   errors.push({
     rule: "RFC-IMP-14",
     message: `${detail} Operator override: re-run with --waive-outcome "<reason>" (operator-directed only).`,
+    fixHint: `run the outcome probe for the touched surface and re-emit the envelope — or the operator may pass --waive-outcome "<reason>"`,
   });
   return { errors, warnings, waived: false };
 }

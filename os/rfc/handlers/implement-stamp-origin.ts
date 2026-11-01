@@ -21,6 +21,7 @@ verificationTier: high RFC.
   <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
 </CHANGE_SUMMARY>
 */
 
@@ -87,6 +88,7 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
         message:
           `${input.targetId} ${describeProbe(probe, i)} declares expectationSource "${origin.declared}" but git derives it self ` +
           `(${origin.reason.join("; ")}). Correct the declaration to "self", or obtain non-self evidence — never rewrite history.`,
+        fixHint: `correct the expectationSource declaration to "self", or bind genuinely non-self evidence — never rewrite history`,
       });
     }
   });
@@ -102,6 +104,7 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
       const violation: RfcImplementStampViolation = {
         rule: "RFC-IMP-11",
         message: `${input.targetId} is verificationTier: ${tier} but ${id} (WHEN/IF) has no bound probe with a non-self effective origin. Obtain independent evidence (post-commitment verification) for ${id}.`,
+        fixHint: `bind a probe with a non-self effective origin to ${id}, or lower the declared verificationTier`,
       };
       (blocking ? errors : warnings).push(violation);
     }
@@ -154,6 +157,7 @@ export async function evaluateAcceptanceVerificationGate(
     errors.push({
       rule: "RFC-IMP-12",
       message: `${input.targetId} is verificationTier: ${tier} but has no committed verdict: pass acceptance report in ${ACCEPTANCE_REPORTS_DIR}/${input.targetId.toLowerCase()}/ bound to the current code (only verifier-trailer or docs commits may follow the candidate). Run the independent acceptance verification step.`,
+      fixHint: `run the independent acceptance verification step and commit the verdict: pass report — or the operator may pass --waive-independent-verification "<reason>"`,
     });
     return { errors, warnings };
   }
@@ -161,6 +165,7 @@ export async function evaluateAcceptanceVerificationGate(
     const v: RfcImplementStampViolation = {
       rule: "RFC-IMP-12",
       message: `${input.targetId} acceptance report ${bound[0]!.path} records isolation "${String(bound[0]!.frontmatter["isolation"])}", not subagent.`,
+      fixHint: `re-run the acceptance verification in a clean-context subagent, or the operator may waive with --waive-independent-verification "<reason>"`,
     };
     if (input.waiverReason) {
       warnings.push({ ...v, message: `${v.message} Waived by operator: ${input.waiverReason}` });
@@ -205,6 +210,7 @@ export function evaluateFormalProofGate(input: FormalProofGateInput): OriginGate
         `${input.targetId} is verificationTier: formal but declares no proof probe — ` +
         `formal-tier evidence exists only as a mechanical checker verdict. Add a ` +
         `\`probe: proof\` binding a forge/proof-spec@1 file.`,
+      fixHint: `add a \`probe: proof\` binding a forge/proof-spec@1 file — formal tier has no waiver`,
     });
     return { errors, warnings };
   }
@@ -223,6 +229,7 @@ export function evaluateFormalProofGate(input: FormalProofGateInput): OriginGate
           `envelope verdict is "${verdict ?? "missing"}". Run \`proof.check --spec ` +
           `${(p as { spec: string }).spec}\` then \`rfc.verification.emit --id ${input.targetId}\` ` +
           `until the checker reports proved.`,
+        fixHint: `run \`proof.check\` on the bound spec, then \`rfc.verification.emit --id ${input.targetId}\` until the verdict is proved`,
       });
     }
   }

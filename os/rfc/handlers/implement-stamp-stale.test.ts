@@ -10,6 +10,7 @@ Unit tests for implement stamp stale covering rfc.implement.stamp — RFC-IMP-09
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the implement suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
+  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
 </CHANGE_SUMMARY>
 */
 
@@ -95,7 +96,7 @@ async function emitEnvelope(dir: string) {
 const stamp = (dir: string, commit: string) =>
   runRfcImplementStamp(
     {
-      flags: { id: "RFC-0100", "implementation-commit": commit },
+      flags: { id: "RFC-0100", "implementation-commit": commit, "no-repair": true },
     } as unknown as ForgeCommandInput,
     makeContext(dir),
   );
