@@ -15,27 +15,30 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 2 — throwaway-repo test helpers</item>
   <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
+  <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
 </CHANGE_SUMMARY>
 */
 
 import { chmod, copyFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import type { ExecResult } from "../../../src/types.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
+import {
+  GUARD_ASSET_PATH,
+  GUARD_BEGIN_MARKER,
+  GUARD_END_MARKER,
+  MANAGED_BLOCK,
+} from "../guard-files.ts";
 
-export const GUARD_ASSET = fileURLToPath(
-  new URL("../assets/flow-guard.sh", import.meta.url),
-);
+export {
+  GUARD_BEGIN_MARKER,
+  GUARD_END_MARKER,
+  MANAGED_BLOCK,
+};
 
-export const GUARD_BEGIN_MARKER = "# >>> forge flow guard (managed by flow.install) >>>";
-export const GUARD_END_MARKER = "# <<< forge flow guard <<<";
-export const MANAGED_BLOCK = `${GUARD_BEGIN_MARKER}
-sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" pre-commit || exit 1
-${GUARD_END_MARKER}
-`;
+export const GUARD_ASSET = GUARD_ASSET_PATH;
 
 export function gitExec(
   repo: string,
@@ -82,7 +85,7 @@ export async function installGuard(repo: string): Promise<void> {
   await writeFile(join(hooksDir, "pre-commit"), `#!/bin/sh\n${MANAGED_BLOCK}`);
   await chmod(join(hooksDir, "flow-guard.sh"), 0o755);
   await chmod(join(hooksDir, "pre-commit"), 0o755);
-  const hooksPath = await gitExec(repo, ["config", "core.hooksPath", hooksDir]);
+  const hooksPath = await gitExec(repo, ["config", "core.hooksPath", "hooks"]);
   if (hooksPath.exitCode !== 0) {
     throw new Error(`core.hooksPath failed: ${hooksPath.stderr}`);
   }
