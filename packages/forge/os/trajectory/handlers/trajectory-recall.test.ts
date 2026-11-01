@@ -131,6 +131,18 @@ body
     const res = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
     expect(res.exitCode).toBe(0);
   });
+
+  test("corrupt units.yaml → TRAJ-02, never a raw exception", async () => {
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "units: {a: map, not: a-list}\n");
+    const res = await runTrajectoryRecall(flags({ task: "x" }), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.summary).toContain("TRAJ-02");
+    expect(res.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-02");
+    await writeFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "units: [unclosed\n  - : :");
+    const res2 = await runTrajectoryRecall(flags({ task: "x" }), ctx());
+    expect(res2.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-02");
+  });
 });
 
 describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
@@ -154,6 +166,9 @@ describe("recalls.jsonl append-only journal (RFC-1475 AC-10)", () => {
     const res = await runTrajectoryRecall(flags({ task: "reconcile" }), capture);
     expect(res.exitCode).toBe(0);
     expect(warns.some((w) => w.includes("TRAJ-06"))).toBe(true);
+    // TRAJ-06 also lands in data.diagnostics — the RFC-1474 counters journal
+    // must count the firing, not just the console warning.
+    expect(res.data?.diagnostics?.[0]?.ruleId).toBe("TRAJ-06");
     const lines = (await readFile(jsonl, "utf8")).trim().split("\n");
     expect(lines.length).toBe(3);
   });

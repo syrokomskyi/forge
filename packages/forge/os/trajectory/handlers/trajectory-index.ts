@@ -11,11 +11,12 @@ sessions produce nothing. --export/--import for shard portability.
 </purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1475: verdict-artifact binding + TRAJ-04 rebuild drop, sourceWatermark, sessionClass/origin producer fields, bucketed producerStats on shard export, JSONL journal replay</item>
   <item>RFC-1472: trajectory.index green-verified procedure-unit extraction + shard export/import</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1472: apply r2 repairs — archive-source provenance, outcome-replay + provenance regression tests</item>
+  <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
+  <history>RFC-1475</history>
 </CHANGE_SUMMARY>
 */
 
@@ -23,8 +24,9 @@ import path from "node:path";
 import { createHash } from "node:crypto";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { listSessionFiles, listArchivedSessionFiles, readAndParseSession } from "../../session/frontmatter-io.ts";
-import { readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
+import { isEnoent, readOutcomesJournal, readRecallsJournal } from "./journal-io.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -93,7 +95,10 @@ async function verdictRefResolvesGreen(
 ): Promise<boolean> {
   if (verdictRef === "signal:commits") return true;
   if (verdictRef.startsWith("verdict:")) return GREEN_RE.test(verdictRef.slice("verdict:".length));
-  const src = await io.readFile(path.join(root, verdictRef)).catch(() => null);
+  const src = await io.readFile(path.join(root, verdictRef)).catch((e) => {
+    if (isEnoent(e)) return null;
+    throw e;
+  });
   if (src === null) return false;
   const verdict = (() => {
     try {
@@ -103,6 +108,67 @@ async function verdictRefResolvesGreen(
     }
   })();
   return typeof verdict === "string" && GREEN_RE.test(verdict);
+}
+
+/**
+ * The local producer identity (RFC-1475 F10): forge.yaml `project.name` — a
+ * vendored shard's bucket must key on a real workshop id, not a hardcoded
+ * literal that collapses every consumer into one bucket. Fall back to the
+ * workspace dir name when no forge.yaml exists (fixture/test roots).
+ */
+function localWorkshopId(root: string): string {
+  try {
+    return loadForgeConfig(root).project.name || path.basename(root);
+  } catch {
+    return path.basename(root);
+  }
+}
+
+/**
+ * Rewrite a local artifact-path verdictRef into portable `verdict:<value>`
+ * form on shard export — the path only resolves inside the origin workspace,
+ * and a consumer's TRAJ-04 gate would drop every artifact-bound unit. The
+ * origin attests the verdict value it resolved; the consumer's producer
+ * bucket decides how much that attestation weighs.
+ */
+async function exportableVerdictRef(
+  unit: ProcedureUnit,
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+): Promise<ProcedureUnit> {
+  const ref = unit.producer.verdictRef;
+  if (ref === "signal:commits" || ref.startsWith("verdict:")) return unit;
+  const src = await io.readFile(path.join(root, ref)).catch((e) => {
+    if (isEnoent(e)) return null;
+    throw e;
+  });
+  const verdict = (() => {
+    try {
+      return src === null ? null : (JSON.parse(src) as { verdict?: unknown }).verdict;
+    } catch {
+      return null;
+    }
+  })();
+  if (typeof verdict !== "string" || verdict.length === 0) return unit;
+  return { ...unit, producer: { ...unit.producer, verdictRef: `verdict:${verdict}` } };
+}
+
+/** Minimal shard-unit shape — anything less crashes the drop/bucket loops. */
+function isShardUnit(u: unknown): u is ProcedureUnit {
+  if (u === null || typeof u !== "object") return false;
+  const p = u as ProcedureUnit;
+  return (
+    typeof p.id === "string" &&
+    p.producer !== null && typeof p.producer === "object" &&
+    typeof p.producer.verdictRef === "string" &&
+    typeof p.producer.workshopId === "string" &&
+    p.usedBy !== null && typeof p.usedBy === "object" &&
+    p.situation !== null && typeof p.situation === "object" &&
+    Array.isArray(p.situation.recentActions) &&
+    Array.isArray(p.situation.touchedPathClasses) &&
+    p.continuation !== null && typeof p.continuation === "object" &&
+    typeof p.text === "string"
+  );
 }
 
 function pathClass(p: string): string {
@@ -122,24 +188,29 @@ export async function runTrajectoryIndex(
 ): Promise<ForgeCommandResult<TrajectoryIndexData>> {
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
+  const workshopId = localWorkshopId(root);
   const sessionFilter = input.flags["session"] as string | undefined;
   const since = input.flags["since"] as string | undefined;
   const exportPath = input.flags["export"] as string | undefined;
 
   const sessionsDir = path.join(root, "docs", "sessions");
   const archiveBase = path.join(sessionsDir, "archive");
-  const files = [
+  const allFiles = [
     ...(await listSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: sessionsDir, prefix: "docs/sessions" })),
     ...(await listArchivedSessionFiles(sessionsDir).catch(() => [])).map((rel) => ({ rel, base: archiveBase, prefix: "docs/sessions/archive" })),
-  ]
+  ];
+  const files = allFiles
     .filter((f) => !sessionFilter || f.rel.includes(sessionFilter))
     .filter((f) => !since || f.rel >= since);
 
-  // RFC-1475 F6 — the watermark is the newest session FILENAME (basename);
-  // date-embedded names sort chronologically across both dirs. Full-path
-  // compare would let `archive/` outrank every live file ("a" > "2") and
-  // mask real staleness — filenames are the like-for-like key.
-  const sourceWatermark = files.reduce(
+  // RFC-1475 F6 — the watermark is the newest session FILENAME (basename)
+  // across the whole corpus: recall compares it like-for-like against the
+  // newest session file, so a filtered --session/--since build still reports
+  // corpus freshness (its watermark answers "how recent is the corpus this
+  // index was built against", not "how many units"). Full-path compare would
+  // let `archive/` outrank every live file ("a" > "2") and mask real
+  // staleness — filenames are the like-for-like key.
+  const sourceWatermark = allFiles.reduce(
     (max, f) => {
       const name = path.basename(f.rel);
       return name > max ? name : max;
@@ -167,7 +238,10 @@ export async function runTrajectoryIndex(
     const evidenceRel = missionId ? `missions/${missionId}/evidence/validation-report.json` : null;
     let evidenceVerdict: string | null = null;
     if (evidenceRel) {
-      const evidenceSrc = await io.readFile(path.join(root, evidenceRel)).catch(() => null);
+      const evidenceSrc = await io.readFile(path.join(root, evidenceRel)).catch((e) => {
+        if (isEnoent(e)) return null;
+        throw e;
+      });
       if (evidenceSrc !== null) {
         try {
           const parsed = JSON.parse(evidenceSrc) as { verdict?: unknown };
@@ -212,7 +286,7 @@ export async function runTrajectoryIndex(
       },
       continuation: { commandSequence: seq, decisions: decisions.slice(0, 5), outcomeHash },
       producer: {
-        workshopId: "werkstatt",
+        workshopId,
         sessionId: sid,
         completedAt: String(fm.date ?? ""),
         verdictRef,
@@ -227,14 +301,62 @@ export async function runTrajectoryIndex(
     });
   }
 
+  // F3 — merge a vendored shard BEFORE journal replay so labels naming
+  // vendored unit ids resolve on rebuild (origin: vendored, trust: review
+  // per RFC §4). Malformed units are skipped — anything less than the minimal
+  // shape crashes the drop/bucket loops.
+  const localIds = new Set(units.map((u) => u.id));
+  const importPath = input.flags["import"] as string | undefined;
+  let skippedShardUnits = 0;
+  if (importPath) {
+    const shardSrc = await io.readFile(path.join(root, importPath)).catch((e) => {
+      if (isEnoent(e)) return null;
+      throw e;
+    });
+    const shard = shardSrc ? (yamlParse(shardSrc) as { schema?: string; units?: unknown[] } | null) : null;
+    if (shard?.schema !== "forge/trajectory-shard@1") {
+      return {
+        data: {
+          command: "trajectory.index",
+          status: "ok",
+          units: 0,
+          admitted: 0,
+          rejected: 0,
+          dropped: 0,
+          sourceWatermark,
+          index: "",
+          diagnostics: [{ ruleId: "TRAJ-03", severity: "error", message: `${importPath} is not a forge/trajectory-shard@1` }],
+        },
+        summary: `TRAJ-03 ${importPath} is not a forge/trajectory-shard@1`,
+        exitCode: 1,
+      };
+    }
+    for (const candidate of shard.units ?? []) {
+      if (!isShardUnit(candidate)) {
+        skippedShardUnits++;
+        continue;
+      }
+      if (!localIds.has(candidate.id)) {
+        units.push({ ...candidate, producer: { ...candidate.producer, origin: "vendored" }, source: `${importPath}#vendored` });
+        localIds.add(candidate.id);
+      }
+    }
+    if (skippedShardUnits > 0) {
+      context.logger.warn(`${skippedShardUnits} shard unit(s) skipped — malformed shape (missing producer/usedBy/id)`);
+    }
+  }
+
   // Replay prior outcome labels — utility stats are the compounding asset;
   // a rebuild must not zero them (the JSONL journals are the durable asset).
+  // Runs after the shard merge so journal records naming vendored ids
+  // resolve against the merged set.
   const outcomesRead = await readOutcomesJournal(root, io);
   const recallsRead = await readRecallsJournal(root, io);
   for (const warning of [...outcomesRead.warnings, ...recallsRead.warnings]) {
     context.logger.warn(warning);
   }
-  if (outcomesRead.truncated || recallsRead.truncated) {
+  const journalTruncated = outcomesRead.truncated || recallsRead.truncated;
+  if (journalTruncated) {
     context.logger.warn("TRAJ-06 trajectory journal carried a truncated tail record — partial record dropped, journal survives");
   }
   const outcomes = outcomesRead.records;
@@ -254,35 +376,6 @@ export async function runTrajectoryIndex(
       if (o.helped) u.usedBy.helped++;
       if (o.hurt) u.usedBy.hurt++;
       u.utilityScore = u.usedBy.helped - u.usedBy.hurt;
-    }
-  }
-
-  // F3 — merge a vendored shard (origin: vendored, trust: review per RFC §4).
-  const importPath = input.flags["import"] as string | undefined;
-  if (importPath) {
-    const shardSrc = await io.readFile(path.join(root, importPath)).catch(() => null);
-    const shard = shardSrc ? (yamlParse(shardSrc) as { schema?: string; units?: ProcedureUnit[] } | null) : null;
-    if (shard?.schema !== "forge/trajectory-shard@1") {
-      return {
-        data: {
-          command: "trajectory.index",
-          status: "ok",
-          units: 0,
-          admitted: 0,
-          rejected: 0,
-          dropped: 0,
-          sourceWatermark,
-          index: "",
-          diagnostics: [{ ruleId: "TRAJ-03", severity: "error", message: `${importPath} is not a forge/trajectory-shard@1` }],
-        },
-        summary: `TRAJ-03 ${importPath} is not a forge/trajectory-shard@1`,
-        exitCode: 1,
-      };
-    }
-    for (const u of shard.units ?? []) {
-      if (!unitsById.has(u.id)) {
-        units.push({ ...u, producer: { ...u.producer, origin: "vendored" }, source: `${importPath}#vendored` });
-      }
     }
   }
 
@@ -307,7 +400,10 @@ export async function runTrajectoryIndex(
 
   if (exportPath) {
     // RFC-1475 F10 — materialize the {workshopId, sessionClass} bucket table
-    // so a vendored shard carries its own trust provenance.
+    // so a vendored shard carries its own trust provenance. Artifact-path
+    // verdictRefs are rewritten to portable `verdict:<value>` form — the
+    // origin attests the value it resolved; consumer workspaces cannot
+    // re-read origin evidence paths.
     const buckets = new Map<string, { workshopId: string; sessionClass: string; helped: number; hurt: number }>();
     for (const u of units) {
       const key = `${u.producer.workshopId}|${u.producer.sessionClass ?? "adhoc"}`;
@@ -325,8 +421,16 @@ export async function runTrajectoryIndex(
       ...b,
       trust: b.helped + b.hurt > 0 ? Number((b.helped / (b.helped + b.hurt)).toFixed(3)) : 0.5,
     }));
-    const shard = { schema: "forge/trajectory-shard@1", exportedFrom: "werkstatt", units, producerStats };
+    const exportUnits = await Promise.all(units.map((u) => exportableVerdictRef(u, root, io)));
+    const shard = { schema: "forge/trajectory-shard@1", exportedFrom: workshopId, units: exportUnits, producerStats };
     await io.writeFile(path.join(root, exportPath), yamlStringify(shard) + "\n");
+  }
+  const diagnostics: { ruleId?: string; severity?: string; message?: string }[] = [];
+  if (dropped > 0) {
+    diagnostics.push({ ruleId: "TRAJ-04", severity: "warning", message: `${dropped} unit(s) dropped — verdictRef no longer resolves green` });
+  }
+  if (journalTruncated) {
+    diagnostics.push({ ruleId: "TRAJ-06", severity: "warning", message: "trajectory journal carried a truncated tail record — partial record dropped, journal survives" });
   }
   return {
     data: {
@@ -338,10 +442,7 @@ export async function runTrajectoryIndex(
       dropped,
       sourceWatermark,
       index: indexRel,
-      diagnostics:
-        dropped > 0
-          ? [{ ruleId: "TRAJ-04", severity: "warning", message: `${dropped} unit(s) dropped — verdictRef no longer resolves green` }]
-          : undefined,
+      diagnostics: diagnostics.length > 0 ? diagnostics : undefined,
     },
     summary: `${units.length} unit(s): ${admitted} green admitted, ${rejected} rejected${dropped > 0 ? `, ${dropped} dropped (TRAJ-04)` : ""} → ${indexRel}${exportPath ? ` + shard ${exportPath}` : ""}`,
     exitCode: 0,

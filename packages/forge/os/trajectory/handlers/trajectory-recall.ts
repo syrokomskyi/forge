@@ -12,6 +12,7 @@ The recall invocation is journaled so marginal utility can be measured.
   <item>RFC-1472: trajectory.recall situation-similarity top-k + journaled invocation</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
+  <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,7 +20,7 @@ import path from "node:path";
 import { parse as yamlParse } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { listSessionFiles, listArchivedSessionFiles } from "../../session/frontmatter-io.ts";
-import { appendJsonl, readRecallsJournal } from "./journal-io.ts";
+import { appendJsonl, isEnoent, readRecallsJournal } from "./journal-io.ts";
 import type { ProcedureUnit } from "./trajectory-index.ts";
 import type {
   ForgeCommandInput,
@@ -70,12 +71,23 @@ export async function runTrajectoryRecall(
   if (!task) {
     return { data: { command: "trajectory.recall", status: "ok", task: "", k, recallId: "", units: [] }, summary: "missing --task", exitCode: 1 };
   }
-  const indexSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml")).catch(() => null);
+  const indexSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml")).catch((e) => {
+    if (isEnoent(e)) return null;
+    throw e;
+  });
   if (indexSrc === null) {
     return emptyResult(task, k, "TRAJ-01", "index missing — run trajectory.index");
   }
-  const index = yamlParse(indexSrc) as { sourceWatermark?: string; units?: ProcedureUnit[] } | null;
-  const units = index?.units ?? [];
+  let index: { sourceWatermark?: string; units?: ProcedureUnit[] } | null;
+  try {
+    index = yamlParse(indexSrc) as typeof index;
+  } catch {
+    index = null;
+  }
+  if (index === null || typeof index !== "object" || !Array.isArray(index.units)) {
+    return emptyResult(task, k, "TRAJ-02", "index unparseable or not a unit index — rerun trajectory.index");
+  }
+  const units = index.units;
 
   // RFC-1475 F6 — TRAJ-02 covers every present-but-unusable index state:
   // empty units, missing sourceWatermark (pre-upgrade index is stale by
@@ -111,10 +123,10 @@ export async function runTrajectoryRecall(
     bucket.hurt += u.usedBy.hurt;
     buckets.set(key, bucket);
   }
-  const bucketTrust = (u: ProcedureUnit): { trust: number; labeled: boolean } => {
+  const bucketTrust = (u: ProcedureUnit): number => {
     const bucket = buckets.get(`${u.producer.workshopId}|${u.producer.sessionClass ?? "adhoc"}`);
-    if (!bucket || bucket.helped + bucket.hurt === 0) return { trust: 0.5, labeled: false };
-    return { trust: bucket.helped / (bucket.helped + bucket.hurt), labeled: true };
+    if (!bucket || bucket.helped + bucket.hurt === 0) return 0.5;
+    return bucket.helped / (bucket.helped + bucket.hurt);
   };
 
   const taskTokens = new Set(task.toLowerCase().split(/[^a-z0-9_.-]+/).filter((t) => t.length > 2));
@@ -126,8 +138,12 @@ export async function runTrajectoryRecall(
     if (hits > 0) { reasons.push(`lexical:${hits}`); score += hits * 2; }
     const pathOverlap = u.situation.touchedPathClasses.filter((p) => [...pathTerms].some((t) => p.includes(t))).length;
     if (pathOverlap > 0) { reasons.push(`path:${pathOverlap}`); score += pathOverlap * 3; }
-    const { trust, labeled } = bucketTrust(u);
-    if (labeled) { reasons.push(`trust:${trust.toFixed(2)}`); score += trust * 2; }
+    // Sparse buckets score at the neutral 0.5 trust the RFC promises — an
+    // unlabeled producer must not rank below a fresh one (labeled or not,
+    // the trust term always applies).
+    const trust = bucketTrust(u);
+    reasons.push(`trust:${trust.toFixed(2)}`);
+    score += trust * 2;
     score += u.utilityScore * 0.5;
     const days = u.producer.completedAt ? Math.max(0, (Date.now() - new Date(u.producer.completedAt).getTime()) / 86_400_000) : 365;
     const recency = Math.max(0, 1 - days / 365);
@@ -140,7 +156,8 @@ export async function runTrajectoryRecall(
   // marginal-utility measurement needs the invocation record.
   const journalRead = await readRecallsJournal(root, io);
   for (const warning of journalRead.warnings) context.logger.warn(warning);
-  if (journalRead.truncated) {
+  const journalTruncated = journalRead.truncated;
+  if (journalTruncated) {
     context.logger.warn("TRAJ-06 recalls.jsonl carried a truncated tail record — partial record dropped, journal survives");
   }
   const dayKey = new Date().toISOString().slice(0, 10).replace(/-/g, "");
@@ -152,7 +169,17 @@ export async function runTrajectoryRecall(
   );
 
   return {
-    data: { command: "trajectory.recall", status: "ok", task, k, recallId, units: scored },
+    data: {
+      command: "trajectory.recall",
+      status: "ok",
+      task,
+      k,
+      recallId,
+      units: scored,
+      diagnostics: journalTruncated
+        ? [{ ruleId: "TRAJ-06", severity: "warning", message: "recalls.jsonl carried a truncated tail record — partial record dropped, journal survives" }]
+        : undefined,
+    },
     summary: `${scored.length}/${units.length} unit(s) recalled for "${task.slice(0, 50)}" (recall ${recallId})`,
     exitCode: 0,
   };

@@ -129,4 +129,83 @@ describe("RFC-1475 — sourceWatermark + JSONL replay", () => {
     expect(index).toContain("helped: 1");
     expect(index).toContain("utilityScore: 1");
   });
+
+  test("labels on vendored units survive a rebuild — replay covers the merged set (AC-8)", async () => {
+    const { stringify } = await import("yaml");
+    const shard = "docs/.index/trajectory/incoming.yaml";
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(
+      join(root, shard),
+      stringify({
+        schema: "forge/trajectory-shard@1",
+        units: [{
+          id: "trajectory:vendored",
+          kind: "trajectory",
+          situation: { taskKind: "reconcile", touchedPathClasses: [], recentActions: ["reconcile"] },
+          continuation: { commandSequence: ["mission.reconcile"], decisions: [], outcomeHash: "abc123" },
+          producer: { workshopId: "other-shop", sessionId: "v1", completedAt: "2026-10-01", verdictRef: "verdict:green", sessionClass: "adhoc", origin: "vendored" },
+          source: "shard",
+          tokens: 10,
+          text: "reconcile vendored",
+          usedBy: { recalled: 0, helped: 0, hurt: 0 },
+          utilityScore: 0,
+        }],
+      }) + "\n",
+    );
+    await runTrajectoryIndex(flags({ import: shard }), ctx());
+    const recall = await runTrajectoryRecall(flags({ task: "reconcile" }), ctx());
+    // Label the recall — the vendored unit is among the returned units.
+    await runOutcomeRecord(flags({ recall: recall.data?.recallId, helped: true }), ctx());
+    await runTrajectoryIndex(flags({ import: shard }), ctx());
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    const vendoredBlock = index.split("id: trajectory:vendored")[1] ?? "";
+    expect(vendoredBlock).toContain("helped: 1");
+  });
+
+  test("workshopId resolves from forge.yaml project.name — not a hardcoded literal", async () => {
+    await writeFile(join(root, "forge.yaml"), "schema: forge/config@1\nproject: {name: test-shop}\npaths: {}\n");
+    await runTrajectoryIndex(flags({}), ctx());
+    const index = await readFile(join(root, "docs", ".index", "trajectory", "units.yaml"), "utf8");
+    expect(index).toContain("workshopId: test-shop");
+  });
+
+  test("malformed shard units are skipped — the merge cannot crash on foreign data", async () => {
+    const { stringify } = await import("yaml");
+    const shard = "docs/.index/trajectory/malformed.yaml";
+    await mkdir(join(root, "docs", ".index", "trajectory"), { recursive: true });
+    await writeFile(
+      join(root, shard),
+      stringify({
+        schema: "forge/trajectory-shard@1",
+        units: [
+          { id: "trajectory:no-producer", kind: "trajectory" },
+          "a-string-is-not-a-unit",
+          null,
+        ],
+      }) + "\n",
+    );
+    const res = await runTrajectoryIndex(flags({ import: shard }), ctx());
+    expect(res.exitCode).toBe(0);
+    // Only the two locally-extracted units survive — all three shard entries skipped.
+    expect(res.data?.units).toBe(2);
+  });
+
+  test("shard export rewrites artifact-path verdictRefs to portable verdict:<value>", async () => {
+    await mkdir(join(root, "missions", "dp7", "evidence"), { recursive: true });
+    await writeFile(join(root, "missions", "dp7", "evidence", "validation-report.json"), JSON.stringify({ verdict: "green" }));
+    await writeFile(join(root, "docs", "sessions", "2026-10-31-12-00-00-eeeeee.md"), `---
+id: s-mission
+types: [mission]
+commits: [abc123]
+files: [missions/dp7/wip.md]
+date: 2026-10-31
+---
+body
+`);
+    const out = "docs/.index/trajectory/export.yaml";
+    await runTrajectoryIndex(flags({ export: out }), ctx());
+    const shard = await readFile(join(root, out), "utf8");
+    expect(shard).not.toContain("missions/dp7/evidence/validation-report.json");
+    expect(shard).toContain("verdictRef: verdict:green");
+  });
 });
