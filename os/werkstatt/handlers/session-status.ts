@@ -7,7 +7,9 @@
 </MODULE_CONTRACT>
 */
 
-import { sessionStatus } from "@warpgogol/werkstatt-engine/werkstatt";
+import { loadSessionEngine } from "./session-engine.ts";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
 import type { SessionStatusEntry } from "@warpgogol/werkstatt-engine/werkstatt";
 import type {
   ForgeCommandInput,
@@ -29,7 +31,8 @@ export async function runSessionStatus(
   const staleAfterFlag = input.flags["stale-after"];
   const staleAfterMs =
     typeof staleAfterFlag === "string" ? Number(staleAfterFlag) * 60_000 : undefined;
-  const sessions = await sessionStatus((context.io ?? ambientIo), context.workspaceRoot, {
+  const engine = await loadSessionEngine();
+  const sessions = await engine.sessionStatus((context.io ?? ambientIo), context.workspaceRoot, {
     staleAfterMs: Number.isFinite(staleAfterMs) ? staleAfterMs : undefined,
   });
   if (context.outputFormat === "pretty") {
