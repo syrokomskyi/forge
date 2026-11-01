@@ -7,15 +7,19 @@ unresolvable class. COUNT-02 (error): `at` append order is non-monotonic —
 readers can no longer take the tail as latest. A crash-truncated final
 record is tolerated (dropped, still surfaced as truncatedTail in data).
 </purpose>
+<non-goals>
+  <item>TODO(compass): record the boundary this file must not take on.</item>
+</non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1474: checks.counters.validate — COUNT-01 unknown-rule/malformed + COUNT-02 non-monotonic gates</item>
   <item>RFC-1474: per-rule check-execution counters
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1474: check-execution counters — close emission-shape extraction class (round-3 review)</item>
   <item>RFC-1474: check-execution counters — null-doc inventory fail-closed + token boundaries (round-4 review)</item>
+  <item>RFC-1485: sweep compass headers — forge-os-checks</item>
+  <history>RFC-1474</history>
 </CHANGE_SUMMARY>
 */
 
