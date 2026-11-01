@@ -3,11 +3,11 @@
 <purpose>Register forgeTrajectoryModule — trajectory.index, trajectory.recall, trajectory.outcome.record (RFC-1472): procedural-memory retrieval.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1475: apply review round-1 findings — vendored-label replay order, real workshopId, cache bypass, TRAJ-06 diagnostics, ENOENT-only journal reads</item>
   <item>RFC-1475: apply review round-2 findings — element-shape index validation, early-return TRAJ-06 diagnostics, declared forge.yaml/journal reads, hardened shard-unit shape</item>
   <item>RFC-1475: apply review round-3 findings — element-type guards on journal/unit arrays, declared yaml journal reads, honest TRAJ-02 empty-vs-malformed messages, RFC deviations recorded</item>
   <item>RFC-1480: trajectory-memory residual debt — rebuild flag, recallId derivation, TRAJ-07, confinement</item>
+  <item>RFC-1470: declare generated index files in context.index.build and trajectory.index writes</item>
   <history>RFC-1472, RFC-1475</history>
 </CHANGE_SUMMARY>
 */
@@ -46,7 +46,7 @@ export const forgeTrajectoryModule: ForgeModule = {
         import: { kind: "string", description: "Merge a vendored shard read-only." },
       },
       reads: ["docs/sessions/**/*.md", "missions/*/evidence/validation-report.json", "docs/.index/trajectory/*.jsonl", "docs/.index/trajectory/*.yaml", "forge.yaml"],
-      writes: ["docs/.index/trajectory/**"],
+      writes: ["docs/.index/trajectory/**", "docs/.index/trajectory/units.yaml"],
       generates: [{ path: "docs/.index/trajectory/units.yaml", phase: "on-demand" as const }],
       execute: runTrajectoryIndex,
     },

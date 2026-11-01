@@ -5,6 +5,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1470: forgeContextModule registering the slate-retrieval commands</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
+  <item>RFC-1470: declare generated index files in context.index.build and trajectory.index writes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +31,7 @@ export const forgeContextModule: ForgeModule = {
       acceptsAllFlag: false,
       flags: {},
       reads: ["docs/sessions/**/*.md", ".agents/**", "docs/frictions.yaml", "docs/remediation-catalog.*.yaml", "docs/rfcs/**", "docs/adrs/**", "packages/forge/skills/**", "docs/handoffs/**", "docs/queues/*decisions.yaml"],
-      writes: ["docs/.index/context/**"],
+      writes: ["docs/.index/context/**", "docs/.index/context/index.yaml"],
       generates: [{ path: "docs/.index/context/index.yaml", phase: "on-demand" as const }],
       execute: runIndexBuild,
     },
