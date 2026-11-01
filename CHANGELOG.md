@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.1.1] — 2026-11-01
+
+_Documentation sync for the 9.x line._
+
+### Fixed
+
+- **Package docs**: README (EN/UK) updated — 38 skills, the `site-workshop` profile, corrected `os/` autonomy description, and the 9.x capability list; `AGENTS.md` module table repaired (it was split by floating paragraphs) and completed with all 30 modules; `docs/maintainers/publishing.md` now documents the RFC-1252 `publish:forge` flow instead of the retired direct `repo-extract` invocation; `docs/reference/profiles.md` and `cli.md` updated for the 9.x command surface.
+
 ## [9.1.0] — 2026-11-01
 
 _Ten implemented RFCs (1476–1485): the ecosystem.commit hardening line (governance linkage, argv validation, staged-ownership and index-scope guards), validation-compliant RFC skeletons, a self-sufficient implement stamp, knowledge collision resolution, YAML scalar linting, trajectory-memory residual debt, and the compass header debt sweep._
