@@ -11,6 +11,7 @@ main, HEAD on develop), AC-2 (annotated v0.1.0 release tag), AC-3
 <CHANGE_SUMMARY>
   <item>RFC-1500: step 2 — create-flow adoption tests</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
+  <item>RFC-1500: link branch-model guide in committed NEXT_STEPS.md (review r1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -76,6 +77,9 @@ describe("RFC-1500: forge.create adopts the fixed branch model", () => {
     expect(branches).toContain("develop");
     expect(branches).toContain("main");
     expect(git(tempDir, ["symbolic-ref", "--short", "-q", "HEAD"])).toBe("develop");
+
+    // RFC-1500 step 5: the committed NEXT_STEPS.md links the consumer guide.
+    expect(git(tempDir, ["show", "main:NEXT_STEPS.md"])).toContain("branch-model.md");
   }, 120000);
 
   test("AC-2: create leaves an annotated v0.1.0 tag with the release-tag schema line", async () => {
