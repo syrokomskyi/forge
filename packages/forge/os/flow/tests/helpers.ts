@@ -13,11 +13,11 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -120,6 +120,102 @@ export function runGuardDirect(
     cwd: repo,
     env,
   });
+}
+
+/**
+ * Governed repo (forge.yaml + develop) wired to a fresh bare origin, both
+ * branches fully pushed — the RFC-1491 fixture shape (digest/push/hold).
+ * The repo lives inside its own parent dir so extract destinations anchored
+ * at dirname(primary) stay per-test isolated.
+ */
+export async function initRepoWithOrigin(
+  dirs: string[],
+  opts?: { prefix?: string; fakeExtract?: boolean },
+): Promise<{ repo: string; origin: string; extractLog: string; parent: string }> {
+  const parent = await mkdtemp(join(tmpdir(), opts?.prefix ?? "flow-origin-"));
+  dirs.push(parent);
+  const repo = join(parent, "repo");
+  const origin = join(parent, "origin.git");
+  const extractLog = join(parent, "extract.log");
+
+  await mkdir(repo, { recursive: true });
+  const init = await gitExec(repo, ["init", "-b", "main"]);
+  if (init.exitCode !== 0) throw new Error(`git init failed: ${init.stderr}`);
+  await gitExec(repo, ["config", "user.email", "flow-test@example.invalid"]);
+  await gitExec(repo, ["config", "user.name", "flow-test"]);
+  await gitExec(repo, ["config", "commit.gpgsign", "false"]);
+  await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+  await writeFile(
+    join(repo, "pnpm-workspace.yaml"),
+    "packages:\n  - packages/*\n",
+  );
+  await writeFile(join(repo, "seed.txt"), "seed\n");
+  await gitExec(repo, ["add", "-A"]);
+  const seed = await gitExec(repo, ["commit", "-m", "seed"]);
+  if (seed.exitCode !== 0) throw new Error(`seed commit failed: ${seed.stderr}`);
+  await gitExec(repo, ["branch", "develop", "HEAD"]);
+
+  const bare = await gitExec(parent, ["init", "--bare", "-b", "develop", "origin.git"]);
+  if (bare.exitCode !== 0) throw new Error(`bare init failed: ${bare.stderr}`);
+  await gitExec(repo, ["remote", "add", "origin", origin]);
+  await gitExec(repo, ["switch", "develop"]);
+  const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"]);
+  if (push.exitCode !== 0) throw new Error(`initial push failed: ${push.stderr}`);
+
+  if (opts?.fakeExtract) await installFakeRepoExtract(repo, extractLog);
+  return { repo, origin, extractLog, parent };
+}
+
+/**
+ * A fake `<repo>/node_modules/.bin/repo-extract`: logs argv to `log`, then
+ * materializes the destination exactly like resolveExtractDest does — a
+ * git repo at <parent>/<destBase|packages>/<destName> with one export
+ * commit and a bare `origin` at <parent>/extract-origins/<destName>.git.
+ * Set FAKE_EXTRACT_FAIL=1 in its env to make it exit 3 (FLOW-PUSH-05 test).
+ */
+export async function installFakeRepoExtract(
+  repo: string,
+  log: string,
+): Promise<string> {
+  const bin = join(repo, "node_modules", ".bin");
+  await mkdir(bin, { recursive: true });
+  const script = join(bin, "repo-extract");
+  await writeFile(
+    script,
+    `#!/bin/sh
+set -eu
+echo "$@" >> ${JSON.stringify(log)}
+if [ "\${FAKE_EXTRACT_FAIL:-0}" = "1" ]; then
+  echo "fake extract failure" >&2
+  exit 3
+fi
+cfg=""; ref=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --config) cfg="$2"; shift 2 ;;
+    --ref) ref="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+lineDir=$(dirname "$cfg")
+destName=$(grep '^destName:' "$lineDir/extract.config.yaml" | sed 's/^destName: *//' | tr -d ' ')
+destBase=$(grep '^destBase:' "$lineDir/extract.config.yaml" | sed 's/^destBase: *//' | tr -d ' ')
+destBase=\${destBase:-packages}
+dest="$(dirname "$PWD")/$destBase/$destName"
+mkdir -p "$dest"
+if [ ! -d "$dest/.git" ]; then git -C "$dest" init -b main >/dev/null; fi
+echo "export $ref" > "$dest/export.txt"
+git -C "$dest" add export.txt
+git -C "$dest" -c user.email=t@t -c user.name=t commit -q -m "export $ref"
+dorigin="$(dirname "$PWD")/extract-origins/$destName.git"
+mkdir -p "$(dirname "$dorigin")"
+if [ ! -f "$dorigin/HEAD" ]; then git init --bare -b main "$dorigin" >/dev/null; fi
+git -C "$dest" remote remove origin 2>/dev/null || true
+git -C "$dest" remote add origin "$dorigin"
+`,
+  );
+  await chmod(script, 0o755);
+  return script;
 }
 
 /** Switch to a branch, creating it when it does not exist yet. */
