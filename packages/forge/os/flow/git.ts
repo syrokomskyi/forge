@@ -15,6 +15,7 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1486: step 1 — fixed branch-model grammar, marker detection contracts, git helpers</item>
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
 </CHANGE_SUMMARY>
 */
 
@@ -104,6 +105,53 @@ export async function listLocalBranches(repoRoot: string, io: WorkspaceIO): Prom
     .split("\n")
     .map((line) => line.trim())
     .filter((line) => line.length > 0);
+}
+
+/** Remote-tracking refs under `refs/remotes` as `<remote>/<branch>` shorts. */
+export async function listRemoteBranches(
+  repoRoot: string,
+  io: WorkspaceIO,
+): Promise<string[]> {
+  const result = throwOnFailure(
+    await git(repoRoot, io, ["for-each-ref", "--format=%(refname:short)", "refs/remotes"]),
+    "git for-each-ref refs/remotes",
+  );
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+}
+
+/** True when `ancestor` is an ancestor of `descendant` (merge-base --is-ancestor). */
+export async function isAncestor(
+  repoRoot: string,
+  io: WorkspaceIO,
+  ancestor: string,
+  descendant: string,
+): Promise<boolean> {
+  const result = await git(repoRoot, io, [
+    "merge-base",
+    "--is-ancestor",
+    ancestor,
+    descendant,
+  ]);
+  if (result.exitCode === 0) return true;
+  if (result.exitCode === 1) return false;
+  throw new Error(
+    `git merge-base --is-ancestor failed (exit ${result.exitCode}): ${result.stderr.trim()}`,
+  );
+}
+
+/** ISO committer timestamp of `ref`'s tip; null when the ref is missing. */
+export async function lastCommitAt(
+  repoRoot: string,
+  io: WorkspaceIO,
+  ref: string,
+): Promise<string | null> {
+  const result = await git(repoRoot, io, ["log", "-1", "--format=%cI", ref]);
+  return result.exitCode === 0 && result.stdout.trim().length > 0
+    ? result.stdout.trim()
+    : null;
 }
 
 export async function branchExists(repoRoot: string, io: WorkspaceIO, name: string): Promise<boolean> {
