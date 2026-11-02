@@ -11,6 +11,7 @@ to sealed, and records the seal in the program manifest (RFC-0856).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial seal command handler.</item>
   <item>RFC-0857: reciprocal specRef/materializedAs mapping verification for spec-node packets (AC-7).</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -154,7 +155,6 @@ export async function runSeal(
 
   // Validate transition
   const violations = validateSealTransition(manifest, entry, packet, {
-    branch,
     head,
     isClean,
     hasActiveLease,

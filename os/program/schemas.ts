@@ -11,6 +11,7 @@ reject unknown fields (RFC-0856).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial program control-plane schemas.</item>
   <item>RFC-0857: phase-aware lease schema (preparation | execution) and preparation report schema.</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -36,6 +37,18 @@ export const programLeasePhaseSchema = z.enum(["preparation", "execution"]);
 // Program manifest: forge/program@1
 // ---------------------------------------------------------------------------
 
+// RFC-1499: `branch` was removed from both schemas — under the fixed branch
+// model work happens on per-session auto/* branches, so a pinned program
+// branch can never match. Legacy manifests that still carry `branch` parse:
+// the key is stripped before the strict object runs (ignored, not rejected).
+function stripLegacyBranch(value: unknown): unknown {
+  if (typeof value === "object" && value !== null && "branch" in value) {
+    const { branch: _dropped, ...rest } = value as Record<string, unknown>;
+    return rest;
+  }
+  return value;
+}
+
 export const programPacketIndexEntrySchema = z.object({
   order: z.number().int().min(0),
   packetId: z.string().min(1),
@@ -50,20 +63,22 @@ export const programPacketIndexEntrySchema = z.object({
   completion: z.string().nullable(),
 });
 
-export const programManifestSchema = z
-  .object({
-    schema: z.literal("forge/program@1"),
-    program: z.string().min(1),
-    title: z.string().min(1),
-    branch: z.string().min(1),
-    state: programStateSchema,
-    currentPacket: z.string().min(1),
-    steward: programActorSchema,
-    sequential: z.literal(true),
-    parallelism: z.literal(1),
-    packets: z.array(programPacketIndexEntrySchema).min(1),
-  })
-  .strict();
+export const programManifestSchema = z.preprocess(
+  stripLegacyBranch,
+  z
+    .object({
+      schema: z.literal("forge/program@1"),
+      program: z.string().min(1),
+      title: z.string().min(1),
+      state: programStateSchema,
+      currentPacket: z.string().min(1),
+      steward: programActorSchema,
+      sequential: z.literal(true),
+      parallelism: z.literal(1),
+      packets: z.array(programPacketIndexEntrySchema).min(1),
+    })
+    .strict(),
+);
 
 // ---------------------------------------------------------------------------
 // Program packet: forge/program-packet@1
@@ -80,26 +95,28 @@ export const requiredValidationSchema = z.object({
   expectedDiagnostics: z.array(z.string()),
 });
 
-export const programPacketSchema = z
-  .object({
-    schema: z.literal("forge/program-packet@1"),
-    program: z.string().min(1),
-    packetId: z.string().min(1),
-    state: z.enum(["draft", "sealed"]),
-    governingDecision: z.string().min(1),
-    decisionKind: z.enum(["rfc", "spec-amendment", "spec-node"]),
-    resolvedRfc: z.string().nullable(),
-    dependsOnPacket: z.string().nullable(),
-    baseCommit: z.string().nullable(),
-    branch: z.string().min(1),
-    steward: programActorSchema,
-    normativeSources: z.array(normativeSourceSchema),
-    allowedFiles: z.array(z.string().min(1)).min(1),
-    forbiddenFiles: z.array(z.string().min(1)),
-    permittedTransitionDiagnostics: z.array(z.string()),
-    requiredValidations: z.array(requiredValidationSchema),
-  })
-  .strict();
+export const programPacketSchema = z.preprocess(
+  stripLegacyBranch,
+  z
+    .object({
+      schema: z.literal("forge/program-packet@1"),
+      program: z.string().min(1),
+      packetId: z.string().min(1),
+      state: z.enum(["draft", "sealed"]),
+      governingDecision: z.string().min(1),
+      decisionKind: z.enum(["rfc", "spec-amendment", "spec-node"]),
+      resolvedRfc: z.string().nullable(),
+      dependsOnPacket: z.string().nullable(),
+      baseCommit: z.string().nullable(),
+      steward: programActorSchema,
+      normativeSources: z.array(normativeSourceSchema),
+      allowedFiles: z.array(z.string().min(1)).min(1),
+      forbiddenFiles: z.array(z.string().min(1)),
+      permittedTransitionDiagnostics: z.array(z.string()),
+      requiredValidations: z.array(requiredValidationSchema),
+    })
+    .strict(),
+);
 
 // ---------------------------------------------------------------------------
 // Program packet lease: forge/program-packet-lease@1

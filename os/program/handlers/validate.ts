@@ -10,6 +10,7 @@ machine rules (RFC-0856).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial validate command handler.</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -162,7 +163,6 @@ export async function runValidate(
   }
 
   const sealViolations = validateSealTransition(manifest, entry, packet, {
-    branch,
     head,
     isClean,
     hasActiveLease,
