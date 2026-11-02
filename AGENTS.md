@@ -111,6 +111,13 @@ Every evaluated rule is journaled by the kernel executor into `docs/.index/check
 - **`withFlowLock` callers reuse `INTEGRATE_LOCK_WAIT_MS`/`INTEGRATE_LOCK_STALE_MS` from `handlers/flow-integrate.ts` — never per-caller constants.** A custom `staleMs` under the shared wait budget makes a live lock holder look stale to the newcomer, and the stale-sweep deletes a lock another command is holding (discovered during the wave-2 outbound review: a caller's `staleMs: 60_000` would have let `hold` reset `develop` under a running integrate).
 - **The bashism-parity scan for `assets/flow-guard.sh` rejects the literal `[[` substring — POSIX `[[:class:]]` character classes trip it too.** `[[:space:]]` is legal `sh` but contains `[[`; write `[ \t]` (and `[a-z]`/`[0-9]` rather than `[[:lower:]]`/`[[:digit:]]`). The scan is a byte-level substring check, not a shell parser — keep parity-test-sensitive edits free of `[[` anywhere, including comments.
 
+### Adoption hardening (RFC-1498)
+
+- `flow.check` reports FLOW-07 for a stray `auto/*` branch — no registry entry and no worktree — regardless of age; the 72 h grace applies only to FLOW-06 staleness.
+- `flow.install` gains an informational `legacy-tags` plan step naming pre-program tags (`name (kind)` — lightweight, or annotated without `forge/release-tag@1`) — never a refusal, never a rewrite.
+- `flow.digest` reports `tagTriggers` — the `.github/workflows` files whose `on.push.tags` filter matches each unpushed tag — and warns FLOW-11 on an unparseable workflow or a pattern outside the `*`/`**`/`?` subset; `tagTriggers` feeds `digestId`, so a workflow edit invalidates a quoted id.
+- The marker `source` accepts only network origins (`http`/`https`/`ssh`/`git` schemes or scp form `user@host:path`); a local path or `file://` origin falls back to the directory basename and the `markers` step warns by kind, never by path.
+
 ## Golden contract conformance (RFC-1365, DNA-115)
 
 - A repository that emits a versioned contract bundle for an external authoritative consumer MUST declare the producer in `contractProducers[]` in `forge.yaml` and wire a golden-conformance run through the consumer's real validator — `forge.conformance.run` (emit → mirror → consumer legs over `src/conformance/index.ts`) plus `forge.conformance.validate` (CONF-01..06 lint). The `@warpgogol/forge/conformance` subpath export exposes the same execution path to producer vitest suites.
