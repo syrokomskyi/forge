@@ -17,11 +17,12 @@ embedded flow.check report.</purpose>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 4 — flow.install two-phase adoption</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: final — guard-step detail names the fixed-branch-model guard install (AC-11 probe)</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
+  <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -62,6 +63,12 @@ import {
   renderManagedPreCommit,
 } from "../guard-files.ts";
 import { detectRepoKind } from "../repo-kind.ts";
+import {
+  discoverReleaseLines,
+  readLineVersionFile,
+} from "../release-lines.ts";
+import { listLineTags } from "../release-tags.ts";
+import { compareVersions, parseVersion } from "../semver.ts";
 import { collectFlowCheck, type FlowCheckData } from "./flow-check.ts";
 
 export interface InstallStepReport {
@@ -74,6 +81,7 @@ export interface InstallStepReport {
     | "guard"
     | "pre-commit"
     | "commit"
+    | "tags"
     | "report";
   status: "planned" | "done" | "skipped" | "refused" | "failed";
   detail?: string;
@@ -103,6 +111,19 @@ export interface InstallPlan {
   preCommitChange: PreCommitChange;
   /** hooks/pre-commit already exists in the commit's parent ref. */
   preCommitCommitted: boolean;
+  /** Baseline release tags the execute phase creates (RFC-1488 step 8.5). */
+  tagPlans: TagPlan[];
+}
+
+export interface TagPlan {
+  line: string;
+  /** Full tag name, e.g. v6.444.0 or forge@9.0.0. */
+  tag: string;
+  version: string;
+  /** Commit the tag points at — the commit that introduced the version. */
+  commit: string;
+  /** Previous tag name of the line, or null. */
+  previous: string | null;
 }
 
 function refusalDiagnostic(ruleId: string, message: string, fixHint: string): Diagnostic {
@@ -130,6 +151,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       guardCommitted: false,
       preCommitChange: "identical",
       preCommitCommitted: false,
+      tagPlans: [],
     };
   };
 
@@ -422,6 +444,92 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       ? `adoption commit '${ADOPTION_COMMIT_SUBJECT}' on develop`
       : "hook files unchanged — no adoption commit",
   });
+
+  // 8.5 tags (RFC-1488) — baseline every line whose version file V outruns
+  // its last reachable annotated tag T. V == T → skipped; V < T → refuse
+  // FLOW-ADOPT-07 (never tag backwards); a baseline commit that is not an
+  // ancestor of main → FLOW-ADOPT-07. Evaluated in the plan phase so a
+  // refusal leaves no tag behind.
+  const tagPlans: TagPlan[] = [];
+  if (!mainExists) {
+    steps.push({
+      step: "tags",
+      status: "planned",
+      detail: "no main branch — baseline tags deferred until the repository has commits",
+    });
+  } else {
+    const { lines, diagnostics: discoveryDiagnostics } = await discoverReleaseLines(repoRoot, io);
+    const collision = discoveryDiagnostics.find((d) => d.severity === "error");
+    if (collision) {
+      return refuse("tags", collision);
+    }
+    for (const line of lines) {
+      const versionText = await readLineVersionFile(repoRoot, line, io);
+      if (versionText === null) continue; // no version file value — nothing to tag
+      const V = parseVersion(versionText);
+      if (V === null) {
+        return refuse(
+          "tags",
+          refusalDiagnostic(
+            "FLOW-ADOPT-07",
+            `release line '${line.id}' carries an unparsable version '${versionText}' in ${line.versionFile} — release tags are strict X.Y.Z`,
+            `fix ${line.versionFile} to a strict X.Y.Z version`,
+          ),
+        );
+      }
+      const tags = await listLineTags(repoRoot, line, io);
+      const T = tags.lastTag;
+      const cmp = T === null ? 1 : compareVersions(V, T.version);
+      if (cmp === 0) continue; // tag already matches the version file
+      if (cmp < 0) {
+        return refuse(
+          "tags",
+          refusalDiagnostic(
+            "FLOW-ADOPT-07",
+            `release line '${line.id}' version file says ${versionText} but its last tag is ${T!.name} — never tag backwards`,
+            `raise ${line.versionFile} above ${T!.name}, or fix the wrong tag manually`,
+          ),
+        );
+      }
+      const commit = await findVersionCommit(repoRoot, line.versionFile!, versionText, io);
+      if (commit === null) {
+        return refuse(
+          "tags",
+          refusalDiagnostic(
+            "FLOW-ADOPT-07",
+            `release line '${line.id}': could not find the commit that introduced version ${versionText} in ${line.versionFile}`,
+            `commit the version change first, or create the baseline tag ${line.tagPrefix}${versionText} manually`,
+          ),
+        );
+      }
+      const ancestor = await git(repoRoot, io, ["merge-base", "--is-ancestor", commit, "main"]);
+      if (ancestor.exitCode !== 0) {
+        return refuse(
+          "tags",
+          refusalDiagnostic(
+            "FLOW-ADOPT-07",
+            `release line '${line.id}': commit ${commit.slice(0, 9)} introducing version ${versionText} is not an ancestor of main`,
+            "land the version change on main first",
+          ),
+        );
+      }
+      tagPlans.push({
+        line: line.id,
+        tag: `${line.tagPrefix}${versionText}`,
+        version: versionText,
+        commit,
+        previous: T?.name ?? null,
+      });
+    }
+    steps.push({
+      step: "tags",
+      status: "planned",
+      detail:
+        tagPlans.length > 0
+          ? `baseline tag(s): ${tagPlans.map((t) => `${t.tag}@${t.commit.slice(0, 9)}`).join(", ")}`
+          : "no baseline tags needed",
+    });
+  }
   steps.push({ step: "report", status: "planned", detail: "embed flow.check diagnostics" });
 
   return {
@@ -437,7 +545,69 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     guardCommitted,
     preCommitChange,
     preCommitCommitted,
+    tagPlans,
   };
+}
+
+/**
+ * The commit that introduced `version` in `versionFile` — pickaxe on the
+ * canonical `"version": "X.Y.Z"` formatting first, then a `git log -p` scan
+ * for the newest commit adding a normalized-matching line (audit G2: files
+ * formatted without the space after the colon defeat -S).
+ */
+async function findVersionCommit(
+  repoRoot: string,
+  versionFile: string,
+  version: string,
+  io: WorkspaceIO,
+): Promise<string | null> {
+  const needle = `"version": "${version}"`;
+  const pick = await git(repoRoot, io, [
+    "log",
+    "-1",
+    "--format=%H",
+    `-S${needle}`,
+    "--",
+    versionFile,
+  ]);
+  if (pick.exitCode === 0 && pick.stdout.trim().length > 0) {
+    return pick.stdout.trim();
+  }
+  const log = await git(repoRoot, io, ["log", "-p", "--format=%H", "--", versionFile]);
+  if (log.exitCode !== 0) return null;
+  const normalizedNeedle = needle.replace(/\s+/g, "");
+  let commit: string | null = null;
+  for (const raw of log.stdout.split("\n")) {
+    const line = raw.trimEnd();
+    if (/^[0-9a-f]{40}$/.test(line)) {
+      commit = line;
+      continue;
+    }
+    if (
+      commit !== null &&
+      line.startsWith("+") &&
+      !line.startsWith("+++") &&
+      line.slice(1).replace(/\s+/g, "").includes(normalizedNeedle)
+    ) {
+      return commit;
+    }
+  }
+  return null;
+}
+
+/** Annotated release-tag message per forge/release-tag@1 (RFC-1488). */
+function releaseTagMessage(plan: TagPlan): string {
+  return [
+    `release ${plan.tag}`,
+    "",
+    "schema: forge/release-tag@1",
+    `line: ${plan.line}`,
+    `version: ${plan.version}`,
+    "level: baseline",
+    `previous: ${plan.previous ?? "null"}`,
+    "rfcs: []",
+    "fingerprints: {}",
+  ].join("\n");
 }
 
 function setStep(
@@ -470,6 +640,7 @@ export async function executeInstall(
     "guard",
     "pre-commit",
     "commit",
+    "tags",
     "report",
   ];
   const failStep = (
@@ -644,6 +815,32 @@ export async function executeInstall(
     setStep(plan, "commit", "done", `committed '${ADOPTION_COMMIT_SUBJECT}' on develop`);
   } else {
     setStep(plan, "commit", "skipped", "hook files unchanged — nothing to commit");
+  }
+
+  // 8.5 tags (RFC-1488) — the baselines the plan phase approved. Tags are
+  // local objects only; pushing them is the wave-2 outbound command.
+  if (plan.tagPlans.length > 0) {
+    for (const tagPlan of plan.tagPlans) {
+      const r = await git(repoRoot, io, [
+        "tag",
+        "-a",
+        tagPlan.tag,
+        "-m",
+        releaseTagMessage(tagPlan),
+        tagPlan.commit,
+      ]);
+      if (r.exitCode !== 0) {
+        return failStep("tags", `git tag -a ${tagPlan.tag} failed: ${r.stderr.trim()}`);
+      }
+    }
+    setStep(
+      plan,
+      "tags",
+      "done",
+      `created baseline tag(s): ${plan.tagPlans.map((t) => `${t.tag}@${t.commit.slice(0, 9)}`).join(", ")}`,
+    );
+  } else {
+    setStep(plan, "tags", "skipped", "no baseline tags needed");
   }
 
   // 9. report — the flow.check rule set, embedded.

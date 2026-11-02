@@ -9,11 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 5 — forge-flow module with flow.check + flow.install</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1486: steps 5-6 — flow.install generates declaration, FLOW remediation catalog, regenerated artifacts</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
+  <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +50,9 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-03", severity: "error" },
           { id: "FLOW-04", severity: "warning" },
           { id: "FLOW-05", severity: "error" },
+          { id: "FLOW-08", severity: "error" },
+          { id: "FLOW-09", severity: "warning" },
+          { id: "FLOW-VER-02", severity: "error" },
         ],
         mutatesState: false,
         execOnReadOnly: true,
@@ -82,6 +86,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-ADOPT-04", severity: "error" },
           { id: "FLOW-ADOPT-05", severity: "error" },
           { id: "FLOW-ADOPT-06", severity: "error" },
+          { id: "FLOW-ADOPT-07", severity: "error" },
           { id: "FLOW-ADOPT-08", severity: "error" },
         ],
         mutatesState: true,
