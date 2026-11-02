@@ -12,17 +12,26 @@ diagnostics surface reports missing baselines and unknown --line ids.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 4 — flow.version tests</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { collectFlowVersion } from "../handlers/flow-version.ts";
 import { gitExec, initRepo } from "./helpers.ts";
+
+const dirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 async function writeAndCommit(repo: string, file: string, content: string, message = "c"): Promise<void> {
   await mkdir(join(repo, file.split("/").slice(0, -1).join("/")), { recursive: true });
@@ -41,6 +50,7 @@ async function annotatedTag(repo: string, name: string, at?: string): Promise<vo
 
 async function repoWithRootVersion(version: string): Promise<string> {
   const repo = await initRepo({ prefix: "flow-ver-" });
+  dirs.push(repo);
   await writeAndCommit(repo, "package.json", `{ "version": "${version}" }\n`, `version ${version}`);
   return repo;
 }

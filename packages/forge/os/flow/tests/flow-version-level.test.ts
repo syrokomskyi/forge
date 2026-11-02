@@ -12,17 +12,26 @@ counting patch.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 4 — pending-level tests (X-RFC + versionBump)</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { collectFlowVersion } from "../handlers/flow-version.ts";
 import { gitExec, initRepo } from "./helpers.ts";
+
+const dirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 async function rfc(repo: string, id: string, versionBump: string): Promise<void> {
   const file = `docs/rfcs/${id.toLowerCase()}-test.md`;
@@ -42,6 +51,7 @@ async function commitWithTrailer(repo: string, message: string, rfcId: string | 
 
 async function repoWithTag(): Promise<string> {
   const repo = await initRepo({ prefix: "flow-lvl-" });
+  dirs.push(repo);
   await writeFile(join(repo, "package.json"), '{ "version": "1.0.0" }\n');
   await gitExec(repo, ["add", "package.json"]);
   await gitExec(repo, ["commit", "-m", "version 1.0.0"]);

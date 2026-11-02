@@ -18,6 +18,7 @@ Lightweight tags are invisible to release lines by design.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 2 — annotated reachable-tag listing + highest-version selection</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
@@ -52,7 +53,9 @@ async function listAnnotated(repoRoot: string, line: ReleaseLine, io: WorkspaceI
   const head = await git(repoRoot, io, ["rev-parse", "--verify", "-q", "HEAD"]);
   if (head.exitCode !== 0) return []; // unborn branch — nothing reachable
   const sep = "\x1f";
-  const format = `%(refname:short)${sep}%(objecttype)${sep}%(*objectname)${sep}%(creatordate:iso-strict)`;
+  // %(refname) (full form) — %(refname:short) would hide a tag sharing its
+  // name with a branch (shortening is ambiguous by design).
+  const format = `%(refname)${sep}%(objecttype)${sep}%(*objectname)${sep}%(creatordate:iso-strict)`;
   const result = await git(repoRoot, io, [
     "for-each-ref",
     `refs/tags/${line.tagPrefix}*`,
@@ -66,8 +69,9 @@ async function listAnnotated(repoRoot: string, line: ReleaseLine, io: WorkspaceI
   for (const raw of result.stdout.split("\n")) {
     const line_ = raw.trimEnd();
     if (!line_) continue;
-    const [name = "", objecttype = "", peeled = "", creatordate = ""] = line_.split(sep);
+    const [refname = "", objecttype = "", peeled = "", creatordate = ""] = line_.split(sep);
     if (objecttype !== "tag") continue; // annotated only
+    const name = refname.startsWith("refs/tags/") ? refname.slice("refs/tags/".length) : refname;
     const versionText = name.startsWith(line.tagPrefix)
       ? name.slice(line.tagPrefix.length)
       : NULL_FIELD;

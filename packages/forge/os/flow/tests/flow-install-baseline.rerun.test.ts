@@ -12,17 +12,26 @@ tag, so the tags step skips.</purpose>
   <item>RFC-1488: step 5 — baseline rerun identity test</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: AC-6 rerun timeout, AC-8 'release line' wording</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { expect, it } from "vitest";
+import { afterEach, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { executeInstall, planInstall } from "../handlers/flow-install.ts";
 import { gitExec, initRepo } from "./helpers.ts";
+
+const dirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 async function listTagsWithObjects(repo: string): Promise<string> {
   const r = await gitExec(repo, [
@@ -36,6 +45,7 @@ async function listTagsWithObjects(repo: string): Promise<string> {
 // Two full plan+execute cycles exceed the repo-root vitest default (5s).
 it("AC-6: a second flow.install leaves the tag set identical", { timeout: 30000 }, async () => {
   const repo = await initRepo({ prefix: "flow-rerun-" });
+  dirs.push(repo);
   await mkdir(join(repo, "packages/pbp"), { recursive: true });
   await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
   await writeFile(join(repo, "packages/pbp/extract.config.yaml"), "forgePlugin: false\n");

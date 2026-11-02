@@ -13,20 +13,30 @@ under the OS temp dir.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 5 — baseline-tag plan/execute tests</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { executeInstall, planInstall } from "../handlers/flow-install.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
+const dirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 async function seedRepo(version: string): Promise<string> {
   const repo = await initRepo({ prefix: "flow-base-" });
+  dirs.push(repo);
   await mkdir(join(repo, "packages/forge"), { recursive: true });
   await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");
   await writeFile(
@@ -85,6 +95,7 @@ describe("flow.install baseline tags", () => {
 
   it("pickaxe fallback: version file without canonical spacing still finds the commit", async () => {
     const repo = await initRepo({ prefix: "flow-base-" });
+    dirs.push(repo);
     await writeFile(join(repo, "forge.yaml"), "name: test\n");
     await writeFile(join(repo, "package.json"), '{"version":"3.1.4"}\n');
     await gitExec(repo, ["add", "."]);
