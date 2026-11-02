@@ -16,6 +16,16 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -289,6 +299,23 @@ export async function configGet(
 export async function statusTracked(worktree: string, io: WorkspaceIO): Promise<string[]> {
   const result = throwOnFailure(
     await git(worktree, io, ["status", "--porcelain", "--untracked-files=no"]),
+    "git status --porcelain",
+  );
+  return result.stdout
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line.length > 0);
+}
+
+/**
+ * All uncommitted changes — default `git status --porcelain` (untracked `??`
+ * entries included, ignored files still excluded). This is the dirty
+ * definition `git worktree remove` enforces; use it wherever a check predicts
+ * worktree-removability or asks "is this checkout dirty".
+ */
+export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<string[]> {
+  const result = throwOnFailure(
+    await git(worktree, io, ["status", "--porcelain"]),
     "git status --porcelain",
   );
   return result.stdout

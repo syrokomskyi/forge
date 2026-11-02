@@ -256,9 +256,6 @@ forge queue.validate
 forge werkstatt.lock.status
 forge werkstatt.lock.recover
 forge werkstatt.operation.validate
-forge werkstatt.session.open
-forge werkstatt.session.close
-forge werkstatt.session.status
 ```
 
 ## Explorations & notes

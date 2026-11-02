@@ -13,6 +13,16 @@ and a held integration lock is waited out.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 4 — flow.integrate tests</item>
   <item>RFC-1487: step 4 — flow.integrate with lock, primary-side gate, ff-only merge and cleanup resume</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -159,6 +169,25 @@ describe("flow.integrate", () => {
     expect(data.rebased).toBe(true);
     expect(await sha(repo, "develop")).toBe(developSha);
     await gitExec(repo, ["checkout", "--", "seed.txt"]);
+  }, 20_000);
+
+  it("refuses FLOW-INT-01 on an untracked-only session worktree — the dirty check matches `git worktree remove`", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "untracked");
+    await commitIn(session.worktree!, "u.txt", "u");
+    await writeFile(join(session.worktree!, "scratch.log"), "scratch\n");
+    const developSha = await sha(repo, "develop");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-01");
+    expect(data.integrated).toBe(false);
+    expect(await sha(repo, "develop")).toBe(developSha);
+    await rm(join(session.worktree!, "scratch.log"));
   }, 20_000);
 
   it("refuses FLOW-INT-06 on an unregistered branch", async () => {

@@ -20,6 +20,16 @@ hooks/worktree-setup.sh.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 3 — flow.open handler</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -245,16 +255,23 @@ export async function openFlowBranch(
     ]);
     if (add.exitCode !== 0) {
       const collision = add.stderr.includes("already exists") || add.stderr.includes("is already used");
-      if (collision && attempt < OPEN_MAX_ATTEMPTS) {
-        seq = nextFlowSeq([...candidates, name], today);
-        if (seq > 99) {
-          return refuse(
-            "FLOW-OPEN-04",
-            `no free NN for ${today} — 99 branches already opened today`,
-            "discard stale auto branches with flow.discard and re-run tomorrow",
-          );
+      if (collision) {
+        if (attempt < OPEN_MAX_ATTEMPTS) {
+          seq = nextFlowSeq([...candidates, name], today);
+          if (seq > 99) {
+            return refuse(
+              "FLOW-OPEN-04",
+              `no free NN for ${today} — 99 branches already opened today`,
+              "discard stale auto branches with flow.discard and re-run tomorrow",
+            );
+          }
+          continue;
         }
-        continue;
+        return refuse(
+          "FLOW-OPEN-04",
+          `branch name still collides after ${OPEN_MAX_ATTEMPTS} attempts (${name})`,
+          "a parallel flow.open is racing — re-run, or inspect refs/heads/auto/*",
+        );
       }
       return refuse(
         "FLOW-OPEN-01",
@@ -280,6 +297,13 @@ export async function openFlowBranch(
         ...r,
         branches: [...r.branches.filter((b) => b.name !== name), entry],
       }));
+      await appendJournal(io, common, {
+        at: iso,
+        event: "open",
+        branch: name,
+        sha: baseSha,
+        detail: opts.brief ?? `${opts.kind} opened by ${ownerId}`,
+      });
     } catch (error) {
       if (error instanceof LockTimeoutError) {
         return refuse(
@@ -288,15 +312,11 @@ export async function openFlowBranch(
           "a live flow command holds the lock — retry, or remove the lock if the holder died",
         );
       }
+      if (error instanceof FlowRegistrySchemaError) {
+        return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`);
+      }
       throw error;
     }
-    await appendJournal(io, common, {
-      at: iso,
-      event: "open",
-      branch: name,
-      sha: baseSha,
-      detail: opts.brief ?? `${opts.kind} opened by ${ownerId}`,
-    });
 
     const setup = await runFlowScript(io, "worktree-setup", {
       primary,

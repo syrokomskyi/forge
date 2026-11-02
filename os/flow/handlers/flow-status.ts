@@ -16,6 +16,16 @@ for both surfaces.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 5 — flow.status collector + handler</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +44,7 @@ import {
   lastCommitAt,
   listLocalBranches,
   requireGit,
+  statusDirty,
   statusTracked,
   topLevel,
   worktreeList,
@@ -151,7 +162,7 @@ export async function collectFlowStatus(
       behind = Number(behindStr) || 0;
       ahead = Number(aheadStr) || 0;
     }
-    const dirty = worktreeExists ? (await statusTracked(worktree, io)).length : null;
+    const dirty = worktreeExists ? (await statusDirty(worktree, io)).length : null;
 
     const held = entry?.held ?? null;
     let stale = false;
