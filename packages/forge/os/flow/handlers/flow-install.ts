@@ -15,14 +15,17 @@ embedded flow.check report.</purpose>
   <item>develop checked out in a dirty linked worktree → FLOW-ADOPT-04; checked out cleanly → ff-merge inside that worktree (branch -f cannot move a checked-out ref).</item>
   <item>develop checked out in a NON-primary worktree while the primary sits on main → FLOW-ADOPT-08: the adoption commit must land in the primary on develop, and git refuses a double checkout.</item>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
+  <item>markerSource resolves at plan time (RFC-1498): a non-network origin warns in the step detail by kind, never by path, and execution reuses the planned value — one git call, no plan/execute drift.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
-  <history>RFC-1486</history>
+  <item>RFC-1498: step 2 — network-only marker source
+
+markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
+  <history>RFC-1486, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -73,6 +76,7 @@ import {
   markerSource,
   missingLineMarkers,
   type LineMarker,
+  type RejectedOriginKind,
 } from "../markers.ts";
 import { detectRepoKind } from "../repo-kind.ts";
 import {
@@ -134,6 +138,12 @@ export interface InstallPlan {
   prePushCommitted: boolean;
   /** Package-line dirs lacking a valid forge.generated.yaml (RFC-1491). */
   markerPlans: LineMarker[];
+  /**
+   * RFC-1498: the marker `source` resolved at plan time — a network origin
+   * URL, or the directory basename when origin is absent or non-network
+   * (rejectedOrigin names the kind, never the path).
+   */
+  markerSource: { source: string; rejectedOrigin: RejectedOriginKind | null };
   /** Baseline release tags the execute phase creates (RFC-1488 step 8.5). */
   tagPlans: TagPlan[];
 }
@@ -179,6 +189,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       prePushChange: "identical",
       prePushCommitted: false,
       markerPlans: [],
+      markerSource: { source: "", rejectedOrigin: null },
       tagPlans: [],
     };
   };
@@ -516,14 +527,20 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
 
   // markers (RFC-1491) — every package line gets a forge.generated.yaml the
   // extract copies into its repository; the repo line never carries one.
+  // RFC-1498: the source is resolved at plan time so the step can warn when
+  // origin is not a network URL — the warning names the kind, never the path.
+  const marker = await markerSource(repoRoot, io);
   const { markers: markerPlans } = await missingLineMarkers(repoRoot, io);
   steps.push({
     step: "markers",
     status: "planned",
     detail:
-      markerPlans.length > 0
+      (markerPlans.length > 0
         ? `marker(s): ${markerPlans.map((m) => join(m.dir, MARKER_FILE)).join(", ")}`
-        : "every package line already carries a valid marker",
+        : "every package line already carries a valid marker") +
+      (marker.rejectedOrigin !== null
+        ? ` — origin rejected (${marker.rejectedOrigin}), using the directory name`
+        : ""),
   });
 
   const commitNeeded =
@@ -649,6 +666,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     prePushChange,
     prePushCommitted,
     markerPlans,
+    markerSource: marker,
     tagPlans,
   };
 }
@@ -979,7 +997,7 @@ export async function executeInstall(
   if (plan.markerPlans.length === 0) {
     setStep(plan, "markers", "skipped", "every package line already carries a valid marker");
   } else {
-    const source = await markerSource(repoRoot, io);
+    const { source } = plan.markerSource;
     for (const m of plan.markerPlans) {
       try {
         await io.mkdir(join(primary, m.dir));
