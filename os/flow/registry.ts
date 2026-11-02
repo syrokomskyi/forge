@@ -19,6 +19,7 @@ forge/journal.jsonl.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 1 — registry, journal, common-gitdir resolution</item>
   <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
+  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,8 +45,8 @@ export const REGISTRY_LOCK_STALE_MS = 60_000;
 export const flowRegistryEntrySchema = z
   .object({
     name: z.string().min(1),
-    kind: z.enum(["task", "session"]),
-    base: z.literal("develop"),
+    kind: z.enum(["task", "session", "fix"]),
+    base: z.enum(["develop", "main"]),
     baseSha: z.string().regex(/^[0-9a-f]{40}$/),
     worktree: z.string().min(1),
     owner: z
@@ -58,8 +59,19 @@ export const flowRegistryEntrySchema = z
     openedAt: z.string().min(1),
     updatedAt: z.string().min(1),
     held: z.null(),
+    port: z
+      .object({
+        mainSha: z.string().regex(/^[0-9a-f]{40}$/),
+        tags: z.array(z.string().min(1)).min(1),
+      })
+      .strict()
+      .nullable()
+      .default(null),
   })
-  .strict();
+  .strict()
+  .refine((e) => (e.base === "main") === (e.kind === "fix"), {
+    message: "base 'main' ⇔ kind 'fix' — task/session branches always base on develop (RFC-1490)",
+  });
 
 export const flowRegistrySchema = z
   .object({
@@ -84,7 +96,7 @@ export class FlowRegistrySchemaError extends Error {
 
 export interface FlowJournalEvent {
   at: string;
-  event: "open" | "integrate" | "discard";
+  event: "open" | "integrate" | "discard" | "cut" | "fix" | "backmerge";
   branch: string;
   sha: string;
   detail: string;
