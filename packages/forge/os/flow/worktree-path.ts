@@ -26,6 +26,7 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1495: step 1 - forge state roots</item>
 </CHANGE_SUMMARY>
 */
 
@@ -33,7 +34,7 @@ import { basename, dirname, join } from "node:path";
 
 import type { WorkspaceIO } from "../../src/types.ts";
 
-import { worktreeList } from "./git.ts";
+import { topLevel, worktreeList } from "./git.ts";
 
 /**
  * Absolute path of the repository's primary worktree — the first entry of
@@ -60,4 +61,33 @@ export async function primaryWorktree(
  */
 export function flowWorktreePath(primary: string, branch: string): string {
   return join(dirname(primary), `${basename(primary)}@${branch.replaceAll("/", "-")}`);
+}
+
+/**
+ * RFC-1495: the two state roots — the current worktree (per-session code and
+ * open missions) and the primary checkout (durable state). In a single
+ * worktree both are the same directory, so unadopted repositories resolve
+ * every path exactly as before. Non-git directories degrade to the passed
+ * root rather than throwing.
+ */
+export interface StateRoots {
+  /** `git rev-parse --show-toplevel` — the worktree this call runs in. */
+  worktreeRoot: string;
+  /** The first non-bare entry of `git worktree list` — the primary checkout. */
+  primaryRoot: string;
+  /** worktreeRoot === primaryRoot. */
+  isPrimary: boolean;
+}
+
+export async function resolveStateRoots(
+  repoRoot: string,
+  io: WorkspaceIO,
+): Promise<StateRoots> {
+  const top = await topLevel(repoRoot, io);
+  const worktreeRoot = top ?? repoRoot;
+  if (top === null) {
+    return { worktreeRoot, primaryRoot: worktreeRoot, isPrimary: true };
+  }
+  const primaryRoot = await primaryWorktree(io, worktreeRoot);
+  return { worktreeRoot, primaryRoot, isPrimary: worktreeRoot === primaryRoot };
 }
