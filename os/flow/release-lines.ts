@@ -19,6 +19,7 @@ FLOW-VER-02.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 1 — release-line discovery via pnpm-workspace globs + extract.config.yaml</item>
   <item>RFC-1488: step 1 — semver helper + release-line discovery (extract.config.yaml workspace globs)</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
@@ -124,10 +125,21 @@ export async function discoverReleaseLines(
   const globs: string[] = [];
   const negated: string[] = [];
   if (await io.exists(join(repoRoot, WORKSPACE_FILE))) {
-    const parsed = parseYaml(await io.readFile(join(repoRoot, WORKSPACE_FILE))) as
-      | { packages?: unknown }
-      | null;
-    for (const entry of Array.isArray(parsed?.packages) ? parsed.packages : []) {
+    let parsed: { packages?: unknown } | null = null;
+    try {
+      parsed = parseYaml(await io.readFile(join(repoRoot, WORKSPACE_FILE))) as
+        | { packages?: unknown }
+        | null;
+    } catch {
+      diagnostics.push(
+        diagnostic(
+          "FLOW-VER-02",
+          "error",
+          `${WORKSPACE_FILE} is not valid YAML — package lines cannot be discovered`,
+        ),
+      );
+    }
+    for (const entry of Array.isArray(parsed?.packages) ? parsed?.packages : []) {
       if (typeof entry !== "string") continue;
       if (entry.startsWith("!")) negated.push(entry.slice(1));
       else globs.push(entry);

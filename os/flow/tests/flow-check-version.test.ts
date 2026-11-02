@@ -12,20 +12,30 @@ the FLOW-09 warning.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 6 — FLOW-08/FLOW-09 tests</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { collectFlowCheck } from "../handlers/flow-check.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
+const dirs: string[] = [];
+
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 async function governedRepo(): Promise<string> {
   const repo = await initRepo({ prefix: "flow-chk-ver-" });
+  dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), "name: test\n");
   await writeFile(join(repo, "package.json"), '{ "version": "1.0.0" }\n');
   await gitExec(repo, ["add", "."]);

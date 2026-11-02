@@ -17,6 +17,7 @@ next release version it implies.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 3 — pending level from X-RFC trailers + versionBump</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
@@ -103,7 +104,14 @@ export async function pendingLevel(
         continue;
       }
       const parsed = await readAndParseRfc(rfcDirPath, fileName);
-      if (!parsed || !("parsed" in parsed)) {
+      // The filename match is a prefix heuristic — a trailer like RFC-148
+      // would otherwise bind rfc-1488-*'s bump. The frontmatter id is
+      // authoritative; a mismatch counts as missing.
+      const frontmatterId =
+        parsed && "parsed" in parsed
+          ? String(parsed.parsed.frontmatter["id"] ?? "").trim().toUpperCase()
+          : "";
+      if (!parsed || !("parsed" in parsed) || frontmatterId !== id) {
         diagnostics.push({
           ruleId: "FLOW-VER-03",
           severity: "warning",

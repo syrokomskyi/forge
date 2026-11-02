@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1486: steps 5-6 — flow.install generates declaration, FLOW remediation catalog, regenerated artifacts</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -60,7 +60,15 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         coverage: "operator",
         coverageNote:
           "adoption/model check — wired into pipelines by the wave-4 switch-over RFC",
-        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**"],
+        reads: [
+          "forge.yaml",
+          "forge.generated.yaml",
+          ".git/**",
+          "hooks/**",
+          "pnpm-workspace.yaml",
+          "*/package.json",
+          "*/extract.config.yaml",
+        ],
         cacheable: false,
         flags: {},
         execute: runFlowCheck,
@@ -88,6 +96,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-ADOPT-06", severity: "error" },
           { id: "FLOW-ADOPT-07", severity: "error" },
           { id: "FLOW-ADOPT-08", severity: "error" },
+          { id: "FLOW-VER-02", severity: "error" },
         ],
         mutatesState: true,
         idempotency: "rerun-safe",
@@ -98,7 +107,15 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         coverage: "operator",
         coverageNote:
           "run once per repository at adoption — wired into forge.upgrade by the wave-4 switch-over RFC",
-        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**"],
+        reads: [
+          "forge.yaml",
+          "forge.generated.yaml",
+          ".git/**",
+          "hooks/**",
+          "pnpm-workspace.yaml",
+          "*/package.json",
+          "*/extract.config.yaml",
+        ],
         cacheable: false,
         flags: {
           "dry-run": {

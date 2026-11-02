@@ -19,6 +19,7 @@ by flow.install step 9.</purpose>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
 </CHANGE_SUMMARY>
 */
 
@@ -268,7 +269,9 @@ async function collectLineDiagnostics(
   if (line.id !== "repo") {
     const extractPath = `${line.paths[0]}/extract.config.yaml`;
     const raw = await readRepoRootFile(repoRoot, extractPath, io, bare);
-    if (raw !== null && /^\s*versionBump\s*:/m.test(raw)) {
+    // Top-level key only — an indented `versionBump:` under a nested section
+    // is not the repo-extract declaration this rule guards.
+    if (raw !== null && /^versionBump\s*:/m.test(raw)) {
       diagnostics.push({
         ruleId: "FLOW-09",
         severity: "warning",
