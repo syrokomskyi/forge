@@ -18,6 +18,7 @@ by flow.install step 9.</purpose>
   <item>RFC-1486: step 3 — flow.check handler + collectFlowCheck</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,6 +48,13 @@ import {
   PRECOMMIT_FILE,
 } from "../guard-files.ts";
 import { detectRepoKind, readRepoRootFile } from "../repo-kind.ts";
+import {
+  discoverReleaseLines,
+  readLineVersionFile,
+  type ReleaseLine,
+} from "../release-lines.ts";
+import { listLineTags } from "../release-tags.ts";
+import { compareVersions, parseVersion } from "../semver.ts";
 
 export interface FlowCheckBranches {
   protected: string[];
@@ -62,6 +70,8 @@ export interface FlowCheckData {
   guardInstalled: boolean;
   /** Commits in main not in develop; null when either side is absent. */
   mainAheadOfDevelop: number | null;
+  /** Discovered release-line ids (RFC-1488); absent on exempt/ungoverned verdicts. */
+  releaseLines?: string[];
 }
 
 export interface FlowCheckOutcome {
@@ -194,6 +204,16 @@ export async function collectFlowCheck(
     }
   }
 
+  // FLOW-08/09 (RFC-1488) — release-line hygiene. A version file diverging
+  // from its line's last tag is an error (the file is only written at a
+  // release cut); an extract.config.yaml declaring versionBump is a warning
+  // because repo-extract would rewrite the version during export.
+  const { lines, diagnostics: discoveryDiagnostics } = await discoverReleaseLines(repoRoot, io);
+  diagnostics.push(...discoveryDiagnostics);
+  for (const line of lines) {
+    await collectLineDiagnostics(repoRoot, line, io, bare, diagnostics);
+  }
+
   return {
     data: {
       repoKind: "governed",
@@ -201,9 +221,63 @@ export async function collectFlowCheck(
       branches,
       guardInstalled: guardReasons.length === 0,
       mainAheadOfDevelop,
+      releaseLines: lines.map((l) => l.id),
     },
     diagnostics,
   };
+}
+
+/**
+ * FLOW-08 (error): the line's version file carries a `version` that differs
+ * from its last reachable annotated tag — including the never-baselined case
+ * (no tag at all). A version file without `version` does not fire. FLOW-09
+ * (warning): the line's extract.config.yaml declares `versionBump`.
+ */
+async function collectLineDiagnostics(
+  repoRoot: string,
+  line: ReleaseLine,
+  io: WorkspaceIO,
+  bare: boolean,
+  diagnostics: Diagnostic[],
+): Promise<void> {
+  const versionText = await readLineVersionFile(repoRoot, line, io);
+  const { lastTag } = await listLineTags(repoRoot, line, io);
+  if (versionText !== null) {
+    const fileVersion = parseVersion(versionText);
+    const tagVersion = lastTag?.version ?? null;
+    const differs =
+      tagVersion === null
+        ? true // version present but the line was never baselined
+        : fileVersion === null || compareVersions(fileVersion, tagVersion) !== 0;
+    if (differs) {
+      const fileHigher =
+        fileVersion !== null && (tagVersion === null || compareVersions(fileVersion, tagVersion) > 0);
+      diagnostics.push({
+        ruleId: "FLOW-08",
+        severity: "error",
+        file: line.versionFile ?? undefined,
+        message:
+          `release line '${line.id}': version file says ${versionText} but its last tag is ` +
+          `${lastTag?.name ?? "(none — never baselined)"}`,
+        fixHint: fileHigher
+          ? "run pnpm exec forge flow.install to create the baseline tag"
+          : "a version file is only written at a release cut — restore it or cut a release",
+      });
+    }
+  }
+  if (line.id !== "repo") {
+    const extractPath = `${line.paths[0]}/extract.config.yaml`;
+    const raw = await readRepoRootFile(repoRoot, extractPath, io, bare);
+    if (raw !== null && /^\s*versionBump\s*:/m.test(raw)) {
+      diagnostics.push({
+        ruleId: "FLOW-09",
+        severity: "warning",
+        file: extractPath,
+        message: `release line '${line.id}' declares versionBump in ${extractPath} — repo-extract would rewrite the version during export`,
+        fixHint: "remove versionBump from extract.config.yaml — versions are cut by the release flow",
+      });
+    }
+  }
 }
 
 export interface FlowCheckResult extends CheckResult {
@@ -212,6 +286,7 @@ export interface FlowCheckResult extends CheckResult {
   branches: FlowCheckBranches;
   guardInstalled: boolean;
   mainAheadOfDevelop: number | null;
+  releaseLines?: string[];
 }
 
 export async function runFlowCheck(
@@ -256,6 +331,7 @@ export async function runFlowCheck(
       branches: data.branches,
       guardInstalled: data.guardInstalled,
       mainAheadOfDevelop: data.mainAheadOfDevelop,
+      releaseLines: data.releaseLines,
       diagnostics,
       summary: { error: errors.length, warning: warnings.length, info: 0 },
     },
