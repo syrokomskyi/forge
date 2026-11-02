@@ -19,6 +19,7 @@ flow.push must quote.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 3 — digest collector: tail segmentation, risk categories, tags, held, pending publications, digestId</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
+  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
 </CHANGE_SUMMARY>
 */
 
@@ -528,9 +529,11 @@ export async function collectDigest(
   // degrades to the reachability approximation.
   const remoteTags = hasOrigin ? await remoteTagNames(repoRoot, io) : null;
   const tags: string[] = [];
+  const allLocalTags = new Set<string>();
   for (const line of lines) {
     const { reachable } = await listLineTags(repoRoot, line, io);
     for (const tag of reachable) {
+      allLocalTags.add(tag);
       const remoteKnown =
         remoteTags !== null ? remoteTags.has(tag) : await tagReachableFromRemote(repoRoot, io, tag);
       if (!remoteKnown) tags.push(tag);
@@ -550,7 +553,6 @@ export async function collectDigest(
       heldAt: b.held!.heldAt,
     }));
 
-  const localTags = new Set(tags);
   const pendingPublications: Array<{ tag: string; line: string }> = [];
   const pushedTags = new Set<string>();
   const publishedTags = new Set<string>();
@@ -564,7 +566,7 @@ export async function collectDigest(
     }
   }
   for (const tag of [...pushedTags].sort((a, b) => a.localeCompare(b))) {
-    if (!localTags.has(tag) || publishedTags.has(tag)) continue;
+    if (!allLocalTags.has(tag) || publishedTags.has(tag)) continue;
     const line = lineForTag(lines, tag);
     pendingPublications.push({ tag, line: line?.id ?? "repo" });
   }

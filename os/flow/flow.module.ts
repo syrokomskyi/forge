@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
+  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -31,6 +31,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowHold } = await import("./handlers/flow-hold.ts");
   const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
   const { runFlowOpen } = await import("./handlers/flow-open.ts");
+  const { runFlowPush } = await import("./handlers/flow-push.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
   const { runFlowUnhold } = await import("./handlers/flow-unhold.ts");
   const { runFlowVersion } = await import("./handlers/flow-version.ts");
@@ -647,6 +648,64 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowUnhold,
+      },
+      {
+        name: "flow.push",
+        description:
+          "The only outbound path (RFC-1491, AUDIT-RFC-1491-E1): refuses " +
+          "preflight FLOW-PUSH-01 (no origin), FLOW-PUSH-02 (stale digest " +
+          "— quote the current flow.digest id), FLOW-PUSH-03 (origin " +
+          "diverged), FLOW-PUSH-06 (package line without a valid " +
+          "forge.generated.yaml marker) and FLOW-PUSH-07 (repo-extract " +
+          "missing), then pushes develop + main + new release tags in one " +
+          "atomic push under FORGE_FLOW_OP=push (FLOW-PUSH-04 on failure) " +
+          "and publishes each package-line tag through repo-extract " +
+          "(FLOW-PUSH-05 per failure, ours-merge reconcile on " +
+          "non-fast-forward only, never force). A rerun with an empty " +
+          "digest retries journal-scoped pending publications.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-PUSH-01", severity: "error" },
+          { id: "FLOW-PUSH-02", severity: "error" },
+          { id: "FLOW-PUSH-03", severity: "error" },
+          { id: "FLOW-PUSH-04", severity: "error" },
+          { id: "FLOW-PUSH-05", severity: "error" },
+          { id: "FLOW-PUSH-06", severity: "error" },
+          { id: "FLOW-PUSH-07", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "not-idempotent",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "outbound — operator command only (RFC-1491 E1)",
+        reads: [
+          "forge.yaml",
+          ".git/**",
+          "docs/rfcs/*.md",
+          "hooks/**",
+          "pnpm-workspace.yaml",
+          "package.json",
+          "packages/*/extract.config.yaml",
+        ],
+        cacheable: false,
+        flags: {
+          digest: {
+            kind: "string",
+            required: true,
+            description: "The flow.digest id the operator reviewed — 12 hex of sha256.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate preflight only — nothing leaves the machine.",
+          },
+        },
+        execute: runFlowPush,
       },
       {
         name: "flow.status",

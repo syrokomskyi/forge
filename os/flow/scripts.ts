@@ -17,6 +17,7 @@ the branch worktree and the declared FLOW_* environment.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 2 — primary-side hook-script runner</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
+  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +29,8 @@ export type FlowScriptName =
   | "worktree-setup"
   | "integration-gate"
   | "worktree-teardown"
-  | "release-fingerprints";
+  | "release-fingerprints"
+  | "extract-verify";
 
 export interface FlowScriptResult {
   status: "done" | "skipped" | "failed";
