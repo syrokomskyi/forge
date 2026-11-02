@@ -15,11 +15,11 @@ by flow.install step 9.</purpose>
   <item>Ungoverned repositories (no forge.yaml, no marker) report repoKind with no diagnostics — the model only applies where forge.yaml opts in.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
+  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -48,6 +48,7 @@ import {
   GUARD_FILE,
   hasManagedBlock,
   PRECOMMIT_FILE,
+  PREMERGE_FILE,
 } from "../guard-files.ts";
 import { detectRepoKind, readRepoRootFile } from "../repo-kind.ts";
 import { collectFlowStatus } from "./flow-status.ts";
@@ -182,6 +183,14 @@ export async function collectFlowCheck(
       preCommit === null
         ? "hooks/pre-commit is missing"
         : "hooks/pre-commit does not carry the managed flow-guard block",
+    );
+  }
+  const preMerge = await readRepoRootFile(repoRoot, PREMERGE_FILE, io, bare);
+  if (preMerge === null || !hasManagedBlock(preMerge, "pre-merge-commit")) {
+    guardReasons.push(
+      preMerge === null
+        ? "hooks/pre-merge-commit is missing"
+        : "hooks/pre-merge-commit does not carry the managed flow-guard block",
     );
   }
   if (!(await guardFileMatches(() => readRepoRootFile(repoRoot, GUARD_FILE, io, bare)))) {

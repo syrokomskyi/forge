@@ -9,6 +9,7 @@ snapshot taken before and after.</purpose>
   <item>RFC-1486: step 4 — flow.install rerun-safety test</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
+  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,7 +21,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { executeInstall, planInstall } from "../handlers/flow-install.ts";
+import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
+import { openFlowBranch } from "../handlers/flow-open.ts";
 import { gitExec, initRepo } from "./helpers.ts";
+
+const NOW = new Date("2026-11-02T12:00:00Z");
 
 const dirs: string[] = [];
 
@@ -29,6 +34,41 @@ afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+/**
+ * Land a committed change on develop the model-normal way (RFC-1490): open a
+ * session branch, write + commit inside its worktree, integrate through the
+ * gate. Replaces the retired FORGE_FLOW_OP=backmerge escape.
+ */
+async function landThroughSession(
+  repo: string,
+  slug: string,
+  file: string,
+  content: string,
+): Promise<void> {
+  const data = await openFlowBranch(repo, ambientIo, {
+    kind: "session",
+    slug,
+    brief: null,
+    owner: null,
+    dryRun: false,
+    now: NOW,
+  });
+  expect(data.diagnostics).toEqual([]);
+  dirs.push(data.worktree!);
+  const target = join(data.worktree!, file);
+  await rm(target, { force: true }).catch(() => {});
+  await writeFile(target, content);
+  await gitExec(data.worktree!, ["add", file]);
+  const commit = await gitExec(data.worktree!, ["commit", "-m", slug]);
+  expect(commit.exitCode).toBe(0);
+  const integrated = await integrateFlowBranch(repo, ambientIo, {
+    branch: data.branch!,
+    dryRun: false,
+    now: NOW,
+  });
+  expect(integrated.integrated).toBe(true);
+}
 
 async function hashTree(dir: string): Promise<string> {
   const hash = createHash("sha256");
@@ -112,13 +152,10 @@ describe("flow.install rerun-safety (AC-8)", () => {
     await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
     await executeInstall(await planInstall(repo, ambientIo), ambientIo);
 
-    // Committed drift on develop — model-normal operation (backmerge op).
-    await writeFile(join(repo, "hooks", "flow-guard.sh"), "# drifted\n");
-    await gitExec(repo, ["add", "hooks/flow-guard.sh"]);
-    const drift = await gitExec(repo, ["commit", "-m", "drift guard"], {
-      FORGE_FLOW_OP: "backmerge",
-    });
-    expect(drift.exitCode).toBe(0);
+    // Committed drift on develop — model-normal operation: the drift lands
+    // through a session branch + the integration gate (RFC-1490 retires the
+    // FORGE_FLOW_OP=backmerge escape).
+    await landThroughSession(repo, "drift-guard", "hooks/flow-guard.sh", "# drifted\n");
 
     const plan = await planInstall(repo, ambientIo);
     expect(plan.refusal).toBeNull();
@@ -135,13 +172,9 @@ describe("flow.install rerun-safety (AC-8)", () => {
     await executeInstall(await planInstall(repo, ambientIo), ambientIo);
 
     // Simulate model-normal state: develop ahead of main (as after
-    // integrated work) — must NOT trip FLOW-ADOPT-01.
-    await writeFile(join(repo, "work.txt"), "integrated\n");
-    await gitExec(repo, ["add", "work.txt"]);
-    const work = await gitExec(repo, ["commit", "-m", "work"], {
-      FORGE_FLOW_OP: "backmerge",
-    });
-    expect(work.exitCode).toBe(0);
+    // integrated work) — must NOT trip FLOW-ADOPT-01. Work lands through a
+    // session branch + the gate (FORGE_FLOW_OP=backmerge is retired).
+    await landThroughSession(repo, "integrated-work", "work.txt", "integrated\n");
 
     const refsBefore = await refSnapshot(repo);
     const third = await planInstall(repo, ambientIo);

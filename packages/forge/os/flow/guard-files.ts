@@ -17,6 +17,7 @@ reader and the insert/replace/verify operations shared by flow.check
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,17 +27,28 @@ import { fileURLToPath } from "node:url";
 
 export const GUARD_BEGIN_MARKER = "# >>> forge flow guard (managed by flow.install) >>>";
 export const GUARD_END_MARKER = "# <<< forge flow guard <<<";
-export const GUARD_INVOKE_LINE =
-  'sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" pre-commit || exit 1';
 
-/** The managed block as committed into hooks/pre-commit (with trailing newline). */
-export const MANAGED_BLOCK = `${GUARD_BEGIN_MARKER}\n${GUARD_INVOKE_LINE}\n${GUARD_END_MARKER}\n`;
+export type GuardMode = "pre-commit" | "pre-merge-commit";
+
+export function guardInvokeLine(mode: GuardMode): string {
+  return `sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" ${mode} || exit 1`;
+}
+
+export const GUARD_INVOKE_LINE = guardInvokeLine("pre-commit");
+
+/** The managed block for `mode` as committed into the hook file (with trailing newline). */
+export function managedBlock(mode: GuardMode): string {
+  return `${GUARD_BEGIN_MARKER}\n${guardInvokeLine(mode)}\n${GUARD_END_MARKER}\n`;
+}
+
+export const MANAGED_BLOCK = managedBlock("pre-commit");
 
 export const ADOPTION_COMMIT_SUBJECT = "chore(flow): install the fixed branch model guard";
 
 export const HOOKS_DIR = "hooks";
 export const GUARD_FILE = "hooks/flow-guard.sh";
 export const PRECOMMIT_FILE = "hooks/pre-commit";
+export const PREMERGE_FILE = "hooks/pre-merge-commit";
 
 const GUARD_ASSET_RELATIVE = join("os", "flow", "assets", "flow-guard.sh");
 
@@ -86,39 +98,48 @@ export function readGuardAsset(): string {
   return readFileSync(cachedGuardAssetPath, "utf8");
 }
 
-/** True when the pre-commit content carries a complete managed block. */
-export function hasManagedBlock(content: string): boolean {
+/** True when the hook content carries a complete managed block for `mode`. */
+export function hasManagedBlock(content: string, mode: GuardMode = "pre-commit"): boolean {
   return (
     content.includes(GUARD_BEGIN_MARKER) &&
     content.includes(GUARD_END_MARKER) &&
-    content.includes(GUARD_INVOKE_LINE)
+    content.includes(guardInvokeLine(mode))
   );
 }
 
 /**
- * Fresh pre-commit content: shebang plus the managed block.
+ * Fresh hook content: shebang plus the managed block for `mode`.
  */
+export function renderManagedHook(mode: GuardMode): string {
+  return `#!/bin/sh\n${managedBlock(mode)}`;
+}
+
+/** Wave-1 name kept — the pre-commit variant of renderManagedHook. */
 export function renderManagedPreCommit(): string {
-  return `#!/bin/sh\n${MANAGED_BLOCK}`;
+  return renderManagedHook("pre-commit");
 }
 
 /**
- * Merge the managed block into existing pre-commit content.
+ * Merge the managed block for `mode` into existing hook content.
  * - No block yet → insert directly after the shebang line (or prepend when
  *   the file has no shebang).
  * - A block exists with a different body → replace the text between the
  *   markers, keep the markers' position.
  * - Identical → returns null (caller reports `skipped`).
  */
-export function mergeManagedBlock(content: string): string | null {
+export function mergeManagedBlockForMode(
+  content: string,
+  mode: GuardMode,
+): string | null {
+  const block = managedBlock(mode);
   const begin = content.indexOf(GUARD_BEGIN_MARKER);
   const end = content.indexOf(GUARD_END_MARKER);
   if (begin !== -1 && end !== -1 && begin < end) {
     const existing = content.slice(begin, end + GUARD_END_MARKER.length);
-    if (existing === MANAGED_BLOCK.trimEnd()) return null;
+    if (existing === block.trimEnd()) return null;
     return (
       content.slice(0, begin) +
-      MANAGED_BLOCK.trimEnd() +
+      block.trimEnd() +
       content.slice(end + GUARD_END_MARKER.length)
     );
   }
@@ -126,9 +147,14 @@ export function mergeManagedBlock(content: string): string | null {
     const newline = content.indexOf("\n");
     const head = newline === -1 ? content : content.slice(0, newline + 1);
     const rest = newline === -1 ? "" : content.slice(newline + 1);
-    return `${head}${MANAGED_BLOCK}${rest}`;
+    return `${head}${block}${rest}`;
   }
-  return `${MANAGED_BLOCK}${content}`;
+  return `${block}${content}`;
+}
+
+/** Wave-1 name kept — the pre-commit variant of mergeManagedBlockForMode. */
+export function mergeManagedBlock(content: string): string | null {
+  return mergeManagedBlockForMode(content, "pre-commit");
 }
 
 /**

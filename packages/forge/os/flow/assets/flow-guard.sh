@@ -2,10 +2,10 @@
 # flow-guard.sh — Forge fixed-branch-model commit guard (RFC-1486).
 #
 # Installed by `flow.install` into hooks/flow-guard.sh and invoked from the
-# managed block in hooks/pre-commit:
+# managed blocks in hooks/pre-commit and hooks/pre-merge-commit:
 #
 #   # >>> forge flow guard (managed by flow.install) >>>
-#   sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" pre-commit || exit 1
+#   sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" <mode> || exit 1
 #   # <<< forge flow guard <<<
 #
 # POSIX sh only — no node, no pnpm, no bashisms — so it runs in a fresh
@@ -25,8 +25,14 @@ refuse() {
   exit 1
 }
 
-# Only the pre-commit mode is implemented; unknown modes are not ours.
-[ "${1:-}" = "pre-commit" ] || exit 0
+# Two modes: pre-commit (regular commits) and pre-merge-commit (merge
+# commits). Unknown modes are not ours.
+mode="${1:-}"
+case "$mode" in
+  pre-commit) ;;
+  pre-merge-commit) ;;
+  *) exit 0 ;;
+esac
 
 # 1. Generated repositories are exempt: forge.generated.yaml at the top
 #    level marks a generator-owned repository (extract mirror, deployment
@@ -34,15 +40,26 @@ refuse() {
 top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 [ -f "$top/forge.generated.yaml" ] && exit 0
 
-# 2. FORGE_FLOW_OP — closed vocabulary, only Forge flow commands set it.
-#    backmerge: the release back-merge on develop (wave-2 release RFC).
-#    install:   the adoption commit flow.install writes on develop.
+# 2. FORGE_FLOW_OP — closed vocabulary per mode, only Forge flow commands
+#    set it. pre-commit accepts `install` (the adoption commit); the
+#    pre-merge-commit vocabulary is empty — no flow operation may create a
+#    merge commit directly (back-merges go through a port branch under the
+#    gate, RFC-1490). `backmerge` is retired (RFC-1490) and refuses
+#    everywhere with FLOW-GUARD-04.
+op_vocabulary="install"
+[ "$mode" = "pre-merge-commit" ] && op_vocabulary="<none>"
 case "${FORGE_FLOW_OP:-}" in
   "") ;;
-  backmerge|install) exit 0 ;;
+  install)
+    [ "$mode" = "pre-commit" ] || {
+      refuse "FLOW-GUARD-04" \
+        "FORGE_FLOW_OP='${FORGE_FLOW_OP}' is not a forge flow operation in mode '$mode' (closed vocabulary: $op_vocabulary; RFC-1486/1490)." \
+        "unset FORGE_FLOW_OP — only forge flow commands set it"
+    }
+    exit 0 ;;
   *)
     refuse "FLOW-GUARD-04" \
-      "FORGE_FLOW_OP='${FORGE_FLOW_OP}' is not a forge flow operation (closed vocabulary: backmerge, install; RFC-1486)." \
+      "FORGE_FLOW_OP='${FORGE_FLOW_OP}' is not a forge flow operation in mode '$mode' (closed vocabulary: $op_vocabulary; RFC-1486/1490)." \
       "unset FORGE_FLOW_OP — only forge flow commands set it"
     ;;
 esac
