@@ -17,11 +17,11 @@ embedded flow.check report.</purpose>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: final — guard-step detail names the fixed-branch-model guard install (AC-11 probe)</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -40,6 +40,7 @@ import {
   currentBranch,
   fileInTree,
   git,
+  gitCommit,
   isBare,
   isUnborn,
   requireGit,
@@ -806,9 +807,13 @@ export async function executeInstall(
     if (add.exitCode !== 0) {
       return failStep("commit", `git add failed: ${add.stderr.trim()}`);
     }
-    const commit = await git(primary, io, ["commit", "-m", ADOPTION_COMMIT_SUBJECT], {
-      env: { FORGE_FLOW_OP: "install" },
-    });
+    const commit = await gitCommit(
+      primary,
+      io,
+      ["commit", "-m", ADOPTION_COMMIT_SUBJECT],
+      "install",
+      { FORGE_FLOW_OP: "install" },
+    );
     if (commit.exitCode !== 0) {
       return failStep("commit", `git commit failed: ${commit.stderr.trim()}`);
     }

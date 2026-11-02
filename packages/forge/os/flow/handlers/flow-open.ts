@@ -30,6 +30,7 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
 </CHANGE_SUMMARY>
 */
 
@@ -291,6 +292,7 @@ export async function openFlowBranch(
       openedAt: iso,
       updatedAt: iso,
       held: null,
+      port: null,
     };
     try {
       await updateRegistry(io, common, (r) => ({

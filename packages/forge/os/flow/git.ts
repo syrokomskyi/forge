@@ -12,7 +12,6 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>flow.check/flow.install require git >= 2.30 — requireGit fails through the standard error path naming the detected version.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 1 — fixed branch-model grammar, marker detection contracts, git helpers</item>
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
@@ -26,6 +25,8 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -48,6 +49,22 @@ export async function git(
   opts?: { env?: Record<string, string> },
 ): Promise<ExecResult> {
   return io.exec("git", ["-C", repoRoot, ...args], { env: opts?.env });
+}
+
+/**
+ * `git` with `FORGE_FLOW_COMMIT=<op>` in the child env — the informational
+ * marker every flow-owned commit/merge/cherry-pick carries (RFC-1490). The
+ * guard does not read this variable; `extraEnv` merges caller env (e.g.
+ * `FORGE_FLOW_OP` where the guard vocabulary still applies).
+ */
+export async function gitCommit(
+  worktree: string,
+  io: WorkspaceIO,
+  args: string[],
+  op: string,
+  extraEnv?: Record<string, string>,
+): Promise<ExecResult> {
+  return git(worktree, io, args, { env: { ...extraEnv, FORGE_FLOW_COMMIT: op } });
 }
 
 function throwOnFailure(result: ExecResult, what: string): ExecResult {
