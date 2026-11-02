@@ -49,7 +49,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeTrajectoryModule` | `trajectory.index`, `trajectory.recall`, `trajectory.outcome.record` — trajectory memory (RFC-1472/1475/1480) | `os/trajectory/` |
 | `forgeChecksModule` | `checks.counters.validate`, `checks.counters.export`, `checks.contribution.report` — per-rule firing counters + marginal-contribution report (RFC-1473/1474) | `os/checks/` |
 | `forgeYamlModule` | `yaml.scalars.validate` — lints authored YAML for unquoted plain-scalar colon-space traps (RFC-1478, F-0006): YAML-SCALAR-01 flags the loud one-line shape and the silent flat→nested-map continuation; .md scans frontmatter only; quoted scalars, block scalars, flow collections, anchors, comments, generated/template files excluded. `--files` error-tier ad-hoc; `werkstatt run yaml.scalars.validate --all` errors on governance surfaces and warns elsewhere. The shared `collectScalarTraps` backs the ecosystem.commit EC-25 staged-YAML gate. | `os/yaml/` |
-| `forgeFlowModule` | `flow.check`, `flow.install`, `flow.version` — fixed branch model with guard hooks, repository adoption and release-line versions (RFC-1486, RFC-1488) | `os/flow/` |
+| `forgeFlowModule` | `flow.check`, `flow.install`, `flow.version`, `flow.open`, `flow.integrate`, `flow.discard`, `flow.status` — fixed branch model with guard hooks, repository adoption, release-line versions and per-session worktrees (RFC-1486, RFC-1488, RFC-1487) | `os/flow/` |
 
 Module notes:
 
@@ -82,6 +82,14 @@ Every evaluated rule is journaled by the kernel executor into `docs/.index/check
 - The pending level comes from `X-RFC` commit trailers resolved through the canonical RFC reader (`forge.yaml` `resolverDoors.rfc`): each referenced RFC's `versionBump` contributes its level, `patch` is the floor for any commit, `none` only when no commit touched the line. A missing RFC file counts patch with FLOW-VER-03.
 - No version file is edited between releases — a version value diverging from the line's last tag is FLOW-08 (error), and an `extract.config.yaml` declaring `versionBump` is FLOW-09 (repo-extract would rewrite it on export).
 - Tags are created by exactly two writers: `flow.install`'s baseline step (level `baseline`, at the commit that introduced the version, only when the version file outranks the last tag and that commit is on `main` — FLOW-ADOPT-07 refuses backwards or off-main baselines) and the wave-2 release cut. Agents never create release tags by hand.
+
+### Session worktrees (RFC-1487)
+
+- `flow.open --kind session --slug <slug>` branches `auto/session-<YYMMDD>-<NN>-<slug>` off `develop` into a sibling worktree `<parent>/<repo>@auto-session-<NN>-<slug>` (NN = next free daily sequence across local and remote-tracking refs) and registers it in `<git-common-dir>/forge/registry.yaml` — shared across all worktrees of the repo.
+- `flow.integrate --branch <name>` holds `forge/integrate.lock` from rebase through fast-forward: rebases the branch onto `develop` (conflict → FLOW-INT-02, branch left intact), runs the **primary checkout's** `hooks/integration-gate.sh` with the branch worktree as cwd (a session cannot weaken its own gate — FLOW-INT-05), verifies the primary is clean and on `develop` (FLOW-INT-06/07), then `git merge --ff-only`s and cleans up; reruns after a partial cleanup resume without moving `develop` again.
+- `flow.discard --branch <name> --reason <text>` removes a registered branch's worktree, ref, and registry entry — refuses on dirty worktrees (FLOW-DIS-02), held entries, or a missing `--reason`. `flow.status` reports the primary state plus per-branch registration, presence, dirty counts, ahead/behind, and 72 h staleness — read-only, creates no `forge/` state.
+- `flow.check` adds FLOW-06 (unregistered `auto/*` branch stale > 72 h, warning) and FLOW-07 (registry/git disagreement — registered branch or worktree missing, stale journal metadata; schema-invalid registry is error severity).
+- `forge/registry.yaml`, `forge/journal.jsonl`, and `forge/*.lock` are machine-owned — agents never edit them by hand; only flow commands write them. The lifecycle activates with the wave-4 switch-over RFC.
 
 ## Golden contract conformance (RFC-1365, DNA-115)
 
