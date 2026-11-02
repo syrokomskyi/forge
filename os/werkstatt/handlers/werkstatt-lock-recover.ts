@@ -16,19 +16,22 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1495: step 1 - forge state roots</item>
 </CHANGE_SUMMARY>
 */
 
-import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { ambientIo as fs, resolveIo } from "../../../src/utils/io.ts";
 import { existsSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
+  WorkspaceIO,
 } from "../../../src/types.ts";
 import { trashPath } from "../../../src/utils/fs-trash.ts";
 import { readAllLocks, removeStaleLock, acquireLock, releaseLock } from "./lock.ts";
+import { resolveStateRoots } from "../../flow/worktree-path.ts";
 
 export interface WerkstattLockRecoverData {
   recovered: Array<{ scope?: string; artifact?: string; action: string }>;
@@ -43,6 +46,7 @@ function flagString(input: ForgeCommandInput, key: string): string | undefined {
 async function classifyArtifacts(
   workspaceRoot: string,
   purge: boolean,
+  io: WorkspaceIO,
 ): Promise<{
   recovered: Array<{ artifact: string; action: string }>;
   failed: Array<{ artifact: string; error: string }>;
@@ -50,9 +54,21 @@ async function classifyArtifacts(
   const recovered: Array<{ artifact: string; action: string }> = [];
   const failed: Array<{ artifact: string; error: string }> = [];
 
-  const scanRoots = ["systems", "missions", "releases"];
-  for (const root of scanRoots) {
-    const rootPath = path.join(workspaceRoot, root);
+  // RFC-1495: releases/ is durable state — it lives in the primary checkout;
+  // missions/ (open missions) and systems/ stay per-worktree. In a
+  // single-worktree repo the roots coincide and the scan is unchanged.
+  const stateRoots = await resolveStateRoots(workspaceRoot, io).catch(() => ({
+    worktreeRoot: workspaceRoot,
+    primaryRoot: workspaceRoot,
+    isPrimary: true,
+  }));
+  const scanRoots: Array<{ name: string; root: string }> = [
+    { name: "systems", root: stateRoots.worktreeRoot },
+    { name: "missions", root: stateRoots.worktreeRoot },
+    { name: "releases", root: stateRoots.primaryRoot },
+  ];
+  for (const { name: root, root: scanRoot } of scanRoots) {
+    const rootPath = path.join(scanRoot, root);
     if (!existsSync(rootPath)) continue;
 
     let entries: string[];
@@ -64,7 +80,7 @@ async function classifyArtifacts(
 
     for (const entry of entries) {
       const entryPath = path.join(rootPath, entry);
-      const relPath = path.relative(workspaceRoot, entryPath).replace(/\\/g, "/");
+      const relPath = `${root}/${entry}`;
 
       if (entry.endsWith(".tmp")) {
         if (purge) {
@@ -154,6 +170,7 @@ export async function runWerkstattLockRecover(
     const { recovered: artifactRecovered, failed: artifactFailed } = await classifyArtifacts(
       workspaceRoot,
       purge,
+      resolveIo(context.io),
     );
     for (const r of artifactRecovered) {
       recovered.push({ artifact: r.artifact, action: r.action });

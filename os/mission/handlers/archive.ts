@@ -13,13 +13,11 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>RFC-1397: ship-in-flight guard — per-candidate isShipInFlight check in both move phases; SHIP-INFLIGHT-01 skip, SHIP-INFLIGHT-02 stale warn, --ship-op self-exemption for the ship's own terminal archive step.</item>
   <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
   <item>RFC-1397: harden ship-in-flight guard per independent review (RFC-1397)</item>
+  <item>RFC-1495: step 1 - forge state roots</item>
   <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -48,6 +46,7 @@ import {
   type MissionArchiveResult,
 } from "../types.ts";
 import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
+import { resolveStateRoots } from "../../flow/worktree-path.ts";
 
 const SERVICE_FOLDERS = [
   "node_modules",
@@ -289,6 +288,16 @@ export async function runMissionArchive(
   // marker, never passed by hand).
   const shipOp = typeof input.flags["ship-op"] === "string" ? input.flags["ship-op"] : undefined;
   const io: WorkspaceIO = context.io ?? fs;
+
+  // RFC-1495: open missions live in the worktree they were opened in, but the
+  // archive is durable state — it belongs to the primary checkout. In a
+  // single-worktree repo both roots coincide and nothing changes.
+  const stateRoots = await resolveStateRoots(workspaceRoot, io).catch(() => ({
+    worktreeRoot: workspaceRoot,
+    primaryRoot: workspaceRoot,
+    isPrimary: true,
+  }));
+  const archiveRoot = path.join(stateRoots.primaryRoot, MISSIONS_DIR, ARCHIVE_DIR_NAME);
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
   let shipInflightMod: typeof import("@warpgogol/werkstatt-shared/kernel/ship-inflight") | null =
@@ -485,7 +494,7 @@ export async function runMissionArchive(
       }
     }
 
-    const targetDir = path.join(missionsPath, ARCHIVE_DIR_NAME, state);
+    const targetDir = path.join(archiveRoot, state);
     const targetPath = path.join(targetDir, missionId);
     const targetRel = `${MISSIONS_DIR}/${ARCHIVE_DIR_NAME}/${state}/${missionId}`;
 
@@ -527,7 +536,7 @@ export async function runMissionArchive(
   }
 
   // Phase 2: Scan missions/archive/<state>/ for non-terminal missions to move back
-  const archivePath = path.join(missionsPath, ARCHIVE_DIR_NAME);
+  const archivePath = archiveRoot;
   if (existsSync(archivePath)) {
     const stateDirs = await fs.readdir(archivePath);
     const stateDirNames = stateDirs.filter((e) => e.isDirectory).map((e) => e.name);
