@@ -15,11 +15,12 @@ by flow.install step 9.</purpose>
   <item>Ungoverned repositories (no forge.yaml, no marker) report repoKind with no diagnostics — the model only applies where forge.yaml opts in.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 3 — flow.check handler + collectFlowCheck</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
+  <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +50,7 @@ import {
   PRECOMMIT_FILE,
 } from "../guard-files.ts";
 import { detectRepoKind, readRepoRootFile } from "../repo-kind.ts";
+import { collectFlowStatus } from "./flow-status.ts";
 import {
   discoverReleaseLines,
   readLineVersionFile,
@@ -56,6 +58,7 @@ import {
 } from "../release-lines.ts";
 import { listLineTags } from "../release-tags.ts";
 import { compareVersions, parseVersion } from "../semver.ts";
+import { STALE_AFTER_HOURS } from "../registry.ts";
 
 export interface FlowCheckBranches {
   protected: string[];
@@ -89,6 +92,7 @@ const EMPTY_BRANCHES: FlowCheckBranches = { protected: [], flow: [], nonconformi
 export async function collectFlowCheck(
   repoRoot: string,
   io: WorkspaceIO,
+  opts?: { now?: Date },
 ): Promise<FlowCheckOutcome> {
   const diagnostics: Diagnostic[] = [];
   const detection = await detectRepoKind(repoRoot, io);
@@ -203,6 +207,59 @@ export async function collectFlowCheck(
         fixHint: "back-merge main into develop via the release flow",
       });
     }
+  }
+
+  // FLOW-06/07 (RFC-1487) — session-branch hygiene over the shared status
+  // view: stale auto branches warn, and registry/git/worktree disagreements
+  // warn (a schema-invalid registry escalates to error). Skipped on bare
+  // repositories — a bare repo has no worktrees to inspect.
+  const status = bare
+    ? null
+    : await collectFlowStatus(repoRoot, io, { now: opts?.now });
+  for (const b of status?.data.branches ?? []) {
+    if (b.stale) {
+      diagnostics.push({
+        ruleId: "FLOW-06",
+        severity: "warning",
+        message:
+          `auto branch '${b.name}' is stale (no activity for ${STALE_AFTER_HOURS} h` +
+          `${b.registered ? ", registered" : ", unregistered"})`,
+        fixHint: `integrate it with flow.integrate or drop it with flow.discard --reason "<why>"`,
+      });
+    }
+  }
+  if (status?.registryError) {
+    diagnostics.push({
+      ruleId: "FLOW-07",
+      severity: "error",
+      file: status.registryError.file,
+      message: status.registryError.message,
+      fixHint: `repair or remove ${status.registryError.file} — every flow command reads it`,
+    });
+  }
+  for (const e of status?.missingBranchEntries ?? []) {
+    diagnostics.push({
+      ruleId: "FLOW-07",
+      severity: "warning",
+      message: `registry entry '${e.name}' names a branch ref that does not exist`,
+      fixHint: "re-run flow.integrate/flow.discard to finish the cleanup, or repair the registry entry",
+    });
+  }
+  for (const e of status?.missingWorktreeEntries ?? []) {
+    diagnostics.push({
+      ruleId: "FLOW-07",
+      severity: "warning",
+      message: `registry entry '${e.name}' names worktree ${e.worktree}, which does not exist`,
+      fixHint: "re-run flow.integrate/flow.discard to finish the cleanup, or repair the registry entry",
+    });
+  }
+  for (const path of status?.unregisteredWorktrees ?? []) {
+    diagnostics.push({
+      ruleId: "FLOW-07",
+      severity: "warning",
+      message: `worktree ${path} carries an auto branch with no registry entry`,
+      fixHint: "open sessions through flow.open — a manual worktree bypasses the lifecycle",
+    });
   }
 
   // FLOW-08/09 (RFC-1488) — release-line hygiene. A version file diverging
