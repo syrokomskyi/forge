@@ -9,7 +9,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, strict empty-directory check (only .git/ tolerated).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -18,7 +17,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
-  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-0664, RFC-1224</history>
+  <item>RFC-1500: link branch-model guide in committed NEXT_STEPS.md (review r1)</item>
+  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-0664, RFC-0877, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -411,6 +411,10 @@ export async function runCreate(
 
   // 13. Write NEXT_STEPS.md (RFC-0550); RFC-1125: profile may override via nextSteps field
   const nextStepsPath = path.join(targetDir, "NEXT_STEPS.md");
+  // RFC-1500 step 5: every written NEXT_STEPS.md links the consumer guide.
+  const flowDocFooter = `
+The fixed branch model is described in \`packages/forge/docs/branch-model.md\` in the Forge package — branches, sessions, integration, releases, and outbound rules.
+`;
   const nextStepsContent = initDomainFields.nextSteps ?? `# Next Steps
 
 Your Forge project is ready. The next step is mandatory: run \`/forge-bootstrap\` to configure your project interactively.
@@ -439,7 +443,7 @@ If you already have a project elsewhere and want to move it into Forge, tell the
 
 The system will guide you through the process — it detects your project type, migrates the code (including \`.env\` and git-ignored files), optionally transfers git history, and verifies the build.
 `;
-  await fio.writeFile(nextStepsPath, nextStepsContent);
+  await fio.writeFile(nextStepsPath, `${nextStepsContent}${flowDocFooter}`);
 
   // 14. RFC-1500: adopt the fixed branch model — unless --no-flow.
   // One scaffold commit on main, then the flow.install handler in process.
@@ -460,7 +464,7 @@ pnpm exec forge flow.install
 `;
 
   const appendManualFlowEntry = async (): Promise<void> => {
-    await fio.writeFile(nextStepsPath, `${nextStepsContent}${manualFlowEntry}`);
+    await fio.writeFile(nextStepsPath, `${nextStepsContent}${flowDocFooter}${manualFlowEntry}`);
   };
 
   if (noFlow) {
