@@ -20,11 +20,11 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0119: align retro delegation wording with pending routings; widen fo-idea-create-adr fast path</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
   <item>RFC-1487: step 7 — remove RFC-1462 session-worktree paths, COMMIT-FGN-01 guard, and .sessions model; document flow lifecycle</item>
   <item>RFC-1487: drop RFC-1487 id from fo-session-retro instruction text (SKILL-17)</item>
+  <item>RFC-1491: step 6 — outbound AGENTS paragraphs, retro step 3f, FLOW-PUSH/HOLD/GUARD-05/10/INT-11 catalog</item>
   <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433</history>
 </CHANGE_SUMMARY>
 -->
@@ -177,6 +177,13 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 - After the clean-tree commit, run `flow.integrate` from the session worktree — it rebases the branch onto `develop`, runs the primary checkout's `hooks/integration-gate.sh`, and fast-forwards `develop`.
 - On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
 - When the operator said to drop the work, run `flow.discard --reason "<operator words>"` instead of `flow.integrate`.
+
+**3f. List pending outbound items (dormant when not on the fixed branch model):**
+
+- This step applies only when the repository is on the fixed branch model — `flow.digest` answers a digest instead of a not-adopted refusal. Repositories without the flow module skip silently.
+- Run `pnpm exec forge flow.digest --no-fetch --json` and read the item counts by risk category, the held entries and the pending publications.
+- Report them on the `### <Pending outbound>` line of the Step 7 report — e.g. `3 items (contract: 1, other: 2), 1 held, 1 pending publication`, or `none`.
+- This step never runs `flow.push`, `flow.hold` or `flow.unhold` — outbound publication stays the operator's command.
 
 ### Step 4: RFC implementation verification (NON-NEGOTIABLE)
 
@@ -557,6 +564,7 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ### <Direct edits>: <count>
 ### <Commit>: <hash | none — no direct edits>
 ### <Left untouched>: <N unattributed dirty files — list each as "<tree>: <path>", or "none">
+### <Pending outbound>: <N unpushed items (<counts by category>), K held, M pending publications — or "none" when not on the fixed branch model>
 
 ### <Frictions in aiLanguage>
 <appended>: <N new registry entries, one line each with id + category>
