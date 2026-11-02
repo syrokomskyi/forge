@@ -20,15 +20,11 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: acceptance CX-1 — add the spec's negative filter to the checklist
-
-One-off external outages are not frictions unless they expose a missing
-guard — the sentence was in the accepted design but missing from the
-shipped signal checklist. Synced to the .agents copy.</item>
   <item>ADR-0121: persist soft-block report, fix E2-E4 wording, park arbitration</item>
   <item>ADR-0119: align retro delegation wording with pending routings; widen fo-idea-create-adr fast path</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
+  <item>RFC-1487: step 7 — remove RFC-1462 session-worktree paths, COMMIT-FGN-01 guard, and .sessions model; document flow lifecycle</item>
   <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433</history>
 </CHANGE_SUMMARY>
 -->
@@ -174,6 +170,13 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 - When in doubt whether a file is ours, classify it as unattributed — leaving a file uncommitted is the safe leg; the report keeps it visible. Orphans from previous sessions surface in the report, where the operator may order a follow-up commit if desired.
 - List every unattributed file left dirty on the `### <Left untouched>` line of the Step 7 report, one per tree.
 - If the tree is now clean (or was clean from the start), proceed silently.
+
+**3e. Integrate or discard the session flow branch (RFC-1487 — dormant until the wave-4 switch-over):**
+
+- This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently).
+- After the clean-tree commit, run `flow.integrate` from the session worktree — it rebases the branch onto `develop`, runs the primary checkout's `hooks/integration-gate.sh`, and fast-forwards `develop`.
+- On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
+- When the operator said to drop the work, run `flow.discard --reason "<operator words>"` instead of `flow.integrate`.
 
 ### Step 4: RFC implementation verification (NON-NEGOTIABLE)
 

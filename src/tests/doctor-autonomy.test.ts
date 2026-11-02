@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0391: initial doctor autonomy guard tests.</item>
+  <item>RFC-1487: step 7 — remove RFC-1462 session-worktree paths, COMMIT-FGN-01 guard, and .sessions model; document flow lifecycle</item>
 </CHANGE_SUMMARY>
 */
 
@@ -131,7 +132,7 @@ test("doctor exempts the os/werkstatt/ adapter boundary", async () => {
   );
   await writeFile(
     join(dir, "session-close.ts"),
-    'import { SessionEntry } from "@warpgogol/werkstatt-engine/werkstatt";\nexport const x = SessionEntry;',
+    'import type { CommitWerkstattResult } from "@warpgogol/werkstatt-engine/werkstatt";\nexport type { CommitWerkstattResult };',
     "utf8",
   );
 
