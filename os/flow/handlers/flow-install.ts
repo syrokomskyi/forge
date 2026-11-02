@@ -18,14 +18,16 @@ embedded flow.check report.</purpose>
   <item>markerSource resolves at plan time (RFC-1498): a non-network origin warns in the step detail by kind, never by path, and execution reuses the planned value — one git call, no plan/execute drift.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 2 — network-only marker source
 
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
-  <history>RFC-1486, RFC-1488</history>
+  <item>RFC-1498: step 3 — legacy-tags report in flow.install
+
+listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
+  <history>RFC-1486, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -83,7 +85,7 @@ import {
   discoverReleaseLines,
   readLineVersionFile,
 } from "../release-lines.ts";
-import { listLineTags, releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
+import { listLegacyTags, listLineTags, releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
 import { compareVersions, parseVersion } from "../semver.ts";
 import { collectFlowCheck, type FlowCheckData } from "./flow-check.ts";
 
@@ -101,6 +103,7 @@ export interface InstallStepReport {
     | "markers"
     | "commit"
     | "tags"
+    | "legacy-tags"
     | "report";
   status: "planned" | "done" | "skipped" | "refused" | "failed";
   detail?: string;
@@ -567,6 +570,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   // ancestor of main → FLOW-ADOPT-07. Evaluated in the plan phase so a
   // refusal leaves no tag behind.
   const tagPlans: TagPlan[] = [];
+  let legacyTags: Awaited<ReturnType<typeof listLegacyTags>> = [];
   if (!mainExists) {
     steps.push({
       step: "tags",
@@ -645,7 +649,20 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
           ? `baseline tag(s): ${tagPlans.map((t) => `${t.tag}@${t.commit.slice(0, 9)}`).join(", ")}`
           : "no baseline tags needed",
     });
+    legacyTags = await listLegacyTags(repoRoot, lines, io);
   }
+  // RFC-1498 — pre-program tags stay, but the operator sees them: every
+  // tag matching a line grammar that the release-line reader ignores
+  // (lightweight) or accepts without the forge/release-tag@1 schema.
+  // Informational — never a refusal.
+  steps.push({
+    step: "legacy-tags",
+    status: "planned",
+    detail:
+      legacyTags.length > 0
+        ? `pre-program tag(s): ${legacyTags.map((t) => `${t.name} (${t.kind})`).join(", ")}`
+        : "none",
+  });
   steps.push({ step: "report", status: "planned", detail: "embed flow.check diagnostics" });
 
   return {
@@ -751,6 +768,7 @@ export async function executeInstall(
     "markers",
     "commit",
     "tags",
+    "legacy-tags",
     "report",
   ];
   const failStep = (
@@ -1068,6 +1086,13 @@ export async function executeInstall(
     );
   } else {
     setStep(plan, "tags", "skipped", "no baseline tags needed");
+  }
+
+  // legacy-tags (RFC-1498) — informational only: the plan phase already
+  // listed them; execution changes nothing about existing tags.
+  {
+    const planned = plan.steps.find((s) => s.step === "legacy-tags");
+    setStep(plan, "legacy-tags", "done", planned?.detail ?? "none");
   }
 
   // 9. report — the flow.check rule set, embedded.

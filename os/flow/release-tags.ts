@@ -14,13 +14,16 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>`--merged HEAD` scopes to reachable tags only: a tag on an abandoned side branch must not become the baseline.</item>
   <item>`%(objecttype)` + `%(*objectname)` distinguishes annotated (`tag`) from lightweight (`commit`) — only annotated tags carry a line.</item>
   <item>Highest reachable wins over nearest: the historical `forge@0.15.0` predates real `forge@9.x` tags and must not lower the reported version.</item>
+  <item>listLegacyTags (RFC-1498) is reporting-only: one for-each-ref pass with NUL-delimited records (contents is multi-line) classifies prefix+semver-matching tags the reader does not honour — never rewrites them.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1498: step 3 — legacy-tags report in flow.install
+
+listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
   <history>RFC-1488</history>
 </CHANGE_SUMMARY>
 */
@@ -110,6 +113,63 @@ export async function listLineTags(
     }
   }
   return { lastTag, reachable: rows.map((r) => r.name) };
+}
+
+export interface LegacyTag {
+  /** Full tag name, e.g. v1.2.2 or lib@0.1.0. */
+  name: string;
+  /** Release-line id whose tag grammar the name matches. */
+  line: string;
+  /**
+   * Why the release-line reader does not treat it as a line tag:
+   * lightweight tags are invisible by design; an annotated tag without
+   * the forge/release-tag@1 schema line predates the program.
+   */
+  kind: "lightweight" | "annotated-without-schema";
+}
+
+const RELEASE_TAG_SCHEMA_LINE = /^schema:\s*forge\/release-tag@1\s*$/m;
+
+/**
+ * Pre-program tags (RFC-1498): every tag whose name matches a discovered
+ * line's grammar (tagPrefix + strict semver) but that the release-line
+ * reader does not honour — lightweight tags, and annotated tags whose
+ * body lacks the `schema: forge/release-tag@1` line. One `for-each-ref`
+ * pass; %00 delimits records because %(contents) is multi-line.
+ */
+export async function listLegacyTags(
+  repoRoot: string,
+  lines: ReleaseLine[],
+  io: WorkspaceIO,
+): Promise<LegacyTag[]> {
+  const sep = "\x1f";
+  const format = `%(refname)${sep}%(objecttype)${sep}%(contents)%00`;
+  const result = await git(repoRoot, io, ["for-each-ref", "refs/tags", `--format=${format}`]);
+  if (result.exitCode !== 0) return [];
+  const legacy: LegacyTag[] = [];
+  for (const rec of result.stdout.split("\x00")) {
+    const firstSep = rec.indexOf(sep);
+    const secondSep = firstSep === -1 ? -1 : rec.indexOf(sep, firstSep + 1);
+    if (firstSep === -1 || secondSep === -1) continue;
+    const refname = rec.slice(0, firstSep).replace(/^\s+/, "");
+    const objecttype = rec.slice(firstSep + 1, secondSep);
+    const contents = rec.slice(secondSep + 1);
+    const name = refname.startsWith("refs/tags/") ? refname.slice("refs/tags/".length) : refname;
+    const line = lines.find(
+      (l) =>
+        name.startsWith(l.tagPrefix) &&
+        parseVersion(name.slice(l.tagPrefix.length)) !== null,
+    );
+    if (line === undefined) continue;
+    if (objecttype === "tag") {
+      if (!RELEASE_TAG_SCHEMA_LINE.test(contents)) {
+        legacy.push({ name, line: line.id, kind: "annotated-without-schema" });
+      }
+    } else {
+      legacy.push({ name, line: line.id, kind: "lightweight" });
+    }
+  }
+  return legacy;
 }
 
 /** Short (9-char) form of a full commit hash — derived-version metadata. */
