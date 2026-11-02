@@ -15,9 +15,9 @@ flow.push must quote.</purpose>
   <item>Overlapping journal records are resolved newest-tail-first: records claim tail commits from the highest tip downward, so a stale record can never cover commits a newer record owns.</item>
   <item>The remote tag set comes from `git ls-remote --tags origin` whenever origin exists (read-only, allowed under --no-fetch); when it fails, a tag is remote-known iff its commit is an ancestor of a remote-tracking tip — a tag on an already-pushed commit is then indistinguishable from a pushed one.</item>
   <item>RFC frontmatter is read only via listRfcFiles/readRfcFrontmatter (RFC-1465 door) — never re-parsed locally.</item>
+  <item>tagTriggers (RFC-1498) is part of digestId input: a workflow-file change between digest and push must invalidate the quoted id. Unparseable workflows and ununderstood patterns warn FLOW-11 and match nothing — never block the digest.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 3 — digest collector: tail segmentation, risk categories, tags, held, pending publications, digestId</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
@@ -26,6 +26,10 @@ flow.push must quote.</purpose>
 Steering-session verification of wave 2 found two outbound defects:
 - flow.digest attributed items by index spans over the date-ordered tail; after a fix release and its back-merge, the fix cut record (whose range lives on main) claimed the develop integration that shared its base, so the operator saw 'feat: dev work' labelled as the fix release. Segments now follow develop's first-parent chain and item commit counts come from the base..tip range.
 - flow.hold on the item at the tip of develop ran cherry-pick on an empty range and refused FLOW-HOLD-07. An empty tail now resets develop to the item's base.</item>
+  <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
+
+flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -48,6 +52,7 @@ import {
 import { tagAnnotationLevel } from "./publish.ts";
 import { discoverReleaseLines, type ReleaseLine } from "./release-lines.ts";
 import { listLineTags } from "./release-tags.ts";
+import { primaryWorktree } from "./worktree-path.ts";
 
 export interface FlowDigestItem {
   id: string; // "I-<first 9 hex of tip>"
@@ -79,6 +84,13 @@ export interface FlowDigestData {
     heldAt: string;
   }>;
   pendingPublications: Array<{ tag: string; line: string }>;
+  /**
+   * RFC-1498: CI workflows a push of each digest tag would start —
+   * `.github/workflows` files whose `on.push.tags` filter matches the tag
+   * name (repo-relative paths, sorted). Only tags with at least one match
+   * get an entry.
+   */
+  tagTriggers: Array<{ tag: string; workflows: string[] }>;
   diagnostics: Diagnostic[];
 }
 
@@ -409,6 +421,112 @@ async function tagReachableFromRemote(
   return false;
 }
 
+const WORKFLOWS_DIR = join(".github", "workflows");
+
+/**
+ * The `on.push.tags` patterns of one parsed workflow document (RFC-1498).
+ * Only a mapping `on:` with `push.tags` yields patterns — `on: push`,
+ * `on: [push, …]` and `push:` without `tags` trigger on branches, not
+ * tags. `on` may arrive as the boolean `true` when the file was authored
+ * for YAML 1.1 semantics.
+ */
+function pushTagPatterns(parsed: unknown): string[] {
+  if (typeof parsed !== "object" || parsed === null) return [];
+  const rec = parsed as Record<string, unknown>;
+  const on = rec["on"] ?? rec["true"];
+  if (typeof on !== "object" || on === null || Array.isArray(on)) return [];
+  const push = (on as Record<string, unknown>)["push"];
+  if (typeof push !== "object" || push === null || Array.isArray(push)) return [];
+  const tags = (push as Record<string, unknown>)["tags"];
+  if (typeof tags === "string") return [tags];
+  if (Array.isArray(tags)) return tags.filter((t): t is string => typeof t === "string");
+  return [];
+}
+
+/**
+ * GitHub glob → regex for the tag-name subset Forge evaluates (RFC-1498):
+ * `*` within a segment, `**` across segments, `?` one char. Returns null
+ * for patterns we do not understand — `[` character classes and leading
+ * `!` negations — so the caller can report them instead of guessing.
+ */
+export function tagPatternRegex(pattern: string): RegExp | null {
+  if (pattern.startsWith("!") || pattern.includes("[")) return null;
+  let out = "^";
+  for (let i = 0; i < pattern.length; i++) {
+    const c = pattern[i]!;
+    if (c === "*") {
+      if (pattern[i + 1] === "*") {
+        out += ".*";
+        i++;
+      } else {
+        out += "[^/]*";
+      }
+    } else if (c === "?") {
+      out += ".";
+    } else {
+      out += c.replace(/[.+^${}()|\\]/g, "\\$&");
+    }
+  }
+  return new RegExp(`${out}$`);
+}
+
+/**
+ * Tag-trigger patterns of every `.github/workflows/*.y{ml,aml}` file under
+ * `dir` (RFC-1498), repo-relative file paths. A file that cannot be read
+ * or parsed reports FLOW-11 and contributes nothing; a pattern the glob
+ * subset does not cover reports FLOW-11 and matches nothing.
+ */
+async function workflowTagPatterns(
+  dir: string,
+  io: WorkspaceIO,
+  diagnostics: Diagnostic[],
+): Promise<Array<{ file: string; patterns: string[] }>> {
+  const workflows: Array<{ file: string; patterns: string[] }> = [];
+  if (!(await io.exists(dir))) return workflows;
+  const entries = await io.readdir(dir).catch(() => []);
+  const names = entries
+    .filter((e) => e.isFile && /\.ya?ml$/.test(e.name))
+    .map((e) => e.name)
+    .sort();
+  for (const name of names) {
+    const file = `${WORKFLOWS_DIR}/${name}`;
+    const text = await io.readFile(join(dir, name)).catch(() => null);
+    let parsed: unknown = null;
+    let ok = text !== null;
+    if (text !== null) {
+      try {
+        parsed = parseYaml(text);
+      } catch {
+        ok = false;
+      }
+    }
+    if (!ok) {
+      diagnostics.push({
+        ruleId: "FLOW-11",
+        severity: "warning",
+        file,
+        message: `workflow ${file} cannot be parsed — its tag triggers are not evaluated`,
+        fixHint: "fix the workflow YAML — the digest treats it as matching nothing",
+      });
+      continue;
+    }
+    const patterns = pushTagPatterns(parsed);
+    for (const p of patterns) {
+      if (tagPatternRegex(p) === null) {
+        diagnostics.push({
+          ruleId: "FLOW-11",
+          severity: "warning",
+          file,
+          message: `workflow ${file}: tag pattern '${p}' not understood — it matches nothing`,
+          fixHint: "use plain globs (*, **, ?) — character classes and negations are not evaluated",
+        });
+      }
+    }
+    if (patterns.length > 0) workflows.push({ file, patterns });
+  }
+  return workflows;
+}
+
 /** The release line a tag belongs to — longest prefix wins. */
 export function lineForTag(lines: ReleaseLine[], tag: string): ReleaseLine | null {
   let best: ReleaseLine | null = null;
@@ -589,6 +707,24 @@ export async function collectDigest(
     pendingPublications.push({ tag, line: line.id });
   }
 
+  // --- CI workflows a tag push would trigger (RFC-1498) --------------------
+  // Read on the primary checkout — that is the working copy the operator
+  // sees; a bare or primary-less repo degrades to no workflows.
+  let primary = repoRoot;
+  try {
+    primary = await primaryWorktree(io, repoRoot);
+  } catch {
+    primary = repoRoot;
+  }
+  const tagPatterns = await workflowTagPatterns(join(primary, WORKFLOWS_DIR), io, diagnostics);
+  const tagTriggers: FlowDigestData["tagTriggers"] = [];
+  for (const tag of tags) {
+    const workflows = tagPatterns
+      .filter((w) => w.patterns.some((p) => tagPatternRegex(p)?.test(tag) === true))
+      .map((w) => w.file);
+    if (workflows.length > 0) tagTriggers.push({ tag, workflows });
+  }
+
   const byCategory = Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as Record<
     RiskCategory,
     string[]
@@ -601,6 +737,7 @@ export async function collectDigest(
         develop: { local: developLocal, remote: developRemote, ahead: developTail.length },
         main: { local: mainLocal, remote: mainRemote, ahead: mainTail.length },
         tags,
+        tagTriggers,
         items: items.map((i) => ({ id: i.id, tip: i.tip })),
       }),
     )
@@ -618,6 +755,7 @@ export async function collectDigest(
     byCategory,
     held,
     pendingPublications,
+    tagTriggers,
     diagnostics,
   };
 }
