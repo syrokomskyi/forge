@@ -20,6 +20,7 @@ X-RFC trailers. Diagnostics: FLOW-VER-01 (no baseline tag), FLOW-VER-02
   <item>RFC-1488: step 4 — flow.version handler</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
+  <item>RFC-1493: step 1 — forge public release-line version reader</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,14 +32,14 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
-import { git, requireGit, statusTracked, topLevel } from "../git.ts";
+import { git, requireGit, topLevel } from "../git.ts";
+import { deriveLineVersion } from "../line-version.ts";
 import { pendingLevel } from "../release-level.ts";
 import {
   discoverReleaseLines,
   readLineVersionFile,
   type ReleaseLine,
 } from "../release-lines.ts";
-import { listLineTags } from "../release-tags.ts";
 import type { ReleaseLevel } from "../semver.ts";
 
 export interface FlowVersionLineReport {
@@ -67,35 +68,6 @@ export interface FlowVersionData {
 export interface FlowVersionOutcome {
   data: FlowVersionData;
   diagnostics: Diagnostic[];
-}
-
-/** Count commits in `since..<ref>` (or all of <ref> when since is empty) touching `paths`. */
-async function commitsSinceRef(
-  repoRoot: string,
-  since: string,
-  paths: string[],
-  io: WorkspaceIO,
-  ref = "HEAD",
-): Promise<number> {
-  const range = since === "" ? ref : `${since}..${ref}`;
-  const args = ["rev-list", "--count", range];
-  if (paths.length > 0) args.push("--", ...paths);
-  const result = await git(repoRoot, io, args);
-  return result.exitCode === 0 ? Number.parseInt(result.stdout.trim(), 10) || 0 : 0;
-}
-
-/** Tracked modifications inside `paths` (empty = whole worktree). */
-async function dirtyPaths(
-  repoRoot: string,
-  paths: string[],
-  io: WorkspaceIO,
-): Promise<number> {
-  const entries = await statusTracked(repoRoot, io);
-  if (paths.length === 0) return entries.length;
-  return entries.filter((entry) => {
-    const file = entry.slice(3).split(" -> ").pop() ?? "";
-    return paths.some((p) => file === p || file.startsWith(`${p}/`));
-  }).length;
 }
 
 /**
@@ -141,15 +113,11 @@ async function buildLineReport(
   io: WorkspaceIO,
   diagnostics: Diagnostic[],
 ): Promise<FlowVersionLineReport> {
-  const [tags, currentVersion, dirtyCount] = await Promise.all([
-    listLineTags(repoRoot, line, io),
-    readLineVersionFile(repoRoot, line, io),
-    dirtyPaths(repoRoot, line.paths, io),
-  ]);
-  const since = tags.lastTag?.name ?? "";
-  const commitsSince = await commitsSinceRef(repoRoot, since, line.paths, io);
+  const derived_ = await deriveLineVersion(repoRoot, line, io);
+  const currentVersion = await readLineVersionFile(repoRoot, line, io);
+  const since = derived_.lastTag?.name ?? "";
 
-  if (tags.lastTag === null) {
+  if (derived_.lastTag === null) {
     diagnostics.push({
       ruleId: "FLOW-VER-01",
       severity: "warning",
@@ -157,23 +125,15 @@ async function buildLineReport(
     });
   }
 
-  const dirty = dirtyCount > 0;
-  let derived: string | null = null;
-  if (tags.lastTag !== null && head !== null) {
-    const base =
-      commitsSince > 0
-        ? `${tags.lastTag.name.slice(line.tagPrefix.length)}+${commitsSince}.${head}`
-        : tags.lastTag.name.slice(line.tagPrefix.length);
-    derived =
-      dirty && commitsSince === 0 ? `${base}+0.${head}.dirty` : dirty ? `${base}.dirty` : base;
-  }
+  const { commitsSince, dirty } = derived_;
+  const derived = derived_.source === "release-tag" && head !== null ? derived_.version : null;
 
   const pending = await pendingLevel(
     line,
     since,
     io,
     repoRoot,
-    tags.lastTag?.version ?? null,
+    derived_.lastTag?.version ?? null,
   );
   diagnostics.push(...pending.diagnostics);
 
@@ -183,8 +143,10 @@ async function buildLineReport(
     versionFile: line.versionFile,
     paths: line.paths,
     currentVersion,
-    lastTag: tags.lastTag?.name ?? null,
-    lastVersion: tags.lastTag ? tags.lastTag.name.slice(line.tagPrefix.length) : null,
+    lastTag: derived_.lastTag?.name ?? null,
+    lastVersion: derived_.lastTag
+      ? derived_.lastTag.name.slice(line.tagPrefix.length)
+      : null,
     commitsSince,
     head,
     dirty,
