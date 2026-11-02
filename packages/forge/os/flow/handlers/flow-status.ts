@@ -14,7 +14,6 @@ for both surfaces.</purpose>
   <item>Stale is max(lastCommitAt, updatedAt) &gt; 72 h for registered entries and lastCommitAt &gt; 72 h for unregistered branches; held entries are never stale (RFC FLOW-06).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 5 — flow.status collector + handler</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -28,6 +27,10 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
+
+collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* branch names with no registry entry and no worktree checkout anywhere (primary or linked), the shape a failed branch -D leaves behind. flow.check emits one FLOW-07 warning per stray regardless of age: the 72 h rule in FLOW-06 only covered staleness, so a fresh leftover went unreported. The fix hint names flow.status for inspection and flow.discard for teardown, and flags that a branch with unique commits needs a human decision. Tests AC-1 (fresh stray branch reports FLOW-07, not FLOW-06) and AC-2 (a registered session with a live worktree reports none).</item>
+  <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -92,6 +95,13 @@ export interface FlowStatusOutcome {
   missingWorktreeEntries: FlowRegistryEntry[];
   /** auto/* worktree paths with no registry entry (FLOW-07 material). */
   unregisteredWorktrees: string[];
+  /**
+   * RFC-1498: local auto/* branch names with no registry entry and no
+   * worktree checkout anywhere — the shape a failed `branch -D` leaves
+   * behind. Reported regardless of age (FLOW-06's 72 h rule only covers
+   * staleness).
+   */
+  unregisteredBranchesWithoutWorktree: string[];
   registryError: FlowRegistrySchemaError | null;
 }
 
@@ -142,6 +152,12 @@ export async function collectFlowStatus(
     .filter((w) => w.branch !== null && parseFlowBranch(w.branch) !== null && !entryByName.has(w.branch))
     .filter((w) => w.path !== primary)
     .map((w) => w.path);
+
+  // RFC-1498: a stray is a local auto branch nothing owns — no registry
+  // entry and no worktree (primary or linked) checks it out.
+  const unregisteredBranchesWithoutWorktree = autoBranches
+    .filter((name) => !entryByName.has(name) && !worktreeByBranch.has(name))
+    .sort();
 
   const branches: FlowBranchStatus[] = [];
   for (const name of [...names].sort()) {
@@ -211,6 +227,7 @@ export async function collectFlowStatus(
     missingBranchEntries,
     missingWorktreeEntries,
     unregisteredWorktrees,
+    unregisteredBranchesWithoutWorktree,
     registryError,
   };
 }

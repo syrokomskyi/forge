@@ -15,12 +15,14 @@ by flow.install step 9.</purpose>
   <item>Ungoverned repositories (no forge.yaml, no marker) report repoKind with no diagnostics — the model only applies where forge.yaml opts in.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
-  <history>RFC-1486</history>
+  <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
+
+collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* branch names with no registry entry and no worktree checkout anywhere (primary or linked), the shape a failed branch -D leaves behind. flow.check emits one FLOW-07 warning per stray regardless of age: the 72 h rule in FLOW-06 only covered staleness, so a fresh leftover went unreported. The fix hint names flow.status for inspection and flow.discard for teardown, and flags that a branch with unique commits needs a human decision. Tests AC-1 (fresh stray branch reports FLOW-07, not FLOW-06) and AC-2 (a registered session with a live worktree reports none).</item>
+  <history>RFC-1486, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -278,6 +280,18 @@ export async function collectFlowCheck(
       severity: "warning",
       message: `worktree ${path} carries an auto branch with no registry entry`,
       fixHint: "open sessions through flow.open — a manual worktree bypasses the lifecycle",
+    });
+  }
+  // RFC-1498: a stray auto branch — no registry entry, no worktree — is
+  // reported the moment it exists; the 72 h staleness rule never delayed it.
+  for (const name of status?.unregisteredBranchesWithoutWorktree ?? []) {
+    diagnostics.push({
+      ruleId: "FLOW-07",
+      severity: "warning",
+      message: `branch '${name}' has no registry entry and no worktree`,
+      fixHint:
+        "inspect with flow.status; integrate it through a registered session or drop it " +
+        "with flow.discard --reason \"<why>\" — a branch with unique commits needs a human decision",
     });
   }
 

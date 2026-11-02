@@ -9,6 +9,9 @@ throwaway repos.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 3 — flow.check handler tests</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
+  <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
+
+collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* branch names with no registry entry and no worktree checkout anywhere (primary or linked), the shape a failed branch -D leaves behind. flow.check emits one FLOW-07 warning per stray regardless of age: the 72 h rule in FLOW-06 only covered staleness, so a fresh leftover went unreported. The fix hint names flow.status for inspection and flow.discard for teardown, and flags that a branch with unique commits needs a human decision. Tests AC-1 (fresh stray branch reports FLOW-07, not FLOW-06) and AC-2 (a registered session with a live worktree reports none).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,7 +22,9 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
+import { formatFlowBranch } from "../branch-name.ts";
 import { collectFlowCheck } from "../handlers/flow-check.ts";
+import { openFlowBranch } from "../handlers/flow-open.ts";
 import {
   gitExec,
   initRepo,
@@ -147,6 +152,45 @@ describe("collectFlowCheck", () => {
     expect(data.guardInstalled).toBe(true);
     expect(diagnostics).toEqual([]);
   });
+
+  it("RFC-1498 AC-1: a stray auto branch reports FLOW-07 while younger than 72 h", async () => {
+    const repo = await governedRepo();
+    await gitExec(repo, ["branch", "develop", "HEAD"]);
+    // No registry entry, no worktree — the shape a failed `branch -D` leaves.
+    const stray = formatFlowBranch({
+      kind: "session",
+      date: new Date(),
+      seq: 1,
+      slug: "leftover",
+    });
+    await gitExec(repo, ["branch", stray, "develop"]);
+    const { diagnostics } = await collectFlowCheck(repo, ambientIo);
+    const flow07 = diagnostics.filter(
+      (d) => d.ruleId === "FLOW-07" && d.message.includes(stray),
+    );
+    expect(flow07.length).toBe(1);
+    expect(flow07[0]!.severity).toBe("warning");
+    expect(flow07[0]!.message).toContain("no registry entry and no worktree");
+    // And it is NOT FLOW-06 — the branch is fresh.
+    expect(diagnostics.some((d) => d.ruleId === "FLOW-06")).toBe(false);
+  }, 15_000);
+
+  it("RFC-1498 AC-2: a registered session with a live worktree reports no FLOW-07", async () => {
+    const repo = await governedRepo();
+    await gitExec(repo, ["branch", "develop", "HEAD"]);
+    await gitExec(repo, ["switch", "develop"]);
+    const session = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "adopted",
+      brief: null,
+      owner: null,
+      dryRun: false,
+      now: new Date(),
+    });
+    dirs.push(session.worktree!);
+    const { diagnostics } = await collectFlowCheck(repo, ambientIo);
+    expect(diagnostics.some((d) => d.ruleId === "FLOW-07")).toBe(false);
+  }, 15_000);
 
   it("detects a stale managed block inside hooks/pre-commit", async () => {
     const repo = await governedRepo();
