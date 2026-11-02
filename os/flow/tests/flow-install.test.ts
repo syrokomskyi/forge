@@ -13,6 +13,7 @@ files.</purpose>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
+  <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
 </CHANGE_SUMMARY>
 */
 
@@ -139,6 +140,7 @@ describe("flow.install — adoption", () => {
       "hooks/flow-guard.sh",
       "hooks/pre-commit",
       "hooks/pre-merge-commit",
+      "hooks/pre-push",
     ]);
 
     const branch = await gitExec(repo, ["symbolic-ref", "--short", "-q", "HEAD"]);

@@ -17,11 +17,11 @@ embedded flow.check report.</purpose>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -62,10 +62,18 @@ import {
   mergeManagedBlockForMode,
   PRECOMMIT_FILE,
   PREMERGE_FILE,
+  PREPUSH_FILE,
   readGuardAsset,
   renderManagedHook,
   renderManagedPreCommit,
 } from "../guard-files.ts";
+import {
+  MARKER_FILE,
+  markerContent,
+  markerSource,
+  missingLineMarkers,
+  type LineMarker,
+} from "../markers.ts";
 import { detectRepoKind } from "../repo-kind.ts";
 import {
   discoverReleaseLines,
@@ -85,6 +93,8 @@ export interface InstallStepReport {
     | "guard"
     | "pre-commit"
     | "pre-merge-commit"
+    | "pre-push"
+    | "markers"
     | "commit"
     | "tags"
     | "report";
@@ -119,6 +129,11 @@ export interface InstallPlan {
   preMergeChange: PreCommitChange;
   /** hooks/pre-merge-commit already exists in the commit's parent ref. */
   preMergeCommitted: boolean;
+  prePushChange: PreCommitChange;
+  /** hooks/pre-push already exists in the commit's parent ref. */
+  prePushCommitted: boolean;
+  /** Package-line dirs lacking a valid forge.generated.yaml (RFC-1491). */
+  markerPlans: LineMarker[];
   /** Baseline release tags the execute phase creates (RFC-1488 step 8.5). */
   tagPlans: TagPlan[];
 }
@@ -161,6 +176,9 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       preCommitCommitted: false,
       preMergeChange: "identical",
       preMergeCommitted: false,
+      prePushChange: "identical",
+      prePushCommitted: false,
+      markerPlans: [],
       tagPlans: [],
     };
   };
@@ -469,13 +487,55 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
         : `${preMergeChange} managed block in hooks/pre-merge-commit`,
   });
 
+  const prePushPath = join(primary, PREPUSH_FILE);
+  const prePushExisting = (await io.exists(prePushPath))
+    ? await io.readFile(prePushPath)
+    : null;
+  const prePushCommitted =
+    hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, PREPUSH_FILE));
+  let prePushChange: PreCommitChange;
+  if (prePushExisting === null) {
+    prePushChange = "create";
+  } else if (mergeManagedBlockForMode(prePushExisting, "pre-push") === null) {
+    prePushChange = "identical";
+  } else {
+    const beginIdx = prePushExisting.indexOf(GUARD_BEGIN_MARKER);
+    const endIdx = prePushExisting.indexOf(GUARD_END_MARKER);
+    prePushChange = beginIdx !== -1 && endIdx !== -1 && beginIdx < endIdx ? "replace" : "insert";
+  }
+  steps.push({
+    step: "pre-push",
+    status: "planned",
+    detail:
+      prePushChange === "identical"
+        ? prePushCommitted
+          ? "hooks/pre-push already carries the managed block"
+          : "hooks/pre-push carries the managed block but is uncommitted — land it on develop"
+        : `${prePushChange} managed block in hooks/pre-push`,
+  });
+
+  // markers (RFC-1491) — every package line gets a forge.generated.yaml the
+  // extract copies into its repository; the repo line never carries one.
+  const { markers: markerPlans } = await missingLineMarkers(repoRoot, io);
+  steps.push({
+    step: "markers",
+    status: "planned",
+    detail:
+      markerPlans.length > 0
+        ? `marker(s): ${markerPlans.map((m) => join(m.dir, MARKER_FILE)).join(", ")}`
+        : "every package line already carries a valid marker",
+  });
+
   const commitNeeded =
     guardChange === "write" ||
     !guardCommitted ||
     preCommitChange !== "identical" ||
     !preCommitCommitted ||
     preMergeChange !== "identical" ||
-    !preMergeCommitted;
+    !preMergeCommitted ||
+    prePushChange !== "identical" ||
+    !prePushCommitted ||
+    markerPlans.length > 0;
   steps.push({
     step: "commit",
     status: "planned",
@@ -586,6 +646,9 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     preCommitCommitted,
     preMergeChange,
     preMergeCommitted,
+    prePushChange,
+    prePushCommitted,
+    markerPlans,
     tagPlans,
   };
 }
@@ -666,6 +729,8 @@ export async function executeInstall(
     "guard",
     "pre-commit",
     "pre-merge-commit",
+    "pre-push",
+    "markers",
     "commit",
     "tags",
     "report",
@@ -868,9 +933,76 @@ export async function executeInstall(
     }
   }
 
+  // 7.7 pre-push — the RFC-1491 outbound mode.
+  const prePushPath = join(primary, PREPUSH_FILE);
+  if (plan.prePushChange === "identical") {
+    if (!plan.prePushCommitted) {
+      hooksNeedCommit = true;
+      setStep(plan, "pre-push", "done", "managed block already correct — staged for commit");
+    } else {
+      setStep(plan, "pre-push", "skipped", "managed block already present");
+    }
+  } else {
+    const existing = (await io.exists(prePushPath)) ? await io.readFile(prePushPath) : null;
+    const next =
+      existing === null
+        ? renderManagedHook("pre-push")
+        : mergeManagedBlockForMode(existing, "pre-push");
+    if (next === null) {
+      if (!plan.prePushCommitted) {
+        hooksNeedCommit = true;
+        setStep(plan, "pre-push", "done", "managed block already correct — staged for commit");
+      } else {
+        setStep(plan, "pre-push", "skipped", "managed block already present");
+      }
+    } else {
+      try {
+        await io.mkdir(join(primary, "hooks"));
+        await io.writeFile(prePushPath, next.endsWith("\n") ? next : `${next}\n`);
+      } catch (err) {
+        return failStep(
+          "pre-push",
+          `writing ${PREPUSH_FILE} failed: ${(err as Error).message}`,
+        );
+      }
+      const chmod = await io.exec("chmod", ["0755", prePushPath]);
+      if (chmod.exitCode !== 0) {
+        return failStep("pre-push", `chmod 0755 ${PREPUSH_FILE} failed: ${chmod.stderr.trim()}`);
+      }
+      hooksNeedCommit = true;
+      setStep(plan, "pre-push", "done", `${plan.prePushChange}d managed block in hooks/pre-push`);
+    }
+  }
+
+  // 7.8 markers (RFC-1491) — forge.generated.yaml per package line so every
+  // extract repository carries the generated marker.
+  if (plan.markerPlans.length === 0) {
+    setStep(plan, "markers", "skipped", "every package line already carries a valid marker");
+  } else {
+    const source = await markerSource(repoRoot, io);
+    for (const m of plan.markerPlans) {
+      try {
+        await io.mkdir(join(primary, m.dir));
+        await io.writeFile(join(primary, m.dir, MARKER_FILE), markerContent(`${source}#${m.dir}`));
+      } catch (err) {
+        return failStep("markers", `writing ${m.dir}/${MARKER_FILE} failed: ${(err as Error).message}`);
+      }
+    }
+    hooksNeedCommit = true;
+    setStep(plan, "markers", "done", `wrote ${plan.markerPlans.length} marker(s)`);
+  }
+
   // 8. adoption commit — under FORGE_FLOW_OP=install, nothing else staged.
   if (hooksNeedCommit) {
-    const add = await git(primary, io, ["add", GUARD_FILE, PRECOMMIT_FILE, PREMERGE_FILE]);
+    const markerPaths = plan.markerPlans.map((m) => join(m.dir, MARKER_FILE));
+    const add = await git(primary, io, [
+      "add",
+      GUARD_FILE,
+      PRECOMMIT_FILE,
+      PREMERGE_FILE,
+      PREPUSH_FILE,
+      ...markerPaths,
+    ]);
     if (add.exitCode !== 0) {
       return failStep("commit", `git add failed: ${add.stderr.trim()}`);
     }

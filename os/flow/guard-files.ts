@@ -13,11 +13,12 @@ reader and the insert/replace/verify operations shared by flow.check
   <item>The asset is read via import.meta.url so the same bytes are checked (FLOW-03), installed (flow.install) and parity-tested — one source of truth, no formatter may rewrite it.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 3 — managed-block constants and guard file helpers</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
+  <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +29,7 @@ import { fileURLToPath } from "node:url";
 export const GUARD_BEGIN_MARKER = "# >>> forge flow guard (managed by flow.install) >>>";
 export const GUARD_END_MARKER = "# <<< forge flow guard <<<";
 
-export type GuardMode = "pre-commit" | "pre-merge-commit";
+export type GuardMode = "pre-commit" | "pre-merge-commit" | "pre-push";
 
 export function guardInvokeLine(mode: GuardMode): string {
   return `sh "$(git rev-parse --show-toplevel)/hooks/flow-guard.sh" ${mode} || exit 1`;
@@ -49,6 +50,7 @@ export const HOOKS_DIR = "hooks";
 export const GUARD_FILE = "hooks/flow-guard.sh";
 export const PRECOMMIT_FILE = "hooks/pre-commit";
 export const PREMERGE_FILE = "hooks/pre-merge-commit";
+export const PREPUSH_FILE = "hooks/pre-push";
 
 const GUARD_ASSET_RELATIVE = join("os", "flow", "assets", "flow-guard.sh");
 
