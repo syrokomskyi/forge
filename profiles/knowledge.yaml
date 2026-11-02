@@ -423,6 +423,25 @@ workspace:
             path: apps/web
           - name: mcp
             path: apps/mcp
+    - path: hooks/worktree-setup.sh
+      content: |
+        #!/bin/sh
+        # worktree-setup for a flow session worktree (RFC-1487, RFC-1500).
+        # Nothing to prepare in this stack — sessions reuse the primary's tooling.
+        set -eu
+        exit 0
+    - path: hooks/integration-gate.sh
+      content: |
+        #!/bin/sh
+        # Integration gate for flow.integrate (RFC-1487, RFC-1500).
+        # cwd: the worktree under judgment; non-zero exit refuses.
+        set -eu
+        if [ -e node_modules/.bin/forge ]; then
+          pnpm exec forge validate
+        else
+          echo "integration-gate: forge is not installed — skipping validation" >&2
+          exit 0
+        fi
 plugin:
   id: werkstatt-knowledge
   package: "@warpgogol/werkstatt-knowledge"

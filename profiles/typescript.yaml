@@ -548,5 +548,29 @@ workspace:
         - Engine: @warpgogol/forge
         - Plugin: @warpgogol/werkstatt-typescript
         - Stack profile: typescript
+    - path: hooks/worktree-setup.sh
+      content: |
+        #!/bin/sh
+        # worktree-setup for a flow session worktree (RFC-1487, RFC-1500).
+        # cwd: the new worktree; FLOW_PRIMARY is the primary checkout.
+        set -eu
+        for env_file in "$FLOW_PRIMARY"/.env "$FLOW_PRIMARY"/.env.*; do
+          case "$env_file" in *.example) continue ;; esac
+          [ -f "$env_file" ] || continue
+          cp "$env_file" "./$(basename "$env_file")"
+        done
+        pnpm install --frozen-lockfile
+    - path: hooks/integration-gate.sh
+      content: |
+        #!/bin/sh
+        # Integration gate for flow.integrate (RFC-1487, RFC-1500).
+        # cwd: the worktree under judgment; non-zero exit refuses.
+        set -eu
+        pnpm install --frozen-lockfile
+        for script in typecheck lint test; do
+          if node -e "process.exit((require('./package.json').scripts||{})['$script'] ? 0 : 1)" 2>/dev/null; then
+            pnpm run "$script"
+          fi
+        done
 install:
   - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt-typescript @warpgogol/werkstatt-engine @warpgogol/werkstatt-shared prettier vitest typescript
