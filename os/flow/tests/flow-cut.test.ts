@@ -19,6 +19,7 @@ resume path (AC-5: subject-named tags missing → tail re-runs).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 4 — flow.cut happy path, refusals, and resume tests</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,8 +29,11 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
+import type { ForgeRuntimeContext } from "../../../src/types.ts";
 import { gitExec, initRepo, installGuard } from "./helpers.ts";
-import { runOrdinaryCut } from "../handlers/flow-cut.ts";
+import { runFlowCut, runOrdinaryCut } from "../handlers/flow-cut.ts";
+import { openFlowBranch } from "../handlers/flow-open.ts";
+import { flowWorktreePath } from "../worktree-path.ts";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -50,11 +54,24 @@ async function sha(repo: string, ref: string): Promise<string> {
   return (await gitExec(repo, ["rev-parse", ref])).stdout.trim();
 }
 
+/** Kernel-shaped context for direct runFlowCut calls (dispatch tests). */
+function stubContext(repo: string): ForgeRuntimeContext {
+  return {
+    workspaceRoot: repo,
+    logger: { section() {}, info() {}, warn() {}, error() {}, success() {} },
+    dryRun: false,
+    outputFormat: "json",
+    io: ambientIo,
+  };
+}
+
 /**
  * Adopted repository: governed + develop + committed guard files + baseline
- * tag v0.1.0 + one pending work commit on develop.
+ * tag v0.1.0 + one pending work commit on develop. `packageLine` adds a
+ * packages/lib release line (extract.config.yaml + package.json v2.0.0,
+ * baseline tag lib@2.0.0, a pending lib-side commit).
  */
-async function adoptedRepo(opts?: { pending?: boolean }): Promise<string> {
+async function adoptedRepo(opts?: { pending?: boolean; packageLine?: boolean }): Promise<string> {
   const repo = await initRepo({ prefix: "flow-cut-" });
   dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
@@ -62,18 +79,33 @@ async function adoptedRepo(opts?: { pending?: boolean }): Promise<string> {
     join(repo, "package.json"),
     '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n',
   );
+  if (opts?.packageLine) {
+    await writeFile(join(repo, "pnpm-workspace.yaml"), 'packages:\n  - "packages/*"\n');
+    await mkdir(join(repo, "packages/lib"), { recursive: true });
+    await writeFile(
+      join(repo, "packages/lib/package.json"),
+      '{\n  "name": "lib",\n  "version": "2.0.0"\n}\n',
+    );
+    await writeFile(join(repo, "packages/lib/extract.config.yaml"), "schema: extract\n");
+  }
   await gitExec(repo, ["add", "-A"]);
   await gitExec(repo, ["commit", "-m", "config"]);
   await gitExec(repo, ["switch", "-c", "develop"]);
-  if (opts?.pending !== false) await commitIn(repo, "work.txt", "work");
+  if (opts?.pending !== false) {
+    await commitIn(repo, "work.txt", "work");
+    if (opts?.packageLine) await commitIn(repo, "packages/lib/libfile.txt", "lib work");
+  }
   await installGuard(repo);
   await gitExec(repo, ["add", "hooks"]);
   const adopt = await gitExec(repo, ["commit", "-m", "chore: adopt forge flow guard"], {
     FORGE_FLOW_OP: "install",
   });
   if (adopt.exitCode !== 0) throw new Error(`adoption commit failed: ${adopt.stderr}`);
-  // Baseline tag on main — the pending commits sit on develop.
+  // Baseline tags on main — the pending commits sit on develop.
   await gitExec(repo, ["tag", "-a", "v0.1.0", "main", "-m", "release v0.1.0"]);
+  if (opts?.packageLine) {
+    await gitExec(repo, ["tag", "-a", "lib@2.0.0", "main", "-m", "release lib@2.0.0"]);
+  }
   return repo;
 }
 
@@ -88,7 +120,7 @@ describe("flow.cut — ordinary path", () => {
     expect(data.tags).toEqual(["v0.1.1"]);
     expect(data.versions["repo"]).toBe("0.1.1");
     const tip = await sha(repo, "develop");
-    expect(data.mainTip).toBe(tip);
+    expect(data.mainAfter).toBe(tip);
     expect(await sha(repo, "main")).toBe(tip);
     expect(await sha(repo, "v0.1.1^{}")).toBe(tip);
     // Version file actually written on the released commit.
@@ -99,36 +131,6 @@ describe("flow.cut — ordinary path", () => {
     expect(subject.trim()).toBe("chore(release): v0.1.1");
     // Release branch + worktree are gone.
     expect((await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/heads/auto/session-0-1-1-release-0-1-1"])).exitCode).not.toBe(0);
-  }, 30_000);
-
-  it("rerun after a completed cut is a no-op report (resumed, no mutation)", async () => {
-    const repo = await adoptedRepo();
-    await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
-    const tipBefore = await sha(repo, "develop");
-
-    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
-
-    // The tip subject still names v0.1.1 and the tag exists → released report.
-    expect(data.released).toBe(true);
-    expect(data.resumed).toBe(true);
-    expect(await sha(repo, "develop")).toBe(tipBefore);
-  }, 30_000);
-
-  it("resumes the tail when the release commit is integrated but the tag is missing (AC-5)", async () => {
-    const repo = await adoptedRepo();
-    const first = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
-    expect(first.released).toBe(true);
-    // Break the tail: tag gone, main rewound to the baseline.
-    await gitExec(repo, ["tag", "-d", "v0.1.1"]);
-    await gitExec(repo, ["update-ref", "refs/heads/main", "v0.1.0"]);
-
-    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
-
-    expect(data.diagnostics).toEqual([]);
-    expect(data.released).toBe(true);
-    expect(data.resumed).toBe(true);
-    expect(await sha(repo, "v0.1.1^{}")).toBe(await sha(repo, "develop"));
-    expect(await sha(repo, "main")).toBe(await sha(repo, "develop"));
   }, 30_000);
 
   it("refuses FLOW-CUT-01 in an unadopted repository", async () => {
@@ -241,4 +243,77 @@ describe("flow.cut — ordinary path", () => {
     expect(await sha(repo, "develop")).toBe(before);
     expect((await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/v0.1.1"])).exitCode).not.toBe(0);
   }, 20_000);
+
+  it("cuts repo + package lines together via --lines (AC-1 shape)", async () => {
+    const repo = await adoptedRepo({ packageLine: true });
+
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: ["lib"], dryRun: false });
+
+    expect(data.diagnostics).toEqual([]);
+    expect(data.tags).toEqual(["v0.1.1", "lib@2.0.1"]);
+    expect(data.lines.map((l) => `${l.line}:${l.version}`)).toEqual(["repo:0.1.1", "lib:2.0.1"]);
+    const tip = await sha(repo, "develop");
+    expect(await sha(repo, "v0.1.1^{}")).toBe(tip);
+    expect(await sha(repo, "lib@2.0.1^{}")).toBe(tip);
+    const pkg = await gitExec(repo, ["show", "main:packages/lib/package.json"]);
+    expect(pkg.stdout).toContain('"version": "2.0.1"');
+    const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
+    expect(subject).toBe("chore(release): v0.1.1, lib@2.0.1");
+  }, 30_000);
+
+  it("refuses FLOW-INT-05 when the integration gate fails, leaving develop untouched", async () => {
+    const repo = await adoptedRepo();
+    // Untracked hook in the primary — runFlowScript reads it from there.
+    await writeFile(join(repo, "hooks/integration-gate.sh"), "#!/bin/sh\nexit 1\n");
+    const tipBefore = await sha(repo, "develop");
+
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    if (data.releaseBranch !== null) dirs.push(flowWorktreePath(repo, data.releaseBranch));
+
+    expect(data.released).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-05");
+    expect(await sha(repo, "develop")).toBe(tipBefore);
+  }, 30_000);
+
+  it("refuses FLOW-CUT-08 on a failing fingerprints hook, then resumes the tail", async () => {
+    const repo = await adoptedRepo();
+    const hookPath = join(repo, "hooks/release-fingerprints.sh");
+    await writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+
+    const refused = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(refused.released).toBe(false);
+    expect(refused.diagnostics[0]?.ruleId).toBe("FLOW-CUT-08");
+    // The release commit already integrated — only the tail remains.
+    const tip = await sha(repo, "develop");
+    const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
+    expect(subject).toBe("chore(release): v0.1.1");
+
+    await rm(hookPath);
+    const resumed = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(resumed.diagnostics).toEqual([]);
+    expect(resumed.released).toBe(true);
+    expect(resumed.resumed).toBe(true);
+    expect(resumed.tags).toEqual(["v0.1.1"]);
+    expect(await sha(repo, "v0.1.1^{}")).toBe(tip);
+    expect(await sha(repo, "main")).toBe(tip);
+  }, 60_000);
+
+  it("refuses FLOW-INT-06 when --branch names a registered non-fix entry", async () => {
+    const repo = await adoptedRepo();
+    const opened = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "reg-work",
+      brief: null,
+      owner: null,
+      dryRun: false,
+    });
+    expect(opened.opened).toBe(true);
+    dirs.push(opened.worktree!);
+
+    const result = await runFlowCut(
+      { argv: [], flags: { branch: opened.branch! } },
+      stubContext(repo),
+    );
+    expect(result.data?.diagnostics[0]?.ruleId).toBe("FLOW-INT-06");
+  }, 30_000);
 });

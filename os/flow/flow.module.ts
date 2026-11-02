@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 6 — register flow.open/integrate/discard/status and flow.check FLOW-06/07</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <history>RFC-1486, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
@@ -312,7 +312,15 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-CUT-09", severity: "error" },
           { id: "FLOW-CUT-10", severity: "error" },
           { id: "FLOW-CUT-11", severity: "error" },
+          { id: "FLOW-INT-02", severity: "error" },
           { id: "FLOW-INT-05", severity: "error" },
+          { id: "FLOW-INT-06", severity: "error" },
+          { id: "FLOW-INT-08", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+          { id: "FLOW-OPEN-02", severity: "error" },
+          { id: "FLOW-OPEN-04", severity: "error" },
+          { id: "FLOW-OPEN-06", severity: "error" },
+          { id: "FLOW-OPEN-07", severity: "error" },
         ],
         envInputs: [{ name: "ALLOW_MAJOR_BUMP", required: false }],
         mutatesState: true,
@@ -361,10 +369,15 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         rules: [
           { id: "FLOW-BM-01", severity: "error" },
           { id: "FLOW-BM-02", severity: "error" },
+          { id: "FLOW-INT-05", severity: "error" },
           { id: "FLOW-INT-08", severity: "error" },
           { id: "FLOW-INT-09", severity: "error" },
           { id: "FLOW-INT-10", severity: "error" },
           { id: "FLOW-07", severity: "error" },
+          { id: "FLOW-OPEN-02", severity: "error" },
+          { id: "FLOW-OPEN-04", severity: "error" },
+          { id: "FLOW-OPEN-06", severity: "error" },
+          { id: "FLOW-OPEN-07", severity: "error" },
         ],
         mutatesState: true,
         idempotency: "rerun-safe",
@@ -407,7 +420,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-FIX-02", severity: "error" },
           { id: "FLOW-FIX-03", severity: "error" },
           { id: "FLOW-FIX-04", severity: "error" },
+          { id: "FLOW-OPEN-01", severity: "error" },
+          { id: "FLOW-OPEN-02", severity: "error" },
           { id: "FLOW-OPEN-04", severity: "error" },
+          { id: "FLOW-OPEN-06", severity: "error" },
+          { id: "FLOW-OPEN-07", severity: "error" },
           { id: "FLOW-07", severity: "error" },
         ],
         mutatesState: true,

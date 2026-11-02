@@ -22,6 +22,7 @@ released with no mutation.</purpose>
   <item>RFC-1490: step 4 — ordinary flow.cut with fingerprints and resume</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -67,31 +68,47 @@ import {
   releaseTagAnnotation,
   writeReleaseTag,
 } from "../release-tags.ts";
-import { runFlowScript } from "../scripts.ts";
+import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { hasManagedBlock, PRECOMMIT_FILE } from "../guard-files.ts";
 import { VersionWriteError, writeLineVersion, writeSyncedForgeVersion } from "../version-files.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 import { integrateFlowBranch } from "./flow-integrate.ts";
 import { openFlowBranchCore } from "./flow-open.ts";
 import { INTEGRATE_LOCK_STALE_MS, INTEGRATE_LOCK_WAIT_MS } from "./flow-integrate.ts";
+import type { FlowBackmergeData } from "./flow-backmerge.ts";
+
+/** One released line as the --json contract reports it (spec §TypeScript contracts). */
+export interface FlowCutLine {
+  line: string;
+  tag: string;
+  previous: string | null;
+  level: ReleaseLevel;
+  version: string;
+  rfcs: string[];
+}
 
 export interface FlowCutData {
   mode: "ordinary" | "fix";
   released: boolean;
+  /** True when this invocation only completed a previous cut's tail. */
+  resumed: boolean;
+  releaseBranch: string | null;
+  /** SHA of the integrated `chore(release):` commit (main tip after the cut). */
+  releaseCommit: string | null;
+  mainBefore: string | null;
+  mainAfter: string | null;
+  /** Commits main gained (W1-3 — first cut includes the adoption commit). */
+  mainGains: number;
   /** Tag names applied to the main tip, line order (repository line first). */
   tags: string[];
   /** Versions per line id. */
   versions: Record<string, string>;
-  /** Commits main gained (W1-3 — first cut includes the adoption commit). */
-  mainGains: number;
-  /** True when this invocation only completed a previous cut's tail. */
-  resumed: boolean;
-  releaseBranch: string | null;
-  mainTip: string | null;
-  /** Fix mode only: the trailing back-merge's status (null on ordinary cuts). */
-  backmerge: "merged" | "conflict" | "not-needed" | "dry-run" | "refused" | null;
-  /** Port worktree path when the back-merge conflicts (fix mode). */
-  portWorktree: string | null;
+  lines: FlowCutLine[];
+  fingerprints: Record<string, string>;
+  /** The integration-gate result when it ran this invocation (null on resume). */
+  gate: FlowScriptResult | null;
+  /** Fix mode only: the trailing back-merge's full data (null on ordinary cuts). */
+  backmerge: FlowBackmergeData | null;
   diagnostics: Diagnostic[];
 }
 
@@ -106,16 +123,17 @@ export interface CutLine {
 
 /**
  * Adopted into the fixed branch model (FLOW-CUT-01 / FLOW-FIX-01):
- * governed + develop exists + the pre-commit managed block installed.
+ * governed + develop exists + the pre-commit managed block COMMITTED on
+ * develop — the committed state is the signal (worktrees check out committed
+ * content; a working-tree-only block would not reach a release worktree).
  */
 export async function isAdoptedFlowRepo(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
   const detection = await detectRepoKind(repoRoot, io);
   if (!detection.ok || detection.repoKind.kind !== "governed") return false;
   if (!(await branchExists(repoRoot, io, "develop"))) return false;
-  const primary = await primaryWorktree(io, repoRoot);
-  const preCommitPath = join(primary, PRECOMMIT_FILE);
-  if (!(await io.exists(preCommitPath))) return false;
-  return hasManagedBlock(await io.readFile(preCommitPath));
+  const committed = await git(repoRoot, io, ["show", `develop:${PRECOMMIT_FILE}`]);
+  if (committed.exitCode !== 0) return false;
+  return hasManagedBlock(committed.stdout);
 }
 
 function refuse(
@@ -127,14 +145,18 @@ function refuse(
   return {
     mode: partial?.mode ?? "ordinary",
     released: false,
-    tags: partial?.tags ?? [],
-    versions: {},
-    mainGains: 0,
     resumed: false,
     releaseBranch: null,
-    mainTip: null,
+    releaseCommit: null,
+    mainBefore: null,
+    mainAfter: null,
+    mainGains: 0,
+    tags: partial?.tags ?? [],
+    versions: {},
+    lines: [],
+    fingerprints: {},
+    gate: null,
     backmerge: null,
-    portWorktree: null,
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
 }
@@ -156,72 +178,110 @@ function parseFingerprints(stdout: string): Record<string, string> | null {
   }
 }
 
+interface CutPlan {
+  /** develop tip resolved at plan time. */
+  ref: string;
+  /** Subject-named tags with ≥1 missing OR main behind → run the tail for them. */
+  resumeTags: string[] | null;
+  cutLines: CutLine[];
+  tagList: string[];
+  subject: string;
+  allLines: ReleaseLine[];
+  repoLine: ReleaseLine;
+  mainTip: string;
+  primary: string;
+}
+
+type PlanOutcome =
+  | { kind: "completed"; ref: string; tags: string[]; allLines: ReleaseLine[]; mainTip: string }
+  | { kind: "plan"; plan: CutPlan }
+  | { kind: "refusal"; data: FlowCutData };
+
 /**
- * Ordinary cut core — callable with an injected clock. `ref` is the
- * resolved develop tip (plan-time, once); `lines` already validated.
- * Steps run under the integration lock; every refusal returns diagnostics
- * without partial mutation visible outside the release branch.
+ * Plan phase — every refusal before any mutation. The mutation path runs
+ * this INSIDE the integration lock so a landing integration between the
+ * dry-plan and the branch-open can never sneak unvetted commits into the
+ * release (all refs are resolved at lock time).
  */
-export async function runOrdinaryCut(
+async function planOrdinaryCut(
   repoRoot: string,
   io: WorkspaceIO,
-  opts: {
-    lines: string[];
-    dryRun: boolean;
-    now?: Date;
-    onProgress?: (m: string) => void;
-  },
-): Promise<FlowCutData> {
-  const now = opts.now ?? new Date();
-
-  // ---- Plan phase: every refusal before any mutation.
+  opts: { lines: string[] },
+): Promise<PlanOutcome> {
   const primary = await primaryWorktree(io, repoRoot);
   const guardInstalled = await isAdoptedFlowRepo(repoRoot, io);
   if (!guardInstalled) {
-    return refuse(
-      "FLOW-CUT-01",
-      "repository is not adopted into the fixed branch model (governed + guard installed + develop)",
-      "run pnpm exec forge flow.install, then re-run flow.cut",
-    );
+    return {
+      kind: "refusal",
+      data: refuse(
+        "FLOW-CUT-01",
+        "repository is not adopted into the fixed branch model (governed + guard installed + develop)",
+        "run pnpm exec forge flow.install, then re-run flow.cut",
+      ),
+    };
   }
 
   const mainExists = await branchExists(repoRoot, io, "main");
   if (mainExists && !(await isAncestor(repoRoot, io, "main", "develop"))) {
-    return refuse(
-      "FLOW-CUT-02",
-      "main carries a release not yet back-merged into develop",
-      "run pnpm exec forge flow.backmerge first",
-    );
+    return {
+      kind: "refusal",
+      data: refuse(
+        "FLOW-CUT-02",
+        "main carries a release not yet back-merged into develop",
+        "run pnpm exec forge flow.backmerge first",
+      ),
+    };
   }
 
   const { lines, diagnostics: discoveryDiags } = await discoverReleaseLines(repoRoot, io);
   if (discoveryDiags.some((d) => d.severity === "error")) {
-    return refuse("FLOW-CUT-01", discoveryDiags.map((d) => d.message).join("; "), "fix the release-line discovery errors");
+    return {
+      kind: "refusal",
+      data: refuse(
+        "FLOW-CUT-01",
+        discoveryDiags.map((d) => d.message).join("; "),
+        "fix the release-line discovery errors",
+      ),
+    };
   }
   const repoLine = lines.find((l) => l.paths.length === 0) ?? lines[0];
   if (repoLine === undefined) {
-    return refuse("FLOW-CUT-01", "no release lines discovered — the repository line is mandatory", "check pnpm-workspace.yaml and package.json");
+    return {
+      kind: "refusal",
+      data: refuse(
+        "FLOW-CUT-01",
+        "no release lines discovered — the repository line is mandatory",
+        "check pnpm-workspace.yaml and package.json",
+      ),
+    };
   }
   const selected: ReleaseLine[] = [repoLine];
   for (const id of opts.lines) {
     const found = lines.find((l) => l.id === id);
     if (found === undefined || found.id === repoLine.id) {
-      return refuse(
-        "FLOW-CUT-03",
-        `unknown release line '${id}' — known lines: ${lines.map((l) => l.id).join(", ")}`,
-        "pass only ids from flow.version --json",
-      );
+      return {
+        kind: "refusal",
+        data: refuse(
+          "FLOW-CUT-03",
+          `unknown release line '${id}' — known lines: ${lines.map((l) => l.id).join(", ")}`,
+          "pass only ids from flow.version --json",
+        ),
+      };
     }
     selected.push(found);
   }
 
   const ref = (await git(repoRoot, io, ["rev-parse", "develop"])).stdout.trim();
+  const mainTip = mainExists
+    ? (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim()
+    : "";
 
   // Resume detection runs before the pending-level loop: a develop tip
   // carrying `chore(release):` is this cut's own persisted declaration. All
-  // named tags present → the release completed (rerun reports, no mutation);
-  // some missing → the plan still runs but the tail completes the subject's
-  // tags (and tags the subject names cannot block as FLOW-CUT-06).
+  // named tags present AND main already at the tip → the release completed
+  // (rerun reports, no mutation); any missing or a rewound main → the plan
+  // still runs but the tail completes exactly the subject's tags (and tags
+  // the subject names cannot block as FLOW-CUT-06).
   const tipSubject = (
     await git(repoRoot, io, ["log", "-1", "--format=%s", ref])
   ).stdout.trim();
@@ -239,20 +299,8 @@ export async function runOrdinaryCut(
           0,
       ),
     );
-    if (named.length > 0 && existence.every((e) => e)) {
-      return {
-        mode: "ordinary",
-        released: true,
-        tags: named,
-        versions: {},
-        mainGains: 0,
-        resumed: true,
-        releaseBranch: null,
-        mainTip: ref,
-        backmerge: null,
-        portWorktree: null,
-        diagnostics: [],
-      };
+    if (named.length > 0 && existence.every((e) => e) && mainTip === ref) {
+      return { kind: "completed", ref, tags: named, allLines: lines, mainTip };
     }
     if (named.length > 0) resumeTags = named;
   }
@@ -262,11 +310,14 @@ export async function runOrdinaryCut(
   for (const line of selected) {
     const tags = await listLineTags(repoRoot, line, io, ref);
     if (tags.lastTag === null) {
-      return refuse(
-        "FLOW-CUT-04",
-        `release line '${line.id}' has no baseline tag`,
-        "run pnpm exec forge flow.install to create the baseline tag",
-      );
+      return {
+        kind: "refusal",
+        data: refuse(
+          "FLOW-CUT-04",
+          `release line '${line.id}' has no baseline tag`,
+          "run pnpm exec forge flow.install to create the baseline tag",
+        ),
+      };
     }
     const pending = await pendingLevel(
       line,
@@ -277,13 +328,16 @@ export async function runOrdinaryCut(
       ref,
     );
     if (pending.level === "none") {
-      return refuse(
-        "FLOW-CUT-04",
-        line.id === repoLine.id
-          ? "nothing to release — the repository line has no pending commits"
-          : `release line '${line.id}' has no pending commits`,
-        "drop the line from --lines, or land work touching its paths first",
-      );
+      return {
+        kind: "refusal",
+        data: refuse(
+          "FLOW-CUT-04",
+          line.id === repoLine.id
+            ? "nothing to release — the repository line has no pending commits"
+            : `release line '${line.id}' has no pending commits`,
+          "drop the line from --lines, or land work touching its paths first",
+        ),
+      };
     }
     const next = formatVersion(bumpVersion(tags.lastTag.version, pending.level));
     if (pending.level === "major") {
@@ -298,15 +352,18 @@ export async function runOrdinaryCut(
       !namedInSubject &&
       (await git(repoRoot, io, ["rev-parse", "--verify", "-q", tagRef])).exitCode === 0
     ) {
-      return refuse(
-        "FLOW-CUT-06",
-        `target tag ${line.tagPrefix}${next} already exists`,
-        "pick a different version or delete the stray tag if it was never published",
-      );
+      return {
+        kind: "refusal",
+        data: refuse(
+          "FLOW-CUT-06",
+          `target tag ${line.tagPrefix}${next} already exists`,
+          "pick a different version or delete the stray tag if it was never published",
+        ),
+      };
     }
     cutLines.push({
       line,
-      tag: `${line.tagPrefix}${next}`,
+      tag: tagName,
       level: pending.level,
       nextVersion: next,
       previousTag: tags.lastTag.name,
@@ -315,11 +372,14 @@ export async function runOrdinaryCut(
   }
 
   if (majorDemands.length > 0 && process.env["ALLOW_MAJOR_BUMP"] !== "1") {
-    return refuse(
-      "FLOW-CUT-05",
-      `release requires a major bump on: ${majorDemands.join("; ")}`,
-      "re-run with ALLOW_MAJOR_BUMP=1 in the environment — major cuts are operator-only",
-    );
+    return {
+      kind: "refusal",
+      data: refuse(
+        "FLOW-CUT-05",
+        `release requires a major bump on: ${majorDemands.join("; ")}`,
+        "re-run with ALLOW_MAJOR_BUMP=1 in the environment — major cuts are operator-only",
+      ),
+    };
   }
 
   const primaryBranch = await currentBranch(primary, io);
@@ -327,51 +387,145 @@ export async function runOrdinaryCut(
   const worktrees = await worktreeList(repoRoot, io);
   const mainCheckedOut = worktrees.some((w) => w.branch === "main");
   if (primaryBranch !== "develop" || primaryDirty.length > 0 || mainCheckedOut) {
-    return refuse(
-      "FLOW-CUT-07",
-      primaryBranch !== "develop"
-        ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
-        : mainCheckedOut
-          ? "a worktree has main checked out — the cut must own the main ref"
-          : `primary worktree has ${primaryDirty.length} tracked uncommitted change(s)`,
-      "switch the primary to develop, commit or revert its changes, and ensure no worktree holds main",
-    );
+    return {
+      kind: "refusal",
+      data: refuse(
+        "FLOW-CUT-07",
+        primaryBranch !== "develop"
+          ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
+          : mainCheckedOut
+            ? "a worktree has main checked out — the cut must own the main ref"
+            : `primary worktree has ${primaryDirty.length} tracked uncommitted change(s)`,
+        "switch the primary to develop, commit or revert its changes, and ensure no worktree holds main",
+      ),
+    };
   }
 
   const tagList = cutLines.map((c) => c.tag);
-  const subject = `chore(release): ${tagList.join(", ")}`;
+  return {
+    kind: "plan",
+    plan: {
+      ref,
+      resumeTags,
+      cutLines,
+      tagList,
+      subject: `chore(release): ${tagList.join(", ")}`,
+      allLines: lines,
+      repoLine,
+      mainTip,
+      primary,
+    },
+  };
+}
+
+/** The line a subject-named tag belongs to — longest matching prefix wins. */
+function lineForTag(tag: string, allLines: ReleaseLine[], repoLine: ReleaseLine): ReleaseLine {
+  const match = allLines
+    .filter((l) => l.id !== repoLine.id && tag.startsWith(l.tagPrefix))
+    .sort((a, b) => b.tagPrefix.length - a.tagPrefix.length)[0];
+  return match ?? repoLine;
+}
+
+/** Spec-shape `lines[]` for the report — one entry per applied tag. */
+export function toFlowCutLines(
+  tagNames: string[],
+  cutLines: CutLine[],
+  allLines: ReleaseLine[],
+  repoLine: ReleaseLine,
+): FlowCutLine[] {
+  return tagNames.map((tag) => {
+    const c = cutLines.find((cl) => cl.tag === tag);
+    if (c !== undefined) {
+      return {
+        line: c.line.id,
+        tag,
+        previous: c.previousTag,
+        level: c.level,
+        version: c.nextVersion,
+        rfcs: c.rfcs,
+      };
+    }
+    const line = lineForTag(tag, allLines, repoLine);
+    return {
+      line: line.id,
+      tag,
+      previous: null,
+      level: "patch" as const,
+      version: tag.slice(line.tagPrefix.length),
+      rfcs: [],
+    };
+  });
+}
+
+function completedReleaseData(outcome: {
+  ref: string;
+  tags: string[];
+  allLines: ReleaseLine[];
+  mainTip: string;
+}): FlowCutData {
+  const repoLine = outcome.allLines.find((l) => l.paths.length === 0) ?? outcome.allLines[0]!;
+  return {
+    mode: "ordinary",
+    released: true,
+    resumed: true,
+    releaseBranch: null,
+    releaseCommit: outcome.ref,
+    mainBefore: outcome.mainTip,
+    mainAfter: outcome.ref,
+    mainGains: 0,
+    tags: outcome.tags,
+    versions: {},
+    lines: toFlowCutLines(outcome.tags, [], outcome.allLines, repoLine),
+    fingerprints: {},
+    gate: null,
+    backmerge: null,
+    diagnostics: [],
+  };
+}
+
+/**
+ * Ordinary cut core — callable with an injected clock. Plan-phase refusals
+ * resolve inside the integration lock (the world can change while a caller
+ * waits), then the release runs open→integrate→fingerprints→main→tags→journal
+ * without ever dropping the lock. A develop tip already carrying the release
+ * subject resumes at fingerprints; a fully landed release reports released.
+ */
+export async function runOrdinaryCut(
+  repoRoot: string,
+  io: WorkspaceIO,
+  opts: {
+    lines: string[];
+    dryRun: boolean;
+    now?: Date;
+    onProgress?: (m: string) => void;
+  },
+): Promise<FlowCutData> {
+  const now = opts.now ?? new Date();
 
   if (opts.dryRun) {
+    const outcome = await planOrdinaryCut(repoRoot, io, opts);
+    if (outcome.kind === "refusal") return outcome.data;
+    if (outcome.kind === "completed") return completedReleaseData(outcome);
+    const { plan } = outcome;
     return {
       mode: "ordinary",
       released: false,
-      tags: tagList,
-      versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
-      mainGains: 0,
       resumed: false,
       releaseBranch: null,
-      mainTip: null,
+      releaseCommit: null,
+      mainBefore: plan.mainTip.length > 0 ? plan.mainTip : null,
+      mainAfter: null,
+      mainGains: 0,
+      tags: plan.tagList,
+      versions: Object.fromEntries(plan.cutLines.map((c) => [c.line.id, c.nextVersion])),
+      lines: toFlowCutLines(plan.tagList, plan.cutLines, plan.allLines, plan.repoLine),
+      fingerprints: {},
+      gate: null,
       backmerge: null,
-      portWorktree: null,
       diagnostics: [],
     };
   }
 
-  // ---- Resume tail: release commit integrated earlier; finish at
-  // fingerprints → main → tags with exactly the subject's named tags.
-  if (resumeTags !== null) {
-    const resume = await finishCutTail(repoRoot, io, {
-      developTip: ref,
-      tagNames: resumeTags,
-      cutLines,
-      subject: tipSubject,
-      primary,
-      now,
-    });
-    return { ...resume, resumed: true };
-  }
-
-  // ---- Execute phase: lock held steps 1–6.
   const common = await commonGitDir(io, repoRoot);
   await io.mkdir(join(common, "forge"));
   const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
@@ -387,6 +541,30 @@ export async function runOrdinaryCut(
         onProgress: opts.onProgress,
       },
       async () => {
+        // Plan at lock time — no stale-ref races against landing integrations.
+        const outcome = await planOrdinaryCut(repoRoot, io, opts);
+        if (outcome.kind === "refusal") return outcome.data;
+        if (outcome.kind === "completed") return completedReleaseData(outcome);
+        const plan = outcome.plan;
+        const { cutLines, tagList, subject, repoLine, primary } = plan;
+
+        // Resume tail: release commit integrated earlier; finish at
+        // fingerprints → main → tags with exactly the subject's named tags.
+        if (plan.resumeTags !== null) {
+          const resume = await finishCutTail(repoRoot, io, {
+            developTip: plan.ref,
+            tagNames: plan.resumeTags,
+            cutLines,
+            allLines: plan.allLines,
+            repoLine,
+            primary,
+            now,
+            gate: null,
+            journalBranch: "release",
+          });
+          return { ...resume, resumed: true };
+        }
+
         // 1. release branch.
         const open = await openFlowBranchCore(repoRoot, io, {
           kind: "session",
@@ -461,18 +639,21 @@ export async function runOrdinaryCut(
             d?.ruleId ?? "FLOW-INT-05",
             d?.message ?? "integration failed",
             d?.fixHint ?? "inspect the gate output",
-            { releaseBranch },
+            { releaseBranch, gate: integrated.gate },
           );
         }
 
         // 5–8. fingerprints → main → tags → journal.
         return finishCutTail(repoRoot, io, {
-          developTip: integrated.developAfter ?? ref,
+          developTip: integrated.developAfter ?? plan.ref,
           tagNames: tagList,
           cutLines,
-          subject,
+          allLines: plan.allLines,
+          repoLine,
           primary,
           now,
+          gate: integrated.gate,
+          journalBranch: releaseBranch,
         });
       },
       io,
@@ -501,12 +682,16 @@ async function finishCutTail(
     developTip: string;
     tagNames: string[];
     cutLines: CutLine[];
-    subject: string;
+    allLines: ReleaseLine[];
+    repoLine: ReleaseLine;
     primary: string;
     now: Date;
+    gate: FlowScriptResult | null;
+    /** Branch name the journal records ("release" on resume — the branch is gone). */
+    journalBranch: string;
   },
 ): Promise<FlowCutData> {
-  const { developTip, tagNames, cutLines, primary } = args;
+  const { developTip, tagNames, cutLines, allLines, repoLine, primary, gate } = args;
 
   // 5. fingerprints.
   const fpResult = await runFlowScript(io, "release-fingerprints", {
@@ -559,17 +744,31 @@ async function finishCutTail(
   }
 
   // 7. tags — iterate the declared names (subject tags on resume) and look
-  // each up in the computed cut lines; a named-only tag gets a patch stub.
-  const repoLineId = cutLines[0]?.line.id;
+  // each up in the computed cut lines; a named-only tag gets a patch stub on
+  // its own line (matched by tag prefix). A tag already pointing at the tip
+  // is skipped — rerun-safe against a crash between two git tag calls; a tag
+  // pointing elsewhere refuses instead of silently moving it.
   for (const tag of tagNames) {
-    const c = cutLines.find((cl) => cl.tag === tag) ?? {
-      line: cutLines[0]!.line,
-      tag,
-      level: "patch" as const,
-      nextVersion: tag.replace(/^v|^[^@]*@/, ""),
-      previousTag: null,
-      rfcs: [],
-    };
+    const existing = await git(repoRoot, io, ["rev-parse", "-q", "--verify", `refs/tags/${tag}^{}`]);
+    if (existing.exitCode === 0) {
+      if (existing.stdout.trim() === developTip) continue;
+      return refuse(
+        "FLOW-CUT-06",
+        `tag ${tag} already exists at ${existing.stdout.trim().slice(0, 9)}, not the release tip`,
+        "delete the stray tag if it was never published, or pick a different version",
+      );
+    }
+    const c = cutLines.find((cl) => cl.tag === tag) ?? (() => {
+      const line = lineForTag(tag, allLines, repoLine);
+      return {
+        line,
+        tag,
+        level: "patch" as const,
+        nextVersion: tag.slice(line.tagPrefix.length),
+        previousTag: null,
+        rfcs: [] as string[],
+      };
+    })();
     const wr = await writeReleaseTag(repoRoot, io, {
       name: tag,
       target: developTip,
@@ -580,7 +779,7 @@ async function finishCutTail(
         level: c.level,
         previous: c.previousTag,
         rfcs: c.rfcs,
-        fingerprints: c.line.id === repoLineId ? fingerprints : {},
+        fingerprints: c.line.id === repoLine.id ? fingerprints : {},
       }),
     });
     if (wr.exitCode !== 0) {
@@ -593,7 +792,7 @@ async function finishCutTail(
   try {
     await appendJournal(io, common, {
       event: "cut",
-      branch: "release",
+      branch: args.journalBranch,
       sha: developTip,
       detail: tagNames.join(", "),
       at: args.now.toISOString(),
@@ -609,14 +808,18 @@ async function finishCutTail(
   return {
     mode: "ordinary",
     released: true,
-    tags: tagNames,
-    versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
-    mainGains: Number.isFinite(mainGains) ? mainGains : 0,
     resumed: false,
     releaseBranch: null,
-    mainTip: developTip,
+    releaseCommit: developTip,
+    mainBefore: mainTipBefore.length > 0 ? mainTipBefore : null,
+    mainAfter: developTip,
+    mainGains: Number.isFinite(mainGains) ? mainGains : 0,
+    tags: tagNames,
+    versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
+    lines: toFlowCutLines(tagNames, cutLines, allLines, repoLine),
+    fingerprints,
+    gate,
     backmerge: null,
-    portWorktree: null,
     diagnostics: [],
   };
 }
@@ -639,7 +842,7 @@ export async function runFlowCut(
     typeof linesFlag === "string" && linesFlag.length > 0
       ? linesFlag.split(",").map((s) => s.trim())
       : [];
-  const dryRun = input.flags["dry-run"] === true;
+  const dryRun = context.dryRun || input.flags["dry-run"] === true;
 
   // Fix mode: --branch names a registered fix branch, or the cwd worktree is
   // itself a registered fix worktree.
@@ -698,7 +901,7 @@ function finishCutResult(
     } else if (data.released) {
       logger.section("flow.cut");
       logger.info(`  ${data.resumed ? "resumed release" : "released"}: ${data.tags.join(", ")}`);
-      logger.info(`  main gained ${data.mainGains} commit(s) — now at ${data.mainTip?.slice(0, 9)}`);
+      logger.info(`  main gained ${data.mainGains} commit(s) — now at ${data.mainAfter?.slice(0, 9)}`);
       if (data.mainGains > 0 && !data.resumed) {
         logger.info("  the first cut after flow.install includes the guard-adoption commit");
       }

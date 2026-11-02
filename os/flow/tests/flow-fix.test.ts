@@ -15,6 +15,7 @@ patch-only level gate FLOW-CUT-10 and the --lines rejection FLOW-CUT-09.</purpos
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 6 — fix open, patch release, and refusal tests</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,10 +26,13 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
+import type { ForgeRuntimeContext } from "../../../src/types.ts";
 import { commonGitDir, readRegistry, type FlowRegistryEntry } from "../registry.ts";
 import { gitExec, initRepo, installGuard } from "./helpers.ts";
-import { runOrdinaryCut } from "../handlers/flow-cut.ts";
+import { runFlowCut, runOrdinaryCut } from "../handlers/flow-cut.ts";
 import { fixFlow, runFixCutWithBackmerge } from "../handlers/flow-fix.ts";
+import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
+import { openFlowBranch } from "../handlers/flow-open.ts";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -80,6 +84,39 @@ async function commitIn(wt: string, file: string, content: string, trailer?: str
   if (r.exitCode !== 0) throw new Error(`commit in ${wt} failed: ${r.stderr}`);
 }
 
+/** Kernel-shaped context for direct runFlowCut dispatch tests. */
+function stubContext(repo: string): ForgeRuntimeContext {
+  return {
+    workspaceRoot: repo,
+    logger: { section() {}, info() {}, warn() {}, error() {}, success() {} },
+    dryRun: false,
+    outputFormat: "json",
+    io: ambientIo,
+  };
+}
+
+/** Land a committed change on develop the model-normal way: session → gate → ff. */
+async function landThroughSession(repo: string, slug: string, file: string, content: string): Promise<void> {
+  const opened = await openFlowBranch(repo, ambientIo, {
+    kind: "session",
+    slug,
+    brief: null,
+    owner: null,
+    dryRun: false,
+  });
+  expect(opened.opened).toBe(true);
+  dirs.push(opened.worktree!);
+  await writeFile(join(opened.worktree!, file), content);
+  await gitExec(opened.worktree!, ["add", file]);
+  const commit = await gitExec(opened.worktree!, ["commit", "-m", slug], { FORGE_FLOW_OP: "" });
+  expect(commit.exitCode).toBe(0);
+  const integrated = await integrateFlowBranch(repo, ambientIo, {
+    branch: opened.branch!,
+    dryRun: false,
+  });
+  expect(integrated.integrated).toBe(true);
+}
+
 describe("flow.fix", () => {
   it("opens auto/fix-… at the main tip with a kind:fix entry", async () => {
     const repo = await releasedRepo();
@@ -113,11 +150,11 @@ describe("flow.fix", () => {
     expect(data.tags).toEqual(["v0.1.2"]);
     // main advanced to the fix tip; the fix branch and worktree are gone.
     const mainSha = await sha(repo, "main");
-    expect(data.mainTip).toBe(mainSha);
+    expect(data.mainAfter).toBe(mainSha);
     expect(await sha(repo, "v0.1.2^{}")).toBe(mainSha);
     expect((await gitExec(repo, ["rev-parse", "--verify", "-q", `refs/heads/${fix.branch}`])).exitCode).not.toBe(0);
     // Back-merge landed the port into develop.
-    expect(data.backmerge).toBe("merged");
+    expect(data.backmerge?.status).toBe("merged");
     const parents = (await gitExec(repo, ["rev-list", "--parents", "-1", "develop"])).stdout.trim().split(/\s+/);
     expect(parents).toHaveLength(3);
     expect(parents[2]).toBe(mainSha);
@@ -191,4 +228,66 @@ describe("flow.fix", () => {
     const data = await fixFlow(repo, ambientIo, { slug: "latefix", brief: null, dryRun: false });
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-FIX-04");
   }, 30_000);
+
+  it("refuses FLOW-FIX-01 on an unadopted repository", async () => {
+    const repo = await initRepo({ prefix: "flow-fix-" });
+    dirs.push(repo);
+    const data = await fixFlow(repo, ambientIo, { slug: "nope-fix", brief: null, dryRun: false });
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-FIX-01");
+  });
+
+  it("refuses FLOW-FIX-03 on a slug outside the grammar", async () => {
+    const repo = await releasedRepo();
+    const data = await fixFlow(repo, ambientIo, { slug: "Bad_Slug!", brief: null, dryRun: false });
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-FIX-03");
+  }, 30_000);
+
+  it("released fix reports backmerge conflict and leaves the port in progress", async () => {
+    const repo = await releasedRepo();
+    const fix = await fixFlow(repo, ambientIo, { slug: "conflict", brief: null, dryRun: false });
+    dirs.push(fix.worktree!);
+    // Fix-side change to shared.txt on main; a conflicting develop-side land.
+    await commitIn(fix.worktree!, "shared.txt", "main-side\n");
+    await landThroughSession(repo, "dev-side", "shared.txt", "develop-side\n");
+    const entry = await fixEntry(repo, fix.branch);
+
+    const data = await runFixCutWithBackmerge(repo, ambientIo, {
+      entry,
+      linesGiven: false,
+      dryRun: false,
+    });
+
+    // The release itself completed — the conflict is a report, not a failure.
+    expect(data.released).toBe(true);
+    expect(data.backmerge?.status).toBe("conflict");
+    expect(data.backmerge?.conflicts).toContain("shared.txt");
+    expect(data.backmerge?.portWorktree).not.toBeNull();
+    dirs.push(data.backmerge!.portWorktree!);
+    const mergeHead = await gitExec(data.backmerge!.portWorktree!, [
+      "rev-parse",
+      "-q",
+      "--verify",
+      "MERGE_HEAD",
+    ]);
+    expect(mergeHead.exitCode).toBe(0);
+  }, 120_000);
+
+  it("dispatches --branch <fix> through runFlowCut end-to-end", async () => {
+    const repo = await releasedRepo();
+    const fix = await fixFlow(repo, ambientIo, { slug: "dispatch", brief: null, dryRun: false });
+    dirs.push(fix.worktree!);
+    await commitIn(fix.worktree!, "hot.txt", "fix");
+
+    const result = await runFlowCut(
+      { argv: [], flags: { branch: fix.branch! } },
+      stubContext(repo),
+    );
+
+    expect(result.data?.released).toBe(true);
+    expect(result.data?.mode).toBe("fix");
+    expect(result.data?.tags).toEqual(["v0.1.2"]);
+    expect(result.data?.backmerge?.status).toBe("merged");
+    // No integration-gate.sh in the fixture → the gate script reports skipped.
+    expect(result.data?.backmerge?.gate?.status).toBe("skipped");
+  }, 120_000);
 });

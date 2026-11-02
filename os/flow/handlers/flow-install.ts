@@ -17,11 +17,11 @@ embedded flow.check report.</purpose>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -71,7 +71,7 @@ import {
   discoverReleaseLines,
   readLineVersionFile,
 } from "../release-lines.ts";
-import { listLineTags } from "../release-tags.ts";
+import { listLineTags, releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
 import { compareVersions, parseVersion } from "../semver.ts";
 import { collectFlowCheck, type FlowCheckData } from "./flow-check.ts";
 
@@ -636,21 +636,6 @@ async function findVersionCommit(
   return null;
 }
 
-/** Annotated release-tag message per forge/release-tag@1 (RFC-1488). */
-function releaseTagMessage(plan: TagPlan): string {
-  return [
-    `release ${plan.tag}`,
-    "",
-    "schema: forge/release-tag@1",
-    `line: ${plan.line}`,
-    `version: ${plan.version}`,
-    "level: baseline",
-    `previous: ${plan.previous ?? "null"}`,
-    "rfcs: []",
-    "fingerprints: {}",
-  ].join("\n");
-}
-
 function setStep(
   plan: InstallPlan,
   step: InstallStepReport["step"],
@@ -908,14 +893,19 @@ export async function executeInstall(
   // local objects only; pushing them is the wave-2 outbound command.
   if (plan.tagPlans.length > 0) {
     for (const tagPlan of plan.tagPlans) {
-      const r = await git(repoRoot, io, [
-        "tag",
-        "-a",
-        tagPlan.tag,
-        "-m",
-        releaseTagMessage(tagPlan),
-        tagPlan.commit,
-      ]);
+      const r = await writeReleaseTag(repoRoot, io, {
+        name: tagPlan.tag,
+        target: tagPlan.commit,
+        annotation: releaseTagAnnotation({
+          tag: tagPlan.tag,
+          line: tagPlan.line,
+          version: tagPlan.version,
+          level: "baseline",
+          previous: tagPlan.previous,
+          rfcs: [],
+          fingerprints: {},
+        }),
+      });
       if (r.exitCode !== 0) {
         return failStep("tags", `git tag -a ${tagPlan.tag} failed: ${r.stderr.trim()}`);
       }

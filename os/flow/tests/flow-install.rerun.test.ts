@@ -10,6 +10,7 @@ snapshot taken before and after.</purpose>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -164,6 +165,30 @@ describe("flow.install rerun-safety (AC-8)", () => {
     const content = await gitExec(repo, ["show", "develop:hooks/flow-guard.sh"]);
     expect(content.stdout).toContain("forge flow guard");
   });
+
+  it("a wave-1-adopted repo gains hooks/pre-merge-commit on rerun (RFC-1490)", async () => {
+    const repo = await initRepo({ prefix: "flow-rerun-premerge-" });
+    dirs.push(repo);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await executeInstall(await planInstall(repo, ambientIo), ambientIo);
+
+    // Simulate the wave-1 committed state: pre-merge-commit absent.
+    await gitExec(repo, ["rm", "hooks/pre-merge-commit"]);
+    const drop = await gitExec(repo, ["commit", "-m", "wave-1 state"], {
+      FORGE_FLOW_OP: "install",
+    });
+    expect(drop.exitCode).toBe(0);
+
+    const plan = await planInstall(repo, ambientIo);
+    expect(plan.refusal).toBeNull();
+    expect(plan.steps.find((s) => s.step === "pre-merge-commit")?.status).toBe("planned");
+    await executeInstall(plan, ambientIo);
+
+    const committed = await gitExec(repo, ["show", "develop:hooks/pre-merge-commit"]);
+    expect(committed.stdout).toContain("forge flow guard");
+    expect(committed.stdout).toContain("pre-merge-commit");
+    expect(plan.steps.find((s) => s.step === "pre-merge-commit")?.status).toBe("done");
+  }, 40_000);
 
   it("a third run after normal work landed on develop still skips", async () => {
     const repo = await initRepo({ prefix: "flow-rerun-ahead-" });
