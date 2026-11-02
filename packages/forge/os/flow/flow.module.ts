@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 6 — register flow.open/integrate/discard/status and flow.check FLOW-06/07</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
-  <history>RFC-1486</history>
+  <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
+  <history>RFC-1486, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +24,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowCheck } = await import("./handlers/flow-check.ts");
   const { runFlowDiscard } = await import("./handlers/flow-discard.ts");
   const { runFlowInstall } = await import("./handlers/flow-install.ts");
+  const { runFlowBackmerge } = await import("./handlers/flow-backmerge.ts");
   const { runFlowCut } = await import("./handlers/flow-cut.ts");
   const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
   const { runFlowOpen } = await import("./handlers/flow-open.ts");
@@ -343,6 +344,50 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowCut,
+      },
+      {
+        name: "flow.backmerge",
+        description:
+          "Port main into develop through a gated port branch (RFC-1490): " +
+          "release tags on develop..main (oldest first) name the merge " +
+          "message 'release <tags> → develop', the port worktree merges main " +
+          "--no-ff under the integration lock, a clean merge gates and " +
+          "fast-forwards the primary, a conflict leaves the merge in " +
+          "progress with recovery steps. --redo discards an existing port " +
+          "for the same mainSha first. Refusals: FLOW-BM-01/02, FLOW-INT-09/10.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-BM-01", severity: "error" },
+          { id: "FLOW-BM-02", severity: "error" },
+          { id: "FLOW-INT-08", severity: "error" },
+          { id: "FLOW-INT-09", severity: "error" },
+          { id: "FLOW-INT-10", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        execOnReadOnly: false,
+        mutatingFlags: ["redo"],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json"],
+        cacheable: false,
+        flags: {
+          redo: {
+            kind: "boolean",
+            required: false,
+            description: "Discard an existing port for the same mainSha and reopen it.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate the back-merge's preconditions without mutating.",
+          },
+        },
+        execute: runFlowBackmerge,
       },
       {
         name: "flow.discard",

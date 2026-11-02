@@ -18,7 +18,6 @@ hooks/worktree-setup.sh.</purpose>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 3 — flow.open handler</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -32,6 +31,8 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
+  <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
+  <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -93,6 +94,8 @@ export interface FlowOpenCoreOptions {
   base?: "develop" | "main";
   /** Ref the worktree branches from — defaults to the base. */
   baseRef?: string;
+  /** Back-merge port payload (RFC-1490) — non-null only on port branches. */
+  port?: { mainSha: string; tags: string[] };
 }
 
 export interface FlowOpenData {
@@ -332,7 +335,7 @@ export async function openFlowBranchCore(
       openedAt: iso,
       updatedAt: iso,
       held: null,
-      port: null,
+      port: opts.port ?? null,
     };
     try {
       await updateRegistry(io, common, (r) => ({
