@@ -196,6 +196,10 @@
       "types": "./os/conformance/conformance.module.ts",
       "default": "./os/conformance/conformance.module.ts"
     },
+    "./os/flow": {
+      "types": "./os/flow/index.ts",
+      "default": "./os/flow/index.ts"
+    },
     "./os/flow-module": {
       "types": "./os/flow/flow.module.ts",
       "default": "./os/flow/flow.module.ts"
@@ -487,6 +491,10 @@
       "./os/conformance-module": {
         "types": "./dist/os/conformance/conformance.module.d.ts",
         "default": "./dist/os/conformance/conformance.module.js"
+      },
+      "./os/flow": {
+        "types": "./dist/os/flow/index.d.ts",
+        "default": "./dist/os/flow/index.js"
       },
       "./os/flow-module": {
         "types": "./dist/os/flow/flow.module.d.ts",
