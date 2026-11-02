@@ -13,6 +13,7 @@ helper module (RFC-0362 §6).</purpose>
   <item>RFC-0362: initial operation.validate command handler.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-checks to @warpgogol/forge for autonomous mode. Uses node:fs/promises directly instead of context.io.</item>
   <item>RFC-1248: VITE-CLIENT-DEP-02 lazy-import gate + SCAN-02 validator reads-root existence check (RFC-1248)</item>
+  <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
 </CHANGE_SUMMARY>
 */
 
@@ -61,7 +62,6 @@ export async function runWerkstattOperationValidate(
     "handoff-pack.ts",
     "materialize.ts",
     "bundle-io.ts",
-    "platform-consistency.ts",
   ]);
 
   for (const filePath of files) {
