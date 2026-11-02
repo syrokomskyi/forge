@@ -20,6 +20,7 @@ forge/journal.jsonl.</purpose>
   <item>RFC-1487: step 1 — registry, journal, common-gitdir resolution</item>
   <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -42,13 +43,24 @@ export const JOURNAL_RELATIVE_PATH = "forge/journal.jsonl";
 export const REGISTRY_LOCK_WAIT_MS = 10_000;
 export const REGISTRY_LOCK_STALE_MS = 60_000;
 
+/** Fixed risk categories for digest items and held entries (RFC-1491). */
+export const RISK_CATEGORIES = [
+  "contract",
+  "migration",
+  "invariant",
+  "capability-removal",
+  "major-dependency",
+  "other",
+] as const;
+export type RiskCategory = (typeof RISK_CATEGORIES)[number];
+
 export const flowRegistryEntrySchema = z
   .object({
     name: z.string().min(1),
     kind: z.enum(["task", "session", "fix"]),
     base: z.enum(["develop", "main"]),
     baseSha: z.string().regex(/^[0-9a-f]{40}$/),
-    worktree: z.string().min(1),
+    worktree: z.string().min(1).nullable(),
     owner: z
       .object({
         kind: z.enum(["session", "task"]),
@@ -58,7 +70,15 @@ export const flowRegistryEntrySchema = z
     brief: z.string().nullable(),
     openedAt: z.string().min(1),
     updatedAt: z.string().min(1),
-    held: z.null(),
+    held: z
+      .object({
+        heldAt: z.string().min(1),
+        riskCategory: z.enum(RISK_CATEGORIES),
+        reason: z.string().min(1),
+        tip: z.string().regex(/^[0-9a-f]{40}$/),
+      })
+      .strict()
+      .nullable(),
     port: z
       .object({
         mainSha: z.string().regex(/^[0-9a-f]{40}$/),
@@ -71,6 +91,9 @@ export const flowRegistryEntrySchema = z
   .strict()
   .refine((e) => (e.base === "main") === (e.kind === "fix"), {
     message: "base 'main' ⇔ kind 'fix' — task/session branches always base on develop (RFC-1490)",
+  })
+  .refine((e) => (e.worktree === null) === (e.held !== null), {
+    message: "worktree null ⇔ held — a held branch keeps no worktree, an unheld one always has one (RFC-1491)",
   });
 
 export const flowRegistrySchema = z
@@ -96,10 +119,29 @@ export class FlowRegistrySchemaError extends Error {
 
 export interface FlowJournalEvent {
   at: string;
-  event: "open" | "integrate" | "discard" | "cut" | "fix" | "backmerge";
+  event:
+    | "open"
+    | "integrate"
+    | "discard"
+    | "cut"
+    | "fix"
+    | "backmerge"
+    | "hold"
+    | "unhold"
+    | "push"
+    | "publish";
   branch: string;
   sha: string;
   detail: string;
+  /** develop before (integrate/backmerge/cut/hold); branch base (discard) — W1-1. */
+  base?: string;
+  /** hold only — the new (base, sha] range of every replayed item. */
+  rewrites?: Array<{
+    branch: string;
+    kind: "integration" | "backmerge" | "release";
+    base: string;
+    sha: string;
+  }>;
 }
 
 export function emptyRegistry(): FlowRegistryV1 {
@@ -197,5 +239,7 @@ export async function appendJournal(
     sha: event.sha,
     detail: event.detail,
   };
+  if (event.base !== undefined) line.base = event.base;
+  if (event.rewrites !== undefined) line.rewrites = event.rewrites;
   await io.appendFile(file, `${JSON.stringify(line)}\n`);
 }

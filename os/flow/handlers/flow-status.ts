@@ -27,6 +27,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -71,7 +72,8 @@ export interface FlowBranchStatus {
   behindDevelop: number | null;
   lastCommitAt: string | null;
   stale: boolean;
-  held: null;
+  /** Held payload (RFC-1491) — the branch is parked, worktree intentionally absent. */
+  held: { heldAt: string; riskCategory: string; reason: string; tip: string } | null;
   /** Back-merge port payload when the entry is a port branch (RFC-1490). */
   port: { mainSha: string; tags: string[] } | null;
 }
@@ -149,7 +151,10 @@ export async function collectFlowStatus(
     const worktreeExists = worktree !== null && (await io.exists(worktree));
 
     if (entry && !branchRefExists) missingBranchEntries.push(entry);
-    if (entry && !worktreeExists) missingWorktreeEntries.push(entry);
+    // A held entry's null worktree is its expected state — never a FLOW-07
+    // disagreement (AUDIT-RFC-1491-C1). Held-with-worktree or unheld-without
+    // is rejected by the registry schema, surfacing as registryError.
+    if (entry && !worktreeExists && entry.held === null) missingWorktreeEntries.push(entry);
 
     const last = branchRefExists ? await lastCommitAt(repoRoot, io, name) : null;
     let ahead: number | null = null;
@@ -240,7 +245,9 @@ export async function runFlowStatus(
     );
     for (const b of outcome.data.branches) {
       logger.info(
-        `  ${b.name}: ${b.registered ? "registered" : "unregistered"}, worktree ${b.worktreeExists ? "present" : "absent"}, dirty ${b.dirty ?? "-"}, +${b.aheadOfDevelop ?? "-"}/-${b.behindDevelop ?? "-"}, stale ${b.stale}`,
+        b.held !== null
+          ? `  ${b.name}: held (${b.held.riskCategory}): ${b.held.reason}`
+          : `  ${b.name}: ${b.registered ? "registered" : "unregistered"}, worktree ${b.worktreeExists ? "present" : "absent"}, dirty ${b.dirty ?? "-"}, +${b.aheadOfDevelop ?? "-"}/-${b.behindDevelop ?? "-"}, stale ${b.stale}`,
       );
     }
     for (const d of outcome.diagnostics) {

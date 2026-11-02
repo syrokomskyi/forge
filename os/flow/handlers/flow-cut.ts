@@ -23,6 +23,7 @@ released with no mutation.</purpose>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -551,6 +552,9 @@ export async function runOrdinaryCut(
         // Resume tail: release commit integrated earlier; finish at
         // fingerprints → main → tags with exactly the subject's named tags.
         if (plan.resumeTags !== null) {
+          // The release branch is linear — tip^ is the develop tip the
+          // integration started from, the honest journal base on a rerun.
+          const base = (await git(repoRoot, io, ["rev-parse", `${plan.ref}^`])).stdout.trim();
           const resume = await finishCutTail(repoRoot, io, {
             developTip: plan.ref,
             tagNames: plan.resumeTags,
@@ -561,6 +565,7 @@ export async function runOrdinaryCut(
             now,
             gate: null,
             journalBranch: "release",
+            journalBase: base,
           });
           return { ...resume, resumed: true };
         }
@@ -654,6 +659,7 @@ export async function runOrdinaryCut(
           now,
           gate: integrated.gate,
           journalBranch: releaseBranch,
+          journalBase: integrated.developBefore ?? plan.ref,
         });
       },
       io,
@@ -689,6 +695,8 @@ async function finishCutTail(
     gate: FlowScriptResult | null;
     /** Branch name the journal records ("release" on resume — the branch is gone). */
     journalBranch: string;
+    /** Journal `base` — develop before the release range (W1-1). */
+    journalBase: string;
   },
 ): Promise<FlowCutData> {
   const { developTip, tagNames, cutLines, allLines, repoLine, primary, gate } = args;
@@ -794,6 +802,7 @@ async function finishCutTail(
       event: "cut",
       branch: args.journalBranch,
       sha: developTip,
+      base: args.journalBase,
       detail: tagNames.join(", "),
       at: args.now.toISOString(),
     });
