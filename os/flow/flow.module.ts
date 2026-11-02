@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
-  <history>RFC-1486, RFC-1487, RFC-1488</history>
+  <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -28,9 +28,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowBackmerge } = await import("./handlers/flow-backmerge.ts");
   const { runFlowCut } = await import("./handlers/flow-cut.ts");
   const { runFlowFix } = await import("./handlers/flow-fix.ts");
+  const { runFlowHold } = await import("./handlers/flow-hold.ts");
   const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
   const { runFlowOpen } = await import("./handlers/flow-open.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
+  const { runFlowUnhold } = await import("./handlers/flow-unhold.ts");
   const { runFlowVersion } = await import("./handlers/flow-version.ts");
   return {
     name: "forge-flow",
@@ -553,6 +555,98 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowDiscard,
+      },
+      {
+        name: "flow.hold",
+        description:
+          "Pull one integration item out of the unpushed develop tail " +
+          "(RFC-1491) under the integration lock: refuses FLOW-HOLD-01..06 " +
+          "(not in a fresh digest, unpushed release tag above the item, an " +
+          "open branch based above it, dirty or off-develop primary, " +
+          "non-integration kind, a merge above it), then replays the tail " +
+          "without the item via cherry-pick in a detached temporary " +
+          "worktree, keeps a held auto branch at the item's tip, resets " +
+          "develop to the replayed tip and journals rewrites so the next " +
+          "digest still attributes the replayed items. FLOW-HOLD-07 when " +
+          "the replay conflicts — nothing changes.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-HOLD-01", severity: "error" },
+          { id: "FLOW-HOLD-02", severity: "error" },
+          { id: "FLOW-HOLD-03", severity: "error" },
+          { id: "FLOW-HOLD-04", severity: "error" },
+          { id: "FLOW-HOLD-05", severity: "error" },
+          { id: "FLOW-HOLD-06", severity: "error" },
+          { id: "FLOW-HOLD-07", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "not-idempotent",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", ".git/**", "docs/rfcs/*.md", "hooks/**"],
+        cacheable: false,
+        flags: {
+          item: {
+            kind: "string",
+            required: true,
+            description: "Digest item id to hold — I-<9 hex of tip> from flow.digest.",
+          },
+          reason: {
+            kind: "string",
+            required: true,
+            description: "Why the item is held — recorded on the registry entry and journal.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate every refusal and print the held branch name without mutating.",
+          },
+        },
+        execute: runFlowHold,
+      },
+      {
+        name: "flow.unhold",
+        description:
+          "Bring a held branch back (RFC-1491): refuses FLOW-HOLD-08 when " +
+          "the registry entry is not held, then creates the RFC-1487 " +
+          "sibling worktree at the branch tip, runs hooks/worktree-setup.sh, " +
+          "clears held and journals the unhold. The branch integrates " +
+          "normally afterwards via flow.integrate.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-HOLD-08", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "not-idempotent",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", ".git/**", "hooks/**"],
+        cacheable: false,
+        flags: {
+          branch: {
+            kind: "string",
+            required: true,
+            description: "Held auto branch to unhold — see flow.status held entries.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate the unhold plan without mutating.",
+          },
+        },
+        execute: runFlowUnhold,
       },
       {
         name: "flow.status",
