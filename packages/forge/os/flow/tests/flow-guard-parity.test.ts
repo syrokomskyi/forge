@@ -8,6 +8,7 @@ branch name of the shared table equals classifyBranch's.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 2 — shell/TypeScript grammar parity test</item>
   <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
+  <item>RFC-1486: parity test explicit timeout for repo-root probe runs (AC-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -65,7 +66,10 @@ describe("guard/TypeScript grammar parity", () => {
     }
   });
 
-  it("guard verdicts equal classifyBranch on every creatable table row", async () => {
+  // The row loop spawns real `git`/`sh` processes — comfortably over the
+  // 5s default timeout the root vitest config applies under
+  // `rfc.acceptance.run`'s repo-root probe invocation.
+  it("guard verdicts equal classifyBranch on every creatable table row", { timeout: 120_000 }, async () => {
     // One throwaway repo; the guard file is invoked directly (no hooksPath
     // needed) — the guard resolves the repo through cwd/git rev-parse.
     repo = await initRepo({ prefix: "flow-parity-" });
