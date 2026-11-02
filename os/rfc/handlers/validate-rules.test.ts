@@ -11,6 +11,9 @@ Unit tests for validate rules covering V-26: implemented RFCs must have all acce
   <item>RFC-1311: Compass header sweep — declares the validate suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,7 +24,7 @@ import {
   checkFrontmatterYamlParse,
   type AddViolationFn,
 } from "./validate-rules.ts";
-import type { ParsedRfc } from "../frontmatter-io.ts";
+import type { ParsedRfc, RfcCorpusEntry } from "../frontmatter-io.ts";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { execSync, execFileSync } from "node:child_process";
 import { dirname, join } from "node:path";
@@ -415,7 +418,7 @@ describe("V-32: implementation commit drift detection", () => {
           "RFC-0001",
           {
             fileName: "rfc-0001-other.md",
-            parsed: makeParsed("accepted", BASE_BODY, { supersedes: ["RFC-9999"] }),
+            frontmatter: makeParsed("accepted", BASE_BODY, { supersedes: ["RFC-9999"] }).frontmatter,
           },
         ],
       ]);
@@ -874,7 +877,7 @@ describe("V-RFC-33: frontmatter YAML parseability (RFC-0755)", () => {
 describe("V-33: dependsOn referential integrity (RFC-0795)", () => {
   async function runValidateWithDeps(
     parsed: ParsedRfc,
-    allParsed: Map<string, { fileName: string; parsed: ParsedRfc }>,
+    allParsed: Map<string, RfcCorpusEntry>,
   ): Promise<{ rfcId: string; rule: string; message: string; severity: string }[]> {
     const { add, violations } = makeViolationsCollector();
     await validateSingleRfc(
@@ -893,10 +896,10 @@ describe("V-33: dependsOn referential integrity (RFC-0795)", () => {
 
   function makeAllParsed(
     entries: [string, ParsedRfc][],
-  ): Map<string, { fileName: string; parsed: ParsedRfc }> {
-    const map = new Map<string, { fileName: string; parsed: ParsedRfc }>();
+  ): Map<string, RfcCorpusEntry> {
+    const map = new Map<string, RfcCorpusEntry>();
     for (const [id, parsed] of entries) {
-      map.set(id, { fileName: `rfc-${id.toLowerCase()}-test.md`, parsed });
+      map.set(id, { fileName: `rfc-${id.toLowerCase()}-test.md`, frontmatter: parsed.frontmatter });
     }
     return map;
   }

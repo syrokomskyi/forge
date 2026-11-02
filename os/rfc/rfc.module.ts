@@ -7,14 +7,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1474: per-rule check-execution counters
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463</history>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467</history>
 </CHANGE_SUMMARY>
 */
 
@@ -259,6 +261,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "string",
             description: "Target every RFC with this status (e.g. accepted).",
           },
+          "no-batch": {
+            kind: "boolean",
+            description:
+              "RFC-1489: disable test-probe batching — run each probe in its own Vitest process (diagnostic escape).",
+          },
         },
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
@@ -339,6 +346,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             description:
               "RFC-1453: record an operator outcome-gate waiver ({reason, by}) in emitted envelopes — set by rfc.implement.stamp, not for direct use.",
           },
+          "no-batch": {
+            kind: "boolean",
+            description:
+              "RFC-1489: disable test-probe batching — run each probe in its own Vitest process (diagnostic escape).",
+          },
         },
         execute: runRfcVerificationEmit,
       },
@@ -379,6 +391,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             kind: "string",
             description:
               "Bounded parallelism across RFCs for sweep runs (default 1, capped at 16 — invalid values warn and fall back). Probe workers spawn subprocesses.",
+          },
+          "no-batch": {
+            kind: "boolean",
+            description:
+              "RFC-1489: disable test-probe batching — run each probe in its own Vitest process (diagnostic escape).",
           },
         },
         execute: runRfcVerificationRefresh,

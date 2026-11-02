@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0303: extracted validate handler from handlers.ts into handlers/validate.ts.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -15,6 +14,10 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>KERNEL-FLAG-02: Guard --id against non-string values (boolean/array from unvalidated flag input) — throws a clear flag error instead of TypeError in rfcFileMatchesId.</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0303</history>
 </CHANGE_SUMMARY>
 */
 
@@ -23,8 +26,10 @@ import path from "node:path";
 import {
   listRfcFiles,
   readAndParseRfc,
+  readRfcFrontmatter,
   rfcFileMatchesId,
   type ParsedRfc,
+  type RfcCorpusEntry,
 } from "../frontmatter-io.ts";
 import type {
   ForgeCommandInput,
@@ -73,7 +78,9 @@ export async function runRfcValidate(
     };
   }
 
-  const allParsed: Map<string, { fileName: string; parsed: ParsedRfc }> = new Map();
+  // RFC-1489: the corpus map carries frontmatter only — referential rules never
+  // read non-target bodies. Full `parsed` (with body) exists only for targets.
+  const allParsed: Map<string, RfcCorpusEntry> = new Map();
   const allParsedByFile: Map<string, { fileName: string; parsed: ParsedRfc }> = new Map();
 
   const violations: RfcValidationViolation[] = [];
@@ -90,16 +97,21 @@ export async function runRfcValidate(
     violations.push({ rfcId, file, rule, message, severity });
   }
 
+  const targetSet = new Set(filesToValidate);
   for (const f of allFiles) {
-    const result = await readAndParseRfc(rfcDirPath, f);
+    const result = targetSet.has(f)
+      ? await readAndParseRfc(rfcDirPath, f)
+      : await readRfcFrontmatter(rfcDirPath, f);
     if (result) {
       if ("error" in result) {
         checkFrontmatterYamlParse(f, result, addViolation);
         continue;
       }
       const id = String(result.parsed.frontmatter["id"] ?? "");
-      allParsed.set(id, { fileName: f, parsed: result.parsed });
-      allParsedByFile.set(f, { fileName: f, parsed: result.parsed });
+      allParsed.set(id, { fileName: f, frontmatter: result.parsed.frontmatter });
+      if (targetSet.has(f)) {
+        allParsedByFile.set(f, { fileName: f, parsed: result.parsed });
+      }
     }
   }
 

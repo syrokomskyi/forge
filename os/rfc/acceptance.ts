@@ -13,7 +13,6 @@ prose checklist.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1401: test probes gain optional timeoutMs — the 120s default cannot host a ~10min cold e2e run; spawnVitest honours the per-probe bound.</item>
   <item>RFC-1453: page probes execute through an OutcomeSession (outcomeBuild/outcomeServe bindings); tri-state verdicts; RFC-ACC-03 skip removed; RFC-ACC-04 reports unverified.</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
@@ -25,7 +24,10 @@ required in formal.tools.command; spec/entry paths are confined to the
 workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
-  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334</history>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
 
@@ -52,7 +54,8 @@ import type {
   ProbeCoverageReport,
 } from "./types.ts";
 import { RFC_DIR, RFC_PROBE_BINDING_CUTOFF, RFC_EXPECTATION_SOURCES } from "./types.ts";
-import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
+import { listRfcFiles, readAndParseRfc, readRfcFrontmatter } from "./frontmatter-io.ts";
+import { planProbeSegments, runBatchedTestSegment } from "./probe-batch.ts";
 import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./handlers/validate-rules.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -537,6 +540,61 @@ export async function runProbe(
   }
 }
 
+export interface ProbeSetOptions {
+  workspaceRoot: string;
+  commandRegistry?: CommandRegistry;
+  forgeRoot?: string;
+  outcomeSession?: OutcomeSession;
+  /** RFC-1489: diagnostic escape — forces the legacy per-probe path. */
+  noBatch?: boolean;
+}
+
+export interface ProbeSetResult {
+  /** One entry per declared probe, in declared order. */
+  results: ProbeResult[];
+  /** Wall-clock ms per declared index; batched members share the segment time. */
+  durationsMs: number[];
+}
+
+/**
+ * RFC-1489: single shared execution point for a declared probe list.
+ * Barrier-free segments of `test` probes sharing one effective bound run in
+ * a single instrumented Vitest process; every other probe executes through
+ * `runProbe` individually. `--no-batch` forces the legacy path entirely.
+ */
+export async function runProbeSet(
+  probes: AcceptanceProbe[],
+  options: ProbeSetOptions,
+): Promise<ProbeSetResult> {
+  const { workspaceRoot, commandRegistry, forgeRoot, outcomeSession, noBatch } = options;
+  const results: ProbeResult[] = new Array(probes.length);
+  const durationsMs: number[] = new Array(probes.length).fill(0);
+  const runOne = async (p: AcceptanceProbe): Promise<ProbeResult> =>
+    runProbe(p, workspaceRoot, commandRegistry, forgeRoot, outcomeSession);
+
+  const segments = noBatch ? [] : planProbeSegments(probes, RUN_PROBE_TIMEOUT_MS);
+  const segmentByStart = new Map(segments.map((s) => [s.start, s]));
+
+  for (let i = 0; i < probes.length; i++) {
+    const segment = segmentByStart.get(i);
+    if (segment && segment.end - segment.start > 1) {
+      const start = performance.now();
+      const segResults = await runBatchedTestSegment(probes, segment, workspaceRoot);
+      const perProbe = Math.round((performance.now() - start) / (segment.end - segment.start));
+      for (let j = segment.start; j < segment.end; j++) {
+        results[j] = segResults.get(j)!;
+        durationsMs[j] = perProbe;
+      }
+      i = segment.end - 1;
+      continue;
+    }
+    const start = performance.now();
+    results[i] = await runOne(probes[i]!);
+    durationsMs[i] = Math.round(performance.now() - start);
+  }
+  return { results, durationsMs };
+}
+
 export async function runRfcAcceptanceRun(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -565,10 +623,12 @@ export async function runRfcAcceptanceRun(
   const session = createOutcomeSession({ workspaceRoot, forgeRoot: context.forgeRoot });
   try {
     for (const fileName of allFiles) {
-      const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
-      if (!parsedFile) continue;
-      if ("error" in parsedFile) continue;
-      const fm = parsedFile.parsed.frontmatter;
+      // RFC-1489: frontmatter-only scan; the body is parsed lazily only for
+      // matched files that need probe-coverage evaluation.
+      const headFile = await readRfcFrontmatter(rfcDirPath, fileName);
+      if (!headFile) continue;
+      if ("error" in headFile) continue;
+      const fm = headFile.parsed.frontmatter;
       const rfcId = String(fm["id"] ?? "");
 
       if (targetId && rfcId.toLowerCase() !== targetId.toLowerCase()) continue;
@@ -591,16 +651,16 @@ export async function runRfcAcceptanceRun(
       continue;
     }
 
-    const probeResults: ProbeResult[] = [];
-    for (const raw of acceptance as AcceptanceProbe[]) {
-      const result = await runProbe(
-        raw,
-        workspaceRoot,
-        context.commandRegistry,
-        context.forgeRoot,
-        session,
-      );
-      probeResults.push(result);
+    const probes = acceptance as AcceptanceProbe[];
+    const { results: probeResults } = await runProbeSet(probes, {
+      workspaceRoot,
+      commandRegistry: context.commandRegistry,
+      forgeRoot: context.forgeRoot,
+      outcomeSession: session,
+      noBatch: input.flags["no-batch"] === true,
+    });
+    for (const [i, raw] of probes.entries()) {
+      const result = probeResults[i]!;
       if (result.verdict === "unverified") {
         diagnostics.push({
           ruleId: "RFC-ACC-04",
@@ -622,7 +682,8 @@ export async function runRfcAcceptanceRun(
     const createdAt = String(fm["createdAt"] ?? "");
     const isArchived = fileName.startsWith("archive/");
     if (createdAt >= RFC_PROBE_BINDING_CUTOFF && !isArchived) {
-      const parsedBody = parsedFile.parsed.body;
+      const fullFile = await readAndParseRfc(rfcDirPath, fileName);
+      const parsedBody = fullFile && !("error" in fullFile) ? fullFile.parsed.body : "";
       const criteriaEval = evaluateAcceptanceCriteria(parsedBody);
       rfcCoverage = computeProbeCoverage(criteriaEval.criterionIds, acceptance);
     }

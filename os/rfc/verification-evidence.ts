@@ -12,7 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: unblock evidence emission for proof-probe RFCs (RFC-1391)
 
 probeArtifactCandidates lacked a `proof` branch — the default threw
@@ -32,7 +31,10 @@ workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372</history>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
 
@@ -40,15 +42,14 @@ import { execFile } from "../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 
 import { join, relative } from "node:path";
-import { performance } from "node:perf_hooks";
 import { byteHash } from "../../src/utils/hash.ts";
 
-import { runProbe } from "./acceptance.ts";
+import { runProbeSet } from "./acceptance.ts";
 import { createOutcomeSession } from "./outcome-probe.ts";
 import { attachProbeOrigins } from "./verification-origin.ts";
 import { attachVerdictEvidence } from "./verification-verdicts.ts";
 import { EVIDENCE_SYNC_STEPS } from "./handlers/rfc-evidence-sync.ts";
-import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
+import { listRfcFiles, readRfcFrontmatter } from "./frontmatter-io.ts";
 import { generatedHeaderFields } from "../../src/utils/generated-marker.ts";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { RFC_DIR } from "./types.ts";
@@ -514,7 +515,9 @@ export async function runRfcVerificationEmit(
     checkEntry?: NonNullable<RfcVerificationEmitResult["check"]>[number];
     diagnostic?: Diagnostic;
   }> => {
-    const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
+    // RFC-1489: emit reads frontmatter only — the body is re-read separately
+    // below for freshness/artifact checks, never through this scan.
+    const parsedFile = await readRfcFrontmatter(rfcDirPath, fileName);
     if (!parsedFile) return {};
     if ("error" in parsedFile) return {};
     const fm = parsedFile.parsed.frontmatter;
@@ -554,16 +557,18 @@ export async function runRfcVerificationEmit(
     const rfcMarkdown = await io.readFile(rfcFilePath);
     const emittedAt = new Date().toISOString();
 
-    for (const probe of probes) {
-      const start = performance.now();
-      const result = await runProbe(
-        probe,
-        workspaceRoot,
-        context.commandRegistry,
-        context.forgeRoot,
-        outcomeSession,
-      );
-      const durationMs = Math.round(performance.now() - start);
+    // RFC-1489: batch-compatible test probes share one Vitest run via
+    // runProbeSet; `--no-batch` forces the legacy per-probe path.
+    const { results: setResults, durationsMs } = await runProbeSet(probes, {
+      workspaceRoot,
+      commandRegistry: context.commandRegistry,
+      forgeRoot: context.forgeRoot,
+      outcomeSession,
+      noBatch: input.flags["no-batch"] === true,
+    });
+    for (const [probeIndex, probe] of probes.entries()) {
+      const result = setResults[probeIndex]!;
+      const durationMs = durationsMs[probeIndex]!;
       probeRecords.push({
         probe,
         ok: result.ok,

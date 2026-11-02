@@ -12,6 +12,9 @@ criterion, silent no-op when absent.
 <CHANGE_SUMMARY>
   <item>RFC-1458: initial — emit-level ingest proof, newest-per-criterion ordering, absent/malformed no-op coverage.</item>
   <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +37,25 @@ const { mockRunProbe } = vi.hoisted(() => ({
 
 vi.mock("../../os/rfc/acceptance.ts", () => ({
   runProbe: mockRunProbe,
+  // RFC-1489: emit drives runProbeSet — the shim preserves the per-probe
+  // mock contract so these tests observe the same probe calls as before.
+  runProbeSet: async (probes: unknown[], opts: Record<string, unknown>) => {
+    const results = [];
+    const durationsMs = [];
+    for (const p of probes) {
+      results.push(
+        await mockRunProbe(
+          p,
+          opts.workspaceRoot,
+          opts.commandRegistry,
+          opts.forgeRoot,
+          opts.outcomeSession,
+        ),
+      );
+      durationsMs.push(0);
+    }
+    return { results, durationsMs };
+  },
 }));
 
 const RFC_MD = (id: string, criterion: string) => `---
