@@ -49,7 +49,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeTrajectoryModule` | `trajectory.index`, `trajectory.recall`, `trajectory.outcome.record` — trajectory memory (RFC-1472/1475/1480) | `os/trajectory/` |
 | `forgeChecksModule` | `checks.counters.validate`, `checks.counters.export`, `checks.contribution.report` — per-rule firing counters + marginal-contribution report (RFC-1473/1474) | `os/checks/` |
 | `forgeYamlModule` | `yaml.scalars.validate` — lints authored YAML for unquoted plain-scalar colon-space traps (RFC-1478, F-0006): YAML-SCALAR-01 flags the loud one-line shape and the silent flat→nested-map continuation; .md scans frontmatter only; quoted scalars, block scalars, flow collections, anchors, comments, generated/template files excluded. `--files` error-tier ad-hoc; `werkstatt run yaml.scalars.validate --all` errors on governance surfaces and warns elsewhere. The shared `collectScalarTraps` backs the ecosystem.commit EC-25 staged-YAML gate. | `os/yaml/` |
-| `forgeFlowModule` | `flow.check`, `flow.install` — fixed branch model with guard hooks and repository adoption (RFC-1486) | `os/flow/` |
+| `forgeFlowModule` | `flow.check`, `flow.install`, `flow.version` — fixed branch model with guard hooks, repository adoption and release-line versions (RFC-1486, RFC-1488) | `os/flow/` |
 
 Module notes:
 
@@ -73,6 +73,15 @@ Every evaluated rule is journaled by the kernel executor into `docs/.index/check
 - Only Forge flow commands set `FORGE_FLOW_OP`. Agents never set it manually, never commit with `--no-verify`, and never hand-edit the managed hook block — repair goes through `flow.install`.
 - A repo with a valid `forge.generated.yaml` (`schema: forge/generated@1`) is exempt from the model; an invalid marker is an error, never an exemption. Repos without `forge.yaml` are ungoverned.
 - The model is dormant until the wave-4 switch-over — shipping the module does not adopt this or any other repository.
+
+### Release lines (RFC-1488)
+
+- Two line kinds carry versions: the repository line (tag prefix `v`, root `package.json`) and one package line per workspace-glob directory containing `extract.config.yaml` (tag prefix `<dir-basename>@`). Directory basenames must be unique across lines — collisions are FLOW-VER-02.
+- Tag shapes are `vX.Y.Z` (repository) and `<package>@X.Y.Z` (packages) — annotated tags only, strict three-integer versions; lightweight tags and non-matching names are invisible to a line. A line's last release is the semantically highest reachable tag, never the nearest.
+- `flow.version` is read-only (`--line <id>` optional, unknown id → FLOW-VER-04): last tag, current version-file value, commits since the tag under the line's paths, and the derived version `X.Y.Z+N.<9-char-head>` (`.dirty` when the line's paths carry tracked modifications; the tag version itself when N=0; `null` plus FLOW-VER-01 when the line was never baselined).
+- The pending level comes from `X-RFC` commit trailers resolved through the canonical RFC reader (`forge.yaml` `resolverDoors.rfc`): each referenced RFC's `versionBump` contributes its level, `patch` is the floor for any commit, `none` only when no commit touched the line. A missing RFC file counts patch with FLOW-VER-03.
+- No version file is edited between releases — a version value diverging from the line's last tag is FLOW-08 (error), and an `extract.config.yaml` declaring `versionBump` is FLOW-09 (repo-extract would rewrite it on export).
+- Tags are created by exactly two writers: `flow.install`'s baseline step (level `baseline`, at the commit that introduced the version, only when the version file outranks the last tag and that commit is on `main` — FLOW-ADOPT-07 refuses backwards or off-main baselines) and the wave-2 release cut. Agents never create release tags by hand.
 
 ## Golden contract conformance (RFC-1365, DNA-115)
 
