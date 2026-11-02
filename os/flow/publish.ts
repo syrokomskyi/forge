@@ -11,13 +11,14 @@ and return the RFC publications[] row for the journal.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>Destination resolution mirrors publish-forge.mjs resolveDest(): destBase/destName parsed from extract.config.yaml, anchored at dirname(primary), destBase default "packages".</item>
-  <item>Reconcile only on non-fast-forward (the same regex as publish-forge.mjs) — auth, hook and transient failures never trigger an ours-merge.</item>
+  <item>Destination resolution mirrors the retired publish-forge.mjs (RFC-1499) resolveDest(): destBase/destName parsed from extract.config.yaml, anchored at dirname(primary), destBase default "packages".</item>
+  <item>Reconcile only on non-fast-forward (the same regex as the retired publish-forge.mjs, RFC-1499) — auth, hook and transient failures never trigger an ours-merge.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 5 — publishTag (extract, verify, dest push, single ours-merge reconcile)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1499: step 2 — retire publish-forge/bump-forge scripts, add extract-verify hook</item>
 </CHANGE_SUMMARY>
 */
 
@@ -124,7 +125,7 @@ export async function publishTag(
     return row;
   }
 
-  // 2. Destination — same resolution as repo-extract/publish-forge.mjs.
+  // 2. Destination — same resolution as the retired publish-forge.mjs (RFC-1499).
   const dest = await resolveExtractDest(primary, io, line);
   row.dest = dest;
   if (dest === null || !(await io.exists(join(dest, ".git")))) {
