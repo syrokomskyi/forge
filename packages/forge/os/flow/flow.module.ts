@@ -9,11 +9,13 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
+
+flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -481,6 +483,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-PUSH-01", severity: "error" },
           { id: "FLOW-DIGEST-01", severity: "warning" },
           { id: "FLOW-07", severity: "error" },
+          { id: "FLOW-11", severity: "warning" },
         ],
         mutatesState: true, // git fetch updates remote-tracking refs unless --no-fetch
         idempotency: "rerun-safe",
@@ -497,6 +500,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "pnpm-workspace.yaml",
           "package.json",
           "packages/*/package.json",
+          ".github/workflows/**",
         ],
         cacheable: false,
         flags: {

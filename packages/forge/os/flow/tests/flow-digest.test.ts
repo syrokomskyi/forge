@@ -13,6 +13,9 @@ commit, new-tag detection versus origin, and FLOW-PUSH-01 without origin.</purpo
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 3 — flow.digest tests</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
+  <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
+
+flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -230,6 +233,75 @@ describe("flow.digest", () => {
     expect(after.tags).toEqual([]);
     expect(after.digestId).not.toBe(data.digestId);
   }, 40_000);
+
+  it("RFC-1498 AC-7: a pushed tag maps to the workflows its on.push.tags filter matches", async () => {
+    const { repo } = await repoWithOrigin();
+    await mkdir(join(repo, ".github", "workflows"), { recursive: true });
+    await writeFile(
+      join(repo, ".github", "workflows", "publish.yml"),
+      "name: publish\non:\n  push:\n    tags: ['v*']\n",
+    );
+    await writeFile(
+      join(repo, ".github", "workflows", "lib-only.yml"),
+      "name: lib\non:\n  push:\n    tags:\n      - 'lib@*'\n",
+    );
+    const tip = (await gitExec(repo, ["rev-parse", "develop"])).stdout.trim();
+    await writeReleaseTag(repo, ambientIo, {
+      name: "v1.0.1",
+      target: tip,
+      annotation: releaseTagAnnotation({
+        tag: "v1.0.1",
+        line: "repo",
+        version: "1.0.1",
+        level: "baseline",
+        previous: null,
+        rfcs: [],
+        fingerprints: {},
+      }),
+    });
+    const data = await collectDigest(repo, ambientIo, { fetch: false });
+    expect(data.diagnostics.some((d) => d.ruleId === "FLOW-11")).toBe(false);
+    const entry = data.tagTriggers.find((t) => t.tag === "v1.0.1");
+    expect(entry).toBeDefined();
+    expect(entry!.workflows).toEqual([".github/workflows/publish.yml"]);
+  }, 60_000);
+
+  it("RFC-1498 AC-8: a malformed workflow reports FLOW-11 and the digest still returns", async () => {
+    const { repo } = await repoWithOrigin();
+    await mkdir(join(repo, ".github", "workflows"), { recursive: true });
+    await writeFile(
+      join(repo, ".github", "workflows", "broken.yml"),
+      "name: broken\non: [push\n",
+    );
+    await writeFile(
+      join(repo, ".github", "workflows", "fancy.yml"),
+      "name: fancy\non:\n  push:\n    tags: ['v[0-9]*']\n",
+    );
+    const tip = (await gitExec(repo, ["rev-parse", "develop"])).stdout.trim();
+    await writeReleaseTag(repo, ambientIo, {
+      name: "v1.0.1",
+      target: tip,
+      annotation: releaseTagAnnotation({
+        tag: "v1.0.1",
+        line: "repo",
+        version: "1.0.1",
+        level: "baseline",
+        previous: null,
+        rfcs: [],
+        fingerprints: {},
+      }),
+    });
+    const data = await collectDigest(repo, ambientIo, { fetch: false });
+    // The digest still lands — FLOW-11 is a warning, never a refusal.
+    expect(data.digestId).not.toBe("");
+    expect(data.tags).toEqual(["v1.0.1"]);
+    const flow11 = data.diagnostics.filter((d) => d.ruleId === "FLOW-11");
+    expect(flow11.some((d) => d.file === ".github/workflows/broken.yml")).toBe(true);
+    // A character-class pattern is reported as not understood and matches nothing.
+    expect(flow11.some((d) => d.message.includes("v[0-9]*"))).toBe(true);
+    expect(flow11.every((d) => d.severity === "warning")).toBe(true);
+    expect(data.tagTriggers.find((t) => t.tag === "v1.0.1")).toBeUndefined();
+  }, 60_000);
 
   it("reports FLOW-PUSH-01 without an origin remote", async () => {
     const repo = await initRepo({ prefix: "flow-digest-noorigin-" });

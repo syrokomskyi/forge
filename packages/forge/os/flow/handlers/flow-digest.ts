@@ -11,6 +11,9 @@ flow.push must quote; --no-fetch skips the git fetch for offline review.</purpos
   <item>RFC-1491: step 3 — flow.digest handler</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
+
+flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,6 +44,7 @@ function emptyDigestData(diagnostics: Diagnostic[]): FlowDigestData {
     byCategory: Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as FlowDigestData["byCategory"],
     held: [],
     pendingPublications: [],
+    tagTriggers: [],
     diagnostics,
   };
 }
@@ -101,6 +105,9 @@ export async function runFlowDigest(
     }
     for (const pending of data.pendingPublications) {
       logger.info(`  pending publication: ${pending.tag} (${pending.line})`);
+    }
+    for (const trigger of data.tagTriggers) {
+      logger.info(`  tag ${trigger.tag} triggers: ${trigger.workflows.join(", ")}`);
     }
     for (const d of data.diagnostics) {
       if (d.severity === "error") logger.error(`  ${d.ruleId}: ${d.message}`);
