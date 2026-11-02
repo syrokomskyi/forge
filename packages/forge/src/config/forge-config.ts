@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
@@ -18,7 +17,8 @@ workspace; the exhaustive entry dispatches per packageManager; proved runs
 record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332</history>
+  <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365</history>
 </CHANGE_SUMMARY>
 */
 
@@ -312,8 +312,6 @@ export const forgeConfigSchema = z
     // previous buggy serialize) so loadForgeConfig can recover the declared id —
     // a hard schema throw here would deadlock `forge upgrade`, the healing path.
     profile: z.union([z.string(), z.object({ id: z.string().min(1) }).passthrough()]).optional(),
-    /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
-    independentVersionPackages: z.array(z.string()).optional(),
     /**
      * RFC-1453: picomatch globs (repo-root-relative) naming files that decide
      * what the user sees. An implementation diff touching one requires a
@@ -363,8 +361,6 @@ export interface ForgeConfig {
   profileDeclaredId?: string;
   /** RFC-1118: resolution outcome for the declared `profile:` id */
   profileResolution?: "resolved" | "unknown" | "absent" | "catalog-unavailable";
-  /** RFC-0704: packages with autonomous npm versions — ecosystem.commit skips platform bump when all staged files belong to these packages */
-  independentVersionPackages?: string[];
   /** RFC-1453: picomatch globs naming user-visible outcome surfaces (RFC-IMP-14). */
   outcomeSurfaces: string[];
 }

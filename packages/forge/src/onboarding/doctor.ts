@@ -8,12 +8,12 @@ Checks for forge.yaml, AGENTS.md, PREFERENCES.md, .agents/skills/, docs/rfcs/,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1481: knowledge-files doctor check reports unresolved ID conflicts and the explicit remediation command.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
-  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224, RFC-1226, RFC-1249, RFC-1255</history>
+  <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
+  <history>RFC-0391, RFC-0393, RFC-0524, RFC-0539, RFC-0540, RFC-0611, RFC-0640, RFC-0660, RFC-0661, RFC-0663, RFC-0664, RFC-0675, RFC-0704, RFC-0941, RFC-1097, RFC-1224, RFC-1226, RFC-1249, RFC-1255, RFC-1453</history>
 </CHANGE_SUMMARY>
 */
 
@@ -822,52 +822,6 @@ function checkSharedKnowledgeFile(
     name: "shared-knowledge-file",
     status: "pass",
     message: `Shared knowledge layer: ${parsed.entries.length} entr${parsed.entries.length === 1 ? "y" : "ies"}`,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Independent version packages diagnostics (RFC-0704)
-// ---------------------------------------------------------------------------
-
-async function checkIndependentVersionPackages(workspaceRoot: string, io: WorkspaceIO): Promise<DoctorCheck> {
-  let config;
-  try {
-    config = loadForgeConfig(workspaceRoot);
-  } catch {
-    return { name: "independent-version-packages", status: "pass", message: "No forge.yaml — independent version packages check skipped" };
-  }
-
-  if (!config.independentVersionPackages || config.independentVersionPackages.length === 0) {
-    return { name: "independent-version-packages", status: "pass", message: "No independent version packages declared" };
-  }
-
-  const issues: string[] = [];
-  let validCount = 0;
-
-  for (const pkgPath of config.independentVersionPackages) {
-    const dirExists = await pathExists(join(workspaceRoot, pkgPath), io);
-    const pkgJsonExists = await pathExists(join(workspaceRoot, pkgPath, "package.json"), io);
-    if (!dirExists) {
-      issues.push(`path '${pkgPath}' does not exist`);
-    } else if (!pkgJsonExists) {
-      issues.push(`path '${pkgPath}' has no package.json`);
-    } else {
-      validCount++;
-    }
-  }
-
-  if (issues.length === 0) {
-    return {
-      name: "independent-version-packages",
-      status: "pass",
-      message: `${validCount} independent version package${validCount === 1 ? "" : "s"} declared`,
-    };
-  }
-
-  return {
-    name: "independent-version-packages",
-    status: "warn",
-    message: `${issues.length} issue${issues.length === 1 ? "" : "s"}: ${issues.join(", ")}`,
   };
 }
 
@@ -1778,9 +1732,6 @@ export async function runDoctor(
   // RFC-1226: List unmanaged skill dirs under skillsDir (visibility only)
   checks.push(await checkUnmanagedSkillDirs(workspaceRoot, fio));
 
-  // RFC-0704: Check independent version packages — paths must exist and contain package.json
-  const independentCheck = await checkIndependentVersionPackages(workspaceRoot, fio);
-  checks.push(independentCheck);
 
   // RFC-0611: Check nested AGENTS.md — missing, stale, hand-written
   // RFC-0640: Use profile-driven workspace types when available (all domains)
