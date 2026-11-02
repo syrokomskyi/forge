@@ -21,6 +21,7 @@ forge/journal.jsonl.</purpose>
   <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
 </CHANGE_SUMMARY>
 */
 
@@ -242,4 +243,24 @@ export async function appendJournal(
   if (event.base !== undefined) line.base = event.base;
   if (event.rewrites !== undefined) line.rewrites = event.rewrites;
   await io.appendFile(file, `${JSON.stringify(line)}\n`);
+}
+
+/** Read every journal line in append order; a missing file yields []. */
+export async function readJournal(
+  io: WorkspaceIO,
+  commonGitDir: string,
+): Promise<FlowJournalEvent[]> {
+  const file = join(commonGitDir, JOURNAL_RELATIVE_PATH);
+  if (!(await io.exists(file))) return [];
+  const events: FlowJournalEvent[] = [];
+  for (const line of (await io.readFile(file)).split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed.length === 0) continue;
+    try {
+      events.push(JSON.parse(trimmed) as FlowJournalEvent);
+    } catch {
+      // A torn append is skipped — the journal is bookkeeping, never a gate.
+    }
+  }
+  return events;
 }
