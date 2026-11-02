@@ -16,11 +16,12 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>Highest reachable wins over nearest: the historical `forge@0.15.0` predates real `forge@9.x` tags and must not lower the reported version.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: step 2 — annotated reachable-tag listing + highest-version selection</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <history>RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -130,7 +131,7 @@ export function releaseTagAnnotation(fields: {
   fingerprints: Record<string, string>;
 }): string {
   const fp = Object.entries(fields.fingerprints)
-    .map(([k, v]) => `  ${k}: ${v}`)
+    .map(([k, v]) => `  ${k}: ${/^[A-Za-z0-9._/+@-]+$/.test(v) ? v : JSON.stringify(v)}`)
     .join("\n");
   return [
     `release ${fields.tag}`,

@@ -26,6 +26,7 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -71,6 +72,8 @@ export interface FlowBranchStatus {
   lastCommitAt: string | null;
   stale: boolean;
   held: null;
+  /** Back-merge port payload when the entry is a port branch (RFC-1490). */
+  port: { mainSha: string; tags: string[] } | null;
 }
 
 export interface FlowStatusData {
@@ -190,6 +193,7 @@ export async function collectFlowStatus(
       lastCommitAt: last,
       stale,
       held,
+      port: entry?.port ?? null,
     });
   }
 

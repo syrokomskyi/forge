@@ -17,6 +17,7 @@ a stale port for the same mainSha, and FLOW-BM-01/02 refusals hold.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 5 — backmerge clean/conflict/redo/not-needed tests</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,7 +32,7 @@ import { readRegistry, commonGitDir } from "../registry.ts";
 import { gitExec, initRepo, installGuard } from "./helpers.ts";
 import { backmergeFlow } from "../handlers/flow-backmerge.ts";
 import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
-import { openFlowBranch } from "../handlers/flow-open.ts";
+import { openFlowBranch, openFlowBranchCore } from "../handlers/flow-open.ts";
 import { runOrdinaryCut } from "../handlers/flow-cut.ts";
 
 const dirs: string[] = [];
@@ -149,7 +150,7 @@ describe("flow.backmerge", () => {
     const data = await backmergeFlow(repo, ambientIo, { redo: false, dryRun: false });
 
     expect(data.status).toBe("conflict");
-    expect(data.conflictedPaths).toEqual(["fix.txt"]);
+    expect(data.conflicts).toEqual(["fix.txt"]);
     expect(data.portWorktree).not.toBeNull();
     dirs.push(data.portWorktree!);
     // Merge still in progress.
@@ -201,5 +202,66 @@ describe("flow.backmerge", () => {
     const data = await backmergeFlow(repo, ambientIo, { redo: false, dryRun: false });
     expect(data.status).toBe("refused");
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-BM-01");
+  }, 30_000);
+
+  it("flow.integrate refuses a port whose tip is not the fixed merge (FLOW-INT-09)", async () => {
+    const repo = await repoWithPendingRelease();
+    const mainSha = await sha(repo, "main");
+    const open = await openFlowBranchCore(repo, ambientIo, {
+      kind: "session",
+      slug: "port-v0-1-2",
+      brief: "handmade port",
+      owner: { kind: "session", id: "backmerge" },
+      port: { mainSha, tags: ["v0.1.2"] },
+      dryRun: false,
+    });
+    expect(open.opened).toBe(true);
+    dirs.push(open.worktree!);
+    // A plain commit on the port — never the fixed-format merge.
+    await writeFile(join(open.worktree!, "sneak.txt"), "x\n");
+    await gitExec(open.worktree!, ["add", "sneak.txt"]);
+    await gitExec(open.worktree!, ["commit", "-m", "not a port merge"], { FORGE_FLOW_OP: "" });
+
+    const int = await integrateFlowBranch(repo, ambientIo, {
+      branch: open.branch!,
+      dryRun: false,
+    });
+    expect(int.integrated).toBe(false);
+    expect(int.diagnostics[0]?.ruleId).toBe("FLOW-INT-09");
+  }, 30_000);
+
+  it("flow.integrate refuses a port when develop moved since it opened (FLOW-INT-10)", async () => {
+    const repo = await repoWithPendingRelease();
+    const mainSha = await sha(repo, "main");
+    const open = await openFlowBranchCore(repo, ambientIo, {
+      kind: "session",
+      slug: "port-v0-1-2",
+      brief: "handmade port",
+      owner: { kind: "session", id: "backmerge" },
+      port: { mainSha, tags: ["v0.1.2"] },
+      dryRun: false,
+    });
+    expect(open.opened).toBe(true);
+    dirs.push(open.worktree!);
+    // The real fixed-format merge lands on the port…
+    const merge = await gitExec(
+      open.worktree!,
+      ["merge", "--no-ff", "-m", "release v0.1.2 → develop", "main"],
+      { FORGE_FLOW_OP: "" },
+    );
+    expect(merge.exitCode).toBe(0);
+    // …but develop moves before the port integrates (plumbing commit).
+    const tree = (await gitExec(repo, ["rev-parse", "develop^{tree}"])).stdout.trim();
+    const moved = (
+      await gitExec(repo, ["commit-tree", tree, "-p", "develop", "-m", "develop moved"])
+    ).stdout.trim();
+    await gitExec(repo, ["update-ref", "refs/heads/develop", moved]);
+
+    const int = await integrateFlowBranch(repo, ambientIo, {
+      branch: open.branch!,
+      dryRun: false,
+    });
+    expect(int.integrated).toBe(false);
+    expect(int.diagnostics[0]?.ruleId).toBe("FLOW-INT-10");
   }, 30_000);
 });

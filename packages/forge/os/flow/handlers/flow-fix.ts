@@ -18,6 +18,7 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 6 — flow.fix open + fix-mode cut</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
+  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -37,7 +38,7 @@ import {
   gitCommit,
   isAncestor,
   requireGit,
-  statusTracked,
+  statusDirty,
   topLevel,
   worktreeList,
 } from "../git.ts";
@@ -53,12 +54,12 @@ import {
   updateRegistry,
   type FlowRegistryEntry,
 } from "../registry.ts";
-import { runFlowScript } from "../scripts.ts";
+import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 import { VersionWriteError, writeLineVersion } from "../version-files.ts";
 import { backmergeFlow, type FlowBackmergeData } from "./flow-backmerge.ts";
 import type { FlowCutData } from "./flow-cut.ts";
-import { isAdoptedFlowRepo } from "./flow-cut.ts";
+import { isAdoptedFlowRepo, toFlowCutLines } from "./flow-cut.ts";
 import type { CutLine } from "./flow-cut.ts";
 import {
   INTEGRATE_LOCK_STALE_MS,
@@ -69,8 +70,13 @@ import { openFlowBranchCore } from "./flow-open.ts";
 export interface FlowFixData {
   branch: string | null;
   worktree: string | null;
+  base: "main";
   baseSha: string | null;
+  /** Repository line's last release tag the fix opened against (FLOW-FIX-02 proof). */
+  baseTag: string | null;
   opened: boolean;
+  /** The worktree-setup hook result — FLOW-OPEN-07 failures surface here. */
+  setup: FlowScriptResult | null;
   diagnostics: Diagnostic[];
 }
 
@@ -78,12 +84,17 @@ function refuseFix(
   ruleId: string,
   message: string,
   fixHint: string,
+  partial?: Partial<FlowFixData>,
 ): FlowFixData {
   return {
     branch: null,
     worktree: null,
+    base: "main",
     baseSha: null,
+    baseTag: null,
     opened: false,
+    setup: null,
+    ...partial,
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
 }
@@ -147,14 +158,24 @@ export async function fixFlow(
   });
   if (!open.opened || open.branch === null) {
     const d = open.diagnostics[0];
-    return refuseFix(d?.ruleId ?? "FLOW-FIX-01", d?.message ?? "fix branch did not open", d?.fixHint ?? "inspect flow.status");
+    return refuseFix(
+      d?.ruleId ?? "FLOW-FIX-01",
+      d?.message ?? "fix branch did not open",
+      d?.fixHint ?? "inspect flow.status",
+      { baseTag: tags.lastTag?.name ?? null, setup: open.setup },
+    );
   }
+  // An opened worktree whose setup hook failed still reports opened — the
+  // FLOW-OPEN-07 diagnostic rides along (the worktree stays per DNA-106).
   return {
     branch: open.branch,
     worktree: open.worktree,
+    base: "main",
     baseSha: open.baseSha,
+    baseTag: tags.lastTag?.name ?? null,
     opened: true,
-    diagnostics: [],
+    setup: open.setup,
+    diagnostics: open.diagnostics,
   };
 }
 
@@ -179,14 +200,18 @@ export async function runFixCut(
   const base: FlowCutData = {
     mode: "fix",
     released: false,
-    tags: [],
-    versions: {},
-    mainGains: 0,
     resumed: false,
     releaseBranch: entry.name,
-    mainTip: null,
+    releaseCommit: null,
+    mainBefore: null,
+    mainAfter: null,
+    mainGains: 0,
+    tags: [],
+    versions: {},
+    lines: [],
+    fingerprints: {},
+    gate: null,
     backmerge: null,
-    portWorktree: null,
     diagnostics: [],
   };
   const cutRefuse = (ruleId: string, message: string, fixHint: string, p?: Partial<FlowCutData>): FlowCutData => ({
@@ -198,15 +223,34 @@ export async function runFixCut(
   if (opts.linesGiven) {
     return cutRefuse("FLOW-CUT-09", "--lines is not valid for a fix release", "the fix's touched lines are derived from its commits — drop --lines");
   }
-  const wt = entry.worktree;
   const live = await worktreeList(repoRoot, io);
-  const fixWt = live.find((w) => w.branch === entry.name)?.path ?? wt;
+  const liveFix = live.find((w) => w.branch === entry.name);
+  if (liveFix === undefined) {
+    return cutRefuse(
+      "FLOW-CUT-07",
+      `no worktree has ${entry.name} checked out — the fix must release from its own worktree`,
+      "re-open the fix with flow.fix, or inspect with flow.status",
+    );
+  }
+  const fixWt = liveFix.path;
   if (!(await io.exists(fixWt))) {
     return cutRefuse("FLOW-07", `fix worktree ${fixWt} does not exist`, "inspect with flow.status — a stale entry may need flow.discard");
   }
-  const dirty = await statusTracked(fixWt, io);
-  if (dirty.length > 0) {
-    return cutRefuse("FLOW-CUT-07", `fix worktree has ${dirty.length} uncommitted change(s)`, "commit or revert inside the fix worktree");
+  // add -A sweeps untracked files into the release commit — the dirty check
+  // must predict it exactly (untracked included), and main must be free for
+  // the update-ref CAS.
+  const dirty = await statusDirty(fixWt, io);
+  const mainCheckedOut = live.some((w) => w.branch === "main");
+  if (dirty.length > 0 || mainCheckedOut) {
+    return cutRefuse(
+      "FLOW-CUT-07",
+      mainCheckedOut
+        ? "a worktree has main checked out — the fix cut must own the main ref"
+        : `fix worktree has ${dirty.length} uncommitted change(s)`,
+      mainCheckedOut
+        ? "remove the worktree holding main, then re-run flow.cut"
+        : "commit or revert inside the fix worktree",
+    );
   }
   const baseSha = entry.baseSha;
   const fixTip0 = (await git(repoRoot, io, ["rev-parse", entry.name])).stdout.trim();
@@ -242,7 +286,6 @@ export async function runFixCut(
     ),
   ];
 
-  const mainSha0 = (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim();
   const cutLines: CutLine[] = [];
   for (const line of selected) {
     const tags = await listLineTags(repoRoot, line, io, fixTip0);
@@ -260,7 +303,13 @@ export async function runFixCut(
   const subject = `chore(release): ${tagList.join(", ")}`;
 
   if (opts.dryRun) {
-    return { ...base, tags: tagList, versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])) };
+    return {
+      ...base,
+      tags: tagList,
+      versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
+      lines: toFlowCutLines(tagList, cutLines, lines, repoLine),
+      mainBefore: (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim(),
+    };
   }
 
   const primary = await primaryWorktree(io, repoRoot);
@@ -408,15 +457,20 @@ export async function runFixCut(
         }
 
         const mainGains = Number(
-          (await git(repoRoot, io, ["rev-list", "--count", `${mainSha0}..${fixTip}`])).stdout.trim() || 0,
+          (await git(repoRoot, io, ["rev-list", "--count", `${mainNow}..${fixTip}`])).stdout.trim() || 0,
         );
         return {
           ...base,
           released: true,
+          releaseCommit: fixTip,
+          mainBefore: mainNow,
+          mainAfter: fixTip,
+          mainGains: Number.isFinite(mainGains) ? mainGains : 0,
           tags: tagList,
           versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
-          mainGains: Number.isFinite(mainGains) ? mainGains : 0,
-          mainTip: fixTip,
+          lines: toFlowCutLines(tagList, cutLines, lines, repoLine),
+          fingerprints,
+          gate,
           releaseBranch: null,
         } satisfies FlowCutData;
       },
@@ -458,9 +512,11 @@ export async function runFixCutWithBackmerge(
   });
   return {
     ...cut,
-    backmerge: bm.status,
-    portWorktree: bm.portWorktree,
-    diagnostics: bm.status === "conflict" ? bm.diagnostics : cut.diagnostics,
+    backmerge: bm,
+    diagnostics:
+      (bm.status === "conflict" || bm.status === "refused") && bm.diagnostics.length > 0
+        ? bm.diagnostics
+        : cut.diagnostics,
   };
 }
 
