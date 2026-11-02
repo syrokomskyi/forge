@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 6 — register flow.open/integrate/discard/status and flow.check FLOW-06/07</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
-  <history>RFC-1486, RFC-1488</history>
+  <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
+  <history>RFC-1486, RFC-1487, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +22,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 
 export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowCheck } = await import("./handlers/flow-check.ts");
+  const { runFlowDigest } = await import("./handlers/flow-digest.ts");
   const { runFlowDiscard } = await import("./handlers/flow-discard.ts");
   const { runFlowInstall } = await import("./handlers/flow-install.ts");
   const { runFlowBackmerge } = await import("./handlers/flow-backmerge.ts");
@@ -61,6 +62,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-07", severity: "error" },
           { id: "FLOW-08", severity: "error" },
           { id: "FLOW-09", severity: "warning" },
+          { id: "FLOW-10", severity: "error" },
           { id: "FLOW-VER-02", severity: "error" },
         ],
         mutatesState: false,
@@ -455,6 +457,51 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowFix,
+      },
+      {
+        name: "flow.digest",
+        description:
+          "Read-only outbound risk digest (RFC-1491): the unpushed " +
+          "develop tail segmented into journal-attributed items " +
+          "(integration, backmerge, release, unattributed) classified by " +
+          "risk category — contract, migration, invariant, " +
+          "capability-removal, major-dependency, other — plus new release " +
+          "tags versus origin, held branches and journal-scoped pending " +
+          "publications. Prints the digestId flow.push must quote. " +
+          "--no-fetch skips git fetch for offline review; a fetch failure " +
+          "downgrades to stale remote-tracking refs with a warning. " +
+          "FLOW-PUSH-01 (error) when no origin remote exists.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-PUSH-01", severity: "error" },
+          { id: "FLOW-DIGEST-01", severity: "warning" },
+        ],
+        mutatesState: true, // git fetch updates remote-tracking refs unless --no-fetch
+        idempotency: "rerun-safe",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
+        reads: [
+          "forge.yaml",
+          ".git/**",
+          "docs/rfcs/*.md",
+          "pnpm-workspace.yaml",
+          "package.json",
+          "packages/*/package.json",
+        ],
+        cacheable: false,
+        flags: {
+          "no-fetch": {
+            kind: "boolean",
+            required: false,
+            description: "Skip git fetch origin --prune — digest on existing remote-tracking refs.",
+          },
+        },
+        execute: runFlowDigest,
       },
       {
         name: "flow.discard",
