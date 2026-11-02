@@ -12,11 +12,12 @@ that repository from the flow guard.</purpose>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
   <item>"Valid" is the strict content contract: parseable YAML carrying schema forge/generated@1 and generator repo-extract — the flow.check FLOW-10 wording matches exactly this test.</item>
-  <item>`source` prefers the origin fetch URL with userinfo stripped so an extract repository can trace which repository produced it; a repository without origin falls back to the directory basename.</item>
+  <item>`source` accepts only network origins (RFC-1498): http/https/ssh/git schemes or scp form, userinfo stripped; a local path or file:// URL falls back to the directory basename and reports its rejection kind — the path is never written into a marker.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 2 — extract markers (flow.install step, FLOW-10, FLOW-PUSH-06 input)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <item>RFC-1498: step 2 — network-only marker source + rejectedOrigin reporting</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,20 +48,49 @@ export function markerContent(source: string): string {
   return `schema: ${MARKER_SCHEMA}\ngenerator: ${MARKER_GENERATOR}\nsource: ${source}\n`;
 }
 
+/** Why an origin URL was rejected as a marker source (RFC-1498). */
+export type RejectedOriginKind = "local-path" | "file-url";
+
 /**
- * The marker `source` value for a repository — the origin fetch URL with
- * any embedded credentials stripped, or the repository directory basename
- * when origin is absent or unreadable.
+ * True for origins that can reach a remote: a network scheme
+ * (http, https, ssh, git) or the scp form `<user>@<host>:<path>`
+ * (RFC-1498). Local paths, `file://` URLs and anything else are not
+ * marker sources — they would leak a machine-local path into the
+ * extract repository's forge.generated.yaml.
  */
-export async function markerSource(repoRoot: string, io: WorkspaceIO): Promise<string> {
+export function isNetworkOriginUrl(url: string): boolean {
+  if (/^(https?|ssh|git):\/\//i.test(url)) return true;
+  // scp-like syntax — user@host:path (git's shorthand for ssh).
+  return /^[^/@\s]+@[^:/\s]+:[^\s]+$/.test(url);
+}
+
+/**
+ * The marker `source` value for a repository (RFC-1498): the
+ * credential-stripped `origin` URL when it is network-shaped, else the
+ * repository directory basename with `rejectedOrigin` naming the kind —
+ * never the path itself, so no machine-local path is written into an
+ * extract repository.
+ */
+export async function markerSource(
+  repoRoot: string,
+  io: WorkspaceIO,
+): Promise<{ source: string; rejectedOrigin: RejectedOriginKind | null }> {
   const url = await git(repoRoot, io, ["remote", "get-url", "origin"]);
-  if (url.exitCode === 0 && url.stdout.trim().length > 0) {
-    const raw = url.stdout.trim();
-    // Strip userinfo — https://user:pass@host/path → https://host/path.
-    const stripped = raw.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1");
-    return stripped;
+  const raw = url.exitCode === 0 ? url.stdout.trim() : "";
+  if (raw.length === 0) {
+    return { source: basename(repoRoot), rejectedOrigin: null };
   }
-  return basename(repoRoot);
+  if (isNetworkOriginUrl(raw)) {
+    // Strip userinfo — https://user:pass@host/path → https://host/path.
+    return {
+      source: raw.replace(/^([a-z][a-z0-9+.-]*:\/\/)[^/@]*@/i, "$1"),
+      rejectedOrigin: null,
+    };
+  }
+  return {
+    source: basename(repoRoot),
+    rejectedOrigin: /^file:/i.test(raw) ? "file-url" : "local-path",
+  };
 }
 
 /** True when marker content parses and carries the schema + generator. */

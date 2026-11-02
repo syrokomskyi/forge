@@ -12,9 +12,9 @@ for both surfaces.</purpose>
 <KEY_DECISIONS>
   <item>The branch set is the union of local auto names and registry entries — a dead session leaves a branch, an entry or a worktree, and each shows up with its mismatch fields set.</item>
   <item>Stale is max(lastCommitAt, updatedAt) &gt; 72 h for registered entries and lastCommitAt &gt; 72 h for unregistered branches; held entries are never stale (RFC FLOW-06).</item>
+  <item>Stray (RFC-1498): a local auto branch with no registry entry and no worktree checkout anywhere is exposed as unregisteredBranchesWithoutWorktree regardless of age — the leftover shape a failed branch -D leaves.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -30,6 +30,9 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
 
 collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* branch names with no registry entry and no worktree checkout anywhere (primary or linked), the shape a failed branch -D leaves behind. flow.check emits one FLOW-07 warning per stray regardless of age: the 72 h rule in FLOW-06 only covered staleness, so a fresh leftover went unreported. The fix hint names flow.status for inspection and flow.discard for teardown, and flags that a branch with unique commits needs a human decision. Tests AC-1 (fresh stray branch reports FLOW-07, not FLOW-06) and AC-2 (a registered session with a live worktree reports none).</item>
+  <item>RFC-1498: step 2 — network-only marker source
+
+markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */

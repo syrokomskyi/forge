@@ -12,19 +12,22 @@ no commit; deleting a marker flips flow.check to FLOW-10.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 2 — markers step + FLOW-10 tests</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <item>RFC-1498: step 2 — network-only marker source
+
+markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
 </CHANGE_SUMMARY>
 */
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { collectFlowCheck } from "../handlers/flow-check.ts";
 import { executeInstall, planInstall } from "../handlers/flow-install.ts";
-import { MARKER_FILE } from "../markers.ts";
+import { MARKER_FILE, markerSource } from "../markers.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
 const dirs: string[] = [];
@@ -95,6 +98,51 @@ describe("flow.install markers step (RFC-1491)", () => {
     await executeInstall(plan, ambientIo);
     expect(plan.steps.find((s) => s.step === "markers")?.status).toBe("skipped");
     expect((await gitExec(repo, ["rev-parse", "develop"])).stdout.trim()).toBe(tip);
+  }, 40_000);
+
+  it("RFC-1498 AC-3: a local-path origin falls back to the directory basename", async () => {
+    const { repo, origin } = await repoWithPackageLine();
+    const result = await markerSource(repo, ambientIo);
+    expect(result.rejectedOrigin).toBe("local-path");
+    expect(result.source).toBe(basename(repo));
+    // The plan step warns — naming the kind, never the path itself.
+    const plan = await planInstall(repo, ambientIo);
+    const detail = plan.steps.find((s) => s.step === "markers")?.detail ?? "";
+    expect(detail).toContain("origin rejected (local-path)");
+    expect(detail).not.toContain(origin);
+  }, 40_000);
+
+  it("RFC-1498 AC-3: a file:// origin is rejected as file-url", async () => {
+    const { repo, origin } = await repoWithPackageLine();
+    await gitExec(repo, ["remote", "set-url", "origin", `file://${origin}`]);
+    const result = await markerSource(repo, ambientIo);
+    expect(result.rejectedOrigin).toBe("file-url");
+    expect(result.source).toBe(basename(repo));
+    expect(result.source).not.toContain(origin);
+  }, 40_000);
+
+  it("RFC-1498 AC-4: scp-style and credential-bearing origins stay usable", async () => {
+    const { repo } = await repoWithPackageLine();
+    await gitExec(repo, [
+      "remote",
+      "set-url",
+      "origin",
+      "git@github.com:owner/repo.git",
+    ]);
+    const scp = await markerSource(repo, ambientIo);
+    expect(scp.source).toBe("git@github.com:owner/repo.git");
+    expect(scp.rejectedOrigin).toBeNull();
+
+    await gitExec(repo, [
+      "remote",
+      "set-url",
+      "origin",
+      "https://alice:secret-token@github.com/owner/repo.git",
+    ]);
+    const cred = await markerSource(repo, ambientIo);
+    expect(cred.source).toBe("https://github.com/owner/repo.git");
+    expect(cred.rejectedOrigin).toBeNull();
+    expect(cred.source).not.toContain("secret-token");
   }, 40_000);
 
   it("flow.check reports FLOW-10 after a marker is deleted", async () => {
