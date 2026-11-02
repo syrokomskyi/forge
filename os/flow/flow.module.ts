@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: steps 5-6 — flow.install generates declaration, FLOW remediation catalog, regenerated artifacts</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
+  <item>RFC-1487: step 6 — register flow.open/integrate/discard/status and flow.check FLOW-06/07</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -22,7 +22,11 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 
 export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowCheck } = await import("./handlers/flow-check.ts");
+  const { runFlowDiscard } = await import("./handlers/flow-discard.ts");
   const { runFlowInstall } = await import("./handlers/flow-install.ts");
+  const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
+  const { runFlowOpen } = await import("./handlers/flow-open.ts");
+  const { runFlowStatus } = await import("./handlers/flow-status.ts");
   const { runFlowVersion } = await import("./handlers/flow-version.ts");
   return {
     name: "forge-flow",
@@ -50,6 +54,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-03", severity: "error" },
           { id: "FLOW-04", severity: "warning" },
           { id: "FLOW-05", severity: "error" },
+          { id: "FLOW-06", severity: "warning" },
+          { id: "FLOW-07", severity: "error" },
           { id: "FLOW-08", severity: "error" },
           { id: "FLOW-09", severity: "warning" },
           { id: "FLOW-VER-02", severity: "error" },
@@ -164,6 +170,189 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowVersion,
+      },
+      {
+        name: "flow.open",
+        description:
+          "Open a session or task in its own worktree beside the repository " +
+          "(RFC-1487). Assigns the next free NN for today's UTC date across " +
+          "local branches, remote-tracking refs and the registry, creates " +
+          "auto/<kind>-<YYMMDD>-<NN>-<slug> from the develop tip at " +
+          "<parent>/<repo>@<branch-slug>, records the registry entry under " +
+          "the common git dir, journals the open and runs the primary's " +
+          "hooks/worktree-setup.sh. Refusals: FLOW-OPEN-01..07. The sibling " +
+          "worktree directory lives outside writes[] scope by design.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-OPEN-01", severity: "error" },
+          { id: "FLOW-OPEN-02", severity: "error" },
+          { id: "FLOW-OPEN-03", severity: "error" },
+          { id: "FLOW-OPEN-04", severity: "error" },
+          { id: "FLOW-OPEN-05", severity: "error" },
+          { id: "FLOW-OPEN-06", severity: "error" },
+          { id: "FLOW-OPEN-07", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "session lifecycle — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**"],
+        cacheable: false,
+        flags: {
+          kind: {
+            kind: "string",
+            required: true,
+            description: "Branch kind: session or task.",
+          },
+          slug: {
+            kind: "string",
+            required: true,
+            description: "Slug for the branch name — ^[a-z0-9]+(-[a-z0-9]+)*$, 3..48 chars.",
+          },
+          brief: {
+            kind: "string",
+            required: false,
+            description: "One-line brief recorded on the registry entry.",
+          },
+          owner: {
+            kind: "string",
+            required: false,
+            description: "Owner id — required for --kind task (e.g. T-0007); sessions default to 'unspecified'.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Report the would-be branch/worktree without mutating.",
+          },
+        },
+        execute: runFlowOpen,
+      },
+      {
+        name: "flow.integrate",
+        description:
+          "Integrate a registered auto branch into develop as a linear " +
+          "fast-forward (RFC-1487), idempotent and rerun-safe: under the " +
+          "integration lock the clean branch worktree rebases onto develop, " +
+          "the primary's hooks/integration-gate.sh gates, the clean primary " +
+          "on develop fast-forwards via git -C <primary> merge --ff-only " +
+          "(never a merge commit — the primary working tree is rewritten by " +
+          "the merge itself), then teardown, worktree removal, branch delete, " +
+          "registry drop and journal finish the lifecycle. Refusals: " +
+          "FLOW-INT-01..08.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-INT-01", severity: "error" },
+          { id: "FLOW-INT-02", severity: "error" },
+          { id: "FLOW-INT-03", severity: "error" },
+          { id: "FLOW-INT-04", severity: "error" },
+          { id: "FLOW-INT-05", severity: "error" },
+          { id: "FLOW-INT-06", severity: "error" },
+          { id: "FLOW-INT-07", severity: "error" },
+          { id: "FLOW-INT-08", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "session lifecycle — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**"],
+        cacheable: false,
+        flags: {
+          branch: {
+            kind: "string",
+            required: false,
+            description:
+              "Registered auto branch to integrate; defaults to the branch checked out in the cwd worktree.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate the integration's preconditions without mutating.",
+          },
+        },
+        execute: runFlowIntegrate,
+      },
+      {
+        name: "flow.discard",
+        description:
+          "Discard a registered auto branch without integrating (RFC-1487): " +
+          "the primary's hooks/worktree-teardown.sh runs, the worktree is " +
+          "removed (--force only with --dirty), the branch is force-deleted, " +
+          "the registry entry dropped and the operator's --reason journaled. " +
+          "Refusals: FLOW-DIS-01..04.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-DIS-01", severity: "error" },
+          { id: "FLOW-DIS-02", severity: "error" },
+          { id: "FLOW-DIS-03", severity: "error" },
+          { id: "FLOW-DIS-04", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "session lifecycle — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**"],
+        cacheable: false,
+        flags: {
+          branch: {
+            kind: "string",
+            required: false,
+            description:
+              "Registered auto branch to discard; defaults to the branch checked out in the cwd worktree.",
+          },
+          reason: {
+            kind: "string",
+            required: true,
+            description: "Why the work is dropped — journaled for the outbound wave.",
+          },
+          dirty: {
+            kind: "boolean",
+            required: false,
+            description: "Acknowledge discarding uncommitted changes in the worktree.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Report the discard plan without mutating.",
+          },
+        },
+        execute: runFlowDiscard,
+      },
+      {
+        name: "flow.status",
+        description:
+          "Read-only session-branch report (RFC-1487): every auto branch " +
+          "with its registry entry, worktree, tracked-modification count, " +
+          "distance to develop, last commit time, held state and the 72 h " +
+          "stale flag. Reports FLOW-07 at error severity when the registry " +
+          "fails the forge/flow-registry@1 schema.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [{ id: "FLOW-07", severity: "error" }],
+        mutatesState: false,
+        execOnReadOnly: true,
+        writes: [],
+        coverage: "operator",
+        coverageNote: "session lifecycle — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", ".git/**"],
+        cacheable: false,
+        flags: {},
+        execute: runFlowStatus,
       },
     ],
     pipelines: [],
