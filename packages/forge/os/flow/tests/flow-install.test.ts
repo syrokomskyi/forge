@@ -9,15 +9,18 @@ nothing, and a fresh adoption ends on develop with the two committed hook
 files.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 4 — flow.install behavior tests</item>
   <item>RFC-1486: step 4 — flow.install two-phase adoption + rerun-safe</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <item>RFC-1498: step 3 — legacy-tags report in flow.install
+
+listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
-import { stat, writeFile } from "node:fs/promises";
+import { mkdir, stat, writeFile } from "node:fs/promises";
 import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -75,6 +78,53 @@ function context(workspaceRoot: string, dryRun = false): ForgeRuntimeContext {
     },
   };
 }
+
+describe("flow.install — legacy tags (RFC-1498)", () => {
+  /** Governed repo with one package line lib@ and pre-program tags. */
+  async function repoWithLegacyTags(): Promise<string> {
+    const repo = await governedRepo();
+    await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
+    await writeFile(
+      join(repo, "package.json"),
+      '{\n  "name": "fixture",\n  "version": "0.1.0"\n}\n',
+    );
+    await mkdir(join(repo, "packages", "lib"), { recursive: true });
+    await writeFile(
+      join(repo, "packages", "lib", "package.json"),
+      '{\n  "name": "lib",\n  "version": "0.1.0"\n}\n',
+    );
+    await writeFile(join(repo, "packages", "lib", "extract.config.yaml"), "standalone: true\n");
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "config"]);
+    // Pre-program tags: a lightweight repo tag and an annotated line tag
+    // whose body predates forge/release-tag@1.
+    await gitExec(repo, ["tag", "v1.2.2"]);
+    await gitExec(repo, ["tag", "-a", "lib@0.1.0", "-m", "release: lib@0.1.0"]);
+    return repo;
+  }
+
+  it("AC-5: the legacy-tags plan step names both tags with their kinds", async () => {
+    const repo = await repoWithLegacyTags();
+    const plan = await planInstall(repo, ambientIo);
+    const step = plan.steps.find((s) => s.step === "legacy-tags");
+    expect(step).toBeDefined();
+    expect(step!.status).toBe("planned");
+    expect(step!.detail).toContain("v1.2.2 (lightweight)");
+    expect(step!.detail).toContain("lib@0.1.0 (annotated-without-schema)");
+  }, 30_000);
+
+  it("AC-6: pre-program tags never refuse installation", async () => {
+    const repo = await repoWithLegacyTags();
+    const plan = await planInstall(repo, ambientIo);
+    expect(plan.refusal).toBeNull();
+    await executeInstall(plan, ambientIo);
+    expect(plan.steps.every((s) => s.status !== "failed")).toBe(true);
+    // And the tags stay — nothing is deleted or rewritten.
+    const tags = await gitExec(repo, ["tag", "--list"]);
+    expect(tags.stdout).toContain("v1.2.2");
+    expect(tags.stdout).toContain("lib@0.1.0");
+  }, 60_000);
+});
 
 describe("flow.install — adoption", () => {
   it("fast-forwards a develop 3 commits behind main, adding only the adoption commit (AC-6)", async () => {
