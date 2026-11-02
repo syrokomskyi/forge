@@ -19,11 +19,12 @@ released with no mutation.</purpose>
   <item>Resume keys on the develop tip's `chore(release):` subject — the subject is the persisted declaration of which tags the release intends.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut with fingerprints and resume</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1494: step 1 — isFlowAdopted public export</item>
+  <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -52,7 +53,7 @@ import {
   worktreeList,
 } from "../git.ts";
 import { LockTimeoutError, withFlowLock } from "../locks.ts";
-import { detectRepoKind } from "../repo-kind.ts";
+import { isFlowAdopted } from "../index.ts";
 import {
   appendJournal,
   commonGitDir,
@@ -70,7 +71,6 @@ import {
   writeReleaseTag,
 } from "../release-tags.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
-import { hasManagedBlock, PRECOMMIT_FILE } from "../guard-files.ts";
 import { VersionWriteError, writeLineVersion, writeSyncedForgeVersion } from "../version-files.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 import { integrateFlowBranch } from "./flow-integrate.ts";
@@ -120,21 +120,6 @@ export interface CutLine {
   nextVersion: string;
   previousTag: string | null;
   rfcs: string[];
-}
-
-/**
- * Adopted into the fixed branch model (FLOW-CUT-01 / FLOW-FIX-01):
- * governed + develop exists + the pre-commit managed block COMMITTED on
- * develop — the committed state is the signal (worktrees check out committed
- * content; a working-tree-only block would not reach a release worktree).
- */
-export async function isAdoptedFlowRepo(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
-  const detection = await detectRepoKind(repoRoot, io);
-  if (!detection.ok || detection.repoKind.kind !== "governed") return false;
-  if (!(await branchExists(repoRoot, io, "develop"))) return false;
-  const committed = await git(repoRoot, io, ["show", `develop:${PRECOMMIT_FILE}`]);
-  if (committed.exitCode !== 0) return false;
-  return hasManagedBlock(committed.stdout);
 }
 
 function refuse(
@@ -210,7 +195,7 @@ async function planOrdinaryCut(
   opts: { lines: string[] },
 ): Promise<PlanOutcome> {
   const primary = await primaryWorktree(io, repoRoot);
-  const guardInstalled = await isAdoptedFlowRepo(repoRoot, io);
+  const guardInstalled = await isFlowAdopted(repoRoot, io);
   if (!guardInstalled) {
     return {
       kind: "refusal",

@@ -16,13 +16,14 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
   <item>The fix cut never fast-forwards develop — it update-refs main at the fix tip, then delegates the port to backmergeFlow so the conflict path reports released + backmerge: conflict.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 6 — flow.fix open + fix-mode cut</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1490: fix-mode cut run inside the fix worktree tears down and back-merges through the primary
 
 Steering-session verification of wave 2 (W2-1): flow.cut run inside the fix worktree, the documented path and the one flow.fix's nextSteps print, released main and the tags, then removed that worktree and kept using it as repoRoot. branch -D failed unobserved, leaving an unregistered auto/fix branch, and the trailing back-merge crashed on the vanished directory. The primary is now resolved before the cut and used for every step after the teardown; a failed branch delete surfaces as a FLOW-07 warning. Back-merge refusals are appended to the cut diagnostics instead of replacing them.</item>
+  <item>RFC-1494: step 1 — isFlowAdopted public export</item>
+  <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -63,7 +64,8 @@ import { primaryWorktree } from "../worktree-path.ts";
 import { VersionWriteError, writeLineVersion } from "../version-files.ts";
 import { backmergeFlow, type FlowBackmergeData } from "./flow-backmerge.ts";
 import type { FlowCutData } from "./flow-cut.ts";
-import { isAdoptedFlowRepo, toFlowCutLines } from "./flow-cut.ts";
+import { toFlowCutLines } from "./flow-cut.ts";
+import { isFlowAdopted } from "../index.ts";
 import type { CutLine } from "./flow-cut.ts";
 import {
   INTEGRATE_LOCK_STALE_MS,
@@ -110,7 +112,7 @@ export async function fixFlow(
   io: WorkspaceIO,
   opts: { slug: string; brief: string | null; dryRun: boolean; now?: Date },
 ): Promise<FlowFixData> {
-  if (!(await isAdoptedFlowRepo(repoRoot, io))) {
+  if (!(await isFlowAdopted(repoRoot, io))) {
     return refuseFix(
       "FLOW-FIX-01",
       "repository is not adopted into the fixed branch model",

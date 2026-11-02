@@ -17,11 +17,15 @@ reachable, else the version-file value.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1493: step 1 — public os/flow export resolveRepositoryLineVersion</item>
   <item>RFC-1493: step 1 — forge public release-line version reader</item>
+  <item>RFC-1494: step 1 — isFlowAdopted public export</item>
 </CHANGE_SUMMARY>
 */
 
 import type { WorkspaceIO } from "../../src/types.ts";
+import { branchExists, git } from "./git.ts";
+import { hasManagedBlock, PRECOMMIT_FILE } from "./guard-files.ts";
 import { deriveLineVersion } from "./line-version.ts";
+import { detectRepoKind } from "./repo-kind.ts";
 import { discoverReleaseLines } from "./release-lines.ts";
 
 export interface RepositoryLineVersion {
@@ -65,4 +69,20 @@ export async function resolveRepositoryLineVersion(
     source: derived.source,
     lastTag: derived.lastTag?.name ?? null,
   };
+}
+
+/**
+ * Adopted into the fixed branch model (FLOW-CUT-01 / FLOW-FIX-01):
+ * governed + develop exists + the pre-commit managed block COMMITTED on
+ * develop — the committed state is the signal (worktrees check out committed
+ * content; a working-tree-only block would not reach a release worktree).
+ * RFC-1494: the same test backs leitstand's platform precondition.
+ */
+export async function isFlowAdopted(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
+  const detection = await detectRepoKind(repoRoot, io);
+  if (!detection.ok || detection.repoKind.kind !== "governed") return false;
+  if (!(await branchExists(repoRoot, io, "develop"))) return false;
+  const committed = await git(repoRoot, io, ["show", `develop:${PRECOMMIT_FILE}`]);
+  if (committed.exitCode !== 0) return false;
+  return hasManagedBlock(committed.stdout);
 }
