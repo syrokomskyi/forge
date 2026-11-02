@@ -16,6 +16,9 @@ patch-only level gate FLOW-CUT-10 and the --lines rejection FLOW-CUT-09.</purpos
   <item>RFC-1490: step 6 — fix open, patch release, and refusal tests</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1490: fix-mode cut run inside the fix worktree tears down and back-merges through the primary
+
+Steering-session verification of wave 2 (W2-1): flow.cut run inside the fix worktree, the documented path and the one flow.fix's nextSteps print, released main and the tags, then removed that worktree and kept using it as repoRoot. branch -D failed unobserved, leaving an unregistered auto/fix branch, and the trailing back-merge crashed on the vanished directory. The primary is now resolved before the cut and used for every step after the teardown; a failed branch delete surfaces as a FLOW-07 warning. Back-merge refusals are appended to the cut diagnostics instead of replacing them.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +30,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import type { ForgeRuntimeContext } from "../../../src/types.ts";
+import { collectDigest } from "../digest.ts";
 import { commonGitDir, readRegistry, type FlowRegistryEntry } from "../registry.ts";
 import { gitExec, initRepo, installGuard } from "./helpers.ts";
 import { runFlowCut, runOrdinaryCut } from "../handlers/flow-cut.ts";
@@ -290,4 +294,51 @@ describe("flow.fix", () => {
     // No integration-gate.sh in the fixture → the gate script reports skipped.
     expect(result.data?.backmerge?.gate?.status).toBe("skipped");
   }, 120_000);
+  it("fix-mode cut run inside the fix worktree back-merges and deletes the fix branch", async () => {
+    const repo = await releasedRepo();
+    const fix = await fixFlow(repo, ambientIo, { slug: "inside", brief: null, dryRun: false });
+    dirs.push(fix.worktree!);
+    await commitIn(fix.worktree!, "hot.txt", "fix");
+
+    // The documented path: flow.cut from the fix worktree itself, no --branch.
+    // The cut removes that worktree, so every later step must run from the primary.
+    const result = await runFlowCut({ argv: [], flags: {} }, stubContext(fix.worktree!));
+
+    expect(result.data?.released).toBe(true);
+    expect(result.data?.mode).toBe("fix");
+    expect(result.data?.tags).toEqual(["v0.1.2"]);
+    expect(result.data?.backmerge?.status).toBe("merged");
+    expect((await gitExec(repo, ["rev-parse", "--verify", "-q", `refs/heads/${fix.branch}`])).exitCode).not.toBe(0);
+    const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
+    expect(subject).toBe("release v0.1.2 → develop");
+  }, 120_000);
+
+  it("digest keeps a develop integration and a later fix release apart", async () => {
+    const repo = await releasedRepo();
+    const origin = await mkdtemp(join(tmpdir(), "flow-fix-origin-"));
+    dirs.push(origin);
+    await gitExec(origin, ["init", "--bare", "-b", "develop", "."]);
+    await gitExec(repo, ["remote", "add", "origin", origin]);
+    const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"], { FORGE_FLOW_OP: "push" });
+    expect(push.exitCode).toBe(0);
+
+    // develop moves past the release; then a fix shares that same base.
+    await landThroughSession(repo, "devwork", "dev.txt", "dev");
+    const fix = await fixFlow(repo, ambientIo, { slug: "hotfix", brief: null, dryRun: false });
+    dirs.push(fix.worktree!);
+    await commitIn(fix.worktree!, "hot.txt", "fix");
+    const entry = await fixEntry(repo, fix.branch);
+    const cut = await runFixCutWithBackmerge(repo, ambientIo, { entry, linesGiven: false, dryRun: false });
+    expect(cut.backmerge?.status).toBe("merged");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const devItem = digest.items.find((i) => i.subjects.includes("devwork"));
+    expect(devItem?.kind).toBe("integration");
+    expect(devItem?.branch).toMatch(/-devwork$/);
+    // The fix commits reach develop only through the back-merge item.
+    const port = digest.items.find((i) => i.kind === "backmerge");
+    expect(port?.subjects).toEqual(expect.arrayContaining(["add hot.txt", "release v0.1.2 → develop"]));
+    expect(port?.commits).toBe(port?.subjects.length);
+    expect(digest.items.some((i) => i.kind === "release" && i.branch === fix.branch)).toBe(false);
+  }, 180_000);
 });

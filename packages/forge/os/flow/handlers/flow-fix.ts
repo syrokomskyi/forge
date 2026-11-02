@@ -20,6 +20,9 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1490: fix-mode cut run inside the fix worktree tears down and back-merges through the primary
+
+Steering-session verification of wave 2 (W2-1): flow.cut run inside the fix worktree, the documented path and the one flow.fix's nextSteps print, released main and the tags, then removed that worktree and kept using it as repoRoot. branch -D failed unobserved, leaving an unregistered auto/fix branch, and the trailing back-merge crashed on the vanished directory. The primary is now resolved before the cut and used for every step after the teardown; a failed branch delete surfaces as a FLOW-07 warning. Back-merge refusals are appended to the cut diagnostics instead of replacing them.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -434,13 +437,26 @@ export async function runFixCut(
         }
 
         // Teardown: worktree, branch (contained in main), registry, journal.
+        // The cut may run from inside fixWt — after the remove every git
+        // call goes through the primary, never repoRoot.
         await runFlowScript(io, "worktree-teardown", {
           primary,
           cwd: fixWt,
           env: { FLOW_PRIMARY: primary, FLOW_BRANCH: entry.name },
         });
         await git(primary, io, ["worktree", "remove", "--force", fixWt]);
-        await git(repoRoot, io, ["branch", "-D", entry.name]);
+        const dropped = await git(primary, io, ["branch", "-D", entry.name]);
+        const teardownWarnings: Diagnostic[] =
+          dropped.exitCode === 0
+            ? []
+            : [
+                {
+                  ruleId: "FLOW-07",
+                  severity: "warning",
+                  message: `fix branch ${entry.name} could not be deleted after the release: ${dropped.stderr.trim()}`,
+                  fixHint: `delete it from the primary checkout — git branch -D ${entry.name}`,
+                },
+              ];
         try {
           await updateRegistry(io, common, (r) => ({
             ...r,
@@ -459,7 +475,7 @@ export async function runFixCut(
         }
 
         const mainGains = Number(
-          (await git(repoRoot, io, ["rev-list", "--count", `${mainNow}..${fixTip}`])).stdout.trim() || 0,
+          (await git(primary, io, ["rev-list", "--count", `${mainNow}..${fixTip}`])).stdout.trim() || 0,
         );
         return {
           ...base,
@@ -474,6 +490,7 @@ export async function runFixCut(
           fingerprints,
           gate,
           releaseBranch: null,
+          diagnostics: [...base.diagnostics, ...teardownWarnings],
         } satisfies FlowCutData;
       },
       io,
@@ -505,9 +522,12 @@ export async function runFixCutWithBackmerge(
     onProgress?: (m: string) => void;
   },
 ): Promise<FlowCutData> {
+  // Resolved before the cut: runFixCut removes the fix worktree, which may
+  // be repoRoot itself (flow.cut run inside it — the documented path).
+  const primary = await primaryWorktree(io, repoRoot);
   const cut = await runFixCut(repoRoot, io, opts);
   if (!cut.released) return cut;
-  const bm: FlowBackmergeData = await backmergeFlow(repoRoot, io, {
+  const bm: FlowBackmergeData = await backmergeFlow(primary, io, {
     redo: false,
     dryRun: false,
     now: opts.now,
@@ -517,7 +537,7 @@ export async function runFixCutWithBackmerge(
     backmerge: bm,
     diagnostics:
       (bm.status === "conflict" || bm.status === "refused") && bm.diagnostics.length > 0
-        ? bm.diagnostics
+        ? [...cut.diagnostics, ...bm.diagnostics]
         : cut.diagnostics,
   };
 }
