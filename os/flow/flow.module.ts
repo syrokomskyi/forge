@@ -337,7 +337,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         name: "flow.status",
         description:
           "Read-only session-branch report (RFC-1487): every auto branch " +
-          "with its registry entry, worktree, tracked-modification count, " +
+          "with its registry entry, worktree, uncommitted-change count, " +
           "distance to develop, last commit time, held state and the 72 h " +
           "stale flag. Reports FLOW-07 at error severity when the registry " +
           "fails the forge/flow-registry@1 schema.",
