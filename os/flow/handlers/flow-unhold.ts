@@ -11,6 +11,7 @@ then integrates normally via flow.integrate.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 4 — flow.unhold (FLOW-HOLD-08, sibling worktree, held clear, journal)</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -135,19 +136,21 @@ export async function unholdFlowBranch(
       detail: `unheld — ${entry.held.reason}`,
     });
 
+    // The unhold already landed (registry + journal) — a setup-hook failure
+    // is a warning on the resulting worktree, not a refusal of the unhold.
     const diagnostics: Diagnostic[] =
       setup.status === "failed"
         ? [
             {
               ruleId: "FLOW-HOLD-08",
-              severity: "error",
+              severity: "warning",
               message: `hooks/worktree-setup.sh failed (exit ${setup.exitCode}): ${setup.stderrTail}`,
               fixHint: `fix ${primary}/hooks/worktree-setup.sh — the worktree ${worktree} and registry entry are kept`,
             },
           ]
         : [];
     return {
-      unheld: diagnostics.length === 0,
+      unheld: true,
       branch: entry.name,
       worktree,
       setup,

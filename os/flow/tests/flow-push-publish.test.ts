@@ -16,6 +16,7 @@ with an ours-merge and never force-pushes.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 5 — flow.push publication tests</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -169,6 +170,60 @@ describe("flow.push publications", () => {
     const after = await collectDigest(repo, ambientIo, { fetch: false });
     expect(after.pendingPublications).toEqual([]);
   }, 120_000);
+
+  it("a package line without a valid marker refuses FLOW-PUSH-06 before any ref moves", async () => {
+    const { repo, origin } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-pub-",
+      fakeExtract: true,
+    });
+    await mkdir(join(repo, "packages", "lib"), { recursive: true });
+    await writeFile(
+      join(repo, "packages", "lib", "extract.config.yaml"),
+      "standalone: true\ndestName: lib-export\n",
+    );
+    await writeFile(
+      join(repo, "packages", "lib", "package.json"),
+      '{\n  "name": "lib",\n  "version": "2.1.0"\n}\n',
+    );
+    // No forge.generated.yaml — the line must not publish.
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "package line lib"]);
+    await gitExec(repo, ["push", "origin", "develop"]);
+    await tag(repo, "lib@2.1.0", "lib", "2.1.0", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    expect(data.pushed).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-06");
+    expect(data.diagnostics[0]?.message).toContain("lib");
+    expect((await gitExec(origin, ["rev-parse", "refs/tags/lib@2.1.0"])).exitCode).not.toBe(0);
+  }, 90_000);
+
+  it("a missing repo-extract binary refuses FLOW-PUSH-07 while tags wait", async () => {
+    const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "flow-pub-" });
+    await addPackageLine(repo);
+    await tag(repo, "lib@2.1.0", "lib", "2.1.0", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    expect(data.pushed).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-07");
+    expect((await gitExec(origin, ["rev-parse", "refs/tags/lib@2.1.0"])).exitCode).not.toBe(0);
+  }, 90_000);
+
+  it("a repo-line v* tag in a push record is never pending", async () => {
+    const { repo } = await initRepoWithOrigin(dirs, { prefix: "flow-pub-" });
+    await tag(repo, "v1.2.3", "repo", "1.2.3", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    expect(data.pushed).toBe(true);
+
+    // The journal push record names v1.2.3, but repo-line tags are never
+    // extract publications — the next digest reports nothing pending.
+    const after = await collectDigest(repo, ambientIo, { fetch: false });
+    expect(after.pendingPublications).toEqual([]);
+  }, 90_000);
 
   it("a tag on origin this journal never pushed is not pending", async () => {
     const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {

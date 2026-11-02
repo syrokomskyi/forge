@@ -19,6 +19,7 @@ a manual push path.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 5 — flow.push (preflight, atomic push, publications, journals)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +33,7 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
-import { collectDigest } from "../digest.ts";
+import { collectDigest, lineForTag } from "../digest.ts";
 import {
   git,
   requireGit,
@@ -64,17 +65,6 @@ function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData
     publications: [],
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
-}
-
-/** Line a tag belongs to — longest tagPrefix wins. */
-function lineForTag(lines: ReleaseLine[], tag: string): ReleaseLine | null {
-  let best: ReleaseLine | null = null;
-  for (const line of lines) {
-    if (tag.startsWith(line.tagPrefix) && (best === null || line.tagPrefix.length > best.tagPrefix.length)) {
-      best = line;
-    }
-  }
-  return best;
 }
 
 /**
@@ -177,9 +167,11 @@ export async function pushFlow(
     );
   }
 
+  // Sha-pinned refspecs — the push ships exactly the reviewed tips; a local
+  // branch that moved since the digest stays local instead of sneaking in.
   const refspecs = [
-    "refs/heads/develop:refs/heads/develop",
-    "refs/heads/main:refs/heads/main",
+    `${digest.develop.local}:refs/heads/develop`,
+    `${digest.main.local}:refs/heads/main`,
     ...digest.tags.map((t) => `refs/tags/${t}:refs/tags/${t}`),
   ];
 
@@ -194,7 +186,7 @@ export async function pushFlow(
           (p): PublicationRow => ({
             tag: p.tag,
             line: p.line.id,
-            status: "published",
+            status: "pending",
             dest: null,
             verify: null,
             reconciled: false,
@@ -208,6 +200,7 @@ export async function pushFlow(
 
   // --- push ------------------------------------------------------------------
   const hasRefs = digest.develop.ahead > 0 || digest.main.ahead > 0 || digest.tags.length > 0;
+  const journalWarnings: string[] = [];
   let pushed = false;
   if (hasRefs) {
     const push = await git(repoRoot, io, ["push", "--atomic", "origin", ...refspecs], {
@@ -238,14 +231,22 @@ export async function pushFlow(
         base: digest.develop.remote ?? undefined,
         detail: digest.tags.join(" "),
       });
-    } catch {
-      // journal failure is non-fatal bookkeeping — the refs already moved.
+    } catch (error) {
+      journalWarnings.push(
+        `push journal record could not be appended — pending-publication retries for ${digest.tags.join(", ") || "no tags"} are lost: ${String(error)}`,
+      );
     }
   }
 
   // --- publications ------------------------------------------------------------
   const publications: PublicationRow[] = [...baselineSkipped];
-  const diagnostics: Diagnostic[] = [];
+  const diagnostics: Diagnostic[] = journalWarnings.map(
+    (message): Diagnostic => ({
+      ruleId: "FLOW-07",
+      severity: "warning",
+      message,
+    }),
+  );
   for (const { tag, line } of publishable) {
     const row = await publishTag(primary, io, { line, tag });
     publications.push(row);
@@ -266,8 +267,12 @@ export async function pushFlow(
           sha: row.destHead ?? "",
           detail: row.dest ?? "",
         });
-      } catch {
-        // bookkeeping — the publication itself already happened.
+      } catch (error) {
+        diagnostics.push({
+          ruleId: "FLOW-07",
+          severity: "warning",
+          message: `publish journal record for ${tag} could not be appended — the tag will be retried as pending: ${String(error)}`,
+        });
       }
     }
   }
@@ -320,6 +325,7 @@ export async function runFlowPush(
     }
   }
   const errors = data.diagnostics.filter((d) => d.severity === "error");
+  const publishedCount = data.publications.filter((p) => p.status === "published").length;
 
   if (outputFormat === "pretty") {
     for (const d of data.diagnostics) {
@@ -334,6 +340,8 @@ export async function runFlowPush(
         logger.info(`  published ${pub.tag} → ${pub.dest}${pub.reconciled ? " (reconciled)" : ""}`);
       } else if (pub.status === "skipped-baseline") {
         logger.info(`  skipped baseline tag ${pub.tag}`);
+      } else if (pub.status === "pending") {
+        logger.info(`  would publish ${pub.tag} (dry-run)`);
       }
     }
   }
@@ -341,8 +349,10 @@ export async function runFlowPush(
   return {
     data,
     exitCode: errors.length > 0 ? 1 : 0,
-    summary: data.pushed
-      ? `[flow.push] pushed ${data.refs.length} ref(s), ${data.publications.filter((p) => p.status === "published").length} publication(s)`
-      : `[flow.push] refused — ${errors.length} error(s)`,
+    summary: input.flags["dry-run"] === true
+      ? `[flow.push] dry-run — ${data.refs.length} ref(s), ${data.publications.length} publication candidate(s)`
+      : data.pushed || publishedCount > 0
+        ? `[flow.push] pushed ${data.refs.length} ref(s), ${publishedCount} publication(s)`
+        : `[flow.push] refused — ${errors.length} error(s)`,
   };
 }

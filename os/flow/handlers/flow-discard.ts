@@ -28,6 +28,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -139,7 +140,7 @@ export async function discardFlowBranch(
     return refuse(
       "FLOW-DIS-01",
       `${branch} is held — held branches are never discarded`,
-      "release the hold first (the wave-2 outbound RFC defines flow.unhold)",
+      "release the hold first with flow.unhold --branch <held branch>",
       { branch },
     );
   }

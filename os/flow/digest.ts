@@ -20,6 +20,7 @@ flow.push must quote.</purpose>
   <item>RFC-1491: step 3 — digest collector: tail segmentation, risk categories, tags, held, pending publications, digestId</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +40,7 @@ import {
   type FlowJournalEvent,
   type RiskCategory,
 } from "./registry.ts";
+import { tagAnnotationLevel } from "./publish.ts";
 import { discoverReleaseLines, type ReleaseLine } from "./release-lines.ts";
 import { listLineTags } from "./release-tags.ts";
 
@@ -339,7 +341,7 @@ function attributedRecords(journal: FlowJournalEvent[]): AttributedRecord[] {
   for (const event of journal) {
     if (event.event === "integrate" || event.event === "backmerge") {
       const kind =
-        event.event === "backmerge" || event.branch.startsWith("port-")
+        event.event === "backmerge" || event.branch.startsWith("auto/port-")
           ? "backmerge"
           : "integration";
       byBranch.set(event.branch, {
@@ -400,8 +402,8 @@ async function tagReachableFromRemote(
   return false;
 }
 
-/** The release line a tag belongs to — longest prefix wins (mirrors lineForTag). */
-function lineForTag(lines: ReleaseLine[], tag: string): ReleaseLine | null {
+/** The release line a tag belongs to — longest prefix wins. */
+export function lineForTag(lines: ReleaseLine[], tag: string): ReleaseLine | null {
   let best: ReleaseLine | null = null;
   for (const line of lines) {
     if (!tag.startsWith(line.tagPrefix)) continue;
@@ -568,7 +570,11 @@ export async function collectDigest(
   for (const tag of [...pushedTags].sort((a, b) => a.localeCompare(b))) {
     if (!allLocalTags.has(tag) || publishedTags.has(tag)) continue;
     const line = lineForTag(lines, tag);
-    pendingPublications.push({ tag, line: line?.id ?? "repo" });
+    // Repo-line tags are never extracted, and baseline annotations are
+    // skipped at push time — neither ever gains a publish record.
+    if (line === null || line.id === "repo") continue;
+    if ((await tagAnnotationLevel(repoRoot, io, tag)) === "baseline") continue;
+    pendingPublications.push({ tag, line: line.id });
   }
 
   const byCategory = Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as Record<

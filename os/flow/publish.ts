@@ -17,6 +17,7 @@ and return the RFC publications[] row for the journal.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 5 — publishTag (extract, verify, dest push, single ours-merge reconcile)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +31,7 @@ import type { ReleaseLine } from "./release-lines.ts";
 export interface PublicationRow {
   tag: string;
   line: string;
-  status: "published" | "failed" | "skipped-baseline";
+  status: "published" | "failed" | "skipped-baseline" | "pending";
   dest: string | null;
   verify: FlowScriptResult | null;
   reconciled: boolean;
@@ -50,8 +51,10 @@ export async function resolveExtractDest(
   const configPath = join(primary, dir, "extract.config.yaml");
   if (!(await io.exists(configPath))) return null;
   const raw = await io.readFile(configPath);
-  const destBase = raw.match(/^destBase:\s*(\S+)\s*$/m)?.[1];
-  const destName = raw.match(/^destName:\s*(\S+)\s*$/m)?.[1];
+  const unquote = (v: string | undefined): string | undefined =>
+    v?.replace(/^["']|["']$/g, "");
+  const destBase = unquote(raw.match(/^destBase:\s*(\S+)\s*$/m)?.[1]);
+  const destName = unquote(raw.match(/^destName:\s*(\S+)\s*$/m)?.[1]);
   if (destName === undefined) return null;
   return resolve(
     dirname(primary),
