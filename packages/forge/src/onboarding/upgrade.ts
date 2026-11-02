@@ -11,11 +11,11 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1154: sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-* SKILL.md references dangled for npm consumers</item>
   <item>RFC-1255: Knowledge conflicts land in .forge/knowledge-conflicts.txt (summary + path in console instead of a 60+ entry dump); exposed as knowledgeConflicts/knowledgeConflictsReport on UpgradeResult. Prettierignore plan now enumerates generated AGENTS.md paths.</item>
   <item>RFC-1481: add knowledge.conflicts.resolve next steps on same-version and regular upgrade results.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
   <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
@@ -87,6 +87,77 @@ export interface UpgradeResult {
   knowledgeConflicts?: string[];
   /** Repo-relative path of the written conflicts report, when any. */
   knowledgeConflictsReport?: string | null;
+  /** RFC-1500: fixed-branch-model adoption report — read-only, never mutates. */
+  flow?: {
+    state: "adopted" | "not-adopted" | "exempt" | "guard-drift";
+    nextSteps: string[];
+  };
+}
+
+/**
+ * RFC-1500 step 3 — classify the repository's fixed-branch-model state.
+ * Read-only: detectRepoKind, isFlowAdopted and committed-hook comparisons
+ * only; upgrade never runs flow.install and never creates or moves a branch.
+ * Returns null when the repository kind cannot be determined — the caller
+ * warns and omits the field rather than failing.
+ */
+async function detectFlowReport(
+  workspaceRoot: string,
+  io: WorkspaceIO,
+): Promise<NonNullable<UpgradeResult["flow"]> | null> {
+  const { detectRepoKind } = await import("../../os/flow/repo-kind.ts");
+  const { isFlowAdopted } = await import("../../os/flow/index.ts");
+  const { git, topLevel } = await import("../../os/flow/git.ts");
+  const {
+    mergeManagedBlockForMode,
+    readGuardAsset,
+    GUARD_FILE,
+    PRECOMMIT_FILE,
+    PREMERGE_FILE,
+    PREPUSH_FILE,
+  } = await import("../../os/flow/guard-files.ts");
+
+  const repoRoot = (await topLevel(workspaceRoot, io)) ?? workspaceRoot;
+  const detection = await detectRepoKind(repoRoot, io);
+  if (!detection.ok) return null;
+  if (detection.repoKind.kind === "exempt") return { state: "exempt", nextSteps: [] };
+  if (detection.repoKind.kind === "ungoverned") return null;
+
+  if (!(await isFlowAdopted(repoRoot, io))) {
+    return {
+      state: "not-adopted",
+      nextSteps: [
+        "Preview adoption: pnpm exec forge flow.install --dry-run",
+        "Read the fixed branch model guide: packages/forge/docs/branch-model.md",
+      ],
+    };
+  }
+
+  // Guard drift — the committed hook surface on develop must match what the
+  // installed Forge ships. mergeManagedBlockForMode returns null exactly when
+  // the committed block equals the canonical managed block (same test
+  // flow.install applies to working-tree content).
+  const guard = await git(repoRoot, io, ["show", `develop:${GUARD_FILE}`]);
+  let drift = guard.exitCode !== 0 || guard.stdout !== readGuardAsset();
+  if (!drift) {
+    for (const [file, mode] of [
+      [PRECOMMIT_FILE, "pre-commit"],
+      [PREMERGE_FILE, "pre-merge-commit"],
+      [PREPUSH_FILE, "pre-push"],
+    ] as const) {
+      const res = await git(repoRoot, io, ["show", `develop:${file}`]);
+      if (res.exitCode !== 0 || mergeManagedBlockForMode(res.stdout, mode) !== null) {
+        drift = true;
+        break;
+      }
+    }
+  }
+  return drift
+    ? {
+        state: "guard-drift",
+        nextSteps: ["Re-run pnpm exec forge flow.install — it replaces the guard block"],
+      }
+    : { state: "adopted", nextSteps: [] };
 }
 
 async function isMonorepoForge(workspaceRoot: string, io: WorkspaceIO): Promise<boolean> {
@@ -722,6 +793,18 @@ export async function runUpgrade(
 
   const fromVersion = config.forge?.syncedVersion ?? null;
 
+  // RFC-1500 step 3: report fixed-branch-model adoption state — read-only.
+  let flow: UpgradeResult["flow"];
+  try {
+    flow = (await detectFlowReport(workspaceRoot, fio)) ?? undefined;
+    if (flow === undefined) {
+      context.logger.warn("forge.upgrade: could not determine flow adoption state — flow field omitted");
+    }
+  } catch (err) {
+    context.logger.warn(`forge.upgrade: flow state probe failed — ${(err as Error).message}`);
+    flow = undefined;
+  }
+
   if (fromVersion === toVersion) {
     // Noop version-wise — but the RFC-1154 reconcile (markers, stale-dir prune,
     // managed .prettierignore) still runs so a same-version upgrade fixes lint debt.
@@ -769,6 +852,7 @@ export async function runUpgrade(
         prettierignore: reconcile.prettierignore,
         knowledgeConflicts: reconcile.knowledgeConflicts,
         knowledgeConflictsReport: noopConflictsReport,
+        flow,
       },
       nextSteps: [
         ...(npmCheck.warning ? [{ action: npmCheck.warning, kind: "optional" as const }] : []),
@@ -931,6 +1015,7 @@ export async function runUpgrade(
       prettierignore: reconcile.prettierignore,
       knowledgeConflicts,
       knowledgeConflictsReport,
+      flow,
     },
     nextSteps,
     exitCode: 0,
