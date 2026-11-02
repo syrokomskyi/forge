@@ -6,12 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336</history>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
 
@@ -34,7 +36,7 @@ import {
   TERMINAL_KINDS,
 } from "../decision-log.ts";
 import type { DecisionLogEntry } from "../types.ts";
-import type { ParsedRfc } from "../frontmatter-io.ts";
+import type { ParsedRfc, RfcCorpusEntry } from "../frontmatter-io.ts";
 import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
 import type { RfcStatus, RfcKind, RfcScope, RfcVerificationTier, Marker } from "../types.ts";
 import {
@@ -523,7 +525,7 @@ export function collectMarkers(body: string, status: string, createdAt: string):
 export async function validateSingleRfc(
   fileName: string,
   parsed: ParsedRfc,
-  allParsed: Map<string, { fileName: string; parsed: ParsedRfc }>,
+  allParsed: Map<string, RfcCorpusEntry>,
   seenIds: Map<string, string>,
   validDnaIds: Set<number>,
   validApIds: Set<number>,
@@ -697,7 +699,7 @@ export async function validateSingleRfc(
           `supersedes "${refStr}" does not match any existing RFC`,
         );
       } else {
-        const otherBy = String(allParsed.get(refStr)!.parsed.frontmatter["supersededBy"] ?? "");
+        const otherBy = String(allParsed.get(refStr)!.frontmatter["supersededBy"] ?? "");
         if (otherBy !== rfcId) {
           addViolation(
             rfcId,
@@ -725,7 +727,7 @@ export async function validateSingleRfc(
 
   // V-12 (reverse): supersededBy target must list this RFC in its supersedes
   if (supersededBy && allParsed.has(supersededBy)) {
-    const otherFm = allParsed.get(supersededBy)!.parsed.frontmatter;
+    const otherFm = allParsed.get(supersededBy)!.frontmatter;
     const otherSupersedes = otherFm["supersedes"];
     if (!Array.isArray(otherSupersedes) || !otherSupersedes.map(String).includes(rfcId)) {
       addViolation(
@@ -1308,7 +1310,7 @@ export async function validateSingleRfc(
       if (!allParsed.has(refStr)) {
         addViolation(rfcId, relFile, "V-19", `amends "${refStr}" does not match any existing RFC`);
       } else {
-        const otherAmendedBy = allParsed.get(refStr)!.parsed.frontmatter["amendedBy"];
+        const otherAmendedBy = allParsed.get(refStr)!.frontmatter["amendedBy"];
         const arr = Array.isArray(otherAmendedBy) ? otherAmendedBy.map(String) : [];
         if (!arr.includes(rfcId)) {
           addViolation(
@@ -1335,7 +1337,7 @@ export async function validateSingleRfc(
           `amendedBy "${refStr}" does not match any existing RFC`,
         );
       } else {
-        const otherAmends = allParsed.get(refStr)!.parsed.frontmatter["amends"];
+        const otherAmends = allParsed.get(refStr)!.frontmatter["amends"];
         const arr = Array.isArray(otherAmends) ? otherAmends.map(String) : [];
         if (!arr.includes(rfcId)) {
           addViolation(
@@ -1567,7 +1569,7 @@ export async function validateSingleRfc(
       let maxEarlierId = 0;
       for (const [otherId, other] of allParsed) {
         if (otherId === rfcId) continue;
-        const otherCreatedAt = String(other.parsed.frontmatter["createdAt"] ?? "");
+        const otherCreatedAt = String(other.frontmatter["createdAt"] ?? "");
         if (otherCreatedAt < currentCreatedAt) {
           const otherIdNum = parseInt(otherId.replace(/^RFC-/, ""), 10);
           if (otherIdNum > maxEarlierId) {
@@ -1728,7 +1730,7 @@ export async function validateSingleRfc(
           "warning",
         );
       } else {
-        const depStatus = String(allParsed.get(depStr)!.parsed.frontmatter["status"] ?? "");
+        const depStatus = String(allParsed.get(depStr)!.frontmatter["status"] ?? "");
         if (depStatus === "rejected") {
           addViolation(
             rfcId,

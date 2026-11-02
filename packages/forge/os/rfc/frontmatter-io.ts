@@ -10,7 +10,6 @@ circular import between the two.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0268: extracted from handlers.ts to break a circular import with acceptance.ts.</item>
   <item>RFC-0521: added getRfcStatusById and loadRfcStatusMap helpers for plan/audit archive commands.</item>
   <item>RFC-0755: readAndParseRfc now returns { fileName, error } on YAML parse failure instead of undefined.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -19,11 +18,16 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0268</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo as fs } from "../../src/utils/io.ts";
 import path from "node:path";
+import { open as fsOpen } from "node:fs/promises";
 import YAML from "yaml";
 
 export interface ParsedRfc {
@@ -78,6 +82,31 @@ export function rfcFileMatchesId(fileName: string, targetId: string): boolean {
 export type ReadAndParseRfcResult =
   { fileName: string; parsed: ParsedRfc } | { fileName: string; error: string };
 
+/**
+ * RFC-1489: slim corpus entry — non-target files carry frontmatter only.
+ * A rule that needs a non-target `body` is a design smell to escalate, never
+ * to accommodate by re-widening this type.
+ */
+export interface RfcCorpusEntry {
+  fileName: string;
+  frontmatter: Record<string, unknown>;
+}
+
+function parseErrorResult(fileName: string, e: unknown): { fileName: string; error: string } {
+  if (e instanceof Error) {
+    const linePos = (e as Error & { linePos?: Array<{ line: number; col: number }> }).linePos;
+    if (linePos?.length) {
+      const pos = linePos[0]!;
+      return {
+        fileName,
+        error: `YAML parse error at line ${pos.line}, column ${pos.col}: ${e.message}`,
+      };
+    }
+    return { fileName, error: `YAML parse error: ${e.message}` };
+  }
+  return { fileName, error: `YAML parse error: ${String(e)}` };
+}
+
 export async function readAndParseRfc(
   rfcDirPath: string,
   fileName: string,
@@ -87,18 +116,55 @@ export async function readAndParseRfc(
     const content = await fs.readFile(filePath);
     return { fileName, parsed: parseRfcFile(content) };
   } catch (e) {
-    if (e instanceof Error) {
-      const linePos = (e as Error & { linePos?: Array<{ line: number; col: number }> }).linePos;
-      if (linePos?.length) {
-        const pos = linePos[0]!;
-        return {
-          fileName,
-          error: `YAML parse error at line ${pos.line}, column ${pos.col}: ${e.message}`,
-        };
-      }
-      return { fileName, error: `YAML parse error: ${e.message}` };
+    return parseErrorResult(fileName, e);
+  }
+}
+
+const FRONTMATTER_READ_BOUND = 64 * 1024;
+const FRONTMATTER_HEAD_RE = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/;
+
+/**
+ * RFC-1489: reads only the YAML frontmatter block of an RFC file — a bounded
+ * 64 KiB head read instead of the whole body. Returns `{ frontmatter, body: "" }`;
+ * `body` is never populated through this path. Falls back to the full
+ * `readAndParseRfc` when the closing `---` fence is not found within the bound
+ * (a frontmatter block larger than the cap is pathological, not forbidden).
+ * A <64 KiB file without a closing fence yields `{ frontmatter: {}, body: "" }`,
+ * matching `parseRfcFile`'s frontmatter for such files.
+ */
+export async function readRfcFrontmatter(
+  rfcDirPath: string,
+  fileName: string,
+): Promise<ReadAndParseRfcResult | undefined> {
+  const filePath = path.join(rfcDirPath, fileName);
+  let head: string;
+  let hitBound = false;
+  try {
+    const handle = await fsOpen(filePath, "r");
+    try {
+      const buffer = Buffer.alloc(FRONTMATTER_READ_BOUND);
+      const { bytesRead } = await handle.read(buffer, 0, FRONTMATTER_READ_BOUND, 0);
+      hitBound = bytesRead === FRONTMATTER_READ_BOUND;
+      head = buffer.subarray(0, bytesRead).toString("utf-8");
+    } finally {
+      await handle.close();
     }
-    return { fileName, error: `YAML parse error: ${String(e)}` };
+  } catch (e) {
+    return parseErrorResult(fileName, e);
+  }
+
+  const match = head.match(FRONTMATTER_HEAD_RE);
+  if (!match) {
+    // No closing fence in what was read. Small file → the head IS the whole
+    // file and there is nothing more to find; large file → full-parse fallback.
+    if (!hitBound) return { fileName, parsed: { frontmatter: {}, body: "" } };
+    return readAndParseRfc(rfcDirPath, fileName);
+  }
+  try {
+    const frontmatter = (YAML.parse(match[1]!) ?? {}) as Record<string, unknown>;
+    return { fileName, parsed: { frontmatter, body: "" } };
+  } catch (e) {
+    return parseErrorResult(fileName, e);
   }
 }
 

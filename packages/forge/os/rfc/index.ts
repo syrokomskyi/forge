@@ -12,6 +12,9 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten â
   <item>RFC-1097: sweep â€” werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,11 +23,13 @@ export {
   listRfcFiles,
   parseRfcFile,
   readAndParseRfc,
+  readRfcFrontmatter,
   rfcFileMatchesId,
   getRfcStatusById,
   loadRfcStatusMap,
   type ParsedRfc,
   type ReadAndParseRfcResult,
+  type RfcCorpusEntry,
 } from "./frontmatter-io.ts";
 export {
   runRfcList,
@@ -34,7 +39,14 @@ export {
   runRfcCheck,
 } from "./handlers.ts";
 export { runRfcImplementStamp } from "./handlers/implement-stamp.ts";
-export { runRfcAcceptanceRun, runProbe, validateAcceptanceShape } from "./acceptance.ts";
+export {
+  runRfcAcceptanceRun,
+  runProbe,
+  runProbeSet,
+  validateAcceptanceShape,
+  type ProbeSetOptions,
+  type ProbeSetResult,
+} from "./acceptance.ts";
 export { runRfcVerificationEmit, buildEvidenceEnvelope } from "./verification-evidence.ts";
 export { runRfcDnaTraceValidate, runRfcDnaTraceGenerate, buildDnaTrace } from "./dna-trace.ts";
 export type { DnaTraceEntry, DnaTraceResult } from "./dna-trace.ts";

@@ -13,10 +13,6 @@ lastRefreshedAt, replaces probes[] with fresh results. Supports --id,
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1237: dual-read dry-run (context.dryRun || flags["dry-run"]),
-io.writeFile port routing, emit-canonical generated header — refresh owns
-content freshness, never envelope identity (ownerCommand stays
-rfc.verification.emit).</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1330: refresh attaches git-derived origin like emit.</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
@@ -35,18 +31,20 @@ without verdict/hashes and trip RFC-IMP-13 on next stamp; mirrored the emit
 spread and pinned it with a regression test. proof.check pretty output now
 prints the persisted log; every exhaustive verdict path carries vitest
 output as log.</item>
-  <history>RFC-0999</history>
+  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
+
+runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <history>RFC-0999, RFC-1237</history>
 </CHANGE_SUMMARY>
 */
 
 import { join, relative } from "node:path";
 import { resolveIo } from "../../src/utils/io.ts";
-import { performance } from "node:perf_hooks";
 import { parse as yamlParse } from "yaml";
 
-import { runProbe } from "./acceptance.ts";
+import { runProbeSet } from "./acceptance.ts";
 import { attachProbeOrigins } from "./verification-origin.ts";
-import { listRfcFiles, readAndParseRfc } from "./frontmatter-io.ts";
+import { listRfcFiles, readRfcFrontmatter } from "./frontmatter-io.ts";
 import {
   captureGitContext,
   getKernelVersion,
@@ -115,7 +113,9 @@ export async function runRfcVerificationRefresh(
     skippedEntry?: NonNullable<RfcVerificationRefreshResult["skipped"]>[number];
     diagnostic?: Diagnostic;
   }> => {
-    const parsedFile = await readAndParseRfc(rfcDirPath, fileName);
+    // RFC-1489: refresh needs frontmatter only (id/status/acceptance); the
+    // evidence envelope and RFC bytes are read separately below.
+    const parsedFile = await readRfcFrontmatter(rfcDirPath, fileName);
     if (!parsedFile) return {};
     if ("error" in parsedFile) return {};
     const fm = parsedFile.parsed.frontmatter;
@@ -155,15 +155,17 @@ export async function runRfcVerificationRefresh(
     const rfcMarkdown = await io.readFile(rfcFilePath);
     const now = new Date().toISOString();
 
-    for (const probe of probes) {
-      const start = performance.now();
-      const result = await runProbe(
-        probe,
-        workspaceRoot,
-        context.commandRegistry,
-        context.forgeRoot,
-      );
-      const durationMs = Math.round(performance.now() - start);
+    // RFC-1489: batch-compatible test probes share one Vitest run via
+    // runProbeSet; `--no-batch` forces the legacy per-probe path.
+    const { results: setResults, durationsMs } = await runProbeSet(probes, {
+      workspaceRoot,
+      commandRegistry: context.commandRegistry,
+      forgeRoot: context.forgeRoot,
+      noBatch: input.flags["no-batch"] === true,
+    });
+    for (const [probeIndex, probe] of probes.entries()) {
+      const result = setResults[probeIndex]!;
+      const durationMs = durationsMs[probeIndex]!;
       probeRecords.push({
         probe,
         ok: result.ok,
