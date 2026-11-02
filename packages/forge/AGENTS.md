@@ -27,7 +27,7 @@ Packet 000 will add the portable `forge/program@1` control plane under `os/progr
 | `forgeGateModule` | `gate.probe`, `gate.probe.catalog` | `os/gate/` |
 | `forgeSessionModule` | `session.save`, `session.archive`, `session.validate`, `session.list`, `metrics.aggregate`, `session.audit`, `session.audit.report` | `os/session/` |
 | `forgeCompassModule` | `compass.inventory`, `compass.validate`, `compass.summary.record`, `compass.summary.trim`, `compass.migrate`, `compass.header.scaffold`, etc. All compass commands accept `--workpiece <path>` for scoping to a mission workpiece directory (RFC-0617). `compass.summary.record` appends governance-ID items to `CHANGE_SUMMARY` at commit time (RFC-1095). `compass.header.scaffold` authors/repairs v2 headers mechanically (`--census` for the writeless manifest, RFC-1318). | `os/compass/` |
-| `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate`, `werkstatt.session.open`/`close`/`status` (RFC-1462) | `os/werkstatt/` |
+| `forgeWerkstattModule` | `werkstatt.lock.status`, `werkstatt.lock.recover`, `werkstatt.operation.validate` | `os/werkstatt/` |
 | `forgeSpecModule` | `spec.validate`, `spec.status`, `spec.materialize`, `spec.live.merge`, `spec.live.list`, `spec.live.show`, `spec.live.validate`, `spec.live.rebuild` | `os/spec/` |
 | `forgeAdrModule` | `adr.list`, `adr.create`, `adr.validate`, `adr.archive`, `adr.implement.stamp` | `os/adr/` |
 | `forgePlanModule` | `plan.archive` | `os/plan/` |
@@ -427,10 +427,6 @@ When a code review finds the implementation intentionally differs from the RFC, 
 
 - **Persist `fo-review` reports with canonical frontmatter keys — `reviewId:`, `rfcId:`, `verdict`, plus `designDeviations[]` when a finding is an intentional deviation.** V-49 and RFC-IMP-15 index committed reports by `reviewId` only — ad-hoc keys (`id:`/`rfc:`) make the report invisible to the provenance scan and fail `rfc.validate` with dangling references. Copy the template from `fo-review/SKILL.md` verbatim instead of inventing a compact shape. Discovered during RFC-1475 stamping (F-0062).
 - **Audit every evidence probe's `expectationSource` before `rfc.implement.stamp`.** `independent` requires evidence produced outside the RFC's own command surface — a probe that IS one of the RFC's new commands is `self`. A misdeclared probe fails RFC-IMP-10 at stamp time. Discovered during RFC-1474 stamping (F-0063).
-
-## Per-session worktrees (RFC-1462)
-
-`werkstatt.session.open --agent <id>` creates `.sessions/<id>/` on `session/<id>` and registers it in the shared gitdir — second open for the same id refuses unless `--resume`. `werkstatt.session.close --session <id>` merges by default (refuses dirty worktrees without `--allow-dirty`, refuses base-branch drift without `--into`) or `--discard`s; closing a closed session is a no-op exit 0. `werkstatt.session.status` is read-only — all state lives in `.git/sessions/registry.yaml` + `git worktree list`. Handlers are thin wrappers; session logic lives in `packages/werkstatt-engine/src/werkstatt/session-worktree.ts`.
 
 ## Re-entrant werkstatt locks (RFC-0616)
 

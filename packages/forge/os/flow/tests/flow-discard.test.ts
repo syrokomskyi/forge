@@ -11,6 +11,16 @@ FLOW-DIS-02; --dirty forces removal.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 5 — flow.discard tests</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -94,6 +104,39 @@ describe("flow.discard", () => {
       dryRun: false,
       now: NOW,
     });
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-DIS-03");
+    expect(await ambientIo.exists(session.worktree!)).toBe(true);
+  }, 20_000);
+
+  it("refuses FLOW-DIS-03 on an untracked-only worktree — the dirty check matches `git worktree remove`", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "untracked-drop");
+    await writeFile(join(session.worktree!, "untracked-note.txt"), "scratch\n");
+
+    const data = await discardFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      reason: "test",
+      dirty: false,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-DIS-03");
+    expect(await ambientIo.exists(session.worktree!)).toBe(true);
+  }, 20_000);
+
+  it("predicts FLOW-DIS-03 on --dry-run for a dirty worktree", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "dry-drop");
+    await writeFile(join(session.worktree!, "untracked-note.txt"), "scratch\n");
+
+    const data = await discardFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      reason: "test",
+      dirty: false,
+      dryRun: true,
+      now: NOW,
+    });
+    expect(data.discarded).toBe(false);
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-DIS-03");
     expect(await ambientIo.exists(session.worktree!)).toBe(true);
   }, 20_000);

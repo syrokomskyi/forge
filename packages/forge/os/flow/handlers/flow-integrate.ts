@@ -21,6 +21,16 @@ at cleanup without moving develop again.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 4 — flow.integrate handler</item>
   <item>RFC-1487: step 4 — flow.integrate with lock, primary-side gate, ff-only merge and cleanup resume</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,6 +48,7 @@ import {
   git,
   isAncestor,
   requireGit,
+  statusDirty,
   statusTracked,
   topLevel,
   worktreeList,
@@ -70,6 +81,8 @@ export interface FlowIntegrateData {
   /** A rebase ran during this invocation. */
   rebased: boolean;
   gate: FlowScriptResult | null;
+  /** worktree-teardown script result when cleanup ran — never an integration-gate result. */
+  teardown?: FlowScriptResult | null;
   cleanedUp: boolean;
   diagnostics: Diagnostic[];
 }
@@ -166,17 +179,35 @@ async function cleanupIntegrated(
       };
     }
   }
-  await updateRegistry(io, common, (r) => ({
-    ...r,
-    branches: r.branches.filter((b) => b.name !== entry.name),
-  }));
-  await appendJournal(io, common, {
-    at: nowIso,
-    event: "integrate",
-    branch: entry.name,
-    sha,
-    detail: `integrated into develop`,
-  });
+  try {
+    await updateRegistry(io, common, (r) => ({
+      ...r,
+      branches: r.branches.filter((b) => b.name !== entry.name),
+    }));
+    await appendJournal(io, common, {
+      at: nowIso,
+      event: "integrate",
+      branch: entry.name,
+      sha,
+      detail: `integrated into develop`,
+    });
+  } catch (error) {
+    if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
+      return {
+        cleanedUp: false,
+        gate: null,
+        diagnostics: [
+          {
+            ruleId: "FLOW-07",
+            severity: "error",
+            message: error.message,
+            fixHint: `repair or remove ${registryPath(common)} — develop already moved; re-run flow.integrate to finish cleanup`,
+          },
+        ],
+      };
+    }
+    throw error;
+  }
   return { cleanedUp: true, gate: null, diagnostics: [] };
 }
 
@@ -222,10 +253,9 @@ export async function integrateFlowBranch(
 
   const primary = await primaryWorktree(io, repoRoot);
   const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
-  await io.mkdir(join(common, "forge"));
 
   if (opts.dryRun) {
-    const dirty = await statusTracked(entry.worktree, io);
+    const dirty = (await io.exists(entry.worktree)) ? await statusDirty(entry.worktree, io) : [];
     return {
       branch,
       integrated: false,
@@ -240,13 +270,15 @@ export async function integrateFlowBranch(
               {
                 ruleId: "FLOW-INT-01",
                 severity: "error",
-                message: `worktree ${entry.worktree} has ${dirty.length} tracked modification(s)`,
+                message: `worktree ${entry.worktree} has ${dirty.length} uncommitted change(s)`,
                 fixHint: "commit or revert the tracked changes inside the session worktree",
               },
             ]
           : [],
     };
   }
+
+  await io.mkdir(join(common, "forge"));
 
   // Steps 0–5 under the integration lock.
   let inner: FlowIntegrateData;
@@ -300,11 +332,11 @@ export async function integrateFlowBranch(
             { branch, developBefore },
           );
         }
-        const dirty = await statusTracked(branchWorktree, io);
+        const dirty = await statusDirty(branchWorktree, io);
         if (dirty.length > 0) {
           return refuse(
             "FLOW-INT-01",
-            `worktree ${branchWorktree} has ${dirty.length} tracked modification(s): ${dirty.slice(0, 10).join(", ")}`,
+            `worktree ${branchWorktree} has ${dirty.length} uncommitted change(s): ${dirty.slice(0, 10).join(", ")}`,
             "commit or revert the tracked changes inside the session worktree, then re-run",
             { branch, developBefore },
           );
@@ -359,7 +391,7 @@ export async function integrateFlowBranch(
             "FLOW-INT-03",
             primaryBranch !== "develop"
               ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
-              : `primary worktree has ${primaryDirty.length} tracked modification(s)`,
+              : `primary worktree has ${primaryDirty.length} uncommitted change(s)`,
             "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
             { branch, developBefore, rebased: true, gate },
           );
@@ -427,7 +459,8 @@ export async function integrateFlowBranch(
   );
   return {
     ...inner,
-    gate: inner.gate ?? cleanup.gate,
+    gate: inner.gate,
+    teardown: cleanup.gate,
     cleanedUp: cleanup.cleanedUp,
     diagnostics: cleanup.diagnostics,
   };

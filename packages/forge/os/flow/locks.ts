@@ -15,6 +15,16 @@ registry lock (10 s) and the long integration lock (30 min).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 1 — exclusive file locks</item>
   <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -111,13 +121,18 @@ export async function withFlowLock<T>(
   const deadline = now() + opts.waitMs;
   let nextProgress = now() + (opts.progressEveryMs ?? Number.POSITIVE_INFINITY);
 
+  let heldPayload: { pid: number; at: string } | null = null;
   for (;;) {
+    const at = new Date(now()).toISOString();
     const acquired = await tryAcquire(lockPath, {
       pid: process.pid,
       host: hostname(),
-      at: new Date(now()).toISOString(),
+      at,
     });
-    if (acquired) break;
+    if (acquired) {
+      heldPayload = { pid: process.pid, at };
+      break;
+    }
 
     const age = await lockAgeMs(lockPath, io.readFile, now());
     if (age !== null && age > opts.staleMs) {
@@ -142,6 +157,17 @@ export async function withFlowLock<T>(
   try {
     return await fn();
   } finally {
-    await rm(lockPath, { force: true });
+    // Release only the lock we hold: after a stale-break takeover the file
+    // may carry a newer holder's payload — unlinking it would leave no
+    // mutual exclusion at all.
+    let stillOurs = false;
+    try {
+      const raw = await io.readFile(lockPath);
+      const parsed = JSON.parse(raw) as { pid?: number; at?: string };
+      stillOurs = parsed.pid === heldPayload?.pid && parsed.at === heldPayload?.at;
+    } catch {
+      stillOurs = false;
+    }
+    if (stillOurs) await rm(lockPath, { force: true });
   }
 }

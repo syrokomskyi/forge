@@ -11,6 +11,16 @@ calls serialize under the lock.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 1 — registry tests</item>
   <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -60,6 +70,7 @@ describe("commonGitDir", () => {
   it("resolves the same directory from the primary and a linked worktree (AC-8)", async () => {
     const dir = await repo();
     const linked = `${dir}-linked`;
+    tempDirs.push(linked);
     const add = await gitExec(dir, ["worktree", "add", "-b", "probe-linked", linked]);
     expect(add.exitCode, add.stderr).toBe(0);
 

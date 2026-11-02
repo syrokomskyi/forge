@@ -17,6 +17,16 @@ the registry entry and journals the operator's reason.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 5 — flow.discard handler</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
+  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
+
+The dirty gate for session worktrees now uses full porcelain status
+(untracked files included) because it predicts 'git worktree remove';
+the primary-clean gate keeps tracked-only semantics because it predicts
+'merge --ff-only'. Lock release verifies the held payload before
+unlinking. Registry/journal failures map to FLOW-07 in every handler.
+The final branch-name collision reports FLOW-OPEN-04, flow.discard
+propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
+and integrate exposes teardown as its own field.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -33,10 +43,11 @@ import {
   currentBranch,
   git,
   requireGit,
-  statusTracked,
+  statusDirty,
   topLevel,
   worktreeList,
 } from "../git.ts";
+import { LockTimeoutError } from "../locks.ts";
 import {
   appendJournal,
   commonGitDir,
@@ -136,23 +147,36 @@ export async function discardFlowBranch(
   const worktrees = await worktreeList(primary, io);
   const worktree = worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
 
+  const worktreePresent = worktree !== null && (await io.exists(worktree));
   if (opts.dryRun) {
+    const dirty = worktreePresent ? await statusDirty(worktree, io) : [];
     return {
       branch,
       discarded: false,
       reason: opts.reason,
       teardown: null,
-      diagnostics: [],
+      diagnostics:
+        dirty.length > 0 && !opts.dirty
+          ? [
+              {
+                ruleId: "FLOW-DIS-03",
+                severity: "error",
+                message: `worktree ${worktree} has ${dirty.length} uncommitted change(s): ${dirty.slice(0, 10).join(", ")}`,
+                fixHint:
+                  "re-run with --dirty to acknowledge discarding the uncommitted changes, or commit/integrate them first",
+              },
+            ]
+          : [],
     };
   }
 
-  const worktreePresent = worktree !== null && (await io.exists(worktree));
+  let teardownRan: FlowScriptResult | null = null;
   if (worktreePresent) {
-    const dirty = await statusTracked(worktree, io);
+    const dirty = await statusDirty(worktree, io);
     if (dirty.length > 0 && !opts.dirty) {
       return refuse(
         "FLOW-DIS-03",
-        `worktree ${worktree} has ${dirty.length} tracked modification(s): ${dirty.slice(0, 10).join(", ")}`,
+        `worktree ${worktree} has ${dirty.length} uncommitted change(s): ${dirty.slice(0, 10).join(", ")}`,
         "re-run with --dirty to acknowledge discarding the uncommitted changes, or commit/integrate them first",
         { branch },
       );
@@ -163,6 +187,7 @@ export async function discardFlowBranch(
       cwd: worktree,
       env: { FLOW_PRIMARY: primary, FLOW_BRANCH: branch, FLOW_ACTION: "discard" },
     });
+    teardownRan = teardown;
     if (teardown.status === "failed") {
       return refuse(
         "FLOW-DIS-02",
@@ -198,23 +223,34 @@ export async function discardFlowBranch(
     }
   }
 
-  await updateRegistry(io, common, (r) => ({
-    ...r,
-    branches: r.branches.filter((b) => b.name !== branch),
-  }));
-  await appendJournal(io, common, {
-    at: now.toISOString(),
-    event: "discard",
-    branch,
-    sha: entry.baseSha,
-    detail: opts.reason,
-  });
+  try {
+    await updateRegistry(io, common, (r) => ({
+      ...r,
+      branches: r.branches.filter((b) => b.name !== branch),
+    }));
+    await appendJournal(io, common, {
+      at: now.toISOString(),
+      event: "discard",
+      branch,
+      sha: entry.baseSha,
+      detail: opts.reason,
+    });
+  } catch (error) {
+    if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
+      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, {
+        branch,
+        reason: opts.reason,
+        teardown: teardownRan,
+      });
+    }
+    throw error;
+  }
 
   return {
     branch,
     discarded: true,
     reason: opts.reason,
-    teardown: null,
+    teardown: teardownRan,
     diagnostics: [],
   };
 }
