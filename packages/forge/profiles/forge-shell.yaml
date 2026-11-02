@@ -71,7 +71,7 @@ workspace:
                 run: pnpm install --frozen-lockfile
 
               - name: Forge doctor
-                run: pnpm exec forge run forge.doctor
+                run: pnpm exec forge doctor
 
               - name: Format check
                 run: pnpm format:check
@@ -207,13 +207,6 @@ workspace:
     - path: .gitattributes
       content: |
         # No LFS patterns for this stack
-    - path: hooks/pre-commit
-      content: |
-        #!/bin/sh
-        # Platform-scope pre-commit guard
-        # Runs forge validation before commits
-        echo "Pre-commit: running platform checks..."
-        pnpm exec forge run forge.validate || exit 1
     - path: scripts/git-guard.sh
       content: |
         #!/bin/bash
@@ -599,8 +592,8 @@ workspace:
         ### 4. Verify the workshop
 
         ```sh
-        pnpm exec forge run forge.doctor
-        pnpm exec forge run forge.validate
+        pnpm exec forge doctor
+        pnpm exec forge validate
         ```
 
         ## Stack

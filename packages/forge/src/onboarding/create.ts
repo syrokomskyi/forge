@@ -9,7 +9,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0664: scaffold memory layer (.agents/memory/) after init.</item>
   <item>RFC-0877: in-place mode only — --in-place flag required, no subdirectory creation, name derived from folder, strict empty-directory check (only .git/ tolerated).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -18,7 +17,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
-  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-1224</history>
+  <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
+  <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-0664, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -52,6 +52,10 @@ interface CreateCommandResult {
   profile: string;
   filesCreated: string[];
   errors: string[];
+  flow?:
+    | { status: "adopted"; develop: string; main: string; tags: string[] }
+    | { status: "skipped"; reason: "no-flow-flag" | "git-init-failed" | "commit-failed" }
+    | { status: "refused"; ruleId: string; message: string };
 }
 
 /**
@@ -241,9 +245,11 @@ export async function runCreate(
   // This is a hard guard — forge.create programmatically ensures main branch,
   // so greenfield projects don't depend on the agent running git init correctly.
   const gitDir = path.join(targetDir, ".git");
-  if (!(await fio.exists(gitDir))) {
+  let gitInitialized = await fio.exists(gitDir);
+  if (!gitInitialized) {
     const gitInit = await fio.exec("git", ["init", "--initial-branch=main"], { cwd: targetDir });
     if (gitInit.exitCode === 0) {
+      gitInitialized = true;
       if (outputFormat === "pretty") {
         logger.info("Initialized git repository with main branch");
       }
@@ -435,7 +441,85 @@ The system will guide you through the process — it detects your project type, 
 `;
   await fio.writeFile(nextStepsPath, nextStepsContent);
 
-  // 14. Collect filesCreated
+  // 14. RFC-1500: adopt the fixed branch model — unless --no-flow.
+  // One scaffold commit on main, then the flow.install handler in process.
+  const noFlow = input.flags["no-flow"] === true;
+  let flow: CreateCommandResult["flow"];
+  let flowExitCode = 0;
+
+  const manualFlowEntry = `
+
+## Adopt the fixed branch model
+
+This repository is not on the fixed branch model yet. To adopt it, run by hand:
+
+\`\`\`sh
+git add -A && git commit -m "chore: scaffold ${name} with forge create"
+pnpm exec forge flow.install
+\`\`\`
+`;
+
+  const appendManualFlowEntry = async (): Promise<void> => {
+    await fio.writeFile(nextStepsPath, `${nextStepsContent}${manualFlowEntry}`);
+  };
+
+  if (noFlow) {
+    flow = { status: "skipped", reason: "no-flow-flag" };
+    await appendManualFlowEntry();
+  } else if (!gitInitialized) {
+    flow = { status: "skipped", reason: "git-init-failed" };
+    if (outputFormat === "pretty") {
+      logger.warn("Skipping flow adoption — git init failed earlier. NEXT_STEPS.md names the manual commands.");
+    }
+    await appendManualFlowEntry();
+  } else {
+    const add = await fio.exec("git", ["add", "-A"], { cwd: targetDir });
+    const commit =
+      add.exitCode === 0
+        ? await fio.exec("git", ["commit", "-m", `chore: scaffold ${name} with forge create`], {
+            cwd: targetDir,
+            env: { FORGE_FLOW_COMMIT: "create" },
+          })
+        : add;
+    if (commit.exitCode !== 0) {
+      flow = { status: "skipped", reason: "commit-failed" };
+      if (outputFormat === "pretty") {
+        logger.warn("Scaffold commit failed — skipping flow adoption. NEXT_STEPS.md names the manual commands.");
+        logger.warn(`  ${commit.stderr.trim() || commit.stdout.trim()}`);
+      }
+      await appendManualFlowEntry();
+    } else {
+      const { runFlowInstall } = await import("../../os/flow/handlers/flow-install.ts");
+      const installResult = await runFlowInstall({ argv: [], flags: {} }, childContext);
+      if (installResult.exitCode !== 0) {
+        const refused = /\[flow\.install\] refused: (\S+) (.*)$/.exec(installResult.summary ?? "");
+        flow = {
+          status: "refused",
+          ruleId: refused?.[1] ?? "FLOW-INSTALL",
+          message: refused?.[2] ?? installResult.summary ?? "flow.install failed",
+        };
+        flowExitCode = 1;
+      } else {
+        const develop = await fio.exec("git", ["rev-parse", "develop"], { cwd: targetDir });
+        const main = await fio.exec("git", ["rev-parse", "main"], { cwd: targetDir });
+        const tagList = await fio.exec("git", ["tag", "--list", "v*"], { cwd: targetDir });
+        flow = {
+          status: "adopted",
+          develop: develop.stdout.trim(),
+          main: main.stdout.trim(),
+          tags: tagList.stdout
+            .split("\n")
+            .map((t) => t.trim())
+            .filter((t) => t.length > 0),
+        };
+        if (outputFormat === "pretty") {
+          logger.success(`Fixed branch model installed — develop checked out, ${flow.tags.length} baseline tag(s)`);
+        }
+      }
+    }
+  }
+
+  // 15. Collect filesCreated
   const filesCreated = [
     ...(scaffoldResult.data?.created ?? []),
     ...(initResult.created ?? []),
@@ -458,9 +542,13 @@ The system will guide you through the process — it detects your project type, 
       profile,
       filesCreated,
       errors: [],
+      flow,
     },
-    nextSteps: passNextSteps,
-    exitCode: 0,
-    summary: `forge.create: OK — created ${name} with ${filesCreated.length} files`,
+    nextSteps:
+      flowExitCode !== 0
+        ? [{ action: "flow.install refused — fix the refusal above, then run pnpm exec forge flow.install", kind: "required" }]
+        : passNextSteps,
+    exitCode: flowExitCode,
+    summary: `forge.create: OK — created ${name} with ${filesCreated.length} files${flow ? ` (flow: ${flow.status})` : ""}`,
   };
 }
