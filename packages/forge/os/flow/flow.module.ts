@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -265,6 +265,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-INT-08", severity: "error" },
           { id: "FLOW-INT-09", severity: "error" },
           { id: "FLOW-INT-10", severity: "error" },
+          { id: "FLOW-INT-11", severity: "error" },
           { id: "FLOW-07", severity: "error" },
         ],
         mutatesState: true,
@@ -479,6 +480,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         rules: [
           { id: "FLOW-PUSH-01", severity: "error" },
           { id: "FLOW-DIGEST-01", severity: "warning" },
+          { id: "FLOW-07", severity: "error" },
         ],
         mutatesState: true, // git fetch updates remote-tracking refs unless --no-fetch
         idempotency: "rerun-safe",

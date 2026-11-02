@@ -15,6 +15,7 @@ replay; unhold recreates the worktree and integrate lands A again; the
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 4 — flow.hold/unhold tests</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -245,6 +246,89 @@ describe("flow.hold", () => {
     expect((await gitExec(repo, ["worktree", "list"])).stdout).not.toContain("hold-worktree");
     void aTip;
   }, 90_000);
+
+  it("refuses FLOW-HOLD-04 while the primary checkout is dirty", async () => {
+    const { repo } = await repoWithOrigin();
+    const { a } = await twoIntegrated(repo);
+    // A tracked modification — `reset --keep` refuses on it, so HOLD-04 does.
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\ndirty: true\n');
+
+    const item = await digestItemFor(repo, a.branch);
+    const data = await holdFlowItem(repo, ambientIo, {
+      item: item.id,
+      reason: "dirty probe",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.held).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-HOLD-04");
+  }, 90_000);
+
+  it("refuses FLOW-HOLD-05 on an unattributed item", async () => {
+    const { repo } = await repoWithOrigin();
+    const { a } = await twoIntegrated(repo);
+    // A direct develop commit has no journal record — unattributed tail.
+    await writeFile(join(repo, "loose.txt"), "loose\n");
+    await gitExec(repo, ["add", "loose.txt"]);
+    await gitExec(repo, ["commit", "-m", "unattributed"]);
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const unattributed = digest.items.find((i) => i.kind === "unattributed");
+    expect(unattributed).toBeDefined();
+    const data = await holdFlowItem(repo, ambientIo, {
+      item: unattributed!.id,
+      reason: "kind probe",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.held).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-HOLD-05");
+    void a;
+  }, 90_000);
+
+  it("refuses FLOW-HOLD-06 while a merge commit sits above the item", async () => {
+    const { repo } = await repoWithOrigin();
+    const { a } = await twoIntegrated(repo);
+    // A merge commit on develop above B — replay cannot reorder it.
+    await gitExec(repo, ["switch", "-c", "tmp-merge", "develop~1"]);
+    await writeFile(join(repo, "merge-side.txt"), "side\n");
+    await gitExec(repo, ["add", "merge-side.txt"]);
+    await gitExec(repo, ["commit", "-m", "merge side"]);
+    await gitExec(repo, ["switch", "develop"]);
+    await gitExec(repo, ["merge", "--no-ff", "-m", "merge tmp", "tmp-merge"]);
+
+    const item = await digestItemFor(repo, a.branch);
+    const data = await holdFlowItem(repo, ambientIo, {
+      item: item.id,
+      reason: "merge probe",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.held).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-HOLD-06");
+  }, 90_000);
+
+  it("integrate on a held branch refuses FLOW-INT-11", async () => {
+    const { repo } = await repoWithOrigin();
+    const { a } = await twoIntegrated(repo);
+    const item = await digestItemFor(repo, a.branch);
+    const held = await holdFlowItem(repo, ambientIo, {
+      item: item.id,
+      reason: "pause",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(held.held).toBe(true);
+
+    const integrated = await integrateFlowBranch(repo, ambientIo, {
+      branch: held.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(integrated.integrated).toBe(false);
+    expect(integrated.diagnostics[0]?.ruleId).toBe("FLOW-INT-11");
+    expect(integrated.diagnostics[0]?.message).toContain("pause");
+  }, 120_000);
 
   it("unhold recreates the worktree and integrate lands A again", async () => {
     const { repo } = await repoWithOrigin();

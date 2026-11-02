@@ -36,11 +36,17 @@ case "$mode" in
   *) exit 0 ;;
 esac
 
-# 1. Generated repositories are exempt: forge.generated.yaml at the top
-#    level marks a generator-owned repository (extract mirror, deployment
-#    repository) — never blocked by this guard.
+# 1. Generated repositories are exempt: a VALID forge.generated.yaml at the
+#    top level marks a generator-owned repository (extract mirror,
+#    deployment repository) — never blocked by this guard. "Valid" mirrors
+#    markerContentIsValid in os/flow/markers.ts: a schema + generator key —
+#    a bare or garbage file does NOT disable the guard.
 top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
-[ -f "$top/forge.generated.yaml" ] && exit 0
+if [ -f "$top/forge.generated.yaml" ] &&
+  grep -Eq '^schema:[ \t]*"?forge/generated' "$top/forge.generated.yaml" &&
+  grep -Eq '^generator:[ \t]*"?[A-Za-z]' "$top/forge.generated.yaml"; then
+  exit 0
+fi
 
 # 2. FORGE_FLOW_OP — closed vocabulary per mode, only Forge flow commands
 #    set it. pre-commit accepts `install` (the adoption commit); the

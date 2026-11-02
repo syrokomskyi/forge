@@ -13,6 +13,7 @@ FLOW-PUSH-03; a missing --digest refuses before anything moves.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 5 — flow.push preflight/push tests</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -53,8 +54,10 @@ describe("flow.push", () => {
     });
     expect(data.diagnostics).toEqual([]);
     expect(data.pushed).toBe(true);
-    expect(data.refs).toContain("refs/heads/develop:refs/heads/develop");
-    expect(data.refs).toContain("refs/heads/main:refs/heads/main");
+    // Sha-pinned refspecs (DEV-1491-001): the reviewed tips are pushed, not
+    // whatever the branch names point at by exec time.
+    expect(data.refs).toContain(`${localTip}:refs/heads/develop`);
+    expect(data.refs.some((r) => r.endsWith(":refs/heads/main"))).toBe(true);
 
     const remoteDevelop = (await gitExec(origin, ["rev-parse", "refs/heads/develop"])).stdout.trim();
     expect(remoteDevelop).toBe(localTip);

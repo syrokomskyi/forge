@@ -17,6 +17,7 @@ replayed tip and journal the hold with per-item rewrites.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 4 — flow.hold (replay, held branch, registry held entry, journal rewrites)</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -42,6 +43,7 @@ import {
   topLevel,
 } from "../git.ts";
 import { LockTimeoutError, withFlowLock } from "../locks.ts";
+import { INTEGRATE_LOCK_STALE_MS, INTEGRATE_LOCK_WAIT_MS } from "./flow-integrate.ts";
 import {
   appendJournal,
   commonGitDir,
@@ -123,7 +125,15 @@ export async function holdFlowItem(
   opts: { item: string; reason: string; dryRun: boolean; now?: Date },
 ): Promise<FlowHoldData> {
   const now = opts.now ?? new Date();
-  const digest = await collectDigest(repoRoot, io, { fetch: true });
+  let digest: Awaited<ReturnType<typeof collectDigest>>;
+  try {
+    digest = await collectDigest(repoRoot, io, { fetch: true });
+  } catch (error) {
+    if (error instanceof FlowRegistrySchemaError) {
+      return refuse("FLOW-07", error.message);
+    }
+    throw error;
+  }
   const item = digest.items.find((i) => i.id === opts.item) as FlowDigestItem | undefined;
   if (item === undefined) {
     return refuse(
@@ -243,7 +253,7 @@ export async function holdFlowItem(
   try {
     return await withFlowLock(
       lockPath,
-      { waitMs: 10_000, staleMs: 60_000 },
+      { waitMs: INTEGRATE_LOCK_WAIT_MS, staleMs: INTEGRATE_LOCK_STALE_MS },
       () => executeHold(repoRoot, primary, common, io, item, heldName, digest, opts.reason, now),
       io,
     );
@@ -251,7 +261,7 @@ export async function holdFlowItem(
     if (error instanceof LockTimeoutError) {
       return refuse(
         "FLOW-07",
-        `integration lock ${error.lockPath} still held after 10 s`,
+        `integration lock ${error.lockPath} still held`,
         "a live flow command holds the lock — retry, or remove it if the holder died",
       );
     }
@@ -309,9 +319,12 @@ async function executeHold(
       ]);
       const paths = conflicts.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
       await git(holdWorktree, io, ["cherry-pick", "--abort"]);
+      const detail = paths.length > 0
+        ? `conflicts on ${paths.join(", ")}`
+        : `failed: ${pick.stderr.trim().split("\n").slice(-1)[0] ?? "unknown error"}`;
       return refuse(
         "FLOW-HOLD-07",
-        `replaying the tail above ${item.id} conflicts on ${paths.join(", ") || "unknown paths"} — nothing changed`,
+        `replaying the tail above ${item.id} ${detail} — nothing changed`,
         "resolve the conflict by reordering the work, or drop the hold idea",
       );
     }
@@ -351,6 +364,17 @@ async function executeHold(
       );
     }
 
+    const reset = await git(primary, io, ["reset", "--keep", replayedTip]);
+    if (reset.exitCode !== 0) {
+      // Roll back the held branch ref — nothing is marked held while the
+      // work still sits on the tail.
+      await git(repoRoot, io, ["branch", "-D", heldName]);
+      return refuse(
+        "FLOW-HOLD-07",
+        `git reset --keep ${replayedTip.slice(0, 9)} in the primary failed: ${reset.stderr.trim()} — develop is unchanged`,
+      );
+    }
+
     const parsed = parseFlowBranch(item.branch ?? "");
     const entry: FlowRegistryEntry = {
       name: heldName,
@@ -375,18 +399,10 @@ async function executeHold(
       branches: [...r.branches.filter((b) => b.name !== heldName), entry],
     }));
 
-    const reset = await git(primary, io, ["reset", "--keep", replayedTip]);
-    if (reset.exitCode !== 0) {
-      return refuse(
-        "FLOW-HOLD-07",
-        `git reset --keep ${replayedTip.slice(0, 9)} in the primary failed: ${reset.stderr.trim()} — develop is unchanged`,
-      );
-    }
-
     await appendJournal(io, common, {
       event: "hold",
       branch: heldName,
-      base: item.base,
+      base: digest.develop.local,
       sha: replayedTip,
       detail: reason,
       rewrites,

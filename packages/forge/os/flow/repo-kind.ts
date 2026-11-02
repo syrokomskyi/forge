@@ -16,6 +16,7 @@ Generated repositories are never blocked by the guard or by flow.check.</purpose
   <item>RFC-1486: step 1 — fixed branch-model grammar, marker detection contracts, git helpers</item>
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -103,8 +104,13 @@ export async function readRepoRootFile(
   bare: boolean,
 ): Promise<string | null> {
   if (bare) {
-    const result = await io.exec("git", ["-C", repoRoot, "show", `HEAD:${name}`]);
-    return result.exitCode === 0 ? result.stdout : null;
+    // Adoption state lives on develop in the fixed branch model — HEAD on a
+    // bare repository may point at main, which carries no markers/hooks.
+    for (const ref of ["refs/heads/develop", "HEAD"]) {
+      const result = await io.exec("git", ["-C", repoRoot, "show", `${ref}:${name}`]);
+      if (result.exitCode === 0) return result.stdout;
+    }
+    return null;
   }
   const path = join(repoRoot, name);
   return (await io.exists(path)) ? io.readFile(path) : null;

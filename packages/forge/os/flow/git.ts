@@ -12,7 +12,6 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>flow.check/flow.install require git >= 2.30 — requireGit fails through the standard error path naming the detected version.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
@@ -26,13 +25,14 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 
-export const MIN_GIT_VERSION = "2.30";
+export const MIN_GIT_VERSION = "2.33";
 
 export interface FlowWorktree {
   path: string;

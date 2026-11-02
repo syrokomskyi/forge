@@ -10,6 +10,7 @@ flow.push must quote; --no-fetch skips the git fetch for offline review.</purpos
 <CHANGE_SUMMARY>
   <item>RFC-1491: step 3 — flow.digest handler</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
+  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,11 +21,29 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
+import type { Diagnostic } from "../../../src/types.ts";
 import { collectDigest, type FlowDigestData } from "../digest.ts";
 import { requireGit, topLevel } from "../git.ts";
-import { RISK_CATEGORIES } from "../registry.ts";
+import { FlowRegistrySchemaError, RISK_CATEGORIES } from "../registry.ts";
 
 export type { FlowDigestData };
+
+/** Diagnostic-only digest for a registry that cannot be read at all. */
+function emptyDigestData(diagnostics: Diagnostic[]): FlowDigestData {
+  return {
+    digestId: "",
+    remote: "origin",
+    fetched: false,
+    develop: { local: "", remote: null, ahead: 0 },
+    main: { local: "", remote: null, ahead: 0 },
+    tags: [],
+    items: [],
+    byCategory: Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as FlowDigestData["byCategory"],
+    held: [],
+    pendingPublications: [],
+    diagnostics,
+  };
+}
 
 export async function runFlowDigest(
   input: ForgeCommandInput,
@@ -40,7 +59,21 @@ export async function runFlowDigest(
   }
 
   const noFetch = input.flags["no-fetch"] === true;
-  const data = await collectDigest(repoRoot, io, { fetch: !noFetch });
+  let data: FlowDigestData;
+  try {
+    data = await collectDigest(repoRoot, io, { fetch: !noFetch });
+  } catch (error) {
+    if (error instanceof FlowRegistrySchemaError) {
+      return {
+        data: emptyDigestData([
+          { ruleId: "FLOW-07", severity: "error", message: error.message },
+        ]),
+        exitCode: 1,
+        summary: "[flow.digest] refused — registry unreadable",
+      };
+    }
+    throw error;
+  }
   const errors = data.diagnostics.filter((d) => d.severity === "error");
 
   if (outputFormat === "pretty") {
