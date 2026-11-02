@@ -13,6 +13,7 @@ diagnostics surface reports missing baselines and unknown --line ids.</purpose>
   <item>RFC-1488: step 4 — flow.version tests</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
+  <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -141,7 +142,19 @@ describe("collectFlowVersion", () => {
 
     const { data } = await collectFlowVersion(repo, ambientIo, "repo");
     expect(data.lines[0]?.dirty).toBe(true);
-    expect(data.lines[0]?.derived).toBe("1.2.0.dirty");
+    expect(data.lines[0]?.derived).toMatch(/^1\.2\.0\+0\.[0-9a-f]{9}\.dirty$/);
+  });
+
+  it("listLineTags with an explicit ref resolves tags on that ref, not HEAD", async () => {
+    const repo = await repoWithRootVersion("1.2.0");
+    await annotatedTag(repo, "v1.2.0");
+    await gitExec(repo, ["checkout", "-b", "side"]);
+    await gitExec(repo, ["commit", "--allow-empty", "-m", "side"]);
+    const { discoverReleaseLines } = await import("../release-lines.ts");
+    const { listLineTags } = await import("../release-tags.ts");
+    const { lines } = await discoverReleaseLines(repo, ambientIo);
+    const tags = await listLineTags(repo, lines[0]!, ambientIo, "main");
+    expect(tags.lastTag?.name).toBe("v1.2.0");
   });
 
   it("lightweight tags never anchor a line", async () => {

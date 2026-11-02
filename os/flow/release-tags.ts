@@ -19,6 +19,7 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>RFC-1488: step 2 — annotated reachable-tag listing + highest-version selection</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
+  <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,8 +50,13 @@ const NULL_FIELD = "";
  * Lightweight tags (`objecttype` = commit/blob) are dropped; a non-semver
  * suffix after the prefix (e.g. `v-next`) is dropped too.
  */
-async function listAnnotated(repoRoot: string, line: ReleaseLine, io: WorkspaceIO): Promise<TagRow[]> {
-  const head = await git(repoRoot, io, ["rev-parse", "--verify", "-q", "HEAD"]);
+async function listAnnotated(
+  repoRoot: string,
+  line: ReleaseLine,
+  io: WorkspaceIO,
+  ref: string,
+): Promise<TagRow[]> {
+  const head = await git(repoRoot, io, ["rev-parse", "--verify", "-q", ref]);
   if (head.exitCode !== 0) return []; // unborn branch — nothing reachable
   const sep = "\x1f";
   // %(refname) (full form) — %(refname:short) would hide a tag sharing its
@@ -62,7 +68,7 @@ async function listAnnotated(repoRoot: string, line: ReleaseLine, io: WorkspaceI
     `--format=${format}`,
     "--sort=-creatordate",
     "--merged",
-    "HEAD",
+    ref,
   ]);
   if (result.exitCode !== 0) return [];
   const rows: TagRow[] = [];
@@ -90,8 +96,9 @@ export async function listLineTags(
   repoRoot: string,
   line: ReleaseLine,
   io: WorkspaceIO,
+  ref = "HEAD",
 ): Promise<LineTags> {
-  const rows = await listAnnotated(repoRoot, line, io);
+  const rows = await listAnnotated(repoRoot, line, io, ref);
   let lastTag: LineTags["lastTag"] = null;
   for (const row of rows) {
     const version = parseVersion(row.name.slice(line.tagPrefix.length));

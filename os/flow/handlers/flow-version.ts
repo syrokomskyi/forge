@@ -19,6 +19,7 @@ X-RFC trailers. Diagnostics: FLOW-VER-01 (no baseline tag), FLOW-VER-02
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 4 — flow.version handler</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
+  <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -68,14 +69,15 @@ export interface FlowVersionOutcome {
   diagnostics: Diagnostic[];
 }
 
-/** Count commits in `since..HEAD` (or all of HEAD when since is empty) touching `paths`. */
+/** Count commits in `since..<ref>` (or all of <ref> when since is empty) touching `paths`. */
 async function commitsSinceRef(
   repoRoot: string,
   since: string,
   paths: string[],
   io: WorkspaceIO,
+  ref = "HEAD",
 ): Promise<number> {
-  const range = since === "" ? "HEAD" : `${since}..HEAD`;
+  const range = since === "" ? ref : `${since}..${ref}`;
   const args = ["rev-list", "--count", range];
   if (paths.length > 0) args.push("--", ...paths);
   const result = await git(repoRoot, io, args);
@@ -120,7 +122,7 @@ export async function collectFlowVersion(
     return { data: { lines: [], shallow: false }, diagnostics };
   }
 
-  const headResult = await git(repoRoot, io, ["rev-parse", "--short=9", "HEAD"]);
+  const headResult = await git(repoRoot, io, ["rev-parse", "--short=9", "HEAD"]); // flow.version reports HEAD only
   const head = headResult.exitCode === 0 ? headResult.stdout.trim() : null;
   const shallowResult = await git(repoRoot, io, ["rev-parse", "--is-shallow-repository"]);
   const shallow = shallowResult.exitCode === 0 && shallowResult.stdout.trim() === "true";
@@ -158,8 +160,12 @@ async function buildLineReport(
   const dirty = dirtyCount > 0;
   let derived: string | null = null;
   if (tags.lastTag !== null && head !== null) {
-    const base = commitsSince > 0 ? `${tags.lastTag.name.slice(line.tagPrefix.length)}+${commitsSince}.${head}` : tags.lastTag.name.slice(line.tagPrefix.length);
-    derived = dirty ? `${base}.dirty` : base;
+    const base =
+      commitsSince > 0
+        ? `${tags.lastTag.name.slice(line.tagPrefix.length)}+${commitsSince}.${head}`
+        : tags.lastTag.name.slice(line.tagPrefix.length);
+    derived =
+      dirty && commitsSince === 0 ? `${base}+0.${head}.dirty` : dirty ? `${base}.dirty` : base;
   }
 
   const pending = await pendingLevel(

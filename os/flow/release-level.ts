@@ -18,6 +18,7 @@ next release version it implies.</purpose>
   <item>RFC-1488: step 3 — pending level from X-RFC trailers + versionBump</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
+  <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -78,8 +79,9 @@ export async function pendingLevel(
   io: WorkspaceIO,
   repoRoot: string,
   lastVersion: SemVer | null,
+  ref = "HEAD",
 ): Promise<PendingLevel> {
-  const range = since === "" ? "HEAD" : `${since}..HEAD`;
+  const range = since === "" ? ref : `${since}..${ref}`;
   const countArgs = ["rev-list", "--count", range];
   if (line.paths.length > 0) countArgs.push("--", ...line.paths);
   const count = await git(repoRoot, io, countArgs);
