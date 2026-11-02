@@ -9,6 +9,7 @@
   <item>RFC-0544: initial forge.create tests.</item>
   <item>RFC-0877: rewrite tests for --in-place mode, add strict empty-directory check and name-derivation tests.</item>
   <item>RFC-1019: add tests for pre-user-prompt-wrapper.mjs, shell auto-detection, hooks.json wrapper, pinned.yaml.</item>
+  <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
 </CHANGE_SUMMARY>
 */
 
@@ -54,7 +55,7 @@ afterEach(async () => {
 
 test("forge create --in-place scaffolds in cwd with forge.yaml and docs dirs", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -73,7 +74,7 @@ test("forge create --in-place refuses when forge artifacts already exist", async
   await writeFile(join(tempDir, "forge.yaml"), "existing: true", "utf8");
 
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -85,7 +86,7 @@ test("forge create --in-place refuses when non-forge files exist in target direc
   await writeFile(join(tempDir, "some-file.txt"), "hello", "utf8");
 
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -98,7 +99,7 @@ test("forge create --in-place tolerates only .git directory in target directory"
   await mkdir(join(tempDir, ".git"), { recursive: true });
 
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -109,7 +110,7 @@ test("forge create --in-place tolerates only .git directory in target directory"
 
 test("forge create fails on non-kebab-case name", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "MyProject" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "MyProject" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -129,7 +130,7 @@ test("forge create fails on missing --in-place flag", async () => {
 
 test("forge create fails on missing --profile flag", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(1);
@@ -139,7 +140,7 @@ test("forge create fails on missing --profile flag", async () => {
 
 test("forge create --in-place --profile forge-shell uses forge-shell profile", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -151,7 +152,7 @@ test("forge create --package-manager npm writes npm into forge.yaml with npx bin
     {
       argv: [],
       flags: {
-        "in-place": true,
+        "in-place": true, "no-flow": true,
         profile: "forge-shell",
         name: "my-project",
         "package-manager": "npm",
@@ -172,7 +173,7 @@ test("forge create --package-manager pnpm writes pnpm into forge.yaml", async ()
     {
       argv: [],
       flags: {
-        "in-place": true,
+        "in-place": true, "no-flow": true,
         profile: "forge-shell",
         name: "my-project",
         "package-manager": "pnpm",
@@ -189,7 +190,7 @@ test("forge create --package-manager pnpm writes pnpm into forge.yaml", async ()
 
 test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async () => {
   await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
 
@@ -206,7 +207,7 @@ test("forge.yaml has non-null forge-CLI bindings and null stack bindings", async
 
 test("forge.yaml has forge.syncedVersion set", async () => {
   await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
 
@@ -216,7 +217,7 @@ test("forge.yaml has forge.syncedVersion set", async () => {
 
 test("result includes nextSteps with forge-bootstrap", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -227,7 +228,7 @@ test("result includes nextSteps with forge-bootstrap", async () => {
 
 test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -244,7 +245,7 @@ test("forge create generates AGENTS.md with behavioral layer (RFC-0548)", async 
 
 test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance (RFC-0550)", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -262,7 +263,7 @@ test("forge create writes NEXT_STEPS.md with greenfield and transplant guidance 
 
 test("forge create root package.json has scripts and replaced project name", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -282,7 +283,7 @@ test("forge create --in-place derives name from folder name when --name omitted"
   await mkdir(namedDir, { recursive: true });
 
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell" } },
     makeContext(namedDir),
   );
   expect(result.exitCode).toBe(0);
@@ -295,7 +296,7 @@ test("forge create --in-place derives name from folder name when --name omitted"
 
 test("forge create --profile godot-game writes compass.fileExtensions into forge.yaml", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "godot-game", name: "my-game" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "godot-game", name: "my-game" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -312,7 +313,7 @@ test("forge create --profile godot-game writes compass.fileExtensions into forge
 
 test("forge create --in-place setup-git-guards.sh contains shell auto-detection (RFC-1019)", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -326,7 +327,7 @@ test("forge create --in-place setup-git-guards.sh contains shell auto-detection 
 
 test("forge create --in-place .windsurf/hooks.json calls wrapper not bash directly (RFC-1019)", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -339,7 +340,7 @@ test("forge create --in-place .windsurf/hooks.json calls wrapper not bash direct
 
 test("forge create --in-place pins pre-user-prompt-wrapper.mjs in pinned.yaml (RFC-1019)", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "forge-shell", name: "my-project" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "forge-shell", name: "my-project" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);
@@ -351,7 +352,7 @@ test("forge create --in-place pins pre-user-prompt-wrapper.mjs in pinned.yaml (R
 
 test("forge create --profile phaser-game writes compass.fileExtensions into forge.yaml", async () => {
   const result = await runCreate(
-    { argv: [], flags: { "in-place": true, profile: "phaser-game", name: "my-phaser-game" } },
+    { argv: [], flags: { "in-place": true, "no-flow": true, profile: "phaser-game", name: "my-phaser-game" } },
     makeContext(tempDir),
   );
   expect(result.exitCode).toBe(0);

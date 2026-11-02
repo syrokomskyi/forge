@@ -71,7 +71,7 @@ workspace:
                 run: pnpm install --frozen-lockfile
 
               - name: Forge doctor
-                run: pnpm exec forge run forge.doctor
+                run: pnpm exec forge doctor
 
               - name: Format check
                 run: pnpm format:check
@@ -207,13 +207,6 @@ workspace:
     - path: .gitattributes
       content: |
         # No LFS patterns for this stack
-    - path: hooks/pre-commit
-      content: |
-        #!/bin/sh
-        # Platform-scope pre-commit guard
-        # Runs forge validation before commits
-        echo "Pre-commit: running platform checks..."
-        pnpm exec forge run forge.validate || exit 1
     - path: scripts/git-guard.sh
       content: |
         #!/bin/bash
@@ -594,7 +587,7 @@ workspace:
         ### 5. Verify the workshop
 
         ```sh
-        pnpm exec forge run doctor
+        pnpm exec forge doctor
         pnpm exec werkstatt run sternsystem.validate --id <site-id>
         ```
 
@@ -678,6 +671,6 @@ nextSteps: |
 
   ## Token lifecycle
 
-  Per-client granular npm tokens are issued at workshop provisioning and revoked at exit/handover-out. To rotate: replace the token in `.npmrc` or update `NPM_TOKEN`, then re-run `pnpm exec forge run doctor` to verify.
+  Per-client granular npm tokens are issued at workshop provisioning and revoked at exit/handover-out. To rotate: replace the token in `.npmrc` or update `NPM_TOKEN`, then re-run `pnpm exec forge doctor` to verify.
 install:
   - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt-engine @warpgogol/werkstatt-site prettier vitest
