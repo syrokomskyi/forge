@@ -31,6 +31,7 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -124,6 +125,7 @@ async function cleanupIntegrated(
   sha: string,
   io: WorkspaceIO,
   nowIso: string,
+  journalEvent: "integrate" | "backmerge" = "integrate",
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -188,10 +190,10 @@ async function cleanupIntegrated(
     }));
     await appendJournal(io, common, {
       at: nowIso,
-      event: "integrate",
+      event: journalEvent,
       branch: entry.name,
       sha,
-      detail: `integrated into develop`,
+      detail: journalEvent === "backmerge" ? `back-merged into develop` : `integrated into develop`,
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -220,7 +222,16 @@ async function cleanupIntegrated(
 export async function integrateFlowBranch(
   repoRoot: string,
   io: WorkspaceIO,
-  opts: { branch: string | null; dryRun: boolean; now?: Date; onProgress?: (m: string) => void },
+  opts: {
+    branch: string | null;
+    dryRun: boolean;
+    now?: Date;
+    onProgress?: (m: string) => void;
+    /** Caller already holds the integration lock (flow.cut/fix releases). */
+    lockHeld?: boolean;
+    /** Gate target — passed to the integration gate as FORGE_FLOW_TARGET. */
+    target?: "develop" | "main";
+  },
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
 
@@ -249,6 +260,14 @@ export async function integrateFlowBranch(
       "FLOW-INT-06",
       `${branch} is not a registered session/task branch`,
       "register it with flow.open, or check flow.status for live entries",
+      { branch },
+    );
+  }
+  if (entry.kind === "fix") {
+    return refuse(
+      "FLOW-INT-06",
+      `${branch} is a fix branch — fix branches integrate into main only through a fix release`,
+      "run flow.cut inside the fix worktree (or --branch <fix branch>)",
       { branch },
     );
   }
@@ -303,22 +322,9 @@ export async function integrateFlowBranch(
 
   await io.mkdir(join(common, "forge"));
 
-  // Steps 0–5 under the integration lock.
-  let inner: FlowIntegrateData;
-  try {
-    inner = await withFlowLock(
-      lockPath,
-      {
-        waitMs: INTEGRATE_LOCK_WAIT_MS,
-        staleMs: INTEGRATE_LOCK_STALE_MS,
-        progressEveryMs: 60_000,
-        onProgress: opts.onProgress,
-        onStale: (l) =>
-          opts.onProgress?.(
-            `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
-          ),
-      },
-      async (): Promise<FlowIntegrateData> => {
+  // Steps 0–5 under the integration lock (or inside the caller's lock when
+  // lockHeld — flow.cut holds it across the whole release).
+  const integrateInner = async (): Promise<FlowIntegrateData> => {
         const developBefore = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
         const hasBranch = await branchExists(primary, io, branch);
 
@@ -365,9 +371,38 @@ export async function integrateFlowBranch(
           );
         }
 
-        // (3) rebase onto the current develop.
+        // Port entries (RFC-1490): develop must not have moved since the port
+        // opened, and the tip must be the fixed-message merge whose second
+        // parent is port.mainSha. No rebase — that would linearize the merge.
+        if (entry.port !== null) {
+          if (developBefore !== entry.baseSha) {
+            return refuse(
+              "FLOW-INT-10",
+              `develop moved to ${developBefore.slice(0, 9)} since the port branch opened (base ${entry.baseSha.slice(0, 9)})`,
+              "run flow.backmerge --redo to reopen the port on the new develop tip",
+              { branch, developBefore },
+            );
+          }
+          const expectedSubject = `release ${entry.port.tags.join(", ")} → develop`;
+          const parents = await git(branchWorktree, io, ["rev-list", "--parents", "-1", "HEAD"]);
+          const parts = parents.stdout.trim().split(/\s+/);
+          const subject = (await git(branchWorktree, io, ["log", "-1", "--format=%s"])).stdout.trim();
+          if (parts.length !== 3 || parts[2] !== entry.port.mainSha || subject !== expectedSubject) {
+            return refuse(
+              "FLOW-INT-09",
+              `port tip is not the back-merge commit — expected merge '${expectedSubject}' with second parent ${entry.port.mainSha.slice(0, 9)}`,
+              "commit the resolved merge inside the port worktree with git commit --no-edit, or run flow.backmerge --redo",
+              { branch, developBefore },
+            );
+          }
+        }
+
+        // (3) rebase onto the current develop — never for port entries.
         const rebaseBase = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-        const rebase = await git(branchWorktree, io, ["rebase", "develop"]);
+        const rebase =
+          entry.port !== null
+            ? { exitCode: 0, stdout: "", stderr: "" }
+            : await git(branchWorktree, io, ["rebase", "develop"]);
         if (rebase.exitCode !== 0) {
           const conflicts = await git(branchWorktree, io, [
             "diff",
@@ -395,6 +430,7 @@ export async function integrateFlowBranch(
             FLOW_PRIMARY: primary,
             FLOW_BRANCH: branch,
             FLOW_BASE_SHA: rebaseBase,
+            FORGE_FLOW_TARGET: opts.target ?? "develop",
           },
         });
         if (gate.status === "failed") {
@@ -402,7 +438,7 @@ export async function integrateFlowBranch(
             "FLOW-INT-05",
             `hooks/integration-gate.sh refused the integration (exit ${gate.exitCode}): ${gate.stderrTail}`,
             `fix what ${primary}/hooks/integration-gate.sh demands, then re-run`,
-            { branch, developBefore, rebased: true, gate },
+            { branch, developBefore, rebased: entry.port === null, gate },
           );
         }
 
@@ -416,7 +452,7 @@ export async function integrateFlowBranch(
               ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
               : `primary worktree has ${primaryDirty.length} uncommitted change(s)`,
             "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
-            { branch, developBefore, rebased: true, gate },
+            { branch, developBefore, rebased: entry.port === null, gate },
           );
         }
         const developNow = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
@@ -425,7 +461,7 @@ export async function integrateFlowBranch(
             "FLOW-INT-07",
             `develop moved to ${developNow.slice(0, 9)} after the rebase despite the integration lock`,
             "re-run flow.integrate — it rebases onto the new develop tip",
-            { branch, developBefore, rebased: true, gate },
+            { branch, developBefore, rebased: entry.port === null, gate },
           );
         }
         const merge = await git(primary, io, ["merge", "--ff-only", branch]);
@@ -434,7 +470,7 @@ export async function integrateFlowBranch(
             "FLOW-INT-07",
             `git merge --ff-only ${branch} failed: ${merge.stderr.trim()}`,
             "develop diverged from the rebased base — re-run flow.integrate to rebase again",
-            { branch, developBefore, rebased: true, gate },
+            { branch, developBefore, rebased: entry.port === null, gate },
           );
         }
         const developAfter = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
@@ -443,14 +479,32 @@ export async function integrateFlowBranch(
           integrated: true,
           developBefore,
           developAfter,
-          rebased: true,
+          rebased: entry.port === null,
           gate,
           cleanedUp: false,
           diagnostics: [],
         };
-      },
-      io,
-    );
+  };
+
+  let inner: FlowIntegrateData;
+  try {
+    inner = opts.lockHeld === true
+      ? await integrateInner()
+      : await withFlowLock(
+          lockPath,
+          {
+            waitMs: INTEGRATE_LOCK_WAIT_MS,
+            staleMs: INTEGRATE_LOCK_STALE_MS,
+            progressEveryMs: 60_000,
+            onProgress: opts.onProgress,
+            onStale: (l) =>
+              opts.onProgress?.(
+                `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
+              ),
+          },
+          integrateInner,
+          io,
+        );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
       return refuse(
@@ -479,6 +533,7 @@ export async function integrateFlowBranch(
     inner.developAfter ?? inner.developBefore ?? "",
     io,
     now.toISOString(),
+    entry.port !== null ? "backmerge" : "integrate",
   );
   return {
     ...inner,

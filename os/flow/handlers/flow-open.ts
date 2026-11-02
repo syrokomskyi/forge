@@ -31,6 +31,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
+  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -79,11 +80,26 @@ export interface FlowOpenOptions {
   now?: Date;
 }
 
+/** Injectable open core (RFC-1490) — flow.cut/fix call this directly. */
+export interface FlowOpenCoreOptions {
+  kind: FlowBranchKind;
+  slug: string;
+  brief: string | null;
+  /** Registry owner — session/task kind plus an id (e.g. `release`, operator session). */
+  owner: { kind: "session" | "task"; id: string };
+  dryRun: boolean;
+  now?: Date;
+  /** Registry base — task/session open on develop, fix on main. */
+  base?: "develop" | "main";
+  /** Ref the worktree branches from — defaults to the base. */
+  baseRef?: string;
+}
+
 export interface FlowOpenData {
   repoKind: "governed";
   branch: string | null;
   worktree: string | null;
-  base: "develop";
+  base: "develop" | "main";
   baseSha: string | null;
   opened: boolean;
   setup: FlowScriptResult | null;
@@ -127,24 +143,46 @@ export async function openFlowBranch(
   io: WorkspaceIO,
   opts: FlowOpenOptions,
 ): Promise<FlowOpenData> {
-  const now = opts.now ?? new Date();
-
   // Flags — FLOW-OPEN-01/05 first, before any git fact is consulted.
   if (opts.kind !== "session" && opts.kind !== "task") {
     return refuse("FLOW-OPEN-01", `invalid --kind '${opts.kind}'`, "use --kind session or --kind task");
-  }
-  if (!SLUG_RE.test(opts.slug) || opts.slug.length < 3 || opts.slug.length > 48) {
-    return refuse(
-      "FLOW-OPEN-01",
-      `invalid --slug '${opts.slug}'`,
-      "slug must match ^[a-z0-9]+(-[a-z0-9]+)*$ and be 3..48 characters",
-    );
   }
   if (opts.kind === "task" && (opts.owner === null || opts.owner === "")) {
     return refuse(
       "FLOW-OPEN-05",
       "--kind task requires --owner <task-id>",
       "pass the queue task id via --owner, or use --kind session",
+    );
+  }
+  return openFlowBranchCore(repoRoot, io, {
+    kind: opts.kind,
+    slug: opts.slug,
+    brief: opts.brief,
+    owner: { kind: opts.kind, id: opts.owner ?? "unspecified" },
+    dryRun: opts.dryRun,
+    now: opts.now,
+  });
+}
+
+/**
+ * Open core — every refusal path is a diagnostic in the returned data,
+ * nothing mutates unless opened: true. flow.cut calls it with
+ * kind `session`, owner `{kind: "session", id: "release"}`.
+ */
+export async function openFlowBranchCore(
+  repoRoot: string,
+  io: WorkspaceIO,
+  opts: FlowOpenCoreOptions,
+): Promise<FlowOpenData> {
+  const now = opts.now ?? new Date();
+  const base = opts.base ?? "develop";
+  const baseRef = opts.baseRef ?? base;
+
+  if (!SLUG_RE.test(opts.slug) || opts.slug.length < 3 || opts.slug.length > 48) {
+    return refuse(
+      "FLOW-OPEN-01",
+      `invalid --slug '${opts.slug}'`,
+      "slug must match ^[a-z0-9]+(-[a-z0-9]+)*$ and be 3..48 characters",
     );
   }
 
@@ -166,14 +204,16 @@ export async function openFlowBranch(
     );
   }
 
-  if (!(await branchExists(repoRoot, io, "develop"))) {
+  if (!(await branchExists(repoRoot, io, baseRef))) {
     return refuse(
       "FLOW-OPEN-02",
-      "local branch develop does not exist",
-      "adopt the fixed branch model with flow.install first",
+      `local branch ${baseRef} does not exist`,
+      base === "develop"
+        ? "adopt the fixed branch model with flow.install first"
+        : "cut a release first — flow.fix opens from the main tip",
     );
   }
-  const baseShaResult = await git(repoRoot, io, ["rev-parse", "refs/heads/develop"]);
+  const baseShaResult = await git(repoRoot, io, ["rev-parse", `refs/heads/${baseRef}`]);
   const baseSha = baseShaResult.stdout.trim();
 
   const primary = await primaryWorktree(io, repoRoot);
@@ -217,7 +257,7 @@ export async function openFlowBranch(
     );
   }
 
-  const ownerId = opts.owner ?? "unspecified";
+  const ownerId = opts.owner.id;
   const iso = now.toISOString();
 
   for (let attempt = 1; attempt <= OPEN_MAX_ATTEMPTS; attempt++) {
@@ -238,10 +278,10 @@ export async function openFlowBranch(
         repoKind: "governed",
         branch: name,
         worktree,
-        base: "develop",
+        base,
         baseSha,
         opened: false,
-        setup: { status: "skipped", exitCode: null, stderrTail: "" },
+        setup: { status: "skipped", exitCode: null, stderrTail: "", stdout: "" },
         diagnostics: [],
       };
     }
@@ -252,7 +292,7 @@ export async function openFlowBranch(
       "-b",
       name,
       worktree,
-      "develop",
+      baseRef,
     ]);
     if (add.exitCode !== 0) {
       const collision = add.stderr.includes("already exists") || add.stderr.includes("is already used");
@@ -284,10 +324,10 @@ export async function openFlowBranch(
     const entry: FlowRegistryEntry = {
       name,
       kind: opts.kind,
-      base: "develop",
+      base,
       baseSha,
       worktree,
-      owner: { kind: opts.kind, id: ownerId },
+      owner: opts.owner,
       brief: opts.brief,
       openedAt: iso,
       updatedAt: iso,

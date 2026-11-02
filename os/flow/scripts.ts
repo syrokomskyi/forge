@@ -16,6 +16,7 @@ the branch worktree and the declared FLOW_* environment.</purpose>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 2 — primary-side hook-script runner</item>
+  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,15 +27,19 @@ import type { WorkspaceIO } from "../../src/types.ts";
 export type FlowScriptName =
   | "worktree-setup"
   | "integration-gate"
-  | "worktree-teardown";
+  | "worktree-teardown"
+  | "release-fingerprints";
 
 export interface FlowScriptResult {
   status: "done" | "skipped" | "failed";
   exitCode: number | null;
   stderrTail: string;
+  /** stdout truncated to 64 KiB with a trailing `…[truncated]` marker. */
+  stdout: string;
 }
 
 const STDERR_TAIL_LINES = 40;
+const STDOUT_CAP = 64 * 1024;
 
 /**
  * Run `<primary>/hooks/<name>.sh` with cwd inside `cwd` (the branch
@@ -48,7 +53,7 @@ export async function runFlowScript(
 ): Promise<FlowScriptResult> {
   const scriptPath = join(opts.primary, "hooks", `${name}.sh`);
   if (!(await io.exists(scriptPath))) {
-    return { status: "skipped", exitCode: null, stderrTail: "" };
+    return { status: "skipped", exitCode: null, stderrTail: "", stdout: "" };
   }
   const result = await io.exec("sh", [scriptPath], { cwd: opts.cwd, env: opts.env });
   const tail = result.stderr
@@ -56,7 +61,11 @@ export async function runFlowScript(
     .filter((line) => line.length > 0)
     .slice(-STDERR_TAIL_LINES)
     .join("\n");
+  const stdout =
+    result.stdout.length > STDOUT_CAP
+      ? `${result.stdout.slice(0, STDOUT_CAP)}…[truncated]`
+      : result.stdout;
   return result.exitCode === 0
-    ? { status: "done", exitCode: result.exitCode, stderrTail: tail }
-    : { status: "failed", exitCode: result.exitCode, stderrTail: tail };
+    ? { status: "done", exitCode: result.exitCode, stderrTail: tail, stdout }
+    : { status: "failed", exitCode: result.exitCode, stderrTail: tail, stdout };
 }
