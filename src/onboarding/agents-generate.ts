@@ -7,16 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1255: Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>RFC-1365: step 4 — DNA-115, CONF-* remediation entries, agents-generate convention section</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1253</history>
+  <item>RFC-1500: step 4 — branch-model AGENTS section and consumer docs</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1097, RFC-1253</history>
 </CHANGE_SUMMARY>
 */
 
@@ -24,7 +22,7 @@ import * as fs from "../utils/sync-fs.ts";
 import { resolveIo } from "../utils/io.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { loadForgeConfig, resolveBinding, resolveForgePackageRoot, resolveForgeRoot } from "../config/forge-config.ts";
+import { loadForgeConfig, resolveBinding, resolveForgePackageRoot, resolveForgeRoot, type ForgeConfig } from "../config/forge-config.ts";
 import { resolveAllTerminology } from "../profiles/terminology-utils.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import { alignMarkdownTable, buildGeneratedHeader, hasEditableGeneratedMarker, hasGeneratedMarker, mergeEditableGenerated, writeFileIfChanged } from "../utils/index.ts";
@@ -39,6 +37,31 @@ import type {
 } from "../types.ts";
 
 type BehavioralRegister = "business" | "creative";
+
+/**
+ * RFC-1500: the repository's command prefix for generated flow instructions —
+ * derived from the first resolvable `bindings.commands` value by cutting at
+ * the dotted command token (`pnpm exec forge rfc.validate …` → `pnpm exec
+ * forge`; `pnpm exec werkstatt run rfc.validate …` → `pnpm exec werkstatt
+ * run`). Falls back to `pnpm exec forge`.
+ */
+function resolveCommandPrefix(config: ForgeConfig): string {
+  const candidates = [
+    "commands.validateRfc",
+    "commands.specValidate",
+    "commands.sessionSave",
+    "commands.implementStamp",
+    "commands.validateAdr",
+  ];
+  for (const key of candidates) {
+    const value = resolveBinding(config, key);
+    if (typeof value !== "string" || value.trim() === "") continue;
+    const tokens = value.trim().split(/\s+/);
+    const idx = tokens.findIndex((t) => /^[a-z][\w-]*\.[\w.-]+$/.test(t));
+    if (idx > 0) return tokens.slice(0, idx).join(" ");
+  }
+  return "pnpm exec forge";
+}
 
 // RFC-0643: Template placeholder substitution for {{terminology.key}} patterns
 export function substituteTemplate(
@@ -398,6 +421,27 @@ export async function runAgentsGenerate(
   dynamicLines.push("");
   dynamicLines.push("**Session-start read discipline (advisory):** At session start, read `MEMORY.md` (always), then `daily/<today>.md` and `daily/<yesterday>.md` (if present). Older daily files are cold — use grep when a task references past context.");
   dynamicLines.push("");
+
+  // RFC-1500 step 4: adopted repositories carry the fixed-branch-model rules —
+  // emitted only when isFlowAdopted reports adoption (committed develop +
+  // managed block). The probe is advisory: generation never fails on it.
+  try {
+    const { isFlowAdopted } = await import("../../os/flow/index.ts");
+    const { topLevel } = await import("../../os/flow/git.ts");
+    const repoRoot = (await topLevel(workspaceRoot, fio)) ?? workspaceRoot;
+    if (await isFlowAdopted(repoRoot, fio)) {
+      const prefix = resolveCommandPrefix(config);
+      dynamicLines.push("## Branch model");
+      dynamicLines.push("");
+      dynamicLines.push(`- Every session starts with \`${prefix} flow.open --kind session --slug <slug>\`; work and commit only in the returned worktree. The guard refuses commits on \`develop\` and \`main\`.`);
+      dynamicLines.push(`- \`${prefix} flow.integrate --branch <name>\` (operator) rebases, gates and fast-forwards \`develop\`; \`${prefix} flow.discard\` drops a session.`);
+      dynamicLines.push(`- Releases are \`${prefix} flow.cut\` (repository line) and \`${prefix} flow.cut --lines <line>\` (package lines); nothing leaves the machine except \`${prefix} flow.push --digest <id>\` after the operator has read \`${prefix} flow.digest\`.`);
+      dynamicLines.push("- Never edit `forge/registry.yaml`, `forge/journal.jsonl` or `forge/*.lock` in the git directory.");
+      dynamicLines.push("");
+    }
+  } catch {
+    // Flow probe failed (no git, unreadable repo) — section omitted.
+  }
 
   // RFC-1365 (DNA-115): declared contract producers carry the golden-conformance
   // convention — emitted only when forge.yaml declares contractProducers[].
