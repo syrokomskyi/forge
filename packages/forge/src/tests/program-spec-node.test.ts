@@ -10,6 +10,7 @@ and execution phases.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0857: spec-node seal validation and phase-aware lease tests.</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +29,6 @@ function makeManifest(packets: ProgramPacketIndexEntry[]): ProgramManifest {
     schema: "forge/program@1",
     program: "RFC-0855",
     title: "Test",
-    branch: "main",
     state: "executing",
     currentPacket: "140-test",
     steward: "human:alice",
@@ -49,7 +49,6 @@ function makePacket(): ProgramPacket {
     resolvedRfc: null,
     dependsOnPacket: "130-predecessor",
     baseCommit: "abc123",
-    branch: "main",
     steward: "human:alice",
     normativeSources: [{ path: "docs/rfcs/rfc-0857.md", sha256: "a".repeat(64) }],
     allowedFiles: ["packages/forge/**"],
@@ -99,7 +98,6 @@ describe("RFC-0857: spec-node seal validation", () => {
     const entry = makeEntry();
 
     const violations = validateSealTransition(manifest, entry, packet, {
-      branch: "main",
       head: "abc123",
       isClean: true,
       hasActiveLease: false,
@@ -116,7 +114,6 @@ describe("RFC-0857: spec-node seal validation", () => {
     const entry = makeEntry({ resolvedRfc: "RFC-0865" });
 
     const violations = validateSealTransition(manifest, entry, packet, {
-      branch: "main",
       head: "abc123",
       isClean: true,
       hasActiveLease: false,
@@ -137,7 +134,6 @@ describe("RFC-0857: spec-node seal validation", () => {
     const entry = makeEntry({ decisionKind: "rfc", resolvedRfc: "RFC-0856" });
 
     const violations = validateSealTransition(manifest, entry, packet, {
-      branch: "main",
       head: "abc123",
       isClean: true,
       hasActiveLease: false,

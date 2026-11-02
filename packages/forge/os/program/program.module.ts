@@ -15,6 +15,7 @@ Mechanical sweep: the field only ever gated --all argv acceptance; fan-out
 follows the parsed selector. Guard renamed assertAllSitesAllowed ->
 assertAllFlagAccepted, message updated. 417 declaration sites + type
 surfaces (KernelCommandMetadata, ForgeCommandMetadata) in one atomic pass.</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,7 +42,7 @@ export async function createForgeProgramModule(): Promise<ForgeModule> {
         contract: "program",
         rules: [],
         description:
-          "Validate a program packet against schema, source hashes, branch/head, " +
+          "Validate a program packet against schema, source hashes, head, " +
           "and state machine rules. Read-only. " +
           "Usage: program.packet.validate --program=RFC-XXXX --packet=NNN-foo --phase=draft --json",
         scope: "workspace",

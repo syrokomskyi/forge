@@ -8,6 +8,7 @@ unknown fields, required fields, and type constraints (RFC-0856).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial schema tests.</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +24,39 @@ import {
 
 describe("programManifestSchema", () => {
   it("accepts a valid manifest", () => {
+    const manifest = {
+      schema: "forge/program@1",
+      program: "RFC-0855",
+      title: "Test program",
+      state: "preparing",
+      currentPacket: "000-test",
+      steward: "human:alice",
+      sequential: true,
+      parallelism: 1,
+      packets: [
+        {
+          order: 0,
+          packetId: "000-test",
+          file: "000-test.md",
+          state: "draft",
+          governingDecision: "RFC-0856",
+          decisionKind: "rfc",
+          resolvedRfc: "RFC-0856",
+          dependsOnPacket: null,
+          baseCommit: null,
+          sealCommit: null,
+          completion: null,
+        },
+      ],
+    };
+
+    const result = programManifestSchema.safeParse(manifest);
+    expect(result.success).toBe(true);
+  });
+
+  // RFC-1499 AC-5: branch removed — manifests without it parse; legacy
+  // manifests carrying it parse too, with the key ignored (dropped).
+  it("AC-5: parses a manifest carrying a legacy branch key and drops it", () => {
     const manifest = {
       schema: "forge/program@1",
       program: "RFC-0855",
@@ -52,6 +86,9 @@ describe("programManifestSchema", () => {
 
     const result = programManifestSchema.safeParse(manifest);
     expect(result.success).toBe(true);
+    if (result.success) {
+      expect("branch" in result.data).toBe(false);
+    }
   });
 
   it("rejects unknown fields", () => {
@@ -59,7 +96,6 @@ describe("programManifestSchema", () => {
       schema: "forge/program@1",
       program: "RFC-0855",
       title: "Test",
-      branch: "main",
       state: "preparing",
       currentPacket: "000-test",
       steward: "human:alice",
@@ -78,7 +114,6 @@ describe("programManifestSchema", () => {
       schema: "forge/program@1",
       program: "RFC-0855",
       title: "Test",
-      branch: "main",
       state: "preparing",
       currentPacket: "000-test",
       steward: "human:alice",
@@ -96,7 +131,6 @@ describe("programManifestSchema", () => {
       schema: "forge/program@1",
       program: "RFC-0855",
       title: "Test",
-      branch: "main",
       state: "preparing",
       currentPacket: "000-test",
       steward: "human:alice",
@@ -122,7 +156,6 @@ describe("programPacketSchema", () => {
       resolvedRfc: "RFC-0856",
       dependsOnPacket: null,
       baseCommit: null,
-      branch: "main",
       steward: "human:alice",
       normativeSources: [{ path: "docs/rfcs/rfc-0856.md", sha256: "a".repeat(64) }],
       allowedFiles: ["packages/forge/**"],
@@ -137,7 +170,8 @@ describe("programPacketSchema", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects unknown fields", () => {
+  // RFC-1499 AC-5: same legacy-branch tolerance at the packet level.
+  it("AC-5: parses a packet carrying a legacy branch key and drops it", () => {
     const packet = {
       schema: "forge/program-packet@1",
       program: "RFC-0855",
@@ -149,6 +183,34 @@ describe("programPacketSchema", () => {
       dependsOnPacket: null,
       baseCommit: null,
       branch: "main",
+      steward: "human:alice",
+      normativeSources: [{ path: "docs/rfcs/rfc-0856.md", sha256: "a".repeat(64) }],
+      allowedFiles: ["packages/forge/**"],
+      forbiddenFiles: ["missions/**"],
+      permittedTransitionDiagnostics: [],
+      requiredValidations: [
+        { command: "pnpm test", expectedStatus: "pass", expectedDiagnostics: [] },
+      ],
+    };
+
+    const result = programPacketSchema.safeParse(packet);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect("branch" in result.data).toBe(false);
+    }
+  });
+
+  it("rejects unknown fields", () => {
+    const packet = {
+      schema: "forge/program-packet@1",
+      program: "RFC-0855",
+      packetId: "000-test",
+      state: "draft",
+      governingDecision: "RFC-0856",
+      decisionKind: "rfc",
+      resolvedRfc: "RFC-0856",
+      dependsOnPacket: null,
+      baseCommit: null,
       steward: "human:alice",
       normativeSources: [],
       allowedFiles: [],
@@ -173,7 +235,6 @@ describe("programPacketSchema", () => {
       resolvedRfc: "RFC-0856",
       dependsOnPacket: null,
       baseCommit: null,
-      branch: "main",
       steward: "human:alice",
       normativeSources: [],
       allowedFiles: [],
@@ -197,7 +258,6 @@ describe("programPacketSchema", () => {
       resolvedRfc: "RFC-0856",
       dependsOnPacket: null,
       baseCommit: null,
-      branch: "main",
       steward: "human:alice",
       normativeSources: [{ path: "test.md", sha256: "short" }],
       allowedFiles: ["packages/**"],

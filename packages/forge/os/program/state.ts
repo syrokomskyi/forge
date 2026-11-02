@@ -10,6 +10,7 @@ Validates allowed transitions and produces violation records.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-0856: initial state machine logic.</item>
   <item>RFC-0857: spec-node resolvedRfc validation at seal boundary (PROGRAM-PACKET-12).</item>
+  <item>RFC-1499: step 3 — program manifests drop branch; legacy branch key stripped at parse</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,21 +44,12 @@ export function validateSealTransition(
   entry: ProgramPacketIndexEntry,
   packet: ProgramPacket,
   options: {
-    branch: string;
     head: string;
     isClean: boolean;
     hasActiveLease: boolean;
   },
 ): PacketViolation[] {
   const violations: PacketViolation[] = [];
-
-  // PROGRAM-PACKET-02: wrong branch
-  if (options.branch !== manifest.branch) {
-    violations.push({
-      rule: "PROGRAM-PACKET-02",
-      message: `wrong branch: expected ${manifest.branch}, got ${options.branch}`,
-    });
-  }
 
   // PROGRAM-PACKET-10: dirty tree at sealed boundary
   if (!options.isClean) {
