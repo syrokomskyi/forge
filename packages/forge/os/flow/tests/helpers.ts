@@ -13,11 +13,12 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 2 — throwaway-repo test helpers</item>
   <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
   <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
+  <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
+  <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
 
@@ -36,6 +37,7 @@ import {
 } from "../guard-files.ts";
 
 const PREMERGE_MANAGED_BLOCK = managedBlock("pre-merge-commit");
+const PREPUSH_MANAGED_BLOCK = managedBlock("pre-push");
 
 export {
   GUARD_BEGIN_MARKER,
@@ -90,9 +92,11 @@ export async function installGuard(repo: string): Promise<void> {
   await copyFile(resolveGuardAssetPath(), join(hooksDir, "flow-guard.sh"));
   await writeFile(join(hooksDir, "pre-commit"), `#!/bin/sh\n${MANAGED_BLOCK}`);
   await writeFile(join(hooksDir, "pre-merge-commit"), `#!/bin/sh\n${PREMERGE_MANAGED_BLOCK}`);
+  await writeFile(join(hooksDir, "pre-push"), `#!/bin/sh\n${PREPUSH_MANAGED_BLOCK}`);
   await chmod(join(hooksDir, "flow-guard.sh"), 0o755);
   await chmod(join(hooksDir, "pre-commit"), 0o755);
   await chmod(join(hooksDir, "pre-merge-commit"), 0o755);
+  await chmod(join(hooksDir, "pre-push"), 0o755);
   const hooksPath = await gitExec(repo, ["config", "core.hooksPath", "hooks"]);
   if (hooksPath.exitCode !== 0) {
     throw new Error(`core.hooksPath failed: ${hooksPath.stderr}`);

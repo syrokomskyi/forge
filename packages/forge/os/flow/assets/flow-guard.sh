@@ -25,12 +25,14 @@ refuse() {
   exit 1
 }
 
-# Two modes: pre-commit (regular commits) and pre-merge-commit (merge
-# commits). Unknown modes are not ours.
+# Modes: pre-commit (regular commits), pre-merge-commit (merge commits) and
+# pre-push (git passes remote name + URL — the guard ignores its extra
+# arguments and stdin). Unknown modes are not ours.
 mode="${1:-}"
 case "$mode" in
   pre-commit) ;;
   pre-merge-commit) ;;
+  pre-push) ;;
   *) exit 0 ;;
 esac
 
@@ -44,14 +46,29 @@ top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
 #    set it. pre-commit accepts `install` (the adoption commit); the
 #    pre-merge-commit vocabulary is empty — no flow operation may create a
 #    merge commit directly (back-merges go through a port branch under the
-#    gate, RFC-1490). `backmerge` is retired (RFC-1490) and refuses
-#    everywhere with FLOW-GUARD-04.
+#    gate, RFC-1490); pre-push accepts `push` (flow.push). `backmerge` is
+#    retired (RFC-1490) and `push` outside pre-push refuses — both with
+#    FLOW-GUARD-04.
 op_vocabulary="install"
 [ "$mode" = "pre-merge-commit" ] && op_vocabulary="<none>"
+[ "$mode" = "pre-push" ] && op_vocabulary="push"
 case "${FORGE_FLOW_OP:-}" in
-  "") ;;
+  "")
+    [ "$mode" != "pre-push" ] || {
+      refuse "FLOW-GUARD-05" \
+        "pushes go through flow.push (outbound only by operator command, RFC-1491)." \
+        "read the risk digest first — pnpm exec forge flow.digest"
+    }
+    ;;
   install)
     [ "$mode" = "pre-commit" ] || {
+      refuse "FLOW-GUARD-04" \
+        "FORGE_FLOW_OP='${FORGE_FLOW_OP}' is not a forge flow operation in mode '$mode' (closed vocabulary: $op_vocabulary; RFC-1486/1490)." \
+        "unset FORGE_FLOW_OP — only forge flow commands set it"
+    }
+    exit 0 ;;
+  push)
+    [ "$mode" = "pre-push" ] || {
       refuse "FLOW-GUARD-04" \
         "FORGE_FLOW_OP='${FORGE_FLOW_OP}' is not a forge flow operation in mode '$mode' (closed vocabulary: $op_vocabulary; RFC-1486/1490)." \
         "unset FORGE_FLOW_OP — only forge flow commands set it"
@@ -63,6 +80,9 @@ case "${FORGE_FLOW_OP:-}" in
       "unset FORGE_FLOW_OP — only forge flow commands set it"
     ;;
 esac
+
+# pre-push guards outbound transport only — branch rules below are commit rules.
+[ "$mode" = "pre-push" ] && exit 0
 
 # 3./4. Resolve the branch — an empty symbolic ref means detached HEAD.
 branch=$(git symbolic-ref --short -q HEAD 2>/dev/null) || branch=""

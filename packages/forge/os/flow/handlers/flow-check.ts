@@ -15,11 +15,11 @@ by flow.install step 9.</purpose>
   <item>Ungoverned repositories (no forge.yaml, no marker) report repoKind with no diagnostics — the model only applies where forge.yaml opts in.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
+  <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -49,7 +49,9 @@ import {
   hasManagedBlock,
   PRECOMMIT_FILE,
   PREMERGE_FILE,
+  PREPUSH_FILE,
 } from "../guard-files.ts";
+import { MARKER_FILE, markerContentIsValid } from "../markers.ts";
 import { detectRepoKind, readRepoRootFile } from "../repo-kind.ts";
 import { collectFlowStatus } from "./flow-status.ts";
 import {
@@ -193,6 +195,14 @@ export async function collectFlowCheck(
         : "hooks/pre-merge-commit does not carry the managed flow-guard block",
     );
   }
+  const prePush = await readRepoRootFile(repoRoot, PREPUSH_FILE, io, bare);
+  if (prePush === null || !hasManagedBlock(prePush, "pre-push")) {
+    guardReasons.push(
+      prePush === null
+        ? "hooks/pre-push is missing"
+        : "hooks/pre-push does not carry the managed flow-guard block",
+    );
+  }
   if (!(await guardFileMatches(() => readRepoRootFile(repoRoot, GUARD_FILE, io, bare)))) {
     guardReasons.push("hooks/flow-guard.sh is missing or differs from the shipped asset");
   }
@@ -333,6 +343,19 @@ async function collectLineDiagnostics(
     }
   }
   if (line.id !== "repo") {
+    // FLOW-10 (error, RFC-1491): the line dir must carry a valid marker so
+    // repo-extract exports it into the extract repository.
+    const markerPath = `${line.paths[0]}/${MARKER_FILE}`;
+    const markerRaw = await readRepoRootFile(repoRoot, markerPath, io, bare);
+    if (!markerContentIsValid(markerRaw)) {
+      diagnostics.push({
+        ruleId: "FLOW-10",
+        severity: "error",
+        file: markerPath,
+        message: `package line '${line.id}' has no valid forge.generated.yaml in ${line.paths[0]}`,
+        fixHint: "run pnpm exec forge flow.install — the markers step writes it into the adoption commit",
+      });
+    }
     const extractPath = `${line.paths[0]}/extract.config.yaml`;
     const raw = await readRepoRootFile(repoRoot, extractPath, io, bare);
     // Top-level key only — an indented `versionBump:` under a nested section
