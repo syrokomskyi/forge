@@ -103,6 +103,10 @@ export async function spawnBatchedVitest(
     ...files,
     "--reporter=json",
     `--outputFile=${outputFile}`,
+    // Serial file execution inside the batch spawn — per-file resource
+    // footprints stack, and parallel files inside one run re-create the
+    // memory pressure batching exists to remove (F-0029 evidence).
+    "--fileParallelism=false",
   ];
 
   const exit = await new Promise<{ exitCode: number | null; timedOut: boolean }>((resolve) => {
