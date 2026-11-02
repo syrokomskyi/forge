@@ -11,6 +11,7 @@ runs even when the branch worktree carries a different one
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 2 — script runner tests</item>
   <item>RFC-1487: step 2 — primary-side hook-script runner</item>
+  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -47,7 +48,7 @@ describe("runFlowScript", () => {
       cwd: branch,
       env: {},
     });
-    expect(result).toEqual({ status: "skipped", exitCode: null, stderrTail: "" });
+    expect(result).toEqual({ status: "skipped", exitCode: null, stderrTail: "", stdout: "" });
   });
 
   it("runs the primary copy with cwd and env; exit 0 → done", async () => {

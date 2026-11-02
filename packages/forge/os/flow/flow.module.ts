@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 6 — register flow.open/integrate/discard/status and flow.check FLOW-06/07</item>
+  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -24,6 +24,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowCheck } = await import("./handlers/flow-check.ts");
   const { runFlowDiscard } = await import("./handlers/flow-discard.ts");
   const { runFlowInstall } = await import("./handlers/flow-install.ts");
+  const { runFlowCut } = await import("./handlers/flow-cut.ts");
   const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
   const { runFlowOpen } = await import("./handlers/flow-open.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
@@ -255,6 +256,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-INT-06", severity: "error" },
           { id: "FLOW-INT-07", severity: "error" },
           { id: "FLOW-INT-08", severity: "error" },
+          { id: "FLOW-INT-09", severity: "error" },
+          { id: "FLOW-INT-10", severity: "error" },
           { id: "FLOW-07", severity: "error" },
         ],
         mutatesState: true,
@@ -281,6 +284,65 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowIntegrate,
+      },
+      {
+        name: "flow.cut",
+        description:
+          "Cut a release on the fixed branch model (RFC-1490): plan refusals " +
+          "FLOW-CUT-01..07, then under the integration lock — release branch " +
+          "through flow.open (owner release), verified version-file writes, " +
+          "chore(release) commit, gate + fast-forward into develop, " +
+          "release-fingerprints hook, main compare-and-swap, release tags " +
+          "(repository line always, package lines via --lines), journal. " +
+          "Rerun-safe: resumes at fingerprints after an integrated release " +
+          "commit, reports released when every named tag exists.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-CUT-01", severity: "error" },
+          { id: "FLOW-CUT-02", severity: "error" },
+          { id: "FLOW-CUT-03", severity: "error" },
+          { id: "FLOW-CUT-04", severity: "error" },
+          { id: "FLOW-CUT-05", severity: "error" },
+          { id: "FLOW-CUT-06", severity: "error" },
+          { id: "FLOW-CUT-07", severity: "error" },
+          { id: "FLOW-CUT-08", severity: "error" },
+          { id: "FLOW-CUT-09", severity: "error" },
+          { id: "FLOW-CUT-10", severity: "error" },
+          { id: "FLOW-CUT-11", severity: "error" },
+          { id: "FLOW-INT-05", severity: "error" },
+        ],
+        envInputs: [{ name: "ALLOW_MAJOR_BUMP", required: false }],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json", "packages/*/package.json"],
+        cacheable: false,
+        flags: {
+          lines: {
+            kind: "string",
+            required: false,
+            description:
+              "Comma-separated package release-line ids to cut alongside the repository line.",
+          },
+          branch: {
+            kind: "string",
+            required: false,
+            description:
+              "Registered fix branch to cut a fix release for; defaults to the cwd worktree's branch.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate the cut's preconditions without mutating.",
+          },
+        },
+        execute: runFlowCut,
       },
       {
         name: "flow.discard",

@@ -20,6 +20,7 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
+  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -113,4 +114,57 @@ export async function listLineTags(
 /** Short (9-char) form of a full commit hash — derived-version metadata. */
 export function shortHash(hash: string): string {
   return hash.slice(0, 9);
+}
+
+/**
+ * forge/release-tag@1 annotation body (RFC-1488). `previous`/`rfcs`/`fingerprints`
+ * come from the cut's pendingLevel and the fingerprint hook.
+ */
+export function releaseTagAnnotation(fields: {
+  tag: string;
+  line: string;
+  version: string;
+  level: string;
+  previous: string | null;
+  rfcs: string[];
+  fingerprints: Record<string, string>;
+}): string {
+  const fp = Object.entries(fields.fingerprints)
+    .map(([k, v]) => `  ${k}: ${v}`)
+    .join("\n");
+  return [
+    `release ${fields.tag}`,
+    "",
+    "schema: forge/release-tag@1",
+    `line: ${fields.line}`,
+    `version: ${fields.version}`,
+    `level: ${fields.level}`,
+    `previous: ${fields.previous ?? "null"}`,
+    `rfcs: [${fields.rfcs.map((r) => `"${r}"`).join(", ")}]`,
+    fp.length > 0 ? `fingerprints:\n${fp}` : "fingerprints: {}",
+  ].join("\n");
+}
+
+export interface ReleaseTagSpec {
+  /** Full tag name, e.g. v1.3.0 or lib@2.1.0. */
+  name: string;
+  /** Commit the tag points at. */
+  target: string;
+  /** Full annotation text (the forge/release-tag@1 body). */
+  annotation: string;
+}
+
+/**
+ * Create an annotated release tag at `target` with the given annotation
+ * body via `git tag -a <name> <target> -m <annotation>`. Callers build the
+ * forge/release-tag@1 text; this is the single tag-writing seam (flow.install
+ * baselines and flow.cut releases share it).
+ */
+export async function writeReleaseTag(
+  repoRoot: string,
+  io: WorkspaceIO,
+  spec: ReleaseTagSpec,
+): Promise<{ exitCode: number | null; stderr: string }> {
+  const result = await git(repoRoot, io, ["tag", "-a", spec.name, spec.target, "-m", spec.annotation]);
+  return { exitCode: result.exitCode, stderr: result.stderr };
 }
