@@ -9,6 +9,7 @@ branch name of the shared table equals classifyBranch's.</purpose>
   <item>RFC-1486: step 2 — shell/TypeScript grammar parity test</item>
   <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
   <item>RFC-1486: parity test explicit timeout for repo-root probe runs (AC-5)</item>
+  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -53,7 +54,7 @@ describe("guard/TypeScript grammar parity", () => {
     // The documentation marker and the closed FORGE_FLOW_OP vocabulary that
     // AC-11's probe greps for.
     expect(asset).toContain(">>> forge flow guard");
-    expect(asset).toContain("backmerge");
+    expect(asset).toContain("pre-merge-commit");
     expect(asset).toContain("install");
   });
 

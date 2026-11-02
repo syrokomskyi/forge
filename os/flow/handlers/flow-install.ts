@@ -17,11 +17,11 @@ embedded flow.check report.</purpose>
   <item>Step 8 passes FORGE_FLOW_OP=install only to the commit child — the closed vocabulary is the guard's own escape hatch (FI-4).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: final — guard-step detail names the fixed-branch-model guard install (AC-11 probe)</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1486: review r2 — IO-throw step trail, drift-repair and uncommitted-commit tests</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
+  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -59,8 +59,11 @@ import {
   GUARD_FILE,
   guardFileMatches,
   mergeManagedBlock,
+  mergeManagedBlockForMode,
   PRECOMMIT_FILE,
+  PREMERGE_FILE,
   readGuardAsset,
+  renderManagedHook,
   renderManagedPreCommit,
 } from "../guard-files.ts";
 import { detectRepoKind } from "../repo-kind.ts";
@@ -81,6 +84,7 @@ export interface InstallStepReport {
     | "checkout"
     | "guard"
     | "pre-commit"
+    | "pre-merge-commit"
     | "commit"
     | "tags"
     | "report";
@@ -112,6 +116,9 @@ export interface InstallPlan {
   preCommitChange: PreCommitChange;
   /** hooks/pre-commit already exists in the commit's parent ref. */
   preCommitCommitted: boolean;
+  preMergeChange: PreCommitChange;
+  /** hooks/pre-merge-commit already exists in the commit's parent ref. */
+  preMergeCommitted: boolean;
   /** Baseline release tags the execute phase creates (RFC-1488 step 8.5). */
   tagPlans: TagPlan[];
 }
@@ -152,6 +159,8 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       guardCommitted: false,
       preCommitChange: "identical",
       preCommitCommitted: false,
+      preMergeChange: "identical",
+      preMergeCommitted: false,
       tagPlans: [],
     };
   };
@@ -433,11 +442,40 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
         : `${preCommitChange} managed block in hooks/pre-commit`,
   });
 
+  const preMergePath = join(primary, PREMERGE_FILE);
+  const preMergeExisting = (await io.exists(preMergePath))
+    ? await io.readFile(preMergePath)
+    : null;
+  const preMergeCommitted =
+    hookBaseRef !== null && (await fileInTree(repoRoot, io, hookBaseRef, PREMERGE_FILE));
+  let preMergeChange: PreCommitChange;
+  if (preMergeExisting === null) {
+    preMergeChange = "create";
+  } else if (mergeManagedBlockForMode(preMergeExisting, "pre-merge-commit") === null) {
+    preMergeChange = "identical";
+  } else {
+    const beginIdx = preMergeExisting.indexOf(GUARD_BEGIN_MARKER);
+    const endIdx = preMergeExisting.indexOf(GUARD_END_MARKER);
+    preMergeChange = beginIdx !== -1 && endIdx !== -1 && beginIdx < endIdx ? "replace" : "insert";
+  }
+  steps.push({
+    step: "pre-merge-commit",
+    status: "planned",
+    detail:
+      preMergeChange === "identical"
+        ? preMergeCommitted
+          ? "hooks/pre-merge-commit already carries the managed block"
+          : "hooks/pre-merge-commit carries the managed block but is uncommitted — land it on develop"
+        : `${preMergeChange} managed block in hooks/pre-merge-commit`,
+  });
+
   const commitNeeded =
     guardChange === "write" ||
     !guardCommitted ||
     preCommitChange !== "identical" ||
-    !preCommitCommitted;
+    !preCommitCommitted ||
+    preMergeChange !== "identical" ||
+    !preMergeCommitted;
   steps.push({
     step: "commit",
     status: "planned",
@@ -546,6 +584,8 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     guardCommitted,
     preCommitChange,
     preCommitCommitted,
+    preMergeChange,
+    preMergeCommitted,
     tagPlans,
   };
 }
@@ -640,6 +680,7 @@ export async function executeInstall(
     "checkout",
     "guard",
     "pre-commit",
+    "pre-merge-commit",
     "commit",
     "tags",
     "report",
@@ -801,9 +842,50 @@ export async function executeInstall(
     }
   }
 
+  // 7.5 pre-merge-commit — same managed-block mechanics, pre-merge-commit mode.
+  const preMergePath = join(primary, PREMERGE_FILE);
+  if (plan.preMergeChange === "identical") {
+    if (!plan.preMergeCommitted) {
+      hooksNeedCommit = true;
+      setStep(plan, "pre-merge-commit", "done", "managed block already correct — staged for commit");
+    } else {
+      setStep(plan, "pre-merge-commit", "skipped", "managed block already present");
+    }
+  } else {
+    const existing = (await io.exists(preMergePath)) ? await io.readFile(preMergePath) : null;
+    const next =
+      existing === null
+        ? renderManagedHook("pre-merge-commit")
+        : mergeManagedBlockForMode(existing, "pre-merge-commit");
+    if (next === null) {
+      if (!plan.preMergeCommitted) {
+        hooksNeedCommit = true;
+        setStep(plan, "pre-merge-commit", "done", "managed block already correct — staged for commit");
+      } else {
+        setStep(plan, "pre-merge-commit", "skipped", "managed block already present");
+      }
+    } else {
+      try {
+        await io.mkdir(join(primary, "hooks"));
+        await io.writeFile(preMergePath, next.endsWith("\n") ? next : `${next}\n`);
+      } catch (err) {
+        return failStep(
+          "pre-merge-commit",
+          `writing ${PREMERGE_FILE} failed: ${(err as Error).message}`,
+        );
+      }
+      const chmod = await io.exec("chmod", ["0755", preMergePath]);
+      if (chmod.exitCode !== 0) {
+        return failStep("pre-merge-commit", `chmod 0755 ${PREMERGE_FILE} failed: ${chmod.stderr.trim()}`);
+      }
+      hooksNeedCommit = true;
+      setStep(plan, "pre-merge-commit", "done", `${plan.preMergeChange}d managed block in hooks/pre-merge-commit`);
+    }
+  }
+
   // 8. adoption commit — under FORGE_FLOW_OP=install, nothing else staged.
   if (hooksNeedCommit) {
-    const add = await git(primary, io, ["add", GUARD_FILE, PRECOMMIT_FILE]);
+    const add = await git(primary, io, ["add", GUARD_FILE, PRECOMMIT_FILE, PREMERGE_FILE]);
     if (add.exitCode !== 0) {
       return failStep("commit", `git add failed: ${add.stderr.trim()}`);
     }

@@ -10,6 +10,7 @@ the closed FORGE_FLOW_OP vocabulary and the unborn develop — proven by real
 <CHANGE_SUMMARY>
   <item>RFC-1486: step 2 — guard behavior tests</item>
   <item>RFC-1486: step 2 — POSIX guard asset + behavior/parity tests</item>
+  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -99,11 +100,10 @@ describe("flow-guard.sh via core.hooksPath", () => {
     expect(result.exitCode).toBe(0);
   });
 
-  it("allows the release back-merge: FORGE_FLOW_OP=backmerge on develop", async () => {
+  it("refuses FORGE_FLOW_OP=backmerge on develop with FLOW-GUARD-04 (retired, RFC-1490)", async () => {
     const repo = await repoWithGuard();
     await gitExec(repo, ["switch", "-c", "develop"]);
-    const result = await tryCommit(repo, { FORGE_FLOW_OP: "backmerge" });
-    expect(result.exitCode).toBe(0);
+    expectRefusal(await tryCommit(repo, { FORGE_FLOW_OP: "backmerge" }), "FLOW-GUARD-04");
   });
 
   it("refuses an unknown FORGE_FLOW_OP with FLOW-GUARD-04, before branch checks", async () => {
