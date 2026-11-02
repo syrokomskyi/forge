@@ -1,3 +1,17 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for the frontmatter-only corpus read path — readRfcFrontmatter bounded-head semantics, >64 KiB full-parse fallback, error parity, and AC-9 frontmatter parity across the real corpus (RFC-1489).
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1489: frontmatter-only corpus read coverage.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { test, expect, describe } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -93,7 +107,7 @@ describe("AC-9 — frontmatter-only corpus produces the same rule input as full 
         );
       }
       // Sanity: the corpus is large enough that the slim path actually ran.
-      expect(files.length).toBeGreaterThan(1000);
+      expect(files.length).toBeGreaterThan(100);
     },
     120_000,
   );

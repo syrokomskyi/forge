@@ -1,3 +1,17 @@
+/*
+<MODULE_CONTRACT>
+<purpose>
+Unit tests for probe-batch — segment planning across barriers, per-(file,testName) report attribution, runProbeSet ordering and --no-batch escape, and the one-spawn e2e (RFC-1489).
+</purpose>
+<non-goals>
+  <item>Not a contract source of truth — the module under test owns the authoritative behavior; fixtures are minimal scaffolding only.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1489: batched test-probe planning + attribution coverage.</item>
+</CHANGE_SUMMARY>
+*/
+
 import { test, expect, describe } from "vitest";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -39,7 +53,7 @@ describe("planProbeSegments — AC-1 barrier-free grouping", () => {
       testProbe("c.test.ts", { timeoutMs: 120_000 }),
     ];
     expect(planProbeSegments(probes, 120_000)).toEqual([
-      { start: 0, end: 3, boundMs: 120_000 },
+      { start: 0, members: [0, 1, 2], boundMs: 120_000 },
     ]);
   });
 
@@ -50,13 +64,13 @@ describe("planProbeSegments — AC-1 barrier-free grouping", () => {
       testProbe("c.test.ts"),
     ];
     expect(planProbeSegments(probes, 120_000)).toEqual([
-      { start: 0, end: 1, boundMs: 120_000 },
-      { start: 1, end: 2, boundMs: 5_000 },
-      { start: 2, end: 3, boundMs: 120_000 },
+      { start: 0, members: [0], boundMs: 120_000 },
+      { start: 1, members: [1], boundMs: 5_000 },
+      { start: 2, members: [2], boundMs: 120_000 },
     ]);
   });
 
-  test("run/page/proof and every non-test kind are barriers", () => {
+  test("run/page/proof are the only barriers — other kinds span without splitting", () => {
     const probes: AcceptanceProbe[] = [
       testProbe("a.test.ts"),
       runProbe("site-kernel run x"),
@@ -65,12 +79,14 @@ describe("planProbeSegments — AC-1 barrier-free grouping", () => {
       testProbe("c.test.ts"),
       { probe: "proof", spec: "s.yaml" },
       testProbe("d.test.ts"),
+      fileExists("x.txt"),
+      testProbe("e.test.ts"),
     ];
     expect(planProbeSegments(probes, 120_000)).toEqual([
-      { start: 0, end: 1, boundMs: 120_000 },
-      { start: 2, end: 3, boundMs: 120_000 },
-      { start: 4, end: 5, boundMs: 120_000 },
-      { start: 6, end: 7, boundMs: 120_000 },
+      { start: 0, members: [0], boundMs: 120_000 },
+      { start: 2, members: [2], boundMs: 120_000 },
+      { start: 4, members: [4], boundMs: 120_000 },
+      { start: 6, members: [6, 8], boundMs: 120_000 },
     ]);
   });
 });
@@ -138,13 +154,30 @@ describe("attributeProbeResult — AC-2/AC-3 per-slice attribution", () => {
     expect(p.verdict).toBe("unverified");
   });
 
-  test("testName matching no assertion is unverified", () => {
+  test("testName matching no assertion is a fail (vitest -t parity, spec §4)", () => {
     const p = attributeProbeResult(
       testProbe("os/rfc/a.test.ts", { testName: "no such test" }),
       WORKSPACE_ROOT,
       report,
     );
-    expect(p.verdict).toBe("unverified");
+    expect(p.ok).toBe(false);
+    expect(p.verdict).toBe("fail");
+    expect(p.detail).toContain("no testName match");
+  });
+
+  test("file-level requires status passed — skipped cannot prove execution", () => {
+    const skipped = {
+      testResults: [
+        {
+          name: join(WORKSPACE_ROOT, "os/rfc/s.test.ts"),
+          status: "skipped",
+          assertionResults: [{ title: "x", fullName: "s x", status: "skipped" }],
+        },
+      ],
+    };
+    const p = attributeProbeResult(testProbe("os/rfc/s.test.ts"), WORKSPACE_ROOT, skipped);
+    expect(p.ok).toBe(false);
+    expect(p.verdict).not.toBe("pass");
   });
 });
 
@@ -168,10 +201,11 @@ describe("runProbeSet — AC-2 order/shape, AC-4 --no-batch", () => {
       expect(results[2]!.verdict).toBe("unverified");
       expect(results[3]!.ok).toBe(false);
       expect(results[3]!.verdict).not.toBe("unverified");
-      // Singleton test segment → legacy runProbe path — a spawn failure is a
-      // plain fail (legacy results carry no `verdict` field), not unverified.
-      expect(results[4]!.ok).toBe(false);
-      expect(results[4]!.verdict ?? "fail").toBe("fail");
+      // Indexes 1,2,4 are all same-bound test probes with no run/page/proof
+      // barrier between them — they share ONE segment; each missing file is
+      // attributed unverified from its own slice.
+      expect(results[4]!.verdict).toBe("unverified");
+      expect(results[4]!.detail).toContain("missing-c.test.ts");
       expect(durationsMs).toHaveLength(5);
       // Each batched result echoes its own declared probe.
       results.forEach((r, i) => expect(r.probe).toBe(probes[i]));
@@ -201,7 +235,7 @@ describe("e2e — one instrumented Vitest run attributes two files", () => {
   test(
     "two real test files in one segment produce per-file verdicts (AC-1/AC-2)",
     async () => {
-      const segment: ProbeSegment = { start: 0, end: 2, boundMs: 120_000 };
+      const segment: ProbeSegment = { start: 0, members: [0, 1], boundMs: 120_000 };
       const probes = [
         testProbe("packages/forge/os/rfc/verification-normalize.test.ts"),
         testProbe("packages/forge/os/rfc/frontmatter-io.test.ts"),

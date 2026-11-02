@@ -13,7 +13,6 @@ prose checklist.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1401: test probes gain optional timeoutMs — the 120s default cannot host a ~10min cold e2e run; spawnVitest honours the per-probe bound.</item>
   <item>RFC-1453: page probes execute through an OutcomeSession (outcomeBuild/outcomeServe bindings); tri-state verdicts; RFC-ACC-03 skip removed; RFC-ACC-04 reports unverified.</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
@@ -27,7 +26,8 @@ record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
-  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334, RFC-1391</history>
+  <item>RFC-1489: resolve REVIEW-RFC-1489-R1 soft-block — spec-exact barrier semantics, dedup, verdict parity; DEV-1489-001 amend recorded</item>
+  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334, RFC-1391, RFC-1401</history>
 </CHANGE_SUMMARY>
 */
 
@@ -574,18 +574,22 @@ export async function runProbeSet(
 
   const segments = noBatch ? [] : planProbeSegments(probes, RUN_PROBE_TIMEOUT_MS);
   const segmentByStart = new Map(segments.map((s) => [s.start, s]));
+  const covered = new Set<number>();
 
   for (let i = 0; i < probes.length; i++) {
+    if (covered.has(i)) continue;
     const segment = segmentByStart.get(i);
-    if (segment && segment.end - segment.start > 1) {
+    if (segment && segment.members.length > 1) {
       const start = performance.now();
       const segResults = await runBatchedTestSegment(probes, segment, workspaceRoot);
-      const perProbe = Math.round((performance.now() - start) / (segment.end - segment.start));
-      for (let j = segment.start; j < segment.end; j++) {
+      const wall = Math.round(performance.now() - start);
+      for (const j of segment.members) {
         results[j] = segResults.get(j)!;
-        durationsMs[j] = perProbe;
+        // Spec: every member records the group's measured wall time — never
+        // a fabricated per-probe split.
+        durationsMs[j] = wall;
+        covered.add(j);
       }
-      i = segment.end - 1;
       continue;
     }
     const start = performance.now();
