@@ -1,7 +1,7 @@
 /*
 <MODULE_CONTRACT>
 <purpose>flow.status — the read-only session-branch report (RFC-1487). Lists
-every auto branch with its registry entry, worktree, tracked-modification
+every auto branch with its registry entry, worktree, uncommitted-change
 count, distance to develop, last commit time, held state and the 72 h stale
 flag. collectFlowStatus also feeds flow.check's FLOW-06/07 — one fact source
 for both surfaces.</purpose>

@@ -126,12 +126,14 @@ async function cleanupIntegrated(
   nowIso: string,
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
+  let teardownRan: FlowScriptResult | null = null;
   if (worktree !== null && (await io.exists(worktree))) {
     const teardown = await runFlowScript(io, "worktree-teardown", {
       primary,
       cwd: worktree,
       env: { FLOW_PRIMARY: primary, FLOW_BRANCH: entry.name, FLOW_ACTION: "integrate" },
     });
+    teardownRan = teardown;
     if (teardown.status === "failed") {
       return {
         cleanedUp: false,
@@ -167,7 +169,7 @@ async function cleanupIntegrated(
     if (del.exitCode !== 0) {
       return {
         cleanedUp: false,
-        gate: null,
+        gate: teardownRan,
         diagnostics: [
           {
             ruleId: "FLOW-INT-04",
@@ -195,7 +197,7 @@ async function cleanupIntegrated(
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
       return {
         cleanedUp: false,
-        gate: null,
+        gate: teardownRan,
         diagnostics: [
           {
             ruleId: "FLOW-07",
@@ -208,7 +210,7 @@ async function cleanupIntegrated(
     }
     throw error;
   }
-  return { cleanedUp: true, gate: null, diagnostics: [] };
+  return { cleanedUp: true, gate: teardownRan, diagnostics: [] };
 }
 
 /**
@@ -255,7 +257,28 @@ export async function integrateFlowBranch(
   const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
 
   if (opts.dryRun) {
-    const dirty = (await io.exists(entry.worktree)) ? await statusDirty(entry.worktree, io) : [];
+    const live = await worktreeList(primary, io);
+    const wtPath = live.find((w) => w.branch === branch)?.path ?? entry.worktree;
+    if (!(await io.exists(wtPath))) {
+      return {
+        branch,
+        integrated: false,
+        developBefore: null,
+        developAfter: null,
+        rebased: false,
+        gate: null,
+        cleanedUp: false,
+        diagnostics: [
+          {
+            ruleId: "FLOW-07",
+            severity: "error",
+            message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist`,
+            fixHint: "inspect with flow.status — a stale entry may need flow.discard",
+          },
+        ],
+      };
+    }
+    const dirty = await statusDirty(wtPath, io);
     return {
       branch,
       integrated: false,
@@ -270,8 +293,8 @@ export async function integrateFlowBranch(
               {
                 ruleId: "FLOW-INT-01",
                 severity: "error",
-                message: `worktree ${entry.worktree} has ${dirty.length} uncommitted change(s)`,
-                fixHint: "commit or revert the tracked changes inside the session worktree",
+                message: `worktree ${wtPath} has ${dirty.length} uncommitted change(s)`,
+                fixHint: "commit or revert the uncommitted changes inside the session worktree",
               },
             ]
           : [],
@@ -337,7 +360,7 @@ export async function integrateFlowBranch(
           return refuse(
             "FLOW-INT-01",
             `worktree ${branchWorktree} has ${dirty.length} uncommitted change(s): ${dirty.slice(0, 10).join(", ")}`,
-            "commit or revert the tracked changes inside the session worktree, then re-run",
+            "commit or revert the uncommitted changes inside the session worktree, then re-run",
             { branch, developBefore },
           );
         }

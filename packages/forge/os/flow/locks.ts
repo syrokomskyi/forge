@@ -168,6 +168,10 @@ export async function withFlowLock<T>(
     } catch {
       stillOurs = false;
     }
+    // Residual TOCTOU: a takeover between the read above and this rm could
+    // still unlink a fresh holder's lock — only reachable once our own lock
+    // aged past staleMs, which the stale-breaker already accepts as dead.
+    // A true fix needs compare-and-delete semantics the filesystem lacks.
     if (stillOurs) await rm(lockPath, { force: true });
   }
 }
