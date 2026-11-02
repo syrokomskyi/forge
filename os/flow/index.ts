@@ -19,11 +19,12 @@ reachable, else the version-file value.</purpose>
   <item>RFC-1493: step 1 — forge public release-line version reader</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1495: step 1 - forge state roots</item>
+  <item>RFC-1495: steps 2-3 - workshop paths resolver and call-site migration</item>
 </CHANGE_SUMMARY>
 */
 
 import type { WorkspaceIO } from "../../src/types.ts";
-import { branchExists, git } from "./git.ts";
+import { branchExists, git, worktreeList } from "./git.ts";
 import { hasManagedBlock, PRECOMMIT_FILE } from "./guard-files.ts";
 import { deriveLineVersion } from "./line-version.ts";
 import { detectRepoKind } from "./repo-kind.ts";
@@ -37,8 +38,9 @@ import {
 // RFC-1495: state-root resolution — Forge owns the roots (mission.archive,
 // werkstatt.lock.recover build state paths and Forge must not import
 // @warpgogol/*). The engine's workshop-paths builds the names on top.
-export { primaryWorktree, resolveStateRoots };
+export { primaryWorktree, resolveStateRoots, worktreeList };
 export type { StateRoots };
+export type { FlowWorktree } from "./git.ts";
 
 export interface RepositoryLineVersion {
   /** "6.451.0+12.ab12cd34e" for a tagged line, "6.451.0" from the version file otherwise. */

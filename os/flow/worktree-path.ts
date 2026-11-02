@@ -27,6 +27,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1495: step 1 - forge state roots</item>
+  <item>RFC-1495: steps 2-3 - workshop paths resolver and call-site migration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,10 +85,23 @@ export async function resolveStateRoots(
   io: WorkspaceIO,
 ): Promise<StateRoots> {
   const top = await topLevel(repoRoot, io);
-  const worktreeRoot = top ?? repoRoot;
-  if (top === null) {
-    return { worktreeRoot, primaryRoot: worktreeRoot, isPrimary: true };
+  // The workshop anchor is the caller's root — only when that root IS the
+  // repository worktree root does worktree topology apply. A subdirectory
+  // of a repo (or a non-git dir) has no workshop layout to resolve.
+  if (!top || top !== repoRoot.replace(/[/\\]+$/, "")) {
+    return { worktreeRoot: repoRoot, primaryRoot: repoRoot, isPrimary: true };
   }
-  const primaryRoot = await primaryWorktree(io, worktreeRoot);
-  return { worktreeRoot, primaryRoot, isPrimary: worktreeRoot === primaryRoot };
+  let primaryRoot: string;
+  try {
+    primaryRoot = await primaryWorktree(io, repoRoot);
+  } catch {
+    // worktree list empty or unparseable (non-git io, bare fixtures) —
+    // degrade to single-root rather than throwing.
+    return { worktreeRoot: repoRoot, primaryRoot: repoRoot, isPrimary: true };
+  }
+  return {
+    worktreeRoot: repoRoot,
+    primaryRoot,
+    isPrimary: repoRoot === primaryRoot,
+  };
 }
