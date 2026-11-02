@@ -27,6 +27,7 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -211,6 +212,11 @@ export async function discardFlowBranch(
     }
   }
 
+  // W1-1: the journal records the tip being deleted, not the base — capture
+  // it before `branch -D`.
+  const deletedTip = (await branchExists(primary, io, branch))
+    ? (await git(primary, io, ["rev-parse", branch])).stdout.trim()
+    : entry.baseSha;
   if (await branchExists(primary, io, branch)) {
     const del = await git(primary, io, ["branch", "-D", branch]);
     if (del.exitCode !== 0) {
@@ -232,7 +238,8 @@ export async function discardFlowBranch(
       at: now.toISOString(),
       event: "discard",
       branch,
-      sha: entry.baseSha,
+      sha: deletedTip,
+      base: entry.baseSha,
       detail: opts.reason,
     });
   } catch (error) {

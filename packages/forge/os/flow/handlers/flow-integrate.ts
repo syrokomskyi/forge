@@ -32,6 +32,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -126,6 +127,7 @@ async function cleanupIntegrated(
   io: WorkspaceIO,
   nowIso: string,
   journalEvent: "integrate" | "backmerge" = "integrate",
+  journalBase?: string,
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -194,6 +196,7 @@ async function cleanupIntegrated(
       branch: entry.name,
       sha,
       detail: journalEvent === "backmerge" ? `back-merged into develop` : `integrated into develop`,
+      base: journalBase,
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -271,6 +274,14 @@ export async function integrateFlowBranch(
       { branch },
     );
   }
+  if (entry.held !== null) {
+    return refuse(
+      "FLOW-INT-11",
+      `${branch} is held (${entry.held.riskCategory}): ${entry.held.reason}`,
+      "run flow.unhold to return it to the normal integrate path",
+      { branch },
+    );
+  }
 
   const primary = await primaryWorktree(io, repoRoot);
   const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
@@ -278,7 +289,7 @@ export async function integrateFlowBranch(
   if (opts.dryRun) {
     const live = await worktreeList(primary, io);
     const wtPath = live.find((w) => w.branch === branch)?.path ?? entry.worktree;
-    if (!(await io.exists(wtPath))) {
+    if (wtPath === null || !(await io.exists(wtPath))) {
       return {
         branch,
         integrated: false,
@@ -353,7 +364,7 @@ export async function integrateFlowBranch(
         const worktrees = await worktreeList(primary, io);
         const branchWorktree =
           worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
-        if (!(await io.exists(branchWorktree))) {
+        if (branchWorktree === null || !(await io.exists(branchWorktree))) {
           return refuse(
             "FLOW-07",
             `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist`,
@@ -534,6 +545,7 @@ export async function integrateFlowBranch(
     io,
     now.toISOString(),
     entry.port !== null ? "backmerge" : "integrate",
+    inner.developBefore ?? undefined,
   );
   return {
     ...inner,

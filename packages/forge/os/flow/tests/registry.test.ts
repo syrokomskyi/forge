@@ -22,6 +22,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -35,6 +36,7 @@ import {
   commonGitDir,
   emptyRegistry,
   FlowRegistrySchemaError,
+  flowRegistryEntrySchema,
   readRegistry,
   registryPath,
   updateRegistry,
@@ -100,6 +102,30 @@ describe("readRegistry", () => {
 
     await expect(readRegistry(ambientIo, common)).rejects.toThrow(FlowRegistrySchemaError);
     expect(await readFile(file, "utf8")).toBe(bad);
+  });
+});
+
+describe("flowRegistryEntrySchema held/worktree (RFC-1491)", () => {
+  const heldPayload = {
+    heldAt: "2026-11-02T00:00:00Z",
+    riskCategory: "other" as const,
+    reason: "hold it",
+    tip: "1".repeat(40),
+  };
+
+  it("accepts a held entry with worktree: null", () => {
+    const e = { ...entry("auto/session-261102-01-held-x"), worktree: null, held: heldPayload };
+    expect(flowRegistryEntrySchema.safeParse(e).success).toBe(true);
+  });
+
+  it("rejects a held entry that still names a worktree", () => {
+    const e = { ...entry("auto/session-261102-01-held-y"), held: heldPayload };
+    expect(flowRegistryEntrySchema.safeParse(e).success).toBe(false);
+  });
+
+  it("rejects an unheld entry with worktree: null", () => {
+    const e = { ...entry("auto/session-261102-01-plain"), worktree: null };
+    expect(flowRegistryEntrySchema.safeParse(e).success).toBe(false);
   });
 });
 

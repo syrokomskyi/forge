@@ -19,6 +19,7 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
   <item>RFC-1490: step 6 — flow.fix open + fix-mode cut</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
@@ -449,6 +450,7 @@ export async function runFixCut(
             event: "cut",
             branch: entry.name,
             sha: fixTip,
+            base: entry.baseSha,
             detail: tagList.join(", "),
             at: now.toISOString(),
           });

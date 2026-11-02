@@ -21,10 +21,11 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -32,7 +33,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { discardFlowBranch } from "../handlers/flow-discard.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
-import { commonGitDir, readRegistry } from "../registry.ts";
+import {
+  commonGitDir,
+  JOURNAL_RELATIVE_PATH,
+  readRegistry,
+  type FlowJournalEvent,
+} from "../registry.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
@@ -176,5 +182,39 @@ describe("flow.discard", () => {
     const common = await commonGitDir(ambientIo, repo);
     const registry = await readRegistry(ambientIo, common);
     expect(registry.branches.some((b) => b.name === session.branch)).toBe(true);
+  }, 20_000);
+
+  it("journals the deleted tip as sha and the baseSha as base (W1-1, AC-11)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "journal-tip");
+    await writeFile(join(session.worktree!, "one.txt"), "1");
+    await gitExec(session.worktree!, ["add", "one.txt"]);
+    await gitExec(session.worktree!, ["commit", "-m", "one beyond base"]);
+    const tip = (
+      await gitExec(session.worktree!, ["rev-parse", "HEAD"])
+    ).stdout.trim();
+    const common = await commonGitDir(ambientIo, repo);
+    const entry = (await readRegistry(ambientIo, common)).branches.find(
+      (b) => b.name === session.branch,
+    );
+
+    const data = await discardFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      reason: "done",
+      dirty: false,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.discarded).toBe(true);
+
+    const lines = (await readFile(join(common, JOURNAL_RELATIVE_PATH), "utf8"))
+      .trim()
+      .split("\n")
+      .map((l) => JSON.parse(l) as FlowJournalEvent);
+    const rec = [...lines]
+      .reverse()
+      .find((l) => l.event === "discard" && l.branch === session.branch);
+    expect(rec?.sha).toBe(tip);
+    expect(rec?.base).toBe(entry?.baseSha);
   }, 20_000);
 });
