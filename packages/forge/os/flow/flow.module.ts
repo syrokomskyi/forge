@@ -13,6 +13,7 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1486: steps 5-6 — flow.install generates declaration, FLOW remediation catalog, regenerated artifacts</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
+  <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +22,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowCheck } = await import("./handlers/flow-check.ts");
   const { runFlowInstall } = await import("./handlers/flow-install.ts");
+  const { runFlowVersion } = await import("./handlers/flow-version.ts");
   return {
     name: "forge-flow",
     version: "0.1.0",
@@ -102,6 +104,44 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowInstall,
+      },
+      {
+        name: "flow.version",
+        description:
+          "Read-only release-line report (RFC-1488). For every discovered " +
+          "line (repository `v` line plus each extract.config.yaml package " +
+          "line) it reports the last reachable annotated tag, the version " +
+          "file's value, commits since the tag, the derived version " +
+          "X.Y.Z+N.<head9> (.dirty on tracked modifications) and the " +
+          "pending level from X-RFC trailers resolved through the canonical " +
+          "RFC reader. Diagnostics: FLOW-VER-01 (no baseline tag), " +
+          "FLOW-VER-02 (basename collision), FLOW-VER-03 (unreadable RFC), " +
+          "FLOW-VER-04 (unknown --line). Never writes — only flow.install " +
+          "and the wave-2 cut create tags.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-VER-01", severity: "warning" },
+          { id: "FLOW-VER-02", severity: "error" },
+          { id: "FLOW-VER-03", severity: "warning" },
+          { id: "FLOW-VER-04", severity: "error" },
+        ],
+        mutatesState: false,
+        execOnReadOnly: true,
+        writes: [],
+        coverage: "operator",
+        coverageNote: "read-only version report — consumed by flow.cut in wave 2",
+        reads: ["pnpm-workspace.yaml", "*/package.json", "*/extract.config.yaml", ".git/**", "docs/rfcs/**"],
+        cacheable: false,
+        flags: {
+          line: {
+            kind: "string",
+            required: false,
+            description:
+              "Report only this release line id (e.g. repo, forge). Unknown id → FLOW-VER-04.",
+          },
+        },
+        execute: runFlowVersion,
       },
     ],
     pipelines: [],
