@@ -11,6 +11,7 @@ tag, so the tags step skips.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 5 — baseline rerun identity test</item>
   <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
+  <item>RFC-1488: AC-6 rerun timeout, AC-8 'release line' wording</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,7 +33,8 @@ async function listTagsWithObjects(repo: string): Promise<string> {
   return r.stdout.trim().split("\n").sort().join("\n");
 }
 
-it("AC-6: a second flow.install leaves the tag set identical", async () => {
+// Two full plan+execute cycles exceed the repo-root vitest default (5s).
+it("AC-6: a second flow.install leaves the tag set identical", { timeout: 30000 }, async () => {
   const repo = await initRepo({ prefix: "flow-rerun-" });
   await mkdir(join(repo, "packages/pbp"), { recursive: true });
   await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - 'packages/*'\n");

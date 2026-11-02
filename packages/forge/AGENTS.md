@@ -76,7 +76,7 @@ Every evaluated rule is journaled by the kernel executor into `docs/.index/check
 
 ### Release lines (RFC-1488)
 
-- Two line kinds carry versions: the repository line (tag prefix `v`, root `package.json`) and one package line per workspace-glob directory containing `extract.config.yaml` (tag prefix `<dir-basename>@`). Directory basenames must be unique across lines — collisions are FLOW-VER-02.
+- Two release line kinds carry versions: the repository line (tag prefix `v`, root `package.json`) and one package line per workspace-glob directory containing `extract.config.yaml` (tag prefix `<dir-basename>@`). Directory basenames must be unique across release lines — collisions are FLOW-VER-02.
 - Tag shapes are `vX.Y.Z` (repository) and `<package>@X.Y.Z` (packages) — annotated tags only, strict three-integer versions; lightweight tags and non-matching names are invisible to a line. A line's last release is the semantically highest reachable tag, never the nearest.
 - `flow.version` is read-only (`--line <id>` optional, unknown id → FLOW-VER-04): last tag, current version-file value, commits since the tag under the line's paths, and the derived version `X.Y.Z+N.<9-char-head>` (`.dirty` when the line's paths carry tracked modifications; the tag version itself when N=0; `null` plus FLOW-VER-01 when the line was never baselined).
 - The pending level comes from `X-RFC` commit trailers resolved through the canonical RFC reader (`forge.yaml` `resolverDoors.rfc`): each referenced RFC's `versionBump` contributes its level, `patch` is the floor for any commit, `none` only when no commit touched the line. A missing RFC file counts patch with FLOW-VER-03.
