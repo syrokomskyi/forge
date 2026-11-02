@@ -9,21 +9,23 @@
 
 ## Triggering a new release
 
-From the werkstatt monorepo root:
+From the werkstatt monorepo root (operator acts, RFC-1499):
 
 ```sh
-pnpm run publish:forge patch   # or: minor | ALLOW_MAJOR_BUMP=1 pnpm run publish:forge major
+werkstatt run flow.cut --lines forge          # writes the version, lands the release, tags forge@X.Y.Z
+werkstatt run flow.digest                   # review the outbound digest
+werkstatt run flow.push --digest <digestId> # the only outbound step
 ```
 
-`scripts/publish-forge.mjs` (RFC-1252) is the **only** supported export path. In one run it:
+`flow.cut` + `flow.push` (RFC-1490/1491/1499) is the **only** supported export path — the retired `scripts/publish-forge.mjs`/`bump-forge.mjs` were removed by the fixed-branch switch-over. The pipeline:
 
-1. Bumps `packages/forge/package.json` + `forge.yaml` `syncedVersion` and commits the bump into HEAD — `--from-head` exports committed content only, so an uncommitted bump would silently export the old version.
-2. Runs `repo-extract --from-head --no-push` into `../packages/forge`.
-3. Verifies the extracted repo with `scripts/verify-extract.mjs` — the same script surface standalone CI runs (install, lint, typecheck, build:check, test, build) plus a changelog gate that requires a `[<version>]` section in `CHANGELOG.md`.
-4. Pushes to `github.com:syrokomskyi/forge.git`. On a non-fast-forward rejection it reconciles once with `merge -s ours` (the local tree stays the authoritative export) — never force-push.
+1. `flow.cut --lines forge` bumps `packages/forge/package.json` + `forge.yaml` `syncedVersion` via verified JSON-equal replacements (FLOW-CUT-11), lands `chore(release): forge@X.Y.Z` into `develop` under the integration lock + gate, fast-forwards `main`, and writes the `forge/release-tag@1` annotated tag. A `major` level requires `ALLOW_MAJOR_BUMP=1` (FLOW-CUT-05). Reruns resume from the tip's `chore(release):` subject — no version is ever skipped.
+2. `flow.push --digest <id>` pushes `develop` + `main` + new tags atomically, then extracts the package **at the tag** via `repo-extract` into `../packages/forge` — only committed tag content is exported.
+3. `hooks/extract-verify.sh` verifies the extract with `scripts/verify-extract.mjs` — the same script surface standalone CI runs (install, lint, typecheck, build:check, test, build) plus a changelog gate that requires a `[<version>]` section in `CHANGELOG.md`.
+4. On a non-fast-forward rejection the push reconciles once with `merge -s ours` (the local tree stays the authoritative export) — never force-push. Retries are journal-scoped: rerun `flow.push` with the same digest and exactly the pushed-but-unpublished tags are published.
 5. CI on GitHub picks up the push and publishes to npm automatically.
 
-**Do NOT invoke `repo-extract` directly for releases** — it bypasses verification and the clean-source contract. `--skip-verify` exists only as an explicit, loud operator override.
+**Do NOT invoke `repo-extract` directly for releases** — it bypasses verification and the clean-source contract.
 
 After CI completes, verify the new version on [npmjs.com/package/@warpgogol/forge](https://www.npmjs.com/package/@warpgogol/forge).
 
