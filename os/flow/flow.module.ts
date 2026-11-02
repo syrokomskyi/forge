@@ -9,11 +9,11 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1488: steps 5-6 — flow.install baseline tags step, flow.check FLOW-08/FLOW-09</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1487: step 6 — register flow.open/integrate/discard/status and flow.check FLOW-06/07</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
+  <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <history>RFC-1486, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
@@ -26,6 +26,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowInstall } = await import("./handlers/flow-install.ts");
   const { runFlowBackmerge } = await import("./handlers/flow-backmerge.ts");
   const { runFlowCut } = await import("./handlers/flow-cut.ts");
+  const { runFlowFix } = await import("./handlers/flow-fix.ts");
   const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
   const { runFlowOpen } = await import("./handlers/flow-open.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
@@ -388,6 +389,55 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowBackmerge,
+      },
+      {
+        name: "flow.fix",
+        description:
+          "Open a release fix on the fixed branch model (RFC-1490): refuses " +
+          "when the repository is unadopted (FLOW-FIX-01), when main moved " +
+          "past its last release tag (FLOW-FIX-02), on a bad slug " +
+          "(FLOW-FIX-03), or while a back-merge is pending (FLOW-FIX-04); " +
+          "then opens auto/fix-<YYMMDD>-<NN>-<slug> at the main tip with a " +
+          "registered kind:fix entry. flow.cut inside that worktree ships " +
+          "the patch into main and back-merges into develop.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-FIX-01", severity: "error" },
+          { id: "FLOW-FIX-02", severity: "error" },
+          { id: "FLOW-FIX-03", severity: "error" },
+          { id: "FLOW-FIX-04", severity: "error" },
+          { id: "FLOW-OPEN-04", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "not-idempotent",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json"],
+        cacheable: false,
+        flags: {
+          slug: {
+            kind: "string",
+            required: true,
+            description: "Branch slug — ^[a-z0-9]+(-[a-z0-9]+)*$, 3..48 chars.",
+          },
+          brief: {
+            kind: "string",
+            required: false,
+            description: "One-line brief recorded in the registry and journal.",
+          },
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Evaluate the fix's preconditions without mutating.",
+          },
+        },
+        execute: runFlowFix,
       },
       {
         name: "flow.discard",

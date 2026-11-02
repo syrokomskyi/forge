@@ -18,7 +18,6 @@ hooks/worktree-setup.sh.</purpose>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -32,6 +31,7 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
+  <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -96,6 +96,8 @@ export interface FlowOpenCoreOptions {
   baseRef?: string;
   /** Back-merge port payload (RFC-1490) — non-null only on port branches. */
   port?: { mainSha: string; tags: string[] };
+  /** Journal event for the open — "open" normally, "fix" for flow.fix. */
+  journalEvent?: "open" | "fix";
 }
 
 export interface FlowOpenData {
@@ -344,7 +346,7 @@ export async function openFlowBranchCore(
       }));
       await appendJournal(io, common, {
         at: iso,
-        event: "open",
+        event: opts.journalEvent ?? "open",
         branch: name,
         sha: baseSha,
         detail: opts.brief ?? `${opts.kind} opened by ${ownerId}`,

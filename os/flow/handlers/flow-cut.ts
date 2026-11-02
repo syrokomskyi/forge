@@ -21,6 +21,7 @@ released with no mutation.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 4 — ordinary flow.cut with fingerprints and resume</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
+  <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,6 +56,7 @@ import {
   commonGitDir,
   FlowRegistrySchemaError,
   INTEGRATE_LOCK_RELATIVE_PATH,
+  readRegistry,
   registryPath,
 } from "../registry.ts";
 import { bumpVersion, formatVersion, type ReleaseLevel } from "../semver.ts";
@@ -86,16 +88,34 @@ export interface FlowCutData {
   resumed: boolean;
   releaseBranch: string | null;
   mainTip: string | null;
+  /** Fix mode only: the trailing back-merge's status (null on ordinary cuts). */
+  backmerge: "merged" | "conflict" | "not-needed" | "dry-run" | "refused" | null;
+  /** Port worktree path when the back-merge conflicts (fix mode). */
+  portWorktree: string | null;
   diagnostics: Diagnostic[];
 }
 
-interface CutLine {
+export interface CutLine {
   line: ReleaseLine;
   tag: string;
   level: ReleaseLevel;
   nextVersion: string;
   previousTag: string | null;
   rfcs: string[];
+}
+
+/**
+ * Adopted into the fixed branch model (FLOW-CUT-01 / FLOW-FIX-01):
+ * governed + develop exists + the pre-commit managed block installed.
+ */
+export async function isAdoptedFlowRepo(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
+  const detection = await detectRepoKind(repoRoot, io);
+  if (!detection.ok || detection.repoKind.kind !== "governed") return false;
+  if (!(await branchExists(repoRoot, io, "develop"))) return false;
+  const primary = await primaryWorktree(io, repoRoot);
+  const preCommitPath = join(primary, PRECOMMIT_FILE);
+  if (!(await io.exists(preCommitPath))) return false;
+  return hasManagedBlock(await io.readFile(preCommitPath));
 }
 
 function refuse(
@@ -113,6 +133,8 @@ function refuse(
     resumed: false,
     releaseBranch: null,
     mainTip: null,
+    backmerge: null,
+    portWorktree: null,
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
 }
@@ -153,15 +175,8 @@ export async function runOrdinaryCut(
   const now = opts.now ?? new Date();
 
   // ---- Plan phase: every refusal before any mutation.
-  const detection = await detectRepoKind(repoRoot, io);
   const primary = await primaryWorktree(io, repoRoot);
-  const preCommitPath = join(primary, PRECOMMIT_FILE);
-  const guardInstalled =
-    detection.ok &&
-    detection.repoKind.kind === "governed" &&
-    (await branchExists(repoRoot, io, "develop")) &&
-    (await io.exists(preCommitPath)) &&
-    hasManagedBlock(await io.readFile(preCommitPath));
+  const guardInstalled = await isAdoptedFlowRepo(repoRoot, io);
   if (!guardInstalled) {
     return refuse(
       "FLOW-CUT-01",
@@ -234,6 +249,8 @@ export async function runOrdinaryCut(
         resumed: true,
         releaseBranch: null,
         mainTip: ref,
+        backmerge: null,
+        portWorktree: null,
         diagnostics: [],
       };
     }
@@ -334,6 +351,8 @@ export async function runOrdinaryCut(
       resumed: false,
       releaseBranch: null,
       mainTip: null,
+      backmerge: null,
+      portWorktree: null,
       diagnostics: [],
     };
   }
@@ -596,6 +615,8 @@ async function finishCutTail(
     resumed: false,
     releaseBranch: null,
     mainTip: developTip,
+    backmerge: null,
+    portWorktree: null,
     diagnostics: [],
   };
 }
@@ -620,8 +641,55 @@ export async function runFlowCut(
       : [];
   const dryRun = input.flags["dry-run"] === true;
 
-  // Fix mode detection lands with step 6 (registered fix worktree / --branch).
-  const data = await runOrdinaryCut(repoRoot, io, { lines, dryRun });
+  // Fix mode: --branch names a registered fix branch, or the cwd worktree is
+  // itself a registered fix worktree.
+  const branchFlag = input.flags["branch"];
+  const candidate =
+    typeof branchFlag === "string" && branchFlag.length > 0
+      ? branchFlag
+      : await currentBranch(repoRoot, io);
+  let data: FlowCutData;
+  if (candidate !== null) {
+    const common = await commonGitDir(io, repoRoot);
+    let entry = null;
+    try {
+      entry =
+        (await readRegistry(io, common)).branches.find((b) => b.name === candidate) ?? null;
+    } catch (error) {
+      if (error instanceof FlowRegistrySchemaError) {
+        data = refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`);
+        return finishCutResult(data, outputFormat, logger);
+      }
+      throw error;
+    }
+    if (entry !== null && entry.kind === "fix") {
+      const { runFixCutWithBackmerge } = await import("./flow-fix.ts");
+      data = await runFixCutWithBackmerge(repoRoot, io, {
+        entry,
+        linesGiven: lines.length > 0,
+        dryRun,
+      });
+      return finishCutResult(data, outputFormat, logger);
+    }
+    if (typeof branchFlag === "string" && entry?.kind !== "fix") {
+      data = refuse(
+        "FLOW-INT-06",
+        `${candidate} is not a fix branch — --branch targets a registered fix worktree only`,
+        "run flow.cut without --branch for an ordinary release, or open a fix with flow.fix",
+      );
+      return finishCutResult(data, outputFormat, logger);
+    }
+  }
+
+  data = await runOrdinaryCut(repoRoot, io, { lines, dryRun });
+  return finishCutResult(data, outputFormat, logger);
+}
+
+function finishCutResult(
+  data: FlowCutData,
+  outputFormat: string,
+  logger: ForgeRuntimeContext["logger"],
+): ForgeCommandResult<FlowCutData> {
 
   const refused = data.diagnostics.find((d) => d.severity === "error");
   if (outputFormat === "pretty") {
