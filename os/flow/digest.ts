@@ -21,6 +21,11 @@ flow.push must quote.</purpose>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
+
+Steering-session verification of wave 2 found two outbound defects:
+- flow.digest attributed items by index spans over the date-ordered tail; after a fix release and its back-merge, the fix cut record (whose range lives on main) claimed the develop integration that shared its base, so the operator saw 'feat: dev work' labelled as the fix release. Segments now follow develop's first-parent chain and item commit counts come from the base..tip range.
+- flow.hold on the item at the tip of develop ran cherry-pick on an empty range and refused FLOW-HOLD-07. An empty tail now resets develop to the item's base.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -96,11 +101,13 @@ async function unpushedCommits(
   io: WorkspaceIO,
   branch: string,
   remoteTip: string | null,
+  firstParent = false,
 ): Promise<string[]> {
+  const order = firstParent ? ["--reverse", "--first-parent"] : ["--reverse"];
   const args =
     remoteTip !== null
-      ? ["rev-list", "--reverse", `${remoteTip}..${branch}`]
-      : ["rev-list", "--reverse", branch, "--not", "--remotes=origin"];
+      ? ["rev-list", ...order, `${remoteTip}..${branch}`]
+      : ["rev-list", ...order, branch, "--not", "--remotes=origin"];
   const result = await git(repoRoot, io, args);
   if (result.exitCode !== 0) return [];
   return result.stdout.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
@@ -467,12 +474,17 @@ export async function collectDigest(
   const mainTail = mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote);
 
   // --- items: journal-attributed segments of the develop tail ---------------
+  // Segments follow develop's first-parent chain: a back-merge brings main's
+  // commits in through its second parent, and a fix cut's range lives on
+  // main — index spans over the full (date-ordered) list would misattribute.
+  const developChain =
+    developLocal === null ? [] : await unpushedCommits(repoRoot, io, "develop", developRemote, true);
   const common = await commonGitDir(io, repoRoot);
   const journal = await readJournal(io, common);
-  const tailIndex = new Map(developTail.map((sha, i) => [sha, i]));
+  const tailIndex = new Map(developChain.map((sha, i) => [sha, i]));
   const boundary =
     developRemote ??
-    (developTail.length > 0 ? await revParse(repoRoot, io, `${developTail[0]}^`) : null);
+    (developChain.length > 0 ? await revParse(repoRoot, io, `${developChain[0]}^`) : null);
 
   const claimed = new Set<number>();
   const records = attributedRecords(journal)
@@ -492,8 +504,8 @@ export async function collectDigest(
   }
   // Maximal unclaimed runs → unattributed items.
   let runStart: number | null = null;
-  for (let i = 0; i <= developTail.length; i++) {
-    if (i < developTail.length && !claimed.has(i)) {
+  for (let i = 0; i <= developChain.length; i++) {
+    if (i < developChain.length && !claimed.has(i)) {
       if (runStart === null) runStart = i;
     } else if (runStart !== null) {
       segments.push({ record: null, from: runStart, to: i - 1 });
@@ -506,8 +518,8 @@ export async function collectDigest(
   const items: FlowDigestItem[] = [];
   for (const segment of segments) {
     const base =
-      segment.from === 0 ? (boundary ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904") : developTail[segment.from - 1]!;
-    const tip = developTail[segment.to]!;
+      segment.from === 0 ? (boundary ?? "4b825dc642cb6eb9a060e54bf8d69288fbee4904") : developChain[segment.from - 1]!;
+    const tip = developChain[segment.to]!;
     const meta = await commitMeta(repoRoot, io, base, tip);
     const cls = await classifyItem(repoRoot, io, base, tip, meta.rfcs, specsDir, invariantsFile);
     items.push({
@@ -516,7 +528,7 @@ export async function collectDigest(
       branch: segment.record?.branch ?? null,
       base,
       tip,
-      commits: segment.to - segment.from + 1,
+      commits: meta.subjects.length,
       subjects: meta.subjects,
       rfcs: meta.rfcs,
       category: cls.category,

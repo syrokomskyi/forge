@@ -16,6 +16,11 @@ replay; unhold recreates the worktree and integrate lands A again; the
   <item>RFC-1491: step 4 — flow.hold/unhold tests</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
+
+Steering-session verification of wave 2 found two outbound defects:
+- flow.digest attributed items by index spans over the date-ordered tail; after a fix release and its back-merge, the fix cut record (whose range lives on main) claimed the develop integration that shared its base, so the operator saw 'feat: dev work' labelled as the fix release. Segments now follow develop's first-parent chain and item commit counts come from the base..tip range.
+- flow.hold on the item at the tip of develop ran cherry-pick on an empty range and refused FLOW-HOLD-07. An empty tail now resets develop to the item's base.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -163,6 +168,24 @@ describe("flow.hold", () => {
     // And A is gone from the tail.
     expect(after.items.find((i) => i.branch === a.branch)).toBeUndefined();
     expect(after.held.map((h) => h.branch)).toContain(data.branch);
+  }, 90_000);
+
+  it("holds the topmost item — empty tail above it — by resetting develop to its base", async () => {
+    const { repo } = await repoWithOrigin();
+    const { b } = await twoIntegrated(repo);
+    const item = await digestItemFor(repo, b.branch);
+
+    const data = await holdFlowItem(repo, ambientIo, {
+      item: item.id,
+      reason: "top of the tail",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.diagnostics).toEqual([]);
+    expect(data.held).toBe(true);
+    expect(data.rewrites).toEqual([]);
+    expect((await gitExec(repo, ["rev-parse", "develop"])).stdout.trim()).toBe(item.base);
+    expect((await gitExec(repo, ["rev-parse", data.branch!])).stdout.trim()).toBe(b.tip);
   }, 90_000);
 
   it("refuses FLOW-HOLD-02 when a local release tag sits above the item (AC-9)", async () => {
