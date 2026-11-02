@@ -17,6 +17,7 @@ re-reads the tag grammar itself.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1493: step 1 — shared derived-version extraction consumed by flow.version and resolveRepositoryLineVersion</item>
   <item>RFC-1493: step 1 — forge public release-line version reader</item>
+  <item>RFC-1493: step 2 — platform identity command, migrator-cursor pin comparison</item>
 </CHANGE_SUMMARY>
 */
 
@@ -51,13 +52,18 @@ async function commitsSinceRef(
   return result.exitCode === 0 ? Number.parseInt(result.stdout.trim(), 10) || 0 : 0;
 }
 
-/** Tracked modifications inside `paths` (empty = whole worktree). */
+/** Tracked modifications inside `paths` (empty = whole worktree). Non-git workdirs read as clean — the version-file fallback then applies. */
 async function dirtyPaths(
   repoRoot: string,
   paths: string[],
   io: WorkspaceIO,
 ): Promise<number> {
-  const entries = await statusTracked(repoRoot, io);
+  let entries: string[];
+  try {
+    entries = await statusTracked(repoRoot, io);
+  } catch {
+    return 0;
+  }
   if (paths.length === 0) return entries.length;
   return entries.filter((entry) => {
     const file = entry.slice(3).split(" -> ").pop() ?? "";
