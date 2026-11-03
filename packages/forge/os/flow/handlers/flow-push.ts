@@ -20,6 +20,13 @@ a manual push path.</purpose>
   <item>RFC-1491: step 5 — flow.push (preflight, atomic push, publications, journals)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
+
+READ_ONLY_GIT_QUERIES / isReadOnlyGitQuery replace the recording adapter's
+first-argument allowlist; the read-only adapter and the static scan use the same
+table. The kernel forwards --dry-run into commands that declare a dry-run flag,
+and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
+back to werkstatt run flow.install --dry-run.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,6 +62,8 @@ export interface FlowPushData {
   refs: string[];
   publications: PublicationRow[];
   diagnostics: Diagnostic[];
+  /** RFC-1501: whether the preflight digest fetched origin; absent on early refusals. */
+  fetched?: boolean;
 }
 
 function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData {
@@ -80,7 +89,10 @@ export async function pushFlow(
   const primary = await primaryWorktree(io, repoRoot);
 
   // --- preflight -------------------------------------------------------------
-  const digest = await collectDigest(repoRoot, io, { fetch: true });
+  // RFC-1501: a dry-run never fetches — `git fetch origin --prune` rewrites
+  // and prunes remote-tracking refs. It judges the digest exactly like
+  // `flow.digest --no-fetch`; a real push still fetches first.
+  const digest = await collectDigest(repoRoot, io, { fetch: !opts.dryRun });
   const noOrigin = digest.diagnostics.find(
     (d) => d.ruleId === "FLOW-PUSH-01" && d.severity === "error",
   );
@@ -178,6 +190,7 @@ export async function pushFlow(
   if (opts.dryRun) {
     return {
       digestId: digest.digestId,
+      fetched: digest.fetched,
       pushed: false,
       refs: refspecs,
       publications: [
@@ -209,6 +222,7 @@ export async function pushFlow(
     if (push.exitCode !== 0) {
       return {
         digestId: digest.digestId,
+        fetched: digest.fetched,
         pushed: false,
         refs: refspecs,
         publications: [],
@@ -279,6 +293,7 @@ export async function pushFlow(
 
   return {
     digestId: digest.digestId,
+    fetched: digest.fetched,
     pushed,
     refs: refspecs,
     publications,
