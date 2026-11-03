@@ -6,6 +6,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.2.2] — 2026-11-03
+
+_The fixed branch model ships. `9.2.0` and `9.2.1` were tagged but never published: their extraction failed verification (monorepo-bound tests, then this missing changelog section). `9.2.2` is the first published release of the line and carries everything below._
+
+### Added
+
+- **Fixed branch model (`flow.*`)**: `develop` and `main` are protected by managed guard hooks (`pre-commit`, `pre-merge-commit`, `pre-push`); work happens on `auto/session-…`, `auto/task-…` and `auto/fix-…` branches, each in its own worktree beside the repository, tracked in a local registry inside the git directory (RFC-1486, RFC-1487).
+- **`flow.install`** adopts an existing repository: fast-forwards `develop`, writes package markers, sets baseline release tags and reports pre-program tags without touching them (RFC-1486, RFC-1498).
+- **Release lines from tags**: versions derive from annotated release tags per line (`v<x.y.z>` for the repository, `<line>@<x.y.z>` for package lines) (RFC-1488).
+- **`flow.cut`, `flow.fix`, `flow.backmerge`**: ordinary releases from `develop`, patch releases from `main`, back-merges through a gated port branch; cuts resume after an interruption (RFC-1490).
+- **Outbound only by operator command**: `flow.digest` shows the risk-classified unpushed tail, `flow.hold`/`flow.unhold` take an integrated item out of it and back, `flow.push --digest <id>` pushes `develop`, `main` and the new tags atomically and publishes package extracts (RFC-1491).
+- **Profiles adopt at birth**: `forge create` repositories are born on the fixed branch model; `forge upgrade` reports adoption state and guard drift but never adopts by itself (RFC-1500).
+
+### Changed
+
+- **Acceptance test probes** run in one instrumented vitest batch; `rfc.validate --id` reads only the frontmatter it needs (RFC-1489).
+- **Dry-runs through the werkstatt kernel**: flow handlers receive the kernel's `--dry-run`, and `flow.push` / `flow.hold` dry-runs no longer fetch (RFC-1501).
+
+### Fixed
+
+- `flow.fix --dry-run` plans the fix branch instead of refusing FLOW-FIX-01.
+- `mission.archive` leaves the lockfile refresh unstaged on a protected branch instead of leaving it staged after a refused commit.
+
 ## [9.1.1] — 2026-11-01
 
 _Documentation sync for the 9.x line._
