@@ -139,6 +139,21 @@ describe("flow.fix", () => {
     dirs.push(data.worktree!);
   }, 30_000);
 
+  it("--dry-run plans the fix branch without opening it or refusing (W5-7)", async () => {
+    const repo = await releasedRepo();
+    const branchesBefore = (await gitExec(repo, ["for-each-ref", "refs/heads"])).stdout;
+    const data = await fixFlow(repo, ambientIo, {
+      slug: "null-guard",
+      brief: null,
+      dryRun: true,
+    });
+    expect(data.diagnostics).toEqual([]);
+    expect(data.opened).toBe(false);
+    expect(data.branch).toMatch(/^auto\/fix-\d{6}-\d{2}-null-guard$/);
+    expect(data.baseSha).toBe(await sha(repo, "main"));
+    expect((await gitExec(repo, ["for-each-ref", "refs/heads"])).stdout).toBe(branchesBefore);
+  }, 30_000);
+
   it("fix-mode cut releases the patch into main, tags it, tears down, back-merges", async () => {
     const repo = await releasedRepo();
     const fix = await fixFlow(repo, ambientIo, { slug: "hotfix", brief: null, dryRun: false });

@@ -162,7 +162,9 @@ export async function fixFlow(
     dryRun: opts.dryRun,
     now: opts.now,
   });
-  if (!open.opened || open.branch === null) {
+  // A dry-run plans the branch without opening it (opened: false, no
+  // diagnostics) — only a real open that did not happen is a refusal.
+  if (open.branch === null || (!open.opened && !opts.dryRun)) {
     const d = open.diagnostics[0];
     return refuseFix(
       d?.ruleId ?? "FLOW-FIX-01",
@@ -179,7 +181,7 @@ export async function fixFlow(
     base: "main",
     baseSha: open.baseSha,
     baseTag: tags.lastTag?.name ?? null,
-    opened: true,
+    opened: open.opened,
     setup: open.setup,
     diagnostics: open.diagnostics,
   };
@@ -584,9 +586,12 @@ export async function runFlowFix(
     exitCode: refused ? 1 : 0,
     summary: refused
       ? `[flow.fix] refused: ${refused.ruleId} ${refused.message}`
-      : `[flow.fix] opened ${data.branch} in ${data.worktree}`,
-    nextSteps: refused
-      ? []
-      : [{ action: `commit the patch inside ${data.worktree}, then run flow.cut there`, kind: "required" }],
+      : data.opened
+        ? `[flow.fix] opened ${data.branch} in ${data.worktree}`
+        : `[flow.fix] dry run — would open ${data.branch} in ${data.worktree}`,
+    nextSteps:
+      refused || !data.opened
+        ? []
+        : [{ action: `commit the patch inside ${data.worktree}, then run flow.cut there`, kind: "required" }],
   };
 }
