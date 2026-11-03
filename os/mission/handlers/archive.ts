@@ -46,6 +46,7 @@ import {
   type MissionArchiveResult,
 } from "../types.ts";
 import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
+import { PROTECTED_BRANCHES } from "../../flow/branch-name.ts";
 import { resolveStateRoots } from "../../flow/worktree-path.ts";
 
 const SERVICE_FOLDERS = [
@@ -258,6 +259,28 @@ async function moveMissionDir(
     moved: { missionId, state, from: sourceRel, to: targetRel, direction },
     skip: null,
   };
+}
+
+/**
+ * The current branch when it is a protected integration branch of a repository
+ * that carries the forge flow guard — commits there are refused. `null` when
+ * commits are allowed (no guard, an auto branch, detached HEAD).
+ */
+function protectedFlowBranch(workspaceRoot: string): string | null {
+  if (!existsSync(path.join(workspaceRoot, "hooks", "flow-guard.sh"))) return null;
+  let branch: string;
+  try {
+    branch = String(
+      execSync("git symbolic-ref --short -q HEAD", {
+        cwd: workspaceRoot,
+        encoding: "utf-8",
+        stdio: ["pipe", "pipe", "pipe"],
+      }),
+    ).trim();
+  } catch {
+    return null;
+  }
+  return (PROTECTED_BRANCHES as readonly string[]).includes(branch) ? branch : null;
 }
 
 export async function runMissionArchive(
@@ -660,7 +683,15 @@ export async function runMissionArchive(
         encoding: "utf-8",
         stdio: ["pipe", "pipe", "pipe"],
       }).trim();
-      if (lockfileStatus) {
+      // Fixed branch model: hooks/flow-guard.sh refuses commits on develop and
+      // main (FLOW-GUARD-01), and a refused commit would leave the lockfile
+      // staged in the primary checkout. There the refresh stays unstaged.
+      const protectedBranch = lockfileStatus ? protectedFlowBranch(workspaceRoot) : null;
+      if (lockfileStatus && protectedBranch) {
+        logger.warn(
+          `  pnpm-lock.yaml changed on protected branch '${protectedBranch}' — not committed. Commit it from a flow session: pnpm exec werkstatt run flow.open --kind session --slug <slug>`,
+        );
+      } else if (lockfileStatus) {
         execSync("git add pnpm-lock.yaml", {
           cwd: workspaceRoot,
           stdio: ["pipe", "pipe", "pipe"],

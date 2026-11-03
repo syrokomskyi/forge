@@ -454,6 +454,33 @@ describe("mission.archive", () => {
     expect(commitCall![0]).toContain("refresh pnpm-lock.yaml after mission.archive");
   });
 
+  test("W5-6: on a protected branch of an adopted repo the lockfile is neither staged nor committed", async () => {
+    execSyncMock.mockReset();
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("pnpm install")) return "";
+      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
+      if (cmd.startsWith("git symbolic-ref")) return "develop\n";
+      return "";
+    });
+    await fs.mkdir(path.join(tmpDir, "hooks"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "hooks", "flow-guard.sh"), "#!/bin/sh\n");
+    await writeMissionManifest(missionsDir, "test-m018b", "closed");
+    const warnings: string[] = [];
+    const context = makeContext(tmpDir);
+    (context.logger as { warn: (m: string) => void }).warn = (m: string) => warnings.push(m);
+
+    const data = unwrap(await runMissionArchive(makeInput(), context));
+
+    expect(data.moved).toHaveLength(1);
+    const gitWrites = execSyncMock.mock.calls.filter(
+      (c) =>
+        typeof c[0] === "string" &&
+        (c[0].startsWith("git add") || c[0].startsWith("git rm") || c[0].startsWith("git commit")),
+    );
+    expect(gitWrites).toEqual([]);
+    expect(warnings.some((w) => w.includes("develop") && w.includes("flow.open"))).toBe(true);
+  });
+
   test("RFC-0804: pnpm install failure is non-fatal", async () => {
     execSyncMock.mockReset();
     execSyncMock.mockImplementation((cmd: string) => {
