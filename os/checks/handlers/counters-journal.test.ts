@@ -15,6 +15,7 @@ truncated-tail tolerance).</purpose>
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import { mkdtemp, rm, mkdir, writeFile, readFile, appendFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -69,6 +70,15 @@ describe("recordRuleEvaluations", () => {
     await recordRuleEvaluations(root, []);
     const { records } = await readCountersJournal(root);
     expect(records).toHaveLength(0);
+  });
+
+  test("a workspace root that no longer exists is not recreated (W5-16)", async () => {
+    // flow.integrate removes the session worktree before the executor journals
+    // its counters; the journal must not resurrect the worktree directory.
+    const gone = join(root, "removed-worktree");
+    const warning = await recordRuleEvaluations(gone, [rec()]);
+    expect(existsSync(gone)).toBe(false);
+    expect(warning).toContain("no longer exists");
   });
 
   test("AC-11: append failure returns a warning, never throws", async () => {

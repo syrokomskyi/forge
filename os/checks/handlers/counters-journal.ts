@@ -29,7 +29,7 @@ Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contrac
 </CHANGE_SUMMARY>
 */
 
-import { appendFile, mkdir, readFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, stat } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 
@@ -65,6 +65,13 @@ export async function recordRuleEvaluations(
 ): Promise<string | undefined> {
   if (records.length === 0) return undefined;
   const file = join(workspaceRoot, COUNTERS_JOURNAL_PATH);
+  // A command can remove its own workspace root (flow.integrate tears down the
+  // session worktree); mkdir -p below would recreate it as an orphan directory.
+  try {
+    await stat(workspaceRoot);
+  } catch {
+    return `counters journal skipped: workspace root ${workspaceRoot} no longer exists`;
+  }
   try {
     await mkdir(dirname(file), { recursive: true });
     await appendFile(file, records.map((r) => JSON.stringify(r)).join("\n") + "\n", "utf8");
