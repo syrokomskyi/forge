@@ -18,7 +18,6 @@ flow.push must quote.</purpose>
   <item>tagTriggers (RFC-1498) is part of digestId input: a workflow-file change between digest and push must invalidate the quoted id. Unparseable workflows and ununderstood patterns warn FLOW-11 and match nothing — never block the digest.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
@@ -29,6 +28,7 @@ Steering-session verification of wave 2 found two outbound defects:
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
+  <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -49,8 +49,10 @@ import {
   type FlowJournalEvent,
   type RiskCategory,
 } from "./registry.ts";
+import { planPublications, type PublicationPlanEntry } from "./publication-order.ts";
 import { tagAnnotationLevel } from "./publish.ts";
 import { discoverReleaseLines, type ReleaseLine } from "./release-lines.ts";
+import { parseVersion, type SemVer } from "./semver.ts";
 import { listLineTags } from "./release-tags.ts";
 import { primaryWorktree } from "./worktree-path.ts";
 
@@ -83,7 +85,18 @@ export interface FlowDigestData {
     riskCategory: RiskCategory;
     heldAt: string;
   }>;
+  /**
+   * RFC-1503: the highest pending tag per package line — what the next
+   * flow.push actually attempts. Lower pending tags moved to
+   * `supersededPublications`.
+   */
   pendingPublications: Array<{ tag: string; line: string }>;
+  /**
+   * RFC-1503: lower pending tags the next push supersedes (`by` = the
+   * superseding tag, null when the tag waits behind a higher candidate
+   * that has not published yet).
+   */
+  supersededPublications: Array<{ tag: string; line: string; by: string | null }>;
   /**
    * RFC-1498: CI workflows a push of each digest tag would start —
    * `.github/workflows` files whose `on.push.tags` filter matches the tag
@@ -537,6 +550,14 @@ export function lineForTag(lines: ReleaseLine[], tag: string): ReleaseLine | nul
   return best;
 }
 
+/** Strict semver of `tag` under the line with id `lineId` — null when the
+ * line is unknown, the prefix does not match, or the suffix is not X.Y.Z. */
+function versionOfTag(lines: ReleaseLine[], tag: string, lineId: string): SemVer | null {
+  const line = lines.find((l) => l.id === lineId);
+  if (line === undefined || !tag.startsWith(line.tagPrefix)) return null;
+  return parseVersion(tag.slice(line.tagPrefix.length));
+}
+
 /** Recursively key-sorted JSON.stringify — the digestId's canonical form. */
 function canonicalJson(value: unknown): string {
   if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
@@ -685,9 +706,13 @@ export async function collectDigest(
       heldAt: b.held!.heldAt,
     }));
 
-  const pendingPublications: Array<{ tag: string; line: string }> = [];
+  // RFC-1503: pending candidates are journal-scoped — pushed, not published,
+  // not superseded, not retired. planPublications picks the highest per line
+  // as the real pending list and routes the rest to supersededPublications.
   const pushedTags = new Set<string>();
   const publishedTags = new Set<string>();
+  const supersededTags = new Set<string>();
+  const retiredTags = new Set<string>();
   for (const event of journal) {
     if (event.event === "push") {
       for (const token of event.detail.split(/[^A-Za-z0-9._/@-]+/)) {
@@ -695,17 +720,31 @@ export async function collectDigest(
       }
     } else if (event.event === "publish") {
       publishedTags.add(event.branch);
+    } else if (event.event === "publish-superseded") {
+      supersededTags.add(event.branch);
+    } else if (event.event === "publish-retired") {
+      retiredTags.add(event.branch);
     }
   }
+  const pendingCandidates: PublicationPlanEntry[] = [];
   for (const tag of [...pushedTags].sort((a, b) => a.localeCompare(b))) {
     if (!allLocalTags.has(tag) || publishedTags.has(tag)) continue;
+    if (supersededTags.has(tag) || retiredTags.has(tag)) continue;
     const line = lineForTag(lines, tag);
     // Repo-line tags are never extracted, and baseline annotations are
     // skipped at push time — neither ever gains a publish record.
     if (line === null || line.id === "repo") continue;
     if ((await tagAnnotationLevel(repoRoot, io, tag)) === "baseline") continue;
-    pendingPublications.push({ tag, line: line.id });
+    pendingCandidates.push({ tag, line: line.id });
   }
+  const plan = planPublications(
+    pendingCandidates,
+    publishedTags,
+    retiredTags,
+    (tag, line) => versionOfTag(lines, tag, line),
+  );
+  const pendingPublications = plan.attempt;
+  const supersededPublications = plan.superseded;
 
   // --- CI workflows a tag push would trigger (RFC-1498) --------------------
   // Read on the primary checkout — that is the working copy the operator
@@ -738,6 +777,8 @@ export async function collectDigest(
         main: { local: mainLocal, remote: mainRemote, ahead: mainTail.length },
         tags,
         tagTriggers,
+        pendingPublications,
+        supersededPublications,
         items: items.map((i) => ({ id: i.id, tip: i.tip })),
       }),
     )
@@ -755,6 +796,7 @@ export async function collectDigest(
     byCategory,
     held,
     pendingPublications,
+    supersededPublications,
     tagTriggers,
     diagnostics,
   };
