@@ -45,6 +45,12 @@ excludePathSegments:
   - ship-inflight.test.ts
   - ac8-ac9-registry-reachability.acceptance.test.ts
   - ac10-operating-model-policy.acceptance.test.ts
+  # They read the werkstatt tree itself (packages/, docs/rfcs): the real
+  # release-line set, the RFC corpus, monorepo probe paths. Operator-approved
+  # 2026-11-03 after the forge@9.2.0 extract-verify failure.
+  - release-lines.test.ts
+  - probe-batch.test.ts
+  - validate-corpus.test.ts
   # monorepo-scoped agent guide — not meaningful inside the standalone repo
   - AGENTS.md
 
