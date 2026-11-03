@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.2.3] — 2026-11-03
+
+_First published release of the fixed branch model — see 9.2.2 for its content. `9.2.2` was tagged but not published: the standalone CI failed one test whose fixture relied on a global git identity._
+
+### Fixed
+
+- **Test fixture**: the fake extract in the `flow.push` publication tests gives the destination repository its own git identity, so the reconcile-merge test passes on runners without a global identity.
+
 ## [9.2.2] — 2026-11-03
 
 _The fixed branch model ships. `9.2.0` and `9.2.1` were tagged but never published: their extraction failed verification (monorepo-bound tests, then this missing changelog section). `9.2.2` is the first published release of the line and carries everything below._

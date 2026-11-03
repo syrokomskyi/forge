@@ -204,6 +204,10 @@ destBase=\${destBase:-packages}
 dest="$(dirname "$PWD")/$destBase/$destName"
 mkdir -p "$dest"
 if [ ! -d "$dest/.git" ]; then git -C "$dest" init -b main >/dev/null; fi
+# A CI runner has no global git identity; publish's reconcile merge commits
+# in the destination, so the destination carries its own.
+git -C "$dest" config user.email t@t
+git -C "$dest" config user.name t
 echo "export $ref" > "$dest/export.txt"
 git -C "$dest" add export.txt
 git -C "$dest" -c user.email=t@t -c user.name=t commit -q -m "export $ref"
