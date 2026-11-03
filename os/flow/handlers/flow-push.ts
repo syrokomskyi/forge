@@ -27,6 +27,7 @@ first-argument allowlist; the read-only adapter and the static scan use the same
 table. The kernel forwards --dry-run into commands that declare a dry-run flag,
 and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
+  <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
 </CHANGE_SUMMARY>
 */
 
@@ -48,11 +49,14 @@ import {
 } from "../git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
+import { planPublications, type PublicationPlanEntry } from "../publication-order.ts";
 import {
   appendJournal,
   commonGitDir,
   FlowRegistrySchemaError,
+  readJournal,
 } from "../registry.ts";
+import { parseVersion } from "../semver.ts";
 import { discoverReleaseLines, type ReleaseLine } from "../release-lines.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 
@@ -61,6 +65,10 @@ export interface FlowPushData {
   pushed: boolean;
   refs: string[];
   publications: PublicationRow[];
+  /** RFC-1503: pending tags superseded this run — `{ tag, by }`. */
+  superseded: Array<{ tag: string; by: string }>;
+  /** RFC-1503: tags with a publish-retired journal record (informational). */
+  retired: string[];
   diagnostics: Diagnostic[];
   /** RFC-1501: whether the preflight digest fetched origin; absent on early refusals. */
   fetched?: boolean;
@@ -72,6 +80,8 @@ function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData
     pushed: false,
     refs: [],
     publications: [],
+    superseded: [],
+    retired: [],
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
 }
@@ -129,19 +139,29 @@ export async function pushFlow(
 
   const { lines } = await discoverReleaseLines(repoRoot, io);
 
-  // Publications: package-line tags pushed now + journal-scoped pending,
-  // minus baseline annotations.
+  // Publications (RFC-1503): candidates = package-line tags pushed now +
+  // journal-scoped pending, minus baseline annotations; per line only the
+  // highest version is attempted — lower ones supersede, retired tags drop.
+  const journalEvents = await readJournal(io, common);
+  const publishedTags = new Set(
+    journalEvents.filter((e) => e.event === "publish").map((e) => e.branch),
+  );
+  const retiredTags = new Set(
+    journalEvents.filter((e) => e.event === "publish-retired").map((e) => e.branch),
+  );
+
   const publicationTags = new Map<string, ReleaseLine>();
-  for (const tag of digest.tags) {
-    const line = lineForTag(lines, tag);
+  const addCandidate = (tag: string, lineId: string | null): void => {
+    const line =
+      (lineId === null ? null : lines.find((l) => l.id === lineId)) ?? lineForTag(lines, tag);
     if (line !== null && line.id !== "repo") publicationTags.set(tag, line);
-  }
-  for (const pending of digest.pendingPublications) {
-    const line = lines.find((l) => l.id === pending.line) ?? lineForTag(lines, pending.tag);
-    if (line !== null && line.id !== "repo") publicationTags.set(pending.tag, line);
-  }
-  const publishable: Array<{ tag: string; line: ReleaseLine }> = [];
+  };
+  for (const tag of digest.tags) addCandidate(tag, null);
+  for (const pending of digest.pendingPublications) addCandidate(pending.tag, pending.line);
+  for (const sup of digest.supersededPublications) addCandidate(sup.tag, sup.line);
+
   const baselineSkipped: PublicationRow[] = [];
+  const planCandidates: PublicationPlanEntry[] = [];
   for (const [tag, line] of [...publicationTags.entries()].sort(([a], [b]) => a.localeCompare(b))) {
     const level = await tagAnnotationLevel(repoRoot, io, tag);
     if (level === "baseline") {
@@ -155,9 +175,18 @@ export async function pushFlow(
         destHead: null,
       });
     } else {
-      publishable.push({ tag, line });
+      planCandidates.push({ tag, line: line.id });
     }
   }
+  const plan = planPublications(planCandidates, publishedTags, retiredTags, (tag, lineId) => {
+    const line = lines.find((l) => l.id === lineId);
+    if (line === undefined || !tag.startsWith(line.tagPrefix)) return null;
+    return parseVersion(tag.slice(line.tagPrefix.length));
+  });
+  const publishable: Array<{ tag: string; line: ReleaseLine }> = plan.attempt.map((p) => ({
+    tag: p.tag,
+    line: lines.find((l) => l.id === p.line)!,
+  }));
 
   for (const { line } of publishable) {
     const dir = line.paths[0]!;
@@ -207,6 +236,11 @@ export async function pushFlow(
           }),
         ),
       ],
+      superseded: plan.superseded.map((s) => ({
+        tag: s.tag,
+        by: s.by ?? plan.attempt.find((a) => a.line === s.line)?.tag ?? "",
+      })),
+      retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
       diagnostics: [],
     };
   }
@@ -226,6 +260,8 @@ export async function pushFlow(
         pushed: false,
         refs: refspecs,
         publications: [],
+        superseded: [],
+        retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
         diagnostics: [
           {
             ruleId: "FLOW-PUSH-04",
@@ -254,6 +290,7 @@ export async function pushFlow(
 
   // --- publications ------------------------------------------------------------
   const publications: PublicationRow[] = [...baselineSkipped];
+  const supersededOut: Array<{ tag: string; by: string }> = [];
   const diagnostics: Diagnostic[] = journalWarnings.map(
     (message): Diagnostic => ({
       ruleId: "FLOW-07",
@@ -261,6 +298,41 @@ export async function pushFlow(
       message,
     }),
   );
+
+  const recordSuperseded = async (tag: string, by: string): Promise<void> => {
+    supersededOut.push({ tag, by });
+    try {
+      await appendJournal(io, common, {
+        event: "publish-superseded",
+        branch: tag,
+        sha: "",
+        detail: by,
+      });
+    } catch (error) {
+      diagnostics.push({
+        ruleId: "FLOW-07",
+        severity: "warning",
+        message: `publish-superseded record for ${tag} could not be appended — the tag stays pending and will be re-evaluated on the next push: ${String(error)}`,
+      });
+    }
+  };
+
+  // Superseded on sight — a pending tag at or below the line's newest
+  // published version is never extracted (RFC-1503 AC-3).
+  for (const sup of plan.superseded) {
+    if (sup.by !== null) await recordSuperseded(sup.tag, sup.by);
+  }
+  // Shadowed candidates — superseded only once their line's highest tag
+  // actually publishes (RFC-1503 AC-2).
+  const shadowed = new Map<string, string[]>();
+  for (const sup of plan.superseded) {
+    if (sup.by === null) {
+      const list = shadowed.get(sup.line) ?? [];
+      list.push(sup.tag);
+      shadowed.set(sup.line, list);
+    }
+  }
+
   for (const { tag, line } of publishable) {
     const row = await publishTag(primary, io, { line, tag });
     publications.push(row);
@@ -288,6 +360,9 @@ export async function pushFlow(
           message: `publish journal record for ${tag} could not be appended — the tag will be retried as pending: ${String(error)}`,
         });
       }
+      for (const low of shadowed.get(line.id) ?? []) {
+        await recordSuperseded(low, tag);
+      }
     }
   }
 
@@ -297,6 +372,8 @@ export async function pushFlow(
     pushed,
     refs: refspecs,
     publications,
+    superseded: supersededOut,
+    retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
     diagnostics,
   };
 }
@@ -358,6 +435,9 @@ export async function runFlowPush(
       } else if (pub.status === "pending") {
         logger.info(`  would publish ${pub.tag} (dry-run)`);
       }
+    }
+    for (const sup of data.superseded) {
+      logger.info(`  superseded ${sup.tag} by ${sup.by}`);
     }
   }
 

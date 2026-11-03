@@ -9,14 +9,14 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490</history>
+  <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +34,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowIntegrate } = await import("./handlers/flow-integrate.ts");
   const { runFlowOpen } = await import("./handlers/flow-open.ts");
   const { runFlowPush } = await import("./handlers/flow-push.ts");
+  const { runFlowPublicationRetire } = await import("./handlers/flow-publication-retire.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
   const { runFlowUnhold } = await import("./handlers/flow-unhold.ts");
   const { runFlowVersion } = await import("./handlers/flow-version.ts");
@@ -712,6 +713,47 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           },
         },
         execute: runFlowPush,
+      },
+      {
+        name: "flow.publication.retire",
+        description:
+          "Retire a pending publication tag (RFC-1503) — operator-only. " +
+          "Appends one publish-retired journal event so flow.push never " +
+          "attempts the tag again: the escape for a pushed tag that can " +
+          "never publish (broken extract config the destination must not " +
+          "see, a version that must not ship). Refuses FLOW-RETIRE-01 " +
+          "when the tag is not pending and FLOW-RETIRE-02 on an empty " +
+          "--reason.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [
+          { id: "FLOW-RETIRE-01", severity: "error" },
+          { id: "FLOW-RETIRE-02", severity: "error" },
+          { id: "FLOW-07", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        execOnReadOnly: false,
+        mutatingFlags: [],
+        writes: [".git/**"],
+        generates: [],
+        coverage: "operator",
+        coverageNote: "outbound journal mutation — operator command only (RFC-1503)",
+        reads: ["forge.yaml", ".git/**"],
+        cacheable: false,
+        flags: {
+          tag: {
+            kind: "string",
+            required: true,
+            description: "The pending publication tag to retire (e.g. lib@1.2.3).",
+          },
+          reason: {
+            kind: "string",
+            required: true,
+            description: "Why the tag can never publish — journaled verbatim.",
+          },
+        },
+        execute: runFlowPublicationRetire,
       },
       {
         name: "flow.status",
