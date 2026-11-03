@@ -14,6 +14,13 @@ FLOW-PUSH-03; a missing --digest refuses before anything moves.</purpose>
   <item>RFC-1491: step 5 — flow.push preflight/push tests</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
+
+READ_ONLY_GIT_QUERIES / isReadOnlyGitQuery replace the recording adapter's
+first-argument allowlist; the read-only adapter and the static scan use the same
+table. The kernel forwards --dry-run into commands that declare a dry-run flag,
+and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
+back to werkstatt run flow.install --dry-run.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -125,5 +132,29 @@ describe("flow.push", () => {
     expect(data.refs.length).toBeGreaterThan(0);
     const remoteTip = (await gitExec(origin, ["rev-parse", "refs/heads/develop"])).stdout.trim();
     expect(remoteTip).not.toBe((await gitExec(repo, ["rev-parse", "develop"])).stdout.trim());
+  }, 60_000);
+
+  it("AC-8: --dry-run never fetches — remote-tracking refs stay unchanged (RFC-1501)", async () => {
+    const { repo, origin, parent } = await initRepoWithOrigin(dirs, { prefix: "flow-push-" });
+    // origin gains a commit after the repository's last fetch.
+    const other = join(parent, "other");
+    const clone = await gitExec(parent, ["clone", "-q", "-b", "develop", origin, other]);
+    expect(clone.exitCode).toBe(0);
+    await gitExec(other, ["config", "user.email", "flow-test@example.invalid"]);
+    await gitExec(other, ["config", "user.name", "flow-test"]);
+    await unpushedCommit(other, "foreign.txt", "f\n");
+    expect((await gitExec(other, ["push", "-q", "origin", "develop"])).exitCode).toBe(0);
+
+    const trackingBefore = (
+      await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes"])
+    ).stdout;
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: true });
+    expect(data.pushed).toBe(false);
+    expect(data.fetched).toBe(false);
+    const trackingAfter = (
+      await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes"])
+    ).stdout;
+    expect(trackingAfter).toBe(trackingBefore);
   }, 60_000);
 });

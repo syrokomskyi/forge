@@ -21,6 +21,13 @@ replay; unhold recreates the worktree and integrate lands A again; the
 Steering-session verification of wave 2 found two outbound defects:
 - flow.digest attributed items by index spans over the date-ordered tail; after a fix release and its back-merge, the fix cut record (whose range lives on main) claimed the develop integration that shared its base, so the operator saw 'feat: dev work' labelled as the fix release. Segments now follow develop's first-parent chain and item commit counts come from the base..tip range.
 - flow.hold on the item at the tip of develop ran cherry-pick on an empty range and refused FLOW-HOLD-07. An empty tail now resets develop to the item's base.</item>
+  <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
+
+READ_ONLY_GIT_QUERIES / isReadOnlyGitQuery replace the recording adapter's
+first-argument allowlist; the read-only adapter and the static scan use the same
+table. The kernel forwards --dry-run into commands that declare a dry-run flag,
+and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
+back to werkstatt run flow.install --dry-run.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -169,6 +176,33 @@ describe("flow.hold", () => {
     expect(after.items.find((i) => i.branch === a.branch)).toBeUndefined();
     expect(after.held.map((h) => h.branch)).toContain(data.branch);
   }, 90_000);
+
+  it("--dry-run never fetches — remote-tracking refs stay unchanged (RFC-1501)", async () => {
+    const { repo, origin } = await repoWithOrigin();
+    const { a } = await twoIntegrated(repo);
+    const item = await digestItemFor(repo, a.branch);
+    // origin gains a commit after the repository's last fetch.
+    const other = await mkdtemp(join(tmpdir(), "flow-hold-other-"));
+    dirs.push(other);
+    expect((await gitExec(other, ["clone", "-q", "-b", "develop", origin, "."])).exitCode).toBe(0);
+    await gitExec(other, ["config", "user.email", "flow-test@example.invalid"]);
+    await gitExec(other, ["config", "user.name", "flow-test"]);
+    await commitIn(other, "foreign.txt", "f\n");
+    expect((await gitExec(other, ["push", "-q", "origin", "develop"])).exitCode).toBe(0);
+
+    const tracking = async () =>
+      (await gitExec(repo, ["for-each-ref", "--format=%(refname) %(objectname)", "refs/remotes"]))
+        .stdout;
+    const before = await tracking();
+    const data = await holdFlowItem(repo, ambientIo, {
+      item: item.id,
+      reason: "dry-run probe",
+      dryRun: true,
+      now: NOW,
+    });
+    expect(data.diagnostics).toEqual([]);
+    expect(await tracking()).toBe(before);
+  });
 
   it("holds the topmost item — empty tail above it — by resetting develop to its base", async () => {
     const { repo } = await repoWithOrigin();

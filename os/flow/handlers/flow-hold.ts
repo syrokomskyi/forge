@@ -23,6 +23,13 @@ replayed tip and journal the hold with per-item rewrites.</purpose>
 Steering-session verification of wave 2 found two outbound defects:
 - flow.digest attributed items by index spans over the date-ordered tail; after a fix release and its back-merge, the fix cut record (whose range lives on main) claimed the develop integration that shared its base, so the operator saw 'feat: dev work' labelled as the fix release. Segments now follow develop's first-parent chain and item commit counts come from the base..tip range.
 - flow.hold on the item at the tip of develop ran cherry-pick on an empty range and refused FLOW-HOLD-07. An empty tail now resets develop to the item's base.</item>
+  <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
+
+READ_ONLY_GIT_QUERIES / isReadOnlyGitQuery replace the recording adapter's
+first-argument allowlist; the read-only adapter and the static scan use the same
+table. The kernel forwards --dry-run into commands that declare a dry-run flag,
+and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
+back to werkstatt run flow.install --dry-run.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -132,7 +139,9 @@ export async function holdFlowItem(
   const now = opts.now ?? new Date();
   let digest: Awaited<ReturnType<typeof collectDigest>>;
   try {
-    digest = await collectDigest(repoRoot, io, { fetch: true });
+    // RFC-1501: a dry-run never fetches (fetch rewrites and prunes
+    // remote-tracking refs); it judges the item like flow.digest --no-fetch.
+    digest = await collectDigest(repoRoot, io, { fetch: !opts.dryRun });
   } catch (error) {
     if (error instanceof FlowRegistrySchemaError) {
       return refuse("FLOW-07", error.message);
