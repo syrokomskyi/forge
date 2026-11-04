@@ -23,6 +23,13 @@ the expectation instead of trusting the declared expectationSource.
 <CHANGE_SUMMARY>
   <item>RFC-1330: git-derived probe origin — range anchoring, declaration/test/run rules, verifier trailers, presence classes, attachProbeOrigins.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
+  <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
+
+OriginGit gains optional showMany backed by one git cat-file --batch
+process (per-spec null on missing objects, wholesale null on spawn or
+framing failure). collectCommittedReviews prefers it and keeps the
+sequential show loop for stubs. rfc.validate memoizes the index once
+per run and V-49 consumes it — identical diagnostics, one batched read.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -42,6 +49,14 @@ import type {
 /** Git port — returns stdout, or null when the command failed. */
 export interface OriginGit {
   run(args: string[]): Promise<string | null>;
+  /**
+   * RFC-1513: optional batched object read. One `git cat-file --batch` process
+   * answers every spec — entry `i` answers `specs[i]` (`null` marks a missing
+   * or unreadable object). Resolves `null` on a wholesale spawn/parse failure
+   * so callers fall back to sequential `run(["show", spec])` reads; stubs that
+   * do not implement `showMany` take that fallback directly.
+   */
+  showMany?(specs: string[]): Promise<(string | null)[] | null>;
 }
 
 /**
@@ -64,6 +79,34 @@ export function gitEnvForCwd(): NodeJS.ProcessEnv {
   return env;
 }
 
+/**
+ * Parse `git cat-file --batch` output back into per-spec entries. Each record
+ * is `<sha> <type> <size>\n<raw bytes>\n` or `<spec> missing\n`. Any framing
+ * anomaly resolves the whole call to null (wholesale failure → caller falls
+ * back); a `missing` record maps only its own entry to null.
+ */
+function parseCatFileBatch(specs: string[], out: Buffer): (string | null)[] | null {
+  const results: (string | null)[] = [];
+  let off = 0;
+  for (const spec of specs) {
+    const nl = out.indexOf(0x0a, off);
+    if (nl === -1) return null;
+    const header = out.subarray(off, nl).toString("utf8");
+    off = nl + 1;
+    if (header === `${spec} missing`) {
+      results.push(null);
+      continue;
+    }
+    const meta = /^[0-9a-f]+ \S+ (\d+)$/.exec(header);
+    if (!meta) return null;
+    const size = Number(meta[1]);
+    if (off + size + 1 > out.length || out[off + size] !== 0x0a) return null;
+    results.push(out.subarray(off, off + size).toString("utf8"));
+    off += size + 1;
+  }
+  return results;
+}
+
 export function createOriginGit(workspaceRoot: string): OriginGit {
   return {
     run: (args) =>
@@ -74,6 +117,22 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
           { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024, env: gitEnvForCwd() },
           (err, stdout) => resolve(err ? null : String(stdout)),
         );
+      }),
+    showMany: (specs) =>
+      new Promise((resolve) => {
+        const child = execFile(
+          "git",
+          ["cat-file", "--batch"],
+          {
+            cwd: workspaceRoot,
+            timeout: 60000,
+            maxBuffer: 64 * 1024 * 1024,
+            env: gitEnvForCwd(),
+            encoding: "buffer",
+          },
+          (err, stdout) => resolve(err ? null : parseCatFileBatch(specs, stdout)),
+        );
+        child.stdin?.end(`${specs.join("\n")}\n`);
       }),
   };
 }
