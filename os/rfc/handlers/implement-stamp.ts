@@ -12,19 +12,21 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
+  <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
   <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
-import { execFile, writeFileSync } from "../../../src/utils/sync-fs.ts";
+import { execFile } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
-import { join, dirname, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
+
+import { acquireStampLock } from "../../core/stamp-lock.ts";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse } from "yaml";
@@ -237,25 +239,15 @@ function lockFilePath(workspaceRoot: string, rfcId: string): string {
   return join(workspaceRoot, ".rfc-locks", `${slug}.lock`);
 }
 
-async function acquireRfcLock(
+// RFC-1504: shared dead-holder recovery — a lock recording this host and a
+// dead pid (or a foreign boot id) is broken and retried; a live pid still
+// returns acquired:false → RFC-IMP-05. Exported for the lock tests.
+export async function acquireRfcLock(
   workspaceRoot: string,
   rfcId: string,
 ): Promise<{ acquired: boolean; lockPath: string }> {
   const lockPath = lockFilePath(workspaceRoot, rfcId);
-  const lockDir = dirname(lockPath);
-  await io.mkdir(lockDir);
-
-  // Atomic lock acquisition via O_EXCL file creation
-  try {
-    writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
-      { flag: "wx" },
-    );
-    return { acquired: true, lockPath };
-  } catch {
-    return { acquired: false, lockPath };
-  }
+  return acquireStampLock(lockPath);
 }
 
 async function releaseRfcLock(lockPath: string): Promise<void> {
