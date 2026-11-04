@@ -7,7 +7,9 @@ hook refuses FLOW-CUT-12 with the release branch removed, untracked hook
 output stays out of the commit as a FLOW-CUT-14 warning, a named package
 line extracts at the release commit into a scratch (never the configured
 destination) and a failing extract-verify refuses FLOW-CUT-13 leaving
-develop and the tags untouched, and --dry-run lists the steps.</purpose>
+develop and the tags untouched, --dry-run lists the steps, and a refused
+fix cut rolls the fix branch back to its pre-release tip so the cut is
+rerun-safe.</purpose>
 <non-goals>
   <item>Never touches the enclosing repository — all fixtures are mkdtemp
   repos with their own hooks/ and a fake node_modules/.bin/repo-extract
@@ -21,6 +23,7 @@ develop and the tags untouched, and --dry-run lists the steps.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1502: step 1 — release-prepare + pre-tag verify tests</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
 </CHANGE_SUMMARY>
 */
 
@@ -229,5 +232,67 @@ describe("flow.cut — release-prepare hook and pre-tag verify (RFC-1502)", () =
     expect(data.released).toBe(true);
     const shown = await gitExec(repo, ["show", "main:tracked.txt"]);
     expect(shown.stdout).toContain("fix-prepared");
+  }, 60_000);
+
+  it("fix-mode FLOW-CUT-12 rolls the fix branch back — the cut re-runs cleanly", async () => {
+    const { repo } = await adoptedRepo();
+    const first = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(first.released).toBe(true);
+
+    const fix = await fixFlow(repo, ambientIo, { slug: "fix-rollback", brief: "t", dryRun: false });
+    const fixBranch = fix.branch!;
+    const wt = fix.worktree!;
+    dirs.push(wt);
+    await commitIn(wt, "hotfix.txt", "fix");
+
+    await writeHook(repo, "release-prepare", "#!/bin/sh\necho boom >&2\nexit 2\n");
+    const common = await commonGitDir(ambientIo, repo);
+    const entry = (await readRegistry(ambientIo, common)).branches.find((b) => b.name === fixBranch);
+    const tipBefore = await sha(repo, fixBranch);
+
+    const failed = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    expect(failed.released).toBe(false);
+    expect(failed.diagnostics[0]?.ruleId).toBe("FLOW-CUT-12");
+    // Rolled back: tip unchanged, worktree clean — a re-run cannot hit
+    // FLOW-CUT-07 on the leftover version writes.
+    expect(await sha(repo, fixBranch)).toBe(tipBefore);
+    expect((await gitExec(wt, ["status", "--porcelain"])).stdout.trim()).toBe("");
+
+    // Re-run with a working hook — no manual recovery needed.
+    await writeHook(repo, "release-prepare", "#!/bin/sh\nset -eu\necho fix-prepared >> tracked.txt\n");
+    const retried = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    expect(retried.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(retried.released).toBe(true);
+  }, 60_000);
+
+  it("fix-mode FLOW-CUT-13 removes the failed release commit — the cut re-runs cleanly", async () => {
+    const { repo } = await adoptedRepo({ packageLine: true });
+    const first = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(first.released).toBe(true);
+
+    const fix = await fixFlow(repo, ambientIo, { slug: "fix-rollback13", brief: "t", dryRun: false });
+    const fixBranch = fix.branch!;
+    const wt = fix.worktree!;
+    dirs.push(wt);
+    // Touch the lib line so the fix releases it and extract-verify runs.
+    await commitIn(wt, "packages/lib/hotfix.txt", "fix");
+
+    await writeHook(repo, "extract-verify", "#!/bin/sh\necho verify-boom >&2\nexit 4\n");
+    const common = await commonGitDir(ambientIo, repo);
+    const entry = (await readRegistry(ambientIo, common)).branches.find((b) => b.name === fixBranch);
+    const tipBefore = await sha(repo, fixBranch);
+
+    const failed = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    expect(failed.released).toBe(false);
+    expect(failed.diagnostics[0]?.ruleId).toBe("FLOW-CUT-13");
+    // The failed chore(release) commit is gone — a re-run cannot produce an
+    // empty release commit (FLOW-CUT-01) or stack a duplicate.
+    expect(await sha(repo, fixBranch)).toBe(tipBefore);
+    expect((await gitExec(wt, ["status", "--porcelain"])).stdout.trim()).toBe("");
+
+    await rm(join(repo, "hooks", "extract-verify.sh"));
+    const retried = await runFixCut(repo, ambientIo, { entry: entry!, linesGiven: false, dryRun: false });
+    expect(retried.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(retried.released).toBe(true);
   }, 60_000);
 });

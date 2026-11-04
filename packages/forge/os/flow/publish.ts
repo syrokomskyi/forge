@@ -16,11 +16,11 @@ and return the RFC publications[] row for the journal.</purpose>
   <item>verifyLineAtRef (RFC-1502) extracts into an mkdtemp scratch via `--dest` — the configured destination is never touched — and a spawn failure of the repo-extract binary reports as a verification failure, not a crash.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1499: step 2 — retire publish-forge/bump-forge scripts, add extract-verify hook</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: step 7 — remediation entries, docs, deviations, generated indexes</item>
+  <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -265,6 +265,8 @@ export async function verifyLineAtRef(
     }
     return { ok: true, skipped: false, detail: "" };
   } finally {
-    await rm(scratch, { recursive: true, force: true });
+    // Scratch removal is best-effort — a removal failure must not mask a
+    // computed verification result (nor crash the cut after ok was decided).
+    await rm(scratch, { recursive: true, force: true }).catch(() => {});
   }
 }
