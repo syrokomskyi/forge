@@ -16,20 +16,11 @@ the registry entry and journals the operator's reason.</purpose>
   <item>Task-file preservation runs before `git worktree remove` and only for owner.kind task — a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
-
-The dirty gate for session worktrees now uses full porcelain status
-(untracked files included) because it predicts 'git worktree remove';
-the primary-clean gate keeps tracked-only semantics because it predicts
-'merge --ff-only'. Lock release verifies the held payload before
-unlinking. Registry/journal failures map to FLOW-07 in every handler.
-The final branch-name collision reports FLOW-OPEN-04, flow.discard
-propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
-and integrate exposes teardown as its own field.</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -187,6 +178,21 @@ export async function discardFlowBranch(
       );
     }
 
+    // RFC-1509 Q-16: preserve BEFORE the teardown hook — a `git clean -fdx`
+    // teardown would destroy .forge/task/ with the rest of the worktree.
+    if (entry.owner.kind === "task") {
+      try {
+        await preserveTaskFiles(common, worktree, entry.owner.id, io);
+      } catch (error) {
+        return refuse(
+          "FLOW-DIS-02",
+          `could not preserve .forge/task/ for ${entry.owner.id}: ${error instanceof Error ? error.message : String(error)}`,
+          "copy the task files aside by hand, then re-run — the branch and registry entry are kept",
+          { branch },
+        );
+      }
+    }
+
     const teardown = await runFlowScript(io, "worktree-teardown", {
       primary,
       cwd: worktree,
@@ -200,21 +206,6 @@ export async function discardFlowBranch(
         `resolve what ${primary}/hooks/worktree-teardown.sh demands, then re-run`,
         { branch, teardown },
       );
-    }
-
-    // RFC-1509 Q-16: a task-owned branch's .forge/task/ payload survives the
-    // worktree — preserve it under the common git dir before removal.
-    if (entry.owner.kind === "task") {
-      try {
-        await preserveTaskFiles(common, worktree, entry.owner.id, io);
-      } catch (error) {
-        return refuse(
-          "FLOW-DIS-02",
-          `could not preserve .forge/task/ for ${entry.owner.id}: ${error instanceof Error ? error.message : String(error)}`,
-          "copy the task files aside by hand, then re-run — the branch and registry entry are kept",
-          { branch, teardown },
-        );
-      }
     }
 
     const rmArgs = ["worktree", "remove"];

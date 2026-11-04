@@ -7,6 +7,7 @@ worktree is removed.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 4 — preserveTaskFiles unit tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,7 +32,7 @@ describe("preserveTaskFiles", () => {
     const io = resolveIo(undefined);
 
     const copied = await preserveTaskFiles(common, worktree, "T-0042", io);
-    expect(copied).toEqual(["brief.md", "report.yaml"]);
+    expect(copied.map((p) => path.basename(p)).sort()).toEqual(["brief.md", "report.yaml"]);
     expect(await readFile(path.join(common, "forge", "tasks", "T-0042", "brief.md"), "utf8")).toBe("the brief");
     expect(await readFile(path.join(common, "forge", "tasks", "T-0042", "report.yaml"), "utf8")).toBe("the report");
   });

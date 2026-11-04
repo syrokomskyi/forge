@@ -13,6 +13,7 @@ or unknown when the product repo cannot be read.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 3 — system.task.status handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -105,7 +106,10 @@ export async function runSystemTaskStatus(
       productMessage: null,
     };
     if (task.dispatch !== null && task.state !== "cancelled") {
-      const folder = map?.local?.folders?.[task.product];
+      const folders = map?.local?.folders ?? {};
+      const folder = Object.prototype.hasOwnProperty.call(folders, task.product)
+        ? folders[task.product]
+        : undefined;
       if (folder === undefined || map === null) {
         row.productStatus = "unknown";
         row.productMessage = "no products.local.yaml folder for this product";
@@ -117,6 +121,7 @@ export async function runSystemTaskStatus(
             (b) => b.registered && b.name === task.dispatch!.branch,
           );
           let journalEvent: "integrate" | "discard" | null = null;
+          let journalReadable = true;
           try {
             const common = await commonGitDir(io, productRoot);
             const events = await readJournal(io, common);
@@ -127,9 +132,15 @@ export async function runSystemTaskStatus(
             );
             journalEvent = found?.event === "discard" ? "discard" : found ? "integrate" : null;
           } catch {
-            journalEvent = null;
+            journalReadable = false;
           }
-          if (entry !== undefined) {
+          if (status.registryError !== null || !journalReadable) {
+            // Orphaned is a negative claim — corrupt evidence must not assert it.
+            row.productStatus = "unknown";
+            row.productMessage = status.registryError
+              ? `product registry is corrupt: ${status.registryError.message}`
+              : "product journal is unreadable";
+          } else if (entry !== undefined) {
             row.productStatus = "registered";
             row.productMessage = `worktree ${entry.worktree ?? "(none)"}`;
           } else if (journalEvent === "integrate") {

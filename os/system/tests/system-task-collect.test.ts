@@ -8,6 +8,7 @@ reported→integrated, and --mark-failed.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — collect + preservation acceptance tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -173,6 +174,52 @@ describe("system.task.collect", () => {
     expect(task!.history.map((h) => h.to)).toEqual(
       expect.arrayContaining(["reported", "integrated"]),
     );
+  });
+
+  it("a needs-decision report without question refuses SYSTEM-TASK-08", async () => {
+    const { systemRoot, worktree } = await dispatched();
+    await writeReport(
+      worktree,
+      DONE_REPORT.replace("outcome: done", "outcome: needs-decision"),
+    );
+    const result = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-08")).toBe(true);
+  });
+
+  it("--mark-failed escapes a present-but-invalid report (fixHint is reachable)", async () => {
+    const { systemRoot, worktree } = await dispatched();
+    await writeReport(worktree, "schema: forge/task-report@1\ntask: T-0001\noutcome: nonsense\n");
+    const result = await runSystemTaskCollect(
+      input({ task: "T-0001", "mark-failed": true, reason: "report is wedged" }),
+      makeContext(systemRoot),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.state).toBe("failed");
+  });
+
+  it("a reported task with an unresolvable product checkout warns instead of stalling", async () => {
+    const systemRoot = await makeSystemRepo({
+      "system/system.yaml": VALID_SYSTEM_YAML,
+      "system/products.yaml": VALID_PRODUCTS_YAML,
+      "system/edges.yaml": VALID_EDGES_YAML,
+      "system/products.local.yaml": localMapFor({ alpha: "/definitely/not/here" }),
+      "queue/tasks/T-0001.yaml": taskYaml({
+        state: "reported",
+        report: "queue/reports/T-0001.yaml",
+        dispatch: {
+          branch: "auto/task-260101-01-x",
+          worktree: "/gone",
+          baseCommit: "deadbeef",
+          dispatchedAt: "2026-01-01T00:00:00Z",
+        },
+      }),
+      "queue/reports/T-0001.yaml": DONE_REPORT,
+    });
+    const result = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-05" && d.severity === "warning")).toBe(true);
+    expect(result.data?.state).toBe("reported");
   });
 
   it("collect --dry-run writes nothing", async () => {

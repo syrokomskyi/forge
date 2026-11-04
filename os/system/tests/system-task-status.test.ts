@@ -7,6 +7,7 @@ projection of task state plus product-side registry/journal evidence
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — status acceptance tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -100,6 +101,32 @@ describe("system.task.status", () => {
     expect(result.exitCode).toBe(0);
     expect(result.data?.tasks[0].productStatus).toBe("orphaned");
     expect(result.data?.tasks[0].productMessage).toContain("auto/task-260101-01-ghost");
+  });
+
+  it("a corrupt product registry reports unknown — never orphaned on broken evidence", async () => {
+    const productRoot = await makeProduct();
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const path = await import("node:path");
+    await mkdir(path.join(productRoot, ".git", "forge"), { recursive: true });
+    await writeFile(path.join(productRoot, ".git", "forge", "registry.yaml"), "not: [valid, registry");
+    const systemRoot = await makeSystemRepo({
+      "system/system.yaml": VALID_SYSTEM_YAML,
+      "system/products.yaml": VALID_PRODUCTS_YAML,
+      "system/edges.yaml": VALID_EDGES_YAML,
+      "system/products.local.yaml": localMapFor({ alpha: productRoot }),
+      "queue/tasks/T-0001.yaml": taskYaml({
+        state: "dispatched",
+        dispatch: {
+          branch: "auto/task-260101-01-ghost",
+          worktree: "/nonexistent",
+          baseCommit: "deadbeef",
+          dispatchedAt: "2026-01-01T00:00:00Z",
+        },
+      }),
+    });
+    const result = await runSystemTaskStatus(input({}), makeContext(systemRoot));
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.tasks[0].productStatus).toBe("unknown");
   });
 
   it("an unreadable product repo reports unknown, not an error", async () => {

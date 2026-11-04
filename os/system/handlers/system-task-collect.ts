@@ -17,6 +17,7 @@ sha — never from report commit ids. One call may apply dispatched → reported
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 3 — system.task.collect handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -160,15 +161,25 @@ export async function runSystemTaskCollect(
         productCommon = null;
       }
     }
+    // A reported task whose product git dir cannot be read would stall
+    // silently — surface the reason instead of reporting a frozen state.
+    if (task !== null && task.state === "reported" && productCommon === null) {
+      diagnostics.push({
+        ruleId: "SYSTEM-TASK-05",
+        severity: "warning",
+        message: `${task.id} is reported but the product checkout for '${task.product}' is unresolvable — the reported → integrated check is skipped this run`,
+      });
+    }
   }
 
   let reportFile: string | null = null;
   if (task !== null && diagnostics.every((d) => d.severity !== "error")) {
     const located = task.state === "dispatched" ? await locateReport(io, task, productCommon) : null;
+    const canMarkFailed = markFailed && reason !== null && reason.trim() !== "";
     if (task.state === "dispatched" && located === null) {
-      if (markFailed && reason !== null && reason.trim() !== "") {
+      if (canMarkFailed) {
         if (!dryRun) {
-          task = historyRow(task, "failed", "operator", reason);
+          task = historyRow(task, "failed", "operator", reason!);
           await writeTask(root, io, task);
         }
       } else {
@@ -179,6 +190,13 @@ export async function runSystemTaskCollect(
             "finish the product session or re-run with --mark-failed --reason <why>",
           ),
         );
+      }
+    } else if (task.state === "dispatched" && canMarkFailed) {
+      // --mark-failed deliberately discards a present report — the escape
+      // hatch SYSTEM-TASK-08's fixHint prescribes for a wedged report.
+      if (!dryRun) {
+        task = historyRow(task, "failed", "operator", reason!);
+        await writeTask(root, io, task);
       }
     } else if (located !== null) {
       reportFile = located.file;

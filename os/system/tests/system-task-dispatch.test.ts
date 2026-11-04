@@ -7,6 +7,7 @@ git-exclusion of .forge/task/ and the launcher argv.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 5 — dispatch acceptance tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -195,6 +196,67 @@ forbidden:
     const { readFile } = await import("node:fs/promises");
     const logged = await readFile(log, "utf8");
     expect(logged.trim()).toBe(`${result.data!.worktree}|T-0001`);
+  });
+
+  it("a failed worktree-setup hook leaves the task ready and writes nothing (FLOW-OPEN-07)", async () => {
+    const { systemRoot, productRoot } = await dispatchFixture();
+    const { mkdir, writeFile } = await import("node:fs/promises");
+    const path = await import("node:path");
+    await mkdir(path.join(productRoot, "hooks"), { recursive: true });
+    await writeFile(path.join(productRoot, "hooks", "worktree-setup.sh"), "exit 7\n");
+    const result = await runSystemTaskDispatch(input({ task: "T-0001" }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.diagnostics.some((d) => d.ruleId === "FLOW-OPEN-07")).toBe(true);
+    expect(result.data?.dispatched).toBe(false);
+    const io = (await import("../../../src/utils/io.ts")).resolveIo(undefined);
+    const { task } = await readTask(systemRoot, io, "T-0001");
+    expect(task!.state).toBe("ready");
+    expect(task!.dispatch).toBeNull();
+    // The launcher must not run into the broken worktree.
+    expect(result.data?.launcherRan).toBe(false);
+  });
+
+  it("dispatch --dry-run exercises the governed check — an ungoverned folder fails", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const ungoverned = await mkdtemp(path.join(os.tmpdir(), "ungoverned-"));
+    const { systemRoot } = await dispatchFixture({
+      "system/products.local.yaml": localMapFor({ alpha: ungoverned }),
+    });
+    const result = await runSystemTaskDispatch(
+      input({ task: "T-0001", "dry-run": true }),
+      makeContext(systemRoot),
+    );
+    expect(result.exitCode).toBe(1);
+    expect(
+      result.data?.diagnostics.some((d) => d.ruleId === "FLOW-OPEN-06" || d.ruleId === "FLOW-OPEN-01"),
+    ).toBe(true);
+  });
+
+  it("a brief whose frontmatter names a different task refuses (SYSTEM-TASK-02)", async () => {
+    const { systemRoot } = await dispatchFixture({
+      "queue/briefs/T-0001.md": readyBrief("T-0099"),
+    });
+    const result = await runSystemTaskDispatch(input({ task: "T-0001" }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-02")).toBe(true);
+  });
+
+  it("a brief naming the resolved sibling folder refuses (SYSTEM-TASK-06)", async () => {
+    const { mkdtemp } = await import("node:fs/promises");
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const betaParent = await mkdtemp(path.join(os.tmpdir(), "beta-parent-"));
+    const beta = path.join(betaParent, "beta-checkout");
+    await (await import("node:fs/promises")).mkdir(beta, { recursive: true });
+    const { systemRoot } = await dispatchFixture({
+      "system/products.local.yaml": localMapFor({ alpha: (await makeProduct()), beta }),
+      "queue/briefs/T-0001.md": readyBrief() + `\nSibling checkout lives at ${beta}\n`,
+    });
+    const result = await runSystemTaskDispatch(input({ task: "T-0001" }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-06")).toBe(true);
   });
 
   it("launcher non-zero exit warns SYSTEM-TASK-09 but the task stays dispatched", async () => {

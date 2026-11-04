@@ -12,6 +12,7 @@ is gone. Copies are idempotent (same owner id re-copies over).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 4 — preserve .forge/task/ under the common git dir</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,11 +23,25 @@ import type { WorkspaceIO } from "../../src/types.ts";
 /** Directory inside a task worktree that carries brief/report payloads. */
 export const TASK_FILES_DIR = ".forge/task";
 
+async function copyTree(src: string, dst: string, io: WorkspaceIO, into: string[]): Promise<void> {
+  for (const entry of await io.readdir(src)) {
+    const s = join(src, entry.name);
+    const d = join(dst, entry.name);
+    if (entry.isDirectory) {
+      await io.mkdir(d);
+      await copyTree(s, d, io, into);
+    } else if (entry.isFile) {
+      await io.copyFile(s, d);
+      into.push(d);
+    }
+  }
+}
+
 /**
- * Copy `<worktree>/.forge/task/` to `<commonGitDir>/forge/tasks/<ownerId>/`.
- * Returns the copied file names; an absent source directory is a no-op —
- * a task branch is allowed to end without a report (collect then reports
- * SYSTEM-TASK-07).
+ * Copy `<worktree>/.forge/task/` to `<commonGitDir>/forge/tasks/<ownerId>/`
+ * (recursive — subdirectories are preserved). Returns the copied file paths;
+ * an absent source directory is a no-op — a task branch is allowed to end
+ * without a report (collect then reports SYSTEM-TASK-07).
  */
 export async function preserveTaskFiles(
   commonGitDir: string,
@@ -36,13 +51,9 @@ export async function preserveTaskFiles(
 ): Promise<string[]> {
   const src = join(worktree, TASK_FILES_DIR);
   if (!(await io.exists(src))) return [];
-  const entries = await io.readdir(src);
-  const files = entries.filter((e) => e.isFile).map((e) => e.name).sort();
-  if (files.length === 0) return [];
   const dst = join(commonGitDir, "forge", "tasks", ownerId);
   await io.mkdir(dst);
-  for (const name of files) {
-    await io.copyFile(join(src, name), join(dst, name));
-  }
-  return files;
+  const copied: string[] = [];
+  await copyTree(src, dst, io, copied);
+  return copied;
 }

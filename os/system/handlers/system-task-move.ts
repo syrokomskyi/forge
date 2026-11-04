@@ -13,6 +13,7 @@ verdicts; verified-checks name a version-set file that lists the product.</purpo
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 3 — system.task.move handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -100,6 +101,14 @@ async function readyChecks(
           "SYSTEM-TASK-02",
           `${task.id} → ready: brief goal is still the create-scaffold placeholder`,
           "write the real goal in the brief frontmatter",
+        ),
+      );
+    } else if (parsed.data.task !== task.id || parsed.data.product !== task.product) {
+      diagnostics.push(
+        refusal(
+          "SYSTEM-TASK-02",
+          `${task.id} → ready: brief frontmatter names task=${parsed.data.task} product=${parsed.data.product}, expected ${task.id} / ${task.product}`,
+          "fix the frontmatter — the brief must be bound to this task",
         ),
       );
     }
