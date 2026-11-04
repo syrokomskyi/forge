@@ -13,9 +13,9 @@ the registry entry and journals the operator's reason.</purpose>
   <item>Dirty check runs before the teardown script — a discard we will refuse on dirt never executes repository code.</item>
   <item>`git branch -D` (not -d): a discarded branch is by definition unmerged.</item>
   <item>All post-removal git calls run with -C &lt;primary&gt; — the caller's cwd may be the removed worktree (AUDIT G3).</item>
+  <item>Task-file preservation runs before `git worktree remove` and only for owner.kind task — a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -29,6 +29,7 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
