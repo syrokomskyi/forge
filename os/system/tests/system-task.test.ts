@@ -8,6 +8,7 @@ ready-checks (brief, dependencies, edges) and the version-set gate.</purpose>
   <item>RFC-1509: step 5 — create/move acceptance tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
+  <item>RFC-1511: use schema-shaped version-set fixture, record r2 deviations (RFC-1511 review r2)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -293,7 +294,7 @@ forbidden:
     const root = await repoWithMap({
       "queue/tasks/T-0001.yaml": taskYaml({ state: "integrated" }),
       "system/version-sets/VS-0007.yaml":
-        "schema: forge/version-set@1\nid: VS-0007\nrecordedAt: 2026-11-04T00:00:00.000Z\nproducts:\n  alpha: v1.0.0\nscenarios:\n  - id: scenario-a\n    checks:\n      - product: alpha\n        argv: [git, --version]\n        sha256: sha256:0000\n",
+        "schema: forge/version-set@1\nid: VS-0007\nverifiedAt: 2026-11-04T00:00:00.000Z\nproducts:\n  alpha: v1.0.0\nscenarios: [scenario-a]\nevidence:\n  scenario-a: sha256:0000000000000000000000000000000000000000000000000000000000000000\n",
     });
     const ok = await runSystemTaskMove(
       input({ task: "T-0001", to: "verified", "version-set": "VS-0007" }),
