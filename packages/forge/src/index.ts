@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0374: initial public exports for forge package.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
 Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
@@ -17,6 +16,8 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
+  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <history>RFC-0374</history>
 </CHANGE_SUMMARY>
 */
 
@@ -199,6 +200,9 @@ export { createForgeNotesModule } from "../os/notes/notes.module.ts";
 export { createForgeProgramModule } from "../os/program/program.module.ts";
 export { forgePluginModule } from "../os/plugin/plugin.module.ts";
 export { createForgeFlowModule } from "../os/flow/flow.module.ts";
+export { createForgeSystemModule } from "../os/system/system.module.ts";
+export { edgeVerdict, loadSystemMap, assertSystemRepository } from "../os/system/repo.ts";
+export type { EdgeVerdict, SystemMap } from "../os/system/repo.ts";
 export type {
   FlowBranchKind,
   ParsedFlowBranch,

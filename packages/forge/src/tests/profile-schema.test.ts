@@ -9,6 +9,7 @@ Unit tests for profile schema covering its documented public contract and regres
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0638: initial domain field tests — parsing, defaults, validation, backward compat.</item>
+  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
 </CHANGE_SUMMARY>
 */
 
@@ -162,7 +163,7 @@ test("artifacts with missing required extensions field fails", () => {
 
 test("all shipped profiles parse without changes", () => {
   const profiles = listStackProfiles(FORGE_ROOT);
-  expect(profiles.length).toBe(6);
+  expect(profiles.length).toBe(7);
   for (const profile of profiles) {
     expect(profile.id).toBeDefined();
     expect(profile.workspace.dirs.length).toBeGreaterThan(0);

@@ -291,6 +291,14 @@
     "./os/trajectory": {
       "types": "./os/trajectory/index.ts",
       "default": "./os/trajectory/index.ts"
+    },
+    "./os/system": {
+      "types": "./os/system/index.ts",
+      "default": "./os/system/index.ts"
+    },
+    "./os/system-module": {
+      "types": "./os/system/system.module.ts",
+      "default": "./os/system/system.module.ts"
     }
   },
   "files": [
@@ -595,6 +603,14 @@
       "./os/trajectory": {
         "types": "./dist/os/trajectory/index.d.ts",
         "default": "./dist/os/trajectory/index.js"
+      },
+      "./os/system": {
+        "types": "./dist/os/system/index.d.ts",
+        "default": "./dist/os/system/index.js"
+      },
+      "./os/system-module": {
+        "types": "./dist/os/system/system.module.d.ts",
+        "default": "./dist/os/system/system.module.js"
       }
     }
   }
