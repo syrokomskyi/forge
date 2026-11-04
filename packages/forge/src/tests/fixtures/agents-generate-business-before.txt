@@ -79,6 +79,8 @@ Treat these XML documents as the primary semantic layer for AI work and keep the
 | fo-session-save                       | fo       | user       | document-only    |
 | fo-spec-ingest                        | fo       | user       | document-only    |
 | fo-step-commit                        | fo       | model      | code-mutation    |
+| fo-system-dispatch                    | fo       | user       | document-only    |
+| fo-task-run                           | fo       | user       | code-mutation    |
 | fo-triage                             | fo       | user       | document-only    |
 | forge-bootstrap                       | meta     | user       | content-mutation |
 | grilling                              | shared   | user       | read-only        |
@@ -149,6 +151,8 @@ When the operator expresses an intent in natural language, the agent routes to t
 | "save this session", "enhance session transcript with annotations", "save session with quality checks"                                                    | `fo-session-save`                       |
 | "ingest external specification", "vendor spec package into docs", "author spec skeleton"                                                                  | `fo-spec-ingest`                        |
 | "закоммитим", "commit after request", "auto-commit changes", "step commit"                                                                                | `fo-step-commit`                        |
+| "dispatch a system task", "run the system queue", "move a task to ready and dispatch it"                                                                  | `fo-system-dispatch`                    |
+| "run this task in the product", "execute the planted brief", "work this dispatched task"                                                                  | `fo-task-run`                           |
 | "triage this issue", "categorize incoming bug report", "triage external pull request", "process feature request"                                          | `fo-triage`                             |
 
 The agent uses judgment to calibrate routing — minor edits (typo fixes, small CSS changes) do not require skill invocation, while significant changes (new features, architectural decisions) do.
