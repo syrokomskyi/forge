@@ -19,7 +19,6 @@ at cleanup without moving develop again.</purpose>
   <item>FLOW-INT-07 covers develop moving between rebase and merge despite the lock — the branch stays rebased; a rerun rebases onto the new tip.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 4 — flow.integrate handler</item>
   <item>RFC-1487: step 4 — flow.integrate with lock, primary-side gate, ff-only merge and cleanup resume</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -33,6 +32,8 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
+  <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -510,7 +511,9 @@ export async function integrateFlowBranch(
             onProgress: opts.onProgress,
             onStale: (l) =>
               opts.onProgress?.(
-                `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
+                l.reason === "dead-holder"
+                  ? `broke dead-holder integration lock (pid ${l.pid ?? "?"} on ${l.host ?? "?"}, held since ${l.at})`
+                  : `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
               ),
           },
           integrateInner,
