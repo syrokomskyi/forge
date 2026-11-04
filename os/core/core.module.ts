@@ -6,18 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
-
-Declare every reachable env read on its owning command across engine/site/
-forge (fresh full-registry replay worklist: 151 ENV-INPUT-01, 60 commands).
-ForgeCommandMetadata gains the mirrored envInputs contract field. The
-npm_execpath ambient read in open-source-page.ts is removed for a
-deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354</history>
+  <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360</history>
 </CHANGE_SUMMARY>
 */
 
@@ -936,6 +930,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "missions/*",
           "missions/archive/**",
           "docs/specs/live/*.md",
+          "pnpm-lock.yaml",
         ],
         generates: [],
         reads: [
@@ -1115,10 +1110,17 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           }
 
           // RFC-1505: post-loop lockfile restore — safety net for mission.archive's
-          // own restore. If mission.archive moved workpieces and its install churned
-          // the lockfile without a successful restore, the tracked file stays dirty.
-          // Restore HEAD bytes instead of staging — mission churn is never committed.
-          if (!dryRun && totalMoved > 0) {
+          // own restore. Only mission moves run `pnpm install` and can churn the
+          // lockfile; gating on them alone means an rfc/adr/plan-only archive run
+          // never touches a locally edited pnpm-lock.yaml. Restore HEAD bytes
+          // instead of staging — mission churn is never committed.
+          const missionData = results["mission.archive"] as
+            | { moved?: unknown[] }
+            | undefined;
+          const missionMoved = Array.isArray(missionData?.moved)
+            ? missionData.moved.length
+            : 0;
+          if (!dryRun && missionMoved > 0) {
             try {
               const restored = await restoreTrackedLockfile(context.workspaceRoot, {
                 ...execFileSyncAdapter(),

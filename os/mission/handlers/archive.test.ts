@@ -11,6 +11,7 @@ Unit tests for archive covering mission.archive. It also guards the documented p
   <item>RFC-1311: Compass header sweep — declares the archive suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
+  <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
 </CHANGE_SUMMARY>
 */
 
@@ -474,7 +475,7 @@ describe("mission.archive", () => {
     expect(execFileSyncMock).toHaveBeenCalledWith(
       "git",
       ["show", "HEAD:pnpm-lock.yaml"],
-      expect.objectContaining({ cwd: tmpDir, maxBuffer: expect.any(Number) }),
+      expect.objectContaining({ cwd: tmpDir, maxBuffer: 64 * 1024 * 1024 }),
     );
     const gitWrites = execSyncMock.mock.calls.filter(
       (c) =>
@@ -514,11 +515,22 @@ describe("mission.archive", () => {
     expect(gitCalls).toEqual([]);
   });
 
-  test("RFC-0804: pnpm install failure is non-fatal", async () => {
+  test("RFC-0804: pnpm install failure is non-fatal and still restores the lockfile", async () => {
+    const tracked = "lockfileVersion: '9.0'\n\nimporters: {}\n";
+    const churned = `${tracked}\n  missions/test-m019/workpiece: {}\n`;
+    const lockfilePath = path.join(tmpDir, "pnpm-lock.yaml");
     execSyncMock.mockReset();
     execSyncMock.mockImplementation((cmd: string) => {
-      if (cmd.startsWith("pnpm install")) throw new Error("ECONNREFUSED");
+      if (cmd.startsWith("pnpm install")) {
+        writeFileSync(lockfilePath, churned);
+        throw new Error("ECONNREFUSED");
+      }
       return "";
+    });
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockImplementation((cmd: string, args?: string[]) => {
+      if (cmd === "git" && args?.[0] === "show") return tracked;
+      throw Object.assign(new Error("unexpected"), { status: 1 });
     });
     await writeMissionManifest(missionsDir, "test-m019", "closed");
 
@@ -527,6 +539,8 @@ describe("mission.archive", () => {
     expect(data.moved).toHaveLength(1);
     expect(data.moved[0].missionId).toBe("test-m019");
     expect(existsSync(path.join(missionsDir, "archive", "closed", "test-m019"))).toBe(true);
+    // A failed install still leaves churn — restore must run regardless.
+    expect(readFileSync(lockfilePath, "utf-8")).toBe(tracked);
   });
 
   test("RFC-0804: dry-run skips lockfile refresh", async () => {

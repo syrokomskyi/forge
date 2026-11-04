@@ -13,12 +13,12 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
   <item>RFC-1397: harden ship-in-flight guard per independent review (RFC-1397)</item>
   <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
-  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097, RFC-1138, RFC-1397</history>
+  <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
+  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097, RFC-1138, RFC-1397, warpgogol-m000175</history>
 </CHANGE_SUMMARY>
 */
 
@@ -33,6 +33,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { trashPath } from "../../../src/utils/fs-trash.ts";
+import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — workspace dep, may not be installed when forge is used standalone from npm
 import type { ShipInflightResult } from "@warpgogol/werkstatt-shared/kernel/ship-inflight";
@@ -653,14 +654,27 @@ export async function runMissionArchive(
   // the tracked lockfile is restored to HEAD bytes instead.
   if (!dryRun && moved.length > 0) {
     try {
+      // maxBuffer matches restoreTrackedLockfile's adapter — install output on
+      // a pruned workspace can exceed the ~1 MiB execSync default.
       execSync("pnpm install", {
         cwd: workspaceRoot,
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 120_000,
+        maxBuffer: 64 * 1024 * 1024,
       });
+    } catch (installErr) {
+      logger.warn(
+        `  pnpm install failed after archive — dependencies may be stale. Run 'pnpm install' manually: ${installErr instanceof Error ? installErr.message : String(installErr)}`,
+      );
+    }
+    try {
+      // Restore runs even when install failed — a partially-rewritten
+      // lockfile is still mission-local churn, never tracked bytes.
       const restored = await restoreTrackedLockfile(workspaceRoot, {
         ...execFileSyncAdapter(),
-        writeFile: (target, content) => fs.writeFile(target, content),
+        writeFile: async (target, content) => {
+          await writeFileIfChanged(target, content);
+        },
       });
       if (restored) {
         logger.info("  Restored pnpm-lock.yaml to HEAD bytes (install churn discarded)");
