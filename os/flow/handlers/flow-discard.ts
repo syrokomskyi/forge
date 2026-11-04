@@ -15,7 +15,6 @@ the registry entry and journals the operator's reason.</purpose>
   <item>All post-removal git calls run with -C &lt;primary&gt; — the caller's cwd may be the removed worktree (AUDIT G3).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 5 — flow.discard handler</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -29,6 +28,8 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -59,6 +60,7 @@ import {
   updateRegistry,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
+import { preserveTaskFiles } from "../task-files.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 
 export interface FlowDiscardData {
@@ -197,6 +199,21 @@ export async function discardFlowBranch(
         `resolve what ${primary}/hooks/worktree-teardown.sh demands, then re-run`,
         { branch, teardown },
       );
+    }
+
+    // RFC-1509 Q-16: a task-owned branch's .forge/task/ payload survives the
+    // worktree — preserve it under the common git dir before removal.
+    if (entry.owner.kind === "task") {
+      try {
+        await preserveTaskFiles(common, worktree, entry.owner.id, io);
+      } catch (error) {
+        return refuse(
+          "FLOW-DIS-02",
+          `could not preserve .forge/task/ for ${entry.owner.id}: ${error instanceof Error ? error.message : String(error)}`,
+          "copy the task files aside by hand, then re-run — the branch and registry entry are kept",
+          { branch, teardown },
+        );
+      }
     }
 
     const rmArgs = ["worktree", "remove"];

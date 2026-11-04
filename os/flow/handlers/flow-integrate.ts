@@ -19,7 +19,6 @@ at cleanup without moving develop again.</purpose>
   <item>FLOW-INT-07 covers develop moving between rebase and merge despite the lock — the branch stays rebased; a rerun rebases onto the new tip.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 4 — flow.integrate with lock, primary-side gate, ff-only merge and cleanup resume</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -33,6 +32,7 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
+  <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -68,6 +68,7 @@ import {
   type FlowRegistryEntry,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
+import { preserveTaskFiles } from "../task-files.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 import { join } from "node:path";
 
@@ -152,6 +153,26 @@ async function cleanupIntegrated(
           },
         ],
       };
+    }
+    // RFC-1509 Q-16: a task-owned branch's .forge/task/ payload survives the
+    // worktree — preserve it under the common git dir before removal.
+    if (entry.owner.kind === "task") {
+      try {
+        await preserveTaskFiles(common, worktree, entry.owner.id, io);
+      } catch (error) {
+        return {
+          cleanedUp: false,
+          gate: teardown,
+          diagnostics: [
+            {
+              ruleId: "FLOW-INT-04",
+              severity: "error",
+              message: `could not preserve .forge/task/ for ${entry.owner.id}: ${error instanceof Error ? error.message : String(error)}`,
+              fixHint: `copy ${worktree}/.forge/task/ aside by hand, then re-run flow.integrate — develop already moved`,
+            },
+          ],
+        };
+      }
     }
     const remove = await git(primary, io, ["worktree", "remove", worktree]);
     if (remove.exitCode !== 0) {
