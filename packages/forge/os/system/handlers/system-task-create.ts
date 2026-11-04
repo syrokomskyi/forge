@@ -11,6 +11,7 @@ with a placeholder goal). Writes files only — the session commits.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 3 — system.task.create handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,6 +21,7 @@ import type {
   ForgeCommandInput,
   ForgeCommandResult,
   ForgeRuntimeContext,
+  WorkspaceIO,
 } from "../../../src/types.ts";
 import { assertSystemRepository, loadSystemMap } from "../repo.ts";
 import { TASK_KINDS, type SystemTask } from "../task-schemas.ts";
@@ -82,6 +84,67 @@ constraints: []
 
 ${BRIEF_GOAL_PLACEHOLDER}
 `;
+}
+
+/**
+ * Build a proposed-state task plus its brief-scaffold files — the same write
+ * set system.task.create performs. Shared with system.outbox.scan --create
+ * (RFC-1510) so every task origin writes an identical record.
+ */
+export async function createTask(
+  root: string,
+  io: WorkspaceIO,
+  spec: {
+    product: string;
+    slug: string;
+    title: string;
+    kind: SystemTask["kind"];
+    contracts: string[];
+    dependsOn?: string[];
+    origin: SystemTask["origin"];
+    reason?: string;
+  },
+): Promise<{ task: SystemTask; files: string[] }> {
+  const id = await nextTaskId(root, io);
+  const task: SystemTask = {
+    schema: "forge/system-task@1",
+    id,
+    title: spec.title,
+    product: spec.product,
+    slug: spec.slug,
+    kind: spec.kind,
+    state: "proposed",
+    origin: spec.origin,
+    contracts: spec.contracts,
+    dependsOn: spec.dependsOn ?? [],
+    brief: path.posix.join("queue/briefs", `${id}.md`),
+    briefSha256: null,
+    dispatch: null,
+    report: null,
+    integratedCommit: null,
+    history: [
+      {
+        at: new Date().toISOString(),
+        from: "none",
+        to: "proposed",
+        by: "operator",
+        ...(spec.reason ? { reason: spec.reason } : {}),
+      },
+    ],
+  };
+  return { task, files: [taskFilePath(root, id), briefFilePath(root, id)] };
+}
+
+/** Write a task created by createTask plus its brief scaffold. */
+export async function writeTaskWithBrief(
+  root: string,
+  io: WorkspaceIO,
+  task: SystemTask,
+): Promise<void> {
+  await writeTask(root, io, task);
+  const brief = briefFilePath(root, task.id);
+  await io.mkdir(path.dirname(brief));
+  await io.writeFile(brief, briefScaffold(task.id, task.product));
 }
 
 export async function runSystemTaskCreate(
@@ -158,40 +221,23 @@ export async function runSystemTaskCreate(
   let task: SystemTask | null = null;
   const files: string[] = [];
   if (diagnostics.every((d) => d.severity !== "error")) {
-    id = await nextTaskId(root, io);
-    task = {
-      schema: "forge/system-task@1",
-      id,
-      title: title!,
+    const created = await createTask(root, io, {
       product: product!,
       slug: slug!,
+      title: title!,
       kind: kind as SystemTask["kind"],
-      state: "proposed",
-      origin: origin!,
       contracts,
       dependsOn,
-      brief: path.posix.join("queue/briefs", `${id}.md`),
-      briefSha256: null,
-      dispatch: null,
-      report: null,
-      integratedCommit: null,
-      history: [
-        {
-          at: new Date().toISOString(),
-          from: "none",
-          to: "proposed",
-          by: "operator",
-          ...(flagString(input, "reason") ? { reason: flagString(input, "reason")! } : {}),
-        },
-      ],
-    };
-    files.push(taskFilePath(root, id), briefFilePath(root, id));
+      origin: origin!,
+      ...(flagString(input, "reason") ? { reason: flagString(input, "reason")! } : {}),
+    });
+    task = created.task;
+    id = task.id;
+    files.push(...created.files);
   }
 
   if (task && !dryRun) {
-    await writeTask(root, io, task);
-    await io.mkdir(path.dirname(briefFilePath(root, id!)));
-    await io.writeFile(briefFilePath(root, id!), briefScaffold(id!, product!));
+    await writeTaskWithBrief(root, io, task);
   }
 
   const errors = diagnostics.filter((d) => d.severity === "error").length;
