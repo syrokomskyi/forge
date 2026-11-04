@@ -14,6 +14,7 @@ reports, null reviewsDir, and fenced-example immunity.
 <CHANGE_SUMMARY>
   <item>RFC-1454: RFC-IMP-15 deviation gate unit tests.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
+  <item>RFC-1513: batched committed-review reads evidence (AC-2, AC-3)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -117,6 +118,88 @@ describe("RFC-IMP-15 — amend deviations must land in ## Deviations", () => {
   it("multi-RFC reports bind via entry.rfc when report rfcId differs", async () => {
     const multi = `---\nreviewId: REVIEW-1\nrfcId: RFC-0001\ndesignDeviations:\n  - id: DEV-1\n    rfc: ${RFC_ID}\n    resolution: amend\n---\n\n# review\n`;
     const res = await gate({ "docs/reviews/code/r1.md": multi }, "# RFC-9001\n");
+    expect(res.errors).toHaveLength(1);
+  });
+});
+
+describe("RFC-1513 — batched committed-review reads (AC-2/AC-3)", () => {
+  const FILES: Record<string, string> = {
+    "docs/reviews/code/r1.md": amendReport(),
+    "docs/reviews/code/r2.md": report({ reviewId: "REVIEW-2", rfcId: RFC_ID }),
+    "docs/reviews/code/r3.md": report({ reviewId: "REVIEW-3", rfcId: "RFC-0001" }),
+  };
+
+  /** OriginGit stub — mode picks showMany absent, answering specs, or failing wholesale. */
+  function batchedGit(
+    files: Record<string, string>,
+    mode: "absent" | "specs" | "null",
+  ): { git: OriginGit; counters: { showManyCalls: number; showCalls: number } } {
+    const counters = { showManyCalls: 0, showCalls: 0 };
+    return {
+      counters,
+      git: {
+        run: async (args: string[]) => {
+          if (args[0] === "ls-tree") return Object.keys(files).join("\n") + "\n";
+          if (args[0] === "show") {
+            counters.showCalls++;
+            return files[String(args[1] ?? "").replace(/^HEAD:/, "")] ?? null;
+          }
+          return null;
+        },
+        ...(mode === "absent"
+          ? {}
+          : {
+              showMany: async (specs: string[]) => {
+                counters.showManyCalls++;
+                if (mode === "null") return null;
+                return specs.map((s) => files[s.replace(/^HEAD:/, "")] ?? null);
+              },
+            }),
+      },
+    };
+  }
+
+  it("AC-2: one batched showMany call and zero per-file show calls when supported", async () => {
+    const { git, counters } = batchedGit(FILES, "specs");
+    const res = await evaluateDeviationGate({
+      rfcId: RFC_ID,
+      strippedRfcBody: "# RFC-9001\n",
+      git,
+      reviewsDir: REVIEWS_DIR,
+    });
+    expect(counters.showManyCalls, "exactly one batched read per collection").toBe(1);
+    expect(counters.showCalls, "no per-file git show once showMany answers").toBe(0);
+    expect(res.errors).toHaveLength(1);
+    expect(res.errors[0]!.message).toContain("DEV-1");
+  });
+
+  it("AC-3: batched and sequential paths produce the identical violation set", async () => {
+    const body = "# RFC-9001\n\n## Deviations\n\n- DEV-9 (review REVIEW-9): unrelated.\n";
+    const seq = await evaluateDeviationGate({
+      rfcId: RFC_ID,
+      strippedRfcBody: body,
+      git: fakeGit(FILES),
+      reviewsDir: REVIEWS_DIR,
+    });
+    const { git } = batchedGit(FILES, "specs");
+    const batched = await evaluateDeviationGate({
+      rfcId: RFC_ID,
+      strippedRfcBody: body,
+      git,
+      reviewsDir: REVIEWS_DIR,
+    });
+    expect(batched.errors).toEqual(seq.errors);
+  });
+
+  it("falls back to sequential show calls when showMany resolves null wholesale", async () => {
+    const { git, counters } = batchedGit(FILES, "null");
+    const res = await evaluateDeviationGate({
+      rfcId: RFC_ID,
+      strippedRfcBody: "# RFC-9001\n",
+      git,
+      reviewsDir: REVIEWS_DIR,
+    });
+    expect(counters.showCalls).toBe(Object.keys(FILES).length);
     expect(res.errors).toHaveLength(1);
   });
 });

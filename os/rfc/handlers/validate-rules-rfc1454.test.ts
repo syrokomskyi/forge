@@ -15,6 +15,7 @@ repo because the committed-report index reads `git ls-tree`/`git show`.
   <item>RFC-1454: V-49 deviation-provenance validation tests.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
+  <item>RFC-1513: run-scoped committed-review index evidence (AC-1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,6 +25,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { validateSingleRfc, type AddViolationFn } from "./validate-rules.ts";
+import type { CommittedReview } from "./implement-stamp-deviations.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 
 interface Seen {
@@ -132,6 +134,77 @@ describe("V-49 — deviations provenance resolves to committed reviews (AC-4)", 
   test("no ## Deviations section → no committed-report scan → no V-49", async () => {
     const dir = await makeWorkspace({});
     const seen = await runValidate(dir, "# RFC-9999: Test RFC\n\nplain body\n");
+    expect(seen.filter((v) => v.rule === "V-49")).toHaveLength(0);
+  });
+});
+
+describe("RFC-1513 — run-scoped committed-review index (AC-1)", () => {
+  const runValidateWithIndex = async (
+    workspaceRoot: string,
+    body: string,
+    committedReviews: () => Promise<CommittedReview[]>,
+  ): Promise<Seen[]> => {
+    const seen: Seen[] = [];
+    const add: AddViolationFn = (_id, _file, rule, msg, severity) =>
+      void seen.push({ rule, severity, message: msg });
+    const parsed = makeParsed(body);
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      new Map(),
+      new Map(),
+      new Set(),
+      new Set(),
+      new Set(Object.keys(parsed.frontmatter)),
+      workspaceRoot,
+      add,
+      undefined,
+      undefined,
+      committedReviews,
+    );
+    return seen;
+  };
+
+  test("the shared getter builds the index at most once across deviation-carrying RFCs", async () => {
+    // The injected index names a review the real repo does not carry —
+    // a per-RFC collection would report dangling provenance, so a clean
+    // V-49 proves the getter (not execGitLog) answered. `builds` counts
+    // index constructions behind the memoized promise.
+    const dir = await makeWorkspace({
+      "docs/reviews/code/r1.md": REVIEW("REVIEW-1"),
+    });
+    let builds = 0;
+    let promise: Promise<CommittedReview[]> | undefined;
+    const committedReviews = () => {
+      promise ??= (async () => {
+        builds++;
+        return [
+          {
+            path: "docs/reviews/code/x.md",
+            reviewId: "REVIEW-IDX",
+            deviations: [],
+          },
+        ];
+      })();
+      return promise;
+    };
+    const body = DEVIATIONS("- DEV-1 (review REVIEW-IDX): changed.");
+    const first = await runValidateWithIndex(dir, body, committedReviews);
+    const second = await runValidateWithIndex(dir, body, committedReviews);
+    expect(builds, "one index build serves every deviation-carrying RFC").toBe(1);
+    expect(first.filter((v) => v.rule === "V-49")).toHaveLength(0);
+    expect(second.filter((v) => v.rule === "V-49")).toHaveLength(0);
+  });
+
+  test("the getter stays un-consumed for an RFC without ## Deviations entries", async () => {
+    const dir = await makeWorkspace({});
+    let invoked = 0;
+    const committedReviews = async () => {
+      invoked++;
+      return [];
+    };
+    const seen = await runValidateWithIndex(dir, "# RFC-9999: Test RFC\n\nplain body\n", committedReviews);
+    expect(invoked).toBe(0);
     expect(seen.filter((v) => v.rule === "V-49")).toHaveLength(0);
   });
 });
