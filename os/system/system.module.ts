@@ -1,21 +1,23 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Register the forge-system commands with the forge kernel registry:
-system.map.validate (RFC-1508, read-only) plus the RFC-1509 task queue —
-system.task.create/move/dispatch/collect/status. System commands gate on the
-system profile and mutate only system-repository files; dispatch's product
-side is limited to opening the task branch and writing .forge/task/.</purpose>
+system.map.validate (RFC-1508, read-only), the RFC-1509 task queue —
+system.task.create/move/dispatch/collect/status — and the RFC-1510 outbox
+pair: outbox.validate (any profile) plus system.outbox.scan. System commands
+gate on the system profile and mutate only system-repository files;
+dispatch's product side is limited to opening the task branch and writing
+.forge/task/.</purpose>
 <non-goals>
   <item>Do not implement handler logic here — delegate to handlers/.</item>
-  <item>No outbox, scenario or version-set commands — those are RFC-1510..1511.</item>
+  <item>No scenario or version-set commands — those are RFC-1511.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
+  <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <history>RFC-1508</history>
 </CHANGE_SUMMARY>
 */
@@ -29,6 +31,8 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
   const { runSystemTaskDispatch } = await import("./handlers/system-task-dispatch.ts");
   const { runSystemTaskCollect } = await import("./handlers/system-task-collect.ts");
   const { runSystemTaskStatus } = await import("./handlers/system-task-status.ts");
+  const { runOutboxValidate } = await import("./handlers/outbox-validate.ts");
+  const { runSystemOutboxScan } = await import("./handlers/system-outbox-scan.ts");
   return {
     name: "forge-system",
     version: "0.1.0",
@@ -306,6 +310,76 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           task: { kind: "string", description: "Limit the projection to one task id" },
         },
         execute: runSystemTaskStatus,
+      },
+      {
+        name: "outbox.validate",
+        description:
+          "Validate docs/outbox/*.yaml entries in ANY repository profile " +
+          "(RFC-1510) — the single validator of the outbox contract (DNA-91). " +
+          "Each file must satisfy forge/outbox@1 (OUTBOX-01) and its id must " +
+          "equal the filename stem (OUTBOX-02). An absent docs/outbox/ " +
+          "passes — adoption is opt-in per product. No system required.",
+        scope: "workspace",
+        contract: "outbox",
+        rules: [
+          { id: "OUTBOX-01", severity: "error" },
+          { id: "OUTBOX-02", severity: "error" },
+        ],
+        mutatesState: false,
+        writes: [],
+        coverage: "operator",
+        coverageNote:
+          "outbox entry validation — any forge repository, adopted per product (RFC-1510)",
+        reads: ["docs/outbox/"],
+        cacheable: false,
+        flags: {},
+        execute: runOutboxValidate,
+      },
+      {
+        name: "system.outbox.scan",
+        description:
+          "Scan every product's committed docs/outbox/ entries from develop " +
+          "(RFC-1510). Matches each open entry's contract to the offering " +
+          "product, classifies the edge via edgeVerdict and prints " +
+          "OutboxProposal rows. SYSTEM-OUTBOX-01 warns on contracts nobody " +
+          "offers, SYSTEM-OUTBOX-02 errors on forbidden edges (no task), " +
+          "SYSTEM-OUTBOX-03 warns when forge.yaml or an entry names the " +
+          "system id, SYSTEM-OUTBOX-04 warns and skips products without a " +
+          "local folder or develop. --create writes one proposed task per " +
+          "entry (origin outbox:<product>:<id>) — rescanning deduplicates.",
+        scope: "workspace",
+        contract: "system",
+        rules: [
+          { id: "SYSTEM-01", severity: "error" },
+          { id: "SYSTEM-MAP-01", severity: "error" },
+          { id: "OUTBOX-01", severity: "error" },
+          { id: "SYSTEM-OUTBOX-01", severity: "warning" },
+          { id: "SYSTEM-OUTBOX-02", severity: "error" },
+          { id: "SYSTEM-OUTBOX-03", severity: "warning" },
+          { id: "SYSTEM-OUTBOX-04", severity: "warning" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        writes: ["queue/tasks/", "queue/briefs/"],
+        generates: [],
+        coverage: "operator",
+        coverageNote:
+          "outbox scan — the operator turns committed product needs into proposed tasks (RFC-1510)",
+        reads: [
+          "forge.yaml",
+          "system/system.yaml",
+          "system/products.yaml",
+          "system/edges.yaml",
+          "system/products.local.yaml",
+          "queue/tasks/",
+          "<product>/.git/**",
+        ],
+        cacheable: false,
+        flags: {
+          create: { kind: "boolean", description: "Create proposed tasks for matched entries" },
+          "dry-run": { kind: "boolean", description: "Plan only — write nothing" },
+        },
+        execute: runSystemOutboxScan,
       },
     ],
     pipelines: [],
