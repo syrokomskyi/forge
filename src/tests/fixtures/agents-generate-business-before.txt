@@ -71,6 +71,7 @@ Treat these XML documents as the primary semantic layer for AI work and keep the
 | fo-idea-status                        | fo       | user       | read-only        |
 | fo-knowledge-distill                  | fo       | user       | document-only    |
 | fo-memory-sync                        | fo       | user       | content-mutation |
+| fo-outbox                             | fo       | user       | document-only    |
 | fo-qa                                 | fo       | user       | document-only    |
 | fo-reproduce                          | fo       | user       | code-mutation    |
 | fo-review                             | fo       | user       | read-only        |
@@ -140,6 +141,7 @@ When the operator expresses an intent in natural language, the agent routes to t
 | "show RFC and ADR status", "what is the status of this RFC", "list RFCs by status"                                                                        | `fo-idea-status`                        |
 | "distill knowledge", "compact skill knowledge", "knowledge lifecycle", "promote fix patterns"                                                             | `fo-knowledge-distill`                  |
 | "sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"                           | `fo-memory-sync`                        |
+| "request a contract", "add an outbox entry", "I need something another product provides"                                                                  | `fo-outbox`                             |
 | "I found a bug", "file a GitHub issue for this bug", "report a bug conversationally", "interactive QA session"                                            | `fo-qa`                                 |
 | "reproduce the bug", "reproduce this defect", "prove it fails first", "reproduction-first", "подтверди дефект тестом"                                     | `fo-reproduce`                          |
 | "проверим всё ли сделали правильно", "проверь изменения", "review this session", "review this code diff", "check code against Forge standards"            | `fo-review`                             |
