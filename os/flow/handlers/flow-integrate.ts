@@ -17,15 +17,15 @@ at cleanup without moving develop again.</purpose>
   <item>Every git call after worktree removal runs with -C &lt;primary&gt; — the caller's cwd may be the removed directory (AUDIT G3/G4).</item>
   <item>Rerun detection is `isAncestor(branchTip, develop)` on a registered entry — develop already containing the branch means the merge landed; only cleanup remains (AC-9).</item>
   <item>FLOW-INT-07 covers develop moving between rebase and merge despite the lock — the branch stays rebased; a rerun rebases onto the new tip.</item>
-  <item>Task-file preservation runs inside the cleanup branch before `git worktree remove` and only for owner.kind task — a copy failure refuses cleanup (FLOW-INT-04) so the report is never destroyed with the worktree (RFC-1509 Q-16).</item>
+  <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
-  <history>RFC-1487, RFC-1490</history>
+  <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
+  <history>RFC-1487, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
