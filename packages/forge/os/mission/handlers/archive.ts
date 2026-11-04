@@ -13,12 +13,12 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1397: ship-in-flight guard — per-candidate isShipInFlight check in both move phases; SHIP-INFLIGHT-01 skip, SHIP-INFLIGHT-02 stale warn, --ship-op self-exemption for the ship's own terminal archive step.</item>
   <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
   <item>RFC-1397: harden ship-in-flight guard per independent review (RFC-1397)</item>
   <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
-  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097, RFC-1138</history>
+  <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
+  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097, RFC-1138, RFC-1397</history>
 </CHANGE_SUMMARY>
 */
 
@@ -662,7 +662,9 @@ export async function runMissionArchive(
         ...execFileSyncAdapter(),
         writeFile: (target, content) => fs.writeFile(target, content),
       });
-      if (!restored) {
+      if (restored) {
+        logger.info("  Restored pnpm-lock.yaml to HEAD bytes (install churn discarded)");
+      } else {
         logger.warn(
           "  No tracked pnpm-lock.yaml at HEAD — install churn left in place; nothing to restore",
         );
