@@ -15,6 +15,7 @@ because a product cannot know the system's name.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1510: step 3 — develop-branch outbox scan and deduplicated task creation</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
+  <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,6 +56,12 @@ function diag(
   return fixHint ? { ruleId, severity, message, fixHint } : { ruleId, severity, message };
 }
 
+/** Word-boundary match for a kebab system id inside a product-side file. */
+function systemIdNeedleFor(id: string): RegExp {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(^|[^a-z0-9-])${escaped}([^a-z0-9-]|$)`);
+}
+
 /** Committed file contents on the product's develop, or null when unreadable. */
 async function gitShow(
   io: WorkspaceIO,
@@ -88,7 +95,9 @@ export async function runSystemOutboxScan(
   const created: string[] = [];
 
   if (map !== null) {
-    const { tasks } = await listTasks(root, io);
+    const listed = await listTasks(root, io);
+    diagnostics.push(...listed.diagnostics);
+    const tasks = listed.tasks;
     const originRef = (product: string, entry: string) => `${product}:${entry}`;
     const existingByOrigin = new Map<string, string>();
     for (const task of tasks) {
@@ -116,12 +125,43 @@ export async function runSystemOutboxScan(
       }
       const productRoot = path.isAbsolute(folder) ? folder : path.resolve(map.root, folder);
 
-      const listed = await io.exec(
-        "git",
-        ["ls-tree", "-r", "--name-only", "develop", "--", OUTBOX_DIR],
-        { cwd: productRoot },
-      );
-      if (listed.exitCode !== 0) {
+      // A stale products.local.yaml folder must warn, not crash — io.exec
+      // rejects on a nonexistent cwd before git ever runs.
+      let isDir = false;
+      try {
+        isDir = (await io.stat(productRoot)).isDirectory;
+      } catch {
+        isDir = false;
+      }
+      if (!isDir) {
+        diagnostics.push(
+          diag(
+            "SYSTEM-OUTBOX-04",
+            "warning",
+            `product '${product.id}' names a local folder that does not exist: ${folder} — skipped`,
+          ),
+        );
+        continue;
+      }
+
+      let tree: Awaited<ReturnType<WorkspaceIO["exec"]>>;
+      try {
+        tree = await io.exec(
+          "git",
+          ["ls-tree", "--name-only", "develop", `${OUTBOX_DIR}/`],
+          { cwd: productRoot },
+        );
+      } catch {
+        diagnostics.push(
+          diag(
+            "SYSTEM-OUTBOX-04",
+            "warning",
+            `product '${product.id}' is not a readable git checkout — skipped`,
+          ),
+        );
+        continue;
+      }
+      if (tree.exitCode !== 0) {
         diagnostics.push(
           diag(
             "SYSTEM-OUTBOX-04",
@@ -136,7 +176,7 @@ export async function runSystemOutboxScan(
       // check is limited to forge.yaml and outbox entries: older prose in
       // product docs is deliberately out of scope (audit A2).
       const forgeYaml = await gitShow(io, productRoot, "develop:forge.yaml");
-      if (forgeYaml !== null && forgeYaml.includes(map.system.id)) {
+      if (forgeYaml !== null && systemIdNeedleFor(map.system.id).test(forgeYaml)) {
         diagnostics.push(
           diag(
             "SYSTEM-OUTBOX-03",
@@ -147,10 +187,11 @@ export async function runSystemOutboxScan(
         );
       }
 
-      for (const rel of listed.stdout.split("\n").map((l) => l.trim()).filter((l) => l.endsWith(".yaml"))) {
+      const systemIdNeedle = systemIdNeedleFor(map.system.id);
+      for (const rel of tree.stdout.split("\n").map((l) => l.trim()).filter((l) => l.endsWith(".yaml"))) {
         const raw = await gitShow(io, productRoot, `develop:${rel}`);
         if (raw === null) continue;
-        if (raw.includes(map.system.id)) {
+        if (systemIdNeedle.test(raw)) {
           diagnostics.push(
             diag(
               "SYSTEM-OUTBOX-03",
@@ -184,6 +225,20 @@ export async function runSystemOutboxScan(
               "Run outbox.validate in the product repository.",
             ),
           );
+        }
+        if (
+          parsed !== null &&
+          path.posix.basename(rel, ".yaml") !== parsed.id
+        ) {
+          diagnostics.push(
+            diag(
+              "OUTBOX-02",
+              "error",
+              `${product.id} ${rel} declares id ${parsed.id} but the filename stem is ${path.posix.basename(rel, ".yaml")}`,
+              "Rename the file or fix the id — the filename stem is the canonical id.",
+            ),
+          );
+          continue;
         }
         if (parsed === null || parsed.state !== "open") continue;
 
@@ -232,7 +287,7 @@ export async function runSystemOutboxScan(
             kind: "change",
             contracts: [parsed.contract],
             origin: { kind: "outbox", ref },
-            reason: `outbox scan — ${parsed.need}`,
+            reason: `outbox scan — ${parsed.why}`,
           });
           await writeTaskWithBrief(root, io, task);
           proposal.taskId = task.id;

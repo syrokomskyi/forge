@@ -10,6 +10,7 @@ reports SYSTEM-OUTBOX-03 (AC-10).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1510: step 1 — system.outbox.scan tests</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
+  <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
 </CHANGE_SUMMARY>
 */
 
@@ -17,6 +18,7 @@ reports SYSTEM-OUTBOX-03 (AC-10).</purpose>
 
 import { describe, expect, it } from "vitest";
 import { mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { gitExec } from "../../flow/tests/helpers.ts";
@@ -193,6 +195,59 @@ forbidden:
     expect(result.data!.proposals[0]).toMatchObject({ target: null });
     expect(result.data!.diagnostics.some((d) => d.ruleId === "SYSTEM-OUTBOX-01")).toBe(true);
     expect(result.data!.created).toEqual([]);
+  });
+
+  it("a stale products.local.yaml folder warns SYSTEM-OUTBOX-04 instead of crashing", async () => {
+    const systemRoot = await makeSystemRepo({
+      "system/system.yaml": VALID_SYSTEM_YAML,
+      "system/products.yaml": VALID_PRODUCTS_YAML,
+      "system/edges.yaml": VALID_EDGES_YAML,
+      "system/products.local.yaml": localMapFor({
+        alpha: path.join(os.tmpdir(), "definitely-missing-alpha"),
+        beta: path.join(os.tmpdir(), "definitely-missing-beta"),
+      }),
+    });
+    const result = await runSystemOutboxScan(input(), makeContext(systemRoot));
+    expect(result.exitCode).toBe(0);
+    expect(
+      result.data!.diagnostics.filter((d) => d.ruleId === "SYSTEM-OUTBOX-04"),
+    ).toHaveLength(2);
+  });
+
+  it("a committed entry whose id differs from its filename stem refuses OUTBOX-02", async () => {
+    const { systemRoot, beta } = await fixture();
+    await commitFile(beta, "docs/outbox/OB-0009.yaml", ENTRY("OB-0001"));
+    const result = await runSystemOutboxScan(input({ create: true }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.diagnostics.some((d) => d.ruleId === "OUTBOX-02")).toBe(true);
+    expect(result.data!.proposals).toEqual([]);
+  });
+
+  it("a committed malformed entry refuses OUTBOX-01", async () => {
+    const { systemRoot, beta } = await fixture();
+    await commitFile(
+      beta,
+      "docs/outbox/OB-0001.yaml",
+      ENTRY("OB-0001").replace("state: open", "state: bogus"),
+    );
+    const result = await runSystemOutboxScan(input(), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.diagnostics.some((d) => d.ruleId === "OUTBOX-01")).toBe(true);
+  });
+
+  it("an outbox entry naming the system id reports SYSTEM-OUTBOX-03", async () => {
+    const { systemRoot, beta } = await fixture();
+    await commitFile(
+      beta,
+      "docs/outbox/OB-0001.yaml",
+      ENTRY("OB-0001").replace('why: "beta composes it"', 'why: "serve demo-system"'),
+    );
+    const result = await runSystemOutboxScan(input(), makeContext(systemRoot));
+    expect(
+      result.data!.diagnostics.some(
+        (d) => d.ruleId === "SYSTEM-OUTBOX-03" && d.message.includes("OB-0001"),
+      ),
+    ).toBe(true);
   });
 
   it("served or withdrawn entries are skipped", async () => {
