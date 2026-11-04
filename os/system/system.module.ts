@@ -11,6 +11,7 @@ system map's schema and cross-file validation. Read-only.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 3 — forge-system module registration</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
 </CHANGE_SUMMARY>
 */
 
@@ -45,7 +46,6 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "SYSTEM-MAP-05", severity: "warning" },
         ],
         mutatesState: false,
-        execOnReadOnly: true,
         writes: [],
         coverage: "operator",
         coverageNote:

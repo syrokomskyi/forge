@@ -12,6 +12,7 @@ error-severity diagnostic exists.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 3 — system.map.validate handler</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,8 +30,9 @@ export interface SystemMapValidateResult {
   status: "pass" | "warn" | "fail";
   systemId: string | null;
   products: number;
-  edges: { allowed: number; forbidden: number };
-  localProducts: number | null;
+  allowed: number;
+  forbidden: number;
+  localFolders: number | null;
   diagnostics: Diagnostic[];
 }
 
@@ -51,7 +53,7 @@ export async function runSystemMapValidate(
     diagnostics.push(...loaded.diagnostics);
     map = loaded.map;
     if (map) {
-      diagnostics.push(...(await validateSystemMap(map, root, io)));
+      diagnostics.push(...(await validateSystemMap(map, io)));
     }
   }
 
@@ -72,18 +74,16 @@ export async function runSystemMapValidate(
     status: errors > 0 ? "fail" : warnings > 0 ? "warn" : "pass",
     systemId: map?.system.id ?? null,
     products: map?.products.products.length ?? 0,
-    edges: {
-      allowed: map?.edges.allowed.length ?? 0,
-      forbidden: map?.edges.forbidden.length ?? 0,
-    },
-    localProducts: map?.local ? map.local.products.length : null,
+    allowed: map?.edges.allowed.length ?? 0,
+    forbidden: map?.edges.forbidden.length ?? 0,
+    localFolders: map?.local ? Object.keys(map.local.folders).length : null,
     diagnostics,
   };
 
   return {
     data: result,
     exitCode: errors > 0 ? 1 : 0,
-    summary: `system.map.validate: ${errors} error(s), ${warnings} warning(s) — ${result.products} product(s), ${result.edges.allowed} allowed and ${result.edges.forbidden} forbidden edge(s)`,
+    summary: `system.map.validate: ${errors} error(s), ${warnings} warning(s) — ${result.products} product(s), ${result.allowed} allowed and ${result.forbidden} forbidden edge(s)`,
     nextSteps:
       errors > 0
         ? [{ action: "Fix the error-severity system-map diagnostics above", kind: "required" }]

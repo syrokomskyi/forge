@@ -10,6 +10,7 @@ checkout warnings, and the single-lookup edge resolver's fixed precedence.</purp
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 1 — system.map.validate acceptance tests (AC-1..AC-6)</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
 </CHANGE_SUMMARY>
 */
 
@@ -82,6 +83,7 @@ allowed:
 forbidden:
   - consumer: beta
     contract: alpha-contract
+    reason: temporary quarantine
 `;
     const root = await makeSystemRepo(files);
     const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
@@ -92,7 +94,7 @@ forbidden:
   it("AC-5: product missing from products.local.yaml warns SYSTEM-MAP-05 with exit 0", async () => {
     const files = validMapFiles();
     files["system/products.local.yaml"] =
-      "schema: forge/system-products-local@1\nproducts:\n  - alpha\n";
+      "schema: forge/system-products-local@1\nfolders:\n  alpha: ./alpha\n";
     const root = await makeSystemRepo(files);
     const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
     expect(result.exitCode).toBe(0);
@@ -130,6 +132,7 @@ allowed:
 forbidden:
   - consumer: beta
     contract: alpha-contract
+    reason: quarantine
 `;
     const root = await makeSystemRepo(files);
     const { map } = await loadSystemMap(root, resolveIo());
@@ -146,6 +149,76 @@ forbidden:
 
   it("missing map files report SYSTEM-MAP-01 without throwing", async () => {
     const root = await makeSystemRepo();
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    expect(ruleIds(result.data?.diagnostics ?? [])).toContain("SYSTEM-MAP-01");
+  });
+
+  it("duplicate product ids report SYSTEM-MAP-02", async () => {
+    const files = validMapFiles();
+    files["system/products.yaml"] = `schema: forge/system-products@1
+products:
+  - id: alpha
+    remote: https://example.invalid/a.git
+    offers: [alpha-contract]
+  - id: alpha
+    remote: https://example.invalid/b.git
+    offers: []
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    const diags = result.data?.diagnostics ?? [];
+    expect(diags.find((d) => d.ruleId === "SYSTEM-MAP-02")?.message).toContain("duplicate");
+  });
+
+  it("schema-invalid files report SYSTEM-MAP-01 — unknown keys and missing forbidden reason", async () => {
+    const files = validMapFiles();
+    files["system/edges.yaml"] = `schema: forge/system-edges@1
+allowed:
+  - consumer: beta
+    contract: alpha-contract
+    bogus: key
+forbidden:
+  - consumer: beta
+    contract: alpha-contract
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    const diags = result.data?.diagnostics ?? [];
+    expect(ruleIds(diags)).toContain("SYSTEM-MAP-01");
+    expect(diags.every((d) => d.severity === "error")).toBe(true);
+  });
+
+  it("SYSTEM-MAP-01 on a schema-invalid file leaves the map unloaded (no cross-checks)", async () => {
+    const files = validMapFiles();
+    files["system/products.yaml"] = "schema: forge/system-products@1\nproducts:\n  - id: alpha\n";
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    const diags = result.data?.diagnostics ?? [];
+    expect(diags.map((d) => d.ruleId)).toEqual(["SYSTEM-MAP-01"]);
+  });
+
+  it("SYSTEM-MAP-05 warns when a mapped folder does not exist", async () => {
+    const files = validMapFiles();
+    files["system/products.local.yaml"] = `schema: forge/system-products-local@1
+folders:
+  alpha: ./alpha
+  beta: ./missing-beta
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(0);
+    const warning = result.data?.diagnostics.find((d) => d.ruleId === "SYSTEM-MAP-05");
+    expect(warning?.message).toContain("missing-beta");
+  });
+
+  it("a malformed products.local.yaml is SYSTEM-MAP-01, not a throw", async () => {
+    const files = validMapFiles();
+    files["system/products.local.yaml"] = "schema: forge/system-products-local@1\nfolders: [not-a-map\n";
+    const root = await makeSystemRepo(files);
     const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
     expect(result.exitCode).toBe(1);
     expect(ruleIds(result.data?.diagnostics ?? [])).toContain("SYSTEM-MAP-01");

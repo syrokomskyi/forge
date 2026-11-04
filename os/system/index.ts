@@ -9,6 +9,7 @@ system-map loader/validator and schemas for reuse by RFC-1509..1511.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 3 — system module barrel export</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,19 +27,21 @@ export {
 } from "./repo.ts";
 export type { EdgeVerdict, SystemMap, SystemMapLoadResult } from "./repo.ts";
 export {
-  edgeEntrySchema,
-  productEntrySchema,
-  productsLocalSchema,
-  systemConfigSchema,
+  systemEdgeSchema,
   systemEdgesSchema,
+  systemForbiddenEdgeSchema,
+  systemProductSchema,
+  systemProductsLocalSchema,
   systemProductsSchema,
+  systemSchema,
   SYSTEM_ID_PATTERN,
 } from "./schemas.ts";
 export type {
-  EdgeEntry,
-  ProductEntry,
-  ProductsLocal,
-  SystemConfig,
+  System,
+  SystemEdge,
   SystemEdges,
+  SystemForbiddenEdge,
+  SystemProduct,
   SystemProducts,
+  SystemProductsLocal,
 } from "./schemas.ts";

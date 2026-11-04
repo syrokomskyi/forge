@@ -552,12 +552,6 @@ workspace:
             ]
           }
         }
-    - path: systems-cache/.gitkeep
-      content: |
-        # Sternsystem cache directory (RFC-0790)
-        # Per-system config and state files live in systems-cache/<id>/
-    - path: missions/.gitkeep
-      content: ""
     - path: .forge/pinned.yaml
       content: |
         # Pinned foundation files (DNA-62, RFC-0733)
@@ -572,8 +566,6 @@ workspace:
           - path: turbo.json
             mode: protect
           - path: tsconfig.base.json
-            mode: protect
-          - path: systems-cache/.gitkeep
             mode: protect
           - path: scripts/git-guard.sh
             mode: protect
@@ -634,7 +626,7 @@ workspace:
         ## Stack
 
         - Engine: @warpgogol/forge
-        - Stack profile: forge-shell
+        - Stack profile: system
     - path: hooks/worktree-setup.sh
       content: |
         #!/bin/sh
