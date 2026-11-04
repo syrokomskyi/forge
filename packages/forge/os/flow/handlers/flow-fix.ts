@@ -14,6 +14,7 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
 <KEY_DECISIONS>
   <item>Touched package lines come from `git diff --name-only baseSha..fixTip` intersected with each line's paths — the fix commits declare what they release (AC-15).</item>
   <item>The fix cut never fast-forwards develop — it update-refs main at the fix tip, then delegates the port to backmergeFlow so the conflict path reports released + backmerge: conflict.</item>
+  <item>RFC-1502: the fix release commit uses the same `add -u` staging + FLOW-CUT-14 untracked removal as the ordinary cut, and verifies named package lines at the fix tip before any ref moves.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
