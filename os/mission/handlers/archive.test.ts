@@ -9,12 +9,13 @@ Unit tests for archive covering mission.archive. It also guards the documented p
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the archive suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
 </CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach, vi } from "vitest";
 import fs from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import os from "node:os";
 import { runMissionArchive } from "./archive.ts";
@@ -25,9 +26,14 @@ vi.mock("../../../src/utils/fs-trash.ts", () => ({
 }));
 
 const execSyncMock = vi.fn<(cmd: string, opts?: Record<string, unknown>) => string | Buffer>();
+const execFileSyncMock = vi.fn<
+  (cmd: string, args?: string[], opts?: Record<string, unknown>) => string | Buffer
+>();
 
 vi.mock("node:child_process", () => ({
   execSync: (cmd: string, opts?: Record<string, unknown>) => execSyncMock(cmd, opts),
+  execFileSync: (cmd: string, args?: string[], opts?: Record<string, unknown>) =>
+    execFileSyncMock(cmd, args, opts),
 }));
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
@@ -77,6 +83,10 @@ beforeEach(async () => {
   tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), "mission-archive-test-"));
   missionsDir = path.join(tmpDir, "missions");
   await fs.mkdir(missionsDir, { recursive: true });
+  execSyncMock.mockReset();
+  execSyncMock.mockReturnValue("");
+  execFileSyncMock.mockReset();
+  execFileSyncMock.mockReturnValue("");
 });
 
 afterEach(async () => {
@@ -435,50 +445,70 @@ describe("mission.archive", () => {
     expect(installCall![1]).toMatchObject({ cwd: tmpDir });
   });
 
-  test("RFC-0804: lockfile committed when dirty after install", async () => {
+  test("RFC-1505 AC-4: install churn on pnpm-lock.yaml is restored from HEAD, never committed", async () => {
+    const tracked = "lockfileVersion: '9.0'\n\nimporters: {}\n";
+    const churned = `${tracked}\n  missions/test-m018/workpiece: {}\n`;
+    const lockfilePath = path.join(tmpDir, "pnpm-lock.yaml");
+    writeFileSync(lockfilePath, tracked);
     execSyncMock.mockReset();
-    // pnpm install succeeds, git status shows dirty lockfile, git add/commit succeed
     execSyncMock.mockImplementation((cmd: string) => {
-      if (cmd.startsWith("pnpm install")) return "";
-      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
+      if (cmd.startsWith("pnpm install")) {
+        writeFileSync(lockfilePath, churned);
+        return "";
+      }
+      return "";
+    });
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockImplementation((cmd: string, args?: string[]) => {
+      if (cmd === "git" && args?.[0] === "show") return tracked;
       return "";
     });
     await writeMissionManifest(missionsDir, "test-m018", "closed");
 
     await runMissionArchive(makeInput(), makeContext(tmpDir));
 
-    const commitCall = execSyncMock.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].startsWith("git commit"),
+    expect(readFileSync(lockfilePath, "utf-8")).toBe(tracked);
+    expect(execFileSyncMock).toHaveBeenCalledWith(
+      "git",
+      ["show", "HEAD:pnpm-lock.yaml"],
+      expect.objectContaining({ cwd: tmpDir }),
     );
-    expect(commitCall).toBeDefined();
-    expect(commitCall![0]).toContain("refresh pnpm-lock.yaml after mission.archive");
-  });
-
-  test("W5-6: on a protected branch of an adopted repo the lockfile is neither staged nor committed", async () => {
-    execSyncMock.mockReset();
-    execSyncMock.mockImplementation((cmd: string) => {
-      if (cmd.startsWith("pnpm install")) return "";
-      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
-      if (cmd.startsWith("git symbolic-ref")) return "develop\n";
-      return "";
-    });
-    await fs.mkdir(path.join(tmpDir, "hooks"), { recursive: true });
-    await fs.writeFile(path.join(tmpDir, "hooks", "flow-guard.sh"), "#!/bin/sh\n");
-    await writeMissionManifest(missionsDir, "test-m018b", "closed");
-    const warnings: string[] = [];
-    const context = makeContext(tmpDir);
-    (context.logger as { warn: (m: string) => void }).warn = (m: string) => warnings.push(m);
-
-    const data = unwrap(await runMissionArchive(makeInput(), context));
-
-    expect(data.moved).toHaveLength(1);
     const gitWrites = execSyncMock.mock.calls.filter(
       (c) =>
         typeof c[0] === "string" &&
-        (c[0].startsWith("git add") || c[0].startsWith("git rm") || c[0].startsWith("git commit")),
+        (c[0].startsWith("git add") ||
+          c[0].startsWith("git rm") ||
+          c[0].startsWith("git commit") ||
+          c[0].startsWith("git status")),
     );
     expect(gitWrites).toEqual([]);
-    expect(warnings.some((w) => w.includes("develop") && w.includes("flow.open"))).toBe(true);
+  });
+
+  test("RFC-1505 AC-4: no tracked lockfile at HEAD → churn left in place, no git calls", async () => {
+    const churned = "lockfileVersion: '9.0'\n# local churn\n";
+    const lockfilePath = path.join(tmpDir, "pnpm-lock.yaml");
+    execSyncMock.mockReset();
+    execSyncMock.mockImplementation((cmd: string) => {
+      if (cmd.startsWith("pnpm install")) {
+        writeFileSync(lockfilePath, churned);
+        return "";
+      }
+      return "";
+    });
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockImplementation(() => {
+      throw Object.assign(new Error("fatal: path does not exist"), { status: 128 });
+    });
+    await writeMissionManifest(missionsDir, "test-m018b", "closed");
+
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
+
+    expect(data.moved).toHaveLength(1);
+    expect(readFileSync(lockfilePath, "utf-8")).toBe(churned);
+    const gitCalls = execSyncMock.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git"),
+    );
+    expect(gitCalls).toEqual([]);
   });
 
   test("RFC-0804: pnpm install failure is non-fatal", async () => {
@@ -651,52 +681,50 @@ describe("mission.archive", () => {
     expect(data.skipped[0].reason).toContain("use --clean-orphans");
   });
 
-  test("RFC-1138 AC-2: git add -A skipped when archive target is gitignored", async () => {
+  test("RFC-1505: archive never stages or commits mission moves — no git calls at all", async () => {
     execSyncMock.mockReset();
     execSyncMock.mockImplementation((cmd: string) => {
       if (cmd.startsWith("pnpm install")) return "";
-      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
-      // git check-ignore exits 0 → path is ignored (missions/ is gitignored)
-      if (cmd.startsWith("git check-ignore")) return "";
       return "";
     });
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockReturnValue("tracked\n");
     await writeMissionManifest(missionsDir, "test-r1138-01", "closed");
 
-    await runMissionArchive(makeInput(), makeContext(tmpDir));
+    const data = unwrap(await runMissionArchive(makeInput(), makeContext(tmpDir)));
 
-    const checkIgnoreCall = execSyncMock.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].startsWith("git check-ignore"),
+    expect(data.moved).toHaveLength(1);
+    expect(existsSync(path.join(missionsDir, "archive", "closed", "test-r1138-01"))).toBe(
+      true,
     );
-    expect(checkIgnoreCall).toBeDefined();
-
-    const addArchiveCall = execSyncMock.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].startsWith("git add -A"),
+    const gitCalls = execSyncMock.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git"),
     );
-    expect(addArchiveCall).toBeUndefined();
-
-    // Lockfile itself is still staged + committed
-    const lockfileAdd = execSyncMock.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0] === "git add pnpm-lock.yaml",
-    );
-    expect(lockfileAdd).toBeDefined();
+    expect(gitCalls).toEqual([]);
   });
 
-  test("RFC-1138 AC-2: git add -A still runs when archive target is NOT gitignored", async () => {
+  test("RFC-1505: restore runs on any branch — no protected-branch check remains", async () => {
     execSyncMock.mockReset();
     execSyncMock.mockImplementation((cmd: string) => {
       if (cmd.startsWith("pnpm install")) return "";
-      if (cmd.startsWith("git status --porcelain pnpm-lock.yaml")) return "M pnpm-lock.yaml";
-      // git check-ignore exits 1 → not ignored → execSync throws
-      if (cmd.startsWith("git check-ignore")) throw new Error("exit 1");
       return "";
     });
+    execFileSyncMock.mockReset();
+    execFileSyncMock.mockImplementation((cmd: string, args?: string[]) => {
+      if (cmd === "git" && args?.[0] === "show") return "tracked\n";
+      return "";
+    });
+    // A flow-adopted checkout on a protected branch — RFC-1505 removes the
+    // branch check entirely: no symbolic-ref probe, no staging, no commits.
+    await fs.mkdir(path.join(tmpDir, "hooks"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, "hooks", "flow-guard.sh"), "#!/bin/sh\n");
     await writeMissionManifest(missionsDir, "test-r1138-02", "closed");
 
     await runMissionArchive(makeInput(), makeContext(tmpDir));
 
-    const addArchiveCall = execSyncMock.mock.calls.find(
-      (c) => typeof c[0] === "string" && c[0].startsWith("git add -A"),
+    const gitCalls = execSyncMock.mock.calls.filter(
+      (c) => typeof c[0] === "string" && c[0].startsWith("git"),
     );
-    expect(addArchiveCall).toBeDefined();
+    expect(gitCalls).toEqual([]);
   });
 });

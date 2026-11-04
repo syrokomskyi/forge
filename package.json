@@ -136,6 +136,10 @@
       "types": "./os/mission/index.ts",
       "default": "./os/mission/index.ts"
     },
+    "./os/mission/lockfile": {
+      "types": "./os/mission/lockfile.ts",
+      "default": "./os/mission/lockfile.ts"
+    },
     "./os/mission-module": {
       "types": "./os/mission/mission.module.ts",
       "default": "./os/mission/mission.module.ts"
@@ -447,6 +451,10 @@
       "./os/mission": {
         "types": "./dist/os/mission/index.d.ts",
         "default": "./dist/os/mission/index.js"
+      },
+      "./os/mission/lockfile": {
+        "types": "./dist/os/mission/lockfile.d.ts",
+        "default": "./dist/os/mission/lockfile.js"
       },
       "./os/mission-module": {
         "types": "./dist/os/mission/mission.module.d.ts",
