@@ -60,11 +60,16 @@ export async function runFlowScript(
     return { status: "skipped", exitCode: null, stderrTail: "", stdout: "" };
   }
   const result = await io.exec("sh", [scriptPath], { cwd: opts.cwd, env: opts.env });
-  const tail = result.stderr
-    .split("\n")
-    .filter((line) => line.length > 0)
-    .slice(-STDERR_TAIL_LINES)
-    .join("\n");
+  // A failing hook may report only on stdout (forge commands do); an empty tail
+  // would leave the refusal without a reason.
+  const tailOf = (text: string): string =>
+    text
+      .split("\n")
+      .filter((line) => line.length > 0)
+      .slice(-STDERR_TAIL_LINES)
+      .join("\n");
+  const stderrTail = tailOf(result.stderr);
+  const tail = stderrTail === "" && result.exitCode !== 0 ? tailOf(result.stdout) : stderrTail;
   const stdout =
     result.stdout.length > STDOUT_CAP
       ? `${result.stdout.slice(0, STDOUT_CAP)}…[truncated]`

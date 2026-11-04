@@ -620,7 +620,7 @@ workspace:
 
         ```sh
         pnpm exec forge doctor
-        pnpm exec forge validate
+        pnpm exec forge system.map.validate
         ```
 
         ## Stack
@@ -641,7 +641,7 @@ workspace:
         # cwd: the worktree under judgment; non-zero exit refuses.
         set -eu
         if [ -e node_modules/.bin/forge ]; then
-          pnpm exec forge validate
+          pnpm exec forge system.map.validate
         else
           echo "integration-gate: forge is not installed — skipping validation" >&2
           exit 0

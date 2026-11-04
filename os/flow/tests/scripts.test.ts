@@ -82,6 +82,19 @@ describe("runFlowScript", () => {
     expect(result.stderrTail).not.toContain("line-4\n");
   });
 
+  it("a failure that wrote only to stdout reports the stdout tail", async () => {
+    const primary = await dir();
+    const branch = await dir();
+    await writeScript(primary, "integration-gate", `echo "the reason"\nexit 1`);
+    const result = await runFlowScript(ambientIo, "integration-gate", {
+      primary,
+      cwd: branch,
+      env: {},
+    });
+    expect(result.status).toBe("failed");
+    expect(result.stderrTail).toContain("the reason");
+  });
+
   it("uses the primary copy even when the branch worktree carries a different one (G1)", async () => {
     const primary = await dir();
     const branch = await dir();
