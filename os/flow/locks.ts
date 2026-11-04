@@ -25,11 +25,14 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
 </CHANGE_SUMMARY>
 */
 
 import { hostname } from "node:os";
-import { open, rm } from "node:fs/promises";
+import { open, readFile, rm } from "node:fs/promises";
+
+import { currentBootId, holderIsDead } from "../core/lock-holder.ts";
 
 export interface FlowLockOptions {
   /** Maximum time to wait for a live lock before throwing LockTimeoutError. */
@@ -39,8 +42,17 @@ export interface FlowLockOptions {
   /** Emit onProgress at this interval while waiting (0/undefined = silent). */
   progressEveryMs?: number;
   onProgress?: (message: string) => void;
-  /** Called when a stale lock is broken — the caller logs the warning. */
-  onStale?: (lock: { path: string; at: string; ageMs: number }) => void;
+  /** Called when a stale lock is broken — the caller logs the warning.
+   * `reason: "dead-holder"` marks an immediate dead-pid/boot-id break;
+   * absent reason means the classic stale-age break. */
+  onStale?: (lock: {
+    path: string;
+    at: string;
+    ageMs: number;
+    reason?: "dead-holder" | "stale-age";
+    pid?: number;
+    host?: string;
+  }) => void;
   /** Injectable clock for tests. */
   now?: () => number;
   /** Injectable sleep for tests. */
@@ -61,6 +73,8 @@ interface LockFileContent {
   pid: number;
   host: string;
   at: string;
+  /** RFC-1504: machine boot id when the platform has one — written only when defined. */
+  bootId?: string;
 }
 
 const defaultSleep = (ms: number): Promise<void> =>
@@ -104,6 +118,22 @@ async function lockAgeMs(
   }
 }
 
+/** Holder fields of the current lock file; null when unreadable. */
+async function readHolder(lockPath: string): Promise<LockFileContent | null> {
+  try {
+    const parsed = JSON.parse(await readFile(lockPath, "utf8")) as Record<string, unknown>;
+    if (typeof parsed["pid"] !== "number") return null;
+    return {
+      pid: parsed["pid"],
+      host: typeof parsed["host"] === "string" ? parsed["host"] : "",
+      at: typeof parsed["at"] === "string" ? parsed["at"] : "",
+      bootId: typeof parsed["bootId"] === "string" ? parsed["bootId"] : undefined,
+    };
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Hold `lockPath` exclusively for the duration of `fn`. Waits while a live
  * holder exists, breaks a lock older than `staleMs` with an onStale warning,
@@ -121,17 +151,36 @@ export async function withFlowLock<T>(
   const deadline = now() + opts.waitMs;
   let nextProgress = now() + (opts.progressEveryMs ?? Number.POSITIVE_INFINITY);
 
+  const ownBootId = currentBootId();
   let heldPayload: { pid: number; at: string } | null = null;
   for (;;) {
     const at = new Date(now()).toISOString();
-    const acquired = await tryAcquire(lockPath, {
+    const content: LockFileContent = {
       pid: process.pid,
       host: hostname(),
       at,
-    });
+    };
+    if (ownBootId !== undefined) content.bootId = ownBootId;
+    const acquired = await tryAcquire(lockPath, content);
     if (acquired) {
       heldPayload = { pid: process.pid, at };
       break;
+    }
+
+    // RFC-1504: a dead holder's lock is removed and retried at once —
+    // before the age rule, so a crashed process never makes anyone wait.
+    const holder = await readHolder(lockPath);
+    if (holder !== null && holderIsDead(holder)) {
+      opts.onStale?.({
+        path: lockPath,
+        at: holder.at,
+        ageMs: 0,
+        reason: "dead-holder",
+        pid: holder.pid,
+        host: holder.host,
+      });
+      await rm(lockPath, { force: true });
+      continue;
     }
 
     const age = await lockAgeMs(lockPath, io.readFile, now());
@@ -140,6 +189,7 @@ export async function withFlowLock<T>(
         path: lockPath,
         at: new Date(now() - age).toISOString(),
         ageMs: age,
+        reason: "stale-age",
       });
       await rm(lockPath, { force: true });
       continue;
