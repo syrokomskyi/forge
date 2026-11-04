@@ -13,6 +13,7 @@ error-severity diagnostic exists.</purpose>
   <item>RFC-1508: step 3 — system.map.validate handler</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
+  <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,7 +24,13 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
-import { assertSystemRepository, loadSystemMap, validateSystemMap } from "../repo.ts";
+import {
+  assertSystemRepository,
+  loadScenarios,
+  loadSystemMap,
+  validateScenarios,
+  validateSystemMap,
+} from "../repo.ts";
 
 export interface SystemMapValidateResult {
   command: "system.map.validate";
@@ -54,6 +61,9 @@ export async function runSystemMapValidate(
     map = loaded.map;
     if (map) {
       diagnostics.push(...(await validateSystemMap(map, io)));
+      const scenarios = await loadScenarios(root, io);
+      diagnostics.push(...scenarios.diagnostics);
+      diagnostics.push(...validateScenarios(map, scenarios.scenarios));
     }
   }
 

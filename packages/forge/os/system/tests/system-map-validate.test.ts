@@ -12,6 +12,7 @@ checkout warnings, and the single-lookup edge resolver's fixed precedence.</purp
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1508: close rfc-1508 review r2 findings on folder lookup and diagnostics</item>
+  <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
 </CHANGE_SUMMARY>
 */
 
@@ -234,6 +235,65 @@ folders:
       ],
     });
     expect(parse.success).toBe(false);
+  });
+
+  it("AC-9: a scenario naming an unknown product reports SYSTEM-MAP-06", async () => {
+    const files = validMapFiles();
+    files["system/scenarios/lead-flow.yaml"] = `schema: forge/system-scenario@1
+id: lead-flow
+title: lead flow
+products: [ghost]
+contracts: []
+checks:
+  - product: ghost
+    argv: [node, -e, "console.log('x')"]
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    expect(ruleIds(result.data?.diagnostics ?? [])).toContain("SYSTEM-MAP-06");
+  });
+
+  it("AC-9: a scenario naming a contract no product offers reports SYSTEM-MAP-06", async () => {
+    const files = validMapFiles();
+    files["system/scenarios/lead-flow.yaml"] = `schema: forge/system-scenario@1
+id: lead-flow
+title: lead flow
+products: [alpha]
+contracts: [ghost-contract]
+checks:
+  - product: alpha
+    argv: [node, -e, "console.log('x')"]
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    expect(ruleIds(result.data?.diagnostics ?? [])).toContain("SYSTEM-MAP-06");
+  });
+
+  it("a malformed scenario file reports SYSTEM-MAP-01 like any map file", async () => {
+    const files = validMapFiles();
+    files["system/scenarios/broken.yaml"] = "schema: forge/system-scenario@1\nid: [not-a-string\n";
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(1);
+    expect(ruleIds(result.data?.diagnostics ?? [])).toContain("SYSTEM-MAP-01");
+  });
+
+  it("a valid scenario adds no diagnostics", async () => {
+    const files = validMapFiles();
+    files["system/scenarios/lead-flow.yaml"] = `schema: forge/system-scenario@1
+id: lead-flow
+title: lead flow
+products: [alpha]
+contracts: [alpha-contract]
+checks:
+  - product: alpha
+    argv: [node, -e, "console.log('x')"]
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.data?.diagnostics.every((d) => d.ruleId !== "SYSTEM-MAP-06")).toBe(true);
   });
 
   it("a product id colliding with Object.prototype keys still gets the unmapped-folder warning", async () => {

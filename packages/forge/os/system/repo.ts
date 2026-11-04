@@ -14,6 +14,7 @@ resolver shared with the task queue and outbox RFCs.</purpose>
   <item>RFC-1508: step 2 — system repo assertion, non-throwing map loader, edgeVerdict, map checks</item>
   <item>RFC-1508: review r1 — contract-exact map shape (root, folders-based local map, strict schemas), read failures stay diagnostics, stat-based folder check</item>
   <item>RFC-1508: close rfc-1508 review r2 findings on folder lookup and diagnostics</item>
+  <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,11 @@ import YAML from "yaml";
 import type { z } from "zod";
 
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
+import {
+  SYSTEM_SCENARIOS_DIR,
+  systemScenarioSchema,
+} from "./scenario-schemas.ts";
+import type { SystemScenario } from "./scenario-schemas.ts";
 import {
   systemEdgesSchema,
   systemProductsLocalSchema,
@@ -329,6 +335,94 @@ export async function validateSystemMap(
     }
   }
 
+  return diagnostics;
+}
+
+// ---------------------------------------------------------------------------
+// Scenarios — RFC-1511 (SYSTEM-MAP-01 loading, SYSTEM-MAP-06 cross-checks)
+// ---------------------------------------------------------------------------
+
+export interface SystemScenarioLoadResult {
+  /** Parsed scenarios keyed by declared id; empty when the dir is absent. */
+  scenarios: Map<string, SystemScenario>;
+  diagnostics: Diagnostic[];
+}
+
+/**
+ * Read `system/scenarios/<id>.yaml` files against forge/system-scenario@1.
+ * An absent or non-directory scenarios dir means no scenarios — the folder
+ * is opt-in like the outbox. Malformed files surface as SYSTEM-MAP-01.
+ */
+export async function loadScenarios(
+  root: string,
+  io: WorkspaceIO,
+): Promise<SystemScenarioLoadResult> {
+  const diagnostics: Diagnostic[] = [];
+  const scenarios = new Map<string, SystemScenario>();
+  const dir = path.join(root, SYSTEM_SCENARIOS_DIR);
+  let isDir = false;
+  try {
+    isDir = (await io.stat(dir)).isDirectory;
+  } catch {
+    isDir = false;
+  }
+  if (!isDir) return { scenarios, diagnostics };
+
+  let entries: Awaited<ReturnType<typeof io.readdir>> = [];
+  try {
+    entries = await io.readdir(dir);
+  } catch {
+    entries = [];
+  }
+  for (const entry of entries) {
+    if (!entry.isFile || !entry.name.endsWith(".yaml")) continue;
+    const rel = `${SYSTEM_SCENARIOS_DIR}/${entry.name}`;
+    const loaded = await loadRequired(root, rel, systemScenarioSchema, io);
+    if (loaded.diagnostic) {
+      diagnostics.push(loaded.diagnostic);
+      continue;
+    }
+    if (loaded.data) scenarios.set(loaded.data.id, loaded.data);
+  }
+  return { scenarios, diagnostics };
+}
+
+/**
+ * SYSTEM-MAP-06 — a scenario names a product the map does not declare
+ * (products[] and checks[].product) or a contract no product offers.
+ */
+export function validateScenarios(
+  map: SystemMap,
+  scenarios: Map<string, SystemScenario>,
+): Diagnostic[] {
+  const diagnostics: Diagnostic[] = [];
+  const productIds = new Set(map.products.products.map((p) => p.id));
+  const offered = new Set(map.products.products.flatMap((p) => p.offers));
+  for (const scenario of scenarios.values()) {
+    const file = `${SYSTEM_SCENARIOS_DIR}/${scenario.id}.yaml`;
+    for (const named of new Set([...scenario.products, ...scenario.checks.map((c) => c.product)])) {
+      if (!productIds.has(named)) {
+        diagnostics.push({
+          ruleId: "SYSTEM-MAP-06",
+          severity: "error",
+          file,
+          message: `scenario "${scenario.id}" names undeclared product "${named}"`,
+          fixHint: `Declare "${named}" in ${SYSTEM_PRODUCTS_FILE} or remove it from the scenario.`,
+        });
+      }
+    }
+    for (const contract of scenario.contracts) {
+      if (!offered.has(contract)) {
+        diagnostics.push({
+          ruleId: "SYSTEM-MAP-06",
+          severity: "error",
+          file,
+          message: `scenario "${scenario.id}" names contract "${contract}" no product offers`,
+          fixHint: `Add the contract to a product's offers[] in ${SYSTEM_PRODUCTS_FILE} or drop it from the scenario.`,
+        });
+      }
+    }
+  }
   return diagnostics;
 }
 

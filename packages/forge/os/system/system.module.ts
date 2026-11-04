@@ -13,12 +13,12 @@ dispatch's product side is limited to opening the task branch and writing
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
-  <history>RFC-1508</history>
+  <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
+  <history>RFC-1508, RFC-1509</history>
 </CHANGE_SUMMARY>
 */
 
@@ -33,6 +33,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
   const { runSystemTaskStatus } = await import("./handlers/system-task-status.ts");
   const { runOutboxValidate } = await import("./handlers/outbox-validate.ts");
   const { runSystemOutboxScan } = await import("./handlers/system-outbox-scan.ts");
+  const { runSystemVersionSetRecord } = await import("./handlers/system-versionset-record.ts");
   return {
     name: "forge-system",
     version: "0.1.0",
@@ -47,8 +48,10 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           "files (SYSTEM-MAP-01), duplicate product ids and unknown edge " +
           "consumers (SYSTEM-MAP-02), edges naming contracts no product " +
           "offers (SYSTEM-MAP-03), consumer/contract pairs both allowed and " +
-          "forbidden (SYSTEM-MAP-04), and warns on products.local.yaml gaps " +
-          "(SYSTEM-MAP-05). Exit 1 iff an error-severity diagnostic exists.",
+          "forbidden (SYSTEM-MAP-04), warns on products.local.yaml gaps " +
+          "(SYSTEM-MAP-05), and errors on scenarios naming undeclared " +
+          "products or unoffered contracts (SYSTEM-MAP-06, RFC-1511). Exit 1 " +
+          "iff an error-severity diagnostic exists.",
         scope: "workspace",
         contract: "system",
         rules: [
@@ -58,6 +61,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "SYSTEM-MAP-03", severity: "error" },
           { id: "SYSTEM-MAP-04", severity: "error" },
           { id: "SYSTEM-MAP-05", severity: "warning" },
+          { id: "SYSTEM-MAP-06", severity: "error" },
         ],
         mutatesState: false,
         writes: [],
@@ -70,6 +74,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           "system/products.yaml",
           "system/edges.yaml",
           "system/products.local.yaml",
+          "system/scenarios/",
         ],
         cacheable: false,
         flags: {},
@@ -381,6 +386,61 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           "dry-run": { kind: "boolean", description: "Plan only — write nothing" },
         },
         execute: runSystemOutboxScan,
+      },
+      {
+        name: "system.versionset.record",
+        description:
+          "Record a verified version set (RFC-1511). Runs every check of " +
+          "every named scenario inside a temporary detached worktree of each " +
+          "product at its forge/release-tag@1 tag (the product's own " +
+          "worktree-setup hook prepares it), then writes " +
+          "system/version-sets/VS-NNNN.yaml with sha256 evidence per " +
+          "scenario only when all checks pass — a failing check leaves the " +
+          "logs but writes no set (DNA-106). --dry-run validates flags, " +
+          "scenarios, folders and tags without creating worktrees.",
+        scope: "workspace",
+        contract: "system",
+        rules: [
+          { id: "SYSTEM-01", severity: "error" },
+          { id: "SYSTEM-MAP-01", severity: "error" },
+          { id: "SYSTEM-VS-01", severity: "error" },
+          { id: "SYSTEM-VS-02", severity: "error" },
+          { id: "SYSTEM-VS-03", severity: "error" },
+          { id: "SYSTEM-VS-04", severity: "error" },
+          { id: "SYSTEM-VS-05", severity: "warning" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        writes: ["system/version-sets/"],
+        generates: [],
+        coverage: "operator",
+        coverageNote:
+          "version-set recording — the operator proves a release combination against the business scenarios (RFC-1511)",
+        reads: [
+          "forge.yaml",
+          "system/system.yaml",
+          "system/products.yaml",
+          "system/edges.yaml",
+          "system/products.local.yaml",
+          "system/scenarios/",
+          "system/version-sets/",
+          "<product>/.git/**",
+        ],
+        cacheable: false,
+        flags: {
+          products: {
+            kind: "string",
+            required: true,
+            description: "Release combination — <product>=<release-tag>,…",
+          },
+          scenarios: {
+            kind: "string",
+            required: true,
+            description: "Comma-separated scenario ids from system/scenarios/",
+          },
+          "dry-run": { kind: "boolean", description: "Validate only — create no worktree, write nothing" },
+        },
+        execute: runSystemVersionSetRecord,
       },
     ],
     pipelines: [],
