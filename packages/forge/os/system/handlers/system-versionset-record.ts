@@ -15,11 +15,14 @@ file (DNA-106).</purpose>
   <item>Checks run with argv vectors and no shell, cwd inside the detached tag worktree — the product's primary checkout stays on develop.</item>
   <item>The product's own hooks/worktree-setup.sh (from the primary, like flow.open) prepares each tag worktree before checks run.</item>
   <item>--dry-run validates the whole declaration layer (flags, scenarios, folders, tags) and stops before any worktree or write.</item>
+  <item>exec spawn rejections map to SYSTEM-VS-04 (distinct from timeout exitCode:null); each worktree removal failure maps to SYSTEM-VS-05 so one stuck removal never skips the rest.</item>
+  <item>%(refname) pins the tag match exactly — for-each-ref patterns are globs; folders lookup goes through Object.hasOwn so product ids like "constructor" stay legal.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1511: step 3 — versionset.record handler</item>
   <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
+  <item>RFC-1511: record KEY_DECISIONS for exported tag-schema regex and exec edge handling (RFC-1511 review r1)</item>
 </CHANGE_SUMMARY>
 */
 
