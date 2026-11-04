@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.3.1] — 2026-11-04
+
+### Fixed
+
+- **Integration gates of profiles without artifacts**: `system`, `forge-shell` and `knowledge` scaffolded a `hooks/integration-gate.sh` that ran `forge validate`, which exits 1 on a profile without artifacts, so every integration was refused once forge was installed. `system` now gates on `system.map.validate`, the other two on `forge doctor`. Existing repositories change the line in their own `hooks/integration-gate.sh`.
+- **Refusals name their reason**: a flow hook that fails with output only on stdout now reports that output instead of an empty reason.
+- **Profile READMEs** no longer tell `typescript`, `forge-shell` and `knowledge` repositories to run `forge validate`.
+
 ## [9.3.0] — 2026-11-04
 
 _System repositories: Forge can now coordinate several products from one repository. Releases verify a package before tagging it, and failed publications no longer keep `flow.push` red._

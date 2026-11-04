@@ -533,7 +533,6 @@ workspace:
 
         ```sh
         pnpm exec forge doctor
-        pnpm exec forge validate
         ```
 
         ## Stack

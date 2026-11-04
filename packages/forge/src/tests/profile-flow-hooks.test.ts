@@ -54,6 +54,15 @@ describe("RFC-1500: built-in profiles ship flow hooks (AC-4)", () => {
         }
       });
 
+      // forge validate exits 1 on a profile without artifacts, so such a gate
+      // would refuse every integration as soon as forge is installed.
+      it("integration-gate.sh runs forge validate only when the profile declares artifacts", () => {
+        const gate = files.find((f) => f.path === "hooks/integration-gate.sh");
+        expect(gate).toBeDefined();
+        const callsValidate = /\bforge validate\b/.test(gate!.content);
+        expect(callsValidate && (profile.artifacts ?? []).length === 0).toBe(false);
+      });
+
       for (const hookPath of HOOK_PATHS) {
         it(`${hookPath} starts with #!/bin/sh and parses with sh -n`, async () => {
           const entry = files.find((f) => f.path === hookPath);
@@ -74,4 +83,10 @@ describe("RFC-1500: built-in profiles ship flow hooks (AC-4)", () => {
       }
     });
   }
+
+  it("the system profile gates integrations on system.map.validate", () => {
+    const system = profiles.find((p) => p.id === "system");
+    const gate = system?.workspace.files.find((f) => f.path === "hooks/integration-gate.sh");
+    expect(gate?.content).toContain("pnpm exec forge system.map.validate");
+  });
 });
