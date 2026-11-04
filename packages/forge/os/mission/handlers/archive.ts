@@ -13,12 +13,12 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1138: pipeline hygiene — module-scoped exempt entries, archive gitignore guard, dns upsert to deploy phases, promote auto-sync, rfc.create claim protocol, siteHasRuntime filter</item>
   <item>RFC-1397: ship-in-flight guard — per-candidate isShipInFlight check in both move phases; SHIP-INFLIGHT-01 skip, SHIP-INFLIGHT-02 stale warn, --ship-op self-exemption for the ship's own terminal archive step.</item>
   <item>warpgogol-m000175 fo-fix: deferred-release guard — closed missions without releaseId keep workpiece node_modules on archive (archived dirs fall outside the pnpm-workspace glob, so deps cannot be reinstalled in place and release.prepare would fail on WORKPIECE-IMPORTS-01); released missions still get full service-folder cleanup.</item>
   <item>RFC-1397: harden ship-in-flight guard per independent review (RFC-1397)</item>
   <item>RFC-1495: step 1 - forge state roots</item>
-  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097</history>
+  <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
+  <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097, RFC-1138</history>
 </CHANGE_SUMMARY>
 */
 
@@ -46,7 +46,7 @@ import {
   type MissionArchiveResult,
 } from "../types.ts";
 import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
-import { PROTECTED_BRANCHES } from "../../flow/branch-name.ts";
+import { restoreTrackedLockfile, execFileSyncAdapter } from "../lockfile.ts";
 import { resolveStateRoots } from "../../flow/worktree-path.ts";
 
 const SERVICE_FOLDERS = [
@@ -259,28 +259,6 @@ async function moveMissionDir(
     moved: { missionId, state, from: sourceRel, to: targetRel, direction },
     skip: null,
   };
-}
-
-/**
- * The current branch when it is a protected integration branch of a repository
- * that carries the forge flow guard — commits there are refused. `null` when
- * commits are allowed (no guard, an auto branch, detached HEAD).
- */
-function protectedFlowBranch(workspaceRoot: string): string | null {
-  if (!existsSync(path.join(workspaceRoot, "hooks", "flow-guard.sh"))) return null;
-  let branch: string;
-  try {
-    branch = String(
-      execSync("git symbolic-ref --short -q HEAD", {
-        cwd: workspaceRoot,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }),
-    ).trim();
-  } catch {
-    return null;
-  }
-  return (PROTECTED_BRANCHES as readonly string[]).includes(branch) ? branch : null;
 }
 
 export async function runMissionArchive(
@@ -670,7 +648,9 @@ export async function runMissionArchive(
     }
   }
 
-  // RFC-0804: Post-move lockfile refresh
+  // RFC-0804: Post-move dependency prune. RFC-1505: the local install may churn
+  // pnpm-lock.yaml — that churn is mission-local state and is never committed;
+  // the tracked lockfile is restored to HEAD bytes instead.
   if (!dryRun && moved.length > 0) {
     try {
       execSync("pnpm install", {
@@ -678,59 +658,18 @@ export async function runMissionArchive(
         stdio: ["pipe", "pipe", "pipe"],
         timeout: 120_000,
       });
-      const lockfileStatus = execSync("git status --porcelain pnpm-lock.yaml", {
-        cwd: workspaceRoot,
-        encoding: "utf-8",
-        stdio: ["pipe", "pipe", "pipe"],
-      }).trim();
-      // Fixed branch model: hooks/flow-guard.sh refuses commits on develop and
-      // main (FLOW-GUARD-01), and a refused commit would leave the lockfile
-      // staged in the primary checkout. There the refresh stays unstaged.
-      const protectedBranch = lockfileStatus ? protectedFlowBranch(workspaceRoot) : null;
-      if (lockfileStatus && protectedBranch) {
+      const restored = await restoreTrackedLockfile(workspaceRoot, {
+        ...execFileSyncAdapter(),
+        writeFile: (target, content) => fs.writeFile(target, content),
+      });
+      if (!restored) {
         logger.warn(
-          `  pnpm-lock.yaml changed on protected branch '${protectedBranch}' — not committed. Commit it from a flow session: pnpm exec werkstatt run flow.open --kind session --slug <slug>`,
+          "  No tracked pnpm-lock.yaml at HEAD — install churn left in place; nothing to restore",
         );
-      } else if (lockfileStatus) {
-        execSync("git add pnpm-lock.yaml", {
-          cwd: workspaceRoot,
-          stdio: ["pipe", "pipe", "pipe"],
-        });
-        for (const m of moved) {
-          // RFC-1138: missions/ is gitignored — `git add` on the archive path is
-          // structurally guaranteed to fail. Skip staging when the target is
-          // ignored (git check-ignore exits 0 = ignored, 1 = not ignored).
-          let targetIgnored = false;
-          try {
-            execSync(`git check-ignore -q ${JSON.stringify(m.to)}`, {
-              cwd: workspaceRoot,
-              stdio: ["pipe", "pipe", "pipe"],
-            });
-            targetIgnored = true;
-          } catch {
-            targetIgnored = false;
-          }
-          if (!targetIgnored) {
-            execSync(`git add -A ${JSON.stringify(m.to)}`, {
-              cwd: workspaceRoot,
-              stdio: ["pipe", "pipe", "pipe"],
-            });
-          }
-          if (existsSync(m.from)) continue;
-          execSync(`git rm -r --cached --ignore-unmatch ${JSON.stringify(m.from)}`, {
-            cwd: workspaceRoot,
-            stdio: ["pipe", "pipe", "pipe"],
-          });
-        }
-        execSync(
-          `git commit -m ${JSON.stringify(`chore: refresh pnpm-lock.yaml after mission.archive (${moved.length} moved)`)}`,
-          { cwd: workspaceRoot, stdio: ["pipe", "pipe", "pipe"] },
-        );
-        logger.info(`  Committed pnpm-lock.yaml refresh (${moved.length} missions archived)`);
       }
     } catch (refreshErr) {
       logger.warn(
-        `  Lockfile refresh failed after archive — lockfile may be stale. Run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
+        `  Lockfile restore failed after archive — lockfile may be stale. Run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
       );
     }
   }
