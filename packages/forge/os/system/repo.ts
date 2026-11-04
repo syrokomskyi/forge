@@ -12,7 +12,7 @@ resolver shared with the task queue and outbox RFCs.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 2 — system repo assertion, non-throwing map loader, edgeVerdict, map checks</item>
-  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <item>RFC-1508: review r1 — contract-exact map shape (root, folders-based local map, strict schemas), read failures stay diagnostics, stat-based folder check</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,15 +20,14 @@ import path from "node:path";
 import YAML from "yaml";
 import type { z } from "zod";
 
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
-import type { Diagnostic } from "../../src/types.ts";
+import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
 import {
-  productsLocalSchema,
-  systemConfigSchema,
   systemEdgesSchema,
+  systemProductsLocalSchema,
   systemProductsSchema,
+  systemSchema,
 } from "./schemas.ts";
-import type { ProductsLocal, SystemConfig, SystemEdges, SystemProducts } from "./schemas.ts";
+import type { System, SystemEdges, SystemProducts, SystemProductsLocal } from "./schemas.ts";
 
 // ---------------------------------------------------------------------------
 // Paths
@@ -46,11 +45,13 @@ export const FORGE_CONFIG_FILE = "forge.yaml";
 // ---------------------------------------------------------------------------
 
 export interface SystemMap {
-  system: SystemConfig;
+  /** Repository root the map was loaded from — callers resolve folders against it. */
+  root: string;
+  system: System;
   products: SystemProducts;
   edges: SystemEdges;
   /** Parsed products.local.yaml, or null when the file is absent (SYSTEM-MAP-05). */
-  local: ProductsLocal | null;
+  local: SystemProductsLocal | null;
 }
 
 export interface SystemMapLoadResult {
@@ -93,7 +94,7 @@ export async function assertSystemRepository(
       ruleId: "SYSTEM-01",
       severity: "error",
       file: FORGE_CONFIG_FILE,
-      message: `forge.yaml is not valid YAML: ${error instanceof Error ? error.message : String(error)}`,
+      message: `forge.yaml is not readable YAML: ${error instanceof Error ? error.message : String(error)}`,
       fixHint: "Repair forge.yaml — system commands require profile: system.",
     };
   }
@@ -101,7 +102,12 @@ export async function assertSystemRepository(
     parsed !== null && typeof parsed === "object"
       ? (parsed as Record<string, unknown>)["profile"]
       : undefined;
-  const profile = typeof raw === "string" ? raw : raw && typeof raw === "object" ? (raw as { id?: unknown }).id : undefined;
+  const profile =
+    typeof raw === "string"
+      ? raw
+      : raw && typeof raw === "object"
+        ? (raw as { id?: unknown }).id
+        : undefined;
   if (profile !== "system") {
     return {
       ruleId: "SYSTEM-01",
@@ -145,7 +151,7 @@ async function loadRequired<S extends z.ZodType>(
     return {
       diagnostic: mapDiagnostic(
         rel,
-        `${rel} is not valid YAML: ${error instanceof Error ? error.message : String(error)}`,
+        `${rel} is not readable YAML: ${error instanceof Error ? error.message : String(error)}`,
       ),
     };
   }
@@ -160,10 +166,10 @@ async function loadRequired<S extends z.ZodType>(
 }
 
 /**
- * Read the four system-map files. Never throws on missing or malformed input —
- * problems surface as SYSTEM-MAP-01 diagnostics and a null map. An absent
- * products.local.yaml is not an error (local: null); a malformed one is
- * SYSTEM-MAP-01 like any required file.
+ * Read the four system-map files. Never throws on missing, unreadable or
+ * malformed input — problems surface as SYSTEM-MAP-01 diagnostics and a null
+ * map. An absent products.local.yaml is not an error (local: null); a
+ * malformed one is SYSTEM-MAP-01 like any required file.
  */
 export async function loadSystemMap(
   root: string,
@@ -172,7 +178,7 @@ export async function loadSystemMap(
   const diagnostics: Diagnostic[] = [];
 
   const [sys, pro, edg] = await Promise.all([
-    loadRequired(root, SYSTEM_CONFIG_FILE, systemConfigSchema, io),
+    loadRequired(root, SYSTEM_CONFIG_FILE, systemSchema, io),
     loadRequired(root, SYSTEM_PRODUCTS_FILE, systemProductsSchema, io),
     loadRequired(root, SYSTEM_EDGES_FILE, systemEdgesSchema, io),
   ]);
@@ -180,10 +186,10 @@ export async function loadSystemMap(
     if (part.diagnostic) diagnostics.push(part.diagnostic);
   }
 
-  let local: ProductsLocal | null = null;
+  let local: SystemProductsLocal | null = null;
   const localAbs = path.join(root, SYSTEM_LOCAL_FILE);
   if (await io.exists(localAbs)) {
-    const loc = await loadRequired(root, SYSTEM_LOCAL_FILE, productsLocalSchema, io);
+    const loc = await loadRequired(root, SYSTEM_LOCAL_FILE, systemProductsLocalSchema, io);
     if (loc.diagnostic) {
       diagnostics.push(loc.diagnostic);
     } else {
@@ -195,7 +201,7 @@ export async function loadSystemMap(
     return { map: null, diagnostics };
   }
   return {
-    map: { system: sys.data, products: pro.data, edges: edg.data, local },
+    map: { root, system: sys.data, products: pro.data, edges: edg.data, local },
     diagnostics,
   };
 }
@@ -205,16 +211,15 @@ export async function loadSystemMap(
 // ---------------------------------------------------------------------------
 
 function edgeKey(consumer: string, contract: string): string {
-  return `${consumer}${contract}`;
+  return JSON.stringify([consumer, contract]);
 }
 
 /**
- * Evaluate every cross-file rule against a loaded map. Needs `root` + io only
+ * Evaluate every cross-file rule against a loaded map. Needs the io port only
  * for the products.local.yaml folder checks (SYSTEM-MAP-05).
  */
 export async function validateSystemMap(
   map: SystemMap,
-  root: string,
   io: WorkspaceIO,
 ): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
@@ -279,22 +284,21 @@ export async function validateSystemMap(
       severity: "warning",
       file: SYSTEM_LOCAL_FILE,
       message: `${SYSTEM_LOCAL_FILE} is absent — local product checkouts are unknown`,
-      fixHint: "Create system/products.local.yaml (gitignored) listing checked-out product folders.",
+      fixHint: "Create system/products.local.yaml (gitignored) mapping product ids to folders.",
     });
   } else {
-    const localIds = new Set(map.local.products);
     for (const product of products) {
-      if (!localIds.has(product.id)) {
+      if (map.local.folders[product.id] === undefined) {
         diagnostics.push({
           ruleId: "SYSTEM-MAP-05",
           severity: "warning",
           file: SYSTEM_LOCAL_FILE,
-          message: `product "${product.id}" has no entry in ${SYSTEM_LOCAL_FILE}`,
-          fixHint: `Add "${product.id}" to ${SYSTEM_LOCAL_FILE} when its repository is checked out.`,
+          message: `product "${product.id}" has no folder in ${SYSTEM_LOCAL_FILE}`,
+          fixHint: `Add "${product.id}: <folder>" to ${SYSTEM_LOCAL_FILE} when its repository is checked out.`,
         });
       }
     }
-    for (const id of map.local.products) {
+    for (const [id, folder] of Object.entries(map.local.folders)) {
       if (!ids.has(id)) {
         diagnostics.push({
           ruleId: "SYSTEM-MAP-05",
@@ -303,13 +307,22 @@ export async function validateSystemMap(
           message: `local entry "${id}" is not a declared product`,
           fixHint: `Remove "${id}" from ${SYSTEM_LOCAL_FILE} or declare it in ${SYSTEM_PRODUCTS_FILE}.`,
         });
-      } else if (!(await io.exists(path.join(root, id)))) {
+        continue;
+      }
+      const abs = path.isAbsolute(folder) ? folder : path.join(map.root, folder);
+      let isDir = false;
+      try {
+        isDir = (await io.stat(abs)).isDirectory;
+      } catch {
+        isDir = false;
+      }
+      if (!isDir) {
         diagnostics.push({
           ruleId: "SYSTEM-MAP-05",
           severity: "warning",
           file: SYSTEM_LOCAL_FILE,
-          message: `product "${id}" names a local folder that does not exist`,
-          fixHint: `Check out the ${id} repository at the repository root or remove the entry.`,
+          message: `product "${id}" names a local folder that does not exist: ${folder}`,
+          fixHint: `Check out the ${id} repository at ${folder} or remove the entry.`,
         });
       }
     }

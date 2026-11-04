@@ -11,6 +11,7 @@ canonical YAML fixture strings keep tests focused on the variable under test.</p
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 1 — shared system test helpers (RFC-1509..1511 reuse)</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
 </CHANGE_SUMMARY>
 */
 
@@ -62,13 +63,11 @@ owners:
 export const VALID_PRODUCTS_YAML = `schema: forge/system-products@1
 products:
   - id: alpha
-    name: Alpha
-    url: https://example.invalid/alpha
+    remote: https://example.invalid/alpha.git
     offers:
       - alpha-contract
   - id: beta
-    name: Beta
-    url: https://example.invalid/beta
+    remote: https://example.invalid/beta.git
     offers: []
 `;
 
@@ -79,13 +78,23 @@ allowed:
 forbidden: []
 `;
 
+/**
+ * A fully valid repository: all three map files plus a products.local.yaml
+ * mapping both products to existing folders (created via .gitkeep entries).
+ */
 export function validMapFiles(): Record<string, string> {
   return {
     "system/system.yaml": VALID_SYSTEM_YAML,
     "system/products.yaml": VALID_PRODUCTS_YAML,
     "system/edges.yaml": VALID_EDGES_YAML,
-    "system/products.local.yaml": `schema: forge/system-products-local@1\nproducts:\n  - alpha\n  - beta\n`,
-    alpha: "",
-    beta: "",
+    "system/products.local.yaml": `schema: forge/system-products-local@1
+folders:
+  alpha: ./alpha
+  beta: ./beta
+launcher:
+  argv: [echo, "{worktree}", "{task}"]
+`,
+    "alpha/.gitkeep": "",
+    "beta/.gitkeep": "",
   };
 }
