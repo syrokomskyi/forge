@@ -6,14 +6,20 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391</history>
+  <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
+
+OriginGit gains optional showMany backed by one git cat-file --batch
+process (per-spec null on missing objects, wholesale null on spawn or
+framing failure). collectCommittedReviews prefers it and keeps the
+sequential show loop for stubs. rfc.validate memoizes the index once
+per run and V-49 consumes it — identical diagnostics, one batched read.</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453</history>
 </CHANGE_SUMMARY>
 */
 
@@ -60,7 +66,11 @@ import { isPresenceProbe } from "../verification-origin.ts";
 import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { runProbeMatchesOutcomeBuild } from "./implement-stamp-outcome.ts";
 import { evaluateFixedInputs } from "./fixed-inputs.ts";
-import { collectCommittedReviews, parseDeviationsSection } from "./implement-stamp-deviations.ts";
+import {
+  collectCommittedReviews,
+  parseDeviationsSection,
+  type CommittedReview,
+} from "./implement-stamp-deviations.ts";
 import { DNA_DOCS, AP_DOCS } from "./shared.ts";
 
 // Ambient default for helper fns without a context param — handlers override
@@ -535,6 +545,8 @@ export async function validateSingleRfc(
   seenFilenameNumbers?: Map<number, string>,
   /** RFC-1467: memoized decision-log getter shared across drafts (V-52). */
   decisionLog?: () => Promise<DecisionLogEntry[]>,
+  /** RFC-1513: memoized committed-review index shared across RFCs (V-49). */
+  committedReviews?: () => Promise<CommittedReview[]>,
 ): Promise<Marker[]> {
   const fm = parsed.frontmatter;
   const body = parsed.body;
@@ -1191,10 +1203,12 @@ export async function validateSingleRfc(
       } catch {
         // forge.yaml unreadable → no committed-report index → entries dangle.
       }
-      const reviews = await collectCommittedReviews(
-        { run: (args) => execGitLog(workspaceRoot, args) },
-        reviewsDir,
-      );
+      const reviews = committedReviews
+        ? await committedReviews()
+        : await collectCommittedReviews(
+            { run: (args) => execGitLog(workspaceRoot, args) },
+            reviewsDir,
+          );
       const known = new Set(reviews.map((r) => r.reviewId));
       for (const entry of entries) {
         if (!known.has(entry.reviewId)) {

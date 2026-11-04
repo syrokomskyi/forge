@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
@@ -17,7 +14,14 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
-  <history>RFC-0303</history>
+  <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
+
+OriginGit gains optional showMany backed by one git cat-file --batch
+process (per-spec null on missing objects, wholesale null on spawn or
+framing failure). collectCommittedReviews prefers it and keeps the
+sequential show loop for stubs. rfc.validate memoizes the index once
+per run and V-49 consumes it — identical diagnostics, one batched read.</item>
+  <history>RFC-0303, RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
@@ -48,6 +52,9 @@ import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
 import { evaluateAcceptanceCriteria, computeProbeCoverage } from "./validate-rules.ts";
 import { validateSingleRfc, checkFrontmatterYamlParse } from "./validate-rules.ts";
 import { collectDecisionLog } from "../decision-log.ts";
+import { collectCommittedReviews } from "./implement-stamp-deviations.ts";
+import { createOriginGit } from "../verification-origin.ts";
+import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 
 export async function runRfcValidate(
   input: ForgeCommandInput,
@@ -130,6 +137,25 @@ export async function runRfcValidate(
     return decisionLogPromise;
   };
 
+  // RFC-1513: the committed-review index builds at most once per validate run
+  // — the getter memoizes so every `## Deviations`-carrying RFC shares one
+  // batched read instead of paying per-file `git show` calls (V-49).
+  let committedReviewsPromise:
+    | Promise<Awaited<ReturnType<typeof collectCommittedReviews>>>
+    | undefined;
+  const committedReviews = () => {
+    committedReviewsPromise ??= (async () => {
+      let reviewsDir: string | null = null;
+      try {
+        reviewsDir = loadForgeConfig(workspaceRoot).bindings?.paths?.reviewsDir ?? null;
+      } catch {
+        // forge.yaml unreadable → no committed-report index → entries dangle.
+      }
+      return collectCommittedReviews(createOriginGit(workspaceRoot), reviewsDir);
+    })();
+    return committedReviewsPromise;
+  };
+
   for (const fileName of filesToValidate) {
     const result = allParsedByFile.get(fileName);
     if (!result) continue;
@@ -146,6 +172,7 @@ export async function runRfcValidate(
       addViolation,
       seenFilenameNumbers,
       decisionLog,
+      committedReviews,
     );
     allMarkers.push(...markers);
 

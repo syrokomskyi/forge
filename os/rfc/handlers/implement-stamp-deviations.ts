@@ -20,6 +20,13 @@ provenance in `## Deviations` entries.
   <item>RFC-1454: deviation gate — committed-review index, RFC-IMP-15, deviations-section parser for V-49.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
+  <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
+
+OriginGit gains optional showMany backed by one git cat-file --batch
+process (per-spec null on missing objects, wholesale null on spawn or
+framing failure). collectCommittedReviews prefers it and keeps the
+sequential show loop for stubs. rfc.validate memoizes the index once
+per run and V-49 consumes it — identical diagnostics, one batched read.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -76,9 +83,22 @@ export async function collectCommittedReviews(
     .split("\n")
     .map((l) => l.trim())
     .filter((p) => p.endsWith(".md"));
+  // RFC-1513: one batched `cat-file --batch` read when the port supports it —
+  // a wholesale failure (or a stub without showMany) keeps the sequential
+  // `git show` loop so the review list stays identical either way.
+  const specs = paths.map((p) => `HEAD:${p}`);
+  let contents: (string | null)[];
+  const batched = git.showMany ? await git.showMany(specs) : null;
+  if (batched) {
+    contents = batched;
+  } else {
+    contents = [];
+    for (const spec of specs) contents.push(await git.run(["show", spec]));
+  }
   const reviews: CommittedReview[] = [];
-  for (const path of paths) {
-    const content = await git.run(["show", `HEAD:${path}`]);
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i]!;
+    const content = contents[i] ?? null;
     if (content === null) continue;
     const fm = frontmatterOf(content);
     if (!fm) continue;
