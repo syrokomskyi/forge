@@ -11,6 +11,7 @@ checkout warnings, and the single-lookup edge resolver's fixed precedence.</purp
   <item>RFC-1508: step 1 — system.map.validate acceptance tests (AC-1..AC-6)</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
+  <item>RFC-1508: close rfc-1508 review r2 findings on folder lookup and diagnostics</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,6 +21,7 @@ import { describe, expect, it } from "vitest";
 
 import { runSystemMapValidate } from "../handlers/system-map-validate.ts";
 import { edgeVerdict, loadSystemMap } from "../repo.ts";
+import { systemEdgesSchema } from "../schemas.ts";
 import { makeContext, makeSystemRepo, validMapFiles } from "./helpers.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 
@@ -222,5 +224,38 @@ folders:
     const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
     expect(result.exitCode).toBe(1);
     expect(ruleIds(result.data?.diagnostics ?? [])).toContain("SYSTEM-MAP-01");
+  });
+
+  it("the extended forbidden-edge schema stays strict about unknown keys", () => {
+    const parse = systemEdgesSchema.safeParse({
+      schema: "forge/system-edges@1",
+      forbidden: [
+        { consumer: "beta", contract: "alpha-contract", reason: "deprecated", bogus: "key" },
+      ],
+    });
+    expect(parse.success).toBe(false);
+  });
+
+  it("a product id colliding with Object.prototype keys still gets the unmapped-folder warning", async () => {
+    const files = validMapFiles();
+    files["system/products.yaml"] = `schema: forge/system-products@1
+products:
+  - id: alpha
+    remote: git@example.com:org/alpha.git
+    offers: [alpha-contract]
+  - id: beta
+    remote: git@example.com:org/beta.git
+    offers: []
+  - id: constructor
+    remote: git@example.com:org/constructor.git
+    offers: []
+`;
+    const root = await makeSystemRepo(files);
+    const result = await runSystemMapValidate({ argv: [], flags: {} }, makeContext(root));
+    expect(result.exitCode).toBe(0);
+    const warning = result.data?.diagnostics.find(
+      (d) => d.ruleId === "SYSTEM-MAP-05" && d.message.includes("constructor"),
+    );
+    expect(warning).toBeDefined();
   });
 });

@@ -13,6 +13,7 @@ resolver shared with the task queue and outbox RFCs.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1508: step 2 — system repo assertion, non-throwing map loader, edgeVerdict, map checks</item>
   <item>RFC-1508: review r1 — contract-exact map shape (root, folders-based local map, strict schemas), read failures stay diagnostics, stat-based folder check</item>
+  <item>RFC-1508: close rfc-1508 review r2 findings on folder lookup and diagnostics</item>
 </CHANGE_SUMMARY>
 */
 
@@ -113,7 +114,7 @@ export async function assertSystemRepository(
       ruleId: "SYSTEM-01",
       severity: "error",
       file: FORGE_CONFIG_FILE,
-      message: `system commands require profile: system — this repository is on profile ${JSON.stringify(profile ?? null)}`,
+      message: `system commands require profile: system — this repository is on profile ${JSON.stringify(raw ?? null)}`,
       fixHint: "system.map.validate only runs inside a repository created with --profile system.",
     };
   }
@@ -288,7 +289,7 @@ export async function validateSystemMap(
     });
   } else {
     for (const product of products) {
-      if (map.local.folders[product.id] === undefined) {
+      if (!Object.hasOwn(map.local.folders, product.id)) {
         diagnostics.push({
           ruleId: "SYSTEM-MAP-05",
           severity: "warning",
@@ -340,7 +341,7 @@ export async function validateSystemMap(
  * (product-internal call), then `forbidden`, then `allowed`, else `undeclared`.
  */
 export function edgeVerdict(
-  map: Pick<SystemMap, "products" | "edges">,
+  map: SystemMap,
   consumer: string,
   contract: string,
 ): EdgeVerdict {
