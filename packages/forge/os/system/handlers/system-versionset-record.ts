@@ -19,6 +19,7 @@ file (DNA-106).</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1511: step 3 — versionset.record handler</item>
   <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
+  <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -36,6 +37,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { git } from "../../flow/git.ts";
+import { RELEASE_TAG_SCHEMA_LINE } from "../../flow/release-tags.ts";
 import { runFlowScript } from "../../flow/scripts.ts";
 import {
   assertSystemRepository,
@@ -59,8 +61,6 @@ export interface VersionSetRecordResult {
   created: boolean;
   diagnostics: Diagnostic[];
 }
-
-const RELEASE_TAG_SCHEMA_LINE = /^schema:\s*forge\/release-tag@1\s*$/m;
 
 function diag(
   ruleId: string,
@@ -122,10 +122,22 @@ function parseScenariosFlag(
     );
     return null;
   }
-  return raw
+  const ids = raw
     .split(",")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+  if (ids.length === 0) {
+    diagnostics.push(
+      diag(
+        "SYSTEM-VS-01",
+        "error",
+        "--scenarios names no scenario ids",
+        "Pass at least one scenario id declared under system/scenarios/.",
+      ),
+    );
+    return null;
+  }
+  return ids;
 }
 
 /** Verify the tag exists locally and is an annotated forge/release-tag@1 tag (SYSTEM-VS-03). */
@@ -139,13 +151,16 @@ async function checkReleaseTag(
   const res = await git(productRoot, io, [
     "for-each-ref",
     `refs/tags/${tag}`,
-    `--format=%(objecttype)${sep}%(contents)`,
+    `--format=%(refname)${sep}%(objecttype)${sep}%(contents)`,
   ]);
-  // %(contents) is multi-line — split on the first field separator only.
+  // %(contents) is multi-line — split on the first two field separators only;
+  // %(refname) pins the match exactly (the pattern is a glob).
   const firstSep = res.stdout.indexOf(sep);
-  const objecttype = firstSep === -1 ? res.stdout.trim() : res.stdout.slice(0, firstSep);
-  const contents = firstSep === -1 ? "" : res.stdout.slice(firstSep + 1);
-  if (res.exitCode !== 0 || res.stdout.trim() === "") {
+  const secondSep = firstSep === -1 ? -1 : res.stdout.indexOf(sep, firstSep + 1);
+  const refname = firstSep === -1 ? "" : res.stdout.slice(0, firstSep);
+  const objecttype = secondSep === -1 ? "" : res.stdout.slice(firstSep + 1, secondSep);
+  const contents = secondSep === -1 ? "" : res.stdout.slice(secondSep + 1);
+  if (res.exitCode !== 0 || refname !== `refs/tags/${tag}`) {
     return diag(
       "SYSTEM-VS-03",
       "error",
@@ -175,9 +190,13 @@ async function nextVersionSetId(root: string, io: ReturnType<typeof resolveIo>):
     isDir = false;
   }
   if (isDir) {
-    for (const entry of await io.readdir(dir)) {
-      const m = /^VS-(\d{4})\.yaml$/.exec(entry.name);
-      if (entry.isFile && m) max = Math.max(max, Number.parseInt(m[1]!, 10));
+    try {
+      for (const entry of await io.readdir(dir)) {
+        const m = /^VS-(\d{4})\.yaml$/.exec(entry.name);
+        if (entry.isFile && m) max = Math.max(max, Number.parseInt(m[1]!, 10));
+      }
+    } catch {
+      // dir vanished between stat and readdir — start at VS-0001
     }
   }
   return `VS-${String(max + 1).padStart(4, "0")}`;
@@ -212,6 +231,7 @@ export async function runSystemVersionSetRecord(
   const scenarios: SystemScenario[] = [];
   if (map && scenarioIds) {
     const loaded = await loadScenarios(root, io);
+    diagnostics.push(...loaded.diagnostics);
     for (const id of scenarioIds) {
       const scenario = loaded.scenarios.get(id);
       if (!scenario) {
@@ -219,7 +239,7 @@ export async function runSystemVersionSetRecord(
           diag(
             "SYSTEM-VS-01",
             "error",
-            `unknown scenario "${id}" — no ${`system/scenarios/${id}.yaml`}`,
+            `unknown or unloadable scenario "${id}" — no valid ${`system/scenarios/${id}.yaml`}`,
             "Declare the scenario under system/scenarios/ or fix the id.",
           ),
         );
@@ -251,7 +271,10 @@ export async function runSystemVersionSetRecord(
         );
         continue;
       }
-      const folder = map.local?.folders[product];
+      const folder =
+        map.local !== null && Object.hasOwn(map.local.folders, product)
+          ? map.local.folders[product]
+          : undefined;
       if (!folder) {
         diagnostics.push(
           diag(
@@ -348,19 +371,28 @@ export async function runSystemVersionSetRecord(
       for (const check of scenario.checks) {
         const cwd = worktrees.get(check.product)!;
         log.push(`### ${check.product}$ ${check.argv.join(" ")}\n`);
-        const res = await io.exec(check.argv[0]!, check.argv.slice(1), {
-          cwd,
-          timeoutMs: check.timeoutSec * 1000,
-        });
-        log.push(res.stdout, res.stderr);
+        let res;
+        let spawnError = "";
+        try {
+          res = await io.exec(check.argv[0]!, check.argv.slice(1), {
+            cwd,
+            timeoutMs: check.timeoutSec * 1000,
+          });
+        } catch (error) {
+          res = { exitCode: null as number | null, stdout: "", stderr: "" };
+          spawnError = error instanceof Error ? error.message : String(error);
+        }
+        log.push(res.stdout, res.stderr !== "" ? res.stderr : spawnError);
         if (res.exitCode !== 0) {
           aborted = diag(
             "SYSTEM-VS-04",
             "error",
             `scenario "${scenario.id}" check failed in "${check.product}" (${check.argv.join(" ")}) — ` +
-              (res.exitCode === null
-                ? `timed out after ${check.timeoutSec}s`
-                : `exit ${res.exitCode}`),
+              (spawnError !== ""
+                ? spawnError
+                : res.exitCode === null
+                  ? `timed out after ${check.timeoutSec}s`
+                  : `exit ${res.exitCode}`),
             "Fix the check or the product release — no set file is written.",
           );
           break;
@@ -375,13 +407,19 @@ export async function runSystemVersionSetRecord(
     }
   } finally {
     for (const [product, tmp] of worktrees) {
-      const removed = await git(productRoots.get(product)!, io, ["worktree", "remove", "--force", tmp]);
-      if (removed.exitCode !== 0) {
+      let removalNote = "";
+      try {
+        const removed = await git(productRoots.get(product)!, io, ["worktree", "remove", "--force", tmp]);
+        removalNote = removed.exitCode === 0 ? "" : removed.stderr.trim();
+      } catch (error) {
+        removalNote = error instanceof Error ? error.message : String(error);
+      }
+      if (removalNote !== "") {
         diagnostics.push(
           diag(
             "SYSTEM-VS-05",
             "warning",
-            `temporary worktree ${tmp} for "${product}" could not be removed: ${removed.stderr.trim()}`,
+            `temporary worktree ${tmp} for "${product}" could not be removed: ${removalNote}`,
             `Remove it manually with: git -C ${productRoots.get(product)} worktree remove --force ${tmp}`,
           ),
         );

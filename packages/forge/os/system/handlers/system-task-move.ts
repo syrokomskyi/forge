@@ -14,6 +14,7 @@ verdicts; verified-checks name a version-set file that lists the product.</purpo
   <item>RFC-1509: step 3 — system.task.move handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -185,15 +186,21 @@ async function verifiedChecks(
   }
   try {
     const raw = YAML.parse(await io.readFile(file));
-    const products =
-      raw !== null && typeof raw === "object" && Array.isArray((raw as Record<string, unknown>).products)
-        ? ((raw as Record<string, unknown>).products as unknown[])
-        : [];
-    const listed = products.some(
-      (p) =>
-        p === task.product ||
-        (p !== null && typeof p === "object" && (p as Record<string, unknown>).id === task.product),
-    );
+    // RFC-1511: forge/version-set@1 records products as a { id: tag } map;
+    // the earlier provisional array forms (string | {id}) stay accepted.
+    const rawProducts =
+      raw !== null && typeof raw === "object"
+        ? (raw as Record<string, unknown>).products
+        : undefined;
+    const listed = Array.isArray(rawProducts)
+      ? rawProducts.some(
+          (p) =>
+            p === task.product ||
+            (p !== null && typeof p === "object" && (p as Record<string, unknown>).id === task.product),
+        )
+      : rawProducts !== null && typeof rawProducts === "object"
+        ? Object.hasOwn(rawProducts, task.product)
+        : false;
     if (!listed) {
       diagnostics.push(
         refusal(
