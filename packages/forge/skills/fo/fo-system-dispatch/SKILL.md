@@ -32,7 +32,7 @@ Run `system.task.status`. It joins every task file with its product-side registr
 
 ### 2. Create tasks
 
-Operator-initiated work starts as `system.task.create --product <p> --slug <s> --title <t> --kind <adoption|feature|…>` — including the adoption tasks the operator's runbook hands this skill. Then run `system.outbox.scan` (add `--create` to materialize matched entries as `proposed` tasks). A scan is read-only without `--create`; unmatched, forbidden or unresolvable entries surface as SYSTEM-OUTBOX diagnostics (schema-invalid entries as OUTBOX-01/02), never silent drops.
+Operator-initiated work starts as `system.task.create --product <p> --slug <s> --title <t> --kind <adoption|change|…>` — including the adoption tasks the operator's runbook hands this skill. Then run `system.outbox.scan` (add `--create` to materialize matched entries as `proposed` tasks). A scan is read-only without `--create`; unmatched, forbidden or unresolvable entries surface as SYSTEM-OUTBOX diagnostics (schema-invalid entries as OUTBOX-01/02), never silent drops.
 
 ### 3. Write a self-contained brief
 
@@ -44,9 +44,9 @@ Run `system.task.move --task <id> --to ready`. The ready gate checks the brief e
 
 ### 5. Dispatch
 
-Run `system.task.dispatch --task <id>`. Dispatch opens a task worktree inside the product checkout, plants `.forge/task/brief.md` there, and prints the worktree path to `cd` into — start that session yourself or hand the printed command to the operator. A product whose `products.local.yaml` declares a `launcher.argv` is invoked automatically.
+Run `system.task.dispatch --task <id>`. Dispatch opens a task worktree inside the product checkout, plants `.forge/task/brief.md` there, and prints the worktree path to `cd` into — start that session yourself or hand the printed command to the operator. When `products.local.yaml` declares `launcher.argv`, the product session is invoked automatically.
 
-A dispatch refusal is information: read the SYSTEM-TASK diagnostic, repair the cause (unmapped folder, forbidden edge, wedged flow), then dispatch again.
+A dispatch refusal is information: read the SYSTEM-TASK or FLOW-OPEN diagnostic, repair the cause (unmapped folder, forbidden edge, wedged flow), then dispatch again.
 
 ### 6. Collect
 
