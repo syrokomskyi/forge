@@ -13,15 +13,15 @@ the registry entry and journals the operator's reason.</purpose>
   <item>Dirty check runs before the teardown script — a discard we will refuse on dirt never executes repository code.</item>
   <item>`git branch -D` (not -d): a discarded branch is by definition unmerged.</item>
   <item>All post-removal git calls run with -C &lt;primary&gt; — the caller's cwd may be the removed worktree (AUDIT G3).</item>
-  <item>Task-file preservation runs before `git worktree remove` and only for owner.kind task — a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
+  <item>Task-file preservation runs BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
-  <history>RFC-1487</history>
+  <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
+  <history>RFC-1487, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
