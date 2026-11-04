@@ -18,6 +18,7 @@ sha — never from report commit ids. One call may apply dispatched → reported
   <item>RFC-1509: step 3 — system.task.collect handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
 </CHANGE_SUMMARY>
 */
 
@@ -108,7 +109,6 @@ export async function runSystemTaskCollect(
   const root = context.workspaceRoot;
   const diagnostics: Diagnostic[] = [];
   const dryRun = context.dryRun || input.flags["dry-run"] === true;
-  const markFailed = input.flags["mark-failed"] === true;
   const reason = flagString(input, "reason");
 
   const refusalDiag = await assertSystemRepository(root, io);
@@ -140,13 +140,17 @@ export async function runSystemTaskCollect(
   }
 
   // Resolve the product's common git dir for preserved reports + journal.
+  // --mark-failed needs no product checkout — the failure escape must stay
+  // reachable even after the folder is unmapped or deleted.
+  const canMarkFailed =
+    input.flags["mark-failed"] === true && reason !== null && reason.trim() !== "";
   let productRoot: string | null = null;
   let productCommon: string | null = null;
-  if (task !== null && map !== null && diagnostics.every((d) => d.severity !== "error")) {
+  if (task !== null && map !== null && (diagnostics.every((d) => d.severity !== "error") || canMarkFailed)) {
     const folder = Object.prototype.hasOwnProperty.call(map.local?.folders ?? {}, task.product)
       ? map.local!.folders[task.product]
       : undefined;
-    if (folder === undefined && task.state === "dispatched") {
+    if (folder === undefined && task.state === "dispatched" && !canMarkFailed) {
       diagnostics.push(
         refusal(
           "SYSTEM-TASK-05",
@@ -175,7 +179,6 @@ export async function runSystemTaskCollect(
   let reportFile: string | null = null;
   if (task !== null && diagnostics.every((d) => d.severity !== "error")) {
     const located = task.state === "dispatched" ? await locateReport(io, task, productCommon) : null;
-    const canMarkFailed = markFailed && reason !== null && reason.trim() !== "";
     if (task.state === "dispatched" && located === null) {
       if (canMarkFailed) {
         if (!dryRun) {
@@ -265,8 +268,12 @@ export async function runSystemTaskCollect(
       } else if (integrated && dryRun) {
         task = { ...task, integratedCommit: integrated.sha };
       }
-    } catch {
-      // A product repo without a journal is simply not-yet-integrated.
+    } catch (error) {
+      diagnostics.push({
+        ruleId: "SYSTEM-TASK-05",
+        severity: "warning",
+        message: `${task.id} is reported but the product journal could not be read: ${error instanceof Error ? error.message : String(error)} — the reported → integrated check is skipped this run`,
+      });
     }
   }
 
