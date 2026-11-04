@@ -29,7 +29,7 @@ _System repositories: Forge can now coordinate several products from one reposit
 ### Fixed
 
 - The check-counters journal no longer recreates a removed workspace root, which left an orphan directory beside the repository after `flow.integrate`.
-- `mission.archive` no longer projects local mission state into tracked files (RFC-1505).
+- `mission.archive` and materialization restore the tracked `pnpm-lock.yaml` after their install step, so opening or archiving a mission leaves no lockfile diff (RFC-1505).
 
 ## [9.2.3] — 2026-11-03
 
