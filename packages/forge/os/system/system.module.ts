@@ -11,11 +11,12 @@ side is limited to opening the task branch and writing .forge/task/.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1508: step 3 — forge-system module registration</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
+  <history>RFC-1508</history>
 </CHANGE_SUMMARY>
 */
 
@@ -197,7 +198,12 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         ],
         mutatesState: true,
         idempotency: "rerun-safe",
-        writes: ["queue/tasks/", "<product>/info/exclude", "<product>/.forge/task/"],
+        writes: [
+          "queue/tasks/",
+          "<product>/.git/**",
+          "<product>/info/exclude",
+          "<product>/.forge/task/",
+        ],
         generates: [],
         coverage: "operator",
         coverageNote:

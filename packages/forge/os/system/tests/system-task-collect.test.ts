@@ -9,6 +9,7 @@ reported→integrated, and --mark-failed.</purpose>
   <item>RFC-1509: step 5 — collect + preservation acceptance tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
 </CHANGE_SUMMARY>
 */
 
@@ -115,6 +116,22 @@ describe("system.task.collect", () => {
     );
     expect(result.exitCode).toBe(1);
     expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-07")).toBe(true);
+  });
+
+  it("--mark-failed stays reachable after the product folder is unmapped", async () => {
+    const { systemRoot } = await dispatched();
+    // The product mapping disappears post-dispatch — the failure escape must
+    // not depend on a resolvable product checkout.
+    await writeFile(
+      path.join(systemRoot, "system/products.local.yaml"),
+      "schema: forge/system-products-local@1\nfolders: {}\n",
+    );
+    const result = await runSystemTaskCollect(
+      input({ task: "T-0001", "mark-failed": true, reason: "product decommissioned" }),
+      makeContext(systemRoot),
+    );
+    expect(result.exitCode).toBe(0);
+    expect(result.data?.state).toBe("failed");
   });
 
   it("AC-14: a report naming a different task refuses SYSTEM-TASK-08", async () => {

@@ -14,6 +14,7 @@ or unknown when the product repo cannot be read.</purpose>
   <item>RFC-1509: step 3 — system.task.status handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
 </CHANGE_SUMMARY>
 */
 
@@ -90,6 +91,9 @@ export async function runSystemTaskStatus(
   let map: Awaited<ReturnType<typeof loadSystemMap>>["map"] = null;
   if (tasks.length > 0) {
     const loaded = await loadSystemMap(root, io);
+    // Surface map-load diagnostics — a corrupt products.local.yaml must not
+    // masquerade as a plain "no folder" productMessage below.
+    diagnostics.push(...loaded.diagnostics);
     map = loaded.map;
   }
 
@@ -112,7 +116,10 @@ export async function runSystemTaskStatus(
         : undefined;
       if (folder === undefined || map === null) {
         row.productStatus = "unknown";
-        row.productMessage = "no products.local.yaml folder for this product";
+        row.productMessage =
+          map === null
+            ? "system map failed to load — see diagnostics"
+            : "no products.local.yaml folder for this product";
       } else {
         const productRoot = path.isAbsolute(folder) ? folder : path.resolve(root, folder);
         try {
