@@ -13,6 +13,7 @@ outbox adoption is opt-in per product.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1510: step 2 — profile-agnostic outbox entry validator</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
+  <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
 </CHANGE_SUMMARY>
 */
 
@@ -50,7 +51,13 @@ export async function runOutboxValidate(
   const dir = path.join(root, OUTBOX_DIR);
 
   let checked = 0;
-  if (await io.exists(dir)) {
+  let isDir = false;
+  try {
+    isDir = (await io.stat(dir)).isDirectory;
+  } catch {
+    isDir = false;
+  }
+  if (isDir) {
     for (const entry of await io.readdir(dir)) {
       if (!entry.isFile || !entry.name.endsWith(".yaml")) continue;
       const rel = path.posix.join(OUTBOX_DIR, entry.name);
