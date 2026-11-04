@@ -13,13 +13,16 @@ and atomically mutates ADR frontmatter.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0727: initial implementation — mirrors rfc.implement.stamp for ADRs.</item>
+  <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
 </CHANGE_SUMMARY>
 */
 
-import { execFile, writeFileSync } from "../../../src/utils/sync-fs.ts";
+import { execFile } from "../../../src/utils/sync-fs.ts";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 
-import { join, dirname } from "node:path";
+import { join } from "node:path";
+
+import { acquireStampLock } from "../../core/stamp-lock.ts";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 
@@ -96,24 +99,15 @@ function lockFilePath(workspaceRoot: string, adrId: string): string {
   return join(workspaceRoot, ".adr-locks", `${slug}.lock`);
 }
 
-async function acquireAdrLock(
+// RFC-1504: shared dead-holder recovery — a lock recording this host and a
+// dead pid (or a foreign boot id) is broken and retried; a live pid still
+// returns acquired:false → ADR-IMP-05. Exported for the lock tests.
+export async function acquireAdrLock(
   workspaceRoot: string,
   adrId: string,
 ): Promise<{ acquired: boolean; lockPath: string }> {
   const lockPath = lockFilePath(workspaceRoot, adrId);
-  const lockDir = dirname(lockPath);
-  await io.mkdir(lockDir);
-
-  try {
-    writeFileSync(
-      lockPath,
-      JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }),
-      { flag: "wx" },
-    );
-    return { acquired: true, lockPath };
-  } catch {
-    return { acquired: false, lockPath };
-  }
+  return acquireStampLock(lockPath);
 }
 
 async function releaseAdrLock(lockPath: string): Promise<void> {
