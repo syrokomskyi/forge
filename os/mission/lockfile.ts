@@ -14,6 +14,7 @@ restores the file committed at HEAD so the worktree returns clean.
 <CHANGE_SUMMARY>
   <item>RFC-1505: step 3 — tracked lockfile restore helper</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
+  <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -56,6 +57,9 @@ export function execFileSyncAdapter(): Pick<WorkspaceIO, "exec"> {
           encoding: "utf-8",
           stdio: ["pipe", "pipe", "pipe"],
           timeout: opts?.timeoutMs,
+          // Real pnpm-lock.yaml files exceed the 1 MiB default many times over —
+          // an ENOBUFS kill carries status null and would rethrow below.
+          maxBuffer: 64 * 1024 * 1024,
         });
         return Promise.resolve({ exitCode: 0, stdout, stderr: "" });
       } catch (err) {

@@ -10,6 +10,7 @@ Unit tests for archive covering mission.archive. It also guards the documented p
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the archive suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
+  <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
 </CHANGE_SUMMARY>
 */
 
@@ -468,10 +469,12 @@ describe("mission.archive", () => {
     await runMissionArchive(makeInput(), makeContext(tmpDir));
 
     expect(readFileSync(lockfilePath, "utf-8")).toBe(tracked);
+    // maxBuffer must cover real lockfiles (>10 MiB) — the 1 MiB execFileSync
+    // default would ENOBUFS-kill `git show` and leave the churn in place.
     expect(execFileSyncMock).toHaveBeenCalledWith(
       "git",
       ["show", "HEAD:pnpm-lock.yaml"],
-      expect.objectContaining({ cwd: tmpDir }),
+      expect.objectContaining({ cwd: tmpDir, maxBuffer: expect.any(Number) }),
     );
     const gitWrites = execSyncMock.mock.calls.filter(
       (c) =>

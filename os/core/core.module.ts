@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
 
 Declare every reachable env read on its owning command across engine/site/
@@ -17,7 +16,8 @@ deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</ite
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351</history>
+  <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354</history>
 </CHANGE_SUMMARY>
 */
 
@@ -29,7 +29,11 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import path from "node:path";
-import { execSync } from "../../src/utils/sync-fs.ts";
+import {
+  restoreTrackedLockfile,
+  execFileSyncAdapter,
+} from "../mission/lockfile.ts";
+import { writeFileIfChanged } from "../../src/utils/fs-idempotent.ts";
 import {
   FORGE_SKILLS,
   discoverPackSkills,
@@ -1110,35 +1114,25 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             }
           }
 
-          // Post-loop lockfile refresh — safety net for mission.archive's own refresh.
-          // If mission.archive moved workpieces but its pnpm install / git commit failed
-          // silently, the lockfile stays dirty. This catches it and stages the lockfile
-          // so the caller (or the next commit) includes it.
+          // RFC-1505: post-loop lockfile restore — safety net for mission.archive's
+          // own restore. If mission.archive moved workpieces and its install churned
+          // the lockfile without a successful restore, the tracked file stays dirty.
+          // Restore HEAD bytes instead of staging — mission churn is never committed.
           if (!dryRun && totalMoved > 0) {
             try {
-              const lockfileStatus = execSync("git status --porcelain pnpm-lock.yaml", {
-                cwd: context.workspaceRoot,
-                encoding: "utf-8",
-                stdio: ["pipe", "pipe", "pipe"],
-              }).trim();
-              if (lockfileStatus) {
-                execSync("pnpm install", {
-                  cwd: context.workspaceRoot,
-                  stdio: ["pipe", "pipe", "pipe"],
-                  timeout: 120_000,
-                });
-                execSync("git add pnpm-lock.yaml", {
-                  cwd: context.workspaceRoot,
-                  stdio: ["pipe", "pipe", "pipe"],
-                });
-                if (outputFormat === "pretty") {
-                  logger.info("  docs.archive: staged pnpm-lock.yaml refresh (safety net)");
-                }
+              const restored = await restoreTrackedLockfile(context.workspaceRoot, {
+                ...execFileSyncAdapter(),
+                writeFile: async (target, content) => {
+                  await writeFileIfChanged(target, content);
+                },
+              });
+              if (restored && outputFormat === "pretty") {
+                logger.info("  docs.archive: restored pnpm-lock.yaml to HEAD (safety net)");
               }
             } catch (refreshErr) {
               if (outputFormat === "pretty") {
                 logger.warn(
-                  `  docs.archive: lockfile safety-net refresh failed — run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
+                  `  docs.archive: lockfile safety-net restore failed — run 'pnpm install' manually: ${refreshErr instanceof Error ? refreshErr.message : String(refreshErr)}`,
                 );
               }
             }
