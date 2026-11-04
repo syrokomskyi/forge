@@ -11,6 +11,7 @@ reports SYSTEM-OUTBOX-03 (AC-10).</purpose>
   <item>RFC-1510: step 1 — system.outbox.scan tests</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
+  <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -248,6 +249,15 @@ forbidden:
         (d) => d.ruleId === "SYSTEM-OUTBOX-03" && d.message.includes("OB-0001"),
       ),
     ).toBe(true);
+  });
+
+  it("entries nested below docs/outbox/ are out of scope — the scan is flat like outbox.validate", async () => {
+    const { systemRoot, beta } = await fixture();
+    await commitFile(beta, "docs/outbox/sub/OB-0002.yaml", ENTRY("OB-0002"));
+    const result = await runSystemOutboxScan(input({ create: true }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(0);
+    expect(result.data!.proposals).toEqual([]);
+    expect(result.data!.created).toEqual([]);
   });
 
   it("served or withdrawn entries are skipped", async () => {

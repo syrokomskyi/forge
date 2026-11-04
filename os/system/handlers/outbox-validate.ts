@@ -14,6 +14,7 @@ outbox adoption is opt-in per product.</purpose>
   <item>RFC-1510: step 2 — profile-agnostic outbox entry validator</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
+  <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,47 +58,53 @@ export async function runOutboxValidate(
   } catch {
     isDir = false;
   }
+  let entries: Awaited<ReturnType<typeof io.readdir>> = [];
   if (isDir) {
-    for (const entry of await io.readdir(dir)) {
-      if (!entry.isFile || !entry.name.endsWith(".yaml")) continue;
-      const rel = path.posix.join(OUTBOX_DIR, entry.name);
-      const file = path.join(dir, entry.name);
-      checked += 1;
+    try {
+      entries = await io.readdir(dir);
+    } catch {
+      entries = [];
+    }
+  }
+  for (const entry of entries) {
+    if (!entry.isFile || !entry.name.endsWith(".yaml")) continue;
+    const rel = path.posix.join(OUTBOX_DIR, entry.name);
+    const file = path.join(dir, entry.name);
+    checked += 1;
 
-      let raw: unknown;
-      try {
-        raw = YAML.parse(await io.readFile(file));
-      } catch (error) {
-        diagnostics.push({
-          ruleId: "OUTBOX-01",
-          severity: "error",
-          file: rel,
-          message: `${rel} is not parseable YAML: ${error instanceof Error ? error.message : String(error)}`,
-          fixHint: "Repair the entry — see forge/outbox@1.",
-        });
-        continue;
-      }
-      const parsed = outboxEntrySchema.safeParse(raw);
-      if (!parsed.success) {
-        diagnostics.push({
-          ruleId: "OUTBOX-01",
-          severity: "error",
-          file: rel,
-          message: `${rel} fails forge/outbox@1: ${schemaIssues(parsed.error)}`,
-          fixHint: "See the fo-outbox skill — an entry names a contract, need, why and state.",
-        });
-        continue;
-      }
-      const stem = entry.name.slice(0, -".yaml".length);
-      if (parsed.data.id !== stem) {
-        diagnostics.push({
-          ruleId: "OUTBOX-02",
-          severity: "error",
-          file: rel,
-          message: `${rel} declares id ${parsed.data.id} but the filename stem is ${stem}`,
-          fixHint: "Rename the file or fix the id — the filename stem is the canonical id.",
-        });
-      }
+    let raw: unknown;
+    try {
+      raw = YAML.parse(await io.readFile(file));
+    } catch (error) {
+      diagnostics.push({
+        ruleId: "OUTBOX-01",
+        severity: "error",
+        file: rel,
+        message: `${rel} is not parseable YAML: ${error instanceof Error ? error.message : String(error)}`,
+        fixHint: "Repair the entry — see forge/outbox@1.",
+      });
+      continue;
+    }
+    const parsed = outboxEntrySchema.safeParse(raw);
+    if (!parsed.success) {
+      diagnostics.push({
+        ruleId: "OUTBOX-01",
+        severity: "error",
+        file: rel,
+        message: `${rel} fails forge/outbox@1: ${schemaIssues(parsed.error)}`,
+        fixHint: "See the fo-outbox skill — an entry names a contract, need, why and state.",
+      });
+      continue;
+    }
+    const stem = entry.name.slice(0, -".yaml".length);
+    if (parsed.data.id !== stem) {
+      diagnostics.push({
+        ruleId: "OUTBOX-02",
+        severity: "error",
+        file: rel,
+        message: `${rel} declares id ${parsed.data.id} but the filename stem is ${stem}`,
+        fixHint: "Rename the file or fix the id — the filename stem is the canonical id.",
+      });
     }
   }
 

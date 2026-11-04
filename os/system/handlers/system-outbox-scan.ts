@@ -16,6 +16,7 @@ because a product cannot know the system's name.</purpose>
   <item>RFC-1510: step 3 — develop-branch outbox scan and deduplicated task creation</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
+  <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
 </CHANGE_SUMMARY>
 */
 
@@ -176,7 +177,8 @@ export async function runSystemOutboxScan(
       // check is limited to forge.yaml and outbox entries: older prose in
       // product docs is deliberately out of scope (audit A2).
       const forgeYaml = await gitShow(io, productRoot, "develop:forge.yaml");
-      if (forgeYaml !== null && systemIdNeedleFor(map.system.id).test(forgeYaml)) {
+      const systemIdNeedle = systemIdNeedleFor(map.system.id);
+      if (forgeYaml !== null && systemIdNeedle.test(forgeYaml)) {
         diagnostics.push(
           diag(
             "SYSTEM-OUTBOX-03",
@@ -187,7 +189,6 @@ export async function runSystemOutboxScan(
         );
       }
 
-      const systemIdNeedle = systemIdNeedleFor(map.system.id);
       for (const rel of tree.stdout.split("\n").map((l) => l.trim()).filter((l) => l.endsWith(".yaml"))) {
         const raw = await gitShow(io, productRoot, `develop:${rel}`);
         if (raw === null) continue;

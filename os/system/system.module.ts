@@ -13,11 +13,11 @@ dispatch's product side is limited to opening the task branch and writing
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
+  <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
   <history>RFC-1508</history>
 </CHANGE_SUMMARY>
 */
@@ -353,6 +353,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "SYSTEM-01", severity: "error" },
           { id: "SYSTEM-MAP-01", severity: "error" },
           { id: "OUTBOX-01", severity: "error" },
+          { id: "OUTBOX-02", severity: "error" },
           { id: "SYSTEM-OUTBOX-01", severity: "warning" },
           { id: "SYSTEM-OUTBOX-02", severity: "error" },
           { id: "SYSTEM-OUTBOX-03", severity: "warning" },
