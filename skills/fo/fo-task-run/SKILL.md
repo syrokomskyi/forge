@@ -57,7 +57,7 @@ acceptance:
 outbox: [<entry ids this work served, if any>]
 ```
 
-- `outcome: done` requires `gate: pass` — a report claiming done with a failing gate is invalid.
+- `outcome: done` goes with `gate: pass` — a report claiming done on a failing gate is dishonest, and collect will surface it to the operator.
 - `outcome: needs-decision` requires `question:` — one question for the operator, verbatim-quotable.
 - `gate: not-run` is honest when nothing ran; pair it with `blocked`, not `done`.
 
