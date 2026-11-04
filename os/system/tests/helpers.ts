@@ -1,0 +1,91 @@
+/*
+<MODULE_CONTRACT>
+<purpose>Test helpers for forge system-module suites (RFC-1508) — makeSystemRepo
+materializes a temporary system-profile repository under os.tmpdir();
+makeContext builds a ForgeRuntimeContext for direct handler invocation;
+canonical YAML fixture strings keep tests focused on the variable under test.</purpose>
+<non-goals>
+  <item>Fixtures only — no test assertions here.</item>
+</non-goals>
+</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1508: step 1 — shared system test helpers (RFC-1509..1511 reuse)</item>
+  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+</CHANGE_SUMMARY>
+*/
+
+// @vitest-environment node
+
+import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import type { ForgeRuntimeContext } from "../../../src/types.ts";
+
+/**
+ * Write a temporary repository: `forge.yaml` declares `profile: system`
+ * (overridable via files["forge.yaml"]) plus every entry in `files` at its
+ * repo-relative path. Returns the repo root.
+ */
+export async function makeSystemRepo(files: Record<string, string> = {}): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), "forge-system-"));
+  const all = { "forge.yaml": "profile: system\n", ...files };
+  for (const [rel, content] of Object.entries(all)) {
+    const abs = path.join(root, rel);
+    await mkdir(path.dirname(abs), { recursive: true });
+    await writeFile(abs, content);
+  }
+  return root;
+}
+
+export function makeContext(root: string): ForgeRuntimeContext {
+  const sink = (_msg: string, _details?: unknown): void => {};
+  return {
+    workspaceRoot: root,
+    logger: { section: sink, info: sink, warn: sink, error: sink, success: sink },
+    dryRun: false,
+    outputFormat: "json",
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Canonical fixtures
+// ---------------------------------------------------------------------------
+
+export const VALID_SYSTEM_YAML = `schema: forge/system@1
+id: demo-system
+name: Demo System
+owners:
+  - ops
+`;
+
+export const VALID_PRODUCTS_YAML = `schema: forge/system-products@1
+products:
+  - id: alpha
+    name: Alpha
+    url: https://example.invalid/alpha
+    offers:
+      - alpha-contract
+  - id: beta
+    name: Beta
+    url: https://example.invalid/beta
+    offers: []
+`;
+
+export const VALID_EDGES_YAML = `schema: forge/system-edges@1
+allowed:
+  - consumer: beta
+    contract: alpha-contract
+forbidden: []
+`;
+
+export function validMapFiles(): Record<string, string> {
+  return {
+    "system/system.yaml": VALID_SYSTEM_YAML,
+    "system/products.yaml": VALID_PRODUCTS_YAML,
+    "system/edges.yaml": VALID_EDGES_YAML,
+    "system/products.local.yaml": `schema: forge/system-products-local@1\nproducts:\n  - alpha\n  - beta\n`,
+    alpha: "",
+    beta: "",
+  };
+}

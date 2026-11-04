@@ -10,12 +10,12 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1473: checks.contribution.report — per-rule marginal-contribution read-model over firing history + escapes</item>
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1478: yaml.scalars.validate + EC-25 colon-space staged lint (F-0006)</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
-  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469</history>
+  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1473</history>
 </CHANGE_SUMMARY>
 */
 
@@ -144,6 +144,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
       m.createForgeConformanceModule(),
     ),
     await import("../os/flow/flow.module.ts").then((m) => m.createForgeFlowModule()),
+    await import("../os/system/system.module.ts").then((m) => m.createForgeSystemModule()),
     await import("../os/formal/formal.module.ts").then((m) => m.createForgeFormalModule()),
     await import("../os/friction/friction.module.ts").then((m) =>
       m.createForgeFrictionModule(),

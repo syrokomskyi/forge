@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
   <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360</history>
+  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366</history>
 </CHANGE_SUMMARY>
 */
 
@@ -419,7 +419,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             kind: "string",
             required: true,
             description:
-              "Stack profile id. Required. Available: forge-shell, phaser-game, godot-game, knowledge, typescript.",
+              "Stack profile id. Required. Available: forge-shell, phaser-game, godot-game, knowledge, system, typescript.",
           },
           name: {
             kind: "string",
