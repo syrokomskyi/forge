@@ -1,9 +1,10 @@
 /*
 <MODULE_CONTRACT>
 <purpose>Exclusive file locks for flow commands (RFC-1487): O_EXCL lock files
-carrying { pid, host, at }, wait-with-progress while a live holder exists,
-stale locks broken by age, always released in finally. Used for the short
-registry lock (10 s) and the long integration lock (30 min).</purpose>
+carrying { pid, host, at, bootId? }, wait-with-progress while a live holder
+exists, dead holders (dead pid on this host, or a foreign boot id) and stale
+locks broken, always released in finally. Used for the short registry lock
+(10 s) and the long integration lock (30 min).</purpose>
 <non-goals>
   <item>No registry semantics — callers choose paths, budgets and diagnostics.</item>
 </non-goals>
@@ -26,13 +27,14 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
+  <item>RFC-1504: review fixes — single io.readFile parse per iteration, real ageMs on dead-holder onStale, atomic break claim</item>
 </CHANGE_SUMMARY>
 */
 
 import { hostname } from "node:os";
-import { open, readFile, rm } from "node:fs/promises";
+import { open, rm } from "node:fs/promises";
 
-import { currentBootId, holderIsDead } from "../core/lock-holder.ts";
+import { claimLockBreak, currentBootId, holderIsDead } from "../core/lock-holder.ts";
 
 export interface FlowLockOptions {
   /** Maximum time to wait for a live lock before throwing LockTimeoutError. */
@@ -43,13 +45,13 @@ export interface FlowLockOptions {
   progressEveryMs?: number;
   onProgress?: (message: string) => void;
   /** Called when a stale lock is broken — the caller logs the warning.
-   * `reason: "dead-holder"` marks an immediate dead-pid/boot-id break;
-   * absent reason means the classic stale-age break. */
+   * `reason` is "dead-holder" for an immediate dead-pid/boot-id break and
+   * "stale-age" for the classic age break. */
   onStale?: (lock: {
     path: string;
     at: string;
     ageMs: number;
-    reason?: "dead-holder" | "stale-age";
+    reason: "dead-holder" | "stale-age";
     pid?: number;
     host?: string;
   }) => void;
@@ -95,37 +97,30 @@ async function tryAcquire(lockPath: string, content: LockFileContent): Promise<b
   }
 }
 
-/** Age of the held lock in ms; null when the file vanished or is unreadable. */
-async function lockAgeMs(
-  lockPath: string,
-  readFile: (path: string) => Promise<string>,
-  nowMs: number,
-): Promise<number | null> {
-  let raw: string;
-  try {
-    raw = await readFile(lockPath);
-  } catch {
-    return null;
-  }
-  try {
-    const parsed = JSON.parse(raw) as { at?: unknown };
-    if (typeof parsed.at !== "string") return null;
-    const at = Date.parse(parsed.at);
-    if (Number.isNaN(at)) return null;
-    return nowMs - at;
-  } catch {
-    return null;
-  }
+/** Holder fields as written in a lock file; `at` is always present in files
+ * this module parses ("" when the payload lacks it). */
+interface HeldLock {
+  pid: number;
+  host?: string;
+  at: string;
+  bootId?: string;
 }
 
-/** Holder fields of the current lock file; null when unreadable. */
-async function readHolder(lockPath: string): Promise<LockFileContent | null> {
+/**
+ * Holder fields of the current lock file read through the injected io —
+ * one parse per wait iteration feeds both the dead-holder and the age
+ * checks; null when the file vanished or is unreadable.
+ */
+async function readHolder(
+  lockPath: string,
+  readFile: (path: string) => Promise<string>,
+): Promise<HeldLock | null> {
   try {
-    const parsed = JSON.parse(await readFile(lockPath, "utf8")) as Record<string, unknown>;
+    const parsed = JSON.parse(await readFile(lockPath)) as Record<string, unknown>;
     if (typeof parsed["pid"] !== "number") return null;
     return {
       pid: parsed["pid"],
-      host: typeof parsed["host"] === "string" ? parsed["host"] : "",
+      host: typeof parsed["host"] === "string" ? parsed["host"] : undefined,
       at: typeof parsed["at"] === "string" ? parsed["at"] : "",
       bootId: typeof parsed["bootId"] === "string" ? parsed["bootId"] : undefined,
     };
@@ -167,31 +162,36 @@ export async function withFlowLock<T>(
       break;
     }
 
-    // RFC-1504: a dead holder's lock is removed and retried at once —
+    // RFC-1504: a dead holder's lock is claimed and retried at once —
     // before the age rule, so a crashed process never makes anyone wait.
-    const holder = await readHolder(lockPath);
-    if (holder !== null && holderIsDead(holder)) {
+    const holder = await readHolder(lockPath, io.readFile);
+    const heldAtMs = holder !== null && holder.at.length > 0 ? Date.parse(holder.at) : NaN;
+    const age = Number.isNaN(heldAtMs) ? null : now() - heldAtMs;
+    if (holder !== null && holderIsDead(holder, ownBootId)) {
       opts.onStale?.({
         path: lockPath,
         at: holder.at,
-        ageMs: 0,
+        ageMs: age ?? 0,
         reason: "dead-holder",
         pid: holder.pid,
         host: holder.host,
       });
-      await rm(lockPath, { force: true });
+      const tomb = await claimLockBreak(lockPath, holder);
+      if (tomb !== null) await rm(tomb, { force: true });
       continue;
     }
 
-    const age = await lockAgeMs(lockPath, io.readFile, now());
     if (age !== null && age > opts.staleMs) {
       opts.onStale?.({
         path: lockPath,
-        at: new Date(now() - age).toISOString(),
+        at: holder?.at ?? new Date(now() - age).toISOString(),
         ageMs: age,
         reason: "stale-age",
+        pid: holder?.pid,
+        host: holder?.host,
       });
-      await rm(lockPath, { force: true });
+      const tomb = await claimLockBreak(lockPath, holder);
+      if (tomb !== null) await rm(tomb, { force: true });
       continue;
     }
     if (now() >= deadline) {

@@ -3,16 +3,19 @@
 <purpose>Shared one-shot stamp lock for rfc.implement.stamp and
 adr.implement.stamp (RFC-1504): O_EXCL acquisition carrying
 {pid, host, at, bootId?}; on contention the holder's file is judged —
-a dead holder or a lock older than STAMP_LOCK_STALE_MS is removed and the
-acquire retries once; a live or foreign holder returns acquired:false so the
-caller keeps its *-IMP-05 refusal. No wait loop — stamp locks never had one.</purpose>
+a dead holder or a lock older than STAMP_LOCK_STALE_MS is claimed by an
+atomic rename and removed, then the acquire retries (bounded attempts);
+a live or foreign holder returns acquired:false so the caller keeps its
+IMP-05 refusal. Legacy lock files written as {pid, acquiredAt} have no
+host — they are judged by age only, reading acquiredAt when at is absent.
+No wait loop — stamp locks never had one.</purpose>
 <non-goals>
-  <item>No release — callers keep their own rm(lockPath) finally.</item>
+  <item>No release — callers keep their own verified rm(lockPath).</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1504: step 4 — shared stamp lock with dead-holder break</item>
-  <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
+  <item>RFC-1504: review fixes — acquiredAt fallback, atomic break claim, held payload for verified release</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,7 +23,7 @@ import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname } from "node:path";
 
-import { currentBootId, holderIsDead } from "./lock-holder.ts";
+import { claimLockBreak, currentBootId, holderIsDead } from "./lock-holder.ts";
 
 export const STAMP_LOCK_STALE_MS = 30 * 60 * 1000;
 
@@ -29,6 +32,7 @@ export interface StampLockOptions {
   onStale?: (info: {
     path: string;
     reason: "dead-holder" | "stale-age";
+    at?: string;
     pid?: number;
     host?: string;
     ageMs?: number;
@@ -37,9 +41,14 @@ export interface StampLockOptions {
   now?: () => number;
 }
 
+export interface StampLockHeld {
+  pid: number;
+  at: string;
+}
+
 interface StampLockContent {
   pid: number;
-  host: string;
+  host?: string;
   at: string;
   bootId?: string;
 }
@@ -58,10 +67,14 @@ async function readHolder(lockPath: string): Promise<StampLockContent | null> {
   try {
     const parsed = JSON.parse(await readFile(lockPath, "utf8")) as Record<string, unknown>;
     if (typeof parsed["pid"] !== "number") return null;
+    // RFC-1504: legacy locks carry acquiredAt instead of at — read either.
+    const at = typeof parsed["at"] === "string" ? parsed["at"]
+      : typeof parsed["acquiredAt"] === "string" ? parsed["acquiredAt"]
+      : "";
     return {
       pid: parsed["pid"],
-      host: typeof parsed["host"] === "string" ? parsed["host"] : "",
-      at: typeof parsed["at"] === "string" ? parsed["at"] : "",
+      host: typeof parsed["host"] === "string" ? parsed["host"] : undefined,
+      at,
       bootId: typeof parsed["bootId"] === "string" ? parsed["bootId"] : undefined,
     };
   } catch {
@@ -70,13 +83,15 @@ async function readHolder(lockPath: string): Promise<StampLockContent | null> {
 }
 
 /**
- * Acquire `lockPath` once. Returns {acquired:true} after breaking a dead or
- * stale holder, {acquired:false} while a live or foreign holder stands.
+ * Acquire `lockPath` once. Returns {acquired:true, held} after claiming and
+ * removing a dead or stale holder, {acquired:false} while a live or foreign
+ * holder stands. `held` is the payload just written — pass it to a verified
+ * release so a lock taken over mid-run is never deleted.
  */
 export async function acquireStampLock(
   lockPath: string,
   opts: StampLockOptions = {},
-): Promise<{ acquired: boolean; lockPath: string }> {
+): Promise<{ acquired: boolean; lockPath: string; held?: StampLockHeld }> {
   const now = opts.now ?? (() => Date.now());
   await mkdir(dirname(lockPath), { recursive: true });
   const bootId = currentBootId();
@@ -85,27 +100,41 @@ export async function acquireStampLock(
     const at = new Date(now()).toISOString();
     const content: StampLockContent = { pid: process.pid, host: hostname(), at };
     if (bootId !== undefined) content.bootId = bootId;
-    if (await tryAcquire(lockPath, content)) return { acquired: true, lockPath };
+    if (await tryAcquire(lockPath, content)) {
+      return { acquired: true, lockPath, held: { pid: process.pid, at } };
+    }
 
     const holder = await readHolder(lockPath);
-    if (holder !== null && holderIsDead(holder)) {
-      opts.onStale?.({ path: lockPath, reason: "dead-holder", pid: holder.pid, host: holder.host });
-      await rm(lockPath, { force: true });
+    const heldAtMs = holder !== null && holder.at.length > 0 ? Date.parse(holder.at) : NaN;
+    const ageMs = Number.isNaN(heldAtMs) ? NaN : now() - heldAtMs;
+
+    if (holder !== null && holderIsDead(holder, bootId)) {
+      opts.onStale?.({
+        path: lockPath,
+        reason: "dead-holder",
+        at: holder.at,
+        pid: holder.pid,
+        host: holder.host,
+        ageMs: Number.isNaN(ageMs) ? undefined : ageMs,
+      });
+      // Atomic claim: only the contender whose rename lands removes the file —
+      // a loser racing the same dead lock gets null and retries normally.
+      const tomb = await claimLockBreak(lockPath, holder);
+      if (tomb !== null) await rm(tomb, { force: true });
       continue;
     }
-    if (holder !== null && holder.at.length > 0) {
-      const at_ms = Date.parse(holder.at);
-      if (!Number.isNaN(at_ms) && now() - at_ms > STAMP_LOCK_STALE_MS) {
-        opts.onStale?.({
-          path: lockPath,
-          reason: "stale-age",
-          pid: holder.pid,
-          host: holder.host,
-          ageMs: now() - at_ms,
-        });
-        await rm(lockPath, { force: true });
-        continue;
-      }
+    if (!Number.isNaN(ageMs) && ageMs > STAMP_LOCK_STALE_MS) {
+      opts.onStale?.({
+        path: lockPath,
+        reason: "stale-age",
+        at: holder?.at,
+        pid: holder?.pid,
+        host: holder?.host,
+        ageMs,
+      });
+      const tomb = await claimLockBreak(lockPath, holder);
+      if (tomb !== null) await rm(tomb, { force: true });
+      continue;
     }
     return { acquired: false, lockPath };
   }

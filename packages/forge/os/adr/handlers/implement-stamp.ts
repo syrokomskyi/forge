@@ -14,6 +14,7 @@ and atomically mutates ADR frontmatter.
 <CHANGE_SUMMARY>
   <item>RFC-0727: initial implementation — mirrors rfc.implement.stamp for ADRs.</item>
   <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
+  <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +24,7 @@ import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { join } from "node:path";
 
 import { acquireStampLock } from "../../core/stamp-lock.ts";
+import type { StampLockHeld, StampLockOptions } from "../../core/stamp-lock.ts";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 
@@ -105,13 +107,21 @@ function lockFilePath(workspaceRoot: string, adrId: string): string {
 export async function acquireAdrLock(
   workspaceRoot: string,
   adrId: string,
-): Promise<{ acquired: boolean; lockPath: string }> {
+  opts: StampLockOptions = {},
+): Promise<{ acquired: boolean; lockPath: string; held?: StampLockHeld }> {
   const lockPath = lockFilePath(workspaceRoot, adrId);
-  return acquireStampLock(lockPath);
+  return acquireStampLock(lockPath, opts);
 }
 
-async function releaseAdrLock(lockPath: string): Promise<void> {
+// RFC-1504: release only the lock we hold — after a dead/stale break a
+// contender may have written a fresh payload, and unlinking it would break
+// mutual exclusion entirely. Mirrors withFlowLock's ownership check.
+async function releaseAdrLock(lockPath: string, held?: StampLockHeld): Promise<void> {
   try {
+    if (held !== undefined) {
+      const parsed = JSON.parse(await io.readFile(lockPath)) as { pid?: number; at?: string };
+      if (parsed.pid !== held.pid || parsed.at !== held.at) return;
+    }
     await io.rm(lockPath);
   } catch {
     // Lock file already removed — safe
@@ -264,7 +274,12 @@ export async function runAdrImplementStamp(
   }
 
   // ── ADR-IMP-05: acquire ADR-specific exclusive lock ───────────────────────
-  const { acquired, lockPath } = await acquireAdrLock(workspaceRoot, targetId);
+  const { acquired, lockPath, held } = await acquireAdrLock(workspaceRoot, targetId, {
+    onStale: (info) =>
+      logger.warn(
+        `broke ${info.reason} stamp lock ${info.path} (pid ${info.pid ?? "?"} on ${info.host ?? "?"})`,
+      ),
+  });
   if (!acquired) {
     violations.push({
       rule: "ADR-IMP-05",
@@ -341,7 +356,7 @@ export async function runAdrImplementStamp(
       ],
     };
   } finally {
-    await releaseAdrLock(lockPath);
+    await releaseAdrLock(lockPath, held);
   }
 }
 
