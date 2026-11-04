@@ -13,13 +13,15 @@ and return the RFC publications[] row for the journal.</purpose>
 <KEY_DECISIONS>
   <item>Destination resolution mirrors the retired publish-forge.mjs (RFC-1499) resolveDest(): destBase/destName parsed from extract.config.yaml, anchored at dirname(primary), destBase default "packages".</item>
   <item>Reconcile only on non-fast-forward (the same regex as the retired publish-forge.mjs, RFC-1499) — auth, hook and transient failures never trigger an ours-merge.</item>
+  <item>verifyLineAtRef (RFC-1502) extracts into an mkdtemp scratch via `--dest` — the configured destination is never touched — and a spawn failure of the repo-extract binary reports as a verification failure, not a crash.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — publishTag (extract, verify, dest push, single ours-merge reconcile)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1499: step 2 — retire publish-forge/bump-forge scripts, add extract-verify hook</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1502: step 7 — remediation entries, docs, deviations, generated indexes</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 

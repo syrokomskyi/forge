@@ -17,6 +17,7 @@ released with no mutation.</purpose>
   <item>The integration lock spans open→main-move so no second integration can interleave between the gate and the main fast-forward.</item>
   <item>Version writes are verified textual replacements (VersionWriteError → FLOW-CUT-11); the release branch is removed on that failure per AUDIT-RFC-1490-C3.</item>
   <item>Resume keys on the develop tip's `chore(release):` subject — the subject is the persisted declaration of which tags the release intends.</item>
+  <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
