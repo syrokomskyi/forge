@@ -9,13 +9,13 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
+  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -302,7 +302,10 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "Cut a release on the fixed branch model (RFC-1490): plan refusals " +
           "FLOW-CUT-01..07, then under the integration lock — release branch " +
           "through flow.open (owner release), verified version-file writes, " +
-          "chore(release) commit, gate + fast-forward into develop, " +
+          "release-prepare hook (RFC-1502: FLOW-CUT-12 refusal, FLOW-CUT-14 " +
+          "untracked warning), chore(release) commit, pre-tag extract " +
+          "verification per named package line (FLOW-CUT-13), " +
+          "gate + fast-forward into develop, " +
           "release-fingerprints hook, main compare-and-swap, release tags " +
           "(repository line always, package lines via --lines), journal. " +
           "Rerun-safe: resumes at fingerprints after an integrated release " +
@@ -321,6 +324,9 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-CUT-09", severity: "error" },
           { id: "FLOW-CUT-10", severity: "error" },
           { id: "FLOW-CUT-11", severity: "error" },
+          { id: "FLOW-CUT-12", severity: "error" },
+          { id: "FLOW-CUT-13", severity: "error" },
+          { id: "FLOW-CUT-14", severity: "warning" },
           { id: "FLOW-INT-02", severity: "error" },
           { id: "FLOW-INT-05", severity: "error" },
           { id: "FLOW-INT-06", severity: "error" },
@@ -340,7 +346,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         generates: [],
         coverage: "operator",
         coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
-        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json", "packages/*/package.json"],
+        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json", "packages/*/package.json", "packages/*/extract.config.yaml"],
         cacheable: false,
         flags: {
           lines: {

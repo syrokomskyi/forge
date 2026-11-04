@@ -19,11 +19,11 @@ released with no mutation.</purpose>
   <item>Resume keys on the develop tip's `chore(release):` subject — the subject is the persisted declaration of which tags the release intends.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
+  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -72,6 +72,7 @@ import {
 } from "../release-tags.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { VersionWriteError, writeLineVersion, writeSyncedForgeVersion } from "../version-files.ts";
+import { verifyLineAtRef } from "../publish.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 import { integrateFlowBranch } from "./flow-integrate.ts";
 import { openFlowBranchCore } from "./flow-open.ts";
@@ -110,6 +111,8 @@ export interface FlowCutData {
   gate: FlowScriptResult | null;
   /** Fix mode only: the trailing back-merge's full data (null on ordinary cuts). */
   backmerge: FlowBackmergeData | null;
+  /** Ordered plan steps — populated on --dry-run (RFC-1502), [] elsewhere. */
+  steps: string[];
   diagnostics: Diagnostic[];
 }
 
@@ -143,6 +146,7 @@ function refuse(
     fingerprints: {},
     gate: null,
     backmerge: null,
+    steps: [],
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
 }
@@ -443,6 +447,24 @@ export function toFlowCutLines(
   });
 }
 
+/** Ordered step names the --dry-run plan reports (RFC-1502 AC-6). */
+async function plannedCutSteps(
+  repoRoot: string,
+  io: WorkspaceIO,
+  plan: CutPlan,
+): Promise<string[]> {
+  const steps = ["open-branch", "version-writes", "release-prepare", "release-commit"];
+  for (const c of plan.cutLines) {
+    if (c.line.id === plan.repoLine.id) continue;
+    const dir = c.line.paths[0];
+    if (dir !== undefined && (await io.exists(join(repoRoot, dir, "extract.config.yaml")))) {
+      steps.push(`extract-verify:${c.line.id}`);
+    }
+  }
+  steps.push("integrate", "fingerprints", "main", "tags", "journal");
+  return steps;
+}
+
 function completedReleaseData(outcome: {
   ref: string;
   tags: string[];
@@ -465,6 +487,7 @@ function completedReleaseData(outcome: {
     fingerprints: {},
     gate: null,
     backmerge: null,
+    steps: [],
     diagnostics: [],
   };
 }
@@ -508,6 +531,7 @@ export async function runOrdinaryCut(
       fingerprints: {},
       gate: null,
       backmerge: null,
+      steps: await plannedCutSteps(repoRoot, io, plan),
       diagnostics: [],
     };
   }
@@ -605,14 +629,74 @@ export async function runOrdinaryCut(
           throw error;
         }
 
-        // 3. release commit.
-        await git(wt, io, ["add", "-A"]);
+        // 2b. release-prepare hook (RFC-1502): the repository regenerates
+        // version-hashed derived artifacts into the release commit. The
+        // script always comes from the primary — a session cannot weaken it.
+        const warnings: Diagnostic[] = [];
+        const prep = await runFlowScript(io, "release-prepare", {
+          primary,
+          cwd: wt,
+          env: {
+            FORGE_FLOW_RELEASE_TAGS: tagList.join(" "),
+            FORGE_FLOW_RELEASE_VERSIONS: JSON.stringify(
+              Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
+            ),
+          },
+        });
+        if (prep.status === "failed") {
+          await git(repoRoot, io, ["worktree", "remove", "--force", wt]);
+          await git(repoRoot, io, ["branch", "-D", releaseBranch]);
+          return refuse(
+            "FLOW-CUT-12",
+            `hooks/release-prepare.sh failed (exit ${prep.exitCode}): ${prep.stderrTail}`,
+            "fix the release-prepare hook and re-run flow.cut",
+            { releaseBranch },
+          );
+        }
+
+        // 3. release commit — `add -u` folds the hook's tracked edits in;
+        // untracked files it left stay out and are reported.
+        await git(wt, io, ["add", "-u"]);
+        const untracked = (await git(wt, io, ["ls-files", "--others", "--exclude-standard"])).stdout
+          .trim();
+        if (untracked.length > 0) {
+          warnings.push({
+            ruleId: "FLOW-CUT-14",
+            severity: "warning",
+            message: `release-prepare left untracked file(s) excluded from the release commit: ${untracked.replaceAll("\n", ", ")}`,
+          });
+          // The cut continues — the same unignored-untracked set comes out of
+          // the worktree so the integrate gate sees a clean tree. Removed via
+          // io.rm: `git clean -f` is blocked in agent sessions.
+          for (const file of untracked.split("\n")) {
+            await io.rm(join(wt, file));
+          }
+        }
         const body = cutLines
           .map((c) => `${c.tag} ${c.level} ${c.previousTag ?? "null"}`)
           .join("\n");
         const commit = await gitCommit(wt, io, ["commit", "-m", `${subject}\n\n${body}`], "cut");
         if (commit.exitCode !== 0) {
           return refuse("FLOW-CUT-01", `release commit failed: ${commit.stderr.trim()}`, "inspect the release worktree state", { releaseBranch });
+        }
+
+        // 3b. pre-tag extract verification (RFC-1502): every named package
+        // line extracts at the release commit into a scratch and runs
+        // extract-verify — before the integration that makes it a release.
+        const releaseSha = (await git(wt, io, ["rev-parse", "HEAD"])).stdout.trim();
+        for (const c of cutLines) {
+          if (c.line.id === repoLine.id) continue;
+          const verify = await verifyLineAtRef(primary, io, { line: c.line, ref: releaseSha });
+          if (!verify.ok) {
+            await git(repoRoot, io, ["worktree", "remove", "--force", wt]);
+            await git(repoRoot, io, ["branch", "-D", releaseBranch]);
+            return refuse(
+              "FLOW-CUT-13",
+              `pre-tag extract verification failed for line ${c.line.id}: ${verify.detail}`,
+              "fix the extract or verify failure and re-run flow.cut",
+              { releaseBranch },
+            );
+          }
         }
 
         // 4. integrate (gate + ff + cleanup) with the lock already held.
@@ -634,7 +718,7 @@ export async function runOrdinaryCut(
         }
 
         // 5–8. fingerprints → main → tags → journal.
-        return finishCutTail(repoRoot, io, {
+        const tail = await finishCutTail(repoRoot, io, {
           developTip: integrated.developAfter ?? plan.ref,
           tagNames: tagList,
           cutLines,
@@ -646,6 +730,7 @@ export async function runOrdinaryCut(
           journalBranch: releaseBranch,
           journalBase: integrated.developBefore ?? plan.ref,
         });
+        return { ...tail, diagnostics: [...warnings, ...tail.diagnostics] };
       },
       io,
     );
@@ -814,6 +899,7 @@ async function finishCutTail(
     fingerprints,
     gate,
     backmerge: null,
+    steps: [],
     diagnostics: [],
   };
 }

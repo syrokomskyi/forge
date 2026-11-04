@@ -13,11 +13,11 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: step 3 — flow.check with FLOW-01..05 + managed-block helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
+  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -171,7 +171,10 @@ export async function initRepoWithOrigin(
  * materializes the destination exactly like resolveExtractDest does — a
  * git repo at <parent>/<destBase|packages>/<destName> with one export
  * commit and a bare `origin` at <parent>/extract-origins/<destName>.git.
- * Set FAKE_EXTRACT_FAIL=1 in its env to make it exit 3 (FLOW-PUSH-05 test).
+ * A `--dest <dir>` argument overrides the computed destination (RFC-1502's
+ * pre-tag verify extracts into a scratch). Set FAKE_EXTRACT_FAIL=1 in its
+ * env — or drop a `.fail-extract` marker in the caller's cwd — to make it
+ * exit 3 (FLOW-PUSH-05 / FLOW-CUT-13 tests).
  */
 export async function installFakeRepoExtract(
   repo: string,
@@ -185,15 +188,16 @@ export async function installFakeRepoExtract(
     `#!/bin/sh
 set -eu
 echo "$@" >> ${JSON.stringify(log)}
-if [ "\${FAKE_EXTRACT_FAIL:-0}" = "1" ]; then
+if [ "\${FAKE_EXTRACT_FAIL:-0}" = "1" ] || [ -f "$PWD/.fail-extract" ]; then
   echo "fake extract failure" >&2
   exit 3
 fi
-cfg=""; ref=""
+cfg=""; ref=""; destOverride=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --config) cfg="$2"; shift 2 ;;
     --ref) ref="$2"; shift 2 ;;
+    --dest) destOverride="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
@@ -201,7 +205,7 @@ lineDir=$(dirname "$cfg")
 destName=$(grep '^destName:' "$lineDir/extract.config.yaml" | sed 's/^destName: *//' | tr -d ' ')
 destBase=$(grep '^destBase:' "$lineDir/extract.config.yaml" | sed 's/^destBase: *//' | tr -d ' ')
 destBase=\${destBase:-packages}
-dest="$(dirname "$PWD")/$destBase/$destName"
+dest="\${destOverride:-$(dirname "$PWD")/$destBase/$destName}"
 mkdir -p "$dest"
 if [ ! -d "$dest/.git" ]; then git -C "$dest" init -b main >/dev/null; fi
 # A CI runner has no global git identity; publish's reconcile merge commits

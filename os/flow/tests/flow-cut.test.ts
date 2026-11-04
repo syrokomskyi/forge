@@ -20,6 +20,7 @@ resume path (AC-5: subject-named tags missing → tail re-runs).</purpose>
   <item>RFC-1490: step 4 — flow.cut happy path, refusals, and resume tests</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,7 +31,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import type { ForgeRuntimeContext } from "../../../src/types.ts";
-import { gitExec, initRepo, installGuard } from "./helpers.ts";
+import { gitExec, initRepo, installFakeRepoExtract, installGuard } from "./helpers.ts";
 import { runFlowCut, runOrdinaryCut } from "../handlers/flow-cut.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
 import { flowWorktreePath } from "../worktree-path.ts";
@@ -105,6 +106,9 @@ async function adoptedRepo(opts?: { pending?: boolean; packageLine?: boolean }):
   await gitExec(repo, ["tag", "-a", "v0.1.0", "main", "-m", "release v0.1.0"]);
   if (opts?.packageLine) {
     await gitExec(repo, ["tag", "-a", "lib@2.0.0", "main", "-m", "release lib@2.0.0"]);
+    // The lib line carries extract.config.yaml — RFC-1502's pre-tag verify
+    // runs repo-extract on it, so the fixture links the fake binary.
+    await installFakeRepoExtract(repo, join(repo, "extract.log"));
   }
   return repo;
 }

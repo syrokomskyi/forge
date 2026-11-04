@@ -19,9 +19,12 @@ and return the RFC publications[] row for the journal.</purpose>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1499: step 2 — retire publish-forge/bump-forge scripts, add extract-verify hook</item>
+  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
 </CHANGE_SUMMARY>
 */
 
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 
 import type { WorkspaceIO } from "../../src/types.ts";
@@ -198,4 +201,68 @@ export async function publishTag(
 
   row.destHead = (await git(dest, io, ["rev-parse", "HEAD"])).stdout.trim();
   return row;
+}
+
+export interface LineVerifyResult {
+  ok: boolean;
+  /** True when the line carries no extract.config.yaml — nothing to verify. */
+  skipped: boolean;
+  /** FLOW-CUT-13 detail when ok === false. */
+  detail: string;
+}
+
+/**
+ * Pre-tag extract verification (RFC-1502): extract the line at `ref` into a
+ * scratch directory under os.tmpdir() — `--dest` redirects the output, the
+ * configured destination is never written — then run the extract-verify
+ * hook against the scratch. The scratch is always removed. A line without
+ * an extract.config.yaml is skipped (nothing publishable to verify).
+ */
+export async function verifyLineAtRef(
+  primary: string,
+  io: WorkspaceIO,
+  opts: { line: ReleaseLine; ref: string },
+): Promise<LineVerifyResult> {
+  const { line, ref } = opts;
+  const dir = line.paths[0];
+  if (dir === undefined || !(await io.exists(join(primary, dir, "extract.config.yaml")))) {
+    return { ok: true, skipped: true, detail: "" };
+  }
+  const scratch = await mkdtemp(join(tmpdir(), "flow-extract-"));
+  try {
+    const extractBin = join(primary, "node_modules", ".bin", "repo-extract");
+    let extract;
+    try {
+      extract = await io.exec(
+        extractBin,
+        ["--config", `${dir}/extract.config.yaml`, "--ref", ref, "--dest", scratch, "--no-push"],
+        { cwd: primary },
+      );
+    } catch (error) {
+      return {
+        ok: false,
+        skipped: false,
+        detail: `repo-extract could not run at ${extractBin}: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+    if (extract.exitCode !== 0) {
+      const last = extract.stderr.trim().split("\n").filter((l) => l.length > 0).slice(-1)[0] ?? "";
+      return { ok: false, skipped: false, detail: `repo-extract failed (exit ${extract.exitCode}): ${last}` };
+    }
+    const verify = await runFlowScript(io, "extract-verify", {
+      primary,
+      cwd: primary,
+      env: {
+        FORGE_FLOW_EXTRACT_DEST: scratch,
+        FORGE_FLOW_REF: ref,
+        FORGE_FLOW_LINE: line.id,
+      },
+    });
+    if (verify.status === "failed") {
+      return { ok: false, skipped: false, detail: `extract-verify failed (exit ${verify.exitCode}): ${verify.stderrTail}` };
+    }
+    return { ok: true, skipped: false, detail: "" };
+  } finally {
+    await rm(scratch, { recursive: true, force: true });
+  }
 }
