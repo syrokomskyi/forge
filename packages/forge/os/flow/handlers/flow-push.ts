@@ -17,7 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push (preflight, atomic push, publications, journals)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
@@ -28,6 +27,8 @@ table. The kernel forwards --dry-run into commands that declare a dry-run flag,
 and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -41,7 +42,7 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
-import { collectDigest, lineForTag } from "../digest.ts";
+import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
 import {
   git,
   requireGit,
@@ -56,7 +57,6 @@ import {
   FlowRegistrySchemaError,
   readJournal,
 } from "../registry.ts";
-import { parseVersion } from "../semver.ts";
 import { discoverReleaseLines, type ReleaseLine } from "../release-lines.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 
@@ -178,12 +178,10 @@ export async function pushFlow(
       planCandidates.push({ tag, line: line.id });
     }
   }
-  const plan = planPublications(planCandidates, publishedTags, retiredTags, (tag, lineId) => {
-    const line = lines.find((l) => l.id === lineId);
-    if (line === undefined || !tag.startsWith(line.tagPrefix)) return null;
-    return parseVersion(tag.slice(line.tagPrefix.length));
-  });
-  const publishable: Array<{ tag: string; line: ReleaseLine }> = plan.attempt.map((p) => ({
+  let plan = planPublications(planCandidates, publishedTags, retiredTags, (tag, lineId) =>
+    versionOfTag(lines, tag, lineId),
+  );
+  let publishable: Array<{ tag: string; line: ReleaseLine }> = plan.attempt.map((p) => ({
     tag: p.tag,
     line: lines.find((l) => l.id === p.line)!,
   }));
@@ -289,6 +287,43 @@ export async function pushFlow(
   }
 
   // --- publications ------------------------------------------------------------
+  // RFC-1503 review r1 F-5: re-read the journal after the push — a retire or
+  // supersede record appended meanwhile must drop the tag from this run's
+  // attempts. The window can only be narrowed, not closed: appendJournal
+  // takes no push-spanning lock.
+  const freshJournal = await readJournal(io, common);
+  const freshPublished = new Set(
+    freshJournal.filter((e) => e.event === "publish").map((e) => e.branch),
+  );
+  const freshRetired = new Set(
+    freshJournal.filter((e) => e.event === "publish-retired").map((e) => e.branch),
+  );
+  const freshSuperseded = new Set(
+    freshJournal.filter((e) => e.event === "publish-superseded").map((e) => e.branch),
+  );
+  if (
+    freshPublished.size !== publishedTags.size ||
+    freshRetired.size !== retiredTags.size
+  ) {
+    for (const tag of freshPublished) publishedTags.add(tag);
+    for (const tag of freshRetired) retiredTags.add(tag);
+    plan = planPublications(
+      planCandidates.filter((c) => !freshSuperseded.has(c.tag)),
+      publishedTags,
+      retiredTags,
+      (tag, lineId) => versionOfTag(lines, tag, lineId),
+    );
+    publishable = plan.attempt.map((p) => ({
+      tag: p.tag,
+      line: lines.find((l) => l.id === p.line)!,
+    }));
+  } else {
+    plan = {
+      attempt: plan.attempt,
+      superseded: plan.superseded.filter((s) => !freshSuperseded.has(s.tag)),
+    };
+  }
+
   const publications: PublicationRow[] = [...baselineSkipped];
   const supersededOut: Array<{ tag: string; by: string }> = [];
   const diagnostics: Diagnostic[] = journalWarnings.map(
@@ -300,7 +335,6 @@ export async function pushFlow(
   );
 
   const recordSuperseded = async (tag: string, by: string): Promise<void> => {
-    supersededOut.push({ tag, by });
     try {
       await appendJournal(io, common, {
         event: "publish-superseded",
@@ -308,6 +342,7 @@ export async function pushFlow(
         sha: "",
         detail: by,
       });
+      supersededOut.push({ tag, by });
     } catch (error) {
       diagnostics.push({
         ruleId: "FLOW-07",
@@ -373,7 +408,7 @@ export async function pushFlow(
     refs: refspecs,
     publications,
     superseded: supersededOut,
-    retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
+    retired: [...freshRetired].sort((a, b) => a.localeCompare(b)),
     diagnostics,
   };
 }

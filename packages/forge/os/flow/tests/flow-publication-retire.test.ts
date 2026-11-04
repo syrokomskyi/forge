@@ -12,6 +12,7 @@ FLOW-RETIRE-01; an empty --reason refuses FLOW-RETIRE-02.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1503: step 1 — publication-retire tests</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
 </CHANGE_SUMMARY>
 */
 
@@ -90,7 +91,7 @@ describe("flow.publication.retire (RFC-1503)", () => {
     await makePending(repo, "lib@1.0.0");
 
     const before = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(before.pendingPublications.length).toBeGreaterThan(0);
+    expect(before.pendingPublications).toEqual([{ tag: "lib@1.0.0", line: "lib" }]);
 
     const res = await retirePublication(repo, ambientIo, {
       tag: "lib@1.0.0",
@@ -142,6 +143,31 @@ describe("flow.publication.retire (RFC-1503)", () => {
     const common = await commonGitDir(ambientIo, repo);
     const journal = await readJournal(ambientIo, common);
     expect(journal.filter((e) => e.event === "publish-retired")).toEqual([]);
+  }, 120_000);
+
+  it("retires a shadowed (superseded-by-null) pending tag too", async () => {
+    const { repo } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-ret-",
+      fakeExtract: true,
+    });
+    await addPackageLine(repo);
+    await makePending(repo, "lib@1.0.0");
+    await makePending(repo, "lib@1.1.0");
+
+    const before = await collectDigest(repo, ambientIo, { fetch: false });
+    expect(before.pendingPublications).toEqual([{ tag: "lib@1.1.0", line: "lib" }]);
+    expect(before.supersededPublications).toEqual([
+      { tag: "lib@1.0.0", line: "lib", by: null },
+    ]);
+
+    const res = await retirePublication(repo, ambientIo, {
+      tag: "lib@1.0.0",
+      reason: "shadowed and unwanted",
+    });
+    expect(res.diagnostics).toEqual([]);
+    const after = await collectDigest(repo, ambientIo, { fetch: false });
+    expect(after.pendingPublications).toEqual([{ tag: "lib@1.1.0", line: "lib" }]);
+    expect(after.supersededPublications).toEqual([]);
   }, 120_000);
 
   it("refuses an empty reason with FLOW-RETIRE-02", async () => {
