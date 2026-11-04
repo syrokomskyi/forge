@@ -12,6 +12,7 @@ and FLOW-RETIRE-02 on an empty --reason.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1503: step 3 — flow.publication.retire handler</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
 </CHANGE_SUMMARY>
 */
 
@@ -80,12 +81,26 @@ export async function retirePublication(
   }
 
   const common = await commonGitDir(io, repoRoot);
-  await appendJournal(io, common, {
-    event: "publish-retired",
-    branch: opts.tag,
-    sha: "",
-    detail: reason,
-  });
+  try {
+    await appendJournal(io, common, {
+      event: "publish-retired",
+      branch: opts.tag,
+      sha: "",
+      detail: reason,
+    });
+  } catch (error) {
+    return {
+      tag: opts.tag,
+      retired: null,
+      diagnostics: [
+        {
+          ruleId: "FLOW-07",
+          severity: "error",
+          message: `publish-retired record for ${opts.tag} could not be appended: ${String(error)}`,
+        },
+      ],
+    };
+  }
   return { tag: opts.tag, retired: opts.tag, diagnostics: [] };
 }
 

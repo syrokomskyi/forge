@@ -18,7 +18,6 @@ flow.push must quote.</purpose>
   <item>tagTriggers (RFC-1498) is part of digestId input: a workflow-file change between digest and push must invalidate the quoted id. Unparseable workflows and ununderstood patterns warn FLOW-11 and match nothing — never block the digest.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
 
@@ -29,6 +28,7 @@ Steering-session verification of wave 2 found two outbound defects:
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -552,7 +552,7 @@ export function lineForTag(lines: ReleaseLine[], tag: string): ReleaseLine | nul
 
 /** Strict semver of `tag` under the line with id `lineId` — null when the
  * line is unknown, the prefix does not match, or the suffix is not X.Y.Z. */
-function versionOfTag(lines: ReleaseLine[], tag: string, lineId: string): SemVer | null {
+export function versionOfTag(lines: ReleaseLine[], tag: string, lineId: string): SemVer | null {
   const line = lines.find((l) => l.id === lineId);
   if (line === undefined || !tag.startsWith(line.tagPrefix)) return null;
   return parseVersion(tag.slice(line.tagPrefix.length));
