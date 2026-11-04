@@ -55,6 +55,7 @@ acceptance:
   - claim: <what the brief asked>
     evidence: <how it is proven>
 outbox: [<entry ids this work served, if any>]
+# question: <required when outcome is needs-decision — one question for the operator>
 ```
 
 - `outcome: done` goes with `gate: pass` — a report claiming done on a failing gate is dishonest, and collect will surface it to the operator.

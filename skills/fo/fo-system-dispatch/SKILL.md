@@ -28,15 +28,15 @@ Use this skill inside a **system repository** — the one holding `system/system
 
 ### 1. Read the queue
 
-Run `system.task.status`. It joins every task file with its brief, registry entry, journal position and report — one picture per task.
+Run `system.task.status`. It joins every task file with its product-side registry and journal evidence — one picture per task: state, branch, and what the product last reported.
 
-### 2. Scan product outboxes
+### 2. Create tasks
 
-Run `system.outbox.scan` (add `--create` to materialize matched entries as `proposed` tasks). A scan is read-only without `--create`; unmatched, forbidden or unresolvable entries surface as SYSTEM-OUTBOX diagnostics, never silent drops.
+Operator-initiated work starts as `system.task.create --product <p> --slug <s> --title <t> --kind <adoption|feature|…>` — including the adoption tasks the operator's runbook hands this skill. Then run `system.outbox.scan` (add `--create` to materialize matched entries as `proposed` tasks). A scan is read-only without `--create`; unmatched, forbidden or unresolvable entries surface as SYSTEM-OUTBOX diagnostics (schema-invalid entries as OUTBOX-01/02), never silent drops.
 
 ### 3. Write a self-contained brief
 
-For each `proposed` task you intend to dispatch, write `queue/briefs/<id>.md` so that a session which has never seen this repository can do the work. Frontmatter carries the task id and product; the body carries what to change, where to look, and how the session proves it. A brief that needs system context to parse is a failed brief.
+For each `proposed` task you intend to dispatch, write `queue/briefs/<id>.md` so that a session which has never seen this repository can do the work. Frontmatter carries `schema: forge/dispatch-brief@1`, the task id, the product, a non-placeholder `goal`, and at least one `acceptance: [{claim, check}]` — all gated by the ready move. The body carries what to change, where to look, and how the session proves it. A brief that needs system context to parse is a failed brief.
 
 ### 4. Move to `ready`
 
@@ -44,15 +44,15 @@ Run `system.task.move --task <id> --to ready`. The ready gate checks the brief e
 
 ### 5. Dispatch
 
-Run `system.task.dispatch --task <id>`. Dispatch opens a task worktree inside the product checkout, plants `.forge/task/brief.md` there, and prints the session-start command — start that session yourself or hand the printed command to the operator.
+Run `system.task.dispatch --task <id>`. Dispatch opens a task worktree inside the product checkout, plants `.forge/task/brief.md` there, and prints the worktree path to `cd` into — start that session yourself or hand the printed command to the operator. A product whose `products.local.yaml` declares a `launcher.argv` is invoked automatically.
 
 A dispatch refusal is information: read the SYSTEM-TASK diagnostic, repair the cause (unmapped folder, forbidden edge, wedged flow), then dispatch again.
 
 ### 6. Collect
 
-Later, run `system.task.collect --task <id>` after the product session reports. A `done` report moves the task to `integrated`; a `blocked` or `needs-decision` report moves it back with the question recorded — bring exactly that question to the operator, then re-dispatch or park.
+Later, run `system.task.collect --task <id>` after the product session reports. Collect maps the outcome: `done` → `integrated` (with the journal's integrate evidence), `needs-decision` → `reported`, `blocked` → `failed`. A `needs-decision` report's question goes to the operator verbatim — then follow through with `system.task.move`: `reported → ready` (with `--reason`) before re-dispatching, `failed → ready` directly, or `ready`/`failed → parked` (with `--reason`) to shelve.
 
-A dispatched task with no report stays `dispatched` — `--mark-failed` is the operator's call after a session dies, not a cleanup habit.
+A dispatched task with no report stays `dispatched` — `--mark-failed --reason "<why>"` is the operator's call after a session dies, not a cleanup habit.
 
 ### 7. Commit queue files in this repository
 
