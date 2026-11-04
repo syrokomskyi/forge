@@ -17,22 +17,14 @@ at cleanup without moving develop again.</purpose>
   <item>Every git call after worktree removal runs with -C &lt;primary&gt; — the caller's cwd may be the removed directory (AUDIT G3/G4).</item>
   <item>Rerun detection is `isAncestor(branchTip, develop)` on a registered entry — develop already containing the branch means the merge landed; only cleanup remains (AC-9).</item>
   <item>FLOW-INT-07 covers develop moving between rebase and merge despite the lock — the branch stays rebased; a rerun rebases onto the new tip.</item>
+  <item>Task-file preservation runs inside the cleanup branch before `git worktree remove` and only for owner.kind task — a copy failure refuses cleanup (FLOW-INT-04) so the report is never destroyed with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
-
-The dirty gate for session worktrees now uses full porcelain status
-(untracked files included) because it predicts 'git worktree remove';
-the primary-clean gate keeps tracked-only semantics because it predicts
-'merge --ff-only'. Lock release verifies the held payload before
-unlinking. Registry/journal failures map to FLOW-07 in every handler.
-The final branch-name collision reports FLOW-OPEN-04, flow.discard
-propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
-and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
