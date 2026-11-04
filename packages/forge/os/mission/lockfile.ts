@@ -15,6 +15,7 @@ restores the file committed at HEAD so the worktree returns clean.
   <item>RFC-1505: step 3 — tracked lockfile restore helper</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
+  <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +32,9 @@ const LOCKFILE_NAME = "pnpm-lock.yaml";
  * back over `root/pnpm-lock.yaml` and the call returns `true`. On a non-zero
  * exit (no such file at HEAD, not a git repository) it returns `false` and
  * changes nothing. Spawn failures (missing git binary) propagate.
+ * `root` is the repository root — git resolves `HEAD:pnpm-lock.yaml` against
+ * the enclosing repo's top level, so passing a nested directory of a larger
+ * repo would restore that repo's root lockfile instead.
  */
 export async function restoreTrackedLockfile(
   root: string,

@@ -9,6 +9,7 @@
   <item>RFC-0573: initial forgeMissionModule registering mission.archive command.</item>
   <item>RFC-0982: add --clean-orphans flag for trashing orphaned remnant directories.</item>
   <item>RFC-1397: declare internal --ship-op flag — ship's own opId marker for the terminal archive step exemption.</item>
+  <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
 </CHANGE_SUMMARY>
 */
 
@@ -33,7 +34,7 @@ export async function createForgeMissionModule(): Promise<ForgeModule> {
           "Prefer the docs.archive umbrella command unless you need to archive only missions.",
         scope: "workspace",
         mutatesState: true,
-        writes: ["missions/*", "missions/archive/**"],
+        writes: ["missions/*", "missions/archive/**", "pnpm-lock.yaml"],
         generates: [],
         reads: ["missions/**"],
         cacheable: false,
