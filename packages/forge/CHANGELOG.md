@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.3.0] — 2026-11-04
+
+_System repositories: Forge can now coordinate several products from one repository. Releases verify a package before tagging it, and failed publications no longer keep `flow.push` red._
+
+### Added
+
+- **`system` profile**: `forge create --in-place --profile system` scaffolds a system repository with its map (`system/system.yaml`, `products.yaml`, `edges.yaml`), checked by `system.map.validate` (RFC-1508).
+- **Task queue**: `system.task.create`, `system.task.dispatch`, `system.task.collect`, `system.task.move` and `system.task.status` hand self-contained briefs to `auto/task-…` branches in product worktrees and collect their reports; the task ↔ branch mapping stays in the system repository (RFC-1509).
+- **Product outbox**: products record what they need from a dependency contract in `docs/outbox/`, checked by `outbox.validate` and read by `system.outbox.scan`, without naming any system (RFC-1510).
+- **Scenarios and version sets**: `system.versionset.record` records product versions verified together on annotated release tags (RFC-1511).
+- **Skills**: `fo-system-dispatch`, `fo-task-run` and `fo-outbox` (RFC-1510, RFC-1512).
+- **`flow.publication.retire`**: an operator command for a pending publication that can never pass (RFC-1503).
+- **`hooks/release-prepare.sh`**: an optional repository hook whose changes join the release commit, for derived artifacts that depend on the version (RFC-1502).
+
+### Changed
+
+- **`flow.cut` and `flow.fix` verify before tagging**: every named package line with an `extract.config.yaml` is extracted to a scratch directory and passes `hooks/extract-verify.sh` before any tag exists (FLOW-CUT-13). A package release therefore needs its `CHANGELOG.md` section integrated before the cut (RFC-1502).
+- **`flow.push` publishes per line only the highest pending tag**: lower tags are recorded as superseded and never extracted, so an older version can no longer follow a newer one onto the destination. The exit code counts only this run (RFC-1503).
+- **Locks recover from dead holders**: flow locks and RFC/ADR stamp locks of a process that is provably gone on this host are broken at once with a warning; stamp locks also gain an age limit (RFC-1504).
+
+### Fixed
+
+- The check-counters journal no longer recreates a removed workspace root, which left an orphan directory beside the repository after `flow.integrate`.
+- `mission.archive` no longer projects local mission state into tracked files (RFC-1505).
+
 ## [9.2.3] — 2026-11-03
 
 _First published release of the fixed branch model — see 9.2.2 for its content. `9.2.2` was tagged but not published: the standalone CI failed one test whose fixture relied on a global git identity._
