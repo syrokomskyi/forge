@@ -10,6 +10,7 @@ id on this host is treated as dead. Uses injected now/sleep — no real waits.</
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1504: step 1 — dead-holder lock tests</item>
+  <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,7 +29,11 @@ afterEach(async () => {
   for (const dir of dirs.splice(0)) await rm(dir, { recursive: true, force: true });
 }, 20_000);
 
-const deadPid = (): number => spawnSync(process.execPath, ["-e", ""]).pid!;
+const deadPid = (): number => {
+  const pid = spawnSync(process.execPath, ["-e", ""]).pid;
+  if (pid === undefined) throw new Error("spawn failed — cannot produce a dead pid");
+  return pid;
+};
 const livePid = (): number => process.pid;
 const HOST = hostname();
 
@@ -72,6 +77,11 @@ describe("holderIsDead (RFC-1504)", () => {
 
   it("absent host → never dead by pid", () => {
     expect(holderIsDead({ pid: deadPid() })).toBe(false);
+  });
+
+  it("a pid we cannot signal (EPERM) counts as alive — fail closed", () => {
+    // pid 1 belongs to init: signal-0 either succeeds or EPERMs, never ESRCH.
+    expect(holderIsDead({ pid: 1, host: HOST })).toBe(false);
   });
 
   it("different boot id on this host → dead even with a live pid (AC-4 basis)", () => {

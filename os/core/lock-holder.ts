@@ -13,15 +13,18 @@ reads /proc/sys/kernel/random/boot_id when the platform has one.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1504: step 2 — holderIsDead + currentBootId</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
+  <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
 </CHANGE_SUMMARY>
 */
 
 import { readFileSync } from "node:fs";
+import { readFile, rename } from "node:fs/promises";
 import { hostname } from "node:os";
 
 export interface LockHolder {
   pid: number;
   host?: string;
+  at?: string;
   bootId?: string;
 }
 
@@ -44,14 +47,42 @@ export function currentBootId(): string | undefined {
  * probes: ESRCH is dead, EPERM and success are alive; any other error is
  * treated as alive (fail closed).
  */
-export function holderIsDead(lock: LockHolder): boolean {
+export function holderIsDead(lock: LockHolder, bootId: string | undefined = currentBootId()): boolean {
   if (lock.host === undefined || lock.host !== hostname()) return false;
-  const boot = currentBootId();
-  if (lock.bootId !== undefined && boot !== undefined && lock.bootId !== boot) return true;
+  if (lock.bootId !== undefined && bootId !== undefined && lock.bootId !== bootId) return true;
   try {
     process.kill(lock.pid, 0);
     return false;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === "ESRCH";
+  }
+}
+
+/**
+ * Atomically claim the right to remove a stale/dead lock file: re-read the
+ * file, verify it still carries the `expected` holder (same pid and at), and
+ * rename it to a unique tombstone path. Returns the tombstone path for the
+ * caller to unlink, or null when the lock changed hands in between — in
+ * that case a fresh holder stands and the file must not be touched.
+ * The rename is the claim: two contenders racing the same dead lock cannot
+ * both land it, so a winner never deletes another contender's fresh lock.
+ */
+export async function claimLockBreak(
+  lockPath: string,
+  expected: { pid: number; at: string } | null,
+): Promise<string | null> {
+  const tombPath = `${lockPath}.tomb.${process.pid}.${Date.now()}`;
+  try {
+    const current = JSON.parse(await readFile(lockPath, "utf8")) as Record<string, unknown>;
+    if (expected !== null) {
+      const at = typeof current["at"] === "string" ? current["at"]
+        : typeof current["acquiredAt"] === "string" ? current["acquiredAt"]
+        : "";
+      if (current["pid"] !== expected.pid || at !== expected.at) return null;
+    }
+    await rename(lockPath, tombPath);
+    return tombPath;
+  } catch {
+    return null;
   }
 }

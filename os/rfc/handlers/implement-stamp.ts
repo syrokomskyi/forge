@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-IMP-07</history>
+  <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +27,7 @@ import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { join, relative, resolve, sep } from "node:path";
 
 import { acquireStampLock } from "../../core/stamp-lock.ts";
+import type { StampLockHeld, StampLockOptions } from "../../core/stamp-lock.ts";
 
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { parse as yamlParse } from "yaml";
@@ -245,13 +246,21 @@ function lockFilePath(workspaceRoot: string, rfcId: string): string {
 export async function acquireRfcLock(
   workspaceRoot: string,
   rfcId: string,
-): Promise<{ acquired: boolean; lockPath: string }> {
+  opts: StampLockOptions = {},
+): Promise<{ acquired: boolean; lockPath: string; held?: StampLockHeld }> {
   const lockPath = lockFilePath(workspaceRoot, rfcId);
-  return acquireStampLock(lockPath);
+  return acquireStampLock(lockPath, opts);
 }
 
-async function releaseRfcLock(lockPath: string): Promise<void> {
+// RFC-1504: release only the lock we hold — after a dead/stale break a
+// contender may have written a fresh payload, and unlinking it would break
+// mutual exclusion entirely. Mirrors withFlowLock's ownership check.
+async function releaseRfcLock(lockPath: string, held?: StampLockHeld): Promise<void> {
   try {
+    if (held !== undefined) {
+      const parsed = JSON.parse(await io.readFile(lockPath)) as { pid?: number; at?: string };
+      if (parsed.pid !== held.pid || parsed.at !== held.at) return;
+    }
     await io.rm(lockPath);
   } catch {
     // Lock file already removed — safe
@@ -1170,7 +1179,12 @@ export async function runRfcImplementStamp(
   // Under the default repair pass the lock must precede the FIRST write —
   // which is the emit-if-needed envelope refresh, not the stamp mutation —
   // so all envelope-independent gates above abort before this point.
-  const { acquired, lockPath } = await acquireRfcLock(workspaceRoot, targetId);
+  const { acquired, lockPath, held } = await acquireRfcLock(workspaceRoot, targetId, {
+    onStale: (info) =>
+      logger.warn(
+        `broke ${info.reason} stamp lock ${info.path} (pid ${info.pid ?? "?"} on ${info.host ?? "?"})`,
+      ),
+  });
   if (!acquired) {
     violations.push({
       rule: "RFC-IMP-05",
@@ -1496,7 +1510,7 @@ export async function runRfcImplementStamp(
       ],
     };
   } finally {
-    await releaseRfcLock(lockPath);
+    await releaseRfcLock(lockPath, held);
   }
 }
 
