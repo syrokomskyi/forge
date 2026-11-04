@@ -20,11 +20,11 @@ released with no mutation.</purpose>
   <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -448,20 +448,36 @@ export function toFlowCutLines(
   });
 }
 
-/** Ordered step names the --dry-run plan reports (RFC-1502 AC-6). */
-async function plannedCutSteps(
-  repoRoot: string,
+/**
+ * `extract-verify:<line>` steps for named non-repository lines with an
+ * extract.config.yaml — anchored on the primary checkout, same probe the
+ * execution path uses (RFC-1502).
+ */
+export async function plannedExtractVerifySteps(
+  primary: string,
   io: WorkspaceIO,
-  plan: CutPlan,
+  cutLines: CutLine[],
+  repoLine: ReleaseLine,
 ): Promise<string[]> {
-  const steps = ["open-branch", "version-writes", "release-prepare", "release-commit"];
-  for (const c of plan.cutLines) {
-    if (c.line.id === plan.repoLine.id) continue;
+  const steps: string[] = [];
+  for (const c of cutLines) {
+    if (c.line.id === repoLine.id) continue;
     const dir = c.line.paths[0];
-    if (dir !== undefined && (await io.exists(join(repoRoot, dir, "extract.config.yaml")))) {
+    if (dir !== undefined && (await io.exists(join(primary, dir, "extract.config.yaml")))) {
       steps.push(`extract-verify:${c.line.id}`);
     }
   }
+  return steps;
+}
+
+/** Ordered step names the --dry-run plan reports (RFC-1502 AC-6). */
+async function plannedCutSteps(
+  primary: string,
+  io: WorkspaceIO,
+  plan: Pick<CutPlan, "cutLines" | "repoLine">,
+): Promise<string[]> {
+  const steps = ["open-branch", "version-writes", "release-prepare", "release-commit"];
+  steps.push(...(await plannedExtractVerifySteps(primary, io, plan.cutLines, plan.repoLine)));
   steps.push("integrate", "fingerprints", "main", "tags", "journal");
   return steps;
 }
@@ -532,7 +548,7 @@ export async function runOrdinaryCut(
       fingerprints: {},
       gate: null,
       backmerge: null,
-      steps: await plannedCutSteps(repoRoot, io, plan),
+      steps: await plannedCutSteps(plan.primary, io, plan),
       diagnostics: [],
     };
   }
@@ -658,18 +674,28 @@ export async function runOrdinaryCut(
         // 3. release commit — `add -u` folds the hook's tracked edits in;
         // untracked files it left stay out and are reported.
         await git(wt, io, ["add", "-u"]);
-        const untracked = (await git(wt, io, ["ls-files", "--others", "--exclude-standard"])).stdout
-          .trim();
-        if (untracked.length > 0) {
+        const untrackedFiles = (
+          await git(wt, io, [
+            "-c",
+            "core.quotepath=false",
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+          ])
+        ).stdout
+          .split("\0")
+          .filter((f) => f.length > 0);
+        if (untrackedFiles.length > 0) {
           warnings.push({
             ruleId: "FLOW-CUT-14",
             severity: "warning",
-            message: `release-prepare left untracked file(s) excluded from the release commit: ${untracked.replaceAll("\n", ", ")}`,
+            message: `release-prepare left untracked file(s) excluded from the release commit and removed from the release worktree: ${untrackedFiles.join(", ")}`,
           });
           // The cut continues — the same unignored-untracked set comes out of
           // the worktree so the integrate gate sees a clean tree. Removed via
           // io.rm: `git clean -f` is blocked in agent sessions.
-          for (const file of untracked.split("\n")) {
+          for (const file of untrackedFiles) {
             await io.rm(join(wt, file));
           }
         }
@@ -900,7 +926,7 @@ async function finishCutTail(
     fingerprints,
     gate,
     backmerge: null,
-    steps: [],
+    steps: await plannedCutSteps(primary, io, { cutLines, repoLine }),
     diagnostics: [],
   };
 }

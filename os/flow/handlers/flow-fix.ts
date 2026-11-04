@@ -17,13 +17,13 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
   <item>RFC-1502: the fix release commit uses the same `add -u` staging + FLOW-CUT-14 untracked removal as the ordinary cut, and verifies named package lines at the fix tip before any ref moves.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1490: fix-mode cut run inside the fix worktree tears down and back-merges through the primary
 
 Steering-session verification of wave 2 (W2-1): flow.cut run inside the fix worktree, the documented path and the one flow.fix's nextSteps print, released main and the tags, then removed that worktree and kept using it as repoRoot. branch -D failed unobserved, leaving an unregistered auto/fix branch, and the trailing back-merge crashed on the vanished directory. The primary is now resolved before the cut and used for every step after the teardown; a failed branch delete surfaces as a FLOW-07 warning. Back-merge refusals are appended to the cut diagnostics instead of replacing them.</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -66,7 +66,7 @@ import { primaryWorktree } from "../worktree-path.ts";
 import { VersionWriteError, writeLineVersion } from "../version-files.ts";
 import { backmergeFlow, type FlowBackmergeData } from "./flow-backmerge.ts";
 import type { FlowCutData } from "./flow-cut.ts";
-import { toFlowCutLines } from "./flow-cut.ts";
+import { plannedExtractVerifySteps, toFlowCutLines } from "./flow-cut.ts";
 import { isFlowAdopted } from "../index.ts";
 import type { CutLine } from "./flow-cut.ts";
 import {
@@ -313,6 +313,14 @@ export async function runFixCut(
   const tagList = cutLines.map((c) => c.tag);
   const subject = `chore(release): ${tagList.join(", ")}`;
 
+  const primary = await primaryWorktree(io, repoRoot);
+  const fixSteps = async (): Promise<string[]> => {
+    const steps = ["version-writes", "release-prepare", "release-commit"];
+    steps.push(...(await plannedExtractVerifySteps(primary, io, cutLines, repoLine)));
+    steps.push("gate", "fingerprints", "main", "tags", "teardown", "backmerge");
+    return steps;
+  };
+
   if (opts.dryRun) {
     return {
       ...base,
@@ -320,10 +328,10 @@ export async function runFixCut(
       versions: Object.fromEntries(cutLines.map((c) => [c.line.id, c.nextVersion])),
       lines: toFlowCutLines(tagList, cutLines, lines, repoLine),
       mainBefore: (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim(),
+      steps: await fixSteps(),
     };
   }
 
-  const primary = await primaryWorktree(io, repoRoot);
   const common = await commonGitDir(io, repoRoot);
   const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
 
@@ -348,6 +356,34 @@ export async function runFixCut(
           }
           fixTip = (await git(repoRoot, io, ["rev-parse", entry.name])).stdout.trim();
         }
+
+        // Pre-release tip: the cut rolls the fix branch back here when the
+        // prepare hook or the extract verification refuses — the branch must
+        // stay (it carries the fix) but the cut has to be rerun-safe, which
+        // uncommitted version writes or a failed release commit break.
+        const preReleaseTip = fixTip;
+        const rollbackToTip = async (): Promise<void> => {
+          // Destructive shorthands are blocked by the session guard (reset
+          // --hard, restore, checkout --) — move the ref directly, then
+          // reset index+worktree to the (new) HEAD tree via plumbing.
+          await git(fixWt, io, ["update-ref", `refs/heads/${entry.name}`, preReleaseTip]);
+          await git(fixWt, io, ["read-tree", "--reset", "-u", "HEAD"]);
+          const leftovers = (
+            await git(fixWt, io, [
+              "-c",
+              "core.quotepath=false",
+              "ls-files",
+              "-z",
+              "--others",
+              "--exclude-standard",
+            ])
+          ).stdout
+            .split("\0")
+            .filter((f) => f.length > 0);
+          for (const file of leftovers) {
+            await io.rm(join(fixWt, file));
+          }
+        };
 
         // Verified version writes on the fix branch.
         try {
@@ -376,28 +412,39 @@ export async function runFixCut(
           },
         });
         if (prep.status === "failed") {
+          await rollbackToTip();
           return cutRefuse(
             "FLOW-CUT-12",
             `hooks/release-prepare.sh failed (exit ${prep.exitCode}): ${prep.stderrTail}`,
-            "fix the release-prepare hook and re-run flow.cut",
+            "fix the release-prepare hook and re-run flow.cut — the fix branch was rolled back to its pre-release tip",
           );
         }
 
         // Release commit on the fix branch — add -u folds the hook's tracked
         // edits in; untracked leftovers stay out and are reported.
         await git(fixWt, io, ["add", "-u"]);
-        const untracked = (await git(fixWt, io, ["ls-files", "--others", "--exclude-standard"]))
-          .stdout.trim();
-        if (untracked.length > 0) {
+        const untrackedFiles = (
+          await git(fixWt, io, [
+            "-c",
+            "core.quotepath=false",
+            "ls-files",
+            "-z",
+            "--others",
+            "--exclude-standard",
+          ])
+        ).stdout
+          .split("\0")
+          .filter((f) => f.length > 0);
+        if (untrackedFiles.length > 0) {
           warnings.push({
             ruleId: "FLOW-CUT-14",
             severity: "warning",
-            message: `release-prepare left untracked file(s) excluded from the release commit: ${untracked.replaceAll("\n", ", ")}`,
+            message: `release-prepare left untracked file(s) excluded from the release commit and removed from the release worktree: ${untrackedFiles.join(", ")}`,
           });
           // The cut continues — the same unignored-untracked set comes out of
           // the worktree so the gate sees a clean tree. Removed via io.rm:
           // `git clean -f` is blocked in agent sessions.
-          for (const file of untracked.split("\n")) {
+          for (const file of untrackedFiles) {
             await io.rm(join(fixWt, file));
           }
         }
@@ -415,10 +462,11 @@ export async function runFixCut(
           if (c.line.id === repoLine.id) continue;
           const verify = await verifyLineAtRef(primary, io, { line: c.line, ref: fixTip });
           if (!verify.ok) {
+            await rollbackToTip();
             return cutRefuse(
               "FLOW-CUT-13",
               `pre-tag extract verification failed for line ${c.line.id}: ${verify.detail}`,
-              "fix the extract or verify failure and re-run flow.cut",
+              "fix the extract or verify failure and re-run flow.cut — the fix branch was rolled back to its pre-release tip",
             );
           }
         }
@@ -550,6 +598,7 @@ export async function runFixCut(
           fingerprints,
           gate,
           releaseBranch: null,
+          steps: await fixSteps(),
           diagnostics: [...warnings, ...base.diagnostics, ...teardownWarnings],
         } satisfies FlowCutData;
       },
