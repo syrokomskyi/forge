@@ -12,6 +12,7 @@ adapter.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 2 — task store (read/write/list/next-id, brief IO)</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -142,21 +143,6 @@ export async function nextTaskId(root: string, io: WorkspaceIO): Promise<string>
     }
   }
   return `T-${String(max + 1).padStart(4, "0")}`;
-}
-
-/** Append one history row and set the new state — returns a NEW task object. */
-export function moveTask(
-  task: SystemTask,
-  row: { to: SystemTask["state"]; by: string; at: string; reason?: string },
-): SystemTask {
-  return {
-    ...task,
-    state: row.to,
-    history: [
-      ...task.history,
-      { at: row.at, from: task.state, to: row.to, by: row.by, ...(row.reason ? { reason: row.reason } : {}) },
-    ],
-  };
 }
 
 // ---------------------------------------------------------------------------

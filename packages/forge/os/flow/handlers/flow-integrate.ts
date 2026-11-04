@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch before `git worktree remove` and only for owner.kind task — a copy failure refuses cleanup (FLOW-INT-04) so the report is never destroyed with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
-  <history>RFC-1487</history>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <history>RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -126,6 +126,26 @@ async function cleanupIntegrated(
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
   if (worktree !== null && (await io.exists(worktree))) {
+    // RFC-1509 Q-16: preserve BEFORE the teardown hook — a `git clean -fdx`
+    // teardown would destroy .forge/task/ with the rest of the worktree.
+    if (entry.owner.kind === "task") {
+      try {
+        await preserveTaskFiles(common, worktree, entry.owner.id, io);
+      } catch (error) {
+        return {
+          cleanedUp: false,
+          gate: null,
+          diagnostics: [
+            {
+              ruleId: "FLOW-INT-04",
+              severity: "error",
+              message: `could not preserve .forge/task/ for ${entry.owner.id}: ${error instanceof Error ? error.message : String(error)}`,
+              fixHint: `copy ${worktree}/.forge/task/ aside by hand, then re-run flow.integrate — develop already moved`,
+            },
+          ],
+        };
+      }
+    }
     const teardown = await runFlowScript(io, "worktree-teardown", {
       primary,
       cwd: worktree,
@@ -145,26 +165,6 @@ async function cleanupIntegrated(
           },
         ],
       };
-    }
-    // RFC-1509 Q-16: a task-owned branch's .forge/task/ payload survives the
-    // worktree — preserve it under the common git dir before removal.
-    if (entry.owner.kind === "task") {
-      try {
-        await preserveTaskFiles(common, worktree, entry.owner.id, io);
-      } catch (error) {
-        return {
-          cleanedUp: false,
-          gate: teardown,
-          diagnostics: [
-            {
-              ruleId: "FLOW-INT-04",
-              severity: "error",
-              message: `could not preserve .forge/task/ for ${entry.owner.id}: ${error instanceof Error ? error.message : String(error)}`,
-              fixHint: `copy ${worktree}/.forge/task/ aside by hand, then re-run flow.integrate — develop already moved`,
-            },
-          ],
-        };
-      }
     }
     const remove = await git(primary, io, ["worktree", "remove", worktree]);
     if (remove.exitCode !== 0) {

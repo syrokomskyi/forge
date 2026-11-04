@@ -12,6 +12,7 @@ diagnostic, never silently stripped.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 2 — task schemas and transition table</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -175,6 +176,15 @@ export const taskReportSchema = z
     outbox: z.array(z.string()).default([]),
     question: z.string().optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((report, ctx) => {
+    if (report.outcome === "needs-decision" && (!report.question || report.question.trim() === "")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["question"],
+        message: "question is required when outcome is needs-decision",
+      });
+    }
+  });
 
 export type TaskReport = z.infer<typeof taskReportSchema>;

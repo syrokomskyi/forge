@@ -16,6 +16,7 @@ A launcher argv from products.local.yaml runs best-effort (SYSTEM-TASK-09).</pur
 <CHANGE_SUMMARY>
   <item>RFC-1509: step 3 — system.task.dispatch handler</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -130,9 +131,19 @@ function briefLeakDiagnostics(
   ];
   for (const product of map.products.products) {
     if (product.id === task.product) continue;
-    const folder = map.local?.folders?.[product.id];
+    const folders = map.local?.folders ?? {};
+    const folder = Object.prototype.hasOwnProperty.call(folders, product.id)
+      ? folders[product.id]
+      : undefined;
     if (folder) {
       needles.push({ label: `folder of product '${product.id}'`, value: folder });
+      // A relative folder leaks under its resolved absolute form too.
+      if (!path.isAbsolute(folder)) {
+        needles.push({
+          label: `resolved folder of product '${product.id}'`,
+          value: path.resolve(map.root, folder),
+        });
+      }
     }
   }
   for (const needle of needles) {
@@ -229,6 +240,18 @@ export async function runSystemTaskDispatch(
       );
     } else {
       briefContent = brief.content;
+      // The brief is bound to its task — a copy-pasted brief from another
+      // task/product would dispatch the wrong instructions silently.
+      const fm = brief.frontmatter;
+      if (fm !== null && (fm.task !== task.id || fm.product !== task.product)) {
+        diagnostics.push(
+          refusal(
+            "SYSTEM-TASK-02",
+            `brief frontmatter names task=${String(fm.task)} product=${String(fm.product)} — expected ${task.id} / ${task.product}`,
+            "fix the frontmatter or move the brief to the right queue/briefs file",
+          ),
+        );
+      }
       diagnostics.push(...briefLeakDiagnostics(map, task, brief.content));
     }
   }
@@ -237,17 +260,26 @@ export async function runSystemTaskDispatch(
 
   let branch: string | null = null;
   let worktree: string | null = null;
-  if (task !== null && productRoot !== null && briefContent !== null && errors() === 0 && !dryRun) {
+  if (task !== null && productRoot !== null && briefContent !== null && errors() === 0) {
+    // dryRun forwards into openFlowBranchCore so the governed/branch checks a
+    // real dispatch would hit are exercised without creating anything.
     const opened = await openFlowBranchCore(productRoot, io, {
       kind: "task",
       slug: task.slug,
       brief: task.id,
       owner: { kind: "task", id: task.id },
-      dryRun: false,
+      dryRun,
       now: new Date(),
     });
     diagnostics.push(...opened.diagnostics);
-    if (opened.opened && opened.branch && opened.worktree) {
+    // An opened:false with empty diagnostics is the dry-run success shape;
+    // in a real run any error diagnostic (incl. FLOW-OPEN-07 setup failure)
+    // means the task must stay ready — the worktree/entry are kept for
+    // operator inspection per flow.open's contract.
+    const openFailed =
+      opened.diagnostics.some((d) => d.severity === "error") ||
+      (!opened.opened && !dryRun);
+    if (!openFailed && opened.branch && opened.worktree && !dryRun) {
       branch = opened.branch;
       worktree = opened.worktree;
 

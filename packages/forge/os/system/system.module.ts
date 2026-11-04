@@ -15,6 +15,7 @@ side is limited to opening the task branch and writing .forge/task/.</purpose>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
 </CHANGE_SUMMARY>
 */
 
@@ -192,6 +193,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "FLOW-OPEN-04", severity: "error" },
           { id: "FLOW-OPEN-05", severity: "error" },
           { id: "FLOW-OPEN-06", severity: "error" },
+          { id: "FLOW-OPEN-07", severity: "error" },
         ],
         mutatesState: true,
         idempotency: "rerun-safe",
