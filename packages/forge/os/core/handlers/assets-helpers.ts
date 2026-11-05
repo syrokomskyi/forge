@@ -50,7 +50,9 @@ export async function scanAssets(
   });
 
   const filtered = allFiles
-    .map((abs) => relative(workspaceRoot, abs))
+    // AssetEntry.path is a repo-relative logical path — forward slashes so it
+    // matches scene-file references (res://Assets/x.png) on every platform.
+    .map((abs) => relative(workspaceRoot, abs).replace(/\\/g, "/"))
     .filter((rel) => {
       if (options.typeFilter) {
         const type = classifyAssetType(rel, assetsConfig.types);
@@ -105,7 +107,7 @@ export async function extractReferences(
   });
 
   for (const absPath of allFiles) {
-    const relPath = relative(workspaceRoot, absPath);
+    const relPath = relative(workspaceRoot, absPath).replace(/\\/g, "/");
     try {
       const content = await io.readFile(absPath);
 
@@ -121,7 +123,10 @@ export async function extractReferences(
           while ((match = regex.exec(content)) !== null && matchCount < MAX_MATCHES) {
             matchCount++;
             const refPath = match[1] ?? match[0];
-            const normalized = refPath.startsWith("/") ? refPath.slice(1) : refPath;
+            // Scene references may carry a scheme prefix (res://…) — asset
+            // paths are repo-relative, so the scheme must be stripped before
+            // the missing/orphan comparison frame matches.
+            const normalized = refPath.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, "").replace(/^\//, "");
 
             const existing = refMap.get(normalized) ?? [];
             if (!existing.includes(relPath)) {

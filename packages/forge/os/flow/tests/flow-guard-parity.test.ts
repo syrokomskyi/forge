@@ -79,13 +79,16 @@ describe("guard/TypeScript grammar parity", () => {
     await copyFile(GUARD_ASSET, join(hooksDir, "flow-guard.sh"));
 
     const skipped: string[] = [];
+    // Case-insensitive ref backends (Windows, default macOS) cannot hold a
+    // second spelling of a ref the table already probed — `AUTO/x` and
+    // `auto/X` are the same ref there. The grammar/classify check still
+    // runs for every row; only the git probe is deduplicated.
+    const probed = new Set<string>();
     for (const row of table.rows) {
       if (!row.ref_ok) {
         skipped.push(row.name);
         continue;
       }
-      await checkoutOrCreate(repo, row.name);
-      const result = await runGuardDirect(repo, { FORGE_FLOW_OP: "" });
       const cls = classifyBranch(row.name);
       const expectedRule =
         cls.kind === "protected"
@@ -96,6 +99,11 @@ describe("guard/TypeScript grammar parity", () => {
       expect(expectedRule, `classifyBranch("${row.name}") must agree with the table`).toBe(
         row.rule,
       );
+      const caseKey = row.name.toLowerCase();
+      if (probed.has(caseKey)) continue;
+      probed.add(caseKey);
+      await checkoutOrCreate(repo, row.name);
+      const result = await runGuardDirect(repo, { FORGE_FLOW_OP: "" });
       if (expectedRule === null) {
         expect(result.exitCode, `guard must allow "${row.name}": ${result.stderr}`).toBe(0);
       } else {

@@ -19,6 +19,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
+import { realpathSync } from "../../../src/utils/sync-fs.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
 import { collectFlowStatus } from "../handlers/flow-status.ts";
 import { gitExec, initRepo } from "./helpers.ts";
@@ -58,7 +59,9 @@ describe("flow.status", () => {
     await gitExec(repo, ["commit", "-m", "add d.txt"]); // develop ahead by 1
 
     const outcome = await collectFlowStatus(repo, ambientIo, { now: NOW });
-    expect(outcome.data.primary.path).toBe(repo);
+    // primary.path is canonicalized (git's worktree frame) — compare the
+    // real spelling of the same directory, not the mkdtemp 8.3 alias.
+    expect(outcome.data.primary.path).toBe(realpathSync(repo));
     expect(outcome.data.primary.branch).toBe("develop");
     expect(outcome.data.primary.clean).toBe(true);
 

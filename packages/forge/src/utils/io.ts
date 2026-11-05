@@ -36,12 +36,17 @@ import { spawn } from "node:child_process";
 import { dirname } from "node:path";
 import type { ExecOptions, ExecResult, WorkspaceIO } from "../types.ts";
 import { writeFileAtomic } from "./fs-atomic.ts";
+import { resolveSpawnPlan } from "./spawn.ts";
 
 async function execImpl(command: string, args: string[], opts?: ExecOptions): Promise<ExecResult> {
   return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
+    // Bare names (pnpm/npm/sh) need PATHEXT resolution on Windows — .cmd
+    // shims route through cmd.exe; unresolved names keep ENOENT semantics.
+    const plan = resolveSpawnPlan(command, args);
+    const child = spawn(plan.command, plan.args, {
       cwd: opts?.cwd,
       env: opts?.env ? { ...process.env, ...opts.env } : undefined,
+      windowsVerbatimArguments: plan.verbatim,
     });
     let stdout = "";
     let stderr = "";

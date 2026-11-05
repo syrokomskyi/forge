@@ -31,6 +31,7 @@ and integrate exposes teardown as its own field.</item>
 */
 
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
+import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 
 export const MIN_GIT_VERSION = "2.33";
 
@@ -103,7 +104,11 @@ export async function requireGit(io: WorkspaceIO): Promise<void> {
 /** Absolute path of the repository top level; null when cwd is not a repo. */
 export async function topLevel(cwd: string, io: WorkspaceIO): Promise<string | null> {
   const result = await git(cwd, io, ["rev-parse", "--show-toplevel"]);
-  return result.exitCode === 0 ? result.stdout.trim() : null;
+  // Canonicalize to the native real path — git reports forward slashes and
+  // the on-disk long name, while callers hold whatever spelling the user
+  // passed (possibly an 8.3 alias on Windows); the canonical form is what
+  // downstream equality comparisons are written against.
+  return result.exitCode === 0 ? canonicalRepoDir(result.stdout.trim()) : null;
 }
 
 export async function isBare(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
@@ -266,7 +271,9 @@ export async function worktreeList(repoRoot: string, io: WorkspaceIO): Promise<F
   const flush = (): void => {
     if (current?.path) {
       worktrees.push({
-        path: current.path,
+        // Same canonicalization as topLevel — porcelain paths arrive in
+        // git's resolved frame, consumers compare them to Node-side paths.
+        path: canonicalRepoDir(current.path),
         head: current.head ?? "",
         branch: current.branch,
         bare: current.bare,

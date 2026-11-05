@@ -75,14 +75,17 @@ function forgeYaml(tools: Record<string, FormalToolEntry>): void {
   if (Object.keys(tools).length > 0) lines[1] = "  tools:";
   for (const [name, t] of Object.entries(tools)) {
     lines.push(`    ${name}:`);
+    // JSON.stringify is valid YAML double-quoted quoting — it escapes both
+    // `"` and `\`, so a Windows execPath (C:\Program Files\…) survives the
+    // round trip instead of dissolving into invalid \P/\n escape sequences.
     lines.push(
-      `      command: [${t.command.map((a) => `"${a.replaceAll('"', '\\"')}"`).join(", ")}]`,
+      `      command: [${t.command.map((a) => JSON.stringify(a)).join(", ")}]`,
     );
     lines.push(
-      `      versionCommand: [${t.versionCommand.map((a) => `"${a.replaceAll('"', '\\"')}"`).join(", ")}]`,
+      `      versionCommand: [${t.versionCommand.map((a) => JSON.stringify(a)).join(", ")}]`,
     );
     lines.push(`      versionPattern: '${t.versionPattern.replaceAll("'", "''")}'`);
-    if (t.installHint) lines.push(`      installHint: "${t.installHint}"`);
+    if (t.installHint) lines.push(`      installHint: ${JSON.stringify(t.installHint)}`);
   }
   writeFileSync(
     join(ws, "forge.yaml"),

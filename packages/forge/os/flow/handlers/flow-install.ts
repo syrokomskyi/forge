@@ -1031,16 +1031,26 @@ export async function executeInstall(
   // 8. adoption commit — under FORGE_FLOW_OP=install, nothing else staged.
   if (hooksNeedCommit) {
     const markerPaths = plan.markerPlans.map((m) => join(m.dir, MARKER_FILE));
-    const add = await git(primary, io, [
+    // --chmod=+x on the hook scripts: Windows checkouts carry
+    // core.fileMode=false, so a plain `git add` would record 100644 even
+    // after chmod — the hook contracts (and git itself on POSIX checkouts)
+    // require mode 100755 in the index. Markers stay plain adds.
+    const addHooks = await git(primary, io, [
       "add",
+      "--chmod=+x",
       GUARD_FILE,
       PRECOMMIT_FILE,
       PREMERGE_FILE,
       PREPUSH_FILE,
-      ...markerPaths,
     ]);
-    if (add.exitCode !== 0) {
-      return failStep("commit", `git add failed: ${add.stderr.trim()}`);
+    if (addHooks.exitCode !== 0) {
+      return failStep("commit", `git add failed: ${addHooks.stderr.trim()}`);
+    }
+    if (markerPaths.length > 0) {
+      const addMarkers = await git(primary, io, ["add", ...markerPaths]);
+      if (addMarkers.exitCode !== 0) {
+        return failStep("commit", `git add failed: ${addMarkers.stderr.trim()}`);
+      }
     }
     const commit = await gitCommit(
       primary,

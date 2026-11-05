@@ -74,7 +74,9 @@ async function scanDirectoryForImports(
         const specifier = match[1]!;
         if (specifierFilter(specifier)) {
           violations.push({
-            file: relative(workspaceRoot, fullPath),
+            // Reported paths are repo-relative logical paths — forward
+            // slashes on every platform.
+            file: relative(workspaceRoot, fullPath).replace(/\\/g, "/"),
             specifier,
           });
         }

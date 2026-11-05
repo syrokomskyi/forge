@@ -27,6 +27,7 @@ forge/journal.jsonl.</purpose>
 */
 
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { z } from "zod";
@@ -168,7 +169,10 @@ export async function commonGitDir(io: WorkspaceIO, cwd: string): Promise<string
     );
   }
   const dir = result.stdout.trim();
-  return isAbsolute(dir) ? dir : resolve(cwd, dir);
+  // Canonicalize — a linked worktree's --git-common-dir answer (absolute,
+  // git's frame) and a primary's relative `.git` must compare equal when
+  // they name the same directory, including across Windows 8.3 aliases.
+  return canonicalRepoDir(isAbsolute(dir) ? dir : resolve(cwd, dir));
 }
 
 /** Read the registry; a missing file yields the empty registry. */

@@ -74,7 +74,8 @@ export async function runRfcIndexGenerate(
     if (!result) {
       parseFailures.push({
         rule: "RFC-IDX-04",
-        file: path.join(RFC_DIR, fileName),
+        // Reported paths are repo-relative — forward slashes on all platforms.
+        file: `${RFC_DIR}/${fileName}`,
         message: "file not readable",
       });
       continue;
@@ -82,7 +83,7 @@ export async function runRfcIndexGenerate(
     if ("error" in result) {
       parseFailures.push({
         rule: "RFC-IDX-04",
-        file: path.join(RFC_DIR, fileName),
+        file: `${RFC_DIR}/${fileName}`,
         message: result.error,
       });
       continue;
@@ -103,7 +104,7 @@ export async function runRfcIndexGenerate(
       amends: arr("amends"),
       amendedBy: arr("amendedBy"),
       related: arr("related"),
-      file: path.join(RFC_DIR, fileName),
+      file: `${RFC_DIR}/${fileName}`,
     });
   }
   entries.sort((a, b) => a.id.localeCompare(b.id));
@@ -133,7 +134,7 @@ export async function runRfcIndexGenerate(
 
   let written: string | undefined;
   if (input.flags["write"] === true) {
-    const outRel = path.join(RFC_DIR, "index.yaml");
+    const outRel = `${RFC_DIR}/index.yaml`;
     const payload = {
       command: "rfc.index.generate",
       generatedAt: toIsoDate(new Date()),

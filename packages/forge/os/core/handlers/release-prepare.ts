@@ -14,7 +14,7 @@
 </CHANGE_SUMMARY>
 */
 
-import { join, basename } from "node:path";
+import { join, basename, relative } from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
 import { createHash } from "node:crypto";
 import type {
@@ -210,7 +210,10 @@ export async function runReleasePrepare(
     }
 
     for (const builtFile of builtFiles) {
-      const relPath = builtFile.replace(workspaceRoot + "/", "");
+      // Manifest paths are repo-relative logical paths — forward slashes on
+      // every platform (a workspaceRoot+"/" prefix strip breaks on Windows,
+      // where builtFile arrives backslash-separated).
+      const relPath = relative(workspaceRoot, builtFile).replace(/\\/g, "/");
       let hash = "";
       let size = 0;
 

@@ -17,7 +17,7 @@ runs even when the branch worktree carries a different one
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -62,7 +62,10 @@ describe("runFlowScript", () => {
     });
     expect(result.status).toBe("done");
     const { readFile } = await import("node:fs/promises");
-    expect(await readFile(join(branch, "out.txt"), "utf8")).toContain(branch);
+    // The script runs through sh — on Windows pwd answers MSYS-style
+    // (/c/Users/…), so the assertion keys on the directory's basename,
+    // which survives the translation while still pinning cwd to `branch`.
+    expect(await readFile(join(branch, "out.txt"), "utf8")).toContain(basename(branch));
     expect(await readFile(join(branch, "branch.txt"), "utf8")).toContain("auto/x");
   });
 

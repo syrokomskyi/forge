@@ -71,6 +71,7 @@ import {
   type ExhaustiveResult,
 } from "./exhaustive.ts";
 import { proofSpecSchema, type ProofCheckResult, type ProofSpec } from "./proof-spec.ts";
+import { resolveSpawnPlan } from "../utils/spawn.ts";
 
 /** Default per-run bound when the caller passes no timeoutMs (RFC-1391: 30 min). */
 export const PROOF_CHECK_DEFAULT_TIMEOUT_MS = 30 * 60_000;
@@ -124,10 +125,15 @@ function spawnArgv(
   opts: { cwd: string; timeoutMs: number; env?: NodeJS.ProcessEnv },
 ): Promise<SpawnOutcome> {
   return new Promise((res) => {
-    const child = spawn(argv[0]!, argv.slice(1), {
+    // Bare package-manager names (pnpm/npm/yarn/bun) are .cmd shims on
+    // Windows — resolved via PATHEXT; unresolved names keep ENOENT so a
+    // missing checker still reports `unavailable`, never a refuted exit.
+    const plan = resolveSpawnPlan(argv[0]!, argv.slice(1));
+    const child = spawn(plan.command, plan.args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
       stdio: ["ignore", "pipe", "pipe"],
+      windowsVerbatimArguments: plan.verbatim,
     });
     let out = "";
     let err = "";
