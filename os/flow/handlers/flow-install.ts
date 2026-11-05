@@ -39,6 +39,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
   WorkspaceIO,
+  ExecResult,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import {
@@ -747,6 +748,14 @@ function setStep(
   }
 }
 
+// Executable bits are POSIX filesystem semantics — on Windows the index mode
+// is set by `git add --chmod=+x` instead, and `chmod` lives in Git's usr/bin
+// which is not guaranteed on PATH (spawn ENOENT aborts the install).
+async function chmodHook(io: WorkspaceIO, filePath: string): Promise<ExecResult> {
+  if (process.platform === "win32") return { exitCode: 0, stdout: "", stderr: "" };
+  return io.exec("chmod", ["0755", filePath]);
+}
+
 /**
  * Execute phase — steps 3–9 in order on an approved plan. A failing step
  * reports status "failed" into steps[] and every still-planned later step is
@@ -876,7 +885,7 @@ export async function executeInstall(
     } catch (err) {
       return failStep("guard", `writing ${GUARD_FILE} failed: ${(err as Error).message}`);
     }
-    const chmod = await io.exec("chmod", ["0755", guardPath]);
+    const chmod = await chmodHook(io, guardPath);
     if (chmod.exitCode !== 0) {
       return failStep("guard", `chmod 0755 ${GUARD_FILE} failed: ${chmod.stderr.trim()}`);
     }
@@ -919,7 +928,7 @@ export async function executeInstall(
           `writing ${PRECOMMIT_FILE} failed: ${(err as Error).message}`,
         );
       }
-      const chmod = await io.exec("chmod", ["0755", preCommitPath]);
+      const chmod = await chmodHook(io, preCommitPath);
       if (chmod.exitCode !== 0) {
         return failStep("pre-commit", `chmod 0755 ${PRECOMMIT_FILE} failed: ${chmod.stderr.trim()}`);
       }
@@ -960,7 +969,7 @@ export async function executeInstall(
           `writing ${PREMERGE_FILE} failed: ${(err as Error).message}`,
         );
       }
-      const chmod = await io.exec("chmod", ["0755", preMergePath]);
+      const chmod = await chmodHook(io, preMergePath);
       if (chmod.exitCode !== 0) {
         return failStep("pre-merge-commit", `chmod 0755 ${PREMERGE_FILE} failed: ${chmod.stderr.trim()}`);
       }
@@ -1001,7 +1010,7 @@ export async function executeInstall(
           `writing ${PREPUSH_FILE} failed: ${(err as Error).message}`,
         );
       }
-      const chmod = await io.exec("chmod", ["0755", prePushPath]);
+      const chmod = await chmodHook(io, prePushPath);
       if (chmod.exitCode !== 0) {
         return failStep("pre-push", `chmod 0755 ${PREPUSH_FILE} failed: ${chmod.stderr.trim()}`);
       }

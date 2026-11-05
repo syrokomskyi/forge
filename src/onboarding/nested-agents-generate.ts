@@ -108,7 +108,9 @@ export async function generateNestedAgentsMd(
       semanticLayerBlock,
       NESTED_AGENTS_FOOTER,
     );
-    const relPath = path.join(ws.path, "AGENTS.md");
+    // relPath is a logical repo-relative report path — forward slashes on
+    // every platform (ws.path is already slash-normalized by discovery).
+    const relPath = path.posix.join(ws.path, "AGENTS.md");
 
     if (dryRun) {
       renderedFiles[relPath] = content;
