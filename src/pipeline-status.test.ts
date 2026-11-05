@@ -68,7 +68,7 @@ describe("resolveDocument", () => {
       "---\nid: RFC-1002\nstatus: implemented\n---\n# RFC-1002\n",
     );
     const doc = await resolveDocument(tmpDir, "RFC-1002");
-    expect(doc?.file).toContain("archive/implemented");
+    expect(doc?.file).toContain(path.join("archive", "implemented"));
     expect(doc?.frontmatter["status"]).toBe("implemented");
   });
 

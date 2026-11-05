@@ -20,6 +20,7 @@ plus getFileRevisionFromHistory and the porcelain dirty-path helpers
 
 import { execFile, execFileSync } from "../../../src/utils/sync-fs.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
+import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
 import { promisify } from "node:util";
 import { createHash } from "node:crypto";
 
@@ -33,6 +34,10 @@ const execFileAsync = promisify(execFile);
 const DEFAULT_GIT_TIMEOUT_MS = 15_000;
 
 export const DIRTY_LIST_CAP = 20;
+
+// Re-exported for the compass handlers that canonicalize through this
+// module's git seam; the implementation lives in src/utils/repo-path.ts.
+export { canonicalRepoDir };
 
 /** The repository top-level containing `repoRoot` — null when not a git repo. */
 export function repoTopLevel(repoRoot: string): string | null {
@@ -61,8 +66,9 @@ export function listDirtyPaths(repoRoot: string): string[] | null {
       .filter((line) => line.length >= 3)
       .map((line) => {
         // Porcelain is `XY <path>` — slice the raw line so leading-space
-        // status pairs (e.g. " M") keep their offsets.
-        let path = line.slice(3);
+        // status pairs (e.g. " M") keep their offsets. A stray \r survives
+        // the split when git output is CRLF-terminated — never part of a path.
+        let path = line.slice(3).replace(/\r$/, "");
         // Rename entries read `old -> new`; the live path is the target.
         const arrow = path.indexOf(" -> ");
         if (arrow >= 0) path = path.slice(arrow + 4);

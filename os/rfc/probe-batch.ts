@@ -12,6 +12,7 @@
 */
 
 import { spawn } from "../../src/utils/sync-fs.ts";
+import { resolveSpawnPlan } from "../../src/utils/spawn.ts";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -129,9 +130,13 @@ export async function spawnBatchedVitest(
 
   let stderrTail = "";
   const exit = await new Promise<{ exitCode: number | null; timedOut: boolean }>((resolve) => {
-    const child = spawn("pnpm", args, {
+    // pnpm is a .cmd shim on Windows — PATHEXT resolution routes it through
+    // cmd.exe; a missing pnpm keeps spawn ENOENT for the caller to classify.
+    const plan = resolveSpawnPlan("pnpm", args);
+    const child = spawn(plan.command, plan.args, {
       cwd: workspaceRoot,
       stdio: ["ignore", "ignore", "pipe"],
+      windowsVerbatimArguments: plan.verbatim,
     });
     child.stderr?.on("data", (chunk: Buffer) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-2000);

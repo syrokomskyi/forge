@@ -320,7 +320,12 @@ export async function runCompassAuditRecord(
     return { exitCode: 1, data: { path: rawFilePath, action: "recorded" } };
   }
 
-  const filePath = relative(context.workspaceRoot, resolve(process.cwd(), rawFilePath));
+  // Ledger entries key on the repo-relative logical path — forward slashes
+  // so a path recorded on one platform matches baseline filters everywhere.
+  const filePath = relative(context.workspaceRoot, resolve(process.cwd(), rawFilePath)).replace(
+    /\\/g,
+    "/",
+  );
 
   // RFC-1143: warn when recording an audit for a ledger-ineligible path — the
   // entry will be swept by the next baseline run (RFC-1139). Operator intent

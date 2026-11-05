@@ -119,9 +119,15 @@ export async function publishTag(
   }
 
   // 1. Extract — the binary lives in the adopting repository's own install.
+  // node_modules/.bin/repo-extract is a POSIX sh shim even on Windows (the
+  // package ships one file), so the extract runs through `sh` — same seam
+  // flow scripts already use — rather than spawning the shim as an exec.
   const extract = await io.exec(
-    join(primary, "node_modules", ".bin", "repo-extract"),
-    ["--config", `${dir}/extract.config.yaml`, "--ref", tag, "--no-push"],
+    "sh",
+    [
+      join(primary, "node_modules", ".bin", "repo-extract"),
+      "--config", `${dir}/extract.config.yaml`, "--ref", tag, "--no-push",
+    ],
     { cwd: primary },
   );
   if (extract.exitCode !== 0) {
@@ -235,9 +241,14 @@ export async function verifyLineAtRef(
     const extractBin = join(primary, "node_modules", ".bin", "repo-extract");
     let extract;
     try {
+      // The .bin shim is a POSIX sh script — exec it through sh so the
+      // verification extract works on Windows runners as well as POSIX.
       extract = await io.exec(
-        extractBin,
-        ["--config", `${dir}/extract.config.yaml`, "--ref", ref, "--dest", scratch, "--no-push"],
+        "sh",
+        [
+          extractBin,
+          "--config", `${dir}/extract.config.yaml`, "--ref", ref, "--dest", scratch, "--no-push",
+        ],
         { cwd: primary },
       );
     } catch (error) {

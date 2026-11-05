@@ -152,7 +152,9 @@ function copyDirectory(
   for (const entry of entries) {
     const srcPath = path.join(src, entry.name);
     const destPath = path.join(dest, entry.name);
-    const relPath = path.relative(rootSrc, srcPath);
+    // Logical repo-relative path — forward slashes so exclusion patterns and
+    // the reported filesCopied/filesSkipped lists are platform-stable.
+    const relPath = path.relative(rootSrc, srcPath).replace(/\\/g, "/");
 
     if (entry.isDirectory()) {
       if (isExcluded(relPath, excludePatterns)) continue;

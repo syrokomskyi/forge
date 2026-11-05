@@ -191,7 +191,9 @@ export function discoverWorkspaces(
         }
 
         results.push({
-          path: path.relative(workspaceRoot, childPath),
+          // Repo-relative logical path — always forward slashes so generated/
+          // skipped/renderedFiles report keys are platform-stable.
+          path: path.relative(workspaceRoot, childPath).replace(/\\/g, "/"),
           type,
           hasAgentsMd,
           isGenerated,

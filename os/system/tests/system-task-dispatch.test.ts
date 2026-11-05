@@ -183,7 +183,10 @@ forbidden:
       "system/edges.yaml": VALID_EDGES_YAML,
       "system/products.local.yaml": localMapFor(
         { alpha: productRoot },
-        ["sh", "-c", `echo "$1|$2" > ${log}`, "sh", "{worktree}", "{task}"],
+        // The log path rides argv $3 — interpolating a Windows path
+        // (C:\Users\…) unquoted into the -c string would let sh consume
+        // every backslash as an escape.
+        ["sh", "-c", 'echo "$1|$2" > "$3"', "sh", "{worktree}", "{task}", log],
       ),
       "beta/.gitkeep": "",
       "queue/tasks/T-0001.yaml": taskYaml({ state: "ready" }),

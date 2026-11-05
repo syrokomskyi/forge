@@ -17,7 +17,9 @@ worktree and registry entry.</purpose>
 
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+
+import { realpathSync } from "../../../src/utils/sync-fs.ts";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -66,10 +68,13 @@ describe("flow.open", () => {
 
     expect(data.diagnostics).toEqual([]);
     const name = formatFlowBranch({ kind: "session", date: NOW, seq: 1, slug: "forge-flow" });
-    const expectedPath = join(dirname(repo), `${repo.split("/").pop()}@${name.replaceAll("/", "-")}`);
+    // Product answers in the canonical frame (git's worktree list) — on
+    // Windows the mkdtemp 8.3 alias resolves to a different spelling of the
+    // same directory, so comparisons go through realpath.
+    const expectedPath = join(dirname(repo), `${basename(repo)}@${name.replaceAll("/", "-")}`);
     expect(data.branch).toBe(name);
-    expect(data.worktree).toBe(expectedPath);
-    expect(data.worktree?.startsWith(dirname(repo))).toBe(true);
+    expect(data.worktree).toBe(realpathSync(expectedPath));
+    expect(data.worktree?.startsWith(dirname(realpathSync(repo)))).toBe(true);
     dirs.push(expectedPath);
     expect(await sha(repo, name)).toBe(developSha);
     expect(data.opened).toBe(true);
@@ -77,7 +82,7 @@ describe("flow.open", () => {
     const common = await commonGitDir(ambientIo, repo);
     const registry = await readRegistry(ambientIo, common);
     const entry = registry.branches.find((b) => b.name === name);
-    expect(entry?.worktree).toBe(expectedPath);
+    expect(entry?.worktree).toBe(realpathSync(expectedPath));
     expect(entry?.baseSha).toBe(developSha);
     expect(entry?.owner).toEqual({ kind: "session", id: "unspecified" });
     expect(entry?.held).toBeNull();
@@ -160,7 +165,7 @@ describe("flow.open", () => {
   it("refuses FLOW-OPEN-03 when the target path exists", async () => {
     const repo = await governedRepo();
     const name = formatFlowBranch({ kind: "session", date: NOW, seq: 1, slug: "taken" });
-    const target = join(dirname(repo), `${repo.split("/").pop()}@${name.replaceAll("/", "-")}`);
+    const target = join(dirname(repo), `${basename(repo)}@${name.replaceAll("/", "-")}`);
     await mkdir(target, { recursive: true });
     dirs.push(target);
 

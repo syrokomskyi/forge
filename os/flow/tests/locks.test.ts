@@ -80,8 +80,10 @@ describe("holderIsDead (RFC-1504)", () => {
   });
 
   it("a pid we cannot signal (EPERM) counts as alive — fail closed", () => {
-    // pid 1 belongs to init: signal-0 either succeeds or EPERMs, never ESRCH.
-    expect(holderIsDead({ pid: 1, host: HOST })).toBe(false);
+    // init (pid 1) on POSIX; the System process (pid 4) on Windows — each
+    // survives or EPERMs a signal-0 on its own platform, never ESRCH.
+    const unsignalablePid = process.platform === "win32" ? 4 : 1;
+    expect(holderIsDead({ pid: unsignalablePid, host: HOST })).toBe(false);
   });
 
   it("different boot id on this host → dead even with a live pid (AC-4 basis)", () => {

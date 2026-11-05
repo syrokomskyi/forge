@@ -204,7 +204,9 @@ describe("runProbe — json-schema probe", () => {
     await writeFile(artifactPath, JSON.stringify({ name: "test", version: 1 }));
     const probe: AcceptanceProbe = {
       probe: "json-schema",
-      artifact: path.relative("/fake/workspace", artifactPath),
+      // runProbe resolves `artifact` under the passed workspace (tempDir) —
+      // the same bare relative name the sibling AC-4 case uses.
+      artifact: "valid.json",
       schemaInline: {
         type: "object",
         properties: {

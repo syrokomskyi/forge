@@ -34,6 +34,7 @@ and integrate exposes teardown as its own field.</item>
 import { basename, dirname, join } from "node:path";
 
 import type { WorkspaceIO } from "../../src/types.ts";
+import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 
 import { topLevel, worktreeList } from "./git.ts";
 
@@ -85,10 +86,15 @@ export async function resolveStateRoots(
   io: WorkspaceIO,
 ): Promise<StateRoots> {
   const top = await topLevel(repoRoot, io);
+  // Both frames canonicalized — git's toplevel and worktreeList paths are
+  // native real paths, while the caller's repoRoot may be an 8.3 alias or
+  // symlinked spelling of the same directory. Comparing raw strings would
+  // silently degrade every Windows call to single-root.
+  const canonicalRoot = canonicalRepoDir(repoRoot.replace(/[/\\]+$/, ""));
   // The workshop anchor is the caller's root — only when that root IS the
   // repository worktree root does worktree topology apply. A subdirectory
   // of a repo (or a non-git dir) has no workshop layout to resolve.
-  if (!top || top !== repoRoot.replace(/[/\\]+$/, "")) {
+  if (!top || top !== canonicalRoot) {
     return { worktreeRoot: repoRoot, primaryRoot: repoRoot, isPrimary: true };
   }
   let primaryRoot: string;
@@ -100,8 +106,8 @@ export async function resolveStateRoots(
     return { worktreeRoot: repoRoot, primaryRoot: repoRoot, isPrimary: true };
   }
   return {
-    worktreeRoot: repoRoot,
+    worktreeRoot: top,
     primaryRoot,
-    isPrimary: repoRoot === primaryRoot,
+    isPrimary: top === primaryRoot,
   };
 }

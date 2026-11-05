@@ -322,7 +322,9 @@ export async function runSessionSave(
     // Check if output already exists (idempotency)
     const outputFileName = `${id}.md`;
     const outputPath = path.join(sessionDirPath, outputFileName);
-    const outputRel = path.join(SESSION_DIR, outputFileName);
+    // Reported paths are repo-relative logical paths — posix separators on
+    // every platform (path.join would emit backslashes under Windows).
+    const outputRel = path.posix.join(SESSION_DIR, outputFileName);
 
     try {
       await fs.exists(outputPath).then((ok) => {
@@ -405,7 +407,7 @@ export async function runSessionSave(
       command: "session.save",
       status: "ok",
       file: outputRel,
-      rawFile: path.join(SESSION_DIR, SESSION_RAW_SUBDIR, rawFileName),
+      rawFile: path.posix.join(SESSION_DIR, SESSION_RAW_SUBDIR, rawFileName),
       rawDeleted: !dryRun && !keepRaw,
       id,
       types,

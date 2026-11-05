@@ -132,7 +132,12 @@ export async function createTask(
       },
     ],
   };
-  return { task, files: [taskFilePath(root, id), briefFilePath(root, id)] };
+  // Reported file list uses forward slashes — consumers suffix-match the
+  // repo-relative tail (queue/briefs/T-….md) on every platform.
+  return {
+    task,
+    files: [taskFilePath(root, id), briefFilePath(root, id)].map((f) => f.replace(/\\/g, "/")),
+  };
 }
 
 /** Write a task created by createTask plus its brief scaffold. */

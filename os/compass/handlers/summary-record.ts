@@ -362,14 +362,18 @@ function execGit(cwd: string, args: string[]): Promise<string | null> {
 
 /**
  * Read `path`'s content at HEAD — the baseline for the id-in-diff dedup.
- * Returns undefined when the file is untracked or the workspace is not a git
- * repo (the dedup then falls back to exact-text matching only).
+ * `repoCwd` is a directory inside the work tree; the `./` pathspec resolves
+ * against it, so no repo-top string math is needed (a Windows 8.3 alias or
+ * drive-case drift between git's toplevel and the tempdir cwd would silently
+ * escape with `..` otherwise). Returns undefined when the file is untracked
+ * or the workspace is not a git repo (the dedup then falls back to
+ * exact-text matching only).
  */
-async function readHeadSource(gitTop: string | null, absPath: string): Promise<string | undefined> {
-  if (!gitTop) return undefined;
-  const rel = relative(gitTop, absPath).replace(/\\/g, "/");
+async function readHeadSource(repoCwd: string | null, absPath: string): Promise<string | undefined> {
+  if (!repoCwd) return undefined;
+  const rel = relative(repoCwd, absPath).replace(/\\/g, "/");
   if (rel === "" || rel.startsWith("..")) return undefined;
-  const source = await execGit(gitTop, ["show", `HEAD:${rel}`]);
+  const source = await execGit(repoCwd, ["show", `HEAD:./${rel}`]);
   return source ?? undefined;
 }
 
@@ -383,14 +387,16 @@ async function readHeadSource(gitTop: string | null, absPath: string): Promise<s
  * still yield their leading ID. Returns undefined when git is unavailable.
  */
 async function readDiffAddedItemIds(
-  gitTop: string | null,
+  repoCwd: string | null,
   absPath: string,
   policy: CompassPolicy,
 ): Promise<ReadonlySet<string> | undefined> {
-  if (!gitTop) return undefined;
-  const rel = relative(gitTop, absPath).replace(/\\/g, "/");
+  if (!repoCwd) return undefined;
+  const rel = relative(repoCwd, absPath).replace(/\\/g, "/");
   if (rel === "" || rel.startsWith("..")) return undefined;
-  const diff = await execGit(gitTop, ["diff", "-U0", "HEAD", "--", rel]);
+  // Pathspec after `--` resolves against the process cwd — prefix-relative,
+  // no toplevel string comparison (see readHeadSource for the Windows case).
+  const diff = await execGit(repoCwd, ["diff", "-U0", "HEAD", "--", rel]);
   if (diff === null) return undefined;
   const added = diff
     .split("\n")
@@ -507,8 +513,13 @@ export async function runCompassSummaryRecord(
     neutralized: [],
   };
 
-  const gitTopRaw = await execGit(baseRoot, ["rev-parse", "--show-toplevel"]);
-  const gitTop = gitTopRaw?.trim() || null;
+  // Repo presence probe — the toplevel string itself is never compared
+  // (pathspecs resolve against the exec cwd), so path-frame drift between
+  // git output and the workspace path can't occur.
+  const gitCwd =
+    (await execGit(baseRoot, ["rev-parse", "--is-inside-work-tree"]))?.trim() === "true"
+      ? baseRoot
+      : null;
 
   for (const file of files) {
     const absPath = resolve(baseRoot, file);
@@ -519,9 +530,9 @@ export async function runCompassSummaryRecord(
       continue;
     }
     try {
-      const headSource = await readHeadSource(gitTop, absPath);
+      const headSource = await readHeadSource(gitCwd, absPath);
       const addedItemIds =
-        headSource !== undefined ? await readDiffAddedItemIds(gitTop, absPath, policy) : undefined;
+        headSource !== undefined ? await readDiffAddedItemIds(gitCwd, absPath, policy) : undefined;
       const outcome = await recordSummaryItem(
         absPath,
         relPath,

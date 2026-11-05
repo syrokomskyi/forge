@@ -637,7 +637,8 @@ test("agents-generate expands the sentinel in a hand-written nested guide", asyn
   );
 
   const result = await runAgentsGenerate({ argv: [], flags: {} }, makeContext(tempDir));
-  expect(result.data?.injected).toContain(join("packages", "my-pkg", "AGENTS.md"));
+  // Reported paths are repo-relative logical paths — forward slashes on every platform.
+  expect(result.data?.injected).toContain("packages/my-pkg/AGENTS.md");
 
   const nested = await readFile(join(tempDir, "packages", "my-pkg", "AGENTS.md"), "utf8");
   expect(nested).toContain("## Semantic layer — read first");

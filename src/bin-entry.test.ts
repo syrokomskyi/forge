@@ -21,7 +21,9 @@ describe("resolveForgeEntry (RFC-1302)", () => {
     const binDir = path.join("/repo", "packages", "forge", "bin");
     expect(resolveForgeEntry(binDir, all)).toEqual({
       kind: "src",
-      path: path.join(binDir, "cli.ts"),
+      // resolveForgeEntry returns path.resolve output — absolute on the cwd
+      // drive under Windows, where join("\repo", ...) stays drive-relative.
+      path: path.resolve(binDir, "cli.ts"),
     });
   });
 

@@ -502,7 +502,9 @@ async function workflowTagPatterns(
     .map((e) => e.name)
     .sort();
   for (const name of names) {
-    const file = `${WORKFLOWS_DIR}/${name}`;
+    // Reported paths are repo-relative logical paths — forward slashes on
+    // every platform (WORKFLOWS_DIR uses join() and is only for fs access).
+    const file = `.github/workflows/${name}`;
     const text = await io.readFile(join(dir, name)).catch(() => null);
     let parsed: unknown = null;
     let ok = text !== null;

@@ -19,7 +19,6 @@ dirty-target refusal before any write, and reports census/apply manifests.</purp
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { writeFileIfChanged } from "../../../src/utils/fs-idempotent.ts";
-import { realpathSync } from "../../../src/utils/sync-fs.ts";
 import { relative, resolve } from "node:path";
 import {
   createCompassInventoryEntries,
@@ -38,7 +37,13 @@ import {
   type ScaffoldFileInput,
   type ScaffoldFileResult,
 } from "./compass-header-scaffold.ts";
-import { DIRTY_LIST_CAP, isDirtyPath, listDirtyPaths, repoTopLevel } from "./git-revision.ts";
+import {
+  canonicalRepoDir,
+  DIRTY_LIST_CAP,
+  isDirtyPath,
+  listDirtyPaths,
+  repoTopLevel,
+} from "./git-revision.ts";
 import { resolveCompassScanRoot } from "./resolve-scan-root.ts";
 import { resolveCompassPolicy } from "../policy.ts";
 import type {
@@ -250,16 +255,12 @@ export async function runCompassHeaderScaffold(
       // Porcelain paths are repo-top-relative while reports carry
       // workspace-relative paths — rebase through the actual top-level so a
       // scoped scan (--package/--packages inside one repo, or a nested
-      // --workpiece repo) still sees its dirty targets. realpath both sides:
-      // git reports canonical paths while workspaceRoot may be symlinked.
+      // --workpiece repo) still sees its dirty targets. Canonicalize BOTH
+      // sides: git reports canonical paths while workspaceRoot may be
+      // symlinked — or an 8.3 alias under Windows (tmp RUNNER~1 dirs).
       const topLevel = repoTopLevel(baseRoot);
-      let wsRoot = context.workspaceRoot;
-      try {
-        wsRoot = realpathSync(wsRoot);
-      } catch {
-        // keep the workspace root as given
-      }
-      const gitBase = topLevel ?? baseRoot;
+      const wsRoot = canonicalRepoDir(context.workspaceRoot);
+      const gitBase = canonicalRepoDir(topLevel ?? baseRoot);
       const dirty = rawDirty.map((d) => {
         const rebased = relative(wsRoot, resolve(gitBase, d)).replace(/\\/g, "/");
         return d.endsWith("/") && !rebased.endsWith("/") ? `${rebased}/` : rebased;
