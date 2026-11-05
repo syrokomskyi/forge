@@ -60,9 +60,11 @@ beforeEach(async () => {
   git(tempDir, ["config", "user.email", "flow-test@example.invalid"]);
 });
 
+// rm of a scaffolded node_modules is minutes-slow on Windows — the 10s
+// default hook budget cannot hold it.
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
-});
+}, 180000);
 
 describe("RFC-1500: forge.create adopts the fixed branch model", () => {
   test("AC-1: create leaves develop + main with the primary on develop", async () => {
