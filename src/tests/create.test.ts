@@ -363,4 +363,4 @@ test("forge create --profile phaser-game writes compass.fileExtensions into forg
   expect(forgeYaml).toContain("fileExtensions:");
   // phaser pulls real packages over the network — cold-store installs on
   // Windows runners legitimately exceed the default scaffold timeouts.
-}, 300000);
+}, 600000);

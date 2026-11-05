@@ -197,7 +197,7 @@ export async function runScaffoldProject(
     if (outputFormat === "pretty") {
       logger.info(`Running: ${cmd}`);
     }
-    const res = await execCommand(cmd, workspaceRoot, 120000);
+    const res = await execCommand(cmd, workspaceRoot, 300000);
     if (res.ok) {
       installLog.push(`${cmd} — ok`);
       if (outputFormat === "pretty") {
@@ -236,7 +236,7 @@ export async function runScaffoldProject(
       if (outputFormat === "pretty") {
         logger.info(`Running: ${cmd}`);
       }
-      const res2 = await execCommand(cmd, wsDir, 120000);
+      const res2 = await execCommand(cmd, wsDir, 300000);
       if (res2.ok) {
         installLog.push(`${cmd} — ok`);
         if (outputFormat === "pretty") {

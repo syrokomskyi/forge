@@ -620,7 +620,7 @@ test("AC-7: forge.upgrade --dry-run reports nestedAgentsPlanned and nestedAgents
   expect(
     planned,
     "planned must contain exactly the guides whose merged output differs from disk",
-  ).toContain(join("packages", "newpkg", "AGENTS.md"));
+  ).toContain("packages/newpkg/AGENTS.md");
   expect(skipped.some((s) => s.includes("unmapped") && s.includes("unmapped-customization"))).toBe(
     true,
   );
@@ -646,7 +646,7 @@ test("forge.upgrade executing path reports nestedAgentsPreserved for carried tai
   const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
 
   expect(result.data?.status).toBe("pass");
-  expect(result.data?.nestedAgentsPreserved).toContain(join("packages", "pkg", "AGENTS.md"));
+  expect(result.data?.nestedAgentsPreserved).toContain("packages/pkg/AGENTS.md");
   const merged = await readFile(join(tempDir, "packages", "pkg", "AGENTS.md"), "utf8");
   expect(merged).toContain("- keep me");
 });

@@ -191,7 +191,7 @@ test("generateNestedAgentsMd regenerates the head and preserves the custom tail"
 
   // First run — fresh file gains the marker + hint
   const first = await generateNestedAgentsMd(tempDir, config, false);
-  expect(first.generated).toContain(join("packages", "pkg", "AGENTS.md"));
+  expect(first.generated).toContain("packages/pkg/AGENTS.md");
   const agentsPath = join(tempDir, "packages", "pkg", "AGENTS.md");
   const initial = await readFile(agentsPath, "utf8");
   expect(initial).toContain(MD_MARKER);
@@ -202,7 +202,7 @@ test("generateNestedAgentsMd regenerates the head and preserves the custom tail"
 
   // Second run — head regenerated, tail preserved verbatim
   const second = await generateNestedAgentsMd(tempDir, config, false);
-  expect(second.preserved).toContain(join("packages", "pkg", "AGENTS.md"));
+  expect(second.preserved).toContain("packages/pkg/AGENTS.md");
   const merged = await readFile(agentsPath, "utf8");
   expect(merged).toContain("## Workspace rules");
   expect(merged).toContain("- never touch dist/");
