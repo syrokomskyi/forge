@@ -13,8 +13,9 @@ stripScopes:
   - "@warpgogol/"
 preservePackages:
   - "@warpgogol/forge"
-# NOTE: stubPackages and postProcess are silently ignored in standalone mode
-# (@warpgogol/repo-extract <=1.3.0) — do not re-add them here; the effective
+# NOTE: stubPackages is silently ignored in standalone mode
+# (@warpgogol/repo-extract <=1.3.0 also ignored postProcess; >=1.4 runs it —
+# the AGENTS.standalone.md copy below relies on that). The effective
 # levers are ignoreDirs/excludePathSegments/preservePackages. Forge types
 # needed from werkstatt-shared are inlined in src/types.ts (ADR-0019); only
 # dynamic imports in os/werkstatt/handlers/workspace-deps.ts remain, guarded
@@ -67,6 +68,13 @@ extraGitignore:
   - docs/adrs/
   - docs/plans/
   - docs/rfcs/
+
+# Ships a standalone-scoped agent guide; the monorepo AGENTS.md stays excluded
+# via excludePathSegments above.
+postProcess:
+  - action: copy
+    from: packages/forge/AGENTS.standalone.md
+    to: AGENTS.md
 
 git:
   remote: git@github.com:syrokomskyi/forge.git
