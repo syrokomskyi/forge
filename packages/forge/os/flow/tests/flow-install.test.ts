@@ -203,9 +203,13 @@ describe("flow.install — adoption", () => {
     }
     const hooksPath = await gitExec(repo, ["config", "--get", "core.hooksPath"]);
     expect(hooksPath.stdout.trim()).toBe("hooks");
-    // The guard file on disk is executable too.
-    const st = await stat(join(repo, "hooks", "flow-guard.sh"));
-    expect(st.mode & 0o111).not.toBe(0);
+    // The guard file on disk is executable too — POSIX probe only: NTFS
+    // reports no user/group/other exec bits, the index mode 100755 above
+    // is the contract that survives cross-platform.
+    if (process.platform !== "win32") {
+      const st = await stat(join(repo, "hooks", "flow-guard.sh"));
+      expect(st.mode & 0o111).not.toBe(0);
+    }
   });
 
   it("refuses FLOW-ADOPT-03 on a dirty tracked file and changes nothing", async () => {
