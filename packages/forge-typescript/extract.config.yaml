@@ -35,6 +35,9 @@ excludePathSegments:
 postProcess:
   - action: delete
     path: AGENTS.md
+  - action: copy
+    from: packages/werkstatt-typescript/AGENTS.standalone.md
+    to: AGENTS.md
   - action: delete
     path: pnpm-lock.yaml
 
