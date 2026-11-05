@@ -130,11 +130,12 @@ test("discoverWorkspaces honors extraSkipDirs for consumer artifact dirs", async
   await writeFile(join(tempDir, "packages", "real-pkg", "package.json"), "{}");
 
   const without = discoverWorkspaces(tempDir);
-  expect(without.map((w) => w.path)).toContain(join("builds", "out"));
+  // ws.path is a repo-relative logical path — forward slashes on all platforms.
+  expect(without.map((w) => w.path)).toContain("builds/out");
 
   const withSkip = discoverWorkspaces(tempDir, undefined, ["builds"]);
-  expect(withSkip.map((w) => w.path)).not.toContain(join("builds", "out"));
-  expect(withSkip.map((w) => w.path)).toContain(join("packages", "real-pkg"));
+  expect(withSkip.map((w) => w.path)).not.toContain("builds/out");
+  expect(withSkip.map((w) => w.path)).toContain("packages/real-pkg");
 });
 
 test("discoverWorkspaces detects generated AGENTS.md", async () => {

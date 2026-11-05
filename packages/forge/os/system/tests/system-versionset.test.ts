@@ -23,7 +23,7 @@ import { describe, expect, it } from "vitest";
 import YAML from "yaml";
 
 import type { ForgeCommandInput, ForgeFlagValue } from "../../../src/types.ts";
-import { realpathSync } from "../../../src/utils/sync-fs.ts";
+import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
 import { gitExec } from "../../flow/tests/helpers.ts";
 import { runSystemVersionSetRecord } from "../handlers/system-versionset-record.ts";
 import { versionSetSchema } from "../scenario-schemas.ts";
@@ -109,7 +109,7 @@ async function worktreePaths(repo: string): Promise<string[]> {
     .map((l) => l.slice("worktree ".length))
     // Git reports the resolved frame (long name, forward slashes) — bring
     // each path into the same canonical spelling the fixture dirs get.
-    .map((p) => realpathSync(p));
+    .map((p) => canonicalRepoDir(p));
 }
 
 describe("system.versionset.record", () => {
@@ -192,7 +192,7 @@ describe("system.versionset.record", () => {
     );
     for (const repo of [alpha, beta]) {
       const paths = await worktreePaths(repo);
-      expect(paths).toEqual([realpathSync(repo)]);
+      expect(paths).toEqual([canonicalRepoDir(repo)]);
     }
   });
 
@@ -236,7 +236,7 @@ describe("system.versionset.record", () => {
       makeContext(systemRoot),
     );
     expect(result.exitCode).toBe(0);
-    expect(await worktreePaths(alpha)).toEqual([realpathSync(alpha)]);
+    expect(await worktreePaths(alpha)).toEqual([canonicalRepoDir(alpha)]);
     await expect(
       readFile(path.join(systemRoot, "system/version-sets/VS-0001.yaml"), "utf8"),
     ).rejects.toThrow();

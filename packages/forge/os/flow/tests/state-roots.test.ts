@@ -23,7 +23,7 @@ import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
 import { ambientIo } from "../../../src/utils/io.ts";
-import { realpathSync } from "../../../src/utils/sync-fs.ts";
+import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
 
 import { resolveStateRoots } from "../worktree-path.ts";
@@ -64,8 +64,8 @@ describe("resolveStateRoots (RFC-1495)", () => {
     const roots = await resolveStateRoots(repo, io);
     // Roots come back canonicalized (git's resolved frame) — compare real
     // spellings, not the mkdtemp 8.3 alias Windows may hand out.
-    expect(roots.worktreeRoot).toBe(realpathSync(repo));
-    expect(roots.primaryRoot).toBe(realpathSync(repo));
+    expect(roots.worktreeRoot).toBe(canonicalRepoDir(repo));
+    expect(roots.primaryRoot).toBe(canonicalRepoDir(repo));
     expect(roots.isPrimary).toBe(true);
   });
 
@@ -80,13 +80,13 @@ describe("resolveStateRoots (RFC-1495)", () => {
     dirs.push(wt);
 
     const roots = await resolveStateRoots(wt, io);
-    expect(roots.worktreeRoot).toBe(realpathSync(wt));
-    expect(roots.primaryRoot).toBe(realpathSync(repo));
+    expect(roots.worktreeRoot).toBe(canonicalRepoDir(wt));
+    expect(roots.primaryRoot).toBe(canonicalRepoDir(repo));
     expect(roots.isPrimary).toBe(false);
 
     const primary = await resolveStateRoots(repo, io);
     expect(primary.isPrimary).toBe(true);
-    expect(primary.worktreeRoot).toBe(realpathSync(repo));
+    expect(primary.worktreeRoot).toBe(canonicalRepoDir(repo));
   });
 
   test("non-git directory degrades to itself", async () => {
