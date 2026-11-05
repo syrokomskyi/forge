@@ -49,9 +49,11 @@ beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "scaffold-test-"));
 });
 
+// rm of a scaffolded node_modules is minutes-slow on Windows — the 10s
+// default hook budget cannot hold it.
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
-});
+}, 180000);
 
 test("forge.scaffold tolerates non-empty directory (RFC-0877 in-place mode)", async () => {
   await writeFile(join(tempDir, "some-file.txt"), "hello", "utf8");

@@ -49,9 +49,11 @@ beforeEach(async () => {
   tempDir = await mkdtemp(join(tmpdir(), "create-test-"));
 });
 
+// rm of a scaffolded node_modules is minutes-slow on Windows — the 10s
+// default hook budget cannot hold it.
 afterEach(async () => {
   await rm(tempDir, { recursive: true, force: true });
-});
+}, 180000);
 
 test("forge create --in-place scaffolds in cwd with forge.yaml and docs dirs", async () => {
   const result = await runCreate(
