@@ -19,7 +19,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 
-import { realpathSync } from "../../../src/utils/sync-fs.ts";
+import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -73,8 +73,8 @@ describe("flow.open", () => {
     // same directory, so comparisons go through realpath.
     const expectedPath = join(dirname(repo), `${basename(repo)}@${name.replaceAll("/", "-")}`);
     expect(data.branch).toBe(name);
-    expect(data.worktree).toBe(realpathSync(expectedPath));
-    expect(data.worktree?.startsWith(dirname(realpathSync(repo)))).toBe(true);
+    expect(data.worktree).toBe(canonicalRepoDir(expectedPath));
+    expect(data.worktree?.startsWith(dirname(canonicalRepoDir(repo)))).toBe(true);
     dirs.push(expectedPath);
     expect(await sha(repo, name)).toBe(developSha);
     expect(data.opened).toBe(true);
@@ -82,7 +82,7 @@ describe("flow.open", () => {
     const common = await commonGitDir(ambientIo, repo);
     const registry = await readRegistry(ambientIo, common);
     const entry = registry.branches.find((b) => b.name === name);
-    expect(entry?.worktree).toBe(realpathSync(expectedPath));
+    expect(entry?.worktree).toBe(canonicalRepoDir(expectedPath));
     expect(entry?.baseSha).toBe(developSha);
     expect(entry?.owner).toEqual({ kind: "session", id: "unspecified" });
     expect(entry?.held).toBeNull();

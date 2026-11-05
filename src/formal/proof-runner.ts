@@ -194,7 +194,9 @@ function persistLog(
   if (!content.trim()) return undefined;
   const dir = proofsDir(workspaceRoot);
   mkdirSync(dir, { recursive: true });
-  const rel = join(".cache", "proofs", `${specId}.${name}`);
+  // The returned path is a repo-relative report path — forward slashes so
+  // callers can print and re-resolve it identically on every platform.
+  const rel = join(".cache", "proofs", `${specId}.${name}`).replace(/\\/g, "/");
   writeFileSync(join(dir, `${specId}.${name}`), tail(content));
   return rel;
 }

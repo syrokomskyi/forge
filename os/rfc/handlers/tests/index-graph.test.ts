@@ -106,7 +106,8 @@ describe("rfc.index.generate — RFC-1364 concurrent-write robustness", () => {
     const result = await runRfcIndexGenerate(makeInput({ write: true }), makeContext(tmpDir));
     const data = result.data as { status: string; written?: string; count: number };
     expect(data.status).toBe("ok");
-    expect(data.written).toBe(path.join("docs", "rfcs", "index.yaml"));
+    // `written` is a repo-relative logical path — forward slashes on all platforms.
+    expect(data.written).toBe("docs/rfcs/index.yaml");
     expect(data.count).toBe(2);
     const index = await fs.readFile(path.join(rfcDir, "index.yaml"), "utf-8");
     expect(index).toContain("RFC-0002");
