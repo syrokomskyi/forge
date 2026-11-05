@@ -19,6 +19,7 @@ languagePolicy: ref(PREFERENCES.md)
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1513: land friction docs-rule measures</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -68,7 +69,7 @@ Run `port.scaffold --name <name> --type skill --category <category>` to generate
 
 ### 3. Write the body
 
-Fill the SKILL.md body with the skill's behavioral instructions. Follow the conventions in `writing-great-skills`.
+Fill the SKILL.md body with the skill's behavioral instructions. Follow the conventions in `writing-great-skills`. Platform governance ids (RFC-/ADR-/DNA- tokens) stay inside `<!-- -->` metadata headers or change-summary comments — never in instruction prose; SKILL-17 rejects prose-carried ids late, at full-suite time (F-0077).
 
 ### 4. Validate
 

@@ -79,7 +79,8 @@ Before submitting criteria, run this line-level reject check. A criterion that t
 1. **Not atomic** — two independently testable behaviors joined by "and" in a single criterion. Split into separate `AC-N` items. (V-39)
 2. **Unbounded quantity** — unitless numeric concepts: "fast", "scalable", "reasonable load", "efficiently", "high performance", "low latency". Replace with a specific number or reference the decision that sets it. (V-40)
 3. **Weasel verb** — closed set: "handle gracefully", "behave correctly", "as appropriate", "robust", "user-friendly", "works correctly", "is reliable". Replace with a specific observable behavior. (V-41)
-4. **No verification mapping** — a checked criterion without `(evidence: ...)` pointing to a mechanism. Already enforced by V-27 and V-37.
+4. **Fixed input without a containing pattern** — every `## Fixed inputs` row must bind to an `AC-N` whose bound `file-contains`/`page` probe pattern literally contains the FI value; a FI bound to a test-only criterion fails V-50. (V-50)
+5. **No verification mapping** — a checked criterion without `(evidence: ...)` pointing to a mechanism. Already enforced by V-27 and V-37.
 
 The trigger lists for V-40 and V-41 are configuration constants in `validate-rules.ts` — they can be extended without an RFC.
 
