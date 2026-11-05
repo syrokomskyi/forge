@@ -9,48 +9,48 @@
 # table — add rows, never fork it.
 rows:
   # valid conforming names — one per kind
-  - { name: "auto/session-261101-01-forge-flow", verdict: allow, rule: null, ref_ok: true }
-  - { name: "auto/task-261101-02-verbund-migration", verdict: allow, rule: null, ref_ok: true }
-  - { name: "auto/fix-261231-99-hotfix-release", verdict: allow, rule: null, ref_ok: true }
-  - { name: "auto/session-240229-03-leap-day", verdict: allow, rule: null, ref_ok: true }
-  - { name: "auto/task-261101-01-a1b", verdict: allow, rule: null, ref_ok: true }
-  - { name: "auto/fix-261101-07-x-y-z-123", verdict: allow, rule: null, ref_ok: true }
+  - { name: auto/session-261101-01-forge-flow, verdict: allow, rule: null, ref_ok: true }
+  - { name: auto/task-261101-02-verbund-migration, verdict: allow, rule: null, ref_ok: true }
+  - { name: auto/fix-261231-99-hotfix-release, verdict: allow, rule: null, ref_ok: true }
+  - { name: auto/session-240229-03-leap-day, verdict: allow, rule: null, ref_ok: true }
+  - { name: auto/task-261101-01-a1b, verdict: allow, rule: null, ref_ok: true }
+  - { name: auto/fix-261101-07-x-y-z-123, verdict: allow, rule: null, ref_ok: true }
   # protected names — refused with FLOW-GUARD-01
-  - { name: "develop", verdict: refuse, rule: FLOW-GUARD-01, ref_ok: true }
-  - { name: "main", verdict: refuse, rule: FLOW-GUARD-01, ref_ok: true }
+  - { name: develop, verdict: refuse, rule: FLOW-GUARD-01, ref_ok: true }
+  - { name: main, verdict: refuse, rule: FLOW-GUARD-01, ref_ok: true }
   # legacy / foreign branch names — FLOW-GUARD-02
-  - { name: "session/abc123", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "feature/login-page", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "dependabot/npm/zod-4.6.5", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "master", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "release/9.1.0", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "hotfix", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: session/abc123, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: feature/login-page, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: dependabot/npm/zod-4.6.5, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: master, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: release/9.1.0, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: hotfix, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
   # grammar violations — FLOW-GUARD-02
-  - { name: "auto/session-261101-1-x", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-00-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-100-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261332-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-260230-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-260229-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-260229-31-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-230229-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/review-261101-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-26110-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-2611011-01-xyz", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01-ab", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01-aB-c", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01-a_b", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01-abc-", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01--abc", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "AUTO/session-261101-01-abc", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/SESSION-261101-01-abc", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-01-abc.def", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
-  - { name: "auto/session-261101-ab-abc", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-1-x, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-00-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-100-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261332-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-260230-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-260229-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-260229-31-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-230229-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/review-261101-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-26110-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-2611011-01-xyz, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01-ab, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01-aB-c, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01-a_b, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01-abc-, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01--abc, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: AUTO/session-261101-01-abc, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/SESSION-261101-01-abc, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-01-abc.def, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
+  - { name: auto/session-261101-ab-abc, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: true }
   # names git cannot create as refs — refused verdicts, skipped by the parity
   # test's branch-creation step
-  - { name: "auto/session-261101-01-a..b", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
-  - { name: "auto/session-261101-01-a b", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
-  - { name: "auto/session-261101-01-a.lock", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
-  - { name: "auto/session-261101-01-a~b", verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
+  - { name: auto/session-261101-01-a..b, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
+  - { name: auto/session-261101-01-a b, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
+  - { name: auto/session-261101-01-a.lock, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
+  - { name: auto/session-261101-01-a~b, verdict: refuse, rule: FLOW-GUARD-02, ref_ok: false }
