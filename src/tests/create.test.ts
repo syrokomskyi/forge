@@ -355,6 +355,12 @@ test("forge create --profile phaser-game writes compass.fileExtensions into forg
     { argv: [], flags: { "in-place": true, "no-flow": true, profile: "phaser-game", name: "my-phaser-game" } },
     makeContext(tempDir),
   );
+  // Printed live so a cancelled CI log still carries the failing payload.
+  if (result.exitCode !== 0) {
+    console.log(
+      `[phaser-create] exitCode=${String(result.exitCode)} errors=${JSON.stringify(result.data?.errors ?? null)} summary=${JSON.stringify(result.summary ?? null)}`,
+    );
+  }
   expect(result.exitCode).toBe(0);
 
   const { readFile: readFileAsync } = await import("node:fs/promises");
