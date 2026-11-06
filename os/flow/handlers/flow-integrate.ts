@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504</history>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509</history>
 </CHANGE_SUMMARY>
 */
 
@@ -48,8 +48,12 @@ import {
   topLevel,
   worktreeList,
 } from "../git.ts";
-import { LockTimeoutError, withFlowLock } from "../locks.ts";
-import { currentBootId, holderIsDead } from "../../core/lock-holder.ts";
+import {
+  describeHeldLock,
+  LockTimeoutError,
+  withFlowLock,
+  type HeldLockDiagnostic,
+} from "../locks.ts";
 import {
   appendJournal,
   commonGitDir,
@@ -63,19 +67,14 @@ import {
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { preserveTaskFiles } from "../task-files.ts";
 import { primaryWorktree } from "../worktree-path.ts";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 
 export const INTEGRATE_LOCK_WAIT_MS = 30 * 60_000;
 export const INTEGRATE_LOCK_STALE_MS = 2 * 3_600_000;
 
 /** RFC-1515 AC-4: the refused lock attempt reports who holds it. */
-export interface LockDiagnostic {
-  pid: number;
-  host?: string;
-  at: string;
-  heldMs: number | null;
-  disposition: "live" | "dead-holder" | "stale";
-}
+export type LockDiagnostic = HeldLockDiagnostic;
 
 export interface FlowIntegrateData {
   branch: string | null;
@@ -145,6 +144,7 @@ async function cleanupIntegrated(
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
+  let toleratedPaths: string[] = [];
   if (worktree !== null && (await io.exists(worktree))) {
     // RFC-1509 Q-16: preserve BEFORE the teardown hook — a `git clean -fdx`
     // teardown would destroy .forge/task/ with the rest of the worktree.
@@ -186,6 +186,18 @@ async function cleanupIntegrated(
         ],
       };
     }
+    // RFC-1515: `statusDirty` predicts `git worktree remove` — allowlisted
+    // forge-local state is untracked-not-ignored, so a tolerated-only tree
+    // still refuses removal. Delete the tolerated paths first (declared-
+    // disposable state; task payloads are already preserved above); a
+    // fresh check showing real entries leaves remove to report them.
+    const residual = await statusDirty(worktree, io);
+    if (residual.entries.length === 0 && residual.toleratedState.length > 0) {
+      toleratedPaths = residual.toleratedState;
+      for (const rel of residual.toleratedState) {
+        await rm(join(worktree, rel), { force: true, recursive: true });
+      }
+    }
     const remove = await git(primary, io, ["worktree", "remove", worktree]);
     if (remove.exitCode !== 0) {
       return {
@@ -203,7 +215,15 @@ async function cleanupIntegrated(
     }
   }
   if (branchExistsNow) {
-    const del = await git(primary, io, ["branch", "-d", entry.name]);
+    // RFC-1515: a vanished worktree leaves a stale `git worktree`
+    // registration that pins the branch — prune it before deletion. Merged
+    // state is already proven by isAncestor, so `-D` is the verified delete
+    // (`-d` re-derives containment in the current worktree context, which
+    // the F-0093 *.stale race corrupted).
+    if (worktree !== null && !(await io.exists(worktree))) {
+      await git(primary, io, ["worktree", "prune"]);
+    }
+    const del = await git(primary, io, ["branch", "-D", entry.name]);
     if (del.exitCode !== 0) {
       return {
         cleanedUp: false,
@@ -231,6 +251,7 @@ async function cleanupIntegrated(
       sha,
       detail: journalEvent === "backmerge" ? `back-merged into develop` : `integrated into develop`,
       base: journalBase,
+      ...(toleratedPaths.length > 0 ? { toleratedState: toleratedPaths } : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -367,7 +388,10 @@ export async function integrateFlowBranch(
                     ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
                     : ""),
                 fixHint: "commit or revert the uncommitted changes inside the session worktree",
-                data: { entries: dirty.entries, toleratedState: dirty.toleratedState },
+                data: {
+                  entries: dirty.entries.map((line) => line.slice(3)),
+                  toleratedState: dirty.toleratedState,
+                },
               },
             ]
           : [],
@@ -379,178 +403,181 @@ export async function integrateFlowBranch(
   // Steps 0–5 under the integration lock (or inside the caller's lock when
   // lockHeld — flow.cut holds it across the whole release).
   const integrateInner = async (): Promise<FlowIntegrateData> => {
-        const developBefore = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-        const hasBranch = await branchExists(primary, io, branch);
+    const developBefore = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
+    const hasBranch = await branchExists(primary, io, branch);
 
-        // Rerun/resume: develop already contains the branch tip (or the
-        // branch ref is gone) — nothing to move; clean up outside the lock.
-        let resume = !hasBranch;
-        let branchTip: string | null = null;
-        if (hasBranch) {
-          branchTip = (await git(primary, io, ["rev-parse", branch])).stdout.trim();
-          resume = await isAncestor(primary, io, branchTip, "develop");
-        }
-        if (resume) {
-          return {
-            branch,
-            integrated: true,
-            developBefore,
-            developAfter: developBefore,
-            rebased: false,
-            gate: null,
-            cleanedUp: false,
-            diagnostics: [],
-          };
-        }
+    // Rerun/resume: develop already contains the branch tip (or the
+    // branch ref is gone) — nothing to move; clean up outside the lock.
+    let resume = !hasBranch;
+    let branchTip: string | null = null;
+    if (hasBranch) {
+      branchTip = (await git(primary, io, ["rev-parse", branch])).stdout.trim();
+      resume = await isAncestor(primary, io, branchTip, "develop");
+    }
+    if (resume) {
+      return {
+        branch,
+        integrated: true,
+        developBefore,
+        developAfter: developBefore,
+        rebased: false,
+        gate: null,
+        cleanedUp: false,
+        diagnostics: [],
+      };
+    }
 
-        // (2) the branch worktree must exist and be clean.
-        const worktrees = await worktreeList(primary, io);
-        const branchWorktree =
-          worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
-        if (branchWorktree === null || !(await io.exists(branchWorktree))) {
-          return refuse(
-            "FLOW-07",
-            `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist (vanished)`,
-            "run flow.discard to drop the registry entry and force-delete the branch — the worktree is gone",
-            { branch, developBefore },
-            { vanished: true },
-          );
-        }
-        const dirty = await statusDirty(branchWorktree, io);
-        if (dirty.toleratedState.length > 0) {
-          opts.onProgress?.(
-            `tolerated forge-local state: ${dirty.toleratedState.join(", ")}`,
-          );
-        }
-        if (dirty.entries.length > 0) {
-          return refuse(
-            "FLOW-INT-01",
-            `worktree ${branchWorktree} has ${dirty.entries.length} uncommitted change(s): ${dirty.entries.slice(0, 10).join(", ")}` +
-              (dirty.toleratedState.length > 0
-                ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
-                : ""),
-            "commit or revert the uncommitted changes inside the session worktree, then re-run",
-            { branch, developBefore, toleratedState: dirty.toleratedState },
-            { entries: dirty.entries, toleratedState: dirty.toleratedState },
-          );
-        }
+    // (2) the branch worktree must exist and be clean.
+    const worktrees = await worktreeList(primary, io);
+    const branchWorktree =
+      worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
+    if (branchWorktree === null || !(await io.exists(branchWorktree))) {
+      return refuse(
+        "FLOW-07",
+        `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist (vanished)`,
+        "run flow.discard to drop the registry entry and force-delete the branch — the worktree is gone",
+        { branch, developBefore },
+        { vanished: true },
+      );
+    }
+    const dirty = await statusDirty(branchWorktree, io);
+    if (dirty.toleratedState.length > 0) {
+      opts.onProgress?.(
+        `tolerated forge-local state: ${dirty.toleratedState.join(", ")}`,
+      );
+    }
+    if (dirty.entries.length > 0) {
+      return refuse(
+        "FLOW-INT-01",
+        `worktree ${branchWorktree} has ${dirty.entries.length} uncommitted change(s): ${dirty.entries.slice(0, 10).join(", ")}` +
+          (dirty.toleratedState.length > 0
+            ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
+            : ""),
+        "commit or revert the uncommitted changes inside the session worktree, then re-run",
+        { branch, developBefore, toleratedState: dirty.toleratedState },
+        {
+          entries: dirty.entries.map((line) => line.slice(3)),
+          toleratedState: dirty.toleratedState,
+        },
+      );
+    }
 
-        // Port entries (RFC-1490): develop must not have moved since the port
-        // opened, and the tip must be the fixed-message merge whose second
-        // parent is port.mainSha. No rebase — that would linearize the merge.
-        if (entry.port !== null) {
-          if (developBefore !== entry.baseSha) {
-            return refuse(
-              "FLOW-INT-10",
-              `develop moved to ${developBefore.slice(0, 9)} since the port branch opened (base ${entry.baseSha.slice(0, 9)})`,
-              "run flow.backmerge --redo to reopen the port on the new develop tip",
-              { branch, developBefore },
-            );
-          }
-          const expectedSubject = `release ${entry.port.tags.join(", ")} → develop`;
-          const parents = await git(branchWorktree, io, ["rev-list", "--parents", "-1", "HEAD"]);
-          const parts = parents.stdout.trim().split(/\s+/);
-          const subject = (await git(branchWorktree, io, ["log", "-1", "--format=%s"])).stdout.trim();
-          if (parts.length !== 3 || parts[2] !== entry.port.mainSha || subject !== expectedSubject) {
-            return refuse(
-              "FLOW-INT-09",
-              `port tip is not the back-merge commit — expected merge '${expectedSubject}' with second parent ${entry.port.mainSha.slice(0, 9)}`,
-              "commit the resolved merge inside the port worktree with git commit --no-edit, or run flow.backmerge --redo",
-              { branch, developBefore },
-            );
-          }
-        }
+    // Port entries (RFC-1490): develop must not have moved since the port
+    // opened, and the tip must be the fixed-message merge whose second
+    // parent is port.mainSha. No rebase — that would linearize the merge.
+    if (entry.port !== null) {
+      if (developBefore !== entry.baseSha) {
+        return refuse(
+          "FLOW-INT-10",
+          `develop moved to ${developBefore.slice(0, 9)} since the port branch opened (base ${entry.baseSha.slice(0, 9)})`,
+          "run flow.backmerge --redo to reopen the port on the new develop tip",
+          { branch, developBefore },
+        );
+      }
+      const expectedSubject = `release ${entry.port.tags.join(", ")} → develop`;
+      const parents = await git(branchWorktree, io, ["rev-list", "--parents", "-1", "HEAD"]);
+      const parts = parents.stdout.trim().split(/\s+/);
+      const subject = (await git(branchWorktree, io, ["log", "-1", "--format=%s"])).stdout.trim();
+      if (parts.length !== 3 || parts[2] !== entry.port.mainSha || subject !== expectedSubject) {
+        return refuse(
+          "FLOW-INT-09",
+          `port tip is not the back-merge commit — expected merge '${expectedSubject}' with second parent ${entry.port.mainSha.slice(0, 9)}`,
+          "commit the resolved merge inside the port worktree with git commit --no-edit, or run flow.backmerge --redo",
+          { branch, developBefore },
+        );
+      }
+    }
 
-        // (3) rebase onto the current develop — never for port entries.
-        const rebaseBase = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-        const rebase =
-          entry.port !== null
-            ? { exitCode: 0, stdout: "", stderr: "" }
-            : await git(branchWorktree, io, ["rebase", "develop"]);
-        if (rebase.exitCode !== 0) {
-          const conflicts = await git(branchWorktree, io, [
-            "diff",
-            "--name-only",
-            "--diff-filter=U",
-          ]);
-          const paths = conflicts.stdout
-            .split("\n")
-            .map((l) => l.trim())
-            .filter((l) => l.length > 0);
-          await git(branchWorktree, io, ["rebase", "--abort"]);
-          return refuse(
-            "FLOW-INT-02",
-            `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}`,
-            "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
-            { branch, developBefore },
-          );
-        }
+    // (3) rebase onto the current develop — never for port entries.
+    const rebaseBase = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
+    const rebase =
+      entry.port !== null
+        ? { exitCode: 0, stdout: "", stderr: "" }
+        : await git(branchWorktree, io, ["rebase", "develop"]);
+    if (rebase.exitCode !== 0) {
+      const conflicts = await git(branchWorktree, io, [
+        "diff",
+        "--name-only",
+        "--diff-filter=U",
+      ]);
+      const paths = conflicts.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+      await git(branchWorktree, io, ["rebase", "--abort"]);
+      return refuse(
+        "FLOW-INT-02",
+        `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}`,
+        "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
+        { branch, developBefore },
+      );
+    }
 
-        // (4) integration gate — the primary's copy gates the branch.
-        const gate = await runFlowScript(io, "integration-gate", {
-          primary,
-          cwd: branchWorktree,
-          env: {
-            FLOW_PRIMARY: primary,
-            FLOW_BRANCH: branch,
-            FLOW_BASE_SHA: rebaseBase,
-            FORGE_FLOW_TARGET: opts.target ?? "develop",
-          },
-        });
-        if (gate.status === "failed") {
-          return refuse(
-            "FLOW-INT-05",
-            `hooks/integration-gate.sh refused the integration (exit ${gate.exitCode}): ${gate.stderrTail}`,
-            `fix what ${primary}/hooks/integration-gate.sh demands, then re-run`,
-            { branch, developBefore, rebased: entry.port === null, gate },
-          );
-        }
+    // (4) integration gate — the primary's copy gates the branch.
+    const gate = await runFlowScript(io, "integration-gate", {
+      primary,
+      cwd: branchWorktree,
+      env: {
+        FLOW_PRIMARY: primary,
+        FLOW_BRANCH: branch,
+        FLOW_BASE_SHA: rebaseBase,
+        FORGE_FLOW_TARGET: opts.target ?? "develop",
+      },
+    });
+    if (gate.status === "failed") {
+      return refuse(
+        "FLOW-INT-05",
+        `hooks/integration-gate.sh refused the integration (exit ${gate.exitCode}): ${gate.stderrTail}`,
+        `fix what ${primary}/hooks/integration-gate.sh demands, then re-run`,
+        { branch, developBefore, rebased: entry.port === null, gate },
+      );
+    }
 
-        // (5) primary must sit clean on develop, then fast-forward.
-        const primaryBranch = await currentBranch(primary, io);
-        const primaryDirty = await statusTracked(primary, io);
-        if (primaryBranch !== "develop" || primaryDirty.entries.length > 0) {
-          return refuse(
-            "FLOW-INT-03",
-            primaryBranch !== "develop"
-              ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
-              : `primary worktree has ${primaryDirty.entries.length} uncommitted change(s)`,
-            "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
-            { branch, developBefore, rebased: entry.port === null, gate },
-          );
-        }
-        const developNow = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-        if (!(await isAncestor(primary, io, developNow, branch))) {
-          return refuse(
-            "FLOW-INT-07",
-            `develop moved to ${developNow.slice(0, 9)} after the rebase despite the integration lock`,
-            "re-run flow.integrate — it rebases onto the new develop tip",
-            { branch, developBefore, rebased: entry.port === null, gate },
-          );
-        }
-        const merge = await git(primary, io, ["merge", "--ff-only", branch]);
-        if (merge.exitCode !== 0) {
-          return refuse(
-            "FLOW-INT-07",
-            `git merge --ff-only ${branch} failed: ${merge.stderr.trim()}`,
-            "develop diverged from the rebased base — re-run flow.integrate to rebase again",
-            { branch, developBefore, rebased: entry.port === null, gate },
-          );
-        }
-        const developAfter = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-        return {
-          branch,
-          integrated: true,
-          developBefore,
-          developAfter,
-          rebased: entry.port === null,
-          gate,
-          cleanedUp: false,
-          ...(dirty.toleratedState.length > 0
-            ? { toleratedState: dirty.toleratedState }
-            : {}),
-          diagnostics: [],
-        };
+    // (5) primary must sit clean on develop, then fast-forward.
+    const primaryBranch = await currentBranch(primary, io);
+    const primaryDirty = await statusTracked(primary, io);
+    if (primaryBranch !== "develop" || primaryDirty.entries.length > 0) {
+      return refuse(
+        "FLOW-INT-03",
+        primaryBranch !== "develop"
+          ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
+          : `primary worktree has ${primaryDirty.entries.length} uncommitted change(s)`,
+        "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
+        { branch, developBefore, rebased: entry.port === null, gate },
+      );
+    }
+    const developNow = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
+    if (!(await isAncestor(primary, io, developNow, branch))) {
+      return refuse(
+        "FLOW-INT-07",
+        `develop moved to ${developNow.slice(0, 9)} after the rebase despite the integration lock`,
+        "re-run flow.integrate — it rebases onto the new develop tip",
+        { branch, developBefore, rebased: entry.port === null, gate },
+      );
+    }
+    const merge = await git(primary, io, ["merge", "--ff-only", branch]);
+    if (merge.exitCode !== 0) {
+      return refuse(
+        "FLOW-INT-07",
+        `git merge --ff-only ${branch} failed: ${merge.stderr.trim()}`,
+        "develop diverged from the rebased base — re-run flow.integrate to rebase again",
+        { branch, developBefore, rebased: entry.port === null, gate },
+      );
+    }
+    const developAfter = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
+    return {
+      branch,
+      integrated: true,
+      developBefore,
+      developAfter,
+      rebased: entry.port === null,
+      gate,
+      cleanedUp: false,
+      ...(dirty.toleratedState.length > 0
+        ? { toleratedState: dirty.toleratedState }
+        : {}),
+      diagnostics: [],
+    };
   };
 
   let inner: FlowIntegrateData;
@@ -580,27 +607,15 @@ export async function integrateFlowBranch(
       // try — the lock payload names pid/host/at/heldMs plus a disposition
       // computed by the same dead-holder classifier withFlowLock uses.
       const holder = error.holder;
-      const heldAtMs = holder !== undefined ? Date.parse(holder.at) : NaN;
-      const heldMs = Number.isNaN(heldAtMs) ? null : Math.max(0, Date.now() - heldAtMs);
       const lock: LockDiagnostic | undefined =
         holder === undefined
           ? undefined
-          : {
-              pid: holder.pid,
-              host: holder.host,
-              at: holder.at,
-              heldMs,
-              disposition: holderIsDead(holder, currentBootId())
-                ? "dead-holder"
-                : heldMs !== null && heldMs > INTEGRATE_LOCK_STALE_MS
-                  ? "stale"
-                  : "live",
-            };
+          : describeHeldLock(holder, INTEGRATE_LOCK_STALE_MS);
       return refuse(
         "FLOW-INT-08",
-        holder === undefined
+        lock === undefined
           ? `integration lock ${error.lockPath} is held by another integration (holder unknown)`
-          : `integration lock ${error.lockPath} is held by pid ${holder.pid} on ${holder.host ?? "unknown host"} since ${holder.at} (${lock?.disposition ?? "live"})`,
+          : `integration lock ${error.lockPath} is held by pid ${lock.pid} on ${lock.host ?? "unknown host"} since ${lock.at} (${lock.disposition})`,
         "run forge werkstatt.lock.status for the live view, or forge werkstatt.lock.recover to break a dead holder's lock",
         { branch, lock },
       );

@@ -17,11 +17,11 @@ forge/journal.jsonl.</purpose>
   <item>`held` is typed null now — the wave-2 outbound RFC widens it to { heldAt, riskCategory, reason }.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -140,6 +140,9 @@ export interface FlowJournalEvent {
   detail: string;
   /** develop before (integrate/backmerge/cut/hold); branch base (discard) — W1-1. */
   base?: string;
+  /** RFC-1515: forge-local state the integrate/discard tolerated and deleted
+   * with the worktree — recorded so the journal carries the allowlist hit. */
+  toleratedState?: string[];
   /** hold only — the new (base, sha] range of every replayed item. */
   rewrites?: Array<{
     branch: string;

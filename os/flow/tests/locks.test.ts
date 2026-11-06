@@ -11,6 +11,7 @@ id on this host is treated as dead. Uses injected now/sleep — no real waits.</
 <CHANGE_SUMMARY>
   <item>RFC-1504: step 1 — dead-holder lock tests</item>
   <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,7 +23,7 @@ import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { currentBootId, holderIsDead } from "../../core/lock-holder.ts";
-import { withFlowLock, LockTimeoutError } from "../locks.ts";
+import { describeHeldLock, withFlowLock, LockTimeoutError } from "../locks.ts";
 
 const dirs: string[] = [];
 afterEach(async () => {
@@ -217,5 +218,38 @@ describe("withFlowLock dead-holder recovery (RFC-1504)", () => {
     const content = captured as { bootId?: string } | null;
     if (boot === undefined) expect(content?.bootId).toBeUndefined();
     else expect(content?.bootId).toBe(boot);
+  });
+});
+
+describe("describeHeldLock — RFC-1515 lock payload classification", () => {
+  it("reports a live local holder with a numeric heldMs", () => {
+    const at = new Date(Date.now() - 5_000).toISOString();
+    const lock = describeHeldLock({ pid: livePid(), host: HOST, at }, 3_600_000);
+    expect(lock.disposition).toBe("live");
+    expect(lock.heldMs).toBeGreaterThanOrEqual(5_000);
+    expect(lock.pid).toBe(process.pid);
+    expect(lock.host).toBe(HOST);
+    expect(lock.at).toBe(at);
+  });
+
+  it("reports a dead local pid as dead-holder even inside the stale budget", () => {
+    const lock = describeHeldLock(
+      { pid: deadPid(), host: HOST, at: new Date().toISOString() },
+      3_600_000,
+    );
+    expect(lock.disposition).toBe("dead-holder");
+  });
+
+  it("reports a live holder beyond the stale budget as stale", () => {
+    const at = new Date(Date.now() - 7_200_000).toISOString();
+    const lock = describeHeldLock({ pid: livePid(), host: HOST, at }, 3_600_000);
+    expect(lock.disposition).toBe("stale");
+    expect(lock.heldMs).toBeGreaterThan(3_600_000);
+  });
+
+  it("degrades heldMs to null when the holder timestamp never parsed", () => {
+    const lock = describeHeldLock({ pid: livePid(), host: HOST, at: "garbage" }, 3_600_000);
+    expect(lock.heldMs).toBeNull();
+    expect(lock.disposition).toBe("live");
   });
 });

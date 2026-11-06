@@ -14,7 +14,6 @@ locks broken, always released in finally. Used for the short registry lock
   <item>Timeout throws LockTimeoutError naming the file — each command maps it to its own diagnostic (FLOW-07 for the registry, FLOW-INT-08 for integrate).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -28,6 +27,7 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1504: review fixes — single io.readFile parse per iteration, real ageMs on dead-holder onStale, atomic break claim</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -67,11 +67,11 @@ export class LockTimeoutError extends Error {
   readonly lockPath: string;
   /** RFC-1515: last observed holder payload — absent when the lock file was
    * unreadable or vanished between polls ("holder unknown"). */
-  readonly holder?: { pid: number; host?: string; at: string };
+  readonly holder?: { pid: number; host?: string; at: string; bootId?: string };
   constructor(
     lockPath: string,
     waitedMs: number,
-    holder?: { pid: number; host?: string; at: string },
+    holder?: { pid: number; host?: string; at: string; bootId?: string },
   ) {
     super(`lock ${lockPath} still held after ${waitedMs} ms`);
     this.name = "LockTimeoutError";
@@ -86,6 +86,43 @@ interface LockFileContent {
   at: string;
   /** RFC-1504: machine boot id when the platform has one — written only when defined. */
   bootId?: string;
+}
+
+/** RFC-1515 AC-4: the holder payload a refused lock attempt renders. */
+export interface HeldLockDiagnostic {
+  pid: number;
+  host?: string;
+  at: string;
+  /** ms since the holder's `at` — null when the timestamp never parsed. */
+  heldMs: number | null;
+  disposition: "live" | "dead-holder" | "stale";
+}
+
+/**
+ * Classify a refused attempt's last observed holder — `dead-holder` via the
+ * RFC-1504 classifier (dead pid on this host, or a foreign boot id), `stale`
+ * when the observed age exceeds the command's stale budget. The `stale` arm
+ * is near-unreachable from `withFlowLock` (age-stale locks are broken before
+ * the deadline check each poll) — it exists for callers classifying a lock
+ * they never waited on.
+ */
+export function describeHeldLock(
+  holder: { pid: number; host?: string; at: string; bootId?: string },
+  staleMs: number,
+): HeldLockDiagnostic {
+  const heldAtMs = Date.parse(holder.at);
+  const heldMs = Number.isNaN(heldAtMs) ? null : Math.max(0, Date.now() - heldAtMs);
+  return {
+    pid: holder.pid,
+    host: holder.host,
+    at: holder.at,
+    heldMs,
+    disposition: holderIsDead(holder, currentBootId())
+      ? "dead-holder"
+      : heldMs !== null && heldMs > staleMs
+        ? "stale"
+        : "live",
+  };
 }
 
 const defaultSleep = (ms: number): Promise<void> =>

@@ -12,7 +12,6 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>flow.check/flow.install require git >= 2.30 — requireGit fails through the standard error path naming the detected version.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -26,7 +25,8 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <history>RFC-1486</history>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <history>RFC-1486, RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -390,6 +390,8 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
   const toleratedState: string[] = [];
   for (const line of porcelainLines(result.stdout)) {
     const path = line.slice(3);
+    // Porcelain C-quotes unusual bytes ("dir/na\303\257ve.ts") — a quoted
+    // path never matches the allowlist and stays a blocker (fail-closed).
     if (line.startsWith("?? ") && isForgeStatePath(path)) toleratedState.push(path);
     else entries.push(line);
   }
