@@ -12,7 +12,6 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>flow.check/flow.install require git >= 2.30 — requireGit fails through the standard error path naming the detected version.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -26,6 +25,7 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -316,34 +316,82 @@ export async function configGet(
 }
 
 /**
- * Tracked modifications in a worktree — `git status --porcelain
- * --untracked-files=no`; untracked and ignored files never count (missions/,
- * releases/, node_modules/ are operational state, not tracked content).
+ * RFC-1515: forge-local state that never counts as worktree dirt — exact
+ * paths or explicit directory prefixes only (a trailing slash marks the
+ * prefix form). A broad `.forge/` glob would mask real dirt: authored state
+ * like `.forge/pinned.yaml` is tracked and stays a blocker (AC-7).
  */
-export async function statusTracked(worktree: string, io: WorkspaceIO): Promise<string[]> {
-  const result = throwOnFailure(
-    await git(worktree, io, ["status", "--porcelain", "--untracked-files=no"]),
-    "git status --porcelain",
+export const FORGE_STATE_FILES: readonly string[] = [
+  ".forge/knowledge-conflicts.txt",
+  ".forge/task/",
+];
+
+/** Typed status verdict (RFC-1513's helpers return this under RFC-1515). */
+export interface DirtyStatus {
+  /** Porcelain lines that still count as uncommitted changes. */
+  entries: string[];
+  /** FORGE_STATE_FILES-matched untracked paths — journal data, never a blocker. */
+  toleratedState: string[];
+  /** True when the worktree path does not exist on disk — no git call ran. */
+  vanished: boolean;
+}
+
+function isForgeStatePath(path: string): boolean {
+  return FORGE_STATE_FILES.some((entry) =>
+    entry.endsWith("/") ? path === entry || path.startsWith(entry) : path === entry,
   );
-  return result.stdout
+}
+
+function porcelainLines(stdout: string): string[] {
+  return stdout
     .split("\n")
     .map((line) => line.trimEnd())
     .filter((line) => line.length > 0);
 }
 
 /**
- * All uncommitted changes — default `git status --porcelain` (untracked `??`
- * entries included, ignored files still excluded). This is the dirty
- * definition `git worktree remove` enforces; use it wherever a check predicts
- * worktree-removability or asks "is this checkout dirty".
+ * Tracked modifications in a worktree — `git status --porcelain
+ * --untracked-files=no`; untracked and ignored files never count (missions/,
+ * releases/, node_modules/ are operational state, not tracked content).
+ * RFC-1515: a vanished worktree reports `vanished: true` instead of a raw
+ * git exit-128 — callers classify the lifecycle state, not a crash.
  */
-export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<string[]> {
+export async function statusTracked(worktree: string, io: WorkspaceIO): Promise<DirtyStatus> {
+  if (!(await io.exists(worktree))) {
+    return { entries: [], toleratedState: [], vanished: true };
+  }
   const result = throwOnFailure(
-    await git(worktree, io, ["status", "--porcelain"]),
+    await git(worktree, io, ["status", "--porcelain", "--untracked-files=no"]),
     "git status --porcelain",
   );
-  return result.stdout
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .filter((line) => line.length > 0);
+  return { entries: porcelainLines(result.stdout), toleratedState: [], vanished: false };
+}
+
+/**
+ * All uncommitted changes — `git status --porcelain -uall` (untracked `??`
+ * entries included, ignored files still excluded). This is the dirty
+ * definition `git worktree remove` enforces; use it wherever a check predicts
+ * worktree-removability or asks "is this checkout dirty". `-uall` expands
+ * untracked directories into their member files — the FORGE_STATE_FILES
+ * partition must see `.forge/task/x`, never the collapsed `?? .forge/` line
+ * (RFC-1515). Matched paths partition into `toleratedState` (journal data,
+ * never a blocker); a vanished worktree reports `vanished: true` instead of
+ * propagating exit-128.
+ */
+export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<DirtyStatus> {
+  if (!(await io.exists(worktree))) {
+    return { entries: [], toleratedState: [], vanished: true };
+  }
+  const result = throwOnFailure(
+    await git(worktree, io, ["status", "--porcelain", "-uall"]),
+    "git status --porcelain",
+  );
+  const entries: string[] = [];
+  const toleratedState: string[] = [];
+  for (const line of porcelainLines(result.stdout)) {
+    const path = line.slice(3);
+    if (line.startsWith("?? ") && isForgeStatePath(path)) toleratedState.push(path);
+    else entries.push(line);
+  }
+  return { entries, toleratedState, vanished: false };
 }

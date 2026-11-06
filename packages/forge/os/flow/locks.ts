@@ -14,7 +14,6 @@ locks broken, always released in finally. Used for the short registry lock
   <item>Timeout throws LockTimeoutError naming the file — each command maps it to its own diagnostic (FLOW-07 for the registry, FLOW-INT-08 for integrate).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 1 — exclusive file locks</item>
   <item>RFC-1487: step 1 — worktree path contracts, O_EXCL locks, branch registry and journal</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -28,6 +27,8 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1504: review fixes — single io.readFile parse per iteration, real ageMs on dead-holder onStale, atomic break claim</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -64,10 +65,18 @@ export interface FlowLockOptions {
 /** Thrown when the wait budget elapses while a live lock is held. */
 export class LockTimeoutError extends Error {
   readonly lockPath: string;
-  constructor(lockPath: string, waitedMs: number) {
+  /** RFC-1515: last observed holder payload — absent when the lock file was
+   * unreadable or vanished between polls ("holder unknown"). */
+  readonly holder?: { pid: number; host?: string; at: string };
+  constructor(
+    lockPath: string,
+    waitedMs: number,
+    holder?: { pid: number; host?: string; at: string },
+  ) {
     super(`lock ${lockPath} still held after ${waitedMs} ms`);
     this.name = "LockTimeoutError";
     this.lockPath = lockPath;
+    this.holder = holder;
   }
 }
 
@@ -195,7 +204,11 @@ export async function withFlowLock<T>(
       continue;
     }
     if (now() >= deadline) {
-      throw new LockTimeoutError(lockPath, now() - (deadline - opts.waitMs));
+      throw new LockTimeoutError(
+        lockPath,
+        now() - (deadline - opts.waitMs),
+        holder ?? undefined,
+      );
     }
     if (opts.progressEveryMs && now() >= nextProgress) {
       opts.onProgress?.(`waiting for ${lockPath}`);

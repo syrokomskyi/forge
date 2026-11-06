@@ -20,11 +20,11 @@ released with no mutation.</purpose>
   <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -374,7 +374,7 @@ async function planOrdinaryCut(
   }
 
   const primaryBranch = await currentBranch(primary, io);
-  const primaryDirty = await statusTracked(primary, io);
+  const primaryDirty = (await statusTracked(primary, io)).entries;
   const worktrees = await worktreeList(repoRoot, io);
   const mainCheckedOut = worktrees.some((w) => w.branch === "main");
   if (primaryBranch !== "develop" || primaryDirty.length > 0 || mainCheckedOut) {

@@ -16,11 +16,11 @@ the registry entry and journals the operator's reason.</purpose>
   <item>Task-file preservation runs BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <history>RFC-1487, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -145,7 +145,9 @@ export async function discardFlowBranch(
 
   const worktreePresent = worktree !== null && (await io.exists(worktree));
   if (opts.dryRun) {
-    const dirty = worktreePresent ? await statusDirty(worktree, io) : [];
+    const dirty = worktreePresent
+      ? (await statusDirty(worktree, io)).entries
+      : [];
     return {
       branch,
       discarded: false,
@@ -167,8 +169,11 @@ export async function discardFlowBranch(
   }
 
   let teardownRan: FlowScriptResult | null = null;
+  // RFC-1515 AC-3: a vanished worktree skips the dirty gate and teardown —
+  // cleanup proceeds to `git branch -D` + the registry drop, recovering the
+  // orphaned entry in one command.
   if (worktreePresent) {
-    const dirty = await statusDirty(worktree, io);
+    const dirty = (await statusDirty(worktree, io)).entries;
     if (dirty.length > 0 && !opts.dirty) {
       return refuse(
         "FLOW-DIS-03",
@@ -228,6 +233,11 @@ export async function discardFlowBranch(
     ? (await git(primary, io, ["rev-parse", branch])).stdout.trim()
     : entry.baseSha;
   if (await branchExists(primary, io, branch)) {
+    // RFC-1515 AC-3: a vanished worktree leaves a stale `git worktree`
+    // registration that pins the branch — prune it so `branch -D` proceeds.
+    if (worktree !== null && !worktreePresent) {
+      await git(primary, io, ["worktree", "prune"]);
+    }
     const del = await git(primary, io, ["branch", "-D", branch]);
     if (del.exitCode !== 0) {
       return refuse(

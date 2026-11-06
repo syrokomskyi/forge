@@ -8,13 +8,14 @@ Unit tests for upgrade covering its documented public contract and regression-se
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0543: initial upgrade handler and VERSION sourcing tests.</item>
   <item>RFC-0552: add test for Forge-vs-pack skill name conflict detection in upgrade.</item>
   <item>RFC-1224: forge.yaml preservation test — consumer keys, comments, and unknown sections survive upgrade rewrites.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1481: add knowledge collision resolution and surfacing
 
 Add the explicit resolver, namespace-aware parsing and validation, safe reference remapping, doctor/upgrade hints, and regression coverage.</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <history>RFC-0543</history>
 </CHANGE_SUMMARY>
 */
 
@@ -713,4 +714,79 @@ test("forge.upgrade preserves project-accumulated knowledge entries (append-only
   expect(result.data?.knowledgeConflictsReport).toBe(".forge/knowledge-conflicts.txt");
   const report = await readFile(join(tempDir, ".forge", "knowledge-conflicts.txt"), "utf8");
   expect(report).toContain("fo-idea/qa-log.md#K-0001");
+});
+
+test("forge.upgrade self-ensures .forge/knowledge-conflicts.txt in .gitignore — idempotent (RFC-1515 AC-5)", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "SKILL.md"),
+    "---\nname: fo-idea\nknowledge: [qa-log.md]\n---\n# fo-idea\n",
+    "utf8",
+  );
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "qa-log.md"),
+    qaLog([
+      { id: "K-0001", title: "First", body: "Package body." },
+      { id: "K-0003", title: "Third", body: "New package entry." },
+    ]),
+    "utf8",
+  );
+  await setupConsumerForgeYaml(tempDir, null);
+  await mkdir(join(tempDir, ".agents", "skills", "fo-idea"), { recursive: true });
+  await writeFile(
+    join(tempDir, ".agents", "skills", "fo-idea", "qa-log.md"),
+    qaLog([
+      { id: "K-0001", title: "First", body: "Locally edited body." },
+      { id: "K-0002", title: "Local record", body: "Project-accumulated entry." },
+    ]),
+    "utf8",
+  );
+  // Pre-seed .gitignore with the entry already present — the ensure must not duplicate it.
+  await writeFile(join(tempDir, ".gitignore"), "node_modules/\n.forge/knowledge-conflicts.txt\n");
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  expect(result.data?.knowledgeConflictsReport).toBe(".forge/knowledge-conflicts.txt");
+  const gitignore = await readFile(join(tempDir, ".gitignore"), "utf8");
+  const occurrences = gitignore
+    .split("\n")
+    .filter((l) => l.trim() === ".forge/knowledge-conflicts.txt");
+  expect(occurrences).toHaveLength(1);
+  expect(gitignore).toContain("node_modules/");
+});
+
+test("forge.upgrade creates .gitignore for the conflicts report when none exists (RFC-1515 AC-5)", async () => {
+  await setupForgeSource(tempDir, "0.2.0");
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "SKILL.md"),
+    "---\nname: fo-idea\nknowledge: [qa-log.md]\n---\n# fo-idea\n",
+    "utf8",
+  );
+  await writeFile(
+    join(tempDir, "packages", "forge", "skills", "fo", "fo-idea", "qa-log.md"),
+    qaLog([
+      { id: "K-0001", title: "First", body: "Package body." },
+      { id: "K-0003", title: "Third", body: "New package entry." },
+    ]),
+    "utf8",
+  );
+  await setupConsumerForgeYaml(tempDir, null);
+  await mkdir(join(tempDir, ".agents", "skills", "fo-idea"), { recursive: true });
+  await writeFile(
+    join(tempDir, ".agents", "skills", "fo-idea", "qa-log.md"),
+    qaLog([
+      { id: "K-0001", title: "First", body: "Locally edited body." },
+      { id: "K-0002", title: "Local record", body: "Project-accumulated entry." },
+    ]),
+    "utf8",
+  );
+
+  const result = await runUpgrade({ argv: [], flags: {} }, makeContext(tempDir, false));
+
+  expect(result.data?.status).toBe("pass");
+  const gitignore = await readFile(join(tempDir, ".gitignore"), "utf8");
+  expect(gitignore.split("\n").map((l) => l.trim())).toContain(
+    ".forge/knowledge-conflicts.txt",
+  );
 });

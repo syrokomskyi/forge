@@ -11,12 +11,12 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1154: sync skills/_shared/ convention docs to .agents/skills/_shared/ — fo-* SKILL.md references dangled for npm consumers</item>
   <item>RFC-1255: Knowledge conflicts land in .forge/knowledge-conflicts.txt (summary + path in console instead of a 60+ entry dump); exposed as knowledgeConflicts/knowledgeConflictsReport on UpgradeResult. Prettierignore plan now enumerates generated AGENTS.md paths.</item>
   <item>RFC-1481: add knowledge.conflicts.resolve next steps on same-version and regular upgrade results.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1224</history>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
@@ -555,6 +555,17 @@ async function writeKnowledgeConflictsReport(
 ): Promise<string | null> {
   const rel = ".forge/knowledge-conflicts.txt";
   try {
+    // RFC-1515 AC-5: the writer self-ensures .gitignore coverage — the report
+    // must never count as worktree dirt (the pinned-audit.log pattern).
+    const gitignorePath = path.join(workspaceRoot, ".gitignore");
+    try {
+      const existing = await io.readFile(gitignorePath);
+      if (!existing.split("\n").some((line) => line.trim() === rel)) {
+        await io.writeFile(gitignorePath, `${existing.trimEnd()}\n${rel}\n`);
+      }
+    } catch {
+      await io.writeFile(gitignorePath, `${rel}\n`);
+    }
     await io.writeFile(
       path.join(workspaceRoot, rel),
       [
