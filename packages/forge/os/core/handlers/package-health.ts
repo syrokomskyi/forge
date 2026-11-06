@@ -6,11 +6,16 @@
   <item>Do not modify files — read-only validation.</item>
 </non-goals>
 </MODULE_CONTRACT>
+<KEY_DECISIONS>
+  <item>deriveShippedFiles mirrors repo-extract's copyStandalonePackage filter semantics exactly (basename ignoreDirs + .tsbuildinfo, substring excludePathSegments, suffix excludeExtensions default .db) — a hand-maintained file list would drift from what the extract actually ships (F-0064's whole premise).</item>
+  <item>scanFixturePathEscapes is literal-aware only for TS-family extensions — other files get the raw `../` chain scan bounded by root-escape resolution; the `pkg-health-10:` suppression comment is the uniform escape for rare non-path uses (RFC-1517).</item>
+</KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>PKG-HEALTH-05: reject any versionBump in extract.config.yaml — version in package.json is source of truth.</item>
   <item>RFC-1254: PKG-HEALTH-06 lint-surface probe — extractable packages run `pnpm --dir <projectDir> run lint` (eslint fallback), per-package pass/fail, error-severity violation</item>
   <item>RFC-1254: retune PKG-HEALTH-02 — repo-extract generates ci.yml from the config `ci:` provider block, so the check now flags only extractable packages whose exported repo would ship no CI (no ci: provider AND no in-package workflow)</item>
   <item>RFC-1255: PKG-HEALTH-07 generated-CI script contract (build/lint/typecheck/test), PKG-HEALTH-08 repository.url vs git.remote for provenance publish, PKG-HEALTH-09 files[] src-reachability coverage; "extractable": false opt-out suppresses all extract-dependent checks</item>
+  <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 */
@@ -43,6 +48,125 @@ export interface PackageHealthResult {
 export interface LintProbeOutcome {
   ok: boolean;
   detail: string;
+}
+
+// RFC-1517: one `../` chain literal escaping the package root — the F-0064
+// defect class that only surfaced post-extract as ENOENT.
+export interface FixtureEscape {
+  /** Shipped file, relative to the scanned package root (as passed in). */
+  file: string;
+  line: number;
+  /** The offending `../` chain literal as written. */
+  literal: string;
+  /** Absolute resolution showing the escape. */
+  resolvedTo: string;
+}
+
+// String-literal-aware mode for TS-family sources; other extensions get the
+// raw `../` chain scan (bounded by root-escape resolution, escaped by the
+// `pkg-health-10:` suppression comment).
+const TS_FAMILY_RE = /\.(?:ts|mts|tsx|cts)$/;
+const QUOTED_PARENT_RE = /["'`]([^"'`\n]*(?:\.\.\/)+[^"'`\n]*)["'`]/g;
+const RAW_PARENT_RE = /(?:\.\.\/)+[^\s"'`)\],;:}]*/g;
+const SUPPRESS_RE = /pkg-health-10:/;
+
+/**
+ * Scan shipped files for `../` path literals that resolve outside
+ * `packageRoot` — the fixture-path defect class that passed monorepo suites
+ * and ENOENT'd only inside the standalone extract (F-0064). `shippedFiles`
+ * are package-root-relative paths on disk. Shared by PKG-HEALTH-10 and the
+ * publish `preflight-extract-gates` step so both report the same escapes.
+ */
+export function scanFixturePathEscapes(
+  packageRoot: string,
+  shippedFiles: string[],
+): FixtureEscape[] {
+  const root = path.resolve(packageRoot);
+  const escapes: FixtureEscape[] = [];
+  for (const file of shippedFiles) {
+    const abs = path.join(root, file);
+    let source: string;
+    try {
+      source = fs.readFileSync(abs, "utf8");
+    } catch {
+      continue;
+    }
+    const re = TS_FAMILY_RE.test(file) ? QUOTED_PARENT_RE : RAW_PARENT_RE;
+    const lines = source.split("\n");
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i]!;
+      if (SUPPRESS_RE.test(line)) continue;
+      re.lastIndex = 0;
+      for (const m of line.matchAll(re)) {
+        const literal = m[1] ?? m[0];
+        if (!literal.includes("../")) continue;
+        const resolvedTo = path.resolve(path.dirname(abs), literal);
+        if (resolvedTo !== root && !resolvedTo.startsWith(root + path.sep)) {
+          escapes.push({ file, line: i + 1, literal, resolvedTo });
+        }
+      }
+    }
+  }
+  return escapes;
+}
+
+/**
+ * Derive the file set repo-extract will ship for a package — a walk of
+ * `projectRoot` honoring the same config keys the standalone copy filter
+ * consumes: `ignoreDirs` (+ node_modules/.turbo/.tsbuildinfo basenames),
+ * `excludePathSegments` (substring match on the package-relative path), and
+ * `excludeExtensions` (default `.db`). Never a hand-maintained file list.
+ */
+export function deriveShippedFiles(
+  projectRoot: string,
+  extractConfigRaw: string | null,
+): string[] {
+  const yamlList = (key: string): string[] => {
+    if (extractConfigRaw === null) return [];
+    const block = extractConfigRaw.match(new RegExp(`^${key}:[ \\t]*$`, "m"));
+    if (!block || block.index === undefined) return [];
+    const items: string[] = [];
+    for (const line of extractConfigRaw.slice(block.index + block[0].length).split("\n")) {
+      if (line.trim() === "") continue;
+      const m = line.match(/^\s+-\s*(.+?)\s*$/);
+      if (!m) break;
+      items.push(m[1]!.replace(/^["']|["']$/g, ""));
+    }
+    return items;
+  };
+  const ignoreDirs = new Set(["node_modules", ".turbo", ...yamlList("ignoreDirs")]);
+  const excludeSegments = yamlList("excludePathSegments");
+  const excludeExtensions =
+    extractConfigRaw !== null && /^excludeExtensions:[ \t]*$/m.test(extractConfigRaw)
+      ? yamlList("excludeExtensions")
+      : [".db"];
+
+  const root = path.resolve(projectRoot);
+  const shipped: string[] = [];
+  const collect = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const e of entries) {
+      const abs = path.join(dir, e.name);
+      const rel = path.relative(root, abs).split(path.sep).join("/");
+      if (e.isDirectory()) {
+        if (ignoreDirs.has(e.name)) continue;
+        if (excludeSegments.some((seg) => rel.includes(seg))) continue;
+        collect(abs);
+      } else if (e.isFile()) {
+        if (ignoreDirs.has(e.name) || e.name.endsWith(".tsbuildinfo")) continue;
+        if (excludeSegments.some((seg) => rel.includes(seg))) continue;
+        if (excludeExtensions.some((ext) => e.name.endsWith(ext))) continue;
+        shipped.push(rel);
+      }
+    }
+  };
+  collect(root);
+  return shipped;
 }
 
 function defaultLintRunner(projectDir: string, hasLintScript: boolean): LintProbeOutcome {
@@ -453,6 +577,28 @@ export async function runPackageHealth(
             fixHint: `Add "${gap}" (or its parent directory) to the files[] array in package.json.`,
           });
         }
+      }
+
+      // RFC-1517 CHECK 10: a `../` literal in a shipped file that resolves
+      // outside the package root passes the monorepo suite and ENOENTs only
+      // inside the standalone extract (F-0064). Same scan the publish
+      // preflight runs — the defect surfaces here on routine health runs.
+      const healthProjectDir = projectDirMatch
+        ? path.resolve(workspaceRoot, projectDirMatch[1])
+        : pkgDir;
+      for (const esc of scanFixturePathEscapes(
+        healthProjectDir,
+        deriveShippedFiles(healthProjectDir, extractConfigRaw),
+      )) {
+        violations.push({
+          ruleId: "PKG-HEALTH-10",
+          packageName,
+          severity: "error",
+          message: `${esc.file}:${esc.line} path literal "${esc.literal}" resolves outside the package root (${esc.resolvedTo}) — the standalone extract will ENOENT.`,
+          file: path.join(healthProjectDir, esc.file),
+          fixHint:
+            'Rebind the reference to a path inside the package root, or mark a justified non-path use with a "// pkg-health-10: <reason>" comment.',
+        });
       }
     }
   }

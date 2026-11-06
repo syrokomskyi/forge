@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the package suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
 </CHANGE_SUMMARY>
 */
 
@@ -15,7 +16,11 @@ import { join } from "node:path";
 import { writeFileSync, mkdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../src/types.ts";
-import { runPackageHealth } from "./package-health.ts";
+import {
+  deriveShippedFiles,
+  runPackageHealth,
+  scanFixturePathEscapes,
+} from "./package-health.ts";
 
 function makeContext(workspaceRoot: string): ForgeRuntimeContext {
   return {
@@ -496,6 +501,118 @@ test('"extractable": false suppresses extract-dependent checks', async () => {
   }));
   expect(result.exitCode).toBe(0);
   expect(result.data?.violations).toHaveLength(0);
+});
+
+test("reports PKG-HEALTH-10 at file:line when a shipped file's ../ literal escapes the package root (AC-2)", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "escaping");
+  mkdirSync(join(pkgDir, "src", "tests"), { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/escaping",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: {
+      build: "tsc",
+      lint: "eslint src",
+      typecheck: "tsc --noEmit",
+      test: "vitest run",
+    },
+    devDependencies: { eslint: "^9.0.0", typescript: "^5.0.0", vitest: "^4.0.0" },
+  });
+  writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
+  writeFileSync(
+    join(pkgDir, "src", "tests", "fixture.test.ts"),
+    'const fixture = "../../../docs/rfcs/rfc-0000-template.md";\nexport { fixture };\n',
+  );
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  const v10 = result.data?.violations.find((v) => v.ruleId === "PKG-HEALTH-10");
+  expect(v10).toBeDefined();
+  expect(v10?.severity).toBe("error");
+  expect(v10?.message).toContain("src/tests/fixture.test.ts:1");
+  expect(v10?.message).toContain("../../../docs/rfcs/rfc-0000-template.md");
+  expect(result.data?.passed).toBe(false);
+});
+
+test("a ../ literal resolving inside the package root is not flagged (AC-4)", async () => {
+  writePkgJson(tmpDir, {
+    name: "test-workspace",
+    private: true,
+    engines: { node: ">=24 <25" },
+  });
+
+  const pkgDir = join(tmpDir, "packages", "inside-root");
+  mkdirSync(join(pkgDir, "src", "deep"), { recursive: true });
+  writePkgJson(pkgDir, {
+    name: "@test/inside-root",
+    version: "1.0.0",
+    private: false,
+    type: "module",
+    engines: { node: ">=24 <25" },
+    scripts: {},
+  });
+  writeFileSync(join(pkgDir, "extract.config.yaml"), "source: .\n");
+  // sibling module import — resolves inside the package root, must not flag.
+  writeFileSync(join(pkgDir, "src", "deep", "mod.ts"), 'export { x } from "../mod.ts";\n');
+  writeFileSync(join(pkgDir, "src", "mod.ts"), "export const x = 1;\n");
+
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({
+    ok: true,
+    detail: "",
+  }));
+  expect(
+    result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-10"),
+  ).toHaveLength(0);
+});
+
+test("scanFixturePathEscapes honors suppression, raw-mode, and per-extension modes", () => {
+  const pkgDir = join(tmpDir, "packages", "scan");
+  mkdirSync(join(pkgDir, "sub"), { recursive: true });
+  // suppression comment escapes a justified non-path use.
+  writeFileSync(
+    join(pkgDir, "suppressed.ts"),
+    'const s = "../../outside.md"; // pkg-health-10: prose example, not a path\n',
+  );
+  // .md gets the raw scan — unquoted ../ chains still flag.
+  writeFileSync(join(pkgDir, "README.md"), "see ../../../outside.md for details\n");
+  // a ../ inside a comment does not flag in ts files (literal-aware mode).
+  writeFileSync(join(pkgDir, "sub", "noted.ts"), "// resolves ../../outside.md\nexport {};\n");
+
+  const escapes = scanFixturePathEscapes(pkgDir, [
+    "suppressed.ts",
+    "README.md",
+    "sub/noted.ts",
+  ]);
+  expect(escapes).toHaveLength(1);
+  expect(escapes[0]?.file).toBe("README.md");
+  expect(escapes[0]?.line).toBe(1);
+  expect(escapes[0]?.literal).toContain("../");
+});
+
+test("deriveShippedFiles applies ignoreDirs, excludePathSegments, and excludeExtensions", () => {
+  const pkgDir = join(tmpDir, "packages", "derive");
+  mkdirSync(join(pkgDir, "src", "tests"), { recursive: true });
+  mkdirSync(join(pkgDir, "node_modules", "dep"), { recursive: true });
+  writeFileSync(join(pkgDir, "src", "index.ts"), "export {};\n");
+  writeFileSync(join(pkgDir, "src", "tests", "x.test.ts"), "export {};\n");
+  writeFileSync(join(pkgDir, "src", "cache.db"), "db\n");
+  writeFileSync(join(pkgDir, "src", "out.tsbuildinfo"), "{}\n");
+  writeFileSync(join(pkgDir, "node_modules", "dep", "index.js"), "\n");
+
+  const config =
+    "ignoreDirs:\n  - .turbo\nexcludePathSegments:\n  - src/tests\nexcludeExtensions:\n  - .db\n";
+  const shipped = deriveShippedFiles(pkgDir, config);
+  expect(shipped).toEqual(["src/index.ts"]);
 });
 
 test("handles no packages/ directory gracefully", async () => {
