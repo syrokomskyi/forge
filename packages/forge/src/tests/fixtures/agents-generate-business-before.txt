@@ -54,6 +54,7 @@ Treat these XML documents as the primary semantic layer for AI work and keep the
 | fo-compass-annotate                   | fo       | user       | content-mutation |
 | fo-design-summit                      | fo       | user       | document-only    |
 | fo-doc-audit                          | fo       | user       | document-only    |
+| fo-doctor                             | fo       | user       | document-only    |
 | fo-explore                            | fo       | user       | document-only    |
 | fo-extract-dna                        | fo       | user       | document-only    |
 | fo-fix                                | fo       | user       | code-mutation    |
@@ -126,6 +127,7 @@ When the operator expresses an intent in natural language, the agent routes to t
 | "manage Compass headers", "annotate source files with Compass", "audit Compass module contracts"                                                          | `fo-compass-annotate`                   |
 | "design summit", "multi-persona review", "party mode"                                                                                                     | `fo-design-summit`                      |
 | "audit documentation sync", "update docs after code changes", "check AGENTS.md and README are in sync"                                                    | `fo-doc-audit`                          |
+| "check my session environment", "agent turns keep stalling", "session doctor", "environment audit"                                                        | `fo-doctor`                             |
 | "нам надо закрыть открытые вопросы", "explore this idea", "let me think about this", "what are the options for", "what if we"                             | `fo-explore`                            |
 | "extract DNA invariant", "discover architectural invariants", "formalize implicit architectural rules"                                                    | `fo-extract-dna`                        |
 | "исправим", "примени findings", "fix all", "fix issues from review", "apply review findings and fix"                                                      | `fo-fix`                                |
