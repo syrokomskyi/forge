@@ -14,6 +14,7 @@ keywords for rfc.create consultation, and generate/validate projections.
   <item>RFC-0329: initial implementation.</item>
   <item>RFC-1320 review-r1: writes migrated writeFileAtomic → context.io; dry-run returns renderedFiles for both projections (ambient writes bypassed dry-run interception and self-healed stale artifacts inside emit's freshness precheck).</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
+  <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
 </CHANGE_SUMMARY>
 */
 
@@ -156,9 +157,17 @@ export function scoreDecisions(
     ]);
 
     let score = 0;
+    const matchedTitleTokens = new Set<string>();
+    const matchedTextTokens = new Set<string>();
     for (const token of titleTokens) {
-      if (entryTitleTokens.includes(token)) score += 3;
-      if (entryTextTokens.has(token)) score += 1;
+      if (entryTitleTokens.includes(token)) {
+        score += 3;
+        matchedTitleTokens.add(token);
+      }
+      if (entryTextTokens.has(token)) {
+        score += 1;
+        matchedTextTokens.add(token);
+      }
     }
 
     if (score > 0) {
@@ -168,6 +177,8 @@ export function scoreDecisions(
         title: entry.title,
         score,
         file: entry.file,
+        matchedTitleTokens: [...matchedTitleTokens].sort(),
+        matchedTextTokens: [...matchedTextTokens].sort(),
       });
     }
   }
