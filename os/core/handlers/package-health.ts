@@ -9,9 +9,10 @@
 <KEY_DECISIONS>
   <item>parseHealthScanConfig + isShippedEntry mirror repo-extract's copy filter through the SAME decision inputs it consumes — real YAML parse (comment-bearing lists survive), isKeyMaterial default excludePathSegments (.input/signing-key, .input/batches) when the key is absent, isDbFile default .db excludeExtensions, copyFiltered's BASE_IGNORE_DIRS/IGNORE_FILES for non-standalone exports, and statSync symlink-following like cp's filter — a hand-maintained list or partial parser drifts from what the extract actually ships (F-0064's whole premise).</item>
   <item>scanFixturePathEscapes judges each candidate via one shared literal core (literalEscapesInLine: TS-family quoted mode, raw `../` chain mode elsewhere, same-line pkg-health-10: suppression) while doc files (prose links are never resolved) and binary/generated files (UTF-8 noise, .map sources) are exempt wholesale; pkgHealth10Suppressions in extract.config.yaml covers files that cannot carry an in-source comment such as JSON (RFC-1517 r1).</item>
+  <item>loadCommandInventory unions context.commandRegistry.listCommands() with docs/command-manifest.generated.yaml — the getLiveCommands merge precedent from os/rfc/handlers/lifecycle.ts — because `werkstatt run` injects no commandRegistry and lazy-loaded modules are invisible to it; a registry-only read would silently disable the docs gate on the primary dispatch path (RFC-1518 r1, deviation D-001).</item>
+  <item>scanDocsSurface resolves dead-reference candidates through two mechanical disambiguators: first-segment namespace membership (property paths like context.site and config keys like bindings.commands are never command refs) and registered-or-TLD-tail resolution (registered forge.dev/context.index.build count for coverage while unregistered warpgogol.com/context.io are domains, not commands) — without them the gate produced ~230 false positives on the real workspace (RFC-1518 r1, deviation D-002).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1254: retune PKG-HEALTH-02 — repo-extract generates ci.yml from the config `ci:` provider block, so the check now flags only extractable packages whose exported repo would ship no CI (no ci: provider AND no in-package workflow)</item>
   <item>RFC-1255: PKG-HEALTH-07 generated-CI script contract (build/lint/typecheck/test), PKG-HEALTH-08 repository.url vs git.remote for provenance publish, PKG-HEALTH-09 files[] src-reachability coverage; "extractable": false opt-out suppresses all extract-dependent checks</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517 r1: shipped-set fidelity — real YAML config parse, repo-extract default exclusions, standalone vs copyFiltered mode split, symlink-following walk, doc/binary scan exemptions, config-level pkgHealth10Suppressions, deterministic sorted output</item>
@@ -29,6 +30,7 @@ leitstand.access.* expansions, registered-surface listings for
 projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
 journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
+  <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
   <history>PKG-HEALTH-05, RFC-1097, RFC-1254</history>
 </CHANGE_SUMMARY>
 */
@@ -250,11 +252,13 @@ const DOC_REF_EXT_RE =
 // (forge.dev, forge.build would otherwise be filtered out).
 const DOC_TLD_TAIL_RE =
   /\.(?:com|org|net|io|dev|ai|app|de|uk|eu|co|me|cloud|site|xyz|build|systems|watch|pro|info|gg|wtf|zone|land|run)$/i;
-const DOC_SUPPRESS_11_RE = /pkg-health-11:\s*(.*)/;
-const DOC_SUPPRESS_12_RE = /pkg-health-12:\s*(.*)/;
+const DOC_SUPPRESS_11_RE = /pkg-health-11:\s*(.*?)(?:-->)?\s*$/;
+const DOC_SUPPRESS_12_RE = /pkg-health-12:\s*(.*?)(?:-->)?\s*$/;
 
 export interface DocsSuppression {
   ruleId: "PKG-HEALTH-11" | "PKG-HEALTH-12";
+  /** Owning package name — suppressions aggregate across the whole workspace. */
+  packageName?: string;
   file: string;
   line: number;
   token: string;
@@ -347,12 +351,19 @@ export function scanDocsSurface(
           const entry = { ruleId: "PKG-HEALTH-11" as const, file: rel, line: i + 1, token, reason: s11[1]!.trim() };
           suppressed11.set(token, entry);
           suppressions.push(entry);
+          // Coverage is exempted, but a dead token on the line still reports
+          // PKG-HEALTH-12 — the marker exempts its rule, not the whole line.
+          if (!refs.has(token)) refs.set(token, { file: rel, line: i + 1 });
         }
         continue;
       }
-      if (DOC_SUPPRESS_12_RE.test(line)) {
+      const s12 = line.match(DOC_SUPPRESS_12_RE);
+      if (s12) {
         for (const token of tokens) {
-          suppressions.push({ ruleId: "PKG-HEALTH-12", file: rel, line: i + 1, token, reason: line.match(DOC_SUPPRESS_12_RE)![1]!.trim() });
+          suppressions.push({ ruleId: "PKG-HEALTH-12", file: rel, line: i + 1, token, reason: s12[1]!.trim() });
+          // Dead refs are exempted, but a real command on the line keeps its
+          // coverage credit — same per-rule scope as the pkg-health-11 marker.
+          documented.add(token);
         }
         continue;
       }
@@ -379,7 +390,7 @@ export function deriveModulePackageMap(workspaceRoot: string): Map<string, strin
     const bucketToConst: Record<string, string> = { engine: "ENGINE", sitePlugin: "SITE", forge: "FORGE" };
     const constToSpec: Record<string, string> = {};
     for (const m of mm.matchAll(/const (\w+) = "(@warpgogol\/[^"]+)"/g)) constToSpec[m[1]!] = m[2]!;
-    for (const m of mm.matchAll(/"([\w-]+)":\s*(engine|sitePlugin|forge)\(/g)) {
+    for (const m of mm.matchAll(/["']?([\w-]+)["']?:\s*(engine|sitePlugin|forge)\(/g)) {
       const spec = constToSpec[bucketToConst[m[2]!]!];
       if (spec) out.set(m[1]!, `packages/${spec.split("/")[1]}`);
     }
@@ -427,7 +438,9 @@ export function loadCommandInventory(
     // manifest absent or unparsable — registry-only inventory
   }
   for (const c of commandRegistry?.listCommands() ?? []) {
-    byName.set(c.name, { name: c.name, module: c.module });
+    // Merge, don't overwrite: ForgeCliRegistry entries carry no `module`, so a
+    // bare set() would erase the manifest's provenance under the standalone CLI.
+    byName.set(c.name, { name: c.name, module: c.module ?? byName.get(c.name)?.module });
   }
   return [...byName.values()];
 }
@@ -738,10 +751,54 @@ export async function runPackageHealth(
     if (!pkg) continue;
 
     const isPrivate = pkg["private"] === true;
+    const packageName = String(pkg["name"] ?? entry.name);
+
+    // RFC-1518 CHECKS 11/12: the package's declared docs surface diffed
+    // against the live command inventory (F-0073). Coverage counts a token
+    // documented anywhere on the surface; dead refs flag at doc:line. Runs
+    // for EVERY package with a package.json — docs drift is orthogonal to
+    // publishability, so private/extractable:false packages are scanned too.
+    if (commandInfos.length > 0) {
+      const rel = path.relative(workspaceRoot, pkgDir).split(path.sep).join("/");
+      const surfaceFiles = collectDocsSurfaceFiles(pkgDir);
+      const scan = scanDocsSurface(pkgDir, surfaceFiles, allNamespaces, allCommands);
+      suppressions.push(...scan.suppressions.map((s) => ({ ...s, packageName })));
+      const expectedDoc = fs.existsSync(path.join(pkgDir, "docs", "reference", "cli.md"))
+        ? "docs/reference/cli.md"
+        : "README.md";
+      // Coverage applies to published packages — the command's stated contract.
+      // Private packages (site plugin, lifecycle core) document their command
+      // surfaces in site-facing docs outside this audit; their dead refs still
+      // flag via PKG-HEALTH-12 (deviation D-003).
+      for (const cmd of isPrivate ? [] : (pkgCommands.get(rel) ?? [])) {
+        if (!scan.documented.has(cmd) && !scan.suppressed11.has(cmd)) {
+          violations.push({
+            ruleId: "PKG-HEALTH-11",
+            packageName,
+            severity: "error",
+            message: `registered command "${cmd}" appears in no docs-surface file — document it in ${expectedDoc}`,
+            file: pkgDir,
+            fixHint: `Add a "${cmd}" reference to ${expectedDoc}, or journal a same-line "<!-- pkg-health-11: <reason> -->" exemption.`,
+          });
+        }
+      }
+      for (const [token, at] of [...scan.refs.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
+        if (!allCommands.has(token)) {
+          violations.push({
+            ruleId: "PKG-HEALTH-12",
+            packageName,
+            severity: "error",
+            message: `${at.file}:${at.line} references "${token}" — no such registered command`,
+            file: path.join(pkgDir, at.file),
+            fixHint: `Fix the reference to a registered command, or journal a same-line "<!-- pkg-health-12: <reason> -->" exemption.`,
+          });
+        }
+      }
+    }
+
     if (isPrivate) continue;
 
     packagesChecked++;
-    const packageName = String(pkg["name"] ?? entry.name);
 
     // CHECK 1: engines.node exists and matches root
     const pkgEngines = pkg["engines"] as Record<string, string> | undefined;
@@ -958,43 +1015,21 @@ export async function runPackageHealth(
         });
       }
     }
+  }
 
-    // RFC-1518 CHECKS 11/12: the package's declared docs surface diffed
-    // against the live command inventory (F-0073). Coverage counts a token
-    // documented anywhere on the surface; dead refs flag at doc:line.
-    if (commandInfos.length > 0) {
-      const rel = path.relative(workspaceRoot, pkgDir).split(path.sep).join("/");
-      const surfaceFiles = collectDocsSurfaceFiles(pkgDir);
-      const scan = scanDocsSurface(pkgDir, surfaceFiles, allNamespaces, allCommands);
-      suppressions.push(...scan.suppressions);
-      const expectedDoc = fs.existsSync(path.join(pkgDir, "docs", "reference", "cli.md"))
-        ? "docs/reference/cli.md"
-        : "README.md";
-      for (const cmd of pkgCommands.get(rel) ?? []) {
-        if (!scan.documented.has(cmd) && !scan.suppressed11.has(cmd)) {
-          violations.push({
-            ruleId: "PKG-HEALTH-11",
-            packageName,
-            severity: "error",
-            message: `registered command "${cmd}" appears in no docs-surface file — document it in ${expectedDoc}`,
-            file: pkgDir,
-            fixHint: `Add a "${cmd}" reference to ${expectedDoc}, or journal a same-line "<!-- pkg-health-11: <reason> -->" exemption.`,
-          });
-        }
-      }
-      for (const [token, at] of [...scan.refs.entries()].sort((a, b) => a[0].localeCompare(b[0]))) {
-        if (!allCommands.has(token)) {
-          violations.push({
-            ruleId: "PKG-HEALTH-12",
-            packageName,
-            severity: "error",
-            message: `${at.file}:${at.line} references "${token}" — no such registered command`,
-            file: path.join(pkgDir, at.file),
-            fixHint: `Fix the reference to a registered command, or journal a same-line "<!-- pkg-health-12: <reason> -->" exemption.`,
-          });
-        }
-      }
-    }
+  suppressions.sort(
+    (a, b) => (a.packageName ?? "").localeCompare(b.packageName ?? "") || a.file.localeCompare(b.file) || a.line - b.line,
+  );
+  if (packagesChecked > 0 && commandInfos.length === 0) {
+    violations.push({
+      ruleId: "PKG-HEALTH-12",
+      packageName: "(workspace)",
+      severity: "warning",
+      message:
+        "no command inventory available — docs-drift gate skipped (context.commandRegistry unset and docs/command-manifest.generated.yaml absent or unparsable)",
+      file: workspaceRoot,
+      fixHint: "Run `werkstatt run command.manifest.generate`, or dispatch through a host that injects commandRegistry.",
+    });
   }
 
   const errors = violations.filter((v) => v.severity === "error");
