@@ -21,7 +21,10 @@ triggerPhrases: ["check my session environment", "agent turns keep stalling", "s
   <item>RFC-1522: initial skill — five checks (windows, watchers, rule budget, DB health, stall metrics) + sessions.db prune runbook.</item>
   <item>RFC-1522: add fo-doctor session-environment audit skill
 
-Five checks (window discipline, watcher/index excludes, rules.budget.check, sessions.db health vs 2 GB, stall metrics via continue-nudge/lazy-load queries) plus the sessions.db prune runbook. Read-only except the opt-in write-missing-config offer. agents-generate golden fixture regenerated for the new skill row.</item>
+Five checks (window discipline, watcher/index excludes, instructions.budget.validate, sessions.db health vs 2 GB, stall metrics via continue-nudge/lazy-load queries) plus the sessions.db prune runbook. Read-only except the opt-in write-missing-config offer. agents-generate golden fixture regenerated for the new skill row.</item>
+  <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
+
+8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -57,13 +60,13 @@ Missing or incomplete → **warn** and OFFER to write the missing blocks (show t
 Run the budget gate and list offenders:
 
 ```sh
-pnpm exec forge rules.budget.check --json
+pnpm exec forge instructions.budget.validate --json
 # or, where forge is not on PATH for this repo:
-pnpm exec werkstatt run rules.budget.check --json
+pnpm exec werkstatt run instructions.budget.validate --json
 ```
 
-- exit 0 → ok, report the count of scanned files.
-- exit 1 → **fail**: list each `RULES-BUDGET-01` file with its byte size; remedy is extraction into `docs/agent-guides/<topic>.md` under a slimmed skeleton, never budget inflation.
+- exit 0 → ok, report `filesScanned` and the diagnostic count.
+- exit 1 (only under `instructions.budget.enforce: true` in `forge.yaml`) or any `INSTR-01` row → **warn**: list each over-budget file; remedy is extraction into `docs/agent-guides/<topic>.md` under a slimmed skeleton, never budget inflation. A repo missing `enforce: true` gets a recommendation to enable it so the ceiling gates rather than only reports.
 
 ### 4. Session DB health
 

@@ -9,6 +9,9 @@
   <item>RFC-1466: forgeInstructionsModule registering instructions.budget.validate + scar.migrate</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
+
+8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -33,7 +36,7 @@ export const forgeInstructionsModule: ForgeModule = {
         { id: "INSTR-03", severity: "warning" },
       ],
       description:
-        "RFC-1466: bound the instruction layer — INSTR-01 AGENTS.md over declared budget, INSTR-02 scar-classified bullet in an exempt section (informational), INSTR-03 migrated scar still present as prose. Wave-1 reporting-only.",
+        "RFC-1466: bound the instruction layer — INSTR-01 AGENTS.md over declared budget, INSTR-02 scar-classified bullet in an exempt section (informational), INSTR-03 migrated scar still present as prose. RFC-1522: forge.yaml instructions.budget.enforce promotes INSTR-01 to error and exits 1.",
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {},

@@ -5,17 +5,22 @@ RFC-1466: instructions.budget.validate — bound the instruction layer.
 INSTR-01 AGENTS.md file over declared budget; INSTR-2 scar-classified bullet
 in an exempt section (informational); INSTR-03 migrated scar still present
 as prose (fragment entry exists, bullet not removed).
+RFC-1522: forge.yaml instructions.budget.enforce promotes INSTR-01 from
+warning to error and exits 1 — the injection-safe ceiling becomes a gate.
 Autonomous — scans repo files only (FORGE-AUTONOMY-01).
 </purpose>
 <non-goals>
   <item>Does not migrate scars — scar.migrate owns that.</item>
-  <item>Wave-1 rollout: reporting-only diagnostics until the first migration pass brings files under ceiling.</item>
+  <item>INSTR-02/03 stay warnings under enforce — only the budget ceiling is a gate.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1466: INSTR-01/02/03 budget + scar-classification audit over AGENTS.md files</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1466: apply r1 repairs — fragment remedies reachable via lookupRemediation, pending-marker ordering, comment-preserving catalogRefs</item>
+  <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
+
+8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +54,7 @@ export interface InstructionsBudget {
   maxTokensPerFile: number;
   exemptSections: string[];
   overrides: Record<string, { maxLinesPerFile?: number; maxTokensPerFile?: number }>;
+  enforce: boolean;
 }
 
 export const DEFAULT_BUDGET: InstructionsBudget = {
@@ -56,6 +62,7 @@ export const DEFAULT_BUDGET: InstructionsBudget = {
   maxTokensPerFile: 12000,
   exemptSections: ["Verbund", "Monorepo layout"],
   overrides: {},
+  enforce: false,
 };
 
 const SCAR_RE =
@@ -72,7 +79,8 @@ export function loadBudget(raw: unknown): InstructionsBudget {
   }
   const b = raw as Record<string, unknown>;
   const unknown = Object.keys(b).filter(
-    (k) => !["maxLinesPerFile", "maxTokensPerFile", "exemptSections", "overrides"].includes(k),
+    (k) =>
+      !["maxLinesPerFile", "maxTokensPerFile", "exemptSections", "overrides", "enforce"].includes(k),
   );
   if (unknown.length > 0) {
     throw new Error(`instructions.budget: unknown field(s) ${unknown.join(", ")}`);
@@ -83,6 +91,7 @@ export function loadBudget(raw: unknown): InstructionsBudget {
   if (b.overrides != null && typeof b.overrides === "object" && !Array.isArray(b.overrides)) {
     out.overrides = b.overrides as InstructionsBudget["overrides"];
   }
+  if (b.enforce === true) out.enforce = true;
   return out;
 }
 
@@ -143,7 +152,7 @@ export async function runInstructionsBudgetValidate(
     if (lines.length > maxLines || estTokens > maxTokens) {
       diagnostics.push({
         ruleId: "INSTR-01",
-        severity: "warning",
+        severity: budget.enforce ? "error" : "warning",
         file: rel,
         message: `${rel}: ${lines.length} lines (~${estTokens} tokens) exceeds budget ${maxLines} lines / ${maxTokens} tokens — migrate friction scars via scar.migrate or declare an override`,
       });
@@ -192,6 +201,6 @@ export async function runInstructionsBudgetValidate(
       diagnostics,
     },
     summary: `${diagnostics.length} instruction diagnostic(s) over ${files.length} file(s)`,
-    exitCode: 0,
+    exitCode: diagnostics.some((d) => d.severity === "error") ? 1 : 0,
   };
 }
