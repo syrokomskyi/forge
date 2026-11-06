@@ -11,9 +11,9 @@
   <item>scanFixturePathEscapes judges each candidate via one shared literal core (literalEscapesInLine: TS-family quoted mode, raw `../` chain mode elsewhere, same-line pkg-health-10: suppression) while doc files (prose links are never resolved) and binary/generated files (UTF-8 noise, .map sources) are exempt wholesale; pkgHealth10Suppressions in extract.config.yaml covers files that cannot carry an in-source comment such as JSON (RFC-1517 r1).</item>
   <item>loadCommandInventory unions context.commandRegistry.listCommands() with docs/command-manifest.generated.yaml — the getLiveCommands merge precedent from os/rfc/handlers/lifecycle.ts — because `werkstatt run` injects no commandRegistry and lazy-loaded modules are invisible to it; a registry-only read would silently disable the docs gate on the primary dispatch path (RFC-1518 r1, deviation D-001).</item>
   <item>scanDocsSurface resolves dead-reference candidates through two mechanical disambiguators: first-segment namespace membership (property paths like context.site and config keys like bindings.commands are never command refs) and registered-or-TLD-tail resolution (registered forge.dev/context.index.build count for coverage while unregistered warpgogol.com/context.io are domains, not commands) — without them the gate produced ~230 false positives on the real workspace (RFC-1518 r1, deviation D-002).</item>
+  <item>The docs gate runs before the private/extractable skips so PKG-HEALTH-12 dead references judge every package's docs (dead refs are package-local), while PKG-HEALTH-11 coverage stays scoped to published packages — private packages (werkstatt-site's ~500-command surface) document commands in site-facing docs outside DOCS_SURFACE, and the manifest merge preserves manifest module provenance when registry entries omit module (RFC-1518 r1, deviation D-003).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1255: PKG-HEALTH-07 generated-CI script contract (build/lint/typecheck/test), PKG-HEALTH-08 repository.url vs git.remote for provenance publish, PKG-HEALTH-09 files[] src-reachability coverage; "extractable": false opt-out suppresses all extract-dependent checks</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517 r1: shipped-set fidelity — real YAML config parse, repo-extract default exclusions, standalone vs copyFiltered mode split, symlink-following walk, doc/binary scan exemptions, config-level pkgHealth10Suppressions, deterministic sorted output</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
@@ -31,7 +31,8 @@ projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
 journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
   <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
-  <history>PKG-HEALTH-05, RFC-1097, RFC-1254</history>
+  <item>RFC-1518: key decision for private-package docs-gate scope</item>
+  <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255</history>
 </CHANGE_SUMMARY>
 */
 
