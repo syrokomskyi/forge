@@ -20,10 +20,6 @@ triggerPhrases: ["plan the implementation for this RFC", "create implementation 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: collect-mode contract — open questions and grilling emit to
-  the decision ledger; draft plan carries PENDING DECISION markers;
-  draft-to-accepted transition deferred to the resolution phase (window =
-  acceptance act).</item>
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
@@ -41,6 +37,10 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1322: resolve fo-review findings — resolver hardening, shared gate evaluator, dry-run JSON</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
+  <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
+
+fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
+  <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -176,7 +176,7 @@ Step ordering follows the contract-first pattern:
 
 1. **Contracts** — types, schemas, frontmatter fields, ontology catalogs.
 2. **Commands** — Site OS command handlers, registry, pipeline wiring.
-3. **Documentation** — `AGENTS.md`, Compass XML (`ref(forge.yaml bindings.paths.compassDocs)`), `ref(forge.yaml bindings.paths.invariantsFile)` (if new DNA invariant).
+3. **Documentation** — `AGENTS.md`, Compass XML (`ref(forge.yaml bindings.paths.compassDocs)`), `ref(forge.yaml bindings.paths.invariantsFile)` (if new DNA invariant). Rule-file edits (`AGENTS.md`, `.windsurfrules`, `CLAUDE.md`, `*.xml` rule surfaces, skill files) MUST be planned as ONE late step immediately before Evidence, never spread across implementation steps — every mid-session save re-triggers the IDE's rules re-resolution and stalls the agent turn (F-0002). Earlier steps collect the required rule-file changes in their working notes; probe-required literals still land before `rfc.verification.emit`.
 4. **Tests** — unit tests, fixture files, test matrix.
 5. **Validation** — run `rfc.validate`, `build:check`, acceptance probes.
 6. **Evidence** — run `rfc.verification.emit`, commit evidence file.

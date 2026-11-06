@@ -21,6 +21,9 @@ triggerPhrases: ["create a handoff document", "compact conversation for next age
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1154: commit references resolve by project type — ecosystem.commit where registered, plain git commit in forge workshops</item>
+  <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
+
+fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -57,6 +60,25 @@ Include:
 - **Continuation entry point** — mandatory: the exact file, command, or skill the next agent starts from (e.g. `docs/plans/plan-rfc-xxxx.md` step 3, `werkstatt run <command>`, `/fo-fix`). Never leave the re-entry point implicit.
 - **Next steps** — concrete, actionable items the next agent should pick up.
 - **Memory layer pointer** — tell the next agent to read `.agents/memory/MEMORY.md` and recent `.agents/memory/daily/` files for project context.
+
+### 2a. Structured state checkpoint
+
+Every handoff carries a compact machine-shaped state block — a resumed session reloads it for a fraction of a transcript tail's cost, and stalls make resumes routine (F-0002). Emit it as a `state:` YAML fence inside the handoff document (single greppable file) or a sidecar `state.yaml` next to it:
+
+```yaml
+state:
+  goal: <one line>
+  constraints: [<hard rules in force>]
+  verified: [<facts confirmed by commands/tests>]
+  changed: [<files touched>]
+  validation: { unit: passed|not_run, e2e: passed|failed|not_run }
+  rejected: [<hypotheses tested and dropped — prevents re-trying>]
+  next: [<ordered remaining steps>]
+```
+
+Properties that matter: `verified` facts are distinct from assumptions (anything not confirmed by a command or test does not belong here); `rejected` hypotheses persist across resumes (agents otherwise re-run dead ends); the block stays small enough to re-inject at session start (tens of lines, not hundreds).
+
+**Dying-session fallback:** an agent that realizes a session is degrading mid-task (repeated silent turn-ends, forced `continue` nudges) writes this same block to `.agents/memory/daily/<date>.md` *before* continuing — the file the ecosystem already maintains — so the state survives even if no full handoff is ever emitted.
 
 Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead. Do not duplicate content from `.agents/memory/` — reference it by path.
 

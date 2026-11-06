@@ -20,7 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
   <item>COMMIT-02: commit templates — governed ids moved to the scope position (fix(rfc-xxxx): repair …, never fix: RFC-XXXX — …); illegal trace: prefix replaced with docs(adr-xxxx):</item>
   <item>RFC-1440: fo-reproduce skill + pipeline wiring
 
@@ -31,7 +30,10 @@ verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
-  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332</history>
+  <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
+
+fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
+  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332, RFC-1333</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -138,6 +140,7 @@ Stage only the files touched by this step. Do not stage unrelated changes — an
 - **Falsified-routes ledger.** Before choosing or changing a step's approach, read the plan's `## Falsified routes` section — a `Forbidden retry: yes` row rejects the approach unless you can state a new fact that invalidates its root cause. A plan-prescribed route matching a forbidden row counts as an approach change — the consult applies even when the route was chosen by a previous session. When an approach is abandoned after a real attempt, append a row (route, root cause, falsified-at evidence) before moving on. See `_shared/fo-pipeline-conventions.md` §Falsified-routes ledger.
 - **Compass scaffolding.** New non-trivial source files in `apps/` or `packages/` must carry `MODULE_CONTRACT` and `CHANGE_SUMMARY` scaffolding. Check the project's invariants file for the canonical Compass markup rule.
 - **Compass terminology.** Use Compass (not GRACE) in all new code, documentation, and log messages.
+- **Defer rule-file edits.** Do not edit `AGENTS.md`, `.windsurfrules`, `CLAUDE.md`, `*.xml` rule surfaces, or skill files during plan steps — every save re-triggers the IDE's rules re-resolution and stalls the agent turn mid-stream (F-0002). Collect required rule-file changes (e.g. AC-probe literals) in the plan's working notes and apply them in ONE edit pass immediately before `rfc.verification.emit`, so probes still see final content while mid-session churn is eliminated.
 
 #### 4.3b. Add tests only with a reason
 
