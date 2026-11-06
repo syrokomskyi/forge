@@ -30,7 +30,7 @@ pnpm exec forge profile.validate
 When bringing an existing project through the `/forge-bootstrap` transplant mode, Forge detects the matching profile by checking for marker files:
 
 - `phaser.config.*` → `phaser-game`
-- `project.godot` → `godot-game`
+- `project.godot` → `godot-game` <!-- pkg-health-12: code/config path, not a command -->
 - `tsconfig.json` + `pnpm-workspace.yaml` → `typescript`
 
 ## Project-agnostic

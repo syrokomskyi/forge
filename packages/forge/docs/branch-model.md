@@ -91,7 +91,7 @@ managed exclusively by flow commands — never edit them by hand.
 
 - `forge create` (RFC-1500) scaffolds, commits, and runs `flow.install`
   automatically; `--no-flow` opts out.
-- `pnpm exec forge upgrade` reports `flow.state` (`adopted`, `not-adopted`,
+- `pnpm exec forge upgrade` reports `flow.state` (`adopted`, `not-adopted`, <!-- pkg-health-12: flow state name, not a command -->
   `exempt`, `guard-drift`) without changing the repository.
 - `pnpm exec forge flow.install --dry-run` previews adoption for a
   repository created earlier; `pnpm exec forge flow.install` performs it

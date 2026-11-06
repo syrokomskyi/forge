@@ -33,6 +33,6 @@ Transplanting an existing codebase into Forge is an interactive, AI-guided proce
 - Your existing files are moved into the Forge project structure
 - Hidden files (`.env`, `.gitignore`) are preserved
 - Git history is optionally transferred
-- The matching stack profile is detected from marker files (`phaser.config.*`, `project.godot`, etc.)
+- The matching stack profile is detected from marker files (`phaser.config.*`, `project.godot`, etc.) <!-- pkg-health-12: code/config path, not a command -->
 - `AGENTS.md` is generated from `forge.yaml`
 - Skills are deployed to `.agents/skills/`

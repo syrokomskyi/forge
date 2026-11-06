@@ -4,13 +4,13 @@
 
 Werkstatt plugin for generic TypeScript TurboRepo projects. Implements `werkstatt/plugin@1` with `profileId: "typescript"`.
 
-> Engineered at [Warpgogol](https://warpgogol.com) · Released as open source.
+> Engineered at [Warpgogol](https://warpgogol.com) · Released as open source. <!-- pkg-health-12: domain name, not a command -->
 
 ---
 
 ## What this package does
 
-This is a **stack plugin** for the [Werkstatt](https://github.com/syrokomskyi/werkstatt) engine. It provides six best-practice validators for TypeScript monorepo projects using Turborepo and pnpm:
+This is a **stack plugin** for the [Werkstatt](https://github.com/syrokomskyi/werkstatt) engine. It provides six best-practice validators for TypeScript monorepo projects using Turborepo and pnpm: <!-- pkg-health-12: domain name, not a command -->
 
 - **tsconfig validation** — strict mode, consistent moduleResolution and target across workspace packages
 - **Import boundary enforcement** — no packages-to-apps import violations
