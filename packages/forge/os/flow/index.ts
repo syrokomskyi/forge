@@ -15,11 +15,12 @@ reachable, else the version-file value.</purpose>
   <item>Untagged is not an error — it resolves to the version-file value; only a missing or unparsable version file throws.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1493: step 1 — public os/flow export resolveRepositoryLineVersion</item>
   <item>RFC-1493: step 1 — forge public release-line version reader</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1495: steps 2-3 - workshop paths resolver and call-site migration</item>
+  <item>RFC-1519: add advisory gate-verdict store for scoped pass reuse across reruns and the commit-integrate boundary</item>
+  <history>RFC-1493</history>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +40,7 @@ import {
 // werkstatt.lock.recover build state paths and Forge must not import
 // @warpgogol/*). The engine's workshop-paths builds the names on top.
 export { primaryWorktree, resolveStateRoots, worktreeList };
+export { FORGE_STATE_FILES } from "./git.ts";
 export type { StateRoots };
 export type { FlowWorktree } from "./git.ts";
 
