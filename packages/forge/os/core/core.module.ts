@@ -6,12 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
   <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366</history>
+  <item>RFC-1522: add rules.budget.check byte-budget gate for always-on rule files
+
+RULES-BUDGET-01 flags AGENTS.md/CLAUDE.md/.windsurfrules over 12288 bytes (fixture/test/mission/docs trees excluded); RULES-BUDGET-02 rejects non-positive-integer --budget. The gate goes red on the 8 over-budget files the RFC-1522 slimming addresses next.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461</history>
 </CHANGE_SUMMARY>
 */
 
@@ -61,6 +63,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runForgeAutonomyValidate } = await import("./handlers/forge-autonomy-validate.ts");
   const { runPublicSurfaceValidate } = await import("./handlers/public-surface.ts");
   const { runFileSizeLint } = await import("./handlers/file-size-lint.ts");
+  const { runRulesBudgetCheck } = await import("./handlers/rules-budget-check.ts");
   const { runCompassDocsScaffold } = await import("../compass/handlers/compass-docs-scaffold.ts");
 
   // RFC-1253: --compass-docs on lifecycle commands runs the corpus scaffold
@@ -904,6 +907,30 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           },
         },
         execute: runFileSizeLint,
+      },
+      {
+        name: "rules.budget.check",
+        mutatesState: false,
+        contract: "file",
+        rules: [
+          { id: "RULES-BUDGET-01", severity: "error" },
+          { id: "RULES-BUDGET-02", severity: "error" },
+        ],
+        description:
+          "RULES-BUDGET-01: flags an always-on rule file (AGENTS.md / CLAUDE.md / .windsurfrules) exceeding the byte budget (default 12288; fixture/test/mission/docs trees excluded — RFC-1522). RULES-BUDGET-02: --budget must be a positive integer byte count.",
+        scope: "workspace",
+        acceptsAllFlag: false,
+        reads: ["AGENTS.md", "**/AGENTS.md", "**/CLAUDE.md", "**/.windsurfrules"],
+        writes: [],
+        generates: [],
+        cacheable: false,
+        flags: {
+          budget: {
+            kind: "string",
+            description: "Byte budget per rule file (default: 12288).",
+          },
+        },
+        execute: runRulesBudgetCheck,
       },
       {
         name: "docs.archive",
