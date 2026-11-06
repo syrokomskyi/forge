@@ -10,22 +10,14 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
 <KEY_DECISIONS>
   <item>Exit code 1 is a legitimate answer for probe-style commands (is-ancestor, config --get, symbolic-ref, rev-parse --verify, show HEAD:file) — helpers map it to a typed answer and throw only on unexpected failures.</item>
   <item>flow.check/flow.install require git >= 2.30 — requireGit fails through the standard error path naming the detected version.</item>
+  <item>FORGE_STATE_FILES is an exact-path/prefix allowlist, never a glob — and because tolerated paths stay untracked-not-ignored on disk, removers must delete them right before `git worktree remove` or the dirty verdict stops predicting removability (RFC-1515 r1).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
-
-The dirty gate for session worktrees now uses full porcelain status
-(untracked files included) because it predicts 'git worktree remove';
-the primary-clean gate keeps tracked-only semantics because it predicts
-'merge --ff-only'. Lock release verifies the held payload before
-unlinking. Registry/journal failures map to FLOW-07 in every handler.
-The final branch-name collision reports FLOW-OPEN-04, flow.discard
-propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
-and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
   <history>RFC-1486, RFC-1487</history>
 </CHANGE_SUMMARY>
 */
