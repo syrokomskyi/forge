@@ -10,12 +10,12 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1472: trajectory.index + trajectory.recall + trajectory.outcome.record — procedural-memory retrieval with green-verdict admission</item>
   <item>RFC-1478: yaml.scalars.validate + EC-25 colon-space staged lint (F-0006)</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
-  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1473</history>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
+  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1473</history>
 </CHANGE_SUMMARY>
 */
 
@@ -187,7 +187,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
 function readVersion(): string {
   // Source: packages/forge/bin/cli.ts → packages/forge/package.json (one up)
   // Compiled: dist/bin/cli.js → package.json (two up)
-  for (const up of ["..", "../.."]) {
+  for (const up of ["..", "../.."]) { // pkg-health-10: candidates probe bin/ and dist/bin/ layouts — in extract ../.. lands on the package root
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
@@ -204,7 +204,7 @@ const VERSION = readVersion();
 function resolveForgeRootFromCli(): string | undefined {
   // Source: packages/forge/bin/cli.ts → packages/forge/ (one up)
   // Compiled: dist/bin/cli.js → packages/forge/ (two up)
-  for (const up of ["..", "../.."]) {
+  for (const up of ["..", "../.."]) { // pkg-health-10: candidates probe bin/ and dist/bin/ layouts — in extract ../.. lands on the package root
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };

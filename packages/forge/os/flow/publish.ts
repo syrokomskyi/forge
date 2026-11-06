@@ -15,7 +15,8 @@ and return the RFC publications[] row for the journal.</purpose>
   <item>Reconcile only on non-fast-forward (the same regex as the retired publish-forge.mjs, RFC-1499) — auth, hook and transient failures never trigger an ours-merge.</item>
   <item>verifyLineAtRef (RFC-1502) extracts into an mkdtemp scratch via `--dest` — the configured destination is never touched — and a spawn failure of the repo-extract binary reports as a verification failure, not a crash.</item>
   <item>preflight-extract-gates (RFC-1517) reads CHANGELOG.md and package.json AT `ref` via `git show` — never the working tree: during flow.cut the freshly-written version section lives only in the release commit, so a working-tree read would false-refuse every legitimate publish.</item>
-  <item>preflight fails open on unreadable git objects (missing CHANGELOG, unparseable package.json, unresolvable ref) — the post-extract changelog gate in verify-extract.mjs remains the fail-closed layer; a preflight must never block a publish it cannot judge.</item>
+  <item>preflight fails open on unreadable git objects (missing CHANGELOG, unparseable package.json, unresolvable ref) — mirroring the post-extract gate's parity-note contract; a preflight must never block a publish it cannot judge.</item>
+  <item>RFC-1517 r1: the fixture scan enumerates `../` candidates AT `ref` via one `git grep -nI --full-name` — the extract materializes the ref's tree, so an untracked dist/ or a post-tag fix can't false-refuse or evade the way a working-tree walk did. Each candidate path is then judged by the same isShippedEntry/literalEscapesInLine core PKG-HEALTH-10 uses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1499: step 2 — retire publish-forge/bump-forge scripts, add extract-verify hook</item>
@@ -29,12 +30,15 @@ and return the RFC publications[] row for the journal.</purpose>
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve, sep } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import type { WorkspaceIO } from "../../src/types.ts";
 import {
-  deriveShippedFiles,
-  scanFixturePathEscapes,
+  fixtureScanSkipped,
+  isShippedEntry,
+  literalEscapesInLine,
+  parseHealthScanConfig,
+  type FixtureEscape,
 } from "../core/handlers/package-health.ts";
 import { git, gitCommit } from "./git.ts";
 import { runFlowScript, type FlowScriptResult } from "./scripts.ts";
@@ -96,6 +100,20 @@ interface PreflightFailure {
   detail: string;
 }
 
+const REGEXP_META = /[.*+?^${}()|[\]\\]/g;
+
+/**
+ * Keep-a-Changelog emits both `## [v]` release headings AND bare `[v]: <url>`
+ * link references at the file's foot — a substring `[v]` check passes a
+ * changelog that only links the version. The gate therefore anchors on a
+ * heading line (`## [v]` or `## v`); a missing file has no section.
+ */
+export function hasChangelogSection(changelog: string | null, version: string): boolean {
+  if (changelog === null) return false;
+  const v = version.replace(REGEXP_META, "\\$&");
+  return new RegExp(`^#{1,6}\\s+(?:\\[${v}\\]|${v})(?=\\s|$)`, "m").test(changelog);
+}
+
 /**
  * RFC-1517 `preflight-extract-gates`: refuse publish-blocking defects that are
  * decidable on the source repository before any repo-extract spawn (F-0064,
@@ -108,7 +126,8 @@ interface PreflightFailure {
  *   source). Refusal FLOW-PUB-01 names file, expected section, ordering rule.
  * - fixture-path scan — every file the extract ships (derived from the same
  *   extract.config.yaml keys repo-extract consumes) is scanned for `../`
- *   literals escaping the package root; each escape refuses PKG-HEALTH-10
+ *   literals escaping the package root through the shared
+ *   `scanFixturePathEscapes` literal core; each escape refuses PKG-HEALTH-10
  *   at file:line.
  */
 async function preflightExtractGates(
@@ -148,29 +167,73 @@ async function preflightExtractGates(
     }
   }
   const changelogRaw = await show(`${projectDirRel}/CHANGELOG.md`);
-  if (version !== null && changelogRaw !== null && !changelogRaw.includes(`[${version}]`)) {
+  // Parity with the post-extract gate: an absent CHANGELOG.md is a parity-note
+  // skip, not a refusal; an unreadable/non-string version cannot yield the
+  // expected section, so the same blind spot the post-extract gate carries is
+  // preserved rather than diverged.
+  if (version !== null && changelogRaw !== null && !hasChangelogSection(changelogRaw, version)) {
     return {
       step: "preflight-extract-gates",
       ruleId: "FLOW-PUB-01",
       detail:
-        `${projectDirRel}/CHANGELOG.md has no [${version}] section; write the version ` +
-        `section before publishing (packages/AGENTS.md publish-order rule). repo-extract was NOT spawned.`,
+        `${projectDirRel}/CHANGELOG.md has no [${version}] release section; ` +
+        `write the version section before publishing (packages/AGENTS.md publish-order rule). repo-extract was NOT spawned.`,
     };
   }
 
-  // Fixture-path scan — the working-tree shipped set; release-time bumps
-  // touch versions, not fixture literals, and the shared helper is fs-based.
-  const relToRoot = (p: string): string => p.split(sep).join("/");
-  const escapes = scanFixturePathEscapes(
-    projectRoot,
-    deriveShippedFiles(projectRoot, configRaw),
-  );
+  // Fixture-path scan — enumerate `../` candidates AT `ref` via one
+  // `git grep` (the extract materializes the ref's tree, so the scan sees
+  // exactly what ships: untracked dist/ output and post-tag fixes are both
+  // handled correctly). `-I` skips binary files; each matched path is then
+  // judged by the same shipped-entry predicate + literal matcher
+  // PKG-HEALTH-10 uses on the working tree.
+  const scanCfg = parseHealthScanConfig(configRaw);
+  const grep = await git(primary, io, [
+    "grep",
+    "-n",
+    "-I",
+    "--full-name",
+    "-e",
+    "\\.\\./",
+    ref,
+    "--",
+    projectDirRel,
+  ]);
+  const escapes: FixtureEscape[] = [];
+  if (grep.exitCode === 0) {
+    for (const row of grep.stdout.split("\n")) {
+      if (!row.startsWith(`${ref}:`)) continue;
+      const rest = row.slice(ref.length + 1);
+      const m = rest.match(/^(.+?):(\d+):(.*)$/);
+      if (!m) continue;
+      const [, relPath, lineNo, text] = m;
+      const rel = relPath!.slice(projectDirRel.length + 1);
+      const name = rel.split("/").pop()!;
+      if (
+        scanCfg.suppressions.has(rel) ||
+        fixtureScanSkipped(rel) ||
+        !isShippedEntry(rel, name, false, scanCfg)
+      ) {
+        continue;
+      }
+      escapes.push(
+        ...literalEscapesInLine(
+          rel,
+          text!,
+          Number(lineNo),
+          dirname(join(projectRoot, rel)),
+          projectRoot,
+        ),
+      );
+    }
+  }
+  escapes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
   if (escapes.length > 0) {
     const listed = escapes
       .slice(0, 5)
       .map(
         (e) =>
-          `${relToRoot(join(projectDirRel, e.file))}:${e.line} fixture path "${e.literal}" ` +
+          `${projectDirRel}/${e.file}:${e.line} fixture path "${e.literal}" ` +
           `resolves outside ${projectDirRel}`,
       )
       .join("; ");
@@ -179,7 +242,7 @@ async function preflightExtractGates(
       step: "preflight-extract-gates",
       ruleId: "PKG-HEALTH-10",
       detail:
-        `${listed}${more}; shipped files must reference paths inside the package root. ` +
+        `${listed}${more}; shipped files must reference paths inside the package root (same-line "// pkg-health-10:" suppression or pkgHealth10Suppressions in extract.config.yaml for justified non-path literals). ` +
         `repo-extract was NOT spawned.`,
     };
   }

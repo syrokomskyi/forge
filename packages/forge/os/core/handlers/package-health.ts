@@ -7,8 +7,8 @@
 </non-goals>
 </MODULE_CONTRACT>
 <KEY_DECISIONS>
-  <item>deriveShippedFiles mirrors repo-extract's copyStandalonePackage filter semantics exactly (basename ignoreDirs + .tsbuildinfo, substring excludePathSegments, suffix excludeExtensions default .db) — a hand-maintained file list would drift from what the extract actually ships (F-0064's whole premise).</item>
-  <item>scanFixturePathEscapes is literal-aware only for TS-family extensions — other files get the raw `../` chain scan bounded by root-escape resolution; the `pkg-health-10:` suppression comment is the uniform escape for rare non-path uses (RFC-1517).</item>
+  <item>parseHealthScanConfig + isShippedEntry mirror repo-extract's copy filter through the SAME decision inputs it consumes — real YAML parse (comment-bearing lists survive), isKeyMaterial default excludePathSegments (.input/signing-key, .input/batches) when the key is absent, isDbFile default .db excludeExtensions, copyFiltered's BASE_IGNORE_DIRS/IGNORE_FILES for non-standalone exports, and statSync symlink-following like cp's filter — a hand-maintained list or partial parser drifts from what the extract actually ships (F-0064's whole premise).</item>
+  <item>scanFixturePathEscapes judges each candidate via one shared literal core (literalEscapesInLine: TS-family quoted mode, raw `../` chain mode elsewhere, same-line pkg-health-10: suppression) while doc files (prose links are never resolved) and binary/generated files (UTF-8 noise, .map sources) are exempt wholesale; pkgHealth10Suppressions in extract.config.yaml covers files that cannot carry an in-source comment such as JSON (RFC-1517 r1).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>PKG-HEALTH-05: reject any versionBump in extract.config.yaml — version in package.json is source of truth.</item>
@@ -16,12 +16,14 @@
   <item>RFC-1254: retune PKG-HEALTH-02 — repo-extract generates ci.yml from the config `ci:` provider block, so the check now flags only extractable packages whose exported repo would ship no CI (no ci: provider AND no in-package workflow)</item>
   <item>RFC-1255: PKG-HEALTH-07 generated-CI script contract (build/lint/typecheck/test), PKG-HEALTH-08 repository.url vs git.remote for provenance publish, PKG-HEALTH-09 files[] src-reachability coverage; "extractable": false opt-out suppresses all extract-dependent checks</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
+  <item>RFC-1517 r1: shipped-set fidelity — real YAML config parse, repo-extract default exclusions, standalone vs copyFiltered mode split, symlink-following walk, doc/binary scan exemptions, config-level pkgHealth10Suppressions, deterministic sorted output</item>
   <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 */
 
 import * as fs from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
+import { parse as parseYaml } from "yaml";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -62,28 +64,134 @@ export interface FixtureEscape {
   resolvedTo: string;
 }
 
+/**
+ * The shipped-set + suppression view of one extract.config.yaml. Mirrors
+ * repo-extract's copy filter exactly: `isKeyMaterial` defaults
+ * `excludePathSegments` to the signing-key guards when the key is ABSENT, and
+ * `isDbFile` defaults `excludeExtensions` to `[".db"]`. `monorepoMode`
+ * distinguishes copyFiltered (non-standalone exports additionally drop
+ * BASE_IGNORE_DIRS/IGNORE_FILES) from copyStandalonePackage — the same
+ * `standalone || projectDir startsWith "packages/"` predicate extract.js
+ * applies.
+ */
+export interface HealthScanConfig {
+  ignoreDirs: Set<string>;
+  excludeSegments: string[];
+  excludeExtensions: string[];
+  /** `pkgHealth10Suppressions:` — package-relative paths skipped by the scan. */
+  suppressions: Set<string>;
+  /** False for standalone exports — copyFiltered's extra ignore sets apply. */
+  monorepoMode: boolean;
+}
+
+const DEFAULT_KEY_SEGMENTS = [".input/signing-key", ".input/batches"];
+const BASE_IGNORE_DIRS = new Set(["node_modules", ".turbo", "dist", ".env", ".DS_Store", "Thumbs.db"]);
+const IGNORE_FILES = new Set([
+  ".env",
+  ".env.local",
+  ".env.production",
+  ".env.production.local",
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "yarn.lock",
+  "changelog.config.yaml",
+]);
+
+/** Parse the scan-relevant keys of one extract.config.yaml (real YAML — comments and flow style included). */
+export function parseHealthScanConfig(configRaw: string | null): HealthScanConfig {
+  let parsed: Record<string, unknown> = {};
+  if (configRaw !== null) {
+    try {
+      const doc = parseYaml(configRaw) as unknown;
+      if (doc !== null && typeof doc === "object") parsed = doc as Record<string, unknown>;
+    } catch {
+      // An unparseable config fails repo-extract itself — scan with defaults.
+      parsed = {};
+    }
+  }
+  const strList = (key: string): string[] | undefined => {
+    const v = parsed[key];
+    return Array.isArray(v) ? v.filter((e): e is string => typeof e === "string") : undefined;
+  };
+  const projectDir = typeof parsed["projectDir"] === "string" ? parsed["projectDir"] : "";
+  const standalone = parsed["standalone"] === true || projectDir.startsWith("packages/");
+  return {
+    ignoreDirs: new Set([
+      ...(standalone ? ["node_modules", ".turbo"] : [...BASE_IGNORE_DIRS]),
+      ...(strList("ignoreDirs") ?? []),
+    ]),
+    excludeSegments: strList("excludePathSegments") ?? DEFAULT_KEY_SEGMENTS,
+    excludeExtensions: strList("excludeExtensions") ?? [".db"],
+    suppressions: new Set(strList("pkgHealth10Suppressions") ?? []),
+    monorepoMode: !standalone,
+  };
+}
+
 // String-literal-aware mode for TS-family sources; other extensions get the
 // raw `../` chain scan (bounded by root-escape resolution, escaped by the
-// `pkg-health-10:` suppression comment).
+// same-line `pkg-health-10:` suppression comment).
 const TS_FAMILY_RE = /\.(?:ts|mts|tsx|cts)$/;
+// Doc files carry `../` only as prose links — never resolved, always noise.
+const DOC_FILE_RE = /\.(?:md|markdown|mdx|txt|adoc|rst)$/i;
+// Binary/generated bytes produce UTF-8 noise (and .map sources arrays) —
+// skipped like git grep -I's binary exclusion.
+const BINARY_FILE_RE =
+  /\.(?:png|jpe?g|gif|webp|ico|icns|woff2?|ttf|otf|eot|zip|gz|tgz|bz2|xz|7z|wasm|pdf|mp[34]|webm|mov|map|db|sqlite)$/i;
 const QUOTED_PARENT_RE = /["'`]([^"'`\n]*(?:\.\.\/)+[^"'`\n]*)["'`]/g;
 const RAW_PARENT_RE = /(?:\.\.\/)+[^\s"'`)\],;:}]*/g;
 const SUPPRESS_RE = /pkg-health-10:/;
+
+/** File extensions the fixture scan judges (docs and binaries are excluded). */
+export function fixtureScanSkipped(file: string): boolean {
+  return DOC_FILE_RE.test(file) || BINARY_FILE_RE.test(file);
+}
+
+/**
+ * The single `../` literal matcher shared by the working-tree scan and the
+ * publish at-ref scan — apply the per-extension mode to one source line and
+ * report every literal resolving outside `rootAbs`. Same-line
+ * `pkg-health-10:` suppression only (JSON and fixture templates cannot carry
+ * comments — those go through the config suppressions list instead).
+ */
+export function literalEscapesInLine(
+  file: string,
+  text: string,
+  lineNo: number,
+  fileDirAbs: string,
+  rootAbs: string,
+): FixtureEscape[] {
+  if (SUPPRESS_RE.test(text)) return [];
+  const re = TS_FAMILY_RE.test(file) ? QUOTED_PARENT_RE : RAW_PARENT_RE;
+  const out: FixtureEscape[] = [];
+  for (const m of text.matchAll(re)) {
+    const literal = m[1] ?? m[0];
+    if (!literal.includes("../")) continue;
+    const resolvedTo = path.resolve(fileDirAbs, literal);
+    if (resolvedTo !== rootAbs && !resolvedTo.startsWith(rootAbs + path.sep)) {
+      out.push({ file, line: lineNo, literal, resolvedTo });
+    }
+  }
+  return out;
+}
 
 /**
  * Scan shipped files for `../` path literals that resolve outside
  * `packageRoot` — the fixture-path defect class that passed monorepo suites
  * and ENOENT'd only inside the standalone extract (F-0064). `shippedFiles`
- * are package-root-relative paths on disk. Shared by PKG-HEALTH-10 and the
- * publish `preflight-extract-gates` step so both report the same escapes.
+ * are package-root-relative paths on disk; `suppressions` (from
+ * `pkgHealth10Suppressions` in extract.config.yaml) skips files that cannot
+ * carry an in-source comment. Shared by PKG-HEALTH-10 and the publish
+ * `preflight-extract-gates` step so both report the same escapes.
  */
 export function scanFixturePathEscapes(
   packageRoot: string,
   shippedFiles: string[],
+  suppressions?: ReadonlySet<string>,
 ): FixtureEscape[] {
   const root = path.resolve(packageRoot);
   const escapes: FixtureEscape[] = [];
   for (const file of shippedFiles) {
+    if (suppressions?.has(file) || fixtureScanSkipped(file)) continue;
     const abs = path.join(root, file);
     let source: string;
     try {
@@ -91,58 +199,49 @@ export function scanFixturePathEscapes(
     } catch {
       continue;
     }
-    const re = TS_FAMILY_RE.test(file) ? QUOTED_PARENT_RE : RAW_PARENT_RE;
     const lines = source.split("\n");
     for (let i = 0; i < lines.length; i++) {
-      const line = lines[i]!;
-      if (SUPPRESS_RE.test(line)) continue;
-      re.lastIndex = 0;
-      for (const m of line.matchAll(re)) {
-        const literal = m[1] ?? m[0];
-        if (!literal.includes("../")) continue;
-        const resolvedTo = path.resolve(path.dirname(abs), literal);
-        if (resolvedTo !== root && !resolvedTo.startsWith(root + path.sep)) {
-          escapes.push({ file, line: i + 1, literal, resolvedTo });
-        }
-      }
+      escapes.push(...literalEscapesInLine(file, lines[i]!, i + 1, path.dirname(abs), root));
     }
   }
-  return escapes;
+  return escapes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
+}
+
+/**
+ * Whether repo-extract's copy filter would ship one entry — shared by the
+ * working-tree walk (PKG-HEALTH-10) and the at-ref enumeration (publish
+ * preflight) so both judge the same set. `rel` is package-root-relative.
+ */
+export function isShippedEntry(
+  rel: string,
+  name: string,
+  isDir: boolean,
+  cfg: HealthScanConfig,
+): boolean {
+  if (cfg.ignoreDirs.has(name)) return false;
+  if (isDir) return !cfg.excludeSegments.some((seg) => rel.includes(seg));
+  if (name.endsWith(".tsbuildinfo")) return false;
+  if (cfg.monorepoMode && IGNORE_FILES.has(name)) return false;
+  if (cfg.excludeSegments.some((seg) => rel.includes(seg))) return false;
+  if (cfg.excludeExtensions.some((ext) => name.endsWith(ext))) return false;
+  return true;
 }
 
 /**
  * Derive the file set repo-extract will ship for a package — a walk of
- * `projectRoot` honoring the same config keys the standalone copy filter
- * consumes: `ignoreDirs` (+ node_modules/.turbo/.tsbuildinfo basenames),
- * `excludePathSegments` (substring match on the package-relative path), and
- * `excludeExtensions` (default `.db`). Never a hand-maintained file list.
+ * `projectRoot` honoring the same config keys the copy filters consume (see
+ * parseHealthScanConfig). Symlinks are followed through statSync like
+ * repo-extract's `cp` filter; a realpath-set bounds link cycles. Never a
+ * hand-maintained file list.
  */
 export function deriveShippedFiles(
   projectRoot: string,
   extractConfigRaw: string | null,
 ): string[] {
-  const yamlList = (key: string): string[] => {
-    if (extractConfigRaw === null) return [];
-    const block = extractConfigRaw.match(new RegExp(`^${key}:[ \\t]*$`, "m"));
-    if (!block || block.index === undefined) return [];
-    const items: string[] = [];
-    for (const line of extractConfigRaw.slice(block.index + block[0].length).split("\n")) {
-      if (line.trim() === "") continue;
-      const m = line.match(/^\s+-\s*(.+?)\s*$/);
-      if (!m) break;
-      items.push(m[1]!.replace(/^["']|["']$/g, ""));
-    }
-    return items;
-  };
-  const ignoreDirs = new Set(["node_modules", ".turbo", ...yamlList("ignoreDirs")]);
-  const excludeSegments = yamlList("excludePathSegments");
-  const excludeExtensions =
-    extractConfigRaw !== null && /^excludeExtensions:[ \t]*$/m.test(extractConfigRaw)
-      ? yamlList("excludeExtensions")
-      : [".db"];
-
+  const cfg = parseHealthScanConfig(extractConfigRaw);
   const root = path.resolve(projectRoot);
   const shipped: string[] = [];
+  const visited = new Set<string>();
   const collect = (dir: string): void => {
     let entries: fs.Dirent[];
     try {
@@ -153,20 +252,36 @@ export function deriveShippedFiles(
     for (const e of entries) {
       const abs = path.join(dir, e.name);
       const rel = path.relative(root, abs).split(path.sep).join("/");
-      if (e.isDirectory()) {
-        if (ignoreDirs.has(e.name)) continue;
-        if (excludeSegments.some((seg) => rel.includes(seg))) continue;
+      // Dirent.isFile()/isDirectory() are false for symlinks — repo-extract's
+      // cp stats through links, so the scan must as well.
+      let stats: fs.Stats | null = null;
+      if (e.isSymbolicLink()) {
+        try {
+          stats = fs.statSync(abs);
+        } catch {
+          stats = null;
+        }
+      }
+      const isDir = stats ? stats.isDirectory() : e.isDirectory();
+      const isFile = stats ? stats.isFile() : e.isFile();
+      if (!isShippedEntry(rel, e.name, isDir, cfg)) continue;
+      if (isDir) {
+        let real = abs;
+        try {
+          real = fs.realpathSync(abs);
+        } catch {
+          // keep the syntactic path
+        }
+        if (visited.has(real)) continue;
+        visited.add(real);
         collect(abs);
-      } else if (e.isFile()) {
-        if (ignoreDirs.has(e.name) || e.name.endsWith(".tsbuildinfo")) continue;
-        if (excludeSegments.some((seg) => rel.includes(seg))) continue;
-        if (excludeExtensions.some((ext) => e.name.endsWith(ext))) continue;
+      } else if (isFile) {
         shipped.push(rel);
       }
     }
   };
   collect(root);
-  return shipped;
+  return shipped.sort();
 }
 
 function defaultLintRunner(projectDir: string, hasLintScript: boolean): LintProbeOutcome {
@@ -586,9 +701,11 @@ export async function runPackageHealth(
       const healthProjectDir = projectDirMatch
         ? path.resolve(workspaceRoot, projectDirMatch[1])
         : pkgDir;
+      const healthScanCfg = parseHealthScanConfig(extractConfigRaw);
       for (const esc of scanFixturePathEscapes(
         healthProjectDir,
         deriveShippedFiles(healthProjectDir, extractConfigRaw),
+        healthScanCfg.suppressions,
       )) {
         violations.push({
           ruleId: "PKG-HEALTH-10",
@@ -597,7 +714,7 @@ export async function runPackageHealth(
           message: `${esc.file}:${esc.line} path literal "${esc.literal}" resolves outside the package root (${esc.resolvedTo}) — the standalone extract will ENOENT.`,
           file: path.join(healthProjectDir, esc.file),
           fixHint:
-            'Rebind the reference to a path inside the package root, or mark a justified non-path use with a "// pkg-health-10: <reason>" comment.',
+            'Rebind the reference to a path inside the package root, mark a justified non-path use with a same-line "// pkg-health-10: <reason>" comment, or list the file in pkgHealth10Suppressions in extract.config.yaml.',
         });
       }
     }

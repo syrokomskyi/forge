@@ -9,6 +9,7 @@ path traversal rejection, details field, and regression.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-0643: initial domain template tests — terminology substitution, register selection, nested templates, fallback, path traversal, details field, regression.</item>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
 </CHANGE_SUMMARY>
 */
 
@@ -171,7 +172,7 @@ test("selectRootTemplate with missing rootAgentsMdTemplate falls back to registe
 test("selectRootTemplate rejects path traversal in rootAgentsMdTemplate", () => {
   const profile = {
     id: "evil-profile",
-    rootAgentsMdTemplate: "../../../etc/passwd",
+    rootAgentsMdTemplate: "../../../etc/passwd", // pkg-health-10: adversarial fixture input — traversal rejection is the behavior under test
   } as StackProfile;
   const content = selectRootTemplate("business", profile);
   expect(content).toContain("{{projectName}}");
@@ -214,7 +215,7 @@ test("selectNestedTemplate rejects path traversal (..) with fallback", () => {
   const wsType: ProfileWorkspaceType = {
     id: "evil",
     detect: { glob: "*" },
-    agentsMdTemplate: "../../../etc/passwd",
+    agentsMdTemplate: "../../../etc/passwd", // pkg-health-10: adversarial fixture input — traversal rejection is the behavior under test
   };
   const profile = { id: "evil-profile" } as StackProfile;
   const result = selectNestedTemplate(wsType, profile, {}, "FALLBACK");

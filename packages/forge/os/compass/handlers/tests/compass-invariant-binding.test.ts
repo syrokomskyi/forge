@@ -10,11 +10,12 @@ semantics, and the COMPASS-INVARIANT-02..07 rule table over tmp workspaces.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1390: binding-rule fixtures — parser, resolvers, severity table, baseline keying.</item>
   <item>RFC-1390: bind code invariants to enforcing checks (INV-tags, checked-by, baseline, generator)</item>
   <item>RFC-1390: close review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-2 review findings on invariant binding machinery</item>
   <item>RFC-1390: close round-3 review residue on invariant binding machinery</item>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
+  <history>RFC-1390</history>
 </CHANGE_SUMMARY>
 */
 
@@ -344,7 +345,7 @@ describe("RFC-1390 invariant bindings", () => {
   it("rejects a binding target that escapes the workspace via ../", async () => {
     writeSource(
       HIGH_FILE,
-      `// ${AI_INV}[INV-guard-11]: the guard fails closed (checked-by: test:../../outside.test.ts)`,
+      `// ${AI_INV}[INV-guard-11]: the guard fails closed (checked-by: test:../../outside.test.ts)` // pkg-health-10: fixture content — the escape is the test data, never resolved,
     );
     const result = await validate();
     const diags = dataOf(result).diagnostics.filter(

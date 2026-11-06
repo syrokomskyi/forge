@@ -52,8 +52,19 @@ excludePathSegments:
   - release-lines.test.ts
   - probe-batch.test.ts
   - validate-corpus.test.ts
+  # monorepo-bound: they resolve the werkstatt root four levels up and read
+  # docs/command-manifest.generated.yaml — outside the package root (RFC-1517)
+  - src/tests/skill-agents-sync.test.ts
+  - src/tests/rfc-evidence-sync.test.ts
+  - src/tests/pkg-health-self-scan.test.ts
   # monorepo-scoped agent guide — not meaningful inside the standalone repo
   - AGENTS.md
+
+# The frontmatter fixture inside this test carries an intentional root-escape
+# literal as DATA (never resolved) — the offending line sits inside a template
+# literal so a same-line comment would corrupt the fixture.
+pkgHealth10Suppressions:
+  - src/tests/knowledge-conflicts-resolve.test.ts
 
 # Dest-side shield (RFC-1252): commitExport stages `git add -A`, so untracked
 # files dropped into the standalone repo between exports (agent skill installs,
