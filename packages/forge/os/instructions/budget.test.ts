@@ -7,6 +7,9 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
+
+8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -71,6 +74,34 @@ describe("instructions.budget.validate (RFC-1466)", () => {
     );
     const res = await runInstructionsBudgetValidate(flags({}), ctx());
     expect(res.data?.diagnostics.some((d) => d.ruleId === "INSTR-03")).toBe(true);
+  });
+
+  test("RFC-1522: enforce promotes INSTR-01 to error and exits 1", async () => {
+    await writeFile(
+      join(root, "forge.yaml"),
+      `schema: forge/config@1\ninstructions:\n  budget:\n    maxLinesPerFile: 3\n    maxTokensPerFile: 40\n    enforce: true\n`,
+    );
+    await writeFile(
+      join(root, "AGENTS.md"),
+      Array.from({ length: 10 }, (_, i) => `- line ${i}`).join("\n") + "\n",
+    );
+    await mkdir(join(root, "docs"), { recursive: true });
+    const res = await runInstructionsBudgetValidate(flags({}), ctx());
+    const instr = res.data?.diagnostics.find((d) => d.ruleId === "INSTR-01");
+    expect(instr?.severity).toBe("error");
+    expect(res.exitCode).toBe(1);
+  });
+
+  test("RFC-1522: enforce still exits 0 when every file is under budget", async () => {
+    await writeFile(
+      join(root, "forge.yaml"),
+      `schema: forge/config@1\ninstructions:\n  budget:\n    maxLinesPerFile: 400\n    maxTokensPerFile: 3072\n    enforce: true\n`,
+    );
+    await writeFile(join(root, "AGENTS.md"), "## Section A\n- ok\n");
+    await mkdir(join(root, "docs"), { recursive: true });
+    const res = await runInstructionsBudgetValidate(flags({}), ctx());
+    expect(res.exitCode).toBe(0);
+    expect(res.data?.diagnostics.every((d) => d.severity !== "error")).toBe(true);
   });
 });
 
