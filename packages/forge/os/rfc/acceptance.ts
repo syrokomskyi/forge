@@ -13,20 +13,13 @@ prose checklist.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
-
-REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
-fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
-config is error not unavailable, and both surfaces share one path; {entry} is
-required in formal.tools.command; spec/entry paths are confined to the
-workspace; the exhaustive entry dispatches per packageManager; proved runs
-record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1445: run-probe timeoutMs + RFC-1445 outcome probe AC-9 (RFC-1445)</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1489: resolve REVIEW-RFC-1489-R1 soft-block — spec-exact barrier semantics, dedup, verdict parity; DEV-1489-001 amend recorded</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
   <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334, RFC-1391, RFC-1401, RFC-1453</history>
 </CHANGE_SUMMARY>
 */
@@ -543,8 +536,10 @@ export async function runProbe(
 /**
  * RFC-1516: probe-kind reuse classification for the evidence-freshness
  * window. `reusable` kinds cost real wall-clock (subprocess runs, vitest,
- * outcome build+serve, proof checkers) and observe only covered inputs —
- * their recorded results may carry across a matching green envelope.
+ * outcome build+serve, proof checkers) — their recorded results may carry
+ * across a matching green envelope within the bounded window. A `run` probe
+ * CAN still observe inputs outside the acceptance list (e.g. a validator
+ * reading the live RFC bytes); the window bounds that residual staleness.
  * `cheap` kinds re-resolve every emit: they cost nothing and read the live
  * tree. `unchecked` is the default side for any kind this table does not
  * know — a future probe kind must opt into reuse explicitly, never inherit
