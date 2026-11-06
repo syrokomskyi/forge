@@ -12,15 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: unblock evidence emission for proof-probe RFCs (RFC-1391)
-
-probeArtifactCandidates lacked a `proof` branch — the default threw
-EVIDENCE-FRESH-03, so rfc.verification.emit could never produce an
-envelope for any RFC declaring `probe: proof`. The IMP-13 remediation
-path was dead end-to-end. A proof probe executes the checker live and
-carries no generated dependency — same mapping as run/test/page.
-
-Found by the independent acceptance verifier (rfc-1391 r0, CX-1).</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
 REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
@@ -34,6 +25,7 @@ record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
@@ -44,7 +36,12 @@ import { ambientIo, resolveIo } from "../../src/utils/io.ts";
 import { join, relative } from "node:path";
 import { byteHash } from "../../src/utils/hash.ts";
 
-import { runProbeSet } from "./acceptance.ts";
+import { classifyProbeReuse, runProbeSet } from "./acceptance.ts";
+import {
+  evaluateEvidenceReuse,
+  readCommittedEnvelope,
+  type EvidenceReuseVerdict,
+} from "./handlers/rfc-evidence-sync.ts";
 import { createOutcomeSession } from "./outcome-probe.ts";
 import { attachProbeOrigins } from "./verification-origin.ts";
 import { attachVerdictEvidence } from "./verification-verdicts.ts";
@@ -557,18 +554,75 @@ export async function runRfcVerificationEmit(
     const rfcMarkdown = await io.readFile(rfcFilePath);
     const emittedAt = new Date().toISOString();
 
+    const slug = rfcId.toLowerCase();
+    const evidenceFileName = `${slug}.generated.yaml`;
+    const evidenceRelPath = join(VERIFICATION_DIR, evidenceFileName);
+    const evidenceAbsPath = join(workspaceRoot, evidenceRelPath);
+
+    // RFC-1516: evidence-freshness window. The committed (HEAD) envelope —
+    // never the worktree file — is eligible when it is well formed, green,
+    // acceptance-matching and younger than EVIDENCE_REUSE_WINDOW_MS. On a
+    // hit, `reusable`-class probes (run/test/page/proof) replay their
+    // committed records while every cheap or unknown-kind probe still
+    // re-resolves against the live tree. `--check` never reuses: its whole
+    // contract is committed-vs-fresh comparison.
+    const reuseDisabled = input.flags["no-evidence-reuse"] === true;
+    let reuse: EvidenceReuseVerdict | undefined;
+    let committedEnvelope: VerificationEvidence | undefined;
+    if (!checkOnly) {
+      const committedRead = await readCommittedEnvelope(workspaceRoot, evidenceRelPath);
+      reuse = evaluateEvidenceReuse({
+        committed: committedRead.envelope ?? null,
+        malformed: committedRead.malformed === true,
+        acceptanceHashHex: byteHashHex(normalizeProbes(probes)),
+        disabled: reuseDisabled,
+      });
+      if (reuse.reusable) committedEnvelope = committedRead.envelope;
+    }
+
     // RFC-1489: batch-compatible test probes share one Vitest run via
-    // runProbeSet; `--no-batch` forces the legacy per-probe path.
-    const { results: setResults, durationsMs } = await runProbeSet(probes, {
-      workspaceRoot,
-      commandRegistry: context.commandRegistry,
-      forgeRoot: context.forgeRoot,
-      outcomeSession,
-      noBatch: input.flags["no-batch"] === true,
-    });
+    // runProbeSet; `--no-batch` forces the legacy per-probe path. RFC-1516:
+    // on a reuse hit only the non-reusable classes run.
+    const runIndexes = committedEnvelope
+      ? probes
+          .map((probe, index) => ({ class: classifyProbeReuse(probe.probe), index }))
+          .filter((e) => e.class !== "reusable")
+          .map((e) => e.index)
+      : probes.map((_, index) => index);
+    const { results: setResults, durationsMs } = await runProbeSet(
+      runIndexes.map((i) => probes[i]!),
+      {
+        workspaceRoot,
+        commandRegistry: context.commandRegistry,
+        forgeRoot: context.forgeRoot,
+        outcomeSession,
+        noBatch: input.flags["no-batch"] === true,
+      },
+    );
+    const heavyProbesReused: string[] = [];
+    const cheapProbesReRun: string[] = [];
     for (const [probeIndex, probe] of probes.entries()) {
-      const result = setResults[probeIndex]!;
-      const durationMs = durationsMs[probeIndex]!;
+      const label = probe.criterion ?? `#${probeIndex + 1}`;
+      const committedRecord = committedEnvelope?.probes[probeIndex];
+      const setPos = runIndexes.indexOf(probeIndex);
+      if (committedRecord !== undefined && setPos === -1) {
+        // Reused: the committed record's verdict fields carry over; the
+        // probe object is re-pinned to the live frontmatter so the emitted
+        // envelope still serializes the current probe declaration.
+        heavyProbesReused.push(label);
+        probeRecords.push({
+          probe,
+          ok: committedRecord.ok,
+          detail: committedRecord.detail,
+          durationMs: committedRecord.durationMs,
+          verdict: committedRecord.verdict,
+          ...(committedRecord.proof ? { proof: committedRecord.proof } : {}),
+        });
+        continue;
+      }
+      cheapProbesReRun.push(label);
+      const result = setResults[setPos]!;
+      const durationMs = durationsMs[setPos]!;
       probeRecords.push({
         probe,
         ok: result.ok,
@@ -604,11 +658,6 @@ export async function runRfcVerificationEmit(
       emittedAt,
       outcomeWaiver,
     );
-
-    const slug = rfcId.toLowerCase();
-    const evidenceFileName = `${slug}.generated.yaml`;
-    const evidenceRelPath = join(VERIFICATION_DIR, evidenceFileName);
-    const evidenceAbsPath = join(workspaceRoot, evidenceRelPath);
 
     // RFC-1271 --check: same probe run as emit, but the committed envelope is
     // compared to the fresh computation and nothing is written. A missing
@@ -657,6 +706,9 @@ export async function runRfcVerificationEmit(
         file: evidenceRelPath,
         overall: envelope.overall,
         ...(previousOverall !== undefined ? { previousOverall } : {}),
+        ...(reuse ? { reuse } : {}),
+        ...(heavyProbesReused.length > 0 ? { heavyProbesReused } : {}),
+        ...(cheapProbesReRun.length > 0 ? { cheapProbesReRun } : {}),
       },
       ...(envelope.overall === "fail"
         ? {

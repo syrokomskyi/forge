@@ -14,6 +14,8 @@ invocation attests "all generated artifacts + RFC evidence are current".
 <KEY_DECISIONS>
   <item>Step order is contract: the ecosystem manifest hashes the other artifacts, so ecosystem.manifest.generate runs last among the manifest steps.</item>
   <item>EVIDENCE_SYNC_STEPS is the canonical regen list</item>
+  <item>RFC-1516: the committed envelope is read via `git show HEAD:&lt;path&gt;`, never the worktree file — an uncommitted hand-edit can never become reusable input; every gate below green+matching+in-window falls back to full re-execution with its reason journalized.</item>
+  <item>RFC-1516: reuse is evaluated in emit (not in the sync orchestrator) so the direct `rfc.verification.emit` path, the sync chain, and the stamp's in-process emits share one decision; sync only forwards the escape flag and surfaces the verdict.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>
@@ -26,6 +28,9 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import { execFile } from "../../../src/utils/sync-fs.ts";
+import { parse as yamlParse } from "yaml";
+import type { VerificationEvidence } from "../types.ts";
 
 /**
  * The canonical RFC-evidence regen order (RFC-1306). The emit step is
@@ -41,6 +46,92 @@ export const EVIDENCE_SYNC_STEPS: readonly string[] = [
 ];
 
 export const EVIDENCE_SYNC_EMIT_STEP = "rfc.verification.emit";
+
+/** RFC-1516: the evidence-freshness window — a committed green envelope
+ *  younger than this may replay its heavy-probe results instead of
+ *  re-executing them. 4h covers every realistic stamp-retry session while
+ *  bounding staleness. */
+export const EVIDENCE_REUSE_WINDOW_MS = 14400000;
+
+export type EvidenceReuseReason =
+  | "envelope-reused"
+  | "absent"
+  | "malformed"
+  | "not-green"
+  | "acceptance-changed"
+  | "expired"
+  | "disabled";
+
+export interface EvidenceReuseVerdict {
+  reusable: boolean;
+  reason: EvidenceReuseReason;
+  /** The reused envelope's `emittedAt` when reusable — provenance, not a
+   *  claim the probes just ran. */
+  reusedFrom?: string;
+}
+
+/** Reuse is strictly gated — anything short of a well-formed, green,
+ *  acceptance-matching, in-window envelope falls back to full re-execution.
+ *  `malformed` covers every unreadable/underspecified shape: unparsable
+ *  YAML, a non-object body, or missing contract fields. */
+export function evaluateEvidenceReuse(opts: {
+  committed: VerificationEvidence | null;
+  /** true when bytes existed but did not parse to the envelope contract. */
+  malformed?: boolean;
+  acceptanceHashHex: string;
+  disabled: boolean;
+  now?: number;
+}): EvidenceReuseVerdict {
+  if (opts.disabled) return { reusable: false, reason: "disabled" };
+  if (opts.malformed) return { reusable: false, reason: "malformed" };
+  const env = opts.committed;
+  if (!env) return { reusable: false, reason: "absent" };
+  if (env.overall !== "pass") return { reusable: false, reason: "not-green" };
+  if (env.acceptanceHash !== opts.acceptanceHashHex) {
+    return { reusable: false, reason: "acceptance-changed" };
+  }
+  const emittedAtMs = Date.parse(env.emittedAt ?? "");
+  const now = opts.now ?? Date.now();
+  if (!Number.isFinite(emittedAtMs) || now - emittedAtMs > EVIDENCE_REUSE_WINDOW_MS) {
+    return { reusable: false, reason: "expired" };
+  }
+  return { reusable: true, reason: "envelope-reused", reusedFrom: env.emittedAt };
+}
+
+/** The committed envelope — read from HEAD bytes (`git show`), never the
+ *  worktree file, so an uncommitted hand-edit can never become reusable
+ *  input. Returns {envelope} on a contract-shaped parse, {malformed} on
+ *  bytes that exist but don't satisfy it, {} when nothing is committed. */
+export async function readCommittedEnvelope(
+  workspaceRoot: string,
+  relPath: string,
+): Promise<{ envelope?: VerificationEvidence; malformed?: boolean }> {
+  const rel = relPath.replace(/\\/g, "/");
+  const stdout = await new Promise<string>((resolve) => {
+    execFile("git", ["show", `HEAD:${rel}`], { cwd: workspaceRoot, timeout: 5000 }, (err, out) => {
+      resolve(err ? "" : out);
+    });
+  });
+  if (stdout.trim().length === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = yamlParse(stdout);
+  } catch {
+    return { malformed: true };
+  }
+  if (typeof parsed !== "object" || parsed === null) return { malformed: true };
+  const env = parsed as Partial<VerificationEvidence>;
+  if (
+    typeof env.rfcId !== "string" ||
+    typeof env.emittedAt !== "string" ||
+    typeof env.acceptanceHash !== "string" ||
+    (env.overall !== "pass" && env.overall !== "fail") ||
+    !Array.isArray(env.probes)
+  ) {
+    return { malformed: true };
+  }
+  return { envelope: env as VerificationEvidence };
+}
 
 export interface RfcEvidenceSyncStepResult {
   step: string;
@@ -65,6 +156,14 @@ export interface RfcEvidenceSyncResult {
   failedStep?: string;
   /** Dry-run only — the ordered step list that would execute. */
   planned?: Array<{ step: string; flags?: Record<string, string> }>;
+  /** RFC-1516: the emit step's freshness-window verdict — surfaced verbatim
+   *  so a stamp-sync log shows whether heavy probes re-executed or the
+   *  committed envelope replayed. */
+  reuse?: EvidenceReuseVerdict;
+  /** Criteria whose run/test/page/proof results carried over. */
+  heavyProbesReused?: string[];
+  /** Criteria re-resolved against the live tree. */
+  cheapProbesReRun?: string[];
 }
 
 interface SyncReport {
@@ -103,10 +202,23 @@ export async function runRfcEvidenceSync(
   const rfcId = input.flags["id"];
   const rfcIdStr = typeof rfcId === "string" && rfcId !== "" ? rfcId : undefined;
   const isDryRun = context.dryRun || input.flags["dry-run"] === true;
+  // RFC-1516: the escape flag forwards verbatim to the emit step — every
+  // probe then re-executes regardless of envelope freshness.
+  const noEvidenceReuse = input.flags["no-evidence-reuse"] === true;
 
   const plan: Array<{ step: string; flags?: Record<string, string> }> = [
     ...EVIDENCE_SYNC_STEPS.map((step) => ({ step })),
-    ...(rfcIdStr ? [{ step: EVIDENCE_SYNC_EMIT_STEP, flags: { id: rfcIdStr } }] : []),
+    ...(rfcIdStr
+      ? [
+          {
+            step: EVIDENCE_SYNC_EMIT_STEP,
+            flags: {
+              id: rfcIdStr,
+              ...(noEvidenceReuse ? { "no-evidence-reuse": "true" } : {}),
+            },
+          },
+        ]
+      : []),
   ];
 
   if (isDryRun) {
@@ -151,6 +263,7 @@ export async function runRfcEvidenceSync(
   }
 
   const steps: RfcEvidenceSyncStepResult[] = [];
+  let emitReport: Awaited<ReturnType<typeof invoke>> | null = null;
   for (const planned of plan) {
     // A throwing invoke (unresolvable child, host/module failure) still maps
     // into the EVIDENCE-SYNC-02 contract — fail closed, never a raw exception.
@@ -182,6 +295,7 @@ export async function runRfcEvidenceSync(
       ...(report.summary ? { summary: report.summary } : {}),
     };
     steps.push(stepResult);
+    if (planned.step === EVIDENCE_SYNC_EMIT_STEP) emitReport = report;
     if (outputFormat === "pretty") {
       const changed = filesModified.length;
       logger.info(
@@ -212,10 +326,35 @@ export async function runRfcEvidenceSync(
   }
 
   const changedFiles = [...new Set(steps.flatMap((s) => s.filesModified))];
+  // RFC-1516: surface the emit step's freshness-window verdict verbatim —
+  // a stamp-sync log shows whether heavy probes re-executed or the
+  // committed envelope replayed, never silently.
+  const emitStep = steps.find((s) => s.step === EVIDENCE_SYNC_EMIT_STEP);
+  const emitData =
+    emitStep !== undefined && emitReport !== null
+      ? (emitReport.data as {
+          emitted?: Array<{
+            reuse?: EvidenceReuseVerdict;
+            heavyProbesReused?: string[];
+            cheapProbesReRun?: string[];
+          }>;
+        } | null)
+      : null;
+  const emittedEntry = emitData?.emitted?.[0];
   return syncResult(
     "pass",
     [],
-    { steps, ...(rfcIdStr ? { rfcId: rfcIdStr } : {}) },
+    {
+      steps,
+      ...(rfcIdStr ? { rfcId: rfcIdStr } : {}),
+      ...(emittedEntry?.reuse ? { reuse: emittedEntry.reuse } : {}),
+      ...(emittedEntry?.heavyProbesReused?.length
+        ? { heavyProbesReused: emittedEntry.heavyProbesReused }
+        : {}),
+      ...(emittedEntry?.cheapProbesReRun?.length
+        ? { cheapProbesReRun: emittedEntry.cheapProbesReRun }
+        : {}),
+    },
     `rfc.evidence.sync: ${steps.length} steps clean, ${changedFiles.length} file${changedFiles.length === 1 ? "" : "s"} changed`,
   );
 }

@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
   <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-IMP-07</history>
+  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-1453, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -895,7 +895,14 @@ export async function runRfcImplementStamp(
     }
     let syncReport: Awaited<ReturnType<NonNullable<typeof context.invoke>>>;
     try {
-      syncReport = await context.invoke("rfc.evidence.sync", { id: targetId });
+      // RFC-1516: --no-evidence-reuse reaches the emit step through the
+      // sync chain — probes re-execute even inside the freshness window.
+      syncReport = await context.invoke("rfc.evidence.sync", {
+        id: targetId,
+        ...(input.flags["no-evidence-reuse"] === true
+          ? { "no-evidence-reuse": "true" }
+          : {}),
+      });
     } catch (err) {
       violations.push({
         rule: "EVIDENCE-SYNC-02",
@@ -1231,6 +1238,9 @@ export async function runRfcImplementStamp(
               flags: {
                 id: targetId,
                 ...(waiveOutcome ? { "waive-outcome": waiveOutcome } : {}),
+                ...(input.flags["no-evidence-reuse"] === true
+                  ? { "no-evidence-reuse": true }
+                  : {}),
               },
             },
             context,
@@ -1449,6 +1459,9 @@ export async function runRfcImplementStamp(
             flags: {
               id: targetId,
               ...(waiveOutcome ? { "waive-outcome": waiveOutcome } : {}),
+              ...(input.flags["no-evidence-reuse"] === true
+                ? { "no-evidence-reuse": true }
+                : {}),
             },
           },
           context,

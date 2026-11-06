@@ -7,16 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1474: per-rule check-execution counters
-
-Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467</history>
+  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474</history>
 </CHANGE_SUMMARY>
 */
 
@@ -351,6 +349,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             description:
               "RFC-1489: disable test-probe batching — run each probe in its own Vitest process (diagnostic escape).",
           },
+          "no-evidence-reuse": {
+            kind: "boolean",
+            description:
+              "RFC-1516: disable the evidence-freshness window — every probe (run/test/page/proof and cheap kinds) re-executes even when the committed green envelope is in-window.",
+          },
         },
         execute: runRfcVerificationEmit,
       },
@@ -610,6 +613,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
               "RFC-1483: restore the pre-self-repair blocking behavior — no criteria flips, " +
               "no in-process envelope emit; the first prerequisite defect fails the run.",
           },
+          "no-evidence-reuse": {
+            kind: "boolean",
+            description:
+              "RFC-1516: forwarded to rfc.evidence.sync and the in-process emit calls — every acceptance probe re-executes even inside the evidence-freshness window.",
+          },
         },
         execute: runRfcImplementStamp,
       },
@@ -639,6 +647,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "dry-run": {
             kind: "boolean",
             description: "List the steps without executing (honors context.dryRun, DNA-110).",
+          },
+          "no-evidence-reuse": {
+            kind: "boolean",
+            description:
+              "RFC-1516: forward to the emit step — every acceptance probe re-executes even when the committed green envelope is inside the evidence-freshness window.",
           },
         },
         reads: ["docs/rfcs/**/*.md"],
