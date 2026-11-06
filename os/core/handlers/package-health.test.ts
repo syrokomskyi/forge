@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1311: Compass header sweep — declares the package suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
@@ -24,6 +23,8 @@ projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
 journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
   <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
+  <item>RFC-1518: provider-aware module attribution, per-rule markers, tld-tail scoping</item>
+  <history>RFC-1311</history>
 </CHANGE_SUMMARY>
 */
 
@@ -819,4 +820,106 @@ test("suppression journal carries file, line, token, package and clean reason (r
   expect(sup?.line).toBe(1);
   expect(sup?.packageName).toBe("@warpgogol/lib");
   expect(sup?.reason).toBe("retired command family");
+});
+
+// r2 review fixes: cross-bucket module collisions, cross-rule independence,
+// D-002 filter pinning, unattributed-inventory warning, journal sort.
+
+test("siteScope commands resolve via the SITE map; workspace commands via WORKSHOP (r2 collision)", async () => {
+  seedDocsPkg({ docs: {} });
+  // deploy exists in BOTH buckets — engine(lib) and sitePlugin(sitepkg).
+  const mmDir = join(tmpDir, "packages", "werkstatt-engine", "src", "kernel");
+  mkdirSync(mmDir, { recursive: true });
+  writeFileSync(
+    join(mmDir, "module-map.ts"),
+    'const ENGINE = "@warpgogol/lib";\nconst SITE = "@warpgogol/sitepkg";\nexport const M = { deploy: engine(ENGINE) };\nexport const S = { deploy: sitePlugin(SITE) };\n',
+  );
+  // A private site package so its 11-skip can be observed.
+  const siteDir = join(tmpDir, "packages", "sitepkg");
+  mkdirSync(siteDir, { recursive: true });
+  writePkgJson(siteDir, { name: "@warpgogol/sitepkg", version: "1.0.0", private: true });
+  mkdirSync(join(tmpDir, "docs"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "docs", "command-manifest.generated.yaml"),
+    "commands:\n  - name: deploy.artifact.build\n    module: deploy\n    siteScope: false\n  - name: client.export\n    module: deploy\n    siteScope: true\n",
+  );
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({ ok: true, detail: "" }));
+  const v11 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-11") ?? [];
+  // Workshop deploy.artifact.build attributes to @warpgogol/lib and is uncovered.
+  expect(v11.some((v) => v.packageName === "@warpgogol/lib" && v.message.includes("deploy.artifact.build"))).toBe(true);
+  // Site-scope client.export attributes to the private sitepkg — never to lib.
+  expect(v11.some((v) => v.message.includes("client.export"))).toBe(false);
+});
+
+test("markers are per-rule: 11-marked dead token still fires 12; 12-marked command keeps coverage (r2)", async () => {
+  seedDocsPkg({
+    docs: {
+      "reference/cli.md":
+        "lib.dead <!-- pkg-health-11: family shorthand -->\n\nlib.alpha <!-- pkg-health-12: narrative -->\n",
+    },
+  });
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v11 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-11") ?? [];
+  const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12") ?? [];
+  // lib.alpha documented despite the 12 marker → no coverage error.
+  expect(v11.filter((v) => v.message.includes("lib.alpha"))).toHaveLength(0);
+  // lib.dead is a dead ref despite the 11 marker → fires 12.
+  expect(v12.some((v) => v.message.includes("lib.dead"))).toBe(true);
+});
+
+test("unregistered-namespace and TLD-tail property tokens stay silent (r2, D-002)", async () => {
+  seedDocsPkg({
+    docs: {
+      "guide.md": "set `zzz.foo` and `context.io` paths; `deploy.smoke.run` is retired.\n",
+    },
+  });
+  const ctx = makeRegistryContext(tmpDir, [
+    { name: "lib.alpha", module: "lib-mod" },
+    { name: "deploy.artifact.build", module: "lib-mod" },
+    { name: "context.index.build", module: "lib-mod" },
+  ]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12") ?? [];
+  const msgs = v12.map((v) => v.message).join("\n");
+  expect(msgs).not.toContain("zzz.foo");
+  // context.io: 2-segment unregistered TLD tail under a live namespace → silent.
+  expect(msgs).not.toContain("context.io");
+  // deploy.smoke.run: 3-segment under live namespace → dead ref still caught.
+  expect(msgs).toContain("deploy.smoke.run");
+});
+
+test("zero attribution warns that PKG-HEALTH-11 is inert (r2)", async () => {
+  seedDocsPkg({ docs: {} });
+  // Commands exist but their modules map to nothing (no module-map, empty
+  // kernel.config attribution for these names).
+  const ctx = makeRegistryContext(tmpDir, [{ name: "ghost.cmd", module: "nowhere" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const warn = result.data?.violations.find((v) => v.message.includes("resolved to no package"));
+  expect(warn).toBeDefined();
+  expect(warn?.severity).toBe("warning");
+});
+
+test("empty reason does not suppress (r2)", async () => {
+  seedDocsPkg({
+    docs: { "guide.md": "run `lib.retired` <!-- pkg-health-12: -->\n" },
+  });
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12") ?? [];
+  expect(v12.some((v) => v.message.includes("lib.retired"))).toBe(true);
+});
+
+test("suppression journal sorts by package, file, line (r2)", async () => {
+  seedDocsPkg({
+    docs: {
+      "b.md": "`lib.gone` <!-- pkg-health-12: removed -->\n",
+      "a.md": "`lib.dead` <!-- pkg-health-12: removed -->\n`lib.dead2` <!-- pkg-health-12: removed -->\n",
+    },
+  });
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const files = (result.data?.suppressions ?? []).map((s) => s.file);
+  const sorted = [...files].sort();
+  expect(files).toEqual(sorted);
 });

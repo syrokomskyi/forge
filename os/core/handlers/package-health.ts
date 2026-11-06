@@ -14,7 +14,6 @@
   <item>The docs gate runs before the private/extractable skips so PKG-HEALTH-12 dead references judge every package's docs (dead refs are package-local), while PKG-HEALTH-11 coverage stays scoped to published packages — private packages (werkstatt-site's ~500-command surface) document commands in site-facing docs outside DOCS_SURFACE, and the manifest merge preserves manifest module provenance when registry entries omit module (RFC-1518 r1, deviation D-003).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517 r1: shipped-set fidelity — real YAML config parse, repo-extract default exclusions, standalone vs copyFiltered mode split, symlink-following walk, doc/binary scan exemptions, config-level pkgHealth10Suppressions, deterministic sorted output</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
 
@@ -32,7 +31,8 @@ journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
   <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
   <item>RFC-1518: key decision for private-package docs-gate scope</item>
-  <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255</history>
+  <item>RFC-1518: provider-aware module attribution, per-rule markers, tld-tail scoping</item>
+  <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
 
@@ -253,8 +253,8 @@ const DOC_REF_EXT_RE =
 // (forge.dev, forge.build would otherwise be filtered out).
 const DOC_TLD_TAIL_RE =
   /\.(?:com|org|net|io|dev|ai|app|de|uk|eu|co|me|cloud|site|xyz|build|systems|watch|pro|info|gg|wtf|zone|land|run)$/i;
-const DOC_SUPPRESS_11_RE = /pkg-health-11:\s*(.*?)(?:-->)?\s*$/;
-const DOC_SUPPRESS_12_RE = /pkg-health-12:\s*(.*?)(?:-->)?\s*$/;
+const DOC_SUPPRESS_11_RE = /pkg-health-11(?:\s*\|\s*pkg-health-12)?:\s*([^\n]*?)\s*(?:-->\s*)?$/;
+const DOC_SUPPRESS_12_RE = /(?:pkg-health-11\s*\|\s*)?pkg-health-12:\s*([^\n]*?)\s*(?:-->\s*)?$/;
 
 export interface DocsSuppression {
   ruleId: "PKG-HEALTH-11" | "PKG-HEALTH-12";
@@ -345,32 +345,34 @@ export function scanDocsSurface(
         // Registered commands always count (forge.dev, context.index.build).
         // Unregistered tokens ending in a TLD tail are domains (warpgogol.com)
         // or TLD-shaped property paths (context.io) — never command refs.
-        .filter((t) => !registeredCommands || registeredCommands.has(t) || !DOC_TLD_TAIL_RE.test(t));
+        // Registered commands always count (forge.dev, context.index.build).
+        // Unregistered TWO-segment tokens ending in a TLD tail are domains
+        // (warpgogol.com) or TLD-shaped property paths (context.io); a 3+
+        // segment token under a registered namespace (deploy.smoke.run after
+        // removal) stays a dead-reference candidate — never TLD-exempt.
+        .filter((t) => !registeredCommands || registeredCommands.has(t) || t.split(".").length > 2 || !DOC_TLD_TAIL_RE.test(t));
       const s11 = line.match(DOC_SUPPRESS_11_RE);
-      if (s11) {
-        for (const token of tokens) {
-          const entry = { ruleId: "PKG-HEALTH-11" as const, file: rel, line: i + 1, token, reason: s11[1]!.trim() };
+      const s12 = line.match(DOC_SUPPRESS_12_RE);
+      // A marker with an empty reason does not suppress — an exemption needs
+      // a justification. Both markers are evaluated: a line may carry an 11
+      // and a 12 marker (or the combined pkg-health-11|pkg-health-12 form).
+      const reason = (m: RegExpMatchArray | null) => (m?.[1] ?? "").replace(/-->\s*$/, "").trim();
+      const m11 = s11 ? reason(s11) || null : null;
+      const m12 = s12 ? reason(s12) || null : null;
+      for (const token of tokens) {
+        if (m11) {
+          const entry = { ruleId: "PKG-HEALTH-11" as const, file: rel, line: i + 1, token, reason: m11 };
           suppressed11.set(token, entry);
           suppressions.push(entry);
-          // Coverage is exempted, but a dead token on the line still reports
-          // PKG-HEALTH-12 — the marker exempts its rule, not the whole line.
-          if (!refs.has(token)) refs.set(token, { file: rel, line: i + 1 });
-        }
-        continue;
-      }
-      const s12 = line.match(DOC_SUPPRESS_12_RE);
-      if (s12) {
-        for (const token of tokens) {
-          suppressions.push({ ruleId: "PKG-HEALTH-12", file: rel, line: i + 1, token, reason: s12[1]!.trim() });
-          // Dead refs are exempted, but a real command on the line keeps its
-          // coverage credit — same per-rule scope as the pkg-health-11 marker.
+        } else {
           documented.add(token);
         }
-        continue;
-      }
-      for (const token of tokens) {
-        documented.add(token);
-        if (!refs.has(token)) refs.set(token, { file: rel, line: i + 1 });
+        if (m12) {
+          suppressions.push({ ruleId: "PKG-HEALTH-12", file: rel, line: i + 1, token, reason: m12 });
+          documented.add(token);
+        } else if (!refs.has(token)) {
+          refs.set(token, { file: rel, line: i + 1 });
+        }
       }
     }
   }
@@ -382,9 +384,13 @@ export function scanDocsSurface(
  * the workspace registry (and command.manifest.generate) was built from:
  * tools/kernel.config.ts inline loaders plus the WORKSHOP_MODULE_MAP buckets
  * in werkstatt-engine's module-map.ts. Never a hand-maintained list.
+ * Returns separate workshop/site maps — module names can collide across
+ * buckets (deploy is both engine() and sitePlugin()) and commands attribute
+ * through the map matching their siteScope.
  */
-export function deriveModulePackageMap(workspaceRoot: string): Map<string, string> {
+export function deriveModulePackageMap(workspaceRoot: string): { workshop: Map<string, string>; site: Map<string, string> } {
   const out = new Map<string, string>();
+  const site = new Map<string, string>();
   const mmPath = path.join(workspaceRoot, "packages", "werkstatt-engine", "src", "kernel", "module-map.ts");
   try {
     const mm = fs.readFileSync(mmPath, "utf8");
@@ -393,7 +399,9 @@ export function deriveModulePackageMap(workspaceRoot: string): Map<string, strin
     for (const m of mm.matchAll(/const (\w+) = "(@warpgogol\/[^"]+)"/g)) constToSpec[m[1]!] = m[2]!;
     for (const m of mm.matchAll(/["']?([\w-]+)["']?:\s*(engine|sitePlugin|forge)\(/g)) {
       const spec = constToSpec[bucketToConst[m[2]!]!];
-      if (spec) out.set(m[1]!, `packages/${spec.split("/")[1]}`);
+      // Module names can collide across buckets (deploy: engine + sitePlugin) —
+      // keep the maps separate so siteScope commands resolve via SITE only.
+      if (spec) (m[2] === "sitePlugin" ? site : out).set(m[1]!, `packages/${spec.split("/")[1]}`);
     }
   } catch {
     // module-map absent — inline loaders still map
@@ -407,7 +415,7 @@ export function deriveModulePackageMap(workspaceRoot: string): Map<string, strin
   } catch {
     // no kernel config — inventory attribution is empty
   }
-  return out;
+  return { workshop: out, site };
 }
 
 /**
@@ -420,18 +428,26 @@ export function deriveModulePackageMap(workspaceRoot: string): Map<string, strin
  */
 export function loadCommandInventory(
   workspaceRoot: string,
-  commandRegistry?: { listCommands(): Array<{ name: string; module?: string }> },
-): Array<{ name: string; module?: string }> {
-  const byName = new Map<string, { name: string; module?: string }>();
+  commandRegistry?: { listCommands(): Array<{ name: string; module?: string; siteScope?: boolean }> },
+): Array<{ name: string; module?: string; siteScope?: boolean }> {
+  const byName = new Map<string, { name: string; module?: string; siteScope?: boolean }>();
   const manifestPath = path.join(workspaceRoot, "docs", "command-manifest.generated.yaml");
   try {
     const raw = fs.readFileSync(manifestPath, "utf8");
-    const parsed = parseYaml(raw) as { commands?: Array<{ name?: unknown; module?: unknown }> } | null;
+    const parsed = parseYaml(raw) as {
+      commands?: Array<{ name?: unknown; module?: unknown; siteScope?: unknown; providers?: unknown }>;
+    } | null;
     for (const c of parsed?.commands ?? []) {
       if (typeof c.name === "string" && c.name.length > 0) {
         byName.set(c.name, {
           name: c.name,
           module: typeof c.module === "string" ? c.module : undefined,
+          siteScope:
+            typeof c.siteScope === "boolean"
+              ? c.siteScope
+              : Array.isArray(c.providers) && c.providers.includes("site-module")
+                ? true
+                : undefined,
         });
       }
     }
@@ -441,7 +457,12 @@ export function loadCommandInventory(
   for (const c of commandRegistry?.listCommands() ?? []) {
     // Merge, don't overwrite: ForgeCliRegistry entries carry no `module`, so a
     // bare set() would erase the manifest's provenance under the standalone CLI.
-    byName.set(c.name, { name: c.name, module: c.module ?? byName.get(c.name)?.module });
+    const prev = byName.get(c.name);
+    byName.set(c.name, {
+      name: c.name,
+      module: c.module ?? prev?.module,
+      siteScope: c.siteScope ?? prev?.siteScope,
+    });
   }
   return [...byName.values()];
 }
@@ -735,13 +756,19 @@ export async function runPackageHealth(
   const allNamespaces = new Set(commandInfos.map((c) => c.name.split(".", 1)[0]!));
   const moduleToPkg = deriveModulePackageMap(workspaceRoot);
   const pkgCommands = new Map<string, string[]>();
+  let attributed = 0;
   for (const c of commandInfos) {
-    const pkg = c.module !== undefined ? moduleToPkg.get(c.module) : undefined;
+    // Provider-aware attribution: a module name can exist in both the workshop
+    // and site buckets (deploy does), so siteScope commands resolve via the
+    // site map only — a last-write-wins flat map silently misattributes.
+    const map = c.siteScope === true ? moduleToPkg.site : moduleToPkg.workshop;
+    const pkg = c.module !== undefined ? map.get(c.module) : undefined;
     if (pkg === undefined) continue;
+    attributed++;
     (pkgCommands.get(pkg) ?? pkgCommands.set(pkg, []).get(pkg)!).push(c.name);
   }
 
-  const entries = fs.readdirSync(packagesDir, { withFileTypes: true });
+  const entries = fs.readdirSync(packagesDir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name));
   for (const entry of entries) {
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith(".")) continue;
@@ -1030,6 +1057,18 @@ export async function runPackageHealth(
         "no command inventory available — docs-drift gate skipped (context.commandRegistry unset and docs/command-manifest.generated.yaml absent or unparsable)",
       file: workspaceRoot,
       fixHint: "Run `werkstatt run command.manifest.generate`, or dispatch through a host that injects commandRegistry.",
+    });
+  } else if (packagesChecked > 0 && commandInfos.length > 0 && attributed === 0) {
+    // Inventory exists but no command resolved to a package — module→package
+    // attribution is unavailable (e.g. a consumer workshop without the
+    // werkstatt-engine module-map) and PKG-HEALTH-11 would silently inert.
+    violations.push({
+      ruleId: "PKG-HEALTH-12",
+      packageName: "(workspace)",
+      severity: "warning",
+      message: `${commandInfos.length} inventoried command(s) resolved to no package — module attribution unavailable, PKG-HEALTH-11 coverage skipped`,
+      file: workspaceRoot,
+      fixHint: "Check that packages/werkstatt-engine/src/kernel/module-map.ts or tools/kernel.config.ts declares the command modules.",
     });
   }
 
