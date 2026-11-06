@@ -7,13 +7,14 @@
   </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1310: STAMP-GOV-01 fixtures — trailer provenance, injected-item provenance, candidate-set scan, retro-fix remedy, dry-run scan reporting</item>
   <item>RFC-1310: governance-id parity guards on ecosystem.commit and rfc.implement.stamp</item>
   <item>RFC-1321: lowercase --id satisfies an uppercase subject (AC-3)</item>
   <item>RFC-1322: step 4 — --check-criteria resolvable/unresolvable matrix + dry-run residual-unchecked fix</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <history>RFC-1310</history>
 </CHANGE_SUMMARY>
 */
 
@@ -24,7 +25,10 @@ import { tmpdir } from "node:os";
 import { execFileSync } from "node:child_process";
 
 const { mockRunProbe } = vi.hoisted(() => ({ mockRunProbe: vi.fn() }));
-vi.mock("../../os/rfc/acceptance.ts", () => ({
+vi.mock("../../os/rfc/acceptance.ts", async (importOriginal) => ({
+  // RFC-1516: keep classifyProbeReuse (and every non-execution export) real —
+  // emit's reuse path calls it when a committed envelope is present.
+  ...(await importOriginal<typeof import("../../os/rfc/acceptance.ts")>()),
   runProbe: mockRunProbe,
   // RFC-1489: emit (which stamp composes) drives runProbeSet — the shim
   // preserves the per-probe mock contract.

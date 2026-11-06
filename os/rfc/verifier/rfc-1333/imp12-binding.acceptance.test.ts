@@ -10,6 +10,7 @@
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,7 +27,10 @@ import { describe, expect, test, vi } from "vitest";
 import { runRfcImplementStamp } from "../../handlers/implement-stamp.ts";
 import type { ForgeCommandInput, ForgeRuntimeContext } from "../../../../src/types.ts";
 
-vi.mock("../../acceptance.ts", () => ({
+vi.mock("../../acceptance.ts", async (importOriginal) => ({
+  // RFC-1516: keep classifyProbeReuse (and every non-execution export) real —
+  // emit's reuse path calls it when a committed envelope is present.
+  ...(await importOriginal<typeof import("../../acceptance.ts")>()),
   runProbe: vi.fn(async (probe: unknown) => ({ probe, ok: true, detail: "ok" })),
   // RFC-1489: emit (which stamp composes) drives runProbeSet — the shim
   // preserves the per-probe mock contract.

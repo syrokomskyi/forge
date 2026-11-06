@@ -13,7 +13,6 @@ prose checklist.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1453: page probes execute through an OutcomeSession (outcomeBuild/outcomeServe bindings); tri-state verdicts; RFC-ACC-03 skip removed; RFC-ACC-04 reports unverified.</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
 REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
@@ -27,7 +26,8 @@ record log, counterexample stays the refuted-path record.</item>
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1489: resolve REVIEW-RFC-1489-R1 soft-block — spec-exact barrier semantics, dedup, verdict parity; DEV-1489-001 amend recorded</item>
-  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334, RFC-1391, RFC-1401</history>
+  <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <history>RFC-0268, RFC-0998, RFC-1271, RFC-1334, RFC-1391, RFC-1401, RFC-1453</history>
 </CHANGE_SUMMARY>
 */
 
@@ -538,6 +538,31 @@ export async function runProbe(
       };
     }
   }
+}
+
+/**
+ * RFC-1516: probe-kind reuse classification for the evidence-freshness
+ * window. `reusable` kinds cost real wall-clock (subprocess runs, vitest,
+ * outcome build+serve, proof checkers) and observe only covered inputs —
+ * their recorded results may carry across a matching green envelope.
+ * `cheap` kinds re-resolve every emit: they cost nothing and read the live
+ * tree. `unchecked` is the default side for any kind this table does not
+ * know — a future probe kind must opt into reuse explicitly, never inherit
+ * it silently.
+ */
+export type ProbeReuseClass = "cheap" | "reusable" | "unchecked";
+const REUSABLE_PROBE_KINDS = new Set(["run", "test", "page", "proof"]);
+const CHEAP_PROBE_KINDS = new Set([
+  "file-exists",
+  "file-contains",
+  "command-registered",
+  "json-schema",
+  "reachable",
+]);
+export function classifyProbeReuse(kind: string): ProbeReuseClass {
+  if (CHEAP_PROBE_KINDS.has(kind)) return "cheap";
+  if (REUSABLE_PROBE_KINDS.has(kind)) return "reusable";
+  return "unchecked";
 }
 
 export interface ProbeSetOptions {
