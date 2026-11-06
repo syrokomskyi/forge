@@ -17,6 +17,7 @@ with an ours-merge and never force-pushes.</purpose>
   <item>RFC-1491: step 5 — flow.push publication tests</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
 </CHANGE_SUMMARY>
 */
 
@@ -28,6 +29,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { collectDigest } from "../digest.ts";
 import { pushFlow } from "../handlers/flow-push.ts";
+import { verifyLineAtRef } from "../publish.ts";
 import { markerContent } from "../markers.ts";
 import { releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
 import { commonGitDir, readJournal } from "../registry.ts";
@@ -240,6 +242,82 @@ describe("flow.push publications", () => {
     const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
     expect(data.diagnostics).toEqual([]);
     expect(data.publications.find((p) => p.tag === "lib@9.9.9")).toBeUndefined();
+    expect(await extractLog(log)).toBe("");
+  }, 90_000);
+
+  it("a CHANGELOG missing the [version] section refuses FLOW-PUB-01 before any extract spawn (AC-1)", async () => {
+    const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-pub-",
+      fakeExtract: true,
+    });
+    await addPackageLine(repo);
+    await writeFile(
+      join(repo, "packages", "lib", "CHANGELOG.md"),
+      "# Changelog\n\n## [2.0.0] - 2026-01-01\n\n- earlier release\n",
+    );
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "changelog without the publish section"]);
+    await gitExec(repo, ["push", "origin", "develop"]);
+    await tag(repo, "lib@2.1.0", "lib", "2.1.0", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    const pub = data.publications.find((p) => p.tag === "lib@2.1.0");
+    expect(pub?.status).toBe("failed");
+    expect(pub?.error).toContain("preflight-extract-gates");
+    expect(pub?.error).toContain("FLOW-PUB-01");
+    expect(pub?.error).toContain("[2.1.0]");
+    // The whole point of the preflight — repo-extract never ran.
+    expect(await extractLog(log)).toBe("");
+  }, 90_000);
+
+  it("verifyLineAtRef refuses FLOW-PUB-01 pre-extract when the ref's CHANGELOG lacks the section (AC-1)", async () => {
+    const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-pub-",
+      fakeExtract: true,
+    });
+    await addPackageLine(repo);
+    await writeFile(
+      join(repo, "packages", "lib", "CHANGELOG.md"),
+      "# Changelog\n\n## [2.0.0] - 2026-01-01\n\n- earlier release\n",
+    );
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "changelog without the publish section"]);
+    const sha = (await gitExec(repo, ["rev-parse", "HEAD"])).stdout.trim();
+
+    const result = await verifyLineAtRef(repo, ambientIo, {
+      line: { id: "lib", tagPrefix: "lib@", versionFile: "packages/lib/package.json", paths: ["packages/lib"] },
+      ref: sha,
+    });
+    expect(result.ok).toBe(false);
+    expect(result.detail).toContain("preflight-extract-gates");
+    expect(result.detail).toContain("FLOW-PUB-01");
+    expect(result.detail).toContain("[2.1.0]");
+    expect(await extractLog(log)).toBe("");
+  }, 90_000);
+
+  it("a shipped file's root-escaping ../ literal refuses PKG-HEALTH-10 at file:line (AC-7)", async () => {
+    const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-pub-",
+      fakeExtract: true,
+    });
+    await addPackageLine(repo);
+    await mkdir(join(repo, "packages", "lib", "src", "tests"), { recursive: true });
+    await writeFile(
+      join(repo, "packages", "lib", "src", "tests", "fixture.test.ts"),
+      'const fixture = "../../../docs/rfcs/rfc-0000-template.md";\nexport { fixture };\n',
+    );
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "fixture path escaping the package root"]);
+    await gitExec(repo, ["push", "origin", "develop"]);
+    await tag(repo, "lib@2.1.0", "lib", "2.1.0", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    const pub = data.publications.find((p) => p.tag === "lib@2.1.0");
+    expect(pub?.status).toBe("failed");
+    expect(pub?.error).toContain("PKG-HEALTH-10");
+    expect(pub?.error).toContain("packages/lib/src/tests/fixture.test.ts:1");
     expect(await extractLog(log)).toBe("");
   }, 90_000);
 
