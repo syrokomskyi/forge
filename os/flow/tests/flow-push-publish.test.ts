@@ -18,6 +18,7 @@ with an ours-merge and never force-pushes.</purpose>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
 </CHANGE_SUMMARY>
 */
 
@@ -296,6 +297,29 @@ describe("flow.push publications", () => {
     expect(await extractLog(log)).toBe("");
   }, 90_000);
 
+  it("a bare [version]: link reference without a release heading refuses FLOW-PUB-01", async () => {
+    const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-pub-",
+      fakeExtract: true,
+    });
+    await addPackageLine(repo);
+    await writeFile(
+      join(repo, "packages", "lib", "CHANGELOG.md"),
+      "# Changelog\n\n## [2.0.0] - 2026-01-01\n\n- earlier release\n\n[2.1.0]: https://example.com/diff\n",
+    );
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "changelog with only a link reference"]);
+    await gitExec(repo, ["push", "origin", "develop"]);
+    await tag(repo, "lib@2.1.0", "lib", "2.1.0", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    const pub = data.publications.find((p) => p.tag === "lib@2.1.0");
+    expect(pub?.status).toBe("failed");
+    expect(pub?.error).toContain("FLOW-PUB-01");
+    expect(await extractLog(log)).toBe("");
+  }, 90_000);
+
   it("a shipped file's root-escaping ../ literal refuses PKG-HEALTH-10 at file:line (AC-7)", async () => {
     const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
       prefix: "flow-pub-",
@@ -319,6 +343,28 @@ describe("flow.push publications", () => {
     expect(pub?.error).toContain("PKG-HEALTH-10");
     expect(pub?.error).toContain("packages/lib/src/tests/fixture.test.ts:1");
     expect(await extractLog(log)).toBe("");
+  }, 90_000);
+
+  it("an uncommitted root-escaping file does NOT refuse — the scan reads the tag's tree (RFC-1517 r1)", async () => {
+    const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-pub-",
+      fakeExtract: true,
+    });
+    await addPackageLine(repo);
+    // Untracked escape: never enters the tag's tree, so the extract never
+    // ships it — flagging it would be a false refusal.
+    await mkdir(join(repo, "packages", "lib", "src"), { recursive: true });
+    await writeFile(
+      join(repo, "packages", "lib", "src", "scratch.ts"),
+      'const scratch = "../../../outside.md";\n',
+    );
+    await tag(repo, "lib@2.1.0", "lib", "2.1.0", "minor");
+
+    const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+    const pub = data.publications.find((p) => p.tag === "lib@2.1.0");
+    expect(pub?.status).toBe("published");
+    expect(await extractLog(log)).not.toBe("");
   }, 90_000);
 
   it("a non-fast-forward destination reconciles once with an ours-merge", async () => {

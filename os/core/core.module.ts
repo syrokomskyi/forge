@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
   <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1522: add rules.budget.check byte-budget gate for always-on rule files
@@ -15,7 +14,8 @@ RULES-BUDGET-01 flags AGENTS.md/CLAUDE.md/.windsurfrules over 12288 bytes (fixtu
   <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
 
 8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500</history>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505</history>
 </CHANGE_SUMMARY>
 */
 
@@ -832,8 +832,11 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         description:
           "Validate all published packages (private: false) for standalone extraction readiness. " +
           "Checks engines.node, embedded .github/workflows/ci.yml, extract.config.yaml, " +
-          "devDependencies completeness (no hoisted tool deps), and per-package lint-surface " +
-          "(extractable packages run their own lint contract). " +
+          "devDependencies completeness (no hoisted tool deps), per-package lint-surface " +
+          "(extractable packages run their own lint contract), and PKG-HEALTH-10 " +
+          "fixture-path scan — shipped ../ literals must resolve inside the package " +
+          "root (same-line \"// pkg-health-10:\" or pkgHealth10Suppressions in " +
+          "extract.config.yaml). " +
           "Exits non-zero on errors. Use --json for machine-readable output.",
         scope: "workspace",
         acceptsAllFlag: false,

@@ -8,6 +8,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the package suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
 </CHANGE_SUMMARY>
 */
 
@@ -583,18 +584,21 @@ test("scanFixturePathEscapes honors suppression, raw-mode, and per-extension mod
     join(pkgDir, "suppressed.ts"),
     'const s = "../../outside.md"; // pkg-health-10: prose example, not a path\n',
   );
-  // .md gets the raw scan — unquoted ../ chains still flag.
-  writeFileSync(join(pkgDir, "README.md"), "see ../../../outside.md for details\n");
+  // non-doc non-ts files get the raw scan — unquoted ../ chains still flag.
+  writeFileSync(join(pkgDir, "notes.yaml"), "see: ../../../outside.md\n");
   // a ../ inside a comment does not flag in ts files (literal-aware mode).
-  writeFileSync(join(pkgDir, "sub", "noted.ts"), "// resolves ../../outside.md\nexport {};\n");
+  writeFileSync(join(pkgDir, "sub", "noted.ts"), "// resolves ../../outside.md\nexport {};\n"); // pkg-health-10: fixture string exercises the unsuppressed path
+  // doc files are exempt — prose links are never resolved.
+  writeFileSync(join(pkgDir, "README.md"), "see ../../../outside.md for details\n");
 
   const escapes = scanFixturePathEscapes(pkgDir, [
     "suppressed.ts",
+    "notes.yaml",
     "README.md",
     "sub/noted.ts",
   ]);
   expect(escapes).toHaveLength(1);
-  expect(escapes[0]?.file).toBe("README.md");
+  expect(escapes[0]?.file).toBe("notes.yaml");
   expect(escapes[0]?.line).toBe(1);
   expect(escapes[0]?.literal).toContain("../");
 });

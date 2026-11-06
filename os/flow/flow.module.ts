@@ -9,13 +9,13 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -675,7 +675,12 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "and publishes each package-line tag through repo-extract " +
           "(FLOW-PUSH-05 per failure, ours-merge reconcile on " +
           "non-fast-forward only, never force). A rerun with an empty " +
-          "digest retries journal-scoped pending publications.",
+          "digest retries journal-scoped pending publications. Per-tag " +
+          "preflight refuses before repo-extract spawns: FLOW-PUB-01 " +
+          "(missing [version] CHANGELOG section at ref) and PKG-HEALTH-10 " +
+          "(shipped ../ literal escaping the package root — same-line " +
+          '"// pkg-health-10:" suppression or pkgHealth10Suppressions in ' +
+          "extract.config.yaml for justified non-path literals).",
         scope: "workspace",
         contract: "flow",
         rules: [
@@ -686,6 +691,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-PUSH-05", severity: "error" },
           { id: "FLOW-PUSH-06", severity: "error" },
           { id: "FLOW-PUSH-07", severity: "error" },
+          { id: "FLOW-PUB-01", severity: "error" },
+          { id: "PKG-HEALTH-10", severity: "error" },
           { id: "FLOW-07", severity: "error" },
         ],
         mutatesState: true,
