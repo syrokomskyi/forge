@@ -268,3 +268,9 @@ forge note.link.validate
 forge note.frontmatter.validate
 forge note.orphan.detect
 ```
+
+## Registered command surface
+
+Canonical registry names (see `docs/command-manifest.generated.yaml` for the full inventory) not covered in the usage sections above:
+
+`audit.archive`, `file.size.lint`, `flow.publication.retire`, `flow.status`, `flow.version`, `forge.assets.check`, `forge.assets.list`, `forge.build`, `forge.conformance.run`, `forge.conformance.validate`, `forge.create`, `forge.determinism.check`, `forge.dev`, `forge.doctor`, `forge.port.scaffold`, `forge.port.validate`, `forge.profile.validate`, `forge.public-surface.validate`, `forge.release.prepare`, `forge.release.publish`, `forge.scaffold`, `forge.skill.knowledge.compact`, `forge.skill.list`, `forge.skill.validate`, `forge.validate`, `memory.compact`, `mission.archive`, `outbox.validate`, `plan.archive`, `spec.live.rebuild`, `system.map.validate`, `system.outbox.scan`, `system.task.collect`, `system.task.create`, `system.task.dispatch`, `system.task.move`, `system.task.status`, `system.versionset.record`.
