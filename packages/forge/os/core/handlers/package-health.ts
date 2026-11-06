@@ -12,9 +12,9 @@
   <item>loadCommandInventory unions context.commandRegistry.listCommands() with docs/command-manifest.generated.yaml — the getLiveCommands merge precedent from os/rfc/handlers/lifecycle.ts — because `werkstatt run` injects no commandRegistry and lazy-loaded modules are invisible to it; a registry-only read would silently disable the docs gate on the primary dispatch path (RFC-1518 r1, deviation D-001).</item>
   <item>scanDocsSurface resolves dead-reference candidates through two mechanical disambiguators: first-segment namespace membership (property paths like context.site and config keys like bindings.commands are never command refs) and registered-or-TLD-tail resolution (registered forge.dev/context.index.build count for coverage while unregistered warpgogol.com/context.io are domains, not commands) — without them the gate produced ~230 false positives on the real workspace (RFC-1518 r1, deviation D-002).</item>
   <item>The docs gate runs before the private/extractable skips so PKG-HEALTH-12 dead references judge every package's docs (dead refs are package-local), while PKG-HEALTH-11 coverage stays scoped to published packages — private packages (werkstatt-site's ~500-command surface) document commands in site-facing docs outside DOCS_SURFACE, and the manifest merge preserves manifest module provenance when registry entries omit module (RFC-1518 r1, deviation D-003).</item>
+  <item>Module attribution is provider-aware: deriveModulePackageMap returns separate workshop/site maps because module names collide across buckets (deploy is engine() AND sitePlugin()), and each command resolves through the map matching its manifest siteScope — a flat last-write-wins map silently misattributed the engine deploy.* family to the private site package (RFC-1518 r2, deviation D-004).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1517 r1: shipped-set fidelity — real YAML config parse, repo-extract default exclusions, standalone vs copyFiltered mode split, symlink-following walk, doc/binary scan exemptions, config-level pkgHealth10Suppressions, deterministic sorted output</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
 
 Live-inventory docs gate: PKG-HEALTH-11 flags registered commands absent
@@ -32,6 +32,7 @@ werkstatt-knowledge CLI surface.</item>
   <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
   <item>RFC-1518: key decision for private-package docs-gate scope</item>
   <item>RFC-1518: provider-aware module attribution, per-rule markers, tld-tail scoping</item>
+  <item>RFC-1518: key decision for provider-aware attribution</item>
   <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
