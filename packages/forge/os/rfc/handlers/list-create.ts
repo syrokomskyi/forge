@@ -6,11 +6,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1139: second hint fix (rfc.list empty-state) + read-only test fix</item>
   <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139</history>
 </CHANGE_SUMMARY>
 */
@@ -252,6 +252,16 @@ export async function runRfcCreate(
     scoredAll.filter((d) => TERMINAL_KINDS.has(d.kind) && d.score >= REPROPOSED_SCORE),
   );
   const collidingIds = colliding.map((d) => d.rfcId);
+  // RFC-1514: one-shot correction evidence — the refusal names each
+  // precedent's score and which title/text tokens of the proposed title
+  // drove it, in pretty text and the machine-readable `colliding[]`.
+  const collidingDetail = (entries: ConsultedDecision[]): string =>
+    entries
+      .map(
+        (d) =>
+          `${d.rfcId} (score ${d.score}; title tokens: ${d.matchedTitleTokens.join(", ") || "—"}; text tokens: ${d.matchedTextTokens.join(", ") || "—"})`,
+      )
+      .join("; ");
   const reviewBand = byId(
     scoredAll.filter(
       (d) =>
@@ -267,6 +277,7 @@ export async function runRfcCreate(
         : "No terminal-kind precedent collides with this title — drop --revisit and scaffold normally.";
     if (outputFormat === "pretty") {
       logger.error(`rfc.create refused: ${remedy}`);
+      if (colliding.length > 0) logger.error(`collisions: ${collidingDetail(colliding)}`);
     }
     return {
       data: {
@@ -287,10 +298,11 @@ export async function runRfcCreate(
       `Re-run with --revisit ${collidingIds[0]} to acknowledge the precedent — the scaffold will cite it ` +
       `in related with a NEEDS CLARIFICATION marker and the draft's Decision must state why it differs ` +
       `from the rejection/supersession rationale. If this is genuinely different work, sharpen the title ` +
-      `so it no longer collides at the reproposal threshold (score ≥ ${REPROPOSED_SCORE}).`;
+      `so it no longer collides at the reproposal threshold (score ≥ ${REPROPOSED_SCORE}). ` +
+      `Collisions: ${collidingDetail(colliding)}`;
     if (outputFormat === "pretty") {
       logger.error(
-        `rfc.create blocked: ${collidingIds.length} terminal precedent(s) collide — ${collidingIds.join(", ")}`,
+        `rfc.create blocked: ${collidingIds.length} terminal precedent(s) collide — ${collidingDetail(colliding)}`,
       );
       logger.error(remedy);
     }

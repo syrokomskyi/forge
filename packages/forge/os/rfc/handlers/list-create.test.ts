@@ -14,6 +14,7 @@ with candidates listed.
 <CHANGE_SUMMARY>
   <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
   <item>RFC-1482: extract-safe RFC-1482 template path + changelog for 9.1.0</item>
+  <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
 </CHANGE_SUMMARY>
 */
 
@@ -111,6 +112,20 @@ describe("RFC-1467 rfc.create near-duplicate gate", () => {
     expect(result.data?.remedy).toContain("--revisit RFC-1312");
     // AC-1: the escalation payload accompanies consultedDecisions in JSON.
     expect(Array.isArray(result.data?.consultedDecisions)).toBe(true);
+  });
+
+  test("RFC-1514 AC-4: the refusal names score and matched title/text tokens", async () => {
+    const result = await runRfcCreate({ flags: flags() } as never, context());
+    expect(result.exitCode).toBe(1);
+    const hit = result.data?.colliding?.[0];
+    expect(hit?.score).toBeGreaterThanOrEqual(12);
+    // The proposed title is verbatim the rejected one — every title token hit.
+    expect(hit?.matchedTitleTokens).toContain("isolate");
+    expect(hit?.matchedTitleTokens).toContain("sessions");
+    expect(hit?.matchedTextTokens?.length).toBeGreaterThan(0);
+    // The remedy text carries the same attribution, not just the JSON payload.
+    expect(result.data?.remedy).toContain(`score ${hit!.score}`);
+    expect(result.data?.remedy).toContain("isolate");
   });
 
   test("AC-3: --revisit scaffolds with related + NEEDS CLARIFICATION marker", async () => {
