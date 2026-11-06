@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
-  <history>RFC-1487, RFC-1490, RFC-1491</history>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504</history>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +49,7 @@ import {
   worktreeList,
 } from "../git.ts";
 import { LockTimeoutError, withFlowLock } from "../locks.ts";
+import { currentBootId, holderIsDead } from "../../core/lock-holder.ts";
 import {
   appendJournal,
   commonGitDir,
@@ -67,6 +68,15 @@ import { join } from "node:path";
 export const INTEGRATE_LOCK_WAIT_MS = 30 * 60_000;
 export const INTEGRATE_LOCK_STALE_MS = 2 * 3_600_000;
 
+/** RFC-1515 AC-4: the refused lock attempt reports who holds it. */
+export interface LockDiagnostic {
+  pid: number;
+  host?: string;
+  at: string;
+  heldMs: number | null;
+  disposition: "live" | "dead-holder" | "stale";
+}
+
 export interface FlowIntegrateData {
   branch: string | null;
   integrated: boolean;
@@ -80,6 +90,11 @@ export interface FlowIntegrateData {
   /** worktree-teardown script result when cleanup ran — never an integration-gate result. */
   teardown?: FlowScriptResult | null;
   cleanedUp: boolean;
+  /** RFC-1515: forge-local state paths the cleanliness check tolerated this
+   * run — journaled so "tolerated" is auditable, never a suppressed blocker. */
+  toleratedState?: string[];
+  /** RFC-1515: holder payload when FLOW-INT-08 refused on a held lock. */
+  lock?: LockDiagnostic;
   diagnostics: Diagnostic[];
 }
 
@@ -88,6 +103,7 @@ function refuse(
   message: string,
   fixHint: string,
   partial?: Partial<FlowIntegrateData>,
+  diagData?: Record<string, unknown>,
 ): FlowIntegrateData {
   return {
     branch: partial?.branch ?? null,
@@ -97,7 +113,11 @@ function refuse(
     rebased: partial?.rebased ?? false,
     gate: partial?.gate ?? null,
     cleanedUp: partial?.cleanedUp ?? false,
-    diagnostics: [{ ruleId, severity: "error", message, fixHint }],
+    ...(partial?.toleratedState !== undefined ? { toleratedState: partial.toleratedState } : {}),
+    ...(partial?.lock !== undefined ? { lock: partial.lock } : {}),
+    diagnostics: [
+      { ruleId, severity: "error", message, fixHint, ...(diagData ? { data: diagData } : {}) },
+    ],
   };
 }
 
@@ -246,6 +266,8 @@ export async function integrateFlowBranch(
     onProgress?: (m: string) => void;
     /** Caller already holds the integration lock (flow.cut/fix releases). */
     lockHeld?: boolean;
+    /** Test seam — shrink the lock-wait budget so a held lock refuses fast. */
+    lockWaitMs?: number;
     /** Gate target — passed to the integration gate as FORGE_FLOW_TARGET. */
     target?: "develop" | "main";
   },
@@ -316,8 +338,9 @@ export async function integrateFlowBranch(
           {
             ruleId: "FLOW-07",
             severity: "error",
-            message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist`,
-            fixHint: "inspect with flow.status — a stale entry may need flow.discard",
+            message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist (vanished)`,
+            fixHint: "run flow.discard to drop the registry entry and force-delete the branch — the work is gone",
+            data: { vanished: true },
           },
         ],
       };
@@ -331,14 +354,20 @@ export async function integrateFlowBranch(
       rebased: false,
       gate: null,
       cleanedUp: false,
+      ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
       diagnostics:
-        dirty.length > 0
+        dirty.entries.length > 0
           ? [
               {
                 ruleId: "FLOW-INT-01",
                 severity: "error",
-                message: `worktree ${wtPath} has ${dirty.length} uncommitted change(s)`,
+                message:
+                  `worktree ${wtPath} has ${dirty.entries.length} uncommitted change(s)` +
+                  (dirty.toleratedState.length > 0
+                    ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
+                    : ""),
                 fixHint: "commit or revert the uncommitted changes inside the session worktree",
+                data: { entries: dirty.entries, toleratedState: dirty.toleratedState },
               },
             ]
           : [],
@@ -381,18 +410,28 @@ export async function integrateFlowBranch(
         if (branchWorktree === null || !(await io.exists(branchWorktree))) {
           return refuse(
             "FLOW-07",
-            `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist`,
-            "inspect with flow.status — a stale entry may need flow.discard",
+            `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist (vanished)`,
+            "run flow.discard to drop the registry entry and force-delete the branch — the worktree is gone",
             { branch, developBefore },
+            { vanished: true },
           );
         }
         const dirty = await statusDirty(branchWorktree, io);
-        if (dirty.length > 0) {
+        if (dirty.toleratedState.length > 0) {
+          opts.onProgress?.(
+            `tolerated forge-local state: ${dirty.toleratedState.join(", ")}`,
+          );
+        }
+        if (dirty.entries.length > 0) {
           return refuse(
             "FLOW-INT-01",
-            `worktree ${branchWorktree} has ${dirty.length} uncommitted change(s): ${dirty.slice(0, 10).join(", ")}`,
+            `worktree ${branchWorktree} has ${dirty.entries.length} uncommitted change(s): ${dirty.entries.slice(0, 10).join(", ")}` +
+              (dirty.toleratedState.length > 0
+                ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
+                : ""),
             "commit or revert the uncommitted changes inside the session worktree, then re-run",
-            { branch, developBefore },
+            { branch, developBefore, toleratedState: dirty.toleratedState },
+            { entries: dirty.entries, toleratedState: dirty.toleratedState },
           );
         }
 
@@ -470,12 +509,12 @@ export async function integrateFlowBranch(
         // (5) primary must sit clean on develop, then fast-forward.
         const primaryBranch = await currentBranch(primary, io);
         const primaryDirty = await statusTracked(primary, io);
-        if (primaryBranch !== "develop" || primaryDirty.length > 0) {
+        if (primaryBranch !== "develop" || primaryDirty.entries.length > 0) {
           return refuse(
             "FLOW-INT-03",
             primaryBranch !== "develop"
               ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
-              : `primary worktree has ${primaryDirty.length} uncommitted change(s)`,
+              : `primary worktree has ${primaryDirty.entries.length} uncommitted change(s)`,
             "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
             { branch, developBefore, rebased: entry.port === null, gate },
           );
@@ -507,6 +546,9 @@ export async function integrateFlowBranch(
           rebased: entry.port === null,
           gate,
           cleanedUp: false,
+          ...(dirty.toleratedState.length > 0
+            ? { toleratedState: dirty.toleratedState }
+            : {}),
           diagnostics: [],
         };
   };
@@ -518,7 +560,7 @@ export async function integrateFlowBranch(
       : await withFlowLock(
           lockPath,
           {
-            waitMs: INTEGRATE_LOCK_WAIT_MS,
+            waitMs: opts.lockWaitMs ?? INTEGRATE_LOCK_WAIT_MS,
             staleMs: INTEGRATE_LOCK_STALE_MS,
             progressEveryMs: 60_000,
             onProgress: opts.onProgress,
@@ -534,11 +576,33 @@ export async function integrateFlowBranch(
         );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
+      // RFC-1515 AC-4: a refused attempt reports the holder on the first
+      // try — the lock payload names pid/host/at/heldMs plus a disposition
+      // computed by the same dead-holder classifier withFlowLock uses.
+      const holder = error.holder;
+      const heldAtMs = holder !== undefined ? Date.parse(holder.at) : NaN;
+      const heldMs = Number.isNaN(heldAtMs) ? null : Math.max(0, Date.now() - heldAtMs);
+      const lock: LockDiagnostic | undefined =
+        holder === undefined
+          ? undefined
+          : {
+              pid: holder.pid,
+              host: holder.host,
+              at: holder.at,
+              heldMs,
+              disposition: holderIsDead(holder, currentBootId())
+                ? "dead-holder"
+                : heldMs !== null && heldMs > INTEGRATE_LOCK_STALE_MS
+                  ? "stale"
+                  : "live",
+            };
       return refuse(
         "FLOW-INT-08",
-        `integration lock ${error.lockPath} is held by another integration`,
-        "wait for the running integration to finish, or break the stale lock after 2 h automatically",
-        { branch },
+        holder === undefined
+          ? `integration lock ${error.lockPath} is held by another integration (holder unknown)`
+          : `integration lock ${error.lockPath} is held by pid ${holder.pid} on ${holder.host ?? "unknown host"} since ${holder.at} (${lock?.disposition ?? "live"})`,
+        "run forge werkstatt.lock.status for the live view, or forge werkstatt.lock.recover to break a dead holder's lock",
+        { branch, lock },
       );
     }
     if (error instanceof FlowRegistrySchemaError) {

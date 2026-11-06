@@ -23,10 +23,12 @@ unlinking. Registry/journal failures map to FLOW-07 in every handler.
 The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
 </CHANGE_SUMMARY>
 */
 
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -225,5 +227,115 @@ describe("flow.integrate", () => {
     expect(data.diagnostics).toEqual([]);
     expect(data.integrated).toBe(true);
     expect((await gitExec(repo, ["cat-file", "-e", "develop:w.txt"])).exitCode).toBe(0);
+  }, 20_000);
+});
+
+describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
+  it("tolerates FORGE_STATE_FILES-only untracked state — journaled, never FLOW-INT-01 (AC-2)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "tolerated");
+    await commitIn(session.worktree!, "t.txt", "t");
+    await mkdir(join(session.worktree!, ".forge", "task"), { recursive: true });
+    await writeFile(
+      join(session.worktree!, ".forge", "knowledge-conflicts.txt"),
+      "conflict\n",
+    );
+    await writeFile(join(session.worktree!, ".forge", "task", "notes.md"), "n\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics.some((d) => d.ruleId === "FLOW-INT-01")).toBe(false);
+    expect(data.toleratedState).toEqual(
+      expect.arrayContaining([".forge/knowledge-conflicts.txt", ".forge/task/notes.md"]),
+    );
+    expect(data.integrated).toBe(true);
+  }, 20_000);
+
+  it("still refuses FLOW-INT-01 on non-allowlisted untracked paths — including other .forge entries (AC-7)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "mixed-dirt");
+    await commitIn(session.worktree!, "u.txt", "u");
+    await mkdir(join(session.worktree!, ".forge"), { recursive: true });
+    await writeFile(
+      join(session.worktree!, ".forge", "knowledge-conflicts.txt"),
+      "conflict\n",
+    );
+    await writeFile(join(session.worktree!, ".forge", "other-state.yaml"), "s\n");
+    await writeFile(join(session.worktree!, "scratch.log"), "scratch\n");
+    const developSha = await sha(repo, "develop");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    const diag = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-01");
+    expect(diag).toBeDefined();
+    expect(diag?.message).toContain("scratch.log");
+    expect(diag?.message).toContain("other-state.yaml");
+    // The allowlisted path is journal data on the diagnostic — never a
+    // suppressed blocker and never inside entries[].
+    expect(diag?.data?.["toleratedState"]).toEqual([".forge/knowledge-conflicts.txt"]);
+    expect(diag?.message).toContain("tolerated forge-local state: .forge/knowledge-conflicts.txt");
+    expect(data.integrated).toBe(false);
+    expect(await sha(repo, "develop")).toBe(developSha);
+  }, 20_000);
+
+  it("a held-lock refusal carries the holder payload — pid, host, at, heldMs, disposition (AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "locked");
+    await commitIn(session.worktree!, "w.txt", "w");
+    const common = await commonGitDir(ambientIo, repo);
+    const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
+    await mkdir(join(common, "forge"), { recursive: true });
+    const at = new Date().toISOString();
+    // A live holder on this host — pid is this process so holderIsDead
+    // reports live and the wait budget must elapse to refuse.
+    await writeFile(
+      lockPath,
+      JSON.stringify({ pid: process.pid, host: hostname(), at }),
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      lockWaitMs: 300,
+    });
+
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-08");
+    expect(data.lock).toMatchObject({
+      pid: process.pid,
+      host: hostname(),
+      at,
+      disposition: "live",
+    });
+    expect(typeof data.lock?.heldMs).toBe("number");
+    expect(data.integrated).toBe(false);
+    await rm(lockPath, { force: true });
+  }, 20_000);
+
+  it("a vanished worktree with an unmerged branch still refuses — with the vanished classification and the flow.discard hint (AC-6)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "ghost");
+    await commitIn(session.worktree!, "gone.txt", "gone");
+    await rm(session.worktree!, { recursive: true, force: true });
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-07");
+    expect(data.diagnostics[0]?.message).toContain("vanished");
+    expect(data.diagnostics[0]?.data?.["vanished"]).toBe(true);
+    expect(data.diagnostics[0]?.fixHint).toContain("flow.discard");
   }, 20_000);
 });

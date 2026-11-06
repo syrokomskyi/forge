@@ -18,7 +18,6 @@ embedded flow.check report.</purpose>
   <item>markerSource resolves at plan time (RFC-1498): a non-network origin warns in the step detail by kind, never by path, and execution reuses the planned value — one git call, no plan/execute drift.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 2 — network-only marker source
@@ -27,6 +26,7 @@ markerSource accepts only network-shaped origins — http/https/ssh/git schemes 
   <item>RFC-1498: step 3 — legacy-tags report in flow.install
 
 listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <history>RFC-1486, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -236,7 +236,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
   // 2. primary — the primary worktree must have no tracked modifications.
   const worktrees = await worktreeList(repoRoot, io);
   const primary = worktrees[0]?.path ?? repoRoot;
-  const dirty = await statusTracked(primary, io);
+  const dirty = (await statusTracked(primary, io)).entries;
   if (dirty.length > 0) {
     return refuse(
       "primary",
@@ -322,7 +322,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
         } else {
           const devWorktree = worktrees.find((w) => w.branch === "develop");
           if (devWorktree) {
-            const devDirty = await statusTracked(devWorktree.path, io);
+            const devDirty = (await statusTracked(devWorktree.path, io)).entries;
             if (devDirty.length > 0) {
               return refuse(
                 "develop",

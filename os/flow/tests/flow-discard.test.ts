@@ -22,6 +22,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +32,7 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
+import { statusDirty } from "../git.ts";
 import { discardFlowBranch } from "../handlers/flow-discard.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
 import {
@@ -216,5 +218,35 @@ describe("flow.discard", () => {
       .find((l) => l.event === "discard" && l.branch === session.branch);
     expect(rec?.sha).toBe(tip);
     expect(rec?.base).toBe(entry?.baseSha);
+  }, 20_000);
+
+  it("recovers a registry entry whose worktree path vanished — branch -D + registry drop in one run (RFC-1515 AC-3)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "ghost");
+    await writeFile(join(session.worktree!, "gone.txt"), "gone");
+    await gitExec(session.worktree!, ["add", "gone.txt"]);
+    await gitExec(session.worktree!, ["commit", "-m", "add gone.txt"]);
+    // The *.stale teardown race: the path is gone while the branch + entry live.
+    await rm(session.worktree!, { recursive: true, force: true });
+    const status = await statusDirty(session.worktree!, ambientIo);
+    expect(status.vanished).toBe(true);
+
+    const data = await discardFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      reason: "worktree vanished mid-teardown",
+      dirty: false,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics).toEqual([]);
+    expect(data.discarded).toBe(true);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", `refs/heads/${session.branch}`]))
+        .exitCode,
+    ).not.toBe(0);
+    const common = await commonGitDir(ambientIo, repo);
+    const registry = await readRegistry(ambientIo, common);
+    expect(registry.branches.some((b) => b.name === session.branch)).toBe(false);
   }, 20_000);
 });

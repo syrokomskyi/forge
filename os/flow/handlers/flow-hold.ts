@@ -15,7 +15,6 @@ replayed tip and journal the hold with per-item rewrites.</purpose>
   <item>Rewrites are journaled only for attributed replayed items — unattributed runs re-form from unclaimed commits on the new tail on their own.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 4 — flow.hold (replay, held branch, registry held entry, journal rewrites)</item>
   <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
@@ -30,6 +29,8 @@ first-argument allowlist; the read-only adapter and the static scan use the same
 table. The kernel forwards --dry-run into commands that declare a dry-run flag,
 and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -212,7 +213,7 @@ export async function holdFlowItem(
   const primaryBranch = (
     await git(primary, io, ["symbolic-ref", "--short", "-q", "HEAD"])
   ).stdout.trim();
-  const dirty = await statusTracked(primary, io);
+  const dirty = (await statusTracked(primary, io)).entries;
   if (primaryBranch !== "develop" || dirty.length > 0) {
     return refuse(
       "FLOW-HOLD-04",

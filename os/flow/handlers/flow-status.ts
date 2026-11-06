@@ -15,16 +15,6 @@ for both surfaces.</purpose>
   <item>Stray (RFC-1498): a local auto branch with no registry entry and no worktree checkout anywhere is exposed as unregisteredBranchesWithoutWorktree regardless of age — the leftover shape a failed branch -D leaves.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
-
-The dirty gate for session worktrees now uses full porcelain status
-(untracked files included) because it predicts 'git worktree remove';
-the primary-clean gate keeps tracked-only semantics because it predicts
-'merge --ff-only'. Lock release verifies the held payload before
-unlinking. Registry/journal failures map to FLOW-07 in every handler.
-The final branch-name collision reports FLOW-OPEN-04, flow.discard
-propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
-and integrate exposes teardown as its own field.</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
@@ -33,6 +23,7 @@ collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* b
   <item>RFC-1498: step 2 — network-only marker source
 
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -72,6 +63,9 @@ export interface FlowBranchStatus {
   kind: "session" | "task" | "fix" | null;
   worktree: string | null;
   worktreeExists: boolean;
+  /** RFC-1515: a registered worktree path that is gone from disk — distinct
+   * from a null worktree (held entries legitimately have none). */
+  vanished: boolean;
   /** Tracked-modification count in the worktree; null when no worktree exists. */
   dirty: number | null;
   aheadOfDevelop: number | null;
@@ -123,12 +117,13 @@ export async function collectFlowStatus(
 
   const diagnostics: Diagnostic[] = [];
   const primary = await primaryWorktree(io, repoRoot);
-  const [primaryBranch, primaryDirty, worktrees, local] = await Promise.all([
+  const [primaryBranch, primaryStatus, worktrees, local] = await Promise.all([
     currentBranch(primary, io),
     statusTracked(primary, io),
     worktreeList(repoRoot, io),
     listLocalBranches(repoRoot, io),
   ]);
+  const primaryDirty = primaryStatus.entries;
 
   const common = await commonGitDir(io, repoRoot);
   let entries: FlowRegistryEntry[] = [];
@@ -189,7 +184,7 @@ export async function collectFlowStatus(
       behind = Number(behindStr) || 0;
       ahead = Number(aheadStr) || 0;
     }
-    const dirty = worktreeExists ? (await statusDirty(worktree, io)).length : null;
+    const dirty = worktreeExists ? (await statusDirty(worktree, io)).entries.length : null;
 
     const held = entry?.held ?? null;
     let stale = false;
@@ -211,6 +206,7 @@ export async function collectFlowStatus(
       kind: entry?.kind ?? parseFlowBranch(name)?.kind ?? null,
       worktree,
       worktreeExists,
+      vanished: worktree !== null && !worktreeExists,
       dirty,
       aheadOfDevelop: ahead,
       behindDevelop: behind,
@@ -267,7 +263,7 @@ export async function runFlowStatus(
       logger.info(
         b.held !== null
           ? `  ${b.name}: held (${b.held.riskCategory}): ${b.held.reason}`
-          : `  ${b.name}: ${b.registered ? "registered" : "unregistered"}, worktree ${b.worktreeExists ? "present" : "absent"}, dirty ${b.dirty ?? "-"}, +${b.aheadOfDevelop ?? "-"}/-${b.behindDevelop ?? "-"}, stale ${b.stale}`,
+          : `  ${b.name}: ${b.registered ? "registered" : "unregistered"}, worktree ${b.worktreeExists ? "present" : b.vanished ? "vanished" : "absent"}, dirty ${b.dirty ?? "-"}, +${b.aheadOfDevelop ?? "-"}/-${b.behindDevelop ?? "-"}, stale ${b.stale}`,
       );
     }
     for (const d of outcome.diagnostics) {

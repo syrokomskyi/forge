@@ -20,6 +20,7 @@ steps. --redo discards an existing port for the same mainSha first.</purpose>
   <item>RFC-1490: step 5 — flow.backmerge with port branch, conflict reporting, --redo</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
 </CHANGE_SUMMARY>
 */
 
@@ -219,7 +220,7 @@ async function planBackmerge(
 
   const primary = await primaryWorktree(io, repoRoot);
   const primaryBranch = await currentBranch(primary, io);
-  const primaryDirty = await statusTracked(primary, io);
+  const primaryDirty = (await statusTracked(primary, io)).entries;
   if (primaryBranch !== "develop" || primaryDirty.length > 0) {
     return {
       kind: "refusal",

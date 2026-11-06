@@ -18,6 +18,7 @@ re-reads the tag grammar itself.</purpose>
   <item>RFC-1493: step 1 — shared derived-version extraction consumed by flow.version and resolveRepositoryLineVersion</item>
   <item>RFC-1493: step 1 — forge public release-line version reader</item>
   <item>RFC-1493: step 2 — platform identity command, migrator-cursor pin comparison</item>
+  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
 </CHANGE_SUMMARY>
 */
 
@@ -60,7 +61,7 @@ async function dirtyPaths(
 ): Promise<number> {
   let entries: string[];
   try {
-    entries = await statusTracked(repoRoot, io);
+    entries = (await statusTracked(repoRoot, io)).entries;
   } catch {
     return 0;
   }
