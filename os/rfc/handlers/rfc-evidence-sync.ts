@@ -16,6 +16,8 @@ invocation attests "all generated artifacts + RFC evidence are current".
   <item>EVIDENCE_SYNC_STEPS is the canonical regen list</item>
   <item>RFC-1516: the committed envelope is read via `git show HEAD:&lt;path&gt;`, never the worktree file — an uncommitted hand-edit can never become reusable input; every gate below green+matching+in-window falls back to full re-execution with its reason journalized.</item>
   <item>RFC-1516: reuse is evaluated in emit (not in the sync orchestrator) so the direct `rfc.verification.emit` path, the sync chain, and the stamp's in-process emits share one decision; sync only forwards the escape flag and surfaces the verdict.</item>
+  <item>RFC-1516 review-r1: freshness binds to `resultsFrom ?? emittedAt`, not `emittedAt` alone — an envelope that replays records stamps the original execution's anchor, so chained emit+commit cycles cannot extend result age past the window.</item>
+  <item>RFC-1516 review-r1: a probes-count mismatch is `malformed` only after the acceptanceHash gate — a legitimately changed list reports `acceptance-changed`; a matching-hash envelope with a short or misshapen probes array is crafted bytes and degrades to full re-execution, never a crash or partial reuse.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1306: initial — EVIDENCE_SYNC_STEPS chain + runRfcEvidenceSync via the ctx.invoke port; EVIDENCE-SYNC-01 fail-closed without a kernel host, EVIDENCE-SYNC-02 propagates a failed step's diagnostics verbatim; review-r1: try/catch maps thrown invokes into EVIDENCE-SYNC-02, dry-run exposes `planned` in data.</item>
@@ -30,6 +32,7 @@ import type {
 } from "../../../src/types.ts";
 import { execFile } from "../../../src/utils/sync-fs.ts";
 import { parse as yamlParse } from "yaml";
+import { gitEnvForCwd } from "../verification-origin.ts";
 import type { VerificationEvidence } from "../types.ts";
 
 /**
@@ -73,11 +76,16 @@ export interface EvidenceReuseVerdict {
 /** Reuse is strictly gated — anything short of a well-formed, green,
  *  acceptance-matching, in-window envelope falls back to full re-execution.
  *  `malformed` covers every unreadable/underspecified shape: unparsable
- *  YAML, a non-object body, or missing contract fields. */
+ *  YAML, a non-object body, missing contract fields, bad record elements —
+ *  and a probes-array length that contradicts a matching acceptanceHash
+ *  (a crafted envelope; a legitimately different list reports
+ *  `acceptance-changed` first). */
 export function evaluateEvidenceReuse(opts: {
   committed: VerificationEvidence | null;
   /** true when bytes existed but did not parse to the envelope contract. */
   malformed?: boolean;
+  /** committed probes[].length ≠ the live acceptance list length. */
+  probeCountMismatch?: boolean;
   acceptanceHashHex: string;
   disabled: boolean;
   now?: number;
@@ -90,9 +98,20 @@ export function evaluateEvidenceReuse(opts: {
   if (env.acceptanceHash !== opts.acceptanceHashHex) {
     return { reusable: false, reason: "acceptance-changed" };
   }
-  const emittedAtMs = Date.parse(env.emittedAt ?? "");
+  if (opts.probeCountMismatch) return { reusable: false, reason: "malformed" };
+  // Freshness binds to the oldest replayed result, not the last emission:
+  // `resultsFrom` is stamped when an envelope replays committed records, so
+  // chained emit+commit cycles cannot extend result age past the window.
+  const anchor = typeof env.resultsFrom === "string" ? env.resultsFrom : env.emittedAt;
+  const anchorMs = Date.parse(anchor ?? "");
   const now = opts.now ?? Date.now();
-  if (!Number.isFinite(emittedAtMs) || now - emittedAtMs > EVIDENCE_REUSE_WINDOW_MS) {
+  // Future timestamps are outside the window too (60s skew tolerance) —
+  // a negative age must never read as "fresh".
+  if (
+    !Number.isFinite(anchorMs) ||
+    now - anchorMs > EVIDENCE_REUSE_WINDOW_MS ||
+    anchorMs - now > 60_000
+  ) {
     return { reusable: false, reason: "expired" };
   }
   return { reusable: true, reason: "envelope-reused", reusedFrom: env.emittedAt };
@@ -105,12 +124,22 @@ export function evaluateEvidenceReuse(opts: {
 export async function readCommittedEnvelope(
   workspaceRoot: string,
   relPath: string,
-): Promise<{ envelope?: VerificationEvidence; malformed?: boolean }> {
+  expectedProbeCount?: number,
+): Promise<{
+  envelope?: VerificationEvidence;
+  malformed?: boolean;
+  probeCountMismatch?: boolean;
+}> {
   const rel = relPath.replace(/\\/g, "/");
   const stdout = await new Promise<string>((resolve) => {
-    execFile("git", ["show", `HEAD:${rel}`], { cwd: workspaceRoot, timeout: 5000 }, (err, out) => {
-      resolve(err ? "" : out);
-    });
+    execFile(
+      "git",
+      ["show", `HEAD:${rel}`],
+      { cwd: workspaceRoot, timeout: 5000, env: gitEnvForCwd() },
+      (err, out) => {
+        resolve(err ? "" : out);
+      },
+    );
   });
   if (stdout.trim().length === 0) return {};
   let parsed: unknown;
@@ -126,11 +155,20 @@ export async function readCommittedEnvelope(
     typeof env.emittedAt !== "string" ||
     typeof env.acceptanceHash !== "string" ||
     (env.overall !== "pass" && env.overall !== "fail") ||
-    !Array.isArray(env.probes)
+    !Array.isArray(env.probes) ||
+    env.probes.some(
+      (r) => r === null || typeof r !== "object" || typeof r.ok !== "boolean",
+    ) ||
+    (env.resultsFrom !== undefined && typeof env.resultsFrom !== "string")
   ) {
     return { malformed: true };
   }
-  return { envelope: env as VerificationEvidence };
+  // A length mismatch is NOT malformed on its own — an acceptance-changed
+  // envelope legitimately describes a different-sized list. The verdict
+  // classifies it as malformed only when the hash still matches (crafted).
+  const probeCountMismatch =
+    expectedProbeCount !== undefined && env.probes.length !== expectedProbeCount;
+  return { envelope: env as VerificationEvidence, probeCountMismatch };
 }
 
 export interface RfcEvidenceSyncStepResult {
@@ -301,6 +339,19 @@ export async function runRfcEvidenceSync(
       logger.info(
         `  ${planned.step}: ${stepResult.status}${changed > 0 ? ` (${changed} file${changed === 1 ? "" : "s"} changed)` : ""}`,
       );
+      // RFC-1516: a one-line note keeps replayed probes visible — an old
+      // pass must never look like a fresh execution in pretty output.
+      if (planned.step === EVIDENCE_SYNC_EMIT_STEP && report.exitCode === 0) {
+        const emitted = (report.data as { emitted?: Array<{
+          reuse?: { reusable?: boolean; reusedFrom?: string };
+          heavyProbesReused?: string[];
+        }> } | null)?.emitted?.[0];
+        if (emitted?.reuse?.reusable === true) {
+          logger.info(
+            `  ${planned.step}: envelope-reused — ${emitted.heavyProbesReused?.length ?? 0} heavy probe(s) replayed from ${emitted.reuse.reusedFrom}`,
+          );
+        }
+      }
     }
 
     // EVIDENCE-SYNC-02: stop on the first failing step — a partial sync is

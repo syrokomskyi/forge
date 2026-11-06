@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
   <item>RFC-1467: declare supersede.propose escalation fields + repair dead related-injector regex</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458</history>
+  <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458, RFC-1467</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -489,6 +489,13 @@ export interface VerificationEvidence {
   filesModified?: string[];
   /** RFC-1453: operator waiver recorded when RFC-IMP-14 was bypassed via --waive-outcome. */
   outcomeWaiver?: { reason: string; by: string };
+  /** RFC-1516: freshness anchor — the timestamp the heaviest replayed
+   *  results were actually measured at (the reused envelope's `resultsFrom`,
+   *  falling back to its `emittedAt`). Present only on envelopes that
+   *  replayed committed probe records; `evaluateEvidenceReuse` binds the
+   *  window to `resultsFrom ?? emittedAt` so chained replays cannot extend
+   *  result age beyond the window. */
+  resultsFrom?: string;
 }
 
 export interface VerificationDelta {

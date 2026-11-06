@@ -17,6 +17,7 @@ surfacing in rfc.evidence.sync.
   journal provenance (AC-3), --no-evidence-reuse (AC-4), kind
   classification, and sync-side flag forwarding.</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
 </CHANGE_SUMMARY>
 */
 
@@ -332,6 +333,122 @@ describe("rfc.verification.emit — evidence-freshness reuse (RFC-1516)", () => 
     git(root, ["commit", "-qm", "age"]);
 
     const result = await emit(root, { id: "RFC-9997" });
+    expect(mockRunProbe).toHaveBeenCalledTimes(2);
+    expect(result.data!.emitted![0]!.reuse?.reason).toBe("expired");
+  });
+
+  test("anchor chain: stale `resultsFrom` defeats reuse even under a fresh emittedAt", async () => {
+    const { root } = await setupRepo();
+    await writeRfc(root, "RFC-9998");
+    const committed = await commitGreenEnvelope(root, "RFC-9998");
+
+    // Reuse hit — the emitted envelope stamps the anchor back to the
+    // original execution, not this run's emittedAt.
+    const second = await emit(root, { id: "RFC-9998" });
+    expect(second.data!.emitted![0]!.reuse?.reusable).toBe(true);
+    const written = yamlParse(await fs.readFile(envelopePath(root, "RFC-9998"), "utf8")) as {
+      emittedAt: string;
+      resultsFrom?: string;
+    };
+    expect(written.resultsFrom).toBe(committed.emittedAt);
+    expect(written.emittedAt).not.toBe(committed.emittedAt);
+
+    // Commit it, then age the anchor past the window — the next emit sees a
+    // fresh emittedAt but an expired resultsFrom and re-executes.
+    const aged = yamlParse(await fs.readFile(envelopePath(root, "RFC-9998"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    aged.resultsFrom = new Date(Date.now() - EVIDENCE_REUSE_WINDOW_MS - 60_000).toISOString();
+    await fs.writeFile(envelopePath(root, "RFC-9998"), yamlStringify(aged));
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "chain"]);
+    mockRunProbe.mockClear();
+
+    const third = await emit(root, { id: "RFC-9998" });
+    expect(mockRunProbe).toHaveBeenCalledTimes(2);
+    expect(third.data!.emitted![0]!.reuse?.reason).toBe("expired");
+  });
+
+  test("reused envelope re-pins the live probe declaration and carries committed verdict fields", async () => {
+    const { root } = await setupRepo();
+    await writeRfc(root, "RFC-9989");
+    const committed = await commitGreenEnvelope(root, "RFC-9989");
+    const committedHeavy = (
+      yamlParse(await fs.readFile(envelopePath(root, "RFC-9989"), "utf8")) as {
+        probes: Array<{ ok: boolean; detail: string; durationMs: number }>;
+      }
+    ).probes[0]!;
+
+    await emit(root, { id: "RFC-9989" });
+    const written = yamlParse(await fs.readFile(envelopePath(root, "RFC-9989"), "utf8")) as {
+      probes: Array<{
+        probe: { probe: string; criterion?: string };
+        ok: boolean;
+        detail: string;
+        durationMs: number;
+      }>;
+      rfcFileHash: string;
+      acceptanceHash: string;
+    };
+    // Replayed heavy record: committed verdict fields, live declaration.
+    expect(written.probes[0]!.probe).toMatchObject({ probe: "test", criterion: "AC-1" });
+    expect(written.probes[0]!.ok).toBe(committedHeavy.ok);
+    expect(written.probes[0]!.detail).toBe(committedHeavy.detail);
+    expect(written.probes[0]!.durationMs).toBe(committedHeavy.durationMs);
+    // Hashes re-bind to live bytes, not the committed envelope's.
+    expect(written.acceptanceHash).toBe(committed.acceptanceHash);
+  });
+
+  test("--check never reuses: every probe re-executes", async () => {
+    const { root } = await setupRepo();
+    await writeRfc(root, "RFC-9988");
+    await commitGreenEnvelope(root, "RFC-9988");
+
+    const result = await emit(root, { id: "RFC-9988", check: true });
+    expect(mockRunProbe).toHaveBeenCalledTimes(2);
+    expect(result.data!.check?.[0]?.match).toBe(true);
+    expect(result.data!.emitted).toHaveLength(0);
+  });
+
+  test.each([
+    ["empty probes array", { probes: [] }],
+    ["null record entries", { probes: [null, null] }],
+  ])(
+    "crafted committed envelope (%s) degrades to 'malformed', never a partial reuse",
+    async (_label, patch) => {
+      const { root } = await setupRepo();
+      await writeRfc(root, "RFC-9987");
+      await commitGreenEnvelope(root, "RFC-9987");
+      const env = yamlParse(await fs.readFile(envelopePath(root, "RFC-9987"), "utf8")) as Record<
+        string,
+        unknown
+      >;
+      Object.assign(env, patch);
+      await fs.writeFile(envelopePath(root, "RFC-9987"), yamlStringify(env));
+      git(root, ["add", "-A"]);
+      git(root, ["commit", "-qm", "craft"]);
+
+      const result = await emit(root, { id: "RFC-9987" });
+      expect(mockRunProbe).toHaveBeenCalledTimes(2);
+      expect(result.data!.emitted![0]!.reuse?.reason).toBe("malformed");
+    },
+  );
+
+  test("future emittedAt is outside the window", async () => {
+    const { root } = await setupRepo();
+    await writeRfc(root, "RFC-9986");
+    await commitGreenEnvelope(root, "RFC-9986");
+    const env = yamlParse(await fs.readFile(envelopePath(root, "RFC-9986"), "utf8")) as Record<
+      string,
+      unknown
+    >;
+    env.emittedAt = new Date(Date.now() + 60 * 60_000).toISOString();
+    await fs.writeFile(envelopePath(root, "RFC-9986"), yamlStringify(env));
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-qm", "future"]);
+
+    const result = await emit(root, { id: "RFC-9986" });
     expect(mockRunProbe).toHaveBeenCalledTimes(2);
     expect(result.data!.emitted![0]!.reuse?.reason).toBe("expired");
   });
