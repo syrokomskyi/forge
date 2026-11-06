@@ -21,6 +21,7 @@ steps. --redo discards an existing port for the same mainSha first.</purpose>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,7 +45,7 @@ import {
   statusTracked,
   topLevel,
 } from "../git.ts";
-import { LockTimeoutError, withFlowLock } from "../locks.ts";
+import { describeHeldLock, LockTimeoutError, withFlowLock } from "../locks.ts";
 import { discoverReleaseLines } from "../release-lines.ts";
 import {
   commonGitDir,
@@ -104,11 +105,12 @@ function refuse(
   message: string,
   fixHint: string,
   partial?: Partial<FlowBackmergeData>,
+  diagData?: Record<string, unknown>,
 ): FlowBackmergeData {
   return result({
     ...partial,
     status: "refused",
-    diagnostics: [{ ruleId, severity: "error", message, fixHint }],
+    diagnostics: [{ ruleId, severity: "error", message, fixHint, data: diagData }],
   });
 }
 
@@ -433,11 +435,18 @@ export async function backmergeFlow(
     );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
+      const lock =
+        error.holder === undefined
+          ? undefined
+          : describeHeldLock(error.holder, INTEGRATE_LOCK_STALE_MS);
       return refuse(
         "FLOW-INT-08",
-        `integration lock ${error.lockPath} is held by another integration`,
+        lock === undefined
+          ? `integration lock ${error.lockPath} is held by another integration (holder unknown)`
+          : `integration lock ${error.lockPath} is held by pid ${lock.pid} on ${lock.host ?? "unknown host"} since ${lock.at} (${lock.disposition})`,
         "wait for the running integration to finish, or break the stale lock after 2 h automatically",
         { portBranch },
+        { lock },
       );
     }
     throw error;

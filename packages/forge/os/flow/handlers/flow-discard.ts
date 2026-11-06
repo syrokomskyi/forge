@@ -16,12 +16,12 @@ the registry entry and journals the operator's reason.</purpose>
   <item>Task-file preservation runs BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses the discard (FLOW-DIS-02) so the branch and its evidence survive (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <history>RFC-1487, RFC-1491</history>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <history>RFC-1487, RFC-1491, RFC-1509</history>
 </CHANGE_SUMMARY>
 */
 
@@ -54,6 +54,8 @@ import {
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { preserveTaskFiles } from "../task-files.ts";
 import { primaryWorktree } from "../worktree-path.ts";
+import { rm } from "node:fs/promises";
+import { join } from "node:path";
 
 export interface FlowDiscardData {
   branch: string | null;
@@ -169,6 +171,7 @@ export async function discardFlowBranch(
   }
 
   let teardownRan: FlowScriptResult | null = null;
+  let toleratedPaths: string[] = [];
   // RFC-1515 AC-3: a vanished worktree skips the dirty gate and teardown —
   // cleanup proceeds to `git branch -D` + the registry drop, recovering the
   // orphaned entry in one command.
@@ -213,6 +216,20 @@ export async function discardFlowBranch(
       );
     }
 
+    // RFC-1515: `statusDirty` predicts `git worktree remove` — allowlisted
+    // forge-local state is untracked-not-ignored, so a tolerated-only tree
+    // still refuses removal. Delete the tolerated paths first (declared-
+    // disposable state; task payloads are already preserved above); real
+    // entries leave remove to report them.
+    if (!opts.dirty) {
+      const residual = await statusDirty(worktree, io);
+      if (residual.entries.length === 0 && residual.toleratedState.length > 0) {
+        toleratedPaths = residual.toleratedState;
+        for (const rel of residual.toleratedState) {
+          await rm(join(worktree, rel), { force: true, recursive: true });
+        }
+      }
+    }
     const rmArgs = ["worktree", "remove"];
     if (opts.dirty) rmArgs.push("--force");
     rmArgs.push(worktree);
@@ -261,6 +278,7 @@ export async function discardFlowBranch(
       sha: deletedTip,
       base: entry.baseSha,
       detail: opts.reason,
+      ...(toleratedPaths.length > 0 ? { toleratedState: toleratedPaths } : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {

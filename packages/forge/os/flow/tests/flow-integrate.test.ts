@@ -24,6 +24,7 @@ The final branch-name collision reports FLOW-OPEN-04, flow.discard
 propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -248,11 +249,16 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
       now: NOW,
     });
 
-    expect(data.diagnostics.some((d) => d.ruleId === "FLOW-INT-01")).toBe(false);
+    expect(data.diagnostics).toEqual([]);
     expect(data.toleratedState).toEqual(
       expect.arrayContaining([".forge/knowledge-conflicts.txt", ".forge/task/notes.md"]),
     );
     expect(data.integrated).toBe(true);
+    // The tolerated paths are declared-disposable: cleanup deleted them so
+    // `git worktree remove` could complete — no FLOW-INT-04 wedge.
+    expect(data.cleanedUp).toBe(true);
+    expect(await ambientIo.exists(session.worktree!)).toBe(false);
+    expect((await gitExec(repo, ["rev-parse", "--verify", session.branch!])).exitCode).not.toBe(0);
   }, 20_000);
 
   it("still refuses FLOW-INT-01 on non-allowlisted untracked paths — including other .forge entries (AC-7)", async () => {
@@ -337,5 +343,45 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     expect(data.diagnostics[0]?.message).toContain("vanished");
     expect(data.diagnostics[0]?.data?.["vanished"]).toBe(true);
     expect(data.diagnostics[0]?.fixHint).toContain("flow.discard");
+  }, 20_000);
+
+  it("a dry-run classify a vanished worktree without touching it — same FLOW-07 shape (RFC-1515)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "ghost-dry");
+    await commitIn(session.worktree!, "gone.txt", "gone");
+    await rm(session.worktree!, { recursive: true, force: true });
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: true,
+      now: NOW,
+    });
+
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-07");
+    expect(data.diagnostics[0]?.data?.["vanished"]).toBe(true);
+    expect(data.diagnostics[0]?.fixHint).toContain("flow.discard");
+  }, 20_000);
+
+  it("a held-lock refusal with an unreadable holder file reports holder unknown (RFC-1515 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "unknown-holder");
+    await commitIn(session.worktree!, "w.txt", "w");
+    const common = await commonGitDir(ambientIo, repo);
+    const lockPath = join(common, INTEGRATE_LOCK_RELATIVE_PATH);
+    await mkdir(join(common, "forge"), { recursive: true });
+    await writeFile(lockPath, "not-json{{");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      lockWaitMs: 300,
+    });
+
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-08");
+    expect(data.diagnostics[0]?.message).toContain("holder unknown");
+    expect(data.lock).toBeUndefined();
+    expect(data.integrated).toBe(false);
+    await rm(lockPath, { force: true });
   }, 20_000);
 });

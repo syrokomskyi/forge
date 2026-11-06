@@ -15,7 +15,6 @@ replayed tip and journal the hold with per-item rewrites.</purpose>
   <item>Rewrites are journaled only for attributed replayed items — unattributed runs re-form from unclaimed commits on the new tail on their own.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 4 — flow.hold replay + flow.unhold worktree restore</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
 
@@ -30,6 +29,7 @@ table. The kernel forwards --dry-run into commands that declare a dry-run flag,
 and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -55,7 +55,7 @@ import {
   statusTracked,
   topLevel,
 } from "../git.ts";
-import { LockTimeoutError, withFlowLock } from "../locks.ts";
+import { describeHeldLock, LockTimeoutError, withFlowLock } from "../locks.ts";
 import { INTEGRATE_LOCK_STALE_MS, INTEGRATE_LOCK_WAIT_MS } from "./flow-integrate.ts";
 import {
   appendJournal,
@@ -84,14 +84,19 @@ export interface FlowHoldData {
   diagnostics: Diagnostic[];
 }
 
-function refuse(ruleId: string, message: string, fixHint?: string): FlowHoldData {
+function refuse(
+  ruleId: string,
+  message: string,
+  fixHint?: string,
+  diagData?: Record<string, unknown>,
+): FlowHoldData {
   return {
     held: false,
     item: null,
     branch: null,
     replayedTip: null,
     rewrites: [],
-    diagnostics: [{ ruleId, severity: "error", message, fixHint }],
+    diagnostics: [{ ruleId, severity: "error", message, fixHint, data: diagData }],
   };
 }
 
@@ -274,10 +279,17 @@ export async function holdFlowItem(
     );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
+      const lock =
+        error.holder === undefined
+          ? undefined
+          : describeHeldLock(error.holder, INTEGRATE_LOCK_STALE_MS);
       return refuse(
         "FLOW-07",
-        `integration lock ${error.lockPath} still held`,
+        lock === undefined
+          ? `integration lock ${error.lockPath} still held (holder unknown)`
+          : `integration lock ${error.lockPath} still held by pid ${lock.pid} on ${lock.host ?? "unknown host"} since ${lock.at} (${lock.disposition})`,
         "a live flow command holds the lock — retry, or remove it if the holder died",
+        { lock },
       );
     }
     if (error instanceof FlowRegistrySchemaError) {

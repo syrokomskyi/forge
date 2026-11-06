@@ -10,6 +10,7 @@ lastCommitAt/stale/held fields matching the RFC's example shape.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 5 — flow.status tests</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
 </CHANGE_SUMMARY>
 */
 
@@ -92,5 +93,31 @@ describe("flow.status", () => {
     expect(row?.registered).toBe(false);
     expect(row?.worktree).toBeNull();
     expect(row?.worktreeExists).toBe(false);
+  }, 15_000);
+
+  it("renders a registered entry whose worktree path vanished as vanished, distinct from absent (RFC-1515)", async () => {
+    const repo = await initRepo({ prefix: "flow-status-vanished-" });
+    dirs.push(repo);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await gitExec(repo, ["branch", "develop", "HEAD"]);
+    await gitExec(repo, ["switch", "develop"]);
+
+    const session = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "gone",
+      brief: "status test",
+      owner: null,
+      dryRun: false,
+      now: NOW,
+    });
+    await rm(session.worktree!, { recursive: true, force: true });
+    await gitExec(repo, ["worktree", "prune"]);
+
+    const outcome = await collectFlowStatus(repo, ambientIo, { now: NOW });
+    const row = outcome.data.branches.find((b) => b.name === session.branch);
+    expect(row?.registered).toBe(true);
+    expect(row?.worktreeExists).toBe(false);
+    expect(row?.vanished).toBe(true);
+    expect(row?.dirty).toBeNull();
   }, 15_000);
 });

@@ -20,12 +20,12 @@ released with no mutation.</purpose>
   <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <history>RFC-1490</history>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <history>RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -53,7 +53,7 @@ import {
   topLevel,
   worktreeList,
 } from "../git.ts";
-import { LockTimeoutError, withFlowLock } from "../locks.ts";
+import { describeHeldLock, LockTimeoutError, withFlowLock } from "../locks.ts";
 import { isFlowAdopted } from "../index.ts";
 import {
   appendJournal,
@@ -131,6 +131,7 @@ function refuse(
   message: string,
   fixHint: string,
   partial?: Partial<FlowCutData>,
+  diagData?: Record<string, unknown>,
 ): FlowCutData {
   return {
     mode: partial?.mode ?? "ordinary",
@@ -148,7 +149,7 @@ function refuse(
     gate: null,
     backmerge: null,
     steps: [],
-    diagnostics: [{ ruleId, severity: "error", message, fixHint }],
+    diagnostics: [{ ruleId, severity: "error", message, fixHint, data: diagData }],
   };
 }
 
@@ -763,11 +764,18 @@ export async function runOrdinaryCut(
     );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
+      const lock =
+        error.holder === undefined
+          ? undefined
+          : describeHeldLock(error.holder, INTEGRATE_LOCK_STALE_MS);
       return refuse(
         "FLOW-INT-08",
-        `integration lock ${error.lockPath} is held by another integration`,
+        lock === undefined
+          ? `integration lock ${error.lockPath} is held by another integration (holder unknown)`
+          : `integration lock ${error.lockPath} is held by pid ${lock.pid} on ${lock.host ?? "unknown host"} since ${lock.at} (${lock.disposition})`,
         "wait for the running integration to finish, or break the stale lock after 2 h automatically",
         { releaseBranch },
+        { lock },
       );
     }
     if (error instanceof FlowRegistrySchemaError) {
