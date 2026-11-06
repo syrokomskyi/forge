@@ -6,12 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0393: added optional bindings field (requires/optional arrays of binding keys).</item>
   <item>RFC-0523: expanded concerns enum from binary to four-level taxonomy (read-only | document-only | content-mutation | code-mutation).</item>
   <item>RFC-0524: added optional knowledge field (array of file names relative to SKILL.md directory).</item>
   <item>RFC-0548: added optional triggers field (array of natural-language trigger phrases, max 5 entries, each 5-100 chars) for intent-to-skill routing.</item>
   <item>RFC-1271: added optional notApplicableWhen and costNotes fields — skill applicability metadata for mode-aware routing.</item>
-  <history>RFC-0374</history>
+  <item>ADR-0122: vendor OpenDesign craft knowledge axis + craft.requires loader/lint</item>
+  <history>RFC-0374, RFC-0393</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +32,13 @@ export const skillFrontmatterSchema = z.object({
     })
     .optional(),
   knowledge: z.array(z.string()).optional(),
+  // ADR-0122: vendored craft-knowledge slugs the skill wants loaded — resolved
+  // tolerantly by the craft axis loader; craft.validate fails on unknown slugs.
+  craft: z
+    .object({
+      requires: z.array(z.string()).default([]),
+    })
+    .optional(),
   // Named triggerPhrases, not triggers — agent-IDE skill loaders (Devin CLI,
   // Windsurf) reserve `triggers` for invocation modes (user/model); a list of
   // phrases parses to zero valid modes and the skill is dropped entirely.
