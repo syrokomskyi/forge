@@ -23,6 +23,7 @@ leitstand.access.* expansions, registered-surface listings for
 projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
 journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
+  <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
 </CHANGE_SUMMARY>
 */
 
@@ -116,7 +117,8 @@ test("passes when all published packages are healthy", async () => {
   expect(result.exitCode).toBe(0);
   expect(result.data?.passed).toBe(true);
   expect(result.data?.packagesChecked).toBe(1);
-  expect(result.data?.violations).toHaveLength(0);
+  // The empty-inventory PKG-HEALTH-12 warning is expected — no manifest, no registry.
+  expect(result.data?.violations.filter((v) => v.severity === "error")).toHaveLength(0);
 });
 
 test("skips private packages", async () => {
@@ -515,7 +517,7 @@ test('"extractable": false suppresses extract-dependent checks', async () => {
     detail: "",
   }));
   expect(result.exitCode).toBe(0);
-  expect(result.data?.violations).toHaveLength(0);
+  expect(result.data?.violations.filter((v) => v.severity === "error")).toHaveLength(0);
 });
 
 test("reports PKG-HEALTH-10 at file:line when a shipped file's ../ literal escapes the package root (AC-2)", async () => {
@@ -740,4 +742,81 @@ test("excluded surfaces (CHANGELOG, generated, audit archive) are never scanned 
   const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
   const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12") ?? [];
   expect(v12).toHaveLength(0);
+});
+
+// r1 review fixes: manifest/registry merge, private-package semantics,
+// unquoted module-map keys, suppression journal shape.
+
+test("registry entry without module preserves manifest module provenance (r1)", async () => {
+  seedDocsPkg({ docs: {} });
+  mkdirSync(join(tmpDir, "docs"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "docs", "command-manifest.generated.yaml"),
+    "commands:\n  - name: lib.alpha\n    module: lib-mod\n  - name: lib.beta\n    module: lib-mod\n",
+  );
+  // Standalone CLI registry shape: entries may omit module entirely.
+  const ctx: ForgeRuntimeContext = {
+    ...makeContext(tmpDir),
+    commandRegistry: {
+      listCommandNames: () => ["lib.alpha"],
+      listCommands: () => [{ name: "lib.alpha", provider: "workspace" as const, description: "", scope: "workspace" as const }],
+      getCommand: () => undefined,
+    },
+  };
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v11 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-11") ?? [];
+  // Both manifest commands attribute to packages/lib; neither is documented.
+  expect(v11).toHaveLength(2);
+  expect(v11.map((v) => v.message).join()).toContain("lib.alpha");
+  expect(v11.map((v) => v.message).join()).toContain("lib.beta");
+});
+
+test("private package docs: PKG-HEALTH-12 still fires, PKG-HEALTH-11 stays silent (r1, D-003)", async () => {
+  const pkgDir = join(tmpDir, "packages", "priv");
+  mkdirSync(join(pkgDir, "docs"), { recursive: true });
+  writePkgJson(pkgDir, { name: "@warpgogol/priv", version: "1.0.0", private: true });
+  writeFileSync(join(pkgDir, "docs", "notes.md"), "run `lib.retired` first\n");
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v11 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-11" && v.packageName === "@warpgogol/priv") ?? [];
+  const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12" && v.packageName === "@warpgogol/priv") ?? [];
+  expect(v11).toHaveLength(0);
+  expect(v12).toHaveLength(1);
+  expect(v12[0]?.message).toContain("lib.retired");
+});
+
+test("unquoted module-map keys attribute modules to packages (r1)", async () => {
+  seedDocsPkg({ docs: {} });
+  // seedDocsPkg wrote kernel.config; module-map takes precedence for its keys.
+  const mmDir = join(tmpDir, "packages", "werkstatt-engine", "src", "kernel");
+  mkdirSync(mmDir, { recursive: true });
+  writeFileSync(
+    join(mmDir, "module-map.ts"),
+    'const ENGINE = "@warpgogol/lib";\nexport const MAP = { lib-mod: engine(ENGINE) };\n',
+  );
+  mkdirSync(join(tmpDir, "docs"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "docs", "command-manifest.generated.yaml"),
+    "commands:\n  - name: lib.alpha\n    module: lib-mod\n",
+  );
+  const result = await runPackageHealth(makeInput(), makeContext(tmpDir), () => ({ ok: true, detail: "" }));
+  const v11 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-11") ?? [];
+  expect(v11).toHaveLength(1);
+  expect(v11[0]?.packageName).toBe("@warpgogol/lib");
+});
+
+test("suppression journal carries file, line, token, package and clean reason (r1)", async () => {
+  seedDocsPkg({
+    docs: {
+      "reference/cli.md": "Use `lib.retired`. <!-- pkg-health-12: retired command family -->\n",
+    },
+  });
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const sup = (result.data?.suppressions ?? []).find((s) => s.token === "lib.retired");
+  expect(sup).toBeDefined();
+  expect(sup?.file).toContain("docs/reference/cli.md");
+  expect(sup?.line).toBe(1);
+  expect(sup?.packageName).toBe("@warpgogol/lib");
+  expect(sup?.reason).toBe("retired command family");
 });
