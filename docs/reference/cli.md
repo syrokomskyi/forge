@@ -142,13 +142,13 @@ forge pinned.init
 ## Package health
 
 ```sh
-forge package.health
+werkstatt run forge.package.health
 ```
 
 ## Autonomy
 
 ```sh
-forge autonomy.validate
+werkstatt run forge.autonomy.validate
 ```
 
 ## Authority delegations (RFC-1336)

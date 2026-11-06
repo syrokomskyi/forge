@@ -9,6 +9,20 @@
   <item>RFC-1311: Compass header sweep — declares the package suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
+  <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
+
+Live-inventory docs gate: PKG-HEALTH-11 flags registered commands absent
+from the package DOCS_SURFACE, PKG-HEALTH-12 flags dead x.y doc tokens.
+loadCommandInventory unions the runtime registry with the generated
+command manifest (getLiveCommands precedent); namespace + TLD-tail
+resolution keep property paths and domains silent. Same-line
+pkg-health-11/12 markers journal intentional exceptions.
+
+Audit diff to land green: canonical forge.* names in forge docs,
+leitstand.access.* expansions, registered-surface listings for
+projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
+journaled suppressions for code paths, family prefixes, and the planned
+werkstatt-knowledge CLI surface.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -629,4 +643,101 @@ test("handles no packages/ directory gracefully", async () => {
   expect(result.exitCode).toBe(0);
   expect(result.data?.packagesChecked).toBe(0);
   expect(result.data?.passed).toBe(true);
+});
+
+// ---------------------------------------------------------------------------
+// RFC-1518: docs drift gate — PKG-HEALTH-11 coverage + PKG-HEALTH-12 dead refs
+// ---------------------------------------------------------------------------
+
+function makeRegistryContext(workspaceRoot: string, commands: { name: string; module: string }[]): ForgeRuntimeContext {
+  return {
+    ...makeContext(workspaceRoot),
+    commandRegistry: {
+      listCommandNames: () => commands.map((c) => c.name),
+      listCommands: () => commands.map((c) => ({ name: c.name, module: c.module, provider: "workspace" as const, description: "", scope: "workspace" as const })),
+      getCommand: () => undefined,
+    },
+  };
+}
+
+function seedDocsPkg(opts: { name?: string; docs?: Record<string, string>; readme?: string; agents?: string } = {}) {
+  const pkgDir = join(tmpDir, "packages", "lib");
+  mkdirSync(join(pkgDir, "docs", "reference"), { recursive: true });
+  writePkgJson(pkgDir, { name: opts.name ?? "@warpgogol/lib", version: "1.0.0", engines: { node: ">=20" } });
+  for (const [rel, content] of Object.entries(opts.docs ?? {})) {
+    const abs = join(pkgDir, "docs", rel);
+    mkdirSync(join(abs, ".."), { recursive: true });
+    writeFileSync(abs, content);
+  }
+  if (opts.readme !== undefined) writeFileSync(join(pkgDir, "README.md"), opts.readme);
+  if (opts.agents !== undefined) writeFileSync(join(pkgDir, "AGENTS.md"), opts.agents);
+  // kernel.config.ts attributing the "lib-mod" module to packages/lib
+  mkdirSync(join(tmpDir, "tools"), { recursive: true });
+  writeFileSync(
+    join(tmpDir, "tools", "kernel.config.ts"),
+    'export default { moduleLoaders: { "lib-mod": async () => (await import("@warpgogol/lib/kernel")).m } };\n',
+  );
+  return pkgDir;
+}
+
+test("PKG-HEALTH-11: a registered command absent from the docs surface errors naming token + reference doc (AC-1)", async () => {
+  seedDocsPkg({ docs: { "reference/cli.md": "# CLI\n\n`lib.alpha` does a thing.\n" } });
+  const ctx = makeRegistryContext(tmpDir, [
+    { name: "lib.alpha", module: "lib-mod" },
+    { name: "lib.beta", module: "lib-mod" },
+  ]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v11 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-11") ?? [];
+  expect(v11).toHaveLength(1);
+  expect(v11[0]?.message).toContain("lib.beta");
+  expect(v11[0]?.message).toContain("docs/reference/cli.md");
+  expect(v11[0]?.severity).toBe("error");
+});
+
+test("PKG-HEALTH-12: a doc token resolving to no registered command errors at doc:line; versions and config paths stay silent (AC-3)", async () => {
+  seedDocsPkg({
+    docs: {
+      "guide.md": "# Guide\n\nRun `lib.retired` first, then check `9.1.0` and `extract.config.yaml`.\n",
+    },
+  });
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12") ?? [];
+  expect(v12).toHaveLength(1);
+  expect(v12[0]?.message).toContain("docs/guide.md:3");
+  expect(v12[0]?.message).toContain("lib.retired");
+});
+
+test("pkg-health-11/pkg-health-12 markers skip the line and journal the suppression (AC-4)", async () => {
+  seedDocsPkg({
+    docs: {
+      "reference/cli.md":
+        "# CLI\n\nlib.beta <!-- pkg-health-11: internal plumbing, not operator-facing -->\n\nUse `lib.retired`. <!-- pkg-health-12: historical narrative of the retired flow -->\n",
+    },
+  });
+  const ctx = makeRegistryContext(tmpDir, [
+    { name: "lib.alpha", module: "lib-mod" },
+    { name: "lib.beta", module: "lib-mod" },
+  ]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const docs = result.data?.violations.filter((v) => v.ruleId.startsWith("PKG-HEALTH-1")) ?? [];
+  // lib.alpha uncovered (PKG-HEALTH-11); lib.beta suppressed; lib.retired suppressed.
+  expect(docs).toHaveLength(1);
+  expect(docs[0]?.message).toContain("lib.alpha");
+  const sup = result.data?.suppressions ?? [];
+  expect(sup.some((s) => s.ruleId === "PKG-HEALTH-11" && s.token === "lib.beta")).toBe(true);
+  expect(sup.some((s) => s.ruleId === "PKG-HEALTH-12" && s.token === "lib.retired")).toBe(true);
+  expect(sup[0]?.reason.length).toBeGreaterThan(0);
+});
+
+test("excluded surfaces (CHANGELOG, generated, audit archive) are never scanned (AC-5)", async () => {
+  const pkgDir = seedDocsPkg({ docs: {} });
+  writeFileSync(join(pkgDir, "CHANGELOG.md"), "# Changes\n\n## [9.9.9]\n\n- mentions `lib.retired`\n");
+  mkdirSync(join(pkgDir, "docs", "audits", "archive"), { recursive: true });
+  writeFileSync(join(pkgDir, "docs", "audits", "archive", "old.md"), "`lib.retired` history\n");
+  writeFileSync(join(pkgDir, "docs", "status.generated.md"), "`lib.retired` generated\n");
+  const ctx = makeRegistryContext(tmpDir, [{ name: "lib.alpha", module: "lib-mod" }]);
+  const result = await runPackageHealth(makeInput(), ctx, () => ({ ok: true, detail: "" }));
+  const v12 = result.data?.violations.filter((v) => v.ruleId === "PKG-HEALTH-12") ?? [];
+  expect(v12).toHaveLength(0);
 });
