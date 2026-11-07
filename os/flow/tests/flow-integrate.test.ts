@@ -11,7 +11,6 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 4 — flow.integrate tests</item>
   <item>RFC-1487: step 4 — flow.integrate with lock, primary-side gate, ff-only merge and cleanup resume</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
@@ -25,6 +24,10 @@ propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
 and integrate exposes teardown as its own field.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
+
+Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
+  <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
 
@@ -106,7 +109,9 @@ describe("flow.integrate", () => {
     expect(merges.stdout.trim()).toBe("");
     expect((await gitExec(repo, ["cat-file", "-e", "develop:a.txt"])).exitCode).toBe(0);
     expect((await gitExec(repo, ["cat-file", "-e", "develop:c.txt"])).exitCode).toBe(0);
-    expect((await gitExec(repo, ["rev-parse", "--verify", `refs/heads/${session.branch}`])).exitCode).not.toBe(0);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", `refs/heads/${session.branch}`])).exitCode,
+    ).not.toBe(0);
   }, 20_000);
 
   it("refuses FLOW-INT-02 on a rebase conflict and leaves both refs unchanged (AC-4)", async () => {
@@ -140,7 +145,10 @@ describe("flow.integrate", () => {
     await mkdir(join(session.worktree!, "hooks"), { recursive: true });
     await commitIn(session.worktree!, "hooks/integration-gate.sh", "#!/bin/sh\nexit 0\n");
     await mkdir(join(repo, "hooks"), { recursive: true });
-    await writeFile(join(repo, "hooks", "integration-gate.sh"), "#!/bin/sh\necho gated >&2\nexit 1\n");
+    await writeFile(
+      join(repo, "hooks", "integration-gate.sh"),
+      "#!/bin/sh\necho gated >&2\nexit 1\n",
+    );
     const developSha = await sha(repo, "develop");
 
     const data = await integrateFlowBranch(repo, ambientIo, {
@@ -154,7 +162,7 @@ describe("flow.integrate", () => {
     expect(await sha(repo, "develop")).toBe(developSha);
   }, 20_000);
 
-  it("refuses FLOW-INT-03 after the rebase when the primary is dirty", async () => {
+  it("refuses FLOW-INT-03 before the rebase when the primary is dirty", async () => {
     const repo = await governedRepo();
     const session = await openSession(repo, "dirty-primary");
     await commitIn(session.worktree!, "x.txt", "x");
@@ -168,8 +176,9 @@ describe("flow.integrate", () => {
       now: NOW,
     });
 
+    // RFC-1528: the preflight's early primary check refuses before the rebase.
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-03");
-    expect(data.rebased).toBe(true);
+    expect(data.rebased).toBe(false);
     expect(await sha(repo, "develop")).toBe(developSha);
     await gitExec(repo, ["checkout", "--", "seed.txt"]);
   }, 20_000);
@@ -237,10 +246,7 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     const session = await openSession(repo, "tolerated");
     await commitIn(session.worktree!, "t.txt", "t");
     await mkdir(join(session.worktree!, ".forge", "task"), { recursive: true });
-    await writeFile(
-      join(session.worktree!, ".forge", "knowledge-conflicts.txt"),
-      "conflict\n",
-    );
+    await writeFile(join(session.worktree!, ".forge", "knowledge-conflicts.txt"), "conflict\n");
     await writeFile(join(session.worktree!, ".forge", "task", "notes.md"), "n\n");
 
     const data = await integrateFlowBranch(repo, ambientIo, {
@@ -266,10 +272,7 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     const session = await openSession(repo, "mixed-dirt");
     await commitIn(session.worktree!, "u.txt", "u");
     await mkdir(join(session.worktree!, ".forge"), { recursive: true });
-    await writeFile(
-      join(session.worktree!, ".forge", "knowledge-conflicts.txt"),
-      "conflict\n",
-    );
+    await writeFile(join(session.worktree!, ".forge", "knowledge-conflicts.txt"), "conflict\n");
     await writeFile(join(session.worktree!, ".forge", "other-state.yaml"), "s\n");
     await writeFile(join(session.worktree!, "scratch.log"), "scratch\n");
     const developSha = await sha(repo, "develop");
@@ -302,10 +305,7 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     const at = new Date().toISOString();
     // A live holder on this host — pid is this process so holderIsDead
     // reports live and the wait budget must elapse to refuse.
-    await writeFile(
-      lockPath,
-      JSON.stringify({ pid: process.pid, host: hostname(), at }),
-    );
+    await writeFile(lockPath, JSON.stringify({ pid: process.pid, host: hostname(), at }));
 
     const data = await integrateFlowBranch(repo, ambientIo, {
       branch: session.branch!,

@@ -25,14 +25,17 @@ at cleanup without moving develop again.</purpose>
   <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1528: bounded preflight between dirty checks and the gate — classified lockfile diffs, early primary check, manifest/RFC/friction validators (FLOW-INT-12/13/14)</item>
   <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509</history>
 </CHANGE_SUMMARY>
 */
 
 import type {
+  CommandRegistry,
   Diagnostic,
   ForgeCommandInput,
   ForgeCommandResult,
+  ForgeInvokeCommand,
   ForgeRuntimeContext,
   WorkspaceIO,
 } from "../../../src/types.ts";
@@ -291,12 +294,15 @@ export async function integrateFlowBranch(
     lockWaitMs?: number;
     /** Gate target — passed to the integration gate as FORGE_FLOW_TARGET. */
     target?: "develop" | "main";
+    /** RFC-1528: kernel invoke port for the bounded preflight validators. */
+    invoke?: ForgeInvokeCommand;
+    /** RFC-1528: command registry for preflight resolvability. */
+    commandRegistry?: CommandRegistry;
   },
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
 
-  const branch =
-    opts.branch ?? (await currentBranch(repoRoot, io));
+  const branch = opts.branch ?? (await currentBranch(repoRoot, io));
   if (branch === null) {
     return refuse(
       "FLOW-INT-06",
@@ -310,7 +316,11 @@ export async function integrateFlowBranch(
     resolved = await resolveEntry(repoRoot, io, branch);
   } catch (error) {
     if (error instanceof FlowRegistrySchemaError) {
-      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(await commonGitDir(io, repoRoot))}`);
+      return refuse(
+        "FLOW-07",
+        error.message,
+        `repair or remove ${registryPath(await commonGitDir(io, repoRoot))}`,
+      );
     }
     throw error;
   }
@@ -360,7 +370,8 @@ export async function integrateFlowBranch(
             ruleId: "FLOW-07",
             severity: "error",
             message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist (vanished)`,
-            fixHint: "run flow.discard to drop the registry entry and force-delete the branch — the work is gone",
+            fixHint:
+              "run flow.discard to drop the registry entry and force-delete the branch — the work is gone",
             data: { vanished: true },
           },
         ],
@@ -429,8 +440,7 @@ export async function integrateFlowBranch(
 
     // (2) the branch worktree must exist and be clean.
     const worktrees = await worktreeList(primary, io);
-    const branchWorktree =
-      worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
+    const branchWorktree = worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
     if (branchWorktree === null || !(await io.exists(branchWorktree))) {
       return refuse(
         "FLOW-07",
@@ -442,11 +452,37 @@ export async function integrateFlowBranch(
     }
     const dirty = await statusDirty(branchWorktree, io);
     if (dirty.toleratedState.length > 0) {
-      opts.onProgress?.(
-        `tolerated forge-local state: ${dirty.toleratedState.join(", ")}`,
-      );
+      opts.onProgress?.(`tolerated forge-local state: ${dirty.toleratedState.join(", ")}`);
     }
-    if (dirty.entries.length > 0) {
+    // RFC-1528: bounded preflight — dirty-tree checks with lockfile
+    // classification, then the four validators that used to fire only inside
+    // the expensive integration gate. Non-port path only (port entries keep
+    // their own FLOW-INT-09/10 semantics); first failure refuses before the
+    // rebase and before the gate spawns.
+    if (entry.port === null) {
+      const { runIntegratePreflight } = await import("../preflight.ts");
+      const preflight = await runIntegratePreflight({
+        primary,
+        branchWorktree,
+        branch,
+        io,
+        worktreeDirty: dirty,
+        invoke: opts.invoke,
+        commandRegistry: opts.commandRegistry,
+      });
+      for (const skipped of preflight.skipped) {
+        opts.onProgress?.(`preflight: ${skipped} skipped — no kernel host`);
+      }
+      if (!preflight.ok && preflight.refuse) {
+        return refuse(
+          preflight.refuse.ruleId,
+          preflight.refuse.message,
+          preflight.refuse.fixHint,
+          { branch, developBefore },
+          preflight.refuse.data,
+        );
+      }
+    } else if (dirty.entries.length > 0) {
       return refuse(
         "FLOW-INT-01",
         `worktree ${branchWorktree} has ${dirty.entries.length} uncommitted change(s): ${dirty.entries.slice(0, 10).join(", ")}` +
@@ -495,11 +531,7 @@ export async function integrateFlowBranch(
         ? { exitCode: 0, stdout: "", stderr: "" }
         : await git(branchWorktree, io, ["rebase", "develop"]);
     if (rebase.exitCode !== 0) {
-      const conflicts = await git(branchWorktree, io, [
-        "diff",
-        "--name-only",
-        "--diff-filter=U",
-      ]);
+      const conflicts = await git(branchWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
       const paths = conflicts.stdout
         .split("\n")
         .map((l) => l.trim())
@@ -573,34 +605,33 @@ export async function integrateFlowBranch(
       rebased: entry.port === null,
       gate,
       cleanedUp: false,
-      ...(dirty.toleratedState.length > 0
-        ? { toleratedState: dirty.toleratedState }
-        : {}),
+      ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
       diagnostics: [],
     };
   };
 
   let inner: FlowIntegrateData;
   try {
-    inner = opts.lockHeld === true
-      ? await integrateInner()
-      : await withFlowLock(
-          lockPath,
-          {
-            waitMs: opts.lockWaitMs ?? INTEGRATE_LOCK_WAIT_MS,
-            staleMs: INTEGRATE_LOCK_STALE_MS,
-            progressEveryMs: 60_000,
-            onProgress: opts.onProgress,
-            onStale: (l) =>
-              opts.onProgress?.(
-                l.reason === "dead-holder"
-                  ? `broke dead-holder integration lock (pid ${l.pid ?? "?"} on ${l.host ?? "?"}, held since ${l.at})`
-                  : `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
-              ),
-          },
-          integrateInner,
-          io,
-        );
+    inner =
+      opts.lockHeld === true
+        ? await integrateInner()
+        : await withFlowLock(
+            lockPath,
+            {
+              waitMs: opts.lockWaitMs ?? INTEGRATE_LOCK_WAIT_MS,
+              staleMs: INTEGRATE_LOCK_STALE_MS,
+              progressEveryMs: 60_000,
+              onProgress: opts.onProgress,
+              onStale: (l) =>
+                opts.onProgress?.(
+                  l.reason === "dead-holder"
+                    ? `broke dead-holder integration lock (pid ${l.pid ?? "?"} on ${l.host ?? "?"}, held since ${l.at})`
+                    : `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
+                ),
+            },
+            integrateInner,
+            io,
+          );
   } catch (error) {
     if (error instanceof LockTimeoutError) {
       // RFC-1515 AC-4: a refused attempt reports the holder on the first
@@ -608,9 +639,7 @@ export async function integrateFlowBranch(
       // computed by the same dead-holder classifier withFlowLock uses.
       const holder = error.holder;
       const lock: LockDiagnostic | undefined =
-        holder === undefined
-          ? undefined
-          : describeHeldLock(holder, INTEGRATE_LOCK_STALE_MS);
+        holder === undefined ? undefined : describeHeldLock(holder, INTEGRATE_LOCK_STALE_MS);
       return refuse(
         "FLOW-INT-08",
         lock === undefined
@@ -621,7 +650,9 @@ export async function integrateFlowBranch(
       );
     }
     if (error instanceof FlowRegistrySchemaError) {
-      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, { branch });
+      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, {
+        branch,
+      });
     }
     throw error;
   }
@@ -669,6 +700,8 @@ export async function runFlowIntegrate(
     branch: typeof branchFlag === "string" ? branchFlag : null,
     dryRun: context.dryRun || input.flags["dry-run"] === true,
     onProgress: (m) => logger.info(`  ${m}`),
+    invoke: context.invoke,
+    commandRegistry: context.commandRegistry,
   });
 
   const refused = data.diagnostics.find((d) => d.severity === "error");
@@ -679,7 +712,9 @@ export async function runFlowIntegrate(
       logger.section("flow.integrate");
       logger.info(`  branch:    ${data.branch}`);
       logger.info(`  integrated: ${data.integrated}${data.rebased ? " (rebased)" : ""}`);
-      logger.info(`  develop:   ${data.developBefore?.slice(0, 9)} → ${data.developAfter?.slice(0, 9)}`);
+      logger.info(
+        `  develop:   ${data.developBefore?.slice(0, 9)} → ${data.developAfter?.slice(0, 9)}`,
+      );
       logger.info(`  cleanedUp: ${data.cleanedUp}`);
     }
   }
