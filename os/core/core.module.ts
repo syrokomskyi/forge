@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
 
 Live-inventory docs gate: PKG-HEALTH-11 flags registered commands absent
@@ -28,7 +27,8 @@ After moves, invoke owner commands whose reads[] match a moved path via context.
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1522</history>
+  <item>RFC-1528: note moved[] under-count on archiver throw (review F-10)</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1522</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1189,6 +1189,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           if (shouldRunArchiveRegen(dryRun, totalMoved)) {
             const movedPaths = new Set<string>();
             for (const data of Object.values(results)) {
+              // An archiver that threw records `{error}` with no moved[] — the
+              // regen set under-counts its partial moves (pre-existing shape).
               const moved = (data as { moved?: Array<Record<string, unknown>> })?.moved;
               if (!Array.isArray(moved)) continue;
               for (const entry of moved) {
