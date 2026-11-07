@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1522: add rules.budget.check byte-budget gate for always-on rule files
 
 RULES-BUDGET-01 flags AGENTS.md/CLAUDE.md/.windsurfrules over 12288 bytes (fixture/test/mission/docs trees excluded); RULES-BUDGET-02 rejects non-positive-integer --budget. The gate goes red on the 8 over-budget files the RFC-1522 slimming addresses next.</item>
@@ -28,7 +27,10 @@ leitstand.access.* expansions, registered-surface listings for
 projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
 journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505</history>
+  <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
+
+After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508</history>
 </CHANGE_SUMMARY>
 */
 
@@ -40,10 +42,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../src/types.ts";
 import path from "node:path";
-import {
-  restoreTrackedLockfile,
-  execFileSyncAdapter,
-} from "../mission/lockfile.ts";
+import { restoreTrackedLockfile, execFileSyncAdapter } from "../mission/lockfile.ts";
 import { writeFileIfChanged } from "../../src/utils/fs-idempotent.ts";
 import {
   FORGE_SKILLS,
@@ -279,7 +278,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         coverage: "operator" as const,
         mutatesState: true,
         writes: ["packages/forge/skills/**", "packages/forge/os/**"],
-    generates: [],
+        generates: [],
         description: "Generate a skeleton for a new forge skill or command.",
         scope: "workspace",
         acceptsAllFlag: false,
@@ -350,7 +349,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         coverageNote: "agent memory compaction",
         mutatesState: true,
         writes: [".agents/memory/MEMORY.md"],
-    generates: [],
+        generates: [],
         description:
           "Enforce the MEMORY.md character budget by removing oldest Environment notes bullets (RFC-1151).",
         scope: "workspace",
@@ -394,7 +393,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         coverage: "operator" as const,
         mutatesState: true,
         writes: ["**"],
-    generates: [],
+        generates: [],
         execOnReadOnly: true,
         description:
           "Create a working pnpm + Turborepo monorepo from a stack profile in an empty directory. Required flags: `--profile`, `--name`.",
@@ -420,7 +419,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         name: "forge.create",
         mutatesState: true,
         writes: ["**"],
-    generates: [],
+        generates: [],
         execOnReadOnly: true,
         description:
           "Create a forge project in-place: scaffold + init + binding defaults. The target directory must be empty (only .git/ tolerated). Usage: forge create --in-place --profile <profile-id> [--name <name>] [--package-manager pnpm]",
@@ -470,7 +469,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         name: "forge.init",
         mutatesState: true,
         writes: ["forge.yaml", "PREFERENCES.md", ".agents/skills/**"],
-    generates: [],
+        generates: [],
         description:
           "Deploy forge into a project: create forge.yaml, PREFERENCES.md, copy skills, create docs dirs. Hidden recovery command — normally called by forge.create.",
         scope: "workspace",
@@ -702,7 +701,15 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         execute: runReleasePrepare,
       },
       {
-        envInputs: [{ name: "R2_AXIOM_ACCESS_KEY_ID", required: false }, { name: "R2_AXIOM_ACCOUNT_ID", required: false }, { name: "R2_AXIOM_SECRET_ACCESS_KEY", required: false }, { name: "S3_ACCESS_KEY_ID", required: false }, { name: "S3_BUCKET", required: false }, { name: "S3_ENDPOINT", required: false }, { name: "S3_SECRET_ACCESS_KEY", required: false }],
+        envInputs: [
+          { name: "R2_AXIOM_ACCESS_KEY_ID", required: false },
+          { name: "R2_AXIOM_ACCOUNT_ID", required: false },
+          { name: "R2_AXIOM_SECRET_ACCESS_KEY", required: false },
+          { name: "S3_ACCESS_KEY_ID", required: false },
+          { name: "S3_BUCKET", required: false },
+          { name: "S3_ENDPOINT", required: false },
+          { name: "S3_SECRET_ACCESS_KEY", required: false },
+        ],
         name: "forge.release.publish",
         coverage: "operator" as const,
         coverageNote: "forge release publish step",
@@ -848,11 +855,11 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "devDependencies completeness (no hoisted tool deps), per-package lint-surface " +
           "(extractable packages run their own lint contract), and PKG-HEALTH-10 " +
           "fixture-path scan — shipped ../ literals must resolve inside the package " +
-          "root (same-line \"// pkg-health-10:\" or pkgHealth10Suppressions in " +
+          'root (same-line "// pkg-health-10:" or pkgHealth10Suppressions in ' +
           "extract.config.yaml), and the RFC-1518 docs-drift gate: PKG-HEALTH-11 " +
           "(registered command absent from the package DOCS_SURFACE) and " +
           "PKG-HEALTH-12 (dead x.y doc tokens) — same-line " +
-          "\"<!-- pkg-health-11|pkg-health-12: <reason> -->\" markers journal " +
+          '"<!-- pkg-health-11|pkg-health-12: <reason> -->" markers journal ' +
           "intentional exceptions. " +
           "Exits non-zero on errors. Use --json for machine-readable output.",
         scope: "workspace",
@@ -895,7 +902,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "Enforces SURFACE-01..05 rules: README length, Node version match, " +
           "no .tgz in root, docs/ structure, required root files (RFC-1080).",
         contract: "forge",
-        rules: [{ id: "SURFACE-01", severity: "error" }, { id: "SURFACE-02", severity: "error" }, { id: "SURFACE-03", severity: "error" }, { id: "SURFACE-04", severity: "error" }, { id: "SURFACE-05", severity: "error" }],
+        rules: [
+          { id: "SURFACE-01", severity: "error" },
+          { id: "SURFACE-02", severity: "error" },
+          { id: "SURFACE-03", severity: "error" },
+          { id: "SURFACE-04", severity: "error" },
+          { id: "SURFACE-05", severity: "error" },
+        ],
         scope: "workspace",
         acceptsAllFlag: false,
         reads: ["README.md", "package.json", "docs/**"],
@@ -955,6 +968,10 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "missions/archive/**",
           "docs/specs/live/*.md",
           "pnpm-lock.yaml",
+          // RFC-1528: owner-regen writes the generated artifacts invalidated by
+          // the moves (via context.invoke — never duplicated generator logic).
+          "docs/ecosystem.generated.yaml",
+          "docs/rfcs/index.yaml",
         ],
         generates: [],
         reads: [
@@ -1138,12 +1155,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           // lockfile; gating on them alone means an rfc/adr/plan-only archive run
           // never touches a locally edited pnpm-lock.yaml. Restore HEAD bytes
           // instead of staging — mission churn is never committed.
-          const missionData = results["mission.archive"] as
-            | { moved?: unknown[] }
-            | undefined;
-          const missionMoved = Array.isArray(missionData?.moved)
-            ? missionData.moved.length
-            : 0;
+          const missionData = results["mission.archive"] as { moved?: unknown[] } | undefined;
+          const missionMoved = Array.isArray(missionData?.moved) ? missionData.moved.length : 0;
           if (!dryRun && missionMoved > 0) {
             try {
               const restored = await restoreTrackedLockfile(context.workspaceRoot, {
@@ -1164,6 +1177,49 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             }
           }
 
+          // ── RFC-1528: owner-regen — every generated artifact whose owner
+          // reads a moved path is re-invoked through context.invoke (AC-1/6/7).
+          // Runs after the lockfile safety net; absent invoke degrades with a
+          // note, never blocks. Owner failure → diagnostics + non-zero exit. ──
+          let regenerated: string[] = [];
+          let regenSkipped = false;
+          let regenFailures: Array<{ command: string; error: string }> = [];
+          if (!dryRun && totalMoved > 0) {
+            const movedPaths = new Set<string>();
+            for (const data of Object.values(results)) {
+              const moved = (data as { moved?: Array<Record<string, unknown>> })?.moved;
+              if (!Array.isArray(moved)) continue;
+              for (const entry of moved) {
+                for (const key of ["from", "to", "file"] as const) {
+                  const value = entry[key];
+                  if (typeof value === "string" && value.length > 0) movedPaths.add(value);
+                }
+              }
+            }
+            const { runArchiveRegen } = await import("./archive-regen.ts");
+            const regen = await runArchiveRegen({ movedPaths: [...movedPaths], context });
+            regenerated = regen.regenerated;
+            regenFailures = regen.failures;
+            regenSkipped = regen.noRegistry || regen.skipped.length > 0;
+            if (outputFormat === "pretty") {
+              for (const regeneratedPath of regenerated) {
+                logger.info(`  docs.archive: regenerated ${regeneratedPath}`);
+              }
+              if (regenSkipped && regen.invoked.length === 0) {
+                logger.info("  docs.archive: regen skipped — no kernel host");
+              } else if (regen.skipped.length > 0) {
+                logger.info(
+                  `  docs.archive: regen skipped — no kernel host (${regen.skipped.join(", ")})`,
+                );
+              }
+              for (const failure of regenFailures) {
+                logger.error(
+                  `  docs.archive: regen failed for ${failure.command}: ${failure.error}`,
+                );
+              }
+            }
+          }
+
           if (outputFormat === "pretty") {
             if (dryRun) {
               logger.info(
@@ -1177,9 +1233,10 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           }
 
           return {
+            ...(regenFailures.length > 0 ? { exitCode: 1 } : {}),
             data: {
               command: "docs.archive",
-              status: "ok",
+              status: regenFailures.length > 0 ? "fail" : "ok",
               totalMoved,
               totalSkipped,
               results,
@@ -1187,6 +1244,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               liveSpecMerges: liveMergeResults.length,
               liveSpecSkipped: liveMergeSkipped,
               liveSpecFailures: liveMergeFailures.length,
+              regenerated,
             },
             summary: dryRun
               ? `[dry-run] Would move ${totalMoved} file(s), skip ${totalSkipped}`
