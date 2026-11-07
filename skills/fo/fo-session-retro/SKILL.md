@@ -25,6 +25,7 @@ triggerPhrases: ["завершаем", "протокол завершения", 
   <item>RFC-1487: step 7 — remove RFC-1462 session-worktree paths, COMMIT-FGN-01 guard, and .sessions model; document flow lifecycle</item>
   <item>RFC-1487: drop RFC-1487 id from fo-session-retro instruction text (SKILL-17)</item>
   <item>RFC-1491: step 6 — outbound AGENTS paragraphs, retro step 3f, FLOW-PUSH/HOLD/GUARD-05/10/INT-11 catalog</item>
+  <item>RFC-1528: worktree-first preamble — session-end writes go through a dedicated session worktree; docs.archive prefers the kernel host</item>
   <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433</history>
 </CHANGE_SUMMARY>
 -->
@@ -61,6 +62,22 @@ When the operator says any of the following, the agent's response is **BLOCKED**
 **The agent MUST NOT produce any session-end output (summary, closing block, "session complete" message) before this skill is invoked and its report is presented. Producing a closing summary without running this skill is a CONTRACT VIOLATION.**
 
 This skill IS the session-end protocol — it runs transcript save, temp cleanup, docs.archive, clean tree check, RFC verification, insight triage, the friction autopsy, and produces the closing block. Do not substitute it with a manual summary. The closing block comes from this skill's report, not from the agent directly.
+
+## Worktree-first preamble (NON-NEGOTIABLE on the fixed branch model)
+
+Session-end writes (transcript save, `docs.archive` moves, `frictions.yaml` updates, rule edits, retro commits) MUST NOT be produced in the primary checkout — the primary stays clean, and every tracked write rides a session worktree into `develop` through `flow.integrate`. Before Step 0, decide whether this retro will produce tracked writes:
+
+- **Writes expected** (nearly always — the Step 0 transcript alone counts when `saveSessions` is true) AND the current directory is a **primary checkout** on the fixed branch model → open a dedicated session worktree FIRST:
+
+  ```bash
+  rtk pnpm exec werkstatt run flow.open --kind session --slug session-retro-<stamp>
+  ```
+
+  `<stamp>` is `YYYYMMDD-HHMM` of the invocation moment. Detection: `flow.status` lists registered `auto/session-*` branches — when cwd is already a flow worktree (its branch is registered), skip this step; writes already land in the right place. Repositories not on the fixed branch model (`flow.status` refuses, no registered branches) skip this step silently.
+
+- **Read-only retro** (the session produced zero tracked writes and none of Steps 0–4 will create any — e.g. `saveSessions: false` with a clean tree and no insights to route) → no worktree needed; run the retro in place.
+
+When the preamble opened a worktree, every subsequent step — Step 0 transcript, archive, friction/registry writes, retro commits — runs inside it. All writes batch into a single `flow.integrate` at Step 3e. Do NOT open one worktree per write, and do NOT integrate from the primary checkout.
 
 ## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
 
@@ -130,10 +147,12 @@ This is safe to auto-run.
 Run the `docs.archive` umbrella command to move terminal RFCs, ADRs, plans, audits, sessions, and missions into their respective `archive/` subdirectories:
 
 ```bash
-rtk pnpm exec forge docs.archive
+rtk pnpm exec werkstatt run docs.archive
 ```
 
-The command is idempotent — re-running is safe. If files were moved, commit them in step 3 as part of the clean tree check (they are "our" changes).
+Prefer the kernel host — under `werkstatt run` the archive regenerates every generated artifact invalidated by the moves (e.g. `docs/ecosystem.generated.yaml`, `docs/rfcs/index.yaml`) and reports them. Under a standalone forge install (`pnpm exec forge docs.archive`) the command still archives but regeneration is skipped with a printed note.
+
+The command is idempotent — re-running is safe. If files were moved or regenerated, commit them in step 3 as part of the clean tree check (they are "our" changes).
 
 ### Step 3: Clean tree check (NON-NEGOTIABLE)
 
@@ -171,9 +190,9 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 - List every unattributed file left dirty on the `### <Left untouched>` line of the Step 7 report, one per tree.
 - If the tree is now clean (or was clean from the start), proceed silently.
 
-**3e. Integrate or discard the session flow branch (dormant until the session-worktree switch-over):**
+**3e. Integrate or discard the session flow branch:**
 
-- This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently).
+- This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently). When the worktree-first preamble opened a retro worktree, run the integration from that worktree — the whole session's writes ride it.
 - After the clean-tree commit, run `flow.integrate` from the session worktree — it rebases the branch onto `develop`, runs the primary checkout's `hooks/integration-gate.sh`, and fast-forwards `develop`.
 - On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
 - When the operator said to drop the work, run `flow.discard --reason "<operator words>"` instead of `flow.integrate`.
