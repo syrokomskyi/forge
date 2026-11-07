@@ -12,6 +12,7 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
   <item>RFC-1230: initial tests for collectLiveMergeTargets.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1235: failed-merge accounting tests — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock (AC-1..4).</item>
+  <item>RFC-1528: owner-regen tests — collectInvalidatedGenerators, generated-path probes, runArchiveRegen (AC-1/AC-7 evidence).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +24,13 @@ import {
   formatLiveMergeFailure,
   buildLiveMergeBlock,
 } from "../spec/live-spec-shared.ts";
+import {
+  collectInvalidatedGenerators,
+  isGeneratedContent,
+  isGeneratedPathName,
+  runArchiveRegen,
+} from "./archive-regen.ts";
+import type { ForgeRegisteredCommandInfo, ForgeRuntimeContext } from "../../src/types.ts";
 
 function move(
   id: string,
@@ -129,5 +137,196 @@ describe("docs.archive failed-merge accounting (RFC-1235)", () => {
     });
     // Nothing attempted → no block at all (unchanged pre-RFC-1235 silence).
     expect(buildLiveMergeBlock([], [], 0, false)).toBeUndefined();
+  });
+});
+
+// ── RFC-1528: owner-regen selection + invoke seam ─────────────────────────
+
+function cmd(
+  name: string,
+  reads: string[],
+  writes: string[] = [],
+  generates: Array<{ path: string }> = [],
+): ForgeRegisteredCommandInfo {
+  return {
+    name,
+    description: "",
+    scope: "workspace",
+    provider: "workspace",
+    reads,
+    writes,
+    generates: generates.map((g) => ({ path: g.path, phase: "on-demand" as const })),
+  };
+}
+
+const GENERATED = new Set(["docs/rfcs/index.yaml", "docs/ecosystem.generated.yaml"]);
+const probe = (p: string) => GENERATED.has(p) || p.includes(".generated.");
+
+describe("docs.archive owner-regen selection (RFC-1528 AC-1)", () => {
+  const registry = [
+    cmd("rfc.index.generate", ["docs/rfcs/**/*.md"], ["docs/rfcs/index.yaml"]),
+    cmd(
+      "ecosystem.manifest.generate",
+      ["pnpm-workspace.yaml", "docs/rfcs/**/*.md"],
+      ["docs/ecosystem.generated.yaml"],
+    ),
+    cmd("rfc.create", ["docs/rfcs/**/*.md"], ["docs/rfcs/*.md"]),
+    cmd("friction.append", ["docs/frictions.yaml"], ["docs/frictions.yaml"]),
+    cmd("agents.generate", [], [], [{ path: "AGENTS.md" }]),
+  ];
+
+  it("selects owners whose reads[] match a moved path — non-generated writers excluded", () => {
+    const selection = collectInvalidatedGenerators(
+      ["docs/rfcs/rfc-1505-x.md", "docs/rfcs/archive/implemented/rfc-1505-x.md"],
+      registry,
+      probe,
+    );
+    expect(selection.map((s) => s.command)).toEqual([
+      "rfc.index.generate",
+      "ecosystem.manifest.generate",
+    ]);
+  });
+
+  it("does not select owners when moves stay outside their reads[]", () => {
+    const selection = collectInvalidatedGenerators(
+      ["docs/adrs/adr-0120.md", "docs/adrs/archive/adr-0120.md"],
+      registry,
+      probe,
+    );
+    expect(selection).toEqual([]);
+  });
+
+  it("always runs ecosystem.manifest.generate last — it hashes sibling artifacts", () => {
+    const reordered = [...registry].reverse();
+    const selection = collectInvalidatedGenerators(["docs/rfcs/rfc-1.md"], reordered, probe);
+    expect(selection.at(-1)?.command).toBe("ecosystem.manifest.generate");
+  });
+
+  it("generates[].path counts as ownership even when the path fails the file probe", () => {
+    const selection = collectInvalidatedGenerators(
+      ["missions/m0001/workpiece/x.md"],
+      [
+        cmd(
+          "mission.manifest.generate",
+          ["missions/**"],
+          [],
+          [{ path: "docs/missions.generated.yaml" }],
+        ),
+      ],
+      () => false,
+    );
+    expect(selection).toHaveLength(1);
+    expect(selection[0]!.command).toBe("mission.manifest.generate");
+  });
+
+  it("never selects docs.archive itself", () => {
+    const selection = collectInvalidatedGenerators(
+      ["docs/rfcs/rfc-1.md"],
+      [cmd("docs.archive", ["docs/rfcs/**/*.md"], ["docs/rfcs/index.yaml"])],
+      probe,
+    );
+    expect(selection).toEqual([]);
+  });
+});
+
+describe("docs.archive generated-path probes (RFC-1528)", () => {
+  it("recognizes the .generated. infix, the marker, and the command:/generatedAt: header", () => {
+    expect(isGeneratedPathName("docs/ecosystem.generated.yaml")).toBe(true);
+    expect(isGeneratedPathName("docs/rfcs/index.yaml")).toBe(false);
+
+    expect(
+      isGeneratedContent(
+        "# GENERATED. Do not change this line unless the file contains project specific changes.\nx",
+      ),
+    ).toBe(true);
+    expect(
+      isGeneratedContent("command: rfc.index.generate\ngeneratedAt: 2026-11-07\ncount: 3\n"),
+    ).toBe(true);
+    expect(isGeneratedContent("id: RFC-0001\nstatus: draft\n")).toBe(false);
+  });
+});
+
+describe("docs.archive runArchiveRegen (RFC-1528 AC-1/AC-7)", () => {
+  function makeContext(invoke?: ForgeRuntimeContext["invoke"]): ForgeRuntimeContext {
+    return {
+      workspaceRoot: "/tmp/x",
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+      outputFormat: "json",
+      commandRegistry: {
+        listCommands: () => registryCmds,
+        listCommandNames: () => [],
+        getCommand: () => undefined,
+      },
+      invoke,
+    } as unknown as ForgeRuntimeContext;
+  }
+
+  const registryCmds = [
+    cmd("rfc.index.generate", ["docs/rfcs/**/*.md"], ["docs/rfcs/index.yaml"]),
+    cmd("ecosystem.manifest.generate", ["docs/rfcs/**/*.md"], ["docs/ecosystem.generated.yaml"]),
+  ];
+  const moved = ["docs/rfcs/rfc-1505-x.md"];
+
+  it("invokes each owner with the flags map and reports regenerated paths", async () => {
+    const calls: Array<{ name: string; flags?: Record<string, unknown> }> = [];
+    const outcome = await runArchiveRegen({
+      movedPaths: moved,
+      context: makeContext(async (name, flags) => {
+        calls.push({ name, flags: flags as Record<string, unknown> });
+        return {
+          ok: true,
+          exitCode: 0,
+          filesModified:
+            name === "rfc.index.generate"
+              ? ["docs/rfcs/index.yaml"]
+              : ["docs/ecosystem.generated.yaml"],
+        };
+      }),
+      isGeneratedPath: probe,
+    });
+
+    expect(calls).toEqual([
+      { name: "rfc.index.generate", flags: { write: true } },
+      { name: "ecosystem.manifest.generate", flags: {} },
+    ]);
+    expect(outcome.regenerated).toEqual(["docs/rfcs/index.yaml", "docs/ecosystem.generated.yaml"]);
+    expect(outcome.failures).toEqual([]);
+  });
+
+  it("absent invoke → all candidates skipped, zero invokes, no failure", async () => {
+    const outcome = await runArchiveRegen({
+      movedPaths: moved,
+      context: makeContext(undefined),
+      isGeneratedPath: probe,
+    });
+    expect(outcome.invoked).toEqual([]);
+    expect(outcome.skipped).toEqual(["rfc.index.generate", "ecosystem.manifest.generate"]);
+    expect(outcome.failures).toEqual([]);
+  });
+
+  it("owner failure is recorded and later owners still run", async () => {
+    const outcome = await runArchiveRegen({
+      movedPaths: moved,
+      context: makeContext(async (name) =>
+        name === "rfc.index.generate"
+          ? { ok: false, exitCode: 1, summary: "RFC-IDX-04 unparseable" }
+          : { ok: true, exitCode: 0, filesModified: ["docs/ecosystem.generated.yaml"] },
+      ),
+      isGeneratedPath: probe,
+    });
+    expect(outcome.failures).toEqual([
+      { command: "rfc.index.generate", error: "RFC-IDX-04 unparseable" },
+    ]);
+    expect(outcome.invoked).toEqual(["ecosystem.manifest.generate"]);
+    expect(outcome.regenerated).toEqual(["docs/ecosystem.generated.yaml"]);
+  });
+
+  it("empty filesModified falls back to the invalidated declared paths (AC-7)", async () => {
+    const outcome = await runArchiveRegen({
+      movedPaths: moved,
+      context: makeContext(async () => ({ ok: true, exitCode: 0 })),
+      isGeneratedPath: probe,
+    });
+    expect(outcome.regenerated).toEqual(["docs/rfcs/index.yaml", "docs/ecosystem.generated.yaml"]);
   });
 });
