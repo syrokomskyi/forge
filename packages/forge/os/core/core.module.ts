@@ -6,20 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
-
-Live-inventory docs gate: PKG-HEALTH-11 flags registered commands absent
-from the package DOCS_SURFACE, PKG-HEALTH-12 flags dead x.y doc tokens.
-loadCommandInventory unions the runtime registry with the generated
-command manifest (getLiveCommands precedent); namespace + TLD-tail
-resolution keep property paths and domains silent. Same-line
-pkg-health-11/12 markers journal intentional exceptions.
-
-Audit diff to land green: canonical forge.* names in forge docs,
-leitstand.access.* expansions, registered-surface listings for
-projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
-journaled suppressions for code paths, family prefixes, and the planned
-werkstatt-knowledge CLI surface.</item>
   <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
 
 After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
@@ -28,7 +14,8 @@ After moves, invoke owner commands whose reads[] match a moved path via context.
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1528: note moved[] under-count on archiver throw (review F-10)</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1522</history>
+  <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1184,6 +1171,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           // note, never blocks. Owner failure → diagnostics + non-zero exit. ──
           let regenerated: string[] = [];
           let regenSkipped: string[] = [];
+          let regenExcluded: Array<{ command: string; reason: string }> = [];
           let regenFailures: Array<{ command: string; error: string }> = [];
           const { shouldRunArchiveRegen, runArchiveRegen } = await import("./archive-regen.ts");
           if (shouldRunArchiveRegen(dryRun, totalMoved)) {
@@ -1204,9 +1192,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             regenerated = regen.regenerated;
             regenFailures = regen.failures;
             regenSkipped = regen.skipped;
+            regenExcluded = regen.excluded;
             if (outputFormat === "pretty") {
               for (const regeneratedPath of regenerated) {
                 logger.info(`  docs.archive: regenerated ${regeneratedPath}`);
+              }
+              for (const item of regenExcluded) {
+                logger.info(`  docs.archive: regen excluded ${item.command} (${item.reason})`);
               }
               if (regen.skipReason === "no-invoke") {
                 logger.info("  docs.archive: regen skipped — no invoke port (standalone CLI)");
@@ -1247,6 +1239,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               liveSpecFailures: liveMergeFailures.length,
               regenerated,
               regenSkipped,
+              regenExcluded,
               regenFailures,
             },
             summary: dryRun

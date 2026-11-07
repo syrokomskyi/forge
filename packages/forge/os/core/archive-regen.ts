@@ -13,7 +13,6 @@ line). Manifest-generation logic itself is never duplicated here.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: initial — collectInvalidatedGenerators, generated-path probe, runArchiveRegen.</item>
   <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
 
 After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
@@ -21,6 +20,9 @@ After moves, invoke owner commands whose reads[] match a moved path via context.
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
+  <item>F-0126: tighten owner predicate — generates[] or all-generated writes[]; required flags must be REGEN_FLAGS-covered; excluded[] diagnostics</item>
+  <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
+  <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -64,6 +66,8 @@ export interface ArchiveRegenOutcome {
   skipped: string[];
   /** Per-owner failures — reported, never fatal to the archive run. */
   failures: Array<{ command: string; error: string }>;
+  /** Reads-matched commands excluded from ownership (F-0126 diagnostics). */
+  excluded: Array<{ command: string; reason: RegenExcludeReason }>;
   /** Why regen did not invoke, when it did not invoke at all. */
   skipReason: "no-invoke" | "no-inventory" | null;
 }
@@ -105,40 +109,74 @@ export function generatedPathProbe(workspaceRoot: string): (relPath: string) => 
   };
 }
 
+/** Why a reads-matched command was excluded from owner selection (F-0126). */
+export type RegenExcludeReason = "mixed-writes" | "required-flags";
+
+export interface ArchiveRegenSelection {
+  candidates: ArchiveRegenCandidate[];
+  /**
+   * Commands whose reads[] intersected a moved path but that cannot act as
+   * regen owners — diagnostics only, never invoked.
+   */
+  excluded: Array<{ command: string; reason: RegenExcludeReason }>;
+}
+
 /**
  * Pure selection: owners whose declared generated artifacts are invalidated by
  * the moved paths — i.e. the command reads at least one glob matching a moved
  * from/to path. Order: registry order with ecosystem.manifest.generate last.
+ *
+ * F-0126 ownership contract: a mutator that emits generated side-artifacts
+ * among hand-authored writes (e.g. rfc.implement.stamp writing verification
+ * envelopes alongside docs/rfcs/**\/*.md) is not a regen owner — ownership
+ * requires an explicit generates[] declaration or a fully generated writes[]
+ * surface. Batch regen invokes owners bare, so any required flag not covered
+ * by REGEN_FLAGS excludes the command outright.
  */
 export function collectInvalidatedGenerators(
   movedPaths: string[],
   commands: ForgeRegisteredCommandInfo[],
   isGeneratedPath: (relPath: string) => boolean,
-): ArchiveRegenCandidate[] {
+): ArchiveRegenSelection {
   const candidates: ArchiveRegenCandidate[] = [];
+  const excluded: ArchiveRegenSelection["excluded"] = [];
   for (const command of commands) {
     if (command.name === SELF_COMMAND) continue;
-    const artifactPaths = [
-      ...(command.generates ?? []).map((g) => g.path),
-      ...(command.writes ?? []).filter((w) => isGeneratedPath(w)),
-    ];
-    if (artifactPaths.length === 0) continue;
+    const writes = command.writes ?? [];
+    const generatedWrites = writes.filter((w) => isGeneratedPath(w));
+    const declared = (command.generates ?? []).map((g) => g.path);
+    if (declared.length === 0 && generatedWrites.length === 0) continue;
     const reads = command.reads ?? [];
     const invalidated = movedPaths.some((moved) =>
       reads.some((glob) => picomatch.isMatch(moved, glob)),
     );
     if (!invalidated) continue;
+    if (declared.length === 0 && generatedWrites.length !== writes.length) {
+      excluded.push({ command: command.name, reason: "mixed-writes" });
+      continue;
+    }
+    const flags = REGEN_FLAGS[command.name] ?? {};
+    const uncoveredRequired = Object.entries(command.flags ?? {}).some(
+      ([flagName, spec]) => spec?.required === true && !(flagName in flags),
+    );
+    if (uncoveredRequired) {
+      excluded.push({ command: command.name, reason: "required-flags" });
+      continue;
+    }
     candidates.push({
       command: command.name,
-      flags: REGEN_FLAGS[command.name] ?? {},
-      artifactPaths,
+      flags,
+      artifactPaths: [...declared, ...generatedWrites],
     });
   }
-  return candidates.sort((a, b) => {
-    if (a.command === MANIFEST_GENERATOR) return 1;
-    if (b.command === MANIFEST_GENERATOR) return -1;
-    return 0;
-  });
+  return {
+    candidates: candidates.sort((a, b) => {
+      if (a.command === MANIFEST_GENERATOR) return 1;
+      if (b.command === MANIFEST_GENERATOR) return -1;
+      return 0;
+    }),
+    excluded,
+  };
 }
 
 /**
@@ -164,12 +202,13 @@ export async function runArchiveRegen(options: {
   const commands =
     options.commands ?? loadLiveCommandInventory(context.workspaceRoot, context.commandRegistry);
   const probe = options.isGeneratedPath ?? generatedPathProbe(context.workspaceRoot);
-  const candidates = collectInvalidatedGenerators(movedPaths, commands, probe);
+  const { candidates, excluded } = collectInvalidatedGenerators(movedPaths, commands, probe);
   const outcome: ArchiveRegenOutcome = {
     regenerated: [],
     invoked: [],
     skipped: [],
     failures: [],
+    excluded,
     skipReason: null,
   };
 
