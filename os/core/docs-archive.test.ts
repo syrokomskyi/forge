@@ -9,14 +9,14 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
-  <item>RFC-1235: failed-merge accounting tests — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock (AC-1..4).</item>
   <item>RFC-1528: owner-regen tests — collectInvalidatedGenerators, generated-path probes, runArchiveRegen (AC-1/AC-7 evidence).</item>
   <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
-  <history>RFC-1230</history>
+  <item>F-0126: owner-predicate exclusion tests — mixed-writes mutator, uncovered required flag, REGEN_FLAGS override, end-to-end stamp exclusion</item>
+  <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
+  <history>RFC-1230, RFC-1235</history>
 </CHANGE_SUMMARY>
 */
 
@@ -155,6 +155,7 @@ function cmd(
   reads: string[],
   writes: string[] = [],
   generates: Array<{ path: string }> = [],
+  flags: ForgeRegisteredCommandInfo["flags"] = {},
 ): ForgeRegisteredCommandInfo {
   return {
     name,
@@ -164,6 +165,7 @@ function cmd(
     reads,
     writes,
     generates: generates.map((g) => ({ path: g.path, phase: "on-demand" as const })),
+    flags,
   };
 }
 
@@ -189,7 +191,7 @@ describe("docs.archive owner-regen selection (RFC-1528 AC-1)", () => {
       registry,
       probe,
     );
-    expect(selection.map((s) => s.command)).toEqual([
+    expect(selection.candidates.map((s) => s.command)).toEqual([
       "rfc.index.generate",
       "ecosystem.manifest.generate",
     ]);
@@ -201,13 +203,14 @@ describe("docs.archive owner-regen selection (RFC-1528 AC-1)", () => {
       registry,
       probe,
     );
-    expect(selection).toEqual([]);
+    expect(selection.candidates).toEqual([]);
+    expect(selection.excluded).toEqual([]);
   });
 
   it("always runs ecosystem.manifest.generate last — it hashes sibling artifacts", () => {
     const reordered = [...registry].reverse();
     const selection = collectInvalidatedGenerators(["docs/rfcs/rfc-1.md"], reordered, probe);
-    expect(selection.at(-1)?.command).toBe("ecosystem.manifest.generate");
+    expect(selection.candidates.at(-1)?.command).toBe("ecosystem.manifest.generate");
   });
 
   it("generates[].path counts as ownership even when the path fails the file probe", () => {
@@ -223,8 +226,8 @@ describe("docs.archive owner-regen selection (RFC-1528 AC-1)", () => {
       ],
       () => false,
     );
-    expect(selection).toHaveLength(1);
-    expect(selection[0]!.command).toBe("mission.manifest.generate");
+    expect(selection.candidates).toHaveLength(1);
+    expect(selection.candidates[0]!.command).toBe("mission.manifest.generate");
   });
 
   it("never selects docs.archive itself", () => {
@@ -233,7 +236,56 @@ describe("docs.archive owner-regen selection (RFC-1528 AC-1)", () => {
       [cmd("docs.archive", ["docs/rfcs/**/*.md"], ["docs/rfcs/index.yaml"])],
       probe,
     );
-    expect(selection).toEqual([]);
+    expect(selection.candidates).toEqual([]);
+  });
+
+  it("F-0126: a mutator emitting generated side-artifacts among hand-authored writes is excluded", () => {
+    // rfc.implement.stamp shape: writes rfc markdown AND *.generated.yaml
+    // verification envelopes — the glob infix alone made it an "owner".
+    const stamp = cmd(
+      "rfc.implement.stamp",
+      ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
+      ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
+      [],
+      { id: { kind: "string", required: true, description: "RFC id" } },
+    );
+    const selection = collectInvalidatedGenerators(
+      ["docs/rfcs/rfc-1528-x.md", "docs/rfcs/archive/implemented/rfc-1528-x.md"],
+      [stamp, ...registry],
+      probe,
+    );
+    expect(selection.candidates.map((s) => s.command)).toEqual([
+      "rfc.index.generate",
+      "ecosystem.manifest.generate",
+    ]);
+    expect(selection.excluded).toEqual([
+      { command: "rfc.implement.stamp", reason: "mixed-writes" },
+    ]);
+  });
+
+  it("F-0126: a pure generator with an uncovered required flag is excluded — bare invoke impossible", () => {
+    const gated = cmd(
+      "spec.manifest.generate",
+      ["docs/rfcs/**/*.md"],
+      ["docs/spec.generated.yaml"],
+      [],
+      { scope: { kind: "string", required: true, description: "scope" } },
+    );
+    const selection = collectInvalidatedGenerators(["docs/rfcs/rfc-1.md"], [gated], probe);
+    expect(selection.candidates).toEqual([]);
+    expect(selection.excluded).toEqual([
+      { command: "spec.manifest.generate", reason: "required-flags" },
+    ]);
+  });
+
+  it("F-0126: a required flag covered by REGEN_FLAGS stays a candidate", () => {
+    const covered = cmd("rfc.index.generate", ["docs/rfcs/**/*.md"], ["docs/rfcs/index.yaml"], [], {
+      write: { kind: "boolean", required: true, description: "persist" },
+    });
+    const selection = collectInvalidatedGenerators(["docs/rfcs/rfc-1.md"], [covered], probe);
+    expect(selection.candidates).toHaveLength(1);
+    expect(selection.candidates[0]!.flags).toEqual({ write: true });
+    expect(selection.excluded).toEqual([]);
   });
 });
 
@@ -379,5 +431,30 @@ describe("docs.archive runArchiveRegen (RFC-1528 AC-1/AC-7)", () => {
     });
     expect(calls).toEqual(["ecosystem.manifest.generate"]);
     expect(outcome.regenerated).toEqual(["docs/ecosystem.generated.yaml"]);
+  });
+
+  it("F-0126: the real stamp entry is excluded — zero invokes, no flag-error failure", async () => {
+    const calls: string[] = [];
+    const outcome = await runArchiveRegen({
+      movedPaths: moved,
+      context: makeContext(async (name) => {
+        calls.push(name);
+        return { ok: true, exitCode: 0 };
+      }),
+      commands: [
+        cmd(
+          "rfc.implement.stamp",
+          ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
+          ["docs/rfcs/**/*.md", "docs/rfcs/verification/*.generated.yaml"],
+          [],
+          { id: { kind: "string", required: true, description: "RFC id" } },
+        ),
+        ...registryCmds,
+      ],
+      isGeneratedPath: probe,
+    });
+    expect(calls).toEqual(["rfc.index.generate", "ecosystem.manifest.generate"]);
+    expect(outcome.excluded).toEqual([{ command: "rfc.implement.stamp", reason: "mixed-writes" }]);
+    expect(outcome.failures).toEqual([]);
   });
 });
