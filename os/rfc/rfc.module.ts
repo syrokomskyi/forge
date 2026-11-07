@@ -7,13 +7,13 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474</history>
 </CHANGE_SUMMARY>
 */
@@ -211,7 +211,14 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         },
         reads: ["docs/rfcs/**/*.md"],
         writes: ["docs/rfcs/index.yaml"],
-        generates: [],
+        generates: [
+          {
+            path: "docs/rfcs/index.yaml",
+            phase: "on-demand",
+            markerPolicy: "registry-only",
+            volatile: true,
+          },
+        ],
         cacheable: false,
         execute: runRfcIndexGenerate,
       },
@@ -638,7 +645,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         contract: "rfc",
-        rules: [{ id: "EVIDENCE-SYNC-01", severity: "error" }, { id: "EVIDENCE-SYNC-02", severity: "error" }],
+        rules: [
+          { id: "EVIDENCE-SYNC-01", severity: "error" },
+          { id: "EVIDENCE-SYNC-02", severity: "error" },
+        ],
         flags: {
           id: {
             kind: "string",

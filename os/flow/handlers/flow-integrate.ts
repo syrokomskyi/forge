@@ -20,12 +20,11 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1509: record task-file preservation decisions in flow handlers</item>
-  <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: record RFC-1509 preserve-before-teardown ordering in key decisions</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: bounded preflight between dirty checks and the gate — classified lockfile diffs, early primary check, manifest/RFC/friction validators (FLOW-INT-12/13/14)</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509</history>
 </CHANGE_SUMMARY>
 */
@@ -471,7 +470,11 @@ export async function integrateFlowBranch(
         commandRegistry: opts.commandRegistry,
       });
       for (const skipped of preflight.skipped) {
-        opts.onProgress?.(`preflight: ${skipped} skipped — no kernel host`);
+        opts.onProgress?.(
+          skipped.reason === "no-invoke"
+            ? `preflight: ${skipped.check} skipped — no invoke port (standalone CLI)`
+            : `preflight: ${skipped.check} skipped — command not in the live inventory`,
+        );
       }
       if (!preflight.ok && preflight.refuse) {
         return refuse(

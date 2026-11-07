@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
-
-8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
 
@@ -30,6 +27,7 @@ After moves, invoke owner commands whose reads[] match a moved path via context.
   <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1522</history>
 </CHANGE_SUMMARY>
 */
@@ -950,6 +948,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "audit.archive, session.archive, and mission.archive in sequence. " +
           "Passes --dry-run and --status through to all sub-commands. Not atomic " +
           "— if one sub-command fails, prior moves are not rolled back. " +
+          "After the moves, re-invokes the owner generator of every generated " +
+          "artifact invalidated by them (manifest last) through the kernel " +
+          "invoke port and reports the regenerated paths (RFC-1528). " +
           "Re-running is safe (idempotent).",
         scope: "workspace",
         mutatesState: true,
@@ -1182,7 +1183,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           // Runs after the lockfile safety net; absent invoke degrades with a
           // note, never blocks. Owner failure → diagnostics + non-zero exit. ──
           let regenerated: string[] = [];
-          let regenSkipped = false;
+          let regenSkipped: string[] = [];
           let regenFailures: Array<{ command: string; error: string }> = [];
           const { shouldRunArchiveRegen, runArchiveRegen } = await import("./archive-regen.ts");
           if (shouldRunArchiveRegen(dryRun, totalMoved)) {
@@ -1200,17 +1201,15 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             const regen = await runArchiveRegen({ movedPaths: [...movedPaths], context });
             regenerated = regen.regenerated;
             regenFailures = regen.failures;
-            regenSkipped = regen.noRegistry || regen.skipped.length > 0;
+            regenSkipped = regen.skipped;
             if (outputFormat === "pretty") {
               for (const regeneratedPath of regenerated) {
                 logger.info(`  docs.archive: regenerated ${regeneratedPath}`);
               }
-              if (regenSkipped && regen.invoked.length === 0) {
-                logger.info("  docs.archive: regen skipped — no kernel host");
-              } else if (regen.skipped.length > 0) {
-                logger.info(
-                  `  docs.archive: regen skipped — no kernel host (${regen.skipped.join(", ")})`,
-                );
+              if (regen.skipReason === "no-invoke") {
+                logger.info("  docs.archive: regen skipped — no invoke port (standalone CLI)");
+              } else if (regen.skipReason === "no-inventory") {
+                logger.info("  docs.archive: regen skipped — no command inventory");
               }
               for (const failure of regenFailures) {
                 logger.error(
@@ -1245,6 +1244,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               liveSpecSkipped: liveMergeSkipped,
               liveSpecFailures: liveMergeFailures.length,
               regenerated,
+              regenSkipped,
+              regenFailures,
             },
             summary: dryRun
               ? `[dry-run] Would move ${totalMoved} file(s), skip ${totalSkipped}`

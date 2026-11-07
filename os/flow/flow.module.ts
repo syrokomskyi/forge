@@ -9,14 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
-
-flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491</history>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498</history>
 </CHANGE_SUMMARY>
 */
 
@@ -75,8 +73,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         execOnReadOnly: true,
         writes: [],
         coverage: "operator",
-        coverageNote:
-          "adoption/model check — wired into pipelines by the wave-4 switch-over RFC",
+        coverageNote: "adoption/model check — wired into pipelines by the wave-4 switch-over RFC",
         reads: [
           "forge.yaml",
           "forge.generated.yaml",
@@ -138,8 +135,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "dry-run": {
             kind: "boolean",
             required: false,
-            description:
-              "Plan phase only — report the computed steps[] without mutating anything.",
+            description: "Plan phase only — report the computed steps[] without mutating anything.",
           },
         },
         execute: runFlowInstall,
@@ -170,7 +166,13 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         writes: [],
         coverage: "operator",
         coverageNote: "read-only version report — consumed by flow.cut in wave 2",
-        reads: ["pnpm-workspace.yaml", "*/package.json", "*/extract.config.yaml", ".git/**", "docs/rfcs/**"],
+        reads: [
+          "pnpm-workspace.yaml",
+          "*/package.json",
+          "*/extract.config.yaml",
+          ".git/**",
+          "docs/rfcs/**",
+        ],
         cacheable: false,
         flags: {
           line: {
@@ -233,7 +235,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           owner: {
             kind: "string",
             required: false,
-            description: "Owner id — required for --kind task (e.g. T-0007); sessions default to 'unspecified'.",
+            description:
+              "Owner id — required for --kind task (e.g. T-0007); sessions default to 'unspecified'.",
           },
           "dry-run": {
             kind: "boolean",
@@ -253,8 +256,11 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "on develop fast-forwards via git -C <primary> merge --ff-only " +
           "(never a merge commit — the primary working tree is rewritten by " +
           "the merge itself), then teardown, worktree removal, branch delete, " +
-          "registry drop and journal finish the lifecycle. Refusals: " +
-          "FLOW-INT-01..08.",
+          "registry drop and journal finish the lifecycle. On the non-port " +
+          "path a bounded preflight (classified dirty-tree checks, " +
+          "ecosystem.manifest.validate, scoped rfc.validate, " +
+          "friction.validate) refuses before the rebase and the gate " +
+          "(RFC-1528). Refusals: FLOW-INT-01..14.",
         scope: "workspace",
         contract: "flow",
         rules: [
@@ -269,6 +275,9 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-INT-09", severity: "error" },
           { id: "FLOW-INT-10", severity: "error" },
           { id: "FLOW-INT-11", severity: "error" },
+          { id: "FLOW-INT-12", severity: "error" },
+          { id: "FLOW-INT-13", severity: "error" },
+          { id: "FLOW-INT-14", severity: "error" },
           { id: "FLOW-07", severity: "error" },
         ],
         mutatesState: true,
@@ -346,7 +355,16 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         generates: [],
         coverage: "operator",
         coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
-        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json", "packages/*/package.json", "packages/*/extract.config.yaml"],
+        reads: [
+          "forge.yaml",
+          "forge.generated.yaml",
+          ".git/**",
+          "hooks/**",
+          "pnpm-workspace.yaml",
+          "package.json",
+          "packages/*/package.json",
+          "packages/*/extract.config.yaml",
+        ],
         cacheable: false,
         flags: {
           lines: {
@@ -402,7 +420,14 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         generates: [],
         coverage: "operator",
         coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
-        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json"],
+        reads: [
+          "forge.yaml",
+          "forge.generated.yaml",
+          ".git/**",
+          "hooks/**",
+          "pnpm-workspace.yaml",
+          "package.json",
+        ],
         cacheable: false,
         flags: {
           redo: {
@@ -450,7 +475,14 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         generates: [],
         coverage: "operator",
         coverageNote: "release workflow — activated by the wave-4 switch-over RFC",
-        reads: ["forge.yaml", "forge.generated.yaml", ".git/**", "hooks/**", "pnpm-workspace.yaml", "package.json"],
+        reads: [
+          "forge.yaml",
+          "forge.generated.yaml",
+          ".git/**",
+          "hooks/**",
+          "pnpm-workspace.yaml",
+          "package.json",
+        ],
         cacheable: false,
         flags: {
           slug: {

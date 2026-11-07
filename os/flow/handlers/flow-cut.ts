@@ -20,12 +20,12 @@ released with no mutation.</purpose>
   <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
-  <history>RFC-1490, RFC-1491</history>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
+  <history>RFC-1490, RFC-1491, RFC-1494</history>
 </CHANGE_SUMMARY>
 */
 
@@ -34,9 +34,11 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 
 import type {
+  CommandRegistry,
   Diagnostic,
   ForgeCommandInput,
   ForgeCommandResult,
+  ForgeInvokeCommand,
   ForgeRuntimeContext,
   WorkspaceIO,
 } from "../../../src/types.ts";
@@ -66,11 +68,7 @@ import {
 import { bumpVersion, formatVersion, type ReleaseLevel } from "../semver.ts";
 import { discoverReleaseLines, type ReleaseLine } from "../release-lines.ts";
 import { pendingLevel } from "../release-level.ts";
-import {
-  listLineTags,
-  releaseTagAnnotation,
-  writeReleaseTag,
-} from "../release-tags.ts";
+import { listLineTags, releaseTagAnnotation, writeReleaseTag } from "../release-tags.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { VersionWriteError, writeLineVersion, writeSyncedForgeVersion } from "../version-files.ts";
 import { verifyLineAtRef } from "../publish.ts";
@@ -264,9 +262,7 @@ async function planOrdinaryCut(
   }
 
   const ref = (await git(repoRoot, io, ["rev-parse", "develop"])).stdout.trim();
-  const mainTip = mainExists
-    ? (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim()
-    : "";
+  const mainTip = mainExists ? (await git(repoRoot, io, ["rev-parse", "main"])).stdout.trim() : "";
 
   // Resume detection runs before the pending-level loop: a develop tip
   // carrying `chore(release):` is this cut's own persisted declaration. All
@@ -274,9 +270,7 @@ async function planOrdinaryCut(
   // (rerun reports, no mutation); any missing or a rewound main → the plan
   // still runs but the tail completes exactly the subject's tags (and tags
   // the subject names cannot block as FLOW-CUT-06).
-  const tipSubject = (
-    await git(repoRoot, io, ["log", "-1", "--format=%s", ref])
-  ).stdout.trim();
+  const tipSubject = (await git(repoRoot, io, ["log", "-1", "--format=%s", ref])).stdout.trim();
   let resumeTags: string[] | null = null;
   if (tipSubject.startsWith("chore(release): ")) {
     const named = tipSubject
@@ -525,6 +519,9 @@ export async function runOrdinaryCut(
     dryRun: boolean;
     now?: Date;
     onProgress?: (m: string) => void;
+    /** RFC-1528: forwarded to flow.integrate's bounded preflight. */
+    invoke?: ForgeInvokeCommand;
+    commandRegistry?: CommandRegistry;
   },
 ): Promise<FlowCutData> {
   const now = opts.now ?? new Date();
@@ -627,7 +624,10 @@ export async function runOrdinaryCut(
               ) as { name?: string };
               if (pkg.name === "@warpgogol/forge") {
                 const forgeYaml = join(wt, "forge.yaml");
-                if ((await io.exists(forgeYaml)) && /syncedVersion:/.test(await io.readFile(forgeYaml))) {
+                if (
+                  (await io.exists(forgeYaml)) &&
+                  /syncedVersion:/.test(await io.readFile(forgeYaml))
+                ) {
                   await writeSyncedForgeVersion(wt, c.nextVersion, io);
                 }
               }
@@ -705,7 +705,12 @@ export async function runOrdinaryCut(
           .join("\n");
         const commit = await gitCommit(wt, io, ["commit", "-m", `${subject}\n\n${body}`], "cut");
         if (commit.exitCode !== 0) {
-          return refuse("FLOW-CUT-01", `release commit failed: ${commit.stderr.trim()}`, "inspect the release worktree state", { releaseBranch });
+          return refuse(
+            "FLOW-CUT-01",
+            `release commit failed: ${commit.stderr.trim()}`,
+            "inspect the release worktree state",
+            { releaseBranch },
+          );
         }
 
         // 3b. pre-tag extract verification (RFC-1502): every named package
@@ -734,6 +739,8 @@ export async function runOrdinaryCut(
           now,
           lockHeld: true,
           target: "develop",
+          invoke: opts.invoke,
+          commandRegistry: opts.commandRegistry,
         });
         if (!integrated.integrated || integrated.diagnostics.length > 0) {
           const d = integrated.diagnostics[0];
@@ -779,7 +786,9 @@ export async function runOrdinaryCut(
       );
     }
     if (error instanceof FlowRegistrySchemaError) {
-      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, { releaseBranch });
+      return refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`, {
+        releaseBranch,
+      });
     }
     throw error;
   }
@@ -845,14 +854,27 @@ async function finishCutTail(
         "run pnpm exec forge flow.backmerge, then re-run flow.cut",
       );
     }
-    const upd = await git(repoRoot, io, ["update-ref", "refs/heads/main", developTip, mainTipBefore]);
+    const upd = await git(repoRoot, io, [
+      "update-ref",
+      "refs/heads/main",
+      developTip,
+      mainTipBefore,
+    ]);
     if (upd.exitCode !== 0) {
-      return refuse("FLOW-CUT-01", `update-ref main failed: ${upd.stderr.trim()}`, "inspect refs/heads/main");
+      return refuse(
+        "FLOW-CUT-01",
+        `update-ref main failed: ${upd.stderr.trim()}`,
+        "inspect refs/heads/main",
+      );
     }
   } else {
     const upd = await git(repoRoot, io, ["update-ref", "refs/heads/main", developTip]);
     if (upd.exitCode !== 0) {
-      return refuse("FLOW-CUT-01", `update-ref main failed: ${upd.stderr.trim()}`, "inspect refs/heads/main");
+      return refuse(
+        "FLOW-CUT-01",
+        `update-ref main failed: ${upd.stderr.trim()}`,
+        "inspect refs/heads/main",
+      );
     }
   }
 
@@ -862,7 +884,12 @@ async function finishCutTail(
   // is skipped — rerun-safe against a crash between two git tag calls; a tag
   // pointing elsewhere refuses instead of silently moving it.
   for (const tag of tagNames) {
-    const existing = await git(repoRoot, io, ["rev-parse", "-q", "--verify", `refs/tags/${tag}^{}`]);
+    const existing = await git(repoRoot, io, [
+      "rev-parse",
+      "-q",
+      "--verify",
+      `refs/tags/${tag}^{}`,
+    ]);
     if (existing.exitCode === 0) {
       if (existing.stdout.trim() === developTip) continue;
       return refuse(
@@ -871,17 +898,19 @@ async function finishCutTail(
         "delete the stray tag if it was never published, or pick a different version",
       );
     }
-    const c = cutLines.find((cl) => cl.tag === tag) ?? (() => {
-      const line = lineForTag(tag, allLines, repoLine);
-      return {
-        line,
-        tag,
-        level: "patch" as const,
-        nextVersion: tag.slice(line.tagPrefix.length),
-        previousTag: null,
-        rfcs: [] as string[],
-      };
-    })();
+    const c =
+      cutLines.find((cl) => cl.tag === tag) ??
+      (() => {
+        const line = lineForTag(tag, allLines, repoLine);
+        return {
+          line,
+          tag,
+          level: "patch" as const,
+          nextVersion: tag.slice(line.tagPrefix.length),
+          previousTag: null,
+          rfcs: [] as string[],
+        };
+      })();
     const wr = await writeReleaseTag(repoRoot, io, {
       name: tag,
       target: developTip,
@@ -896,7 +925,11 @@ async function finishCutTail(
       }),
     });
     if (wr.exitCode !== 0) {
-      return refuse("FLOW-CUT-01", `tag ${tag} failed: ${wr.stderr.trim()}`, "inspect the tag state");
+      return refuse(
+        "FLOW-CUT-01",
+        `tag ${tag} failed: ${wr.stderr.trim()}`,
+        "inspect the tag state",
+      );
     }
   }
 
@@ -915,9 +948,14 @@ async function finishCutTail(
     // journal failure is non-fatal bookkeeping.
   }
 
-  const mainGains = mainTipBefore.length > 0
-    ? Number((await git(repoRoot, io, ["rev-list", "--count", `${mainTipBefore}..${developTip}`])).stdout.trim() || 0)
-    : 0;
+  const mainGains =
+    mainTipBefore.length > 0
+      ? Number(
+          (
+            await git(repoRoot, io, ["rev-list", "--count", `${mainTipBefore}..${developTip}`])
+          ).stdout.trim() || 0,
+        )
+      : 0;
 
   return {
     mode: "ordinary",
@@ -971,8 +1009,7 @@ export async function runFlowCut(
     const common = await commonGitDir(io, repoRoot);
     let entry = null;
     try {
-      entry =
-        (await readRegistry(io, common)).branches.find((b) => b.name === candidate) ?? null;
+      entry = (await readRegistry(io, common)).branches.find((b) => b.name === candidate) ?? null;
     } catch (error) {
       if (error instanceof FlowRegistrySchemaError) {
         data = refuse("FLOW-07", error.message, `repair or remove ${registryPath(common)}`);
@@ -999,7 +1036,12 @@ export async function runFlowCut(
     }
   }
 
-  data = await runOrdinaryCut(repoRoot, io, { lines, dryRun });
+  data = await runOrdinaryCut(repoRoot, io, {
+    lines,
+    dryRun,
+    invoke: context.invoke,
+    commandRegistry: context.commandRegistry,
+  });
   return finishCutResult(data, outputFormat, logger);
 }
 
@@ -1008,7 +1050,6 @@ function finishCutResult(
   outputFormat: string,
   logger: ForgeRuntimeContext["logger"],
 ): ForgeCommandResult<FlowCutData> {
-
   const refused = data.diagnostics.find((d) => d.severity === "error");
   if (outputFormat === "pretty") {
     if (refused) {
@@ -1016,7 +1057,9 @@ function finishCutResult(
     } else if (data.released) {
       logger.section("flow.cut");
       logger.info(`  ${data.resumed ? "resumed release" : "released"}: ${data.tags.join(", ")}`);
-      logger.info(`  main gained ${data.mainGains} commit(s) — now at ${data.mainAfter?.slice(0, 9)}`);
+      logger.info(
+        `  main gained ${data.mainGains} commit(s) — now at ${data.mainAfter?.slice(0, 9)}`,
+      );
       if (data.mainGains > 0 && !data.resumed) {
         logger.info("  the first cut after flow.install includes the guard-adoption commit");
       }
