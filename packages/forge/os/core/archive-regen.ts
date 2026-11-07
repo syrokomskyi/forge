@@ -20,6 +20,7 @@ After moves, invoke owner commands whose reads[] match a moved path via context.
   <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,6 +28,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import picomatch from "picomatch";
 import { hasGeneratedMarker } from "../../src/utils/generated-marker.ts";
+import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
 import type {
   ForgeFlagValue,
   ForgeRegisteredCommandInfo,
@@ -62,8 +64,8 @@ export interface ArchiveRegenOutcome {
   skipped: string[];
   /** Per-owner failures — reported, never fatal to the archive run. */
   failures: Array<{ command: string; error: string }>;
-  /** True when no command registry was available to derive ownership from. */
-  noRegistry: boolean;
+  /** Why regen did not invoke, when it did not invoke at all. */
+  skipReason: "no-invoke" | "no-inventory" | null;
 }
 
 /** Generated-by-name: the `.generated.` infix convention (ecosystem.generated.yaml). */
@@ -155,9 +157,12 @@ export async function runArchiveRegen(options: {
   movedPaths: string[];
   context: ForgeRuntimeContext;
   isGeneratedPath?: (relPath: string) => boolean;
+  /** Test seam — overrides the live inventory union (registry + command manifest). */
+  commands?: ForgeRegisteredCommandInfo[];
 }): Promise<ArchiveRegenOutcome> {
   const { movedPaths, context } = options;
-  const commands = context.commandRegistry?.listCommands() ?? [];
+  const commands =
+    options.commands ?? loadLiveCommandInventory(context.workspaceRoot, context.commandRegistry);
   const probe = options.isGeneratedPath ?? generatedPathProbe(context.workspaceRoot);
   const candidates = collectInvalidatedGenerators(movedPaths, commands, probe);
   const outcome: ArchiveRegenOutcome = {
@@ -165,11 +170,12 @@ export async function runArchiveRegen(options: {
     invoked: [],
     skipped: [],
     failures: [],
-    noRegistry: !context.commandRegistry,
+    skipReason: null,
   };
 
-  if (outcome.noRegistry || !context.invoke) {
+  if (!context.invoke || commands.length === 0) {
     outcome.skipped = candidates.map((c) => c.command);
+    outcome.skipReason = !context.invoke ? "no-invoke" : "no-inventory";
     return outcome;
   }
 

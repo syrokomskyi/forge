@@ -9,16 +9,20 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1230: initial tests for collectLiveMergeTargets.</item>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1235: failed-merge accounting tests — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock (AC-1..4).</item>
   <item>RFC-1528: owner-regen tests — collectInvalidatedGenerators, generated-path probes, runArchiveRegen (AC-1/AC-7 evidence).</item>
   <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
+  <history>RFC-1230</history>
 </CHANGE_SUMMARY>
 */
 
+import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, it, expect } from "vitest";
 import {
   collectLiveMergeTargets,
@@ -313,6 +317,7 @@ describe("docs.archive runArchiveRegen (RFC-1528 AC-1/AC-7)", () => {
     });
     expect(outcome.invoked).toEqual([]);
     expect(outcome.skipped).toEqual(["rfc.index.generate", "ecosystem.manifest.generate"]);
+    expect(outcome.skipReason).toBe("no-invoke");
     expect(outcome.failures).toEqual([]);
   });
 
@@ -340,5 +345,39 @@ describe("docs.archive runArchiveRegen (RFC-1528 AC-1/AC-7)", () => {
       isGeneratedPath: probe,
     });
     expect(outcome.regenerated).toEqual(["docs/rfcs/index.yaml", "docs/ecosystem.generated.yaml"]);
+  });
+
+  it("werkstatt run host shape — no commandRegistry, manifest-derived inventory still regens", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "archive-regen-"));
+    mkdirSync(path.join(root, "docs"), { recursive: true });
+    writeFileSync(
+      path.join(root, "docs", "command-manifest.generated.yaml"),
+      [
+        "commands:",
+        "  - name: ecosystem.manifest.generate",
+        "    module: checks/ecosystem/manifest",
+        "    reads: ['docs/rfcs/**/*.md']",
+        "    writes: ['docs/ecosystem.generated.yaml']",
+        "",
+      ].join("\n"),
+    );
+    const calls: string[] = [];
+    const context = {
+      workspaceRoot: root,
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+      outputFormat: "json",
+      invoke: async (name: string) => {
+        calls.push(name);
+        return { ok: true, exitCode: 0, filesModified: ["docs/ecosystem.generated.yaml"] };
+      },
+    } as unknown as ForgeRuntimeContext;
+
+    const outcome = await runArchiveRegen({
+      movedPaths: moved,
+      context,
+      isGeneratedPath: probe,
+    });
+    expect(calls).toEqual(["ecosystem.manifest.generate"]);
+    expect(outcome.regenerated).toEqual(["docs/ecosystem.generated.yaml"]);
   });
 });

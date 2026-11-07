@@ -13,6 +13,7 @@ git/status/invoke seams.</purpose>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,7 @@ import type {
   CommandRegistry,
   ForgeCommandDefinition,
   ForgeInvokeResult,
+  ForgeRegisteredCommandInfo,
   WorkspaceIO,
 } from "../../../src/types.ts";
 
@@ -95,7 +97,17 @@ function registryWith(commands: string[]): CommandRegistry {
   const known = new Set(commands);
   return {
     listCommandNames: () => [...known],
-    listCommands: () => [],
+    listCommands: () =>
+      [...known].map(
+        (name) =>
+          ({
+            name,
+            provider: "workspace",
+            description: "",
+            scope: "workspace",
+            flags: {},
+          }) as ForgeRegisteredCommandInfo,
+      ),
     getCommand: (name: string) =>
       known.has(name) ? ({ name } as ForgeCommandDefinition) : undefined,
   };
@@ -176,7 +188,9 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
           return { ok: true, exitCode: 0 } as ForgeInvokeResult;
         },
       }),
-      stubDeps({ primaryDirty: { entries: [" M docs/y.md"], toleratedState: [], vanished: false } }),
+      stubDeps({
+        primaryDirty: { entries: [" M docs/y.md"], toleratedState: [], vanished: false },
+      }),
     );
     expect(result.refuse?.ruleId).toBe("FLOW-INT-03");
     expect(result.checked).toEqual(["worktree-dirty", "primary-dirty"]);
@@ -253,7 +267,10 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     const result = await runIntegratePreflight(baseOpts({ invoke: undefined }), stubDeps({}));
     expect(result.ok).toBe(true);
     expect(result.checked).toEqual(["worktree-dirty", "primary-dirty"]);
-    expect(result.skipped).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
+    expect(result.skipped).toEqual([
+      { check: "ecosystem.manifest.validate", reason: "no-invoke" },
+      { check: "friction.validate", reason: "no-invoke" },
+    ]);
   });
 
   it("an unresolvable validator is skipped, not fatal", async () => {
@@ -265,8 +282,39 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
       stubDeps({ gitStdout: "docs/rfcs/rfc-1528-x.md\n" }),
     );
     expect(result.ok).toBe(true);
-    expect(result.skipped).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
+    expect(result.skipped).toEqual([
+      { check: "ecosystem.manifest.validate", reason: "unresolvable" },
+      { check: "friction.validate", reason: "unresolvable" },
+    ]);
     expect(result.checked).toContain("rfc.validate:RFC-1528");
+  });
+
+  it("manifest-only inventory (werkstatt run host shape) still resolves validators", async () => {
+    const commands = ALL_VALIDATORS.map(
+      (name) =>
+        ({
+          name,
+          provider: "workspace",
+          description: "",
+          scope: "workspace",
+          flags: {},
+        }) as ForgeRegisteredCommandInfo,
+    );
+    const invokes: string[] = [];
+    const result = await runIntegratePreflight(
+      baseOpts({
+        commandRegistry: undefined,
+        commands,
+        invoke: async (name) => {
+          invokes.push(name);
+          return { ok: true, exitCode: 0 } as ForgeInvokeResult;
+        },
+      }),
+      stubDeps({}),
+    );
+    expect(result.ok).toBe(true);
+    expect(invokes).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
+    expect(result.skipped).toEqual([]);
   });
 
   it("all-clean run reports the full bounded check list", async () => {

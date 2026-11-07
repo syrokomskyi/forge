@@ -18,10 +18,17 @@ closed by the RFC: adding a check requires an amendment.</purpose>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
+  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
 </CHANGE_SUMMARY>
 */
 
-import type { CommandRegistry, ForgeInvokeCommand, WorkspaceIO } from "../../src/types.ts";
+import type {
+  CommandRegistry,
+  ForgeInvokeCommand,
+  ForgeRegisteredCommandInfo,
+  WorkspaceIO,
+} from "../../src/types.ts";
+import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
 import { currentBranch, git, statusTracked } from "./git.ts";
 
 export type LockfileClassification = "importer-prune-only" | "other";
@@ -99,22 +106,18 @@ export interface PreflightRefuse {
   data?: Record<string, unknown>;
 }
 
+export interface PreflightSkip {
+  check: string;
+  reason: "no-invoke" | "unresolvable";
+}
+
 export interface IntegratePreflightResult {
   ok: boolean;
   /** Check names that ran, in order. */
   checked: string[];
-  /** Checks skipped because their command/port was not resolvable. */
-  skipped: string[];
+  /** Checks skipped — invoke port absent, or command not in the inventory. */
+  skipped: PreflightSkip[];
   refuse?: PreflightRefuse;
-}
-
-/** True when the command can be invoked through the kernel port. */
-function resolvable(
-  name: string,
-  invoke: ForgeInvokeCommand | undefined,
-  registry: CommandRegistry | undefined,
-): boolean {
-  return invoke !== undefined && registry?.getCommand(name) !== undefined;
 }
 
 /**
@@ -131,6 +134,8 @@ export async function runIntegratePreflight(
     worktreeDirty: { entries: string[]; toleratedState: string[] };
     invoke?: ForgeInvokeCommand;
     commandRegistry?: CommandRegistry;
+    /** Test seam — overrides the live inventory union (registry + command manifest). */
+    commands?: ForgeRegisteredCommandInfo[];
   },
   deps: {
     runGit: typeof git;
@@ -139,8 +144,13 @@ export async function runIntegratePreflight(
   } = { runGit: git, runStatusTracked: statusTracked, runCurrentBranch: currentBranch },
 ): Promise<IntegratePreflightResult> {
   const checked: string[] = [];
-  const skipped: string[] = [];
+  const skipped: PreflightSkip[] = [];
   const { io } = opts;
+  // D-001 union: werkstatt run supplies invoke but no commandRegistry — the
+  // generated manifest (in the primary checkout) covers resolvability.
+  const commands = opts.commands ?? loadLiveCommandInventory(opts.primary, opts.commandRegistry);
+  const commandNames = new Set(commands.map((c) => c.name));
+  const resolvable = (name: string) => opts.invoke !== undefined && commandNames.has(name);
 
   // (1) worktree dirty — FLOW-INT-01 with lockfile classification.
   checked.push("worktree-dirty");
@@ -208,7 +218,7 @@ export async function runIntegratePreflight(
   }
 
   // (3) ecosystem.manifest.validate — stale generated manifest refuses early.
-  if (resolvable("ecosystem.manifest.validate", opts.invoke, opts.commandRegistry)) {
+  if (resolvable("ecosystem.manifest.validate")) {
     checked.push("ecosystem.manifest.validate");
     const result = await opts.invoke!("ecosystem.manifest.validate", {});
     if (result.ok === false || (result.exitCode !== undefined && result.exitCode !== 0)) {
@@ -226,13 +236,19 @@ export async function runIntegratePreflight(
       };
     }
   } else {
-    skipped.push("ecosystem.manifest.validate");
+    skipped.push({
+      check: "ecosystem.manifest.validate",
+      reason: opts.invoke === undefined ? "no-invoke" : "unresolvable",
+    });
   }
 
   // (4) rfc.validate --id per changed RFC file on develop...branch.
+  // --diff-filter=d excludes deletions — an archive move's old path must not
+  // produce a validate-id on a vanished file.
   const diff = await deps.runGit(opts.primary, io, [
     "diff",
     "--name-only",
+    "--diff-filter=d",
     `develop...${opts.branch}`,
   ]);
   const changedRfcIds = [
@@ -250,7 +266,7 @@ export async function runIntegratePreflight(
     ),
   ];
   if (changedRfcIds.length > 0) {
-    if (resolvable("rfc.validate", opts.invoke, opts.commandRegistry)) {
+    if (resolvable("rfc.validate")) {
       for (const id of changedRfcIds) {
         checked.push(`rfc.validate:${id}`);
         const result = await opts.invoke!("rfc.validate", { id });
@@ -269,12 +285,15 @@ export async function runIntegratePreflight(
         }
       }
     } else {
-      skipped.push("rfc.validate");
+      skipped.push({
+        check: "rfc.validate",
+        reason: opts.invoke === undefined ? "no-invoke" : "unresolvable",
+      });
     }
   }
 
   // (5) friction.validate — a broken registry refuses early.
-  if (resolvable("friction.validate", opts.invoke, opts.commandRegistry)) {
+  if (resolvable("friction.validate")) {
     checked.push("friction.validate");
     const result = await opts.invoke!("friction.validate", {});
     if (result.ok === false || (result.exitCode !== undefined && result.exitCode !== 0)) {
@@ -292,7 +311,10 @@ export async function runIntegratePreflight(
       };
     }
   } else {
-    skipped.push("friction.validate");
+    skipped.push({
+      check: "friction.validate",
+      reason: opts.invoke === undefined ? "no-invoke" : "unresolvable",
+    });
   }
 
   return { ok: true, checked, skipped };
