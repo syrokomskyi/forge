@@ -17,6 +17,9 @@ line). Manifest-generation logic itself is never duplicated here.</purpose>
   <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
 
 After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
+  <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
+
+shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -134,6 +137,14 @@ export function collectInvalidatedGenerators(
     if (b.command === MANIFEST_GENERATOR) return -1;
     return 0;
   });
+}
+
+/**
+ * AC-6 gate: owner regeneration fires only on a real run that moved files —
+ * a `--dry-run` docs.archive is report-only and never invokes generators.
+ */
+export function shouldRunArchiveRegen(dryRun: boolean, totalMoved: number): boolean {
+  return !dryRun && totalMoved > 0;
 }
 
 /**

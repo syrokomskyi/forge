@@ -13,6 +13,9 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
   <item>RFC-1230: review findings — scoped droppedSections to namespaced headings, warn on unreadable spec, fail-fast merge on corrupt frontmatter, CHANGE_SUMMARY dedupe</item>
   <item>RFC-1235: failed-merge accounting tests — classifyLiveMergeOutcome, liveMergeFailureEntry, formatLiveMergeFailure, buildLiveMergeBlock (AC-1..4).</item>
   <item>RFC-1528: owner-regen tests — collectInvalidatedGenerators, generated-path probes, runArchiveRegen (AC-1/AC-7 evidence).</item>
+  <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
+
+shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +32,7 @@ import {
   isGeneratedContent,
   isGeneratedPathName,
   runArchiveRegen,
+  shouldRunArchiveRegen,
 } from "./archive-regen.ts";
 import type { ForgeRegisteredCommandInfo, ForgeRuntimeContext } from "../../src/types.ts";
 
@@ -226,6 +230,14 @@ describe("docs.archive owner-regen selection (RFC-1528 AC-1)", () => {
       probe,
     );
     expect(selection).toEqual([]);
+  });
+});
+
+describe("docs.archive regen gate (RFC-1528 AC-6)", () => {
+  it("a --dry-run invocation is report-only — never invokes owner generators", () => {
+    expect(shouldRunArchiveRegen(true, 3)).toBe(false);
+    expect(shouldRunArchiveRegen(false, 3)).toBe(true);
+    expect(shouldRunArchiveRegen(false, 0)).toBe(false);
   });
 });
 

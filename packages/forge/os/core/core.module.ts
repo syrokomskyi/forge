@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1522: add rules.budget.check byte-budget gate for always-on rule files
-
-RULES-BUDGET-01 flags AGENTS.md/CLAUDE.md/.windsurfrules over 12288 bytes (fixture/test/mission/docs trees excluded); RULES-BUDGET-02 rejects non-positive-integer --budget. The gate goes red on the 8 over-budget files the RFC-1522 slimming addresses next.</item>
   <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
 
 8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
@@ -30,7 +27,10 @@ werkstatt-knowledge CLI surface.</item>
   <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
 
 After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508</history>
+  <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
+
+shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1522</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1184,7 +1184,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           let regenerated: string[] = [];
           let regenSkipped = false;
           let regenFailures: Array<{ command: string; error: string }> = [];
-          if (!dryRun && totalMoved > 0) {
+          const { shouldRunArchiveRegen, runArchiveRegen } = await import("./archive-regen.ts");
+          if (shouldRunArchiveRegen(dryRun, totalMoved)) {
             const movedPaths = new Set<string>();
             for (const data of Object.values(results)) {
               const moved = (data as { moved?: Array<Record<string, unknown>> })?.moved;
@@ -1196,7 +1197,6 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 }
               }
             }
-            const { runArchiveRegen } = await import("./archive-regen.ts");
             const regen = await runArchiveRegen({ movedPaths: [...movedPaths], context });
             regenerated = regen.regenerated;
             regenFailures = regen.failures;
