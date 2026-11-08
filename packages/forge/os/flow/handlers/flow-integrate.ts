@@ -25,6 +25,7 @@ at cleanup without moving develop again.</purpose>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
+  <item>RFC-1531: remediation flags --reattach/--auto-clean/--autocommit on the classified dirty set, FLOW-INT-17 remediation-failure refusals, classified FLOW-INT-01 data</item>
   <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
@@ -40,14 +41,23 @@ import type {
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import {
+  AUTO_CLEAN_PASS_CLASSES,
+  SWEEP_COMMIT_SUBJECT,
+  classifyDirtyPath,
+  classifyDirtyTree,
+  summarizeClasses,
+} from "../dirty-classify.ts";
+import {
   branchExists,
   currentBranch,
   git,
+  gitCommit,
   isAncestor,
   requireGit,
   statusDirty,
   statusTracked,
   topLevel,
+  worktreeAdd,
   worktreeList,
 } from "../git.ts";
 import {
@@ -69,10 +79,10 @@ readJournal,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
 import { preserveTaskFiles } from "../task-files.ts";
-import { primaryWorktree } from "../worktree-path.ts";
+import { flowWorktreePath, primaryWorktree } from "../worktree-path.ts";
 import { pruneReservationsForSession } from "../../rfc/next-id.ts";
 import { rm } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 export const INTEGRATE_LOCK_WAIT_MS = 30 * 60_000;
 export const INTEGRATE_LOCK_STALE_MS = 2 * 3_600_000;
@@ -107,6 +117,14 @@ export interface FlowIntegrateData {
   autoResolved?: string[];
   /** RFC-1538: which checkout's build ran the integration gate. */
   gateEngine?: "session" | "primary";
+  /** RFC-1531: worktree path --reattach created this run. */
+  reattachedTo?: string;
+  /** RFC-1531: reattach target a --dry-run reports without mutating. */
+  wouldReattach?: string;
+  /** RFC-1531: disposable-class paths --auto-clean deleted this run. */
+  autoCleaned?: string[];
+  /** RFC-1531: sha of the --autocommit sweep commit (SWEEP_COMMIT_SUBJECT). */
+  autocommitSha?: string;
   /** RFC-1515: holder payload when FLOW-INT-08 refused on a held lock. */
   lock?: LockDiagnostic;
   diagnostics: Diagnostic[];
@@ -129,6 +147,9 @@ function refuse(
     cleanedUp: partial?.cleanedUp ?? false,
     ...(partial?.toleratedState !== undefined ? { toleratedState: partial.toleratedState } : {}),
     ...(partial?.toleratedDirt !== undefined ? { toleratedDirt: partial.toleratedDirt } : {}),
+    ...(partial?.reattachedTo !== undefined ? { reattachedTo: partial.reattachedTo } : {}),
+    ...(partial?.autoCleaned !== undefined ? { autoCleaned: partial.autoCleaned } : {}),
+    ...(partial?.autocommitSha !== undefined ? { autocommitSha: partial.autocommitSha } : {}),
     ...(partial?.lock !== undefined ? { lock: partial.lock } : {}),
     diagnostics: [
       { ruleId, severity: "error", message, fixHint, ...(diagData ? { data: diagData } : {}) },
@@ -159,6 +180,7 @@ async function cleanupIntegrated(
   journalBase?: string,
   journalToleratedDirt?: Array<{ path: string; class: string }>,
   journalAutoResolved?: string[],
+  journalRemediation?: { reattachedTo?: string; autoCleaned?: string[]; autocommitSha?: string },
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -276,6 +298,16 @@ async function cleanupIntegrated(
       ...(journalAutoResolved !== undefined && journalAutoResolved.length > 0
         ? { autoResolved: journalAutoResolved }
         : {}),
+      ...(journalRemediation?.reattachedTo !== undefined
+        ? { reattachedTo: journalRemediation.reattachedTo }
+        : {}),
+      ...(journalRemediation?.autoCleaned !== undefined &&
+        journalRemediation.autoCleaned.length > 0
+        ? { autoCleaned: journalRemediation.autoCleaned }
+        : {}),
+      ...(journalRemediation?.autocommitSha !== undefined
+        ? { autocommitSha: journalRemediation.autocommitSha }
+        : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -351,6 +383,12 @@ async function integrateFlowBranchAttempt(
     invoke?: ForgeInvokeCommand;
     /** RFC-1528: command registry for preflight resolvability. */
     commandRegistry?: CommandRegistry;
+    /** RFC-1531: recreate a vanished registered worktree inside the lock. */
+    reattach?: boolean;
+    /** RFC-1531: delete disposable-classified dirty paths, then re-evaluate. */
+    autoClean?: boolean;
+    /** RFC-1531: sweep remaining dirty entries into a fixed-subject commit. */
+    autocommit?: boolean;
   },
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
@@ -439,6 +477,14 @@ async function integrateFlowBranchAttempt(
     const live = await worktreeList(primary, io);
     const wtPath = live.find((w) => w.branch === branch)?.path ?? entry.worktree;
     if (wtPath === null || !(await io.exists(wtPath))) {
+      // RFC-1531: report the reattach target --reattach would use — nothing
+      // is created under --dry-run (AC-7).
+      const wouldReattach =
+        opts.reattach === true
+          ? entry.worktree !== null && (await io.exists(dirname(entry.worktree)))
+            ? entry.worktree
+            : flowWorktreePath(primary, branch)
+          : undefined;
       return {
         branch,
         integrated: false,
@@ -447,19 +493,25 @@ async function integrateFlowBranchAttempt(
         rebased: false,
         gate: null,
         cleanedUp: false,
+        ...(wouldReattach !== undefined ? { wouldReattach } : {}),
         diagnostics: [
           {
             ruleId: "FLOW-07",
             severity: "error",
-            message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist (vanished)`,
+            message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist (vanished)` +
+              (wouldReattach !== undefined ? ` — --reattach would recreate it at ${wouldReattach}` : ""),
             fixHint:
-              "run flow.discard to drop the registry entry and force-delete the branch — the work is gone",
-            data: { vanished: true },
+              "re-run with --reattach to recreate the worktree at its recorded path, or run flow.discard to drop the registry entry and force-delete the branch",
+            data: { vanished: true, ...(wouldReattach !== undefined ? { wouldReattach } : {}) },
           },
         ],
       };
     }
     const dirty = await statusDirty(wtPath, io);
+    // RFC-1531: the dry-run diagnostic carries the classified dirty set so
+    // the operator reads the remedy (--auto-clean scope) without mutating.
+    const classified = classifyDirtyTree(dirty.entries);
+    const disposable = classified.filter((c) => c.class === "disposable").map((c) => c.path);
     return {
       branch,
       integrated: false,
@@ -480,10 +532,14 @@ async function integrateFlowBranchAttempt(
                   (dirty.toleratedState.length > 0
                     ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
                     : ""),
-                fixHint: "commit or revert the uncommitted changes inside the session worktree",
+                fixHint:
+                  "commit or revert the uncommitted changes inside the session worktree, or remediate with --auto-clean / --autocommit, then re-run",
                 data: {
-                  entries: dirty.entries.map((line) => line.slice(3)),
+                  entries: classified,
+                  classes: summarizeClasses(classified),
                   toleratedState: dirty.toleratedState,
+                  ...(opts.autoClean === true ? { wouldAutoClean: disposable } : {}),
+                  ...(opts.autocommit === true ? { wouldAutocommit: true } : {}),
                 },
               },
             ]
@@ -560,19 +616,159 @@ async function integrateFlowBranchAttempt(
 
     // (2) the branch worktree must exist and be clean.
     const worktrees = await worktreeList(primary, io);
-    const branchWorktree = worktrees.find((w) => w.branch === branch)?.path ?? liveEntry.worktree;
+    // `live` is the worktree git currently associates with the branch — a
+    // STALE registration keeps naming the dead recorded path until pruned,
+    // so `live !== null` does not prove the directory exists.
+    const live = worktrees.find((w) => w.branch === branch)?.path ?? null;
+    let branchWorktree = live ?? liveEntry.worktree;
+    let reattachedTo: string | undefined;
+    // Occupied: the recorded path exists on disk but git associates no live
+    // worktree with the branch — a foreign tree squats there.
+    const occupied =
+      live === null && liveEntry.worktree !== null && (await io.exists(liveEntry.worktree));
+    const vanished =
+      !occupied && (branchWorktree === null || !(await io.exists(branchWorktree)));
+    if (opts.reattach === true && occupied) {
+      return refuse(
+        "FLOW-INT-17",
+        `registry worktree path ${liveEntry.worktree} exists on disk but is not a worktree of ${branch} (occupied)`,
+        "remove or rename the occupant, then re-run flow.integrate --reattach",
+        { branch, developBefore },
+        { occupied: true },
+      );
+    }
+    if (opts.reattach === true && vanished) {
+      // RFC-1531 --reattach: recreate the vanished worktree inside the lock,
+      // before the dirty/preflight checks. The recorded registry path is
+      // preferred when its parent exists (operators learned that location);
+      // the canonical <repo>@<branch> sibling is the fallback.
+      const recorded = liveEntry.worktree;
+      const target =
+        recorded !== null && (await io.exists(dirname(recorded)))
+          ? recorded
+          : flowWorktreePath(primary, branch);
+      // F-0093: a vanished worktree can leave a stale `git worktree`
+      // registration that pins the branch — prune before adding (mirrors
+      // cleanupIntegrated's ordering).
+      await git(primary, io, ["worktree", "prune"]);
+      const add = await worktreeAdd(primary, io, target, branch);
+      if (add.exitCode !== 0) {
+        return refuse(
+          "FLOW-INT-17",
+          `git worktree add ${target} ${branch} failed: ${add.stderr.trim()}`,
+          "resolve the git error (stale registration? occupied path?) and re-run flow.integrate --reattach",
+          { branch, developBefore },
+        );
+      }
+      reattachedTo = target;
+      branchWorktree = target;
+      opts.onProgress?.(`reattached ${branch} at ${target}`);
+    }
     if (branchWorktree === null || !(await io.exists(branchWorktree))) {
       return refuse(
         "FLOW-INT-15",
         `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist (vanished mid-teardown state — the branch is not contained in develop)`,
-        "run flow.status for the live view; recover the orphaned entry with flow.discard",
+        "re-run with --reattach to recreate the worktree, or run flow.status for the live view and flow.discard to drop the entry",
         { branch, developBefore },
         { vanished: true },
       );
     }
-    const dirty = await statusDirty(branchWorktree, io);
+    let dirty = await statusDirty(branchWorktree, io);
     if (dirty.toleratedState.length > 0) {
       opts.onProgress?.(`tolerated forge-local state: ${dirty.toleratedState.join(", ")}`);
+    }
+
+    // RFC-1531 remediation flags — before the dirty checks: --auto-clean
+    // deletes ONLY disposable-class paths (closed allowlist — a work-class
+    // member in the set deletes nothing and still refuses FLOW-INT-01, and
+    // an importer-prune lockfile refuses too: restoring/committing it is a
+    // content decision, AC-4), then --autocommit sweeps the remainder into
+    // the fixed-subject commit. Remediation failures refuse FLOW-INT-17.
+    let autoCleaned: string[] | undefined;
+    let autocommitSha: string | undefined;
+    if (dirty.entries.length > 0 && (opts.autoClean === true || opts.autocommit === true)) {
+      const { classifyDirtyEntries } = await import("../preflight.ts");
+      const classified = await classifyDirtyEntries(branchWorktree, io, dirty.entries);
+      // Pass = AUTO_CLEAN_PASS_CLASSES (tolerated family incl. the RFC-1537
+      // regenerable classes) or disposable. Blocker = work or importer-prune
+      // — AC-4 names importer-prune a refusal class: restoring/committing a
+      // lockfile is a content decision, never a cleanup step.
+      const blocker = classified.filter(
+        (c) =>
+          c.class !== "disposable" && !AUTO_CLEAN_PASS_CLASSES.includes(c.class),
+      );
+      if (opts.autoClean === true) {
+        // A blocker refuses only when nothing downstream will commit it:
+        // with --autocommit also set, work members sweep into the commit —
+        // the RFC's composed order is clean → commit → integrate.
+        if (blocker.length > 0 && opts.autocommit !== true) {
+          return refuse(
+            "FLOW-INT-01",
+            `worktree ${branchWorktree} has ${blocker.length} uncommitted change(s) outside the disposable set: ${blocker
+              .slice(0, 10)
+              .map((b) => `${b.path} (${b.class})`)
+              .join(", ")} — --auto-clean deletes nothing on a mixed set`,
+            "commit or revert the work-class entries inside the session worktree, or re-run with --autocommit to sweep them into a commit",
+            { branch, developBefore, toleratedState: dirty.toleratedState },
+            {
+              entries: classified,
+              classes: summarizeClasses(classified),
+              toleratedState: dirty.toleratedState,
+            },
+          );
+        }
+        const toDelete = classified.filter((c) => c.class === "disposable");
+        autoCleaned = [];
+        for (const entry of toDelete) {
+          try {
+            await rm(join(branchWorktree, entry.path), { force: true, recursive: true });
+            autoCleaned.push(entry.path);
+            opts.onProgress?.(`auto-clean: deleted ${entry.path}`);
+          } catch (error) {
+            return refuse(
+              "FLOW-INT-17",
+              `--auto-clean could not delete ${entry.path}: ${error instanceof Error ? error.message : String(error)}`,
+              "delete the path manually inside the session worktree, then re-run flow.integrate",
+              { branch, developBefore, autoCleaned },
+            );
+          }
+        }
+        dirty = await statusDirty(branchWorktree, io);
+      }
+      if (opts.autocommit === true && dirty.entries.length > 0) {
+        // Stage exactly the remaining entry paths — never `git add -A`:
+        // tolerated FORGE_STATE paths are journaled, never committed.
+        const paths = dirty.entries.map((line) => line.slice(3).trim());
+        const add = await git(branchWorktree, io, ["add", "-A", "--", ...paths]);
+        if (add.exitCode !== 0) {
+          return refuse(
+            "FLOW-INT-17",
+            `--autocommit staging failed: ${add.stderr.trim()}`,
+            "inspect the session worktree state, then re-run flow.integrate",
+            { branch, developBefore, autoCleaned },
+          );
+        }
+        const commit = await gitCommit(branchWorktree, io, [
+          "commit",
+          "-m",
+          SWEEP_COMMIT_SUBJECT,
+        ], "integrate");
+        if (commit.exitCode !== 0) {
+          return refuse(
+            "FLOW-INT-17",
+            `--autocommit commit failed: ${commit.stderr.trim()}`,
+            "the staging stays for the operator to inspect — resolve and commit or reset inside the session worktree, then re-run",
+            { branch, developBefore, autoCleaned },
+          );
+        }
+        autocommitSha = (
+          await git(branchWorktree, io, ["rev-parse", "HEAD"])
+        ).stdout.trim();
+        opts.onProgress?.(
+          `autocommit: swept ${paths.length} path(s) into ${autocommitSha.slice(0, 9)} (${SWEEP_COMMIT_SUBJECT})`,
+        );
+        dirty = await statusDirty(branchWorktree, io);
+      }
     }
     // RFC-1537: declared regenerable dirt tolerated on this attempt —
     // surfaced in data + journaled on integrate/refusal, never committed.
@@ -614,6 +810,9 @@ async function integrateFlowBranchAttempt(
             developBefore,
             toleratedState: dirty.toleratedState,
             toleratedDirt: preflight.tolerated,
+            reattachedTo,
+            autoCleaned,
+            autocommitSha,
           },
           preflight.refuse.data,
         );
@@ -629,6 +828,10 @@ async function integrateFlowBranchAttempt(
         opts.onProgress?.(`tolerated regenerable state: ${t.path} (${t.class})`);
       }
       if (verdict.unattributed.length > 0) {
+        const entries = verdict.unattributed.map((line) => {
+          const path = line.slice(3).trim();
+          return { path, class: classifyDirtyPath(path) };
+        });
         return refuse(
           "FLOW-INT-01",
           `worktree ${branchWorktree} has ${verdict.unattributed.length} uncommitted change(s): ${verdict.unattributed.slice(0, 10).join(", ")}` +
@@ -638,15 +841,19 @@ async function integrateFlowBranchAttempt(
             (dirty.toleratedState.length > 0
               ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
               : ""),
-          "commit or revert the uncommitted changes inside the session worktree, then re-run",
+          "commit or revert the uncommitted changes inside the session worktree, or remediate with --auto-clean / --autocommit, then re-run",
           {
             branch,
             developBefore,
             toleratedState: dirty.toleratedState,
             toleratedDirt: verdict.tolerated,
+            reattachedTo,
+            autoCleaned,
+            autocommitSha,
           },
           {
-            entries: verdict.unattributed.map((line) => line.slice(3)),
+            entries,
+            classes: summarizeClasses(entries),
             toleratedState: dirty.toleratedState,
           },
         );
@@ -866,6 +1073,9 @@ async function integrateFlowBranchAttempt(
       ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
       ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
       ...(autoResolved.length > 0 ? { autoResolved } : {}),
+      ...(reattachedTo !== undefined ? { reattachedTo } : {}),
+      ...(autoCleaned !== undefined && autoCleaned.length > 0 ? { autoCleaned } : {}),
+      ...(autocommitSha !== undefined ? { autocommitSha } : {}),
       gateEngine: engine.source,
       diagnostics: warnings,
     };
@@ -939,6 +1149,11 @@ async function integrateFlowBranchAttempt(
     inner.developBefore ?? undefined,
     inner.toleratedDirt,
     inner.autoResolved,
+    {
+      reattachedTo: inner.reattachedTo,
+      autoCleaned: inner.autoCleaned,
+      autocommitSha: inner.autocommitSha,
+    },
   );
   return {
     ...inner,
@@ -969,6 +1184,9 @@ export async function runFlowIntegrate(
     onProgress: (m) => logger.info(`  ${m}`),
     invoke: context.invoke,
     commandRegistry: context.commandRegistry,
+    reattach: input.flags["reattach"] === true,
+    autoClean: input.flags["auto-clean"] === true,
+    autocommit: input.flags["autocommit"] === true,
   });
 
   const refused = data.diagnostics.find((d) => d.severity === "error");
@@ -990,6 +1208,15 @@ export async function runFlowIntegrate(
       }
       if (data.toleratedState !== undefined && data.toleratedState.length > 0) {
         logger.info(`  tolerated forge state: ${data.toleratedState.join(", ")}`);
+      }
+      if (data.reattachedTo !== undefined) {
+        logger.info(`  reattached: ${data.reattachedTo}`);
+      }
+      if (data.autoCleaned !== undefined && data.autoCleaned.length > 0) {
+        logger.info(`  auto-cleaned: ${data.autoCleaned.join(", ")}`);
+      }
+      if (data.autocommitSha !== undefined) {
+        logger.info(`  autocommit: ${data.autocommitSha.slice(0, 9)} (${SWEEP_COMMIT_SUBJECT})`);
       }
     }
   }

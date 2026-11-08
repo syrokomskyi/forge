@@ -17,11 +17,11 @@ forge/journal.jsonl.</purpose>
   <item>`held` is typed null now — the wave-2 outbound RFC widens it to { heldAt, riskCategory, reason }.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1537: integrate-refusal journal event + rule/toleratedDirt fields — every flow.integrate refusal journals {branch, rule, summary, at} for flow.status lastRefusal; appendJournal now serializes toleratedState (was silently dropped)</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
+  <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <history>RFC-1487, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -153,6 +153,12 @@ export interface FlowJournalEvent {
   /** RFC-1538: generated conflict paths auto-resolved by owner regeneration
    * during the integrate's rebase. */
   autoResolved?: string[];
+  /** RFC-1531: worktree path --reattach recreated before the integrate. */
+  reattachedTo?: string;
+  /** RFC-1531: disposable-class paths --auto-clean deleted. */
+  autoCleaned?: string[];
+  /** RFC-1531: sha of the --autocommit sweep commit that landed with the branch. */
+  autocommitSha?: string;
   /** hold only — the new (base, sha] range of every replayed item. */
   rewrites?: Array<{
     branch: string;
@@ -265,6 +271,9 @@ export async function appendJournal(
   if (event.toleratedState !== undefined) line.toleratedState = event.toleratedState;
   if (event.toleratedDirt !== undefined) line.toleratedDirt = event.toleratedDirt;
   if (event.autoResolved !== undefined) line.autoResolved = event.autoResolved;
+  if (event.reattachedTo !== undefined) line.reattachedTo = event.reattachedTo;
+  if (event.autoCleaned !== undefined) line.autoCleaned = event.autoCleaned;
+  if (event.autocommitSha !== undefined) line.autocommitSha = event.autocommitSha;
   if (event.rewrites !== undefined) line.rewrites = event.rewrites;
   await io.appendFile(file, `${JSON.stringify(line)}\n`);
 }
