@@ -13,12 +13,12 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>FORGE_STATE_FILES is an exact-path/prefix allowlist, never a glob — and because tolerated paths stay untracked-not-ignored on disk, removers must delete them right before `git worktree remove` or the dirty verdict stops predicting removability (RFC-1515 r1).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
-  <history>RFC-1486, RFC-1487</history>
+  <item>ADR-0124: enable git rerere in flow-managed repositories</item>
+  <history>RFC-1486, RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -305,6 +305,29 @@ export async function configGet(
   if (result.exitCode === 0) return result.stdout.trim();
   if (result.exitCode === 1) return null;
   throw new Error(`git config --get ${key} failed (exit ${result.exitCode}): ${result.stderr.trim()}`);
+}
+
+/**
+ * ADR-0124: flow-managed repositories keep `rerere.enabled` and
+ * `rerere.autoupdate` set — an identical rebase conflict shape replays the
+ * recorded resolution instead of demanding a fresh manual resolve on every
+ * `develop` advance. Shared repository config: always write against the
+ * repo root, never --worktree (rr-cache lives in the common git dir).
+ * Returns human-readable failure strings; a write failure degrades to a
+ * diagnostic, never a refusal.
+ */
+export async function ensureRerere(repoRoot: string, io: WorkspaceIO): Promise<string[]> {
+  const failures: string[] = [];
+  for (const [key, value] of [
+    ["rerere.enabled", "true"],
+    ["rerere.autoupdate", "true"],
+  ] as const) {
+    const r = await git(repoRoot, io, ["config", key, value]);
+    if (r.exitCode !== 0) {
+      failures.push(`git config ${key} ${value} failed: ${r.stderr.trim()}`);
+    }
+  }
+  return failures;
 }
 
 /**
