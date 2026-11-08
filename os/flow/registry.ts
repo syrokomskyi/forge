@@ -20,6 +20,7 @@ forge/journal.jsonl.</purpose>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1537: integrate-refusal journal event + rule/toleratedDirt fields — every flow.integrate refusal journals {branch, rule, summary, at} for flow.status lastRefusal; appendJournal now serializes toleratedState (was silently dropped)</item>
+  <item>RFC-1532: FlowJournalEvent.gateReport — the repo-relative path links integrate/backmerge and integrate-refusal events to the attempt's persisted gate report</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <history>RFC-1487, RFC-1490, RFC-1491</history>
@@ -159,6 +160,10 @@ export interface FlowJournalEvent {
   autoCleaned?: string[];
   /** RFC-1531: sha of the --autocommit sweep commit that landed with the branch. */
   autocommitSha?: string;
+  /** RFC-1532: repo-relative `gate-reports/<file>` for integrate/backmerge
+   * events whose gate wrote a report — the journal's link to the attempt's
+   * full check evidence. */
+  gateReport?: string;
   /** hold only — the new (base, sha] range of every replayed item. */
   rewrites?: Array<{
     branch: string;
@@ -274,6 +279,7 @@ export async function appendJournal(
   if (event.reattachedTo !== undefined) line.reattachedTo = event.reattachedTo;
   if (event.autoCleaned !== undefined) line.autoCleaned = event.autoCleaned;
   if (event.autocommitSha !== undefined) line.autocommitSha = event.autocommitSha;
+  if (event.gateReport !== undefined) line.gateReport = event.gateReport;
   if (event.rewrites !== undefined) line.rewrites = event.rewrites;
   await io.appendFile(file, `${JSON.stringify(line)}\n`);
 }

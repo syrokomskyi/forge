@@ -20,13 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
-  <item>RFC-1528: bounded preflight between dirty checks and the gate — classified lockfile diffs, early primary check, manifest/RFC/friction validators (FLOW-INT-12/13/14)</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: remediation flags --reattach/--auto-clean/--autocommit on the classified dirty set, FLOW-INT-17 remediation-failure refusals, classified FLOW-INT-01 data</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1537</history>
+  <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -181,6 +180,7 @@ async function cleanupIntegrated(
   journalToleratedDirt?: Array<{ path: string; class: string }>,
   journalAutoResolved?: string[],
   journalRemediation?: { reattachedTo?: string; autoCleaned?: string[]; autocommitSha?: string },
+  journalGateReport?: string,
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -308,6 +308,7 @@ async function cleanupIntegrated(
       ...(journalRemediation?.autocommitSha !== undefined
         ? { autocommitSha: journalRemediation.autocommitSha }
         : {}),
+      ...(journalGateReport !== undefined ? { gateReport: journalGateReport } : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -357,6 +358,9 @@ export async function integrateFlowBranch(
         rule: error.ruleId,
         ...(data.toleratedState !== undefined ? { toleratedState: data.toleratedState } : {}),
         ...(data.toleratedDirt !== undefined ? { toleratedDirt: data.toleratedDirt } : {}),
+        // RFC-1532: the refused attempt's report links here too — the journal
+        // answers "which gate report belongs to this refusal" in one field.
+        ...(data.gate?.reportPath ? { gateReport: data.gate.reportPath } : {}),
       });
     } catch {
       /* journal is audit, not gate */
@@ -1005,6 +1009,9 @@ async function integrateFlowBranchAttempt(
         `hooks/integration-gate.sh refused the integration (exit ${gate.exitCode}): ${gate.stderrTail}`,
         `fix what ${primary}/hooks/integration-gate.sh demands, then re-run`,
         { branch, developBefore, rebased: entry.port === null, gate },
+        // RFC-1532 AC-4: name the persisted report so the fixing agent reads
+        // full check rows instead of re-running the gate.
+        gate.reportPath ? { reportPath: gate.reportPath } : undefined,
       );
     }
 
@@ -1128,7 +1135,9 @@ async function integrateFlowBranchAttempt(
     throw error;
   }
 
-  if (!inner.integrated || inner.diagnostics.length > 0) return inner;
+  // Only error-severity diagnostics are refusals — warnings (e.g. the
+  // FLOW-INT-16 primary-engine notice) must not skip cleanup and journaling.
+  if (!inner.integrated || inner.diagnostics.some((d) => d.severity === "error")) return inner;
 
   // (6) cleanup — outside the lock; every git call runs with -C primary.
   // RFC-1536: prune this session's own id reservations once the branch
@@ -1154,6 +1163,7 @@ async function integrateFlowBranchAttempt(
       autoCleaned: inner.autoCleaned,
       autocommitSha: inner.autocommitSha,
     },
+    inner.gate?.reportPath ?? undefined,
   );
   return {
     ...inner,
