@@ -20,11 +20,11 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: drop RFC-1487 id from fo-session-retro instruction text (SKILL-17)</item>
   <item>RFC-1491: step 6 — outbound AGENTS paragraphs, retro step 3f, FLOW-PUSH/HOLD/GUARD-05/10/INT-11 catalog</item>
   <item>RFC-1528: worktree-first preamble — session-end writes go through a dedicated session worktree; docs.archive prefers the kernel host</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
+  <item>ADR-0126: docs-rule batch — 16 friction measures landed</item>
   <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487</history>
 </CHANGE_SUMMARY>
 -->
@@ -77,6 +77,8 @@ Session-end writes (transcript save, `docs.archive` moves, `frictions.yaml` upda
 - **Read-only retro** (the session produced zero tracked writes and none of Steps 0–4 will create any — e.g. `saveSessions: false` with a clean tree and no insights to route) → no worktree needed; run the retro in place.
 
 When the preamble opened a worktree, every subsequent step — Step 0 transcript, archive, friction/registry writes, retro commits — runs inside it. All writes batch into a single `flow.integrate` at Step 3e. Do NOT open one worktree per write, and do NOT integrate from the primary checkout.
+
+**Artifact home (F-0105):** every retro artifact — the Step 0 transcript, memory writes, frictions.yaml entries, routed rules — lands in the operator's working repo (the PREFERENCES home whose `forge.yaml` resolves this run), never in the resolved skill's host repo. A skill twin resolving from another checkout does not relocate the writes.
 
 ## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
 
@@ -135,8 +137,13 @@ Remove leftover `tmp-*` and `tmp/` directories created by unit tests anywhere in
 > Commands below assume RTK is installed. To check, run `rtk --version` (this is the detection command — it is not prefixed with `rtk` because it IS an `rtk` command). If `rtk --version` fails, RTK is not installed — run all commands without the `rtk` prefix.
 
 ```bash
-rtk find . -type d -name 'tmp-*' -not -path './.git/*' -exec rm -rf {} + 2>/dev/null
-rtk find . -type d -name 'tmp' -not -path './.git/*' -not -path './node_modules/*' -exec rm -rf {} + 2>/dev/null
+# rtk find accepts only single predicates (F-0025) — locate with one
+# predicate per call, then delete the listed dirs explicitly; skip hits
+# under ./.git/** and ./node_modules/**.
+rtk find . -type d -name 'tmp-*'
+rtk find . -type d -name tmp
+# remove each listed dir (never a -not/-exec/-o compound — rtk rejects them):
+rtk rm -rf <dir> [<dir>…]
 ```
 
 This is safe to auto-run.
