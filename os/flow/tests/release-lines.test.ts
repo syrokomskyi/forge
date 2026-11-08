@@ -12,6 +12,7 @@ root pins the expected line set.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1488: step 1 — release-lines discovery tests</item>
   <item>RFC-1488: step 1 — semver helper + release-line discovery (extract.config.yaml workspace globs)</item>
+  <item>RFC-1540: count the intake-validator release line in the werkstatt root discovery test</item>
 </CHANGE_SUMMARY>
 */
 
@@ -126,8 +127,10 @@ describe("discoverReleaseLines", () => {
     const { lines, diagnostics } = await discoverReleaseLines(root, ambientIo);
     expect(diagnostics.filter((d) => d.ruleId === "FLOW-VER-02")).toEqual([]);
     const ids = lines.map((l) => l.id);
-    expect(ids).toHaveLength(16);
+    // RFC-1540 added the intake-validator extract line (16 → 17).
+    expect(ids).toHaveLength(17);
     expect(ids).toContain("repo");
+    expect(ids).toContain("intake-validator");
     expect(ids).toContain("forge");
     expect(ids).toContain("werkstatt-engine");
   });
