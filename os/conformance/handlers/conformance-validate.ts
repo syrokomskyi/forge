@@ -17,6 +17,9 @@ published conformance validator is installed (warning).</purpose>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
   <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
+  <item>RFC-1539: amend dna-55 and dna-115 for published spec packages
+
+Guides, fo-spec-ingest routing, command descriptions and regenerated command docs, remediation entries for SPEC-15..18 and CONF-07..09; resyncs the stale .agents fo-system-dispatch mirror (ADR-0126 source line).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -35,7 +38,9 @@ const EXACT_PIN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
 
 function readRootDevDependencies(workspaceRoot: string): Record<string, string> {
   try {
-    const manifest = JSON.parse(fs.readFileSync(path.join(workspaceRoot, "package.json"), "utf8")) as {
+    const manifest = JSON.parse(
+      fs.readFileSync(path.join(workspaceRoot, "package.json"), "utf8"),
+    ) as {
       devDependencies?: Record<string, string>;
     };
     return manifest.devDependencies ?? {};
@@ -47,7 +52,10 @@ function readRootDevDependencies(workspaceRoot: string): Record<string, string> 
 function installedManifest(workspaceRoot: string, pkg: string): Record<string, unknown> | null {
   try {
     const req = createRequire(path.join(workspaceRoot, "package.json"));
-    return JSON.parse(fs.readFileSync(req.resolve(`${pkg}/package.json`), "utf8")) as Record<string, unknown>;
+    return JSON.parse(fs.readFileSync(req.resolve(`${pkg}/package.json`), "utf8")) as Record<
+      string,
+      unknown
+    >;
   } catch {
     return null;
   }
@@ -59,7 +67,8 @@ function isPackageInstalled(workspaceRoot: string, pkg: string): boolean {
 
 /** A validator package marks itself with `"forge": { "conformanceValidator": true }` (RFC-1539 CONF-09). */
 function isPublishedConformanceValidator(workspaceRoot: string, pkg: string): boolean {
-  const forge = installedManifest(workspaceRoot, pkg)?.["forge"] as { conformanceValidator?: unknown } | undefined;
+  const forge = installedManifest(workspaceRoot, pkg)?.["forge"] as
+    { conformanceValidator?: unknown } | undefined;
   return forge?.conformanceValidator === true;
 }
 import type {
