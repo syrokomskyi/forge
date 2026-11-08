@@ -11,10 +11,13 @@
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
 </CHANGE_SUMMARY>
 */
 
-import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { ambientIo as fs, resolveIo } from "../../../src/utils/io.ts";
+import { allocateNextAdrId, appendReservation } from "../../rfc/next-id.ts";
+import { currentBranch } from "../../flow/git.ts";
 import { existsSync } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -144,7 +147,13 @@ export async function runAdrCreate(
       if (num > maxId) maxId = num;
     }
   }
-  const nextNum = maxId + 1;
+  // RFC-1536 (Q-2): ADR ids share the RFC reservation surface and discipline.
+  const io = resolveIo(context.io);
+  const allocation = await allocateNextAdrId(io, workspaceRoot, maxId);
+  for (const warning of allocation.warnings) {
+    if (outputFormat === "pretty") logger.warn(`adr.create: ${warning}`);
+  }
+  const nextNum = allocation.id;
   const paddedNum = String(nextNum).padStart(4, "0");
   const nextSlug = `adr-${paddedNum}`;
   const nextId = `ADR-${paddedNum}`;
@@ -196,6 +205,20 @@ export async function runAdrCreate(
   }
 
   const targetPath = path.join(adrDirPath, fileName);
+  // RFC-1536: reserve before the file write (see rfc.create for the rationale).
+  const landed = new Set<number>(files.map((f) => {
+    const m = path.basename(f).match(/^adr-(\d{4})/);
+    return m ? parseInt(m[1]!, 10) : 0;
+  }));
+  const reserved = await appendReservation(
+    io,
+    workspaceRoot,
+    { kind: "adr", id: nextNum, session: await currentBranch(workspaceRoot, io) },
+    landed,
+  );
+  for (const warning of reserved.warnings) {
+    if (outputFormat === "pretty") logger.warn(`adr.create: ${warning}`);
+  }
   await fs.writeFile(targetPath, content);
 
   const relativeFile = path.join(ADR_DIR, fileName);
@@ -212,6 +235,7 @@ export async function runAdrCreate(
       status: "ok",
       file: relativeFile,
       id: nextId,
+      idSource: allocation.source,
     },
     summary: `Created ${nextId}: ${title}`,
   };
