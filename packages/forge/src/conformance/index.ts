@@ -8,11 +8,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1365: initial conformance execution path — emit/mirror/consumer legs, tail-bounded output, skip/require verdicts.</item>
   <item>RFC-1365: step 1 — contractProducers schema + conformance execution path</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1365: compass header fix — drop forbidden keywords/responsibilities tags, expand purpose</item>
   <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
+  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
+  <history>RFC-1365</history>
 </CHANGE_SUMMARY>
 */
 
@@ -158,6 +159,18 @@ async function executeLeg(
  * invoke the authoritative consumer validator inside the consumer checkout.
  * The tmpdir is removed in `finally`; nothing is written into the repo.
  */
+/**
+ * RFC-1539: absolute path of a published validator's bin inside the producer
+ * repository (`<repoRoot>/node_modules/.bin/<name>`, `.cmd` shim on win32), or
+ * null when it is not installed.
+ */
+export function resolvePackageConsumerBin(repoRoot: string, name: string): string | null {
+  const base = join(repoRoot, "node_modules", ".bin", name);
+  const candidates = process.platform === "win32" ? [`${base}.cmd`, base] : [base];
+  for (const candidate of candidates) if (existsSync(candidate)) return candidate;
+  return null;
+}
+
 export async function runProducerConformance(
   decl: ContractProducerDecl,
   opts: { repoRoot: string; requireConsumer?: boolean },
@@ -236,6 +249,38 @@ export async function runProducerConformance(
         );
         return verdict("fail", "mirror");
       }
+    }
+
+    // --- consumer leg, package form (RFC-1539): the published validator's bin, never skipped ---
+    if (decl.consumer.package !== undefined) {
+      const [bin, ...rest] = decl.consumer.validator.argv;
+      const binPath = resolvePackageConsumerBin(opts.repoRoot, bin);
+      if (binPath === null) {
+        legs.push({ leg: "consumer", status: "fail", durationMs: 0 });
+        diagnostics.push(
+          `consumer-missing: consumer.package ${decl.consumer.package} is not installed or has no bin "${bin}" in node_modules/.bin — a package consumer never self-skips (RFC-1539)`,
+        );
+        return verdict("fail", "consumer");
+      }
+      leg = await executeLeg(
+        "consumer",
+        [binPath, ...rest],
+        opts.repoRoot,
+        bundleDir,
+        decl.consumer.validator.timeoutMs ?? CONFORMANCE_DEFAULT_TIMEOUT_MS,
+      );
+      legs.push(leg);
+      if (leg.status === "fail") {
+        diagnostics.push(
+          leg.transport === "spawn-error"
+            ? `consumer validator spawn failed: ${leg.errorDetail ?? "unknown spawn error"} — transport failure, not a bundle verdict`
+            : leg.transport === "timeout"
+              ? `consumer validator timed out after ${decl.consumer.validator.timeoutMs ?? CONFORMANCE_DEFAULT_TIMEOUT_MS}ms — transport failure, not a bundle verdict`
+              : `consumer validator ${decl.consumer.package} exited ${leg.exitCode} — see captured output`,
+        );
+        return verdict("fail", "consumer");
+      }
+      return verdict("pass", undefined);
     }
 
     // --- consumer leg: the authoritative validator in the sibling checkout ---

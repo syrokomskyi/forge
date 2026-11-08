@@ -8,11 +8,11 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>Gap fix: resolve materialized RFCs recursively so terminal RFC archival does not invalidate accepted specs.</item>
   <item>RFC-1240: SPEC-12 consumers list hygiene, SPEC-13 consumer-identity warning; warnings no longer fail validation.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: sweep mode skips dirs without forge-spec.yaml (authored/live areas are not packages), reports them as skippedDirs; --spec keeps SPEC-02.</item>
   <item>RFC-1302: consumer-aware SPEC-07, narrowed SPEC-10, source-first bin entry (RFC-1302)</item>
   <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
+  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
   <history>RFC-0394</history>
 </CHANGE_SUMMARY>
 */
@@ -41,6 +41,7 @@ import {
   type SpecValidateResult,
 } from "./spec-schema.ts";
 import { loadAmendments as loadAmendmentsShared, type LoadedAmendments } from "./spec-amendments.ts";
+import { listSpecSources, type SpecSource } from "../../src/spec/resolve-spec-source.ts";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -78,6 +79,7 @@ async function listSnapshotFiles(
 async function checkIntegrity(
   specDir: string,
   violations: SpecViolation[],
+  extraExclude: readonly string[] = [],
 ): Promise<void> {
   const integrityPath = path.join(specDir, "integrity.yaml");
   const integrity = await readYaml<SpecIntegrity>(integrityPath);
@@ -96,7 +98,8 @@ async function checkIntegrity(
   }
 
   const manifest = parsed.data;
-  const exclude = new Set(["forge-spec.yaml", "integrity.yaml", "amendments"]);
+  // RFC-1539: an installed package adds its own package.json (and may hold node_modules).
+  const exclude = new Set(["forge-spec.yaml", "integrity.yaml", "amendments", ...extraExclude]);
 
   for (const [relPath, expectedHash] of Object.entries(manifest.files)) {
     const fullPath = path.join(specDir, relPath);
@@ -456,8 +459,39 @@ export async function runSpecValidate(
 
   let specDirs = await listSpecDirs(specsRoot);
   const skippedDirs: string[] = [];
+
+  // RFC-1539: published spec packages declared in forge.yaml specPackages[].
+  const sourceListing = listSpecSources(workspaceRoot);
+  const packageSources = sourceListing.sources.filter(
+    (s): s is Extract<SpecSource, { kind: "package" }> => s.kind === "package",
+  );
+  const declarationErrors: SpecViolation[] = sourceListing.diagnostics
+    .filter((d) => d.severity === "error")
+    .map((d) => ({ rule: d.rule, message: d.message }));
+  const vendoredWarnings = new Map<string, SpecViolation[]>();
+  for (const d of sourceListing.diagnostics) {
+    if (d.severity !== "warning" || !d.specId) continue;
+    const list = vendoredWarnings.get(d.specId) ?? [];
+    list.push({ rule: d.rule, message: d.message, severity: "warning" });
+    vendoredWarnings.set(d.specId, list);
+  }
+  let selectedPackages = packageSources;
+
   if (filterSpec) {
-    if (!specDirs.includes(filterSpec)) {
+    const pkgMatch = packageSources.find((s) => s.specId === filterSpec);
+    const pkgBase = packageSources.find((s) =>
+      filterSpec.startsWith(`${s.specId.slice(0, -`-v${s.version}`.length)}-v`),
+    );
+    if (pkgMatch) {
+      selectedPackages = [pkgMatch];
+      specDirs = [];
+    } else if (pkgBase) {
+      return {
+        data: { command: "spec.validate", status: "fail", specs: [], skippedDirs },
+        exitCode: 1,
+        summary: `spec.validate: spec '${filterSpec}' is package-sourced (${pkgBase.package}) but the installed version is ${pkgBase.specId}`,
+      };
+    } else if (!specDirs.includes(filterSpec)) {
       return {
         data: {
           command: "spec.validate",
@@ -468,8 +502,10 @@ export async function runSpecValidate(
         exitCode: 1,
         summary: `spec.validate: spec '${filterSpec}' not found. Available: ${specDirs.join(", ") || "(none)"}`,
       };
+    } else {
+      specDirs = [filterSpec];
+      selectedPackages = [];
     }
-    specDirs = [filterSpec];
   } else {
     // Sweep mode: only manifest-bearing dirs are spec packages — authored
     // work areas and docs/specs/live/ carry no forge-spec.yaml and are skipped.
@@ -482,10 +518,20 @@ export async function runSpecValidate(
 
   const rfcDir = path.join(workspaceRoot, "docs", "rfcs");
   const results: SpecValidateResult["specs"] = [];
+  if (declarationErrors.length > 0) {
+    results.push({ id: "specPackages", status: "unknown", violations: declarationErrors });
+  }
 
-  for (const specId of specDirs) {
-    const specDir = path.join(specsRoot, specId);
-    const violations: SpecViolation[] = [];
+  const targets: Array<{ specId: string; specDir: string; pkg?: Extract<SpecSource, { kind: "package" }> }> = [
+    ...specDirs.map((specId) => ({ specId, specDir: path.join(specsRoot, specId) })),
+    ...selectedPackages.map((pkg) => ({ specId: pkg.specId, specDir: pkg.dir, pkg })),
+  ];
+
+  for (const { specId, specDir, pkg } of targets) {
+    const violations: SpecViolation[] = [...(pkg ? [] : (vendoredWarnings.get(specId) ?? []))];
+    const source: SpecValidateResult["specs"][number]["source"] = pkg
+      ? { kind: "package", package: pkg.package, version: pkg.version }
+      : { kind: "vendored" };
 
     // Load forge-spec.yaml
     const forgeSpecPath = path.join(specDir, "forge-spec.yaml");
@@ -495,6 +541,7 @@ export async function runSpecValidate(
         id: specId,
         status: "unknown",
         violations: [{ rule: "SPEC-02", message: "forge-spec.yaml not found" }],
+        source,
       });
       continue;
     }
@@ -502,12 +549,12 @@ export async function runSpecValidate(
     // SPEC-02: Schema
     const spec = checkSchema(rawSpec, violations);
     if (!spec) {
-      results.push({ id: specId, status: "unknown", violations });
+      results.push({ id: specId, status: "unknown", violations, source });
       continue;
     }
 
-    // SPEC-01: Integrity
-    await checkIntegrity(specDir, violations);
+    // SPEC-01: Integrity (an installed package adds package.json, never hash-covered)
+    await checkIntegrity(specDir, violations, pkg ? ["package.json", "node_modules"] : []);
 
     // SPEC-03: Cycles
     checkCycles(spec, violations);
@@ -524,10 +571,13 @@ export async function runSpecValidate(
     // SPEC-07: materializedAs
     await checkMaterializedAs(spec, rfcDir, localConsumer, violations);
 
-    // SPEC-08..11: Amendments (RFC-0397); SPEC-14: fail-closed load (RFC-1363)
-    const { amendments, errors: amendmentLoadErrors } = await loadAmendments(specDir);
-    violations.push(...amendmentLoadErrors);
-    checkAmendments(spec, amendments, violations);
+    // SPEC-08..11: Amendments (RFC-0397); SPEC-14: fail-closed load (RFC-1363).
+    // RFC-1539: package-sourced specs carry no amendments/ — feedback travels as outbox entries.
+    if (!pkg) {
+      const { amendments, errors: amendmentLoadErrors } = await loadAmendments(specDir);
+      violations.push(...amendmentLoadErrors);
+      checkAmendments(spec, amendments, violations);
+    }
 
     // SPEC-12/13: consumers hygiene + identity warning (RFC-1240)
     checkConsumers(spec, localConsumer, violations);
@@ -536,6 +586,7 @@ export async function runSpecValidate(
       id: spec.id,
       status: spec.status,
       violations,
+      source,
     });
   }
 

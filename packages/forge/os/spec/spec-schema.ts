@@ -10,6 +10,7 @@
   <item>RFC-0394: initial spec schema — forge/spec@1, integrity manifest, decision/rfc/wave types.</item>
   <item>RFC-1240: consumers field on roadmap nodes (consumer ownership filtering); severity field on SpecViolation for warning diagnostics.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: skippedDirs field on SpecValidateResult for sweep-mode transparency.</item>
+  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
 </CHANGE_SUMMARY>
 */
 
@@ -154,6 +155,8 @@ export interface SpecValidateResult {
     id: string;
     status: string;
     violations: SpecViolation[];
+    /** RFC-1539: where the spec was read from — a vendored dir or an installed package. */
+    source?: { kind: "vendored" } | { kind: "package"; package: string; version: string };
   }>;
   /** Dirs under specsDir skipped in sweep mode — non-package dirs carry no
    * forge-spec.yaml (authored/live work areas). Always [] under --spec. */

@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
 
 REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
@@ -18,7 +17,8 @@ record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
   <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365</history>
+  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
 
@@ -204,18 +204,33 @@ export interface ForgeMigrationAdapter {
  * authoritative validator inside the sibling consumer checkout. Entries
  * passthrough so follow-up fields (e.g. a consumer pin) land without churn.
  */
+const conformanceValidatorSchema = z.object({
+  argv: z.array(z.string().min(1)).min(1),
+  timeoutMs: z.number().int().positive().optional(),
+});
+
 export const contractProducerSchema = z
   .object({
     id: z.string().min(1),
     emit: z.object({ argv: z.array(z.string().min(1)).min(1) }),
     mirror: z.object({ argv: z.array(z.string().min(1)).min(1) }).optional(),
-    consumer: z.object({
-      root: z.string().min(1),
-      validator: z.object({
-        argv: z.array(z.string().min(1)).min(1),
-        timeoutMs: z.number().int().positive().optional(),
-      }),
-    }),
+    // RFC-1539: `root` names a sibling consumer checkout; `package` names the
+    // consumer's published validator package (exact-pinned devDependency,
+    // argv[0] resolves to its bin) — a package consumer never self-skips.
+    consumer: z.union([
+      z
+        .object({
+          root: z.string().min(1),
+          validator: conformanceValidatorSchema,
+        })
+        .strict(),
+      z
+        .object({
+          package: z.string().min(1),
+          validator: conformanceValidatorSchema,
+        })
+        .strict(),
+    ]),
     test: z.string().min(1).optional(),
   })
   .passthrough();
@@ -224,11 +239,36 @@ export interface ContractProducerEntry {
   id: string;
   emit: { argv: string[] };
   mirror?: { argv: string[] };
-  consumer: {
-    root: string;
-    validator: { argv: string[]; timeoutMs?: number };
-  };
+  consumer: ContractProducerConsumer;
   test?: string;
+}
+
+/** RFC-1539: a sibling checkout (`root`) or a published validator package (`package`). */
+export type ContractProducerConsumer =
+  | { root: string; package?: undefined; validator: { argv: string[]; timeoutMs?: number } }
+  | { package: string; root?: undefined; validator: { argv: string[]; timeoutMs?: number } };
+
+// ---------------------------------------------------------------------------
+// Spec packages schema (RFC-1539)
+// ---------------------------------------------------------------------------
+
+/**
+ * A published spec consumed as an installed npm package instead of a vendored
+ * docs/specs/ directory (RFC-1539, DNA-55): `id` is the spec id without its
+ * version suffix; the installed package version completes it
+ * (`<id>-v<version>`). Ids must be unique (SPEC-18) — checked by the spec
+ * source resolver, not the schema, so the violation carries its rule code.
+ */
+export const specPackageSchema = z
+  .object({
+    id: z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/),
+    package: z.string().min(1),
+  })
+  .strict();
+
+export interface SpecPackageEntry {
+  id: string;
+  package: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -295,6 +335,8 @@ export const forgeConfigSchema = z
     migrationAdapters: z.array(forgeMigrationAdapterSchema).optional(),
     /** Contract producers (RFC-1365). Optional — absent means no declared producers. */
     contractProducers: z.array(contractProducerSchema).optional(),
+    /** Published spec packages (RFC-1539). Optional — absent means vendored specs only. */
+    specPackages: z.array(specPackageSchema).optional(),
     /** External proof checkers (RFC-1391). Optional — absent means only the built-in `exhaustive` tool. */
     formal: z
       .object({
@@ -351,6 +393,8 @@ export interface ForgeConfig {
   migrationAdapters?: ForgeMigrationAdapter[];
   /** Contract producers (RFC-1365). Optional — absent means no declared producers. */
   contractProducers?: ContractProducerEntry[];
+  /** Published spec packages (RFC-1539). Optional — absent means vendored specs only. */
+  specPackages?: SpecPackageEntry[];
   /** External proof checkers (RFC-1391). Optional — absent means only the built-in `exhaustive` tool. */
   formal?: { tools: Record<string, FormalToolEntry> };
   /** Forge sync metadata (RFC-0543). Optional — absent means never synced. */

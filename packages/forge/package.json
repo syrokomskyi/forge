@@ -52,6 +52,10 @@
       "types": "./src/reachability/command-mentions.ts",
       "default": "./src/reachability/command-mentions.ts"
     },
+    "./spec": {
+      "types": "./src/spec/resolve-spec-source.ts",
+      "default": "./src/spec/resolve-spec-source.ts"
+    },
     "./compass": {
       "types": "./src/compass/index.ts",
       "default": "./src/compass/index.ts"
@@ -503,6 +507,10 @@
       "./conformance": {
         "types": "./dist/src/conformance/index.d.ts",
         "default": "./dist/src/conformance/index.js"
+      },
+      "./spec": {
+        "types": "./dist/src/spec/resolve-spec-source.d.ts",
+        "default": "./dist/src/spec/resolve-spec-source.js"
       },
       "./formal": {
         "types": "./dist/src/formal/index.d.ts",
