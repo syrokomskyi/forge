@@ -6,16 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
-
-After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
   <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
 
 shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1528: note moved[] under-count on archiver throw (review F-10)</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522</history>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -36,6 +34,8 @@ import {
   type PackSkillEntry,
 } from "../../src/registry.ts";
 import { loadForgeConfig } from "../../src/config/forge-config.ts";
+import { resolveIo } from "../../src/utils/io.ts";
+import { resolveOwningCheckout } from "../flow/session-checkout.ts";
 
 export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runScaffold } = await import("../../src/onboarding/scaffold.ts");
@@ -984,6 +984,31 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         },
         execute: async (input, context) => {
           const { logger, outputFormat } = context;
+
+          // RFC-1536: route the moves to the owning checkout — a docs.archive
+          // run from the primary cwd moves files inside the registered
+          // session worktree (or refuses when none is attributable).
+          const io = resolveIo(context.io);
+          const owning = await resolveOwningCheckout(io, context.workspaceRoot);
+          if (!owning.ok) {
+            throw new Error(
+              `SESSION-WRITE-01: ${owning.reason} — candidates: ${owning.candidates.join(", ")}. ` +
+                `Fix: open a session worktree with 'pnpm exec forge flow.open --kind session --slug <slug>' and archive there.`,
+            );
+          }
+          for (const warning of owning.warnings) {
+            logger.warn(`docs.archive: ${warning}`);
+          }
+          const routedContext =
+            owning.checkout.kind === "worktree" && owning.checkout.worktreePath
+              ? { ...context, workspaceRoot: owning.checkout.worktreePath }
+              : context;
+          if (routedContext !== context && outputFormat === "pretty") {
+            logger.info(
+              `docs.archive: routed into worktree ${routedContext.workspaceRoot} (branch ${owning.checkout.sessionBranch})`,
+            );
+          }
+
           const dryRun = context.dryRun || input.flags["dry-run"] === true;
           const results: Record<string, unknown> = {};
           let totalMoved = 0;
@@ -1012,7 +1037,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
 
           for (const { name: cmdName, fn } of subCommands) {
             try {
-              const result = await fn(input, context);
+              const result = await fn(input, routedContext);
               const data = (result as { data?: { moved?: unknown[]; skipped?: unknown[] } })?.data;
               if (data) {
                 totalMoved += Array.isArray(data.moved) ? data.moved.length : 0;
@@ -1038,7 +1063,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             formatLiveMergeFailure,
             buildLiveMergeBlock,
           } = await import("../spec/live-spec-shared.ts");
-          const rfcDirPath = path.join(context.workspaceRoot, RFC_DIR);
+          const rfcDirPath = path.join(routedContext.workspaceRoot, RFC_DIR);
           const rfcArchiveData = results["rfc.archive"] as
             | {
                 moved?: Array<{
@@ -1147,7 +1172,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           const missionMoved = Array.isArray(missionData?.moved) ? missionData.moved.length : 0;
           if (!dryRun && missionMoved > 0) {
             try {
-              const restored = await restoreTrackedLockfile(context.workspaceRoot, {
+              const restored = await restoreTrackedLockfile(routedContext.workspaceRoot, {
                 ...execFileSyncAdapter(),
                 writeFile: async (target, content) => {
                   await writeFileIfChanged(target, content);
@@ -1188,7 +1213,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 }
               }
             }
-            const regen = await runArchiveRegen({ movedPaths: [...movedPaths], context });
+            const regen = await runArchiveRegen({ movedPaths: [...movedPaths], context: routedContext });
             regenerated = regen.regenerated;
             regenFailures = regen.failures;
             regenSkipped = regen.skipped;

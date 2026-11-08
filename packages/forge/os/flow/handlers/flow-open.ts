@@ -18,11 +18,11 @@ hooks/worktree-setup.sh.</purpose>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <history>RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -42,6 +42,7 @@ import {
   listLocalBranches,
   listRemoteBranches,
   requireGit,
+  statusTracked,
   topLevel,
 } from "../git.ts";
 import { formatFlowBranch, parseFlowBranch, type FlowBranchKind } from "../branch-name.ts";
@@ -216,6 +217,29 @@ export async function openFlowBranchCore(
   const primary = await primaryWorktree(io, repoRoot);
   const common = await commonGitDir(io, repoRoot);
 
+  // RFC-1536/RFC-1533 FLOW-OPEN-01: warn when the primary checkout carries
+  // tracked mutations — the sweep does NOT move them into the worktree.
+  // Warning severity, exit code unchanged; the same diagnostic fires at
+  // flow.check so the condition is visible between opens.
+  const dirtyPrimaryDiags: Diagnostic[] = [];
+  {
+    const primaryStatus = await statusTracked(primary, io);
+    if (!primaryStatus.vanished && primaryStatus.entries.length > 0) {
+      const paths = primaryStatus.entries.map((e) => e.slice(3));
+      const shown = paths.slice(0, 10);
+      dirtyPrimaryDiags.push({
+        ruleId: "FLOW-OPEN-01",
+        severity: "warning",
+        message:
+          `primary checkout carries ${paths.length} tracked mutation(s): ${shown.join(", ")}` +
+          (paths.length > shown.length ? ` (+${paths.length - shown.length} more)` : "") +
+          " — they are NOT swept into the worktree; commit or move them first",
+        fixHint:
+          "commit them in the primary checkout or move them into the session worktree before integrating",
+      });
+    }
+  }
+
   // Candidate names — local branches, remote-tracking auto refs, registry.
   let registryNames: string[];
   try {
@@ -294,7 +318,7 @@ export async function openFlowBranchCore(
         baseSha,
         opened: false,
         setup: { status: "skipped", exitCode: null, stderrTail: "", stdout: "" },
-        diagnostics: [],
+        diagnostics: dirtyPrimaryDiags,
       };
     }
 
@@ -327,7 +351,7 @@ export async function openFlowBranchCore(
         );
       }
       return refuse(
-        "FLOW-OPEN-01",
+        "FLOW-OPEN-09",
         `git worktree add -b ${name} failed (exit ${add.exitCode}): ${add.stderr.trim()}`,
         "inspect the git error — a stale ref or lock may need cleanup",
       );
@@ -397,7 +421,7 @@ export async function openFlowBranchCore(
       baseSha,
       opened: true,
       setup,
-      diagnostics: [...rerereDiags, ...setupDiag],
+      diagnostics: [...dirtyPrimaryDiags, ...rerereDiags, ...setupDiag],
     };
   }
   return refuse(

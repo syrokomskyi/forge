@@ -11,7 +11,6 @@ Deterministic only — no LLM/intelligent annotation (that is fo-session-save sk
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0537: implement session.save command handler.</item>
   <item>RFC-1053: integrate generateSessionMetrics after markdown write (non-fatal, guarded by !dryRun).</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
 
@@ -20,10 +19,13 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <history>RFC-0537</history>
 </CHANGE_SUMMARY>
 */
 
-import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { ambientIo as fs, resolveIo } from "../../../src/utils/io.ts";
+import { resolveOwningCheckout } from "../../flow/session-checkout.ts";
 import { execFile } from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { createHash } from "node:crypto";
@@ -206,8 +208,31 @@ export async function runSessionSave(
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<SessionSaveResult & { skipped: SessionSaveSkip[] }>> {
   const { workspaceRoot, logger, outputFormat } = context;
-  const sessionDirPath = path.join(workspaceRoot, SESSION_DIR);
-  const rawDirPath = path.join(sessionDirPath, SESSION_RAW_SUBDIR);
+
+  // RFC-1536: route the session-artifact write to the owning checkout —
+  // a session.save run from the primary cwd lands inside the registered
+  // session worktree (or refuses when no worktree is attributable). Reads
+  // stay in the invocation workspace: the raw .atif lives where the agent
+  // dropped it.
+  const io = resolveIo(context.io);
+  const owning = await resolveOwningCheckout(io, workspaceRoot);
+  if (!owning.ok) {
+    throw new Error(
+      `SESSION-WRITE-01: ${owning.reason} — candidates: ${owning.candidates.join(", ")}. ` +
+        `Fix: open a session worktree with 'pnpm exec forge flow.open --kind session --slug <slug>' and write there.`,
+    );
+  }
+  for (const warning of owning.warnings) {
+    logger.warn(`session.save: ${warning}`);
+  }
+  const writeRoot = owning.checkout.worktreePath ?? workspaceRoot;
+  const routedTo = owning.checkout.kind === "worktree" ? writeRoot : null;
+  if (routedTo !== null && outputFormat === "pretty") {
+    logger.info(`session.save: routed into worktree ${writeRoot} (branch ${owning.checkout.sessionBranch})`);
+  }
+
+  const rawDirPath = path.join(workspaceRoot, SESSION_DIR, SESSION_RAW_SUBDIR);
+  const sessionDirPath = path.join(writeRoot, SESSION_DIR);
 
   const dryRun = context.dryRun || input.flags["dry-run"] === true;
   const keepRaw = input.flags["keep-raw"] === true;
@@ -372,7 +397,7 @@ export async function runSessionSave(
       // ── RFC-1053: Generate session metrics from ATIF messages (non-fatal) ──
       try {
         metricsPath = await generateSessionMetrics(
-          workspaceRoot,
+          writeRoot,
           id,
           atifResult.messages,
           { date: timestamp.toISOString(), relatedRfcs, commits },
@@ -407,6 +432,7 @@ export async function runSessionSave(
       command: "session.save",
       status: "ok",
       file: outputRel,
+      ...(routedTo !== null ? { routedTo } : {}),
       rawFile: path.posix.join(SESSION_DIR, SESSION_RAW_SUBDIR, rawFileName),
       rawDeleted: !dryRun && !keepRaw,
       id,

@@ -6,16 +6,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1364: robust rfc index generation — bounded retry, RFC-IDX-04, atomic writes</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
-  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139</history>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139, RFC-1364</history>
 </CHANGE_SUMMARY>
 */
 
-import { ambientIo as fs } from "../../../src/utils/io.ts";
+import { ambientIo as fs, resolveIo } from "../../../src/utils/io.ts";
 import { writeFileSync } from "../../../src/utils/sync-fs.ts";
 import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { existsSync } from "node:fs";
@@ -38,6 +38,8 @@ import type {
 } from "../types.ts";
 import { RFC_DIR, RFC_KINDS, RFC_SCOPES, RFC_METADATA_CUTOFF } from "../types.ts";
 import { DNA_DOCS, loadInvariantIds, toIsoDate, resolveRfcTemplate } from "./shared.ts";
+import { allocateNextRfcId, appendReservation } from "../next-id.ts";
+import { currentBranch } from "../../flow/git.ts";
 import {
   collectDecisionLog,
   scoreDecisions,
@@ -348,7 +350,15 @@ export async function runRfcCreate(
       if (num > maxId) maxId = num;
     }
   }
-  let candidate = maxId + 1;
+  // RFC-1536: seed from the shared surfaces — the worktree-local scan alone
+  // lags develop and every sibling session's reservations.
+  const io = resolveIo(context.io);
+  const allocation = await allocateNextRfcId(io, workspaceRoot, maxId);
+  let candidate = allocation.id;
+  const idSource = allocation.source;
+  for (const warning of allocation.warnings) {
+    if (outputFormat === "pretty") logger.warn(`rfc.create: ${warning}`);
+  }
 
   for (let attempt = 1; attempt <= MAX_CREATE_ATTEMPTS; attempt++) {
     const paddedNum = String(candidate).padStart(4, "0");
@@ -437,6 +447,21 @@ export async function runRfcCreate(
       content = content.replace(/^# RFC-0000: .+$/m, `# ${nextId}: ${title}`);
 
       const targetPath = path.join(rfcDirPath, fileName);
+      // RFC-1536: reserve on the shared surface BEFORE the file write — a
+      // sibling session sees the claimed id even if this write never lands.
+      const landed = new Set<number>(files.map((f) => {
+        const m = path.basename(f).match(/^rfc-(\d{4})/);
+        return m ? parseInt(m[1]!, 10) : 0;
+      }));
+      const reserved = await appendReservation(
+        io,
+        workspaceRoot,
+        { kind: "rfc", id: candidate, session: await currentBranch(workspaceRoot, io) },
+        landed,
+      );
+      for (const warning of reserved.warnings) {
+        if (outputFormat === "pretty") logger.warn(`rfc.create: ${warning}`);
+      }
       // RFC-1364: atomic write (temp + rename) so concurrent readers never
       // observe a half-written RFC. The claim file already guarantees single
       // id allocation; the existence check preserves the old `wx` behavior
@@ -482,6 +507,7 @@ export async function runRfcCreate(
       status: "ok",
       file: relativeFile,
       id: nextId,
+      idSource,
       satisfies,
       consultedDecisions,
       ...(colliding.length > 0 ? { colliding, blocked: false } : {}),

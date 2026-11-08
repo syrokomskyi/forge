@@ -16,7 +16,6 @@ by flow.install step 9.</purpose>
   <item>A stray auto branch (RFC-1498) reports FLOW-07 the moment it exists — it has no registry entry and no worktree, so the 72 h staleness grace never applied to it.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
@@ -25,7 +24,8 @@ collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* b
   <item>RFC-1498: step 2 — network-only marker source
 
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
-  <history>RFC-1486, RFC-1488</history>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <history>RFC-1486, RFC-1487, RFC-1488</history>
 </CHANGE_SUMMARY>
 */
 
@@ -46,8 +46,10 @@ import {
   listLocalBranches,
   requireGit,
   revListCount,
+  statusTracked,
   topLevel,
 } from "../git.ts";
+import { primaryWorktree } from "../worktree-path.ts";
 import {
   guardFileMatches,
   GUARD_FILE,
@@ -162,6 +164,29 @@ export async function collectFlowCheck(
       message: `branch '${name}' is outside the fixed branch model`,
       fixHint: `integrate or delete it; fully merged: git branch -d ${name}`,
     });
+  }
+
+  // RFC-1536/RFC-1533 FLOW-OPEN-01: tracked mutations in the primary checkout
+  // are not swept into session worktrees — warn, never refuse.
+  try {
+    const primary = await primaryWorktree(io, repoRoot);
+    const primaryStatus = await statusTracked(primary, io);
+    if (!primaryStatus.vanished && primaryStatus.entries.length > 0) {
+      const paths = primaryStatus.entries.map((e) => e.slice(3));
+      const shown = paths.slice(0, 10);
+      diagnostics.push({
+        ruleId: "FLOW-OPEN-01",
+        severity: "warning",
+        message:
+          `primary checkout carries ${paths.length} tracked mutation(s): ${shown.join(", ")}` +
+          (paths.length > shown.length ? ` (+${paths.length - shown.length} more)` : "") +
+          " — they are NOT swept into the worktree; commit or move them first",
+        fixHint:
+          "commit them in the primary checkout or move them into the session worktree before integrating",
+      });
+    }
+  } catch {
+    // A repo whose worktree list cannot be read keeps every other check.
   }
 
   const developExists = await branchExists(repoRoot, io, "develop");

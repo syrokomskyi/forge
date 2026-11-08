@@ -11,7 +11,6 @@ statuses, scopes, frontmatter shape, validation results, and list output.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0521: migrated from packages/os/site-kernel/src/adr/ to packages/forge/os/adr/.</item>
   <item>RFC-0727: add AdrImplementStamp types for atomic ADR status transition.</item>
   <item>RFC-0996: add AV-17 acceptance criteria completeness check for implemented post-cutoff ADRs.</item>
   <item>RFC-1097: step 6 — compass.migrate codemod run
@@ -20,7 +19,8 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
-  <history>RFC-0366, RFC-0367</history>
+  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <history>RFC-0366, RFC-0367, RFC-0521</history>
 </CHANGE_SUMMARY>
 */
 
@@ -93,6 +93,8 @@ export interface AdrCreateResult {
   status: "ok";
   file: string;
   id: string;
+  /** RFC-1536 (Q-2): which allocation surface yielded the winning maximum. */
+  idSource?: "primary" | "develop" | "reservation" | "worktree";
 }
 
 export const ADR_DIR = "docs/adrs";
