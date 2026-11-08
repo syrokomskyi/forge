@@ -16,11 +16,13 @@ shouldRunArchiveRegen makes the report-only contract a tested unit instead of an
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>F-0126: owner-predicate exclusion tests — mixed-writes mutator, uncovered required flag, REGEN_FLAGS override, end-to-end stamp exclusion</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
+  <item>RFC-1535: stageMovedPairs real-git fixtures — both sides staged, non-git degrade, empty no-op</item>
   <history>RFC-1230, RFC-1235</history>
 </CHANGE_SUMMARY>
 */
 
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
@@ -37,6 +39,7 @@ import {
   isGeneratedPathName,
   runArchiveRegen,
   shouldRunArchiveRegen,
+  stageMovedPairs,
 } from "./archive-regen.ts";
 import type { ForgeRegisteredCommandInfo, ForgeRuntimeContext } from "../../src/types.ts";
 
@@ -456,5 +459,85 @@ describe("docs.archive runArchiveRegen (RFC-1528 AC-1/AC-7)", () => {
     expect(calls).toEqual(["rfc.index.generate", "ecosystem.manifest.generate"]);
     expect(outcome.excluded).toEqual([{ command: "rfc.implement.stamp", reason: "mixed-writes" }]);
     expect(outcome.failures).toEqual([]);
+  });
+});
+
+// ---- RFC-1535 (F-0038): stageMovedPairs — docs.archive self-staging ----
+
+describe("RFC-1535 stageMovedPairs", () => {
+  it("non-dry-run staging leaves both sides of a move in the index", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-stage-"));
+    execFileSync("git", ["-C", root, "init", "-q"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "config", "user.email", "t@t"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "config", "user.name", "T"], { stdio: "pipe" });
+    mkdirSync(path.join(root, "docs/rfcs"), { recursive: true });
+    writeFileSync(path.join(root, "docs/rfcs/rfc-1.md"), "# rfc\n");
+    execFileSync("git", ["-C", root, "add", "."], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "init"], { stdio: "pipe" });
+    mkdirSync(path.join(root, "docs/rfcs/archive"), { recursive: true });
+    renameSync(
+      path.join(root, "docs/rfcs/rfc-1.md"),
+      path.join(root, "docs/rfcs/archive/rfc-1.md"),
+    );
+    const outcome = await stageMovedPairs({
+      movedPaths: ["docs/rfcs/rfc-1.md", "docs/rfcs/archive/rfc-1.md"],
+      workspaceRoot: root,
+      exec: (command, args, opts) =>
+        Promise.resolve(
+          (() => {
+            try {
+              const stdout = execFileSync(command, args, { ...opts, encoding: "utf8" });
+              return { exitCode: 0, stdout, stderr: "" };
+            } catch (e) {
+              const err = e as { status?: number; stderr?: string };
+              return { exitCode: err.status ?? 1, stdout: "", stderr: err.stderr ?? "" };
+            }
+          })(),
+        ),
+    });
+    expect(outcome.error).toBeUndefined();
+    expect(outcome.staged).toBe(2);
+    const status = execFileSync("git", ["-C", root, "status", "--porcelain"], {
+      encoding: "utf8",
+    });
+    // Destination add staged; source delete staged — no ` D` half-staged row.
+    expect(status).not.toMatch(/^ D /m);
+    expect(status).toMatch(/docs\/rfcs\/archive\/rfc-1\.md/);
+  });
+
+  it("a non-git tree reports the error without throwing", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-nogit-"));
+    const outcome = await stageMovedPairs({
+      movedPaths: ["docs/a.md", "docs/archive/a.md"],
+      workspaceRoot: root,
+      exec: (command, args, opts) =>
+        Promise.resolve(
+          (() => {
+            try {
+              const stdout = execFileSync(command, args, { ...opts, encoding: "utf8" });
+              return { exitCode: 0, stdout, stderr: "" };
+            } catch (e) {
+              const err = e as { status?: number; stderr?: string };
+              return { exitCode: err.status ?? 1, stdout: "", stderr: err.stderr ?? "" };
+            }
+          })(),
+        ),
+    });
+    expect(outcome.staged).toBe(0);
+    expect(outcome.error).toBeTruthy();
+  });
+
+  it("an empty moved set is a no-op — dry-run shape stays untouched", async () => {
+    let calls = 0;
+    const outcome = await stageMovedPairs({
+      movedPaths: [],
+      workspaceRoot: "/nonexistent",
+      exec: () => {
+        calls++;
+        return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+      },
+    });
+    expect(outcome.staged).toBe(0);
+    expect(calls).toBe(0);
   });
 });

@@ -13,6 +13,7 @@ shouldRunArchiveRegen makes the report-only contract a tested unit instead of an
   <item>RFC-1528: note moved[] under-count on archiver throw (review F-10)</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <item>RFC-1535: docs.archive self-stages both sides of every move pair — no half-staged EC-31 pairs (F-0038)</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -1198,7 +1199,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           let regenSkipped: string[] = [];
           let regenExcluded: Array<{ command: string; reason: string }> = [];
           let regenFailures: Array<{ command: string; error: string }> = [];
-          const { shouldRunArchiveRegen, runArchiveRegen } = await import("./archive-regen.ts");
+          const { shouldRunArchiveRegen, runArchiveRegen, stageMovedPairs } = await import(
+            "./archive-regen.ts"
+          );
           if (shouldRunArchiveRegen(dryRun, totalMoved)) {
             const movedPaths = new Set<string>();
             for (const data of Object.values(results)) {
@@ -1238,6 +1241,46 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             }
           }
 
+          // RFC-1535 (F-0038): self-staging — every move lands BOTH sides in
+          // the index (destination add + source delete) so the next commit
+          // captures the move as one unit instead of splitting it across two
+          // commits. --dry-run stays report-only: nothing is staged.
+          let stagedMovePairs = 0;
+          if (!dryRun && totalMoved > 0) {
+            const stagePaths = new Set<string>();
+            for (const data of Object.values(results)) {
+              const moved = (data as { moved?: Array<Record<string, unknown>> })?.moved;
+              if (!Array.isArray(moved)) continue;
+              for (const entry of moved) {
+                for (const key of ["from", "to"] as const) {
+                  const value = entry[key];
+                  if (typeof value === "string" && value.length > 0) stagePaths.add(value);
+                }
+              }
+            }
+            const staged = await stageMovedPairs({
+              movedPaths: [...stagePaths],
+              workspaceRoot: routedContext.workspaceRoot,
+              exec: (command, args, opts) => io.exec(command, args, opts),
+            });
+            if (staged.error) {
+              // Non-fatal — the commit-side EC-31 check is the safety net
+              // for any pair that stayed half-staged.
+              if (outputFormat === "pretty") {
+                logger.warn(
+                  `  docs.archive: move staging failed — run 'git add -A docs/' before committing: ${staged.error}`,
+                );
+              }
+            } else if (staged.staged > 0) {
+              stagedMovePairs = staged.staged;
+              if (outputFormat === "pretty") {
+                logger.info(
+                  `  docs.archive: staged ${staged.staged} move path(s) (both sides)`,
+                );
+              }
+            }
+          }
+
           if (outputFormat === "pretty") {
             if (dryRun) {
               logger.info(
@@ -1266,6 +1309,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               regenSkipped,
               regenExcluded,
               regenFailures,
+              stagedMovePairs,
             },
             summary: dryRun
               ? `[dry-run] Would move ${totalMoved} file(s), skip ${totalSkipped}`
