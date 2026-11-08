@@ -25,6 +25,7 @@ Five checks (window discipline, watcher/index excludes, instructions.budget.vali
   <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
 
 8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
+  <item>RFC-1522: fix sessions.db prune runbook — seconds cutoff, contentless-delete FTS prune, full table list</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -118,19 +119,29 @@ pgrep -f "devin-desktop|devin acp" || echo "clean"
 # 2. checkpoint the WAL back into the main file
 sqlite3 ~/.local/share/devin/cli/sessions.db "PRAGMA wal_checkpoint(TRUNCATE);"
 
-# 3. drop sessions older than 14 days across all tables
+# 3. verify the timestamp unit BEFORE deleting — last_activity_at is INTEGER but
+#    schema-dependent: ~1.7e9 = seconds (use -14 days as below), ~1.7e12 = millis
+#    (append *1000). A wrong guess toward seconds silently deletes EVERYTHING.
+sqlite3 ~/.local/share/devin/cli/sessions.db "SELECT last_activity_at FROM sessions ORDER BY last_activity_at DESC LIMIT 1;"
+
+# 4. drop sessions older than 14 days across all session-scoped tables
+#    (cutoff shown for seconds — see step 3), then prune FTS ghosts
 sqlite3 ~/.local/share/devin/cli/sessions.db "
-DELETE FROM message_nodes    WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < (strftime('%s','now','-14 days')*1000));
-DELETE FROM tool_call_state  WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < (strftime('%s','now','-14 days')*1000));
-DELETE FROM rendered_commits WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < (strftime('%s','now','-14 days')*1000));
-DELETE FROM sessions         WHERE last_activity_at < (strftime('%s','now','-14 days')*1000);
+DELETE FROM message_nodes    WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < strftime('%s','now','-14 days'));
+DELETE FROM tool_call_state  WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < strftime('%s','now','-14 days'));
+DELETE FROM rendered_commits WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < strftime('%s','now','-14 days'));
+DELETE FROM subagent_heads   WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < strftime('%s','now','-14 days'));
+DELETE FROM live_row_times   WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < strftime('%s','now','-14 days'));
+DELETE FROM prompt_history   WHERE session_id IN (SELECT id FROM sessions WHERE last_activity_at < strftime('%s','now','-14 days'));
+DELETE FROM sessions         WHERE last_activity_at < strftime('%s','now','-14 days');
+DELETE FROM message_search   WHERE NOT EXISTS (SELECT 1 FROM message_nodes WHERE message_nodes.rowid = message_search.rowid);
 VACUUM;"
 
-# 4. stale session locks are safe to drop too
+# 5. stale session locks are safe to drop too
 rm -f ~/.local/share/devin/cli/session_locks/*.lock
 ```
 
-If `message_search` (FTS shadow) rejects `session_id`, inspect `PRAGMA table_info(message_search)` first — delete by rowid or skip and `INSERT INTO message_search(message_search) VALUES('rebuild')`. Nuclear alternative: quit Devin, `mv sessions.db sessions.db.bak-<date>` + remove `-wal`/`-shm` — the DB recreates empty.
+`message_search` is a `contentless_delete=1` FTS5 shadow whose rowid mirrors `message_nodes.rowid` — `INSERT ... VALUES('rebuild')` is **rejected** on contentless tables, so ghost entries go via the `NOT EXISTS` delete above (keeps search intact for retained sessions). On schema drift, verify before trusting: `SELECT sql FROM sqlite_master WHERE name='message_search'` and `PRAGMA table_info(<table>)`. Nuclear alternative: quit Devin, `mv sessions.db sessions.db.bak-<date>` + remove `-wal`/`-shm` — the DB recreates empty.
 
 ## Constraints
 
