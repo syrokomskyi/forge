@@ -18,11 +18,11 @@ hooks/worktree-setup.sh.</purpose>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
   <history>RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -141,9 +141,9 @@ export async function openFlowBranch(
   io: WorkspaceIO,
   opts: FlowOpenOptions,
 ): Promise<FlowOpenData> {
-  // Flags — FLOW-OPEN-01/05 first, before any git fact is consulted.
+  // Flags — FLOW-OPEN-10/05 first, before any git fact is consulted.
   if (opts.kind !== "session" && opts.kind !== "task") {
-    return refuse("FLOW-OPEN-01", `invalid --kind '${opts.kind}'`, "use --kind session or --kind task");
+    return refuse("FLOW-OPEN-10", `invalid --kind '${opts.kind}'`, "use --kind session or --kind task");
   }
   if (opts.kind === "task" && (opts.owner === null || opts.owner === "")) {
     return refuse(
@@ -178,7 +178,7 @@ export async function openFlowBranchCore(
 
   if (!SLUG_RE.test(opts.slug) || opts.slug.length < 3 || opts.slug.length > 48) {
     return refuse(
-      "FLOW-OPEN-01",
+      "FLOW-OPEN-10",
       `invalid --slug '${opts.slug}'`,
       "slug must match ^[a-z0-9]+(-[a-z0-9]+)*$ and be 3..48 characters",
     );

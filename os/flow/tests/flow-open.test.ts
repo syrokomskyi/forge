@@ -3,7 +3,7 @@
 <purpose>flow.open tests (RFC-1487 step 3, AC-1/AC-2): the session worktree
 lands beside the primary as &lt;repo&gt;@&lt;branch-slug&gt; from the develop
 tip, NN increments across local and remote-tracking names, refusals
-FLOW-OPEN-01/03/05, and a failing setup script exits 1 while keeping the
+FLOW-OPEN-10/03/05, and a failing setup script exits 1 while keeping the
 worktree and registry entry.</purpose>
 <non-goals>
   <item>No lifecycle coverage beyond open — integrate/discard have their own files.</item>
@@ -12,6 +12,7 @@ worktree and registry entry.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1487: step 3 — flow.open tests</item>
   <item>RFC-1487: step 3 — flow.open with NN assignment over local/remote/registry names</item>
+  <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
 </CHANGE_SUMMARY>
 */
 
@@ -135,7 +136,7 @@ describe("flow.open", () => {
     if (data.worktree) dirs.push(data.worktree);
   }, 15_000);
 
-  it("refuses FLOW-OPEN-01 on an invalid slug", async () => {
+  it("refuses FLOW-OPEN-10 on an invalid slug", async () => {
     const repo = await governedRepo();
     const data = await openFlowBranch(repo, ambientIo, {
       kind: "session",
@@ -145,7 +146,7 @@ describe("flow.open", () => {
       dryRun: false,
       now: NOW,
     });
-    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-OPEN-01");
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-OPEN-10");
     expect(data.opened).toBe(false);
   }, 15_000);
 
@@ -201,5 +202,42 @@ describe("flow.open", () => {
     const common = await commonGitDir(ambientIo, repo);
     const registry = await readRegistry(ambientIo, common);
     expect(registry.branches.some((b) => b.name === data.branch)).toBe(true);
+  }, 15_000);
+
+  it("warns FLOW-OPEN-01 when the primary carries tracked mutations (RFC-1536 AC-2)", async () => {
+    const repo = await governedRepo();
+    // A tracked mutation in the primary — forge.yaml is committed, then edited.
+    await gitExec(repo, ["add", "forge.yaml"]);
+    await gitExec(repo, ["commit", "-m", "seed forge.yaml"]);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\ndirty: true\n');
+
+    const data = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "dirty-primary",
+      brief: null,
+      owner: null,
+      dryRun: false,
+      now: NOW,
+    });
+    if (data.worktree) dirs.push(data.worktree);
+    expect(data.opened).toBe(true);
+    const warning = data.diagnostics.find((d) => d.ruleId === "FLOW-OPEN-01");
+    expect(warning?.severity).toBe("warning");
+    expect(warning?.message).toContain("forge.yaml");
+    expect(warning?.message).toContain("NOT swept");
+  }, 15_000);
+
+  it("emits no FLOW-OPEN-01 when the primary is clean (RFC-1536 AC-2)", async () => {
+    const repo = await governedRepo();
+    const data = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "clean-primary",
+      brief: null,
+      owner: null,
+      dryRun: false,
+      now: NOW,
+    });
+    if (data.worktree) dirs.push(data.worktree);
+    expect(data.diagnostics.some((d) => d.ruleId === "FLOW-OPEN-01")).toBe(false);
   }, 15_000);
 });
