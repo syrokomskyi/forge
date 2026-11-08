@@ -26,6 +26,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1539: amend dna-55 and dna-115 for published spec packages
 
 Guides, fo-spec-ingest routing, command descriptions and regenerated command docs, remediation entries for SPEC-15..18 and CONF-07..09; resyncs the stale .agents fo-system-dispatch mirror (ADR-0126 source line).</item>
+  <item>RFC-1539: drop platform ids from the fo-spec-ingest published-packages rule (SKILL-17)</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -41,9 +42,9 @@ Before starting, read `PREFERENCES.md` at the repository root. If the file is mi
 
 Invoked as `/fo-spec-ingest <path-to-package>` when the operator has an external specification package (e.g. a consultant deliverable, a markdown vault export).
 
-### Published packages (RFC-1539)
+### Published packages
 
-If the specification's authority publishes it as an npm package, do not vendor it. Add the package as an exact-pinned root dependency, declare it in `forge.yaml` `specPackages[]` (`{ id, package }`), install, and run `spec.validate`. The installed package is the snapshot (DNA-55). Ingest mode is only for packages that are not published; a vendored copy of a declared spec package is SPEC-15.
+If the specification's authority publishes it as an npm package, do not vendor it. Add the package as an exact-pinned root dependency, declare it in `forge.yaml` `specPackages[]` (`{ id, package }`), install, and run `spec.validate`. The installed package is the immutable snapshot. Ingest mode is only for packages that are not published; a vendored copy of a declared spec package is SPEC-15.
 
 ### Authoring mode
 
