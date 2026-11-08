@@ -6,12 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1234: spec.live.validate description lists V-LS-09 drift rule.</item>
   <item>RFC-1240: --consumer flag on spec.validate/spec.status/spec.materialize; SPEC-12/13 rules in spec.validate description.</item>
   <item>Handoff xrepo-personal-agent-to-forge-spec-validate-sweep: spec.validate description documents sweep-mode manifest-dir scoping.</item>
   <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
-  <history>RFC-0394, RFC-0396, RFC-0711, RFC-1173, RFC-1230, RFC-1231</history>
+  <item>RFC-1539: amend dna-55 and dna-115 for published spec packages
+
+Guides, fo-spec-ingest routing, command descriptions and regenerated command docs, remediation entries for SPEC-15..18 and CONF-07..09; resyncs the stale .agents fo-system-dispatch mirror (ADR-0126 source line).</item>
+  <history>RFC-0394, RFC-0396, RFC-0711, RFC-1173, RFC-1230, RFC-1231, RFC-1234</history>
 </CHANGE_SUMMARY>
 */
 
@@ -36,7 +38,7 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       name: "spec.validate",
       mutatesState: false,
       contract: "spec",
-      rules: [{ id: "SPEC-01", severity: "error" }, { id: "SPEC-02", severity: "error" }, { id: "SPEC-03", severity: "error" }, { id: "SPEC-04", severity: "error" }, { id: "SPEC-05", severity: "error" }, { id: "SPEC-06", severity: "error" }, { id: "SPEC-07", severity: "error" }, { id: "SPEC-08", severity: "error" }, { id: "SPEC-09", severity: "error" }, { id: "SPEC-10", severity: "error" }, { id: "SPEC-11", severity: "error" }, { id: "SPEC-12", severity: "error" }, { id: "SPEC-13", severity: "error" }, { id: "SPEC-14", severity: "error" }],
+      rules: [{ id: "SPEC-01", severity: "error" }, { id: "SPEC-02", severity: "error" }, { id: "SPEC-03", severity: "error" }, { id: "SPEC-04", severity: "error" }, { id: "SPEC-05", severity: "error" }, { id: "SPEC-06", severity: "error" }, { id: "SPEC-07", severity: "error" }, { id: "SPEC-08", severity: "error" }, { id: "SPEC-09", severity: "error" }, { id: "SPEC-10", severity: "error" }, { id: "SPEC-11", severity: "error" }, { id: "SPEC-12", severity: "error" }, { id: "SPEC-13", severity: "error" }, { id: "SPEC-14", severity: "error" }, { id: "SPEC-15", severity: "warning" }, { id: "SPEC-16", severity: "error" }, { id: "SPEC-17", severity: "error" }, { id: "SPEC-18", severity: "error" }],
       description:
         "Validate vendored spec packages under docs/specs/. " +
         "Checks integrity (SHA-256), schema, dependency graph (acyclic), " +
@@ -46,7 +48,12 @@ const { runSpecValidate } = await import("./spec-validate.ts");
         "errors — the run fails closed instead of skipping them (RFC-1363). " +
         "Sweep mode skips directories without forge-spec.yaml (authored/live dirs " +
         "are not packages); --spec=<id> validates one spec and reports SPEC-02 " +
-        "when the named dir lacks a manifest.",
+        "when the named dir lacks a manifest. " +
+        "RFC-1539: published spec packages declared in forge.yaml specPackages[] are " +
+        "validated from the installed package as <id>-v<version> under the same rules " +
+        "(amendment rules skipped); SPEC-15 vendored copy of a declared spec (warning), " +
+        "SPEC-16 declared package not installed, SPEC-17 not an exact-pinned root " +
+        "dependency, SPEC-18 duplicate specPackages id.",
       scope: "workspace",
       flags: {
         spec: {
@@ -66,7 +73,8 @@ const { runSpecValidate } = await import("./spec-validate.ts");
       coverage: "operator" as const,
       mutatesState: false,
       description:
-        "Show roadmap progress for vendored specs. " +
+        "Show roadmap progress for vendored specs and installed spec packages " +
+        "(specPackages[], RFC-1539 — each entry reports source.kind). " +
         "Without --spec, summarizes all specs; with it, full per-node table + computed front.",
       scope: "workspace",
       flags: {

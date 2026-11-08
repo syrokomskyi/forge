@@ -7,13 +7,13 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1255: Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>RFC-1365: step 4 — DNA-115, CONF-* remediation entries, agents-generate convention section</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
   <item>RFC-1500: step 4 — branch-model AGENTS section and consumer docs</item>
+  <item>RFC-1539: amend dna-55 and dna-115 for published spec packages
+
+Guides, fo-spec-ingest routing, command descriptions and regenerated command docs, remediation entries for SPEC-15..18 and CONF-07..09; resyncs the stale .agents fo-system-dispatch mirror (ADR-0126 source line).</item>
   <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1097, RFC-1253</history>
 </CHANGE_SUMMARY>
 */
@@ -448,7 +448,7 @@ export async function runAgentsGenerate(
   if ((config.contractProducers ?? []).length > 0) {
     dynamicLines.push("## Golden conformance for declared contract producers");
     dynamicLines.push("");
-    dynamicLines.push("This repository declares `contractProducers[]` in `forge.yaml` — every declared producer MUST keep a working golden-conformance path: `emit` writes the bundle into the forge-provided dir (`{bundle}` argv placeholder / `FORGE_CONFORMANCE_BUNDLE_DIR`), the optional `mirror` leg re-checks the same bundle, and the `consumer` leg invokes the authoritative consumer validator inside `consumer.root` (DNA-115).");
+    dynamicLines.push("This repository declares `contractProducers[]` in `forge.yaml` — every declared producer MUST keep a working golden-conformance path: `emit` writes the bundle into the forge-provided dir (`{bundle}` argv placeholder / `FORGE_CONFORMANCE_BUNDLE_DIR`), the optional `mirror` leg re-checks the same bundle, and the `consumer` leg invokes the authoritative consumer validator — the installed bin of a published validator package (`consumer.package`, exact-pinned devDependency, never self-skips — RFC-1539) or, for consumers without a published validator, inside the sibling checkout `consumer.root` (DNA-115).");
     dynamicLines.push("");
     dynamicLines.push("- One execution path serves both surfaces: `forge.conformance.run --producer <id>` (or `--all`) for operator/CI runs, and the `@warpgogol/forge/conformance` helper (`consumerAvailable` + `runProducerConformance`) for vitest wrappers — never hand-roll spawn/mkdtemp/skip plumbing in producer tests.");
     dynamicLines.push("- An absent `consumer.root` self-skips with an explicit verdict; use `--require-consumer` or `FORGE_CONFORMANCE_REQUIRE=1` in environments where the checkout is guaranteed so the guard fails closed instead of silently degrading.");
