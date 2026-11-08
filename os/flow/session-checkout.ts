@@ -18,12 +18,15 @@ checkout owns a write, given the invocation cwd.</purpose>
   <item>RFC-1536: owning-checkout resolution for session-artifact writes</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1536: session-checkout bare-repo degrade to primary semantics</item>
+  <item>RFC-1536: type forge flow and rfc io against forge's own WorkspaceIO
+
+The standalone forge extract has no @warpgogol/werkstatt-shared; the type-only import failed extract-verify (FLOW-CUT-13) for the 9.4.0 cut.</item>
 </CHANGE_SUMMARY>
 */
 
 import { realpath } from "node:fs/promises";
 
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import type { WorkspaceIO } from "../../src/types.ts";
 
 import { topLevel } from "./git.ts";
 import { commonGitDir, readRegistry, type FlowRegistryEntry } from "./registry.ts";

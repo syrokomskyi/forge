@@ -20,6 +20,9 @@ file is written.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1536: shared governance-id allocation surface (Q-2: RFC + ADR kinds)</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <item>RFC-1536: type forge flow and rfc io against forge's own WorkspaceIO
+
+The standalone forge extract has no @warpgogol/werkstatt-shared; the type-only import failed extract-verify (FLOW-CUT-13) for the 9.4.0 cut.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,7 +30,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
-import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io";
+import type { WorkspaceIO } from "../../src/types.ts";
 
 import { git, listLocalBranches, topLevel } from "../flow/git.ts";
 import { withFlowLock } from "../flow/locks.ts";
