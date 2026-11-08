@@ -13,11 +13,11 @@ dispatch's product side is limited to opening the task branch and writing
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
   <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
+  <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <history>RFC-1508, RFC-1509</history>
 </CHANGE_SUMMARY>
 */
@@ -198,12 +198,13 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "SYSTEM-TASK-09", severity: "warning" },
           { id: "FLOW-07", severity: "error" },
           { id: "FLOW-OPEN-01", severity: "error" },
-          { id: "FLOW-OPEN-02", severity: "error" },
+          { id: "FLOW-OPEN-02", severity: "warning" },
           { id: "FLOW-OPEN-03", severity: "error" },
           { id: "FLOW-OPEN-04", severity: "error" },
           { id: "FLOW-OPEN-05", severity: "error" },
           { id: "FLOW-OPEN-06", severity: "error" },
           { id: "FLOW-OPEN-07", severity: "error" },
+          { id: "FLOW-OPEN-11", severity: "error" },
         ],
         mutatesState: true,
         idempotency: "rerun-safe",

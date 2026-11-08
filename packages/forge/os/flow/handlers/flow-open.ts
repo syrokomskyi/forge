@@ -23,6 +23,7 @@ hooks/worktree-setup.sh.</purpose>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
+  <item>RFC-1533: pending-branch summary + primaryMutations on the result; FLOW-OPEN-02 freed for the registry-unreadable warning (refusal renumbered to FLOW-OPEN-11)</item>
   <history>RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -58,6 +59,7 @@ import {
   type FlowRegistryEntry,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
+import { collectFlowStatus } from "./flow-status.ts";
 import { flowWorktreePath, primaryWorktree } from "../worktree-path.ts";
 
 const OPEN_MAX_ATTEMPTS = 3;
@@ -101,6 +103,16 @@ export interface FlowOpenData {
   baseSha: string | null;
   opened: boolean;
   setup: FlowScriptResult | null;
+  /** RFC-1533: tracked-dirty paths in the primary at open time (the sweep's
+   * input — empty when clean or already refused before the status read). */
+  primaryMutations: string[];
+  /** RFC-1533: registered siblings excluding the branch just opened;
+   * null when the registry could not be read for the summary (FLOW-OPEN-02). */
+  pending: {
+    total: number;
+    byKind: { session: number; task: number; fix: number };
+    stale: number;
+  } | null;
   diagnostics: Diagnostic[];
 }
 
@@ -113,6 +125,8 @@ function refuse(ruleId: string, message: string, fixHint: string): FlowOpenData 
     baseSha: null,
     opened: false,
     setup: null,
+    primaryMutations: [],
+    pending: null,
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
 }
@@ -204,7 +218,7 @@ export async function openFlowBranchCore(
 
   if (!(await branchExists(repoRoot, io, baseRef))) {
     return refuse(
-      "FLOW-OPEN-02",
+      "FLOW-OPEN-11",
       `local branch ${baseRef} does not exist`,
       base === "develop"
         ? "adopt the fixed branch model with flow.install first"
@@ -222,17 +236,20 @@ export async function openFlowBranchCore(
   // Warning severity, exit code unchanged; the same diagnostic fires at
   // flow.check so the condition is visible between opens.
   const dirtyPrimaryDiags: Diagnostic[] = [];
+  let primaryMutations: string[] = [];
   {
     const primaryStatus = await statusTracked(primary, io);
-    if (!primaryStatus.vanished && primaryStatus.entries.length > 0) {
-      const paths = primaryStatus.entries.map((e) => e.slice(3));
-      const shown = paths.slice(0, 10);
+    if (!primaryStatus.vanished) {
+      primaryMutations = primaryStatus.entries.map((e) => e.slice(3));
+    }
+    if (primaryMutations.length > 0) {
+      const shown = primaryMutations.slice(0, 10);
       dirtyPrimaryDiags.push({
         ruleId: "FLOW-OPEN-01",
         severity: "warning",
         message:
-          `primary checkout carries ${paths.length} tracked mutation(s): ${shown.join(", ")}` +
-          (paths.length > shown.length ? ` (+${paths.length - shown.length} more)` : "") +
+          `primary checkout carries ${primaryMutations.length} tracked mutation(s): ${shown.join(", ")}` +
+          (primaryMutations.length > shown.length ? ` (+${primaryMutations.length - shown.length} more)` : "") +
           " — they are NOT swept into the worktree; commit or move them first",
         fixHint:
           "commit them in the primary checkout or move them into the session worktree before integrating",
@@ -296,6 +313,52 @@ export async function openFlowBranchCore(
     }
   }
 
+  // RFC-1533 pending summary — registered siblings excluding the branch just
+  // opened, computed through collectFlowStatus (single fact source). A
+  // registry read failure degrades to `pending: null` + FLOW-OPEN-02 warning;
+  // surfacing must never wedge worktree creation.
+  const pendingSummary = async (
+    excludeName: string,
+  ): Promise<{ pending: FlowOpenData["pending"]; diags: Diagnostic[] }> => {
+    const unreadable = {
+      pending: null,
+      diags: [
+        {
+          ruleId: "FLOW-OPEN-02" as const,
+          severity: "warning" as const,
+          message:
+            "flow registry absent or unreadable — pending-branch summary unavailable",
+          fixHint: `run flow.check for registry diagnostics; repair or remove ${registryPath(common)}`,
+        },
+      ],
+    };
+    try {
+      // On the success path the registry always exists (registration wrote
+      // it) — the absent branch is reachable on a dry-run over a repo that
+      // never opened a flow branch.
+      if (!(await io.exists(registryPath(common)))) return unreadable;
+      const status = await collectFlowStatus(repoRoot, io, { now });
+      if (status.registryError) throw status.registryError;
+      const siblings = status.data.branches.filter(
+        (b) => b.registered && b.name !== excludeName,
+      );
+      return {
+        pending: {
+          total: siblings.length,
+          byKind: {
+            session: siblings.filter((b) => b.kind === "session").length,
+            task: siblings.filter((b) => b.kind === "task").length,
+            fix: siblings.filter((b) => b.kind === "fix").length,
+          },
+          stale: siblings.filter((b) => b.stale).length,
+        },
+        diags: [],
+      };
+    } catch {
+      return unreadable;
+    }
+  };
+
   for (let attempt = 1; attempt <= OPEN_MAX_ATTEMPTS; attempt++) {
     const name = formatFlowBranch({ kind: opts.kind as FlowBranchKind, date: now, seq, slug: opts.slug });
     // candidates gains each tried name so a collision retry picks the next NN.
@@ -310,6 +373,7 @@ export async function openFlowBranchCore(
     }
 
     if (opts.dryRun) {
+      const pending = await pendingSummary(name);
       return {
         repoKind: "governed",
         branch: name,
@@ -318,7 +382,9 @@ export async function openFlowBranchCore(
         baseSha,
         opened: false,
         setup: { status: "skipped", exitCode: null, stderrTail: "", stdout: "" },
-        diagnostics: dirtyPrimaryDiags,
+        primaryMutations,
+        pending: pending.pending,
+        diagnostics: [...dirtyPrimaryDiags, ...pending.diags],
       };
     }
 
@@ -413,6 +479,7 @@ export async function openFlowBranchCore(
           ]
         : [];
 
+    const pending = await pendingSummary(name);
     return {
       repoKind: "governed",
       branch: name,
@@ -421,7 +488,14 @@ export async function openFlowBranchCore(
       baseSha,
       opened: true,
       setup,
-      diagnostics: [...dirtyPrimaryDiags, ...rerereDiags, ...setupDiag],
+      primaryMutations,
+      pending: pending.pending,
+      diagnostics: [
+        ...dirtyPrimaryDiags,
+        ...pending.diags,
+        ...rerereDiags,
+        ...setupDiag,
+      ],
     };
   }
   return refuse(
@@ -466,6 +540,16 @@ export async function runFlowOpen(
       logger.info(`  worktree: ${data.worktree}`);
       logger.info(`  base:     ${data.base} @ ${data.baseSha?.slice(0, 9)}`);
       logger.info(`  setup:    ${data.setup?.status ?? "skipped"}`);
+      for (const d of data.diagnostics) {
+        if (d.severity === "error") logger.error(`  ${d.ruleId}: ${d.message}`);
+        else logger.warn(`  ${d.ruleId}: ${d.message}`);
+      }
+      if (data.pending !== null && data.pending.total > 0) {
+        logger.info(
+          `  pending: ${data.pending.total} registered branch(es) — ` +
+            `${data.pending.stale} stale (>72h); inspect with flow.status`,
+        );
+      }
     }
   }
 
