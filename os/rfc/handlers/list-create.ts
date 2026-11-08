@@ -9,6 +9,7 @@
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <item>RFC-1534: --amends flag seeds amends: and merges the draft id into the amended file's amendedBy[] in the same pass (line-level, F-0056); unreadable counterpart downgrades to a pending report.</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139, RFC-1364</history>
@@ -21,7 +22,12 @@ import { writeFileAtomic } from "../../../src/utils/fs-atomic.ts";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { toKebabCase } from "../../../src/utils/string-utils.ts";
-import { listRfcFiles, readAndParseRfc } from "../frontmatter-io.ts";
+import {
+  appendRfcFrontmatterListEntry,
+  listRfcFiles,
+  readAndParseRfc,
+  rfcFileMatchesId,
+} from "../frontmatter-io.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -175,6 +181,15 @@ export async function runRfcCreate(
   const kind = (input.flags["kind"] as string | undefined) ?? "architecture";
   const scope = (input.flags["scope"] as string | undefined) ?? "workspace";
   const satisfies = parseSatisfiesFlag(input.flags["satisfies"]);
+  // RFC-1534: --amends RFC-NNNN declares the draft amends an existing RFC —
+  // the create pass writes the amendedBy counterpart on the amended file in
+  // the same pass so V-19 never sees the asymmetry.
+  const amendsRaw = input.flags["amends"];
+  const amendsId =
+    typeof amendsRaw === "string" ? amendsRaw.trim().toUpperCase() || undefined : undefined;
+  if (amendsId !== undefined && !/^RFC-\d{4}$/.test(amendsId)) {
+    throw new Error(`rfc.create: --amends must match RFC-NNNN, got "${amendsRaw as string}"`);
+  }
   // RFC-1482: seed commands.proposed/commands.added at authoring time so the
   // draft's acceptance block can carry reachable-probe stubs (V-45) instead of
   // discovering the breach on the first validate cycle.
@@ -339,6 +354,7 @@ export async function runRfcCreate(
   let nextId = "";
   let relativeFile = "";
   let allocated = false;
+  let amendsSync: { amended: string; wroteCounterpart: boolean } | undefined;
 
   const files = await listRfcFiles(rfcDirPath);
   let maxId = 0;
@@ -397,6 +413,9 @@ export async function runRfcCreate(
           /^satisfies: \[\]$/m,
           `satisfies:\n${satisfies.map((id) => `  - ${id}`).join("\n")}`,
         );
+      }
+      if (amendsId) {
+        content = content.replace(/^amends: \[\]$/m, `amends:\n  - ${amendsId}`);
       }
       if (proposed.length > 0) {
         content = content.replace(
@@ -474,6 +493,32 @@ export async function runRfcCreate(
       await writeFileAtomic(targetPath, content);
       relativeFile = path.join(RFC_DIR, fileName);
       allocated = true;
+      // RFC-1534: counterpart write in the same pass — merge by frontmatter
+      // key (re-read before merge, never blind-append). A missing/unreadable
+      // amended file downgrades to a pending report; V-19 keeps its error.
+      if (amendsId) {
+        let amendedFile: string | undefined;
+        for (const f of files) {
+          if (!rfcFileMatchesId(f, amendsId)) continue;
+          const r = await readAndParseRfc(rfcDirPath, f);
+          if (
+            r &&
+            "parsed" in r &&
+            String(r.parsed.frontmatter["id"] ?? "").toUpperCase() === amendsId
+          ) {
+            amendedFile = f;
+            break;
+          }
+        }
+        const wrote = amendedFile
+          ? await appendRfcFrontmatterListEntry(
+              path.join(rfcDirPath, amendedFile),
+              "amendedBy",
+              [nextId],
+            )
+          : undefined;
+        amendsSync = { amended: amendsId, wroteCounterpart: wrote !== undefined };
+      }
     } finally {
       await fs.rm(claimPath);
     }
@@ -498,6 +543,15 @@ export async function runRfcCreate(
         `Near-duplicate precedent(s) cited in related: ${reviewBandIds.join(", ")} — distinguish or cite them in the Decision`,
       );
     }
+    if (amendsSync) {
+      if (amendsSync.wroteCounterpart) {
+        logger.info(`amends: wrote amendedBy counterpart on the ${amendsSync.amended} file`);
+      } else {
+        logger.warn(
+          `amends: draft created but amendedBy counterpart on ${amendsSync.amended} is pending — write it by hand or run rfc.validate --fix`,
+        );
+      }
+    }
     logger.info("Status: draft (only a human with role 'architecture' may change status)");
   }
 
@@ -512,6 +566,7 @@ export async function runRfcCreate(
       consultedDecisions,
       ...(colliding.length > 0 ? { colliding, blocked: false } : {}),
       ...(reviewBand.length > 0 ? { reviewBand } : {}),
+      ...(amendsSync ? { amendsSync } : {}),
     },
     summary: `Created ${nextId}: ${title}`,
     nextSteps: [

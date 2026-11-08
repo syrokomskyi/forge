@@ -14,6 +14,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <item>RFC-1534: --fix scoped to V-19 amends/amendedBy asymmetries — re-applies the line-level counterpart merge, then drops repaired violations.</item>
   <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
 
 OriginGit gains optional showMany backed by one git cat-file --batch
@@ -28,6 +29,7 @@ per run and V-49 consumes it — identical diagnostics, one batched read.</item>
 import path from "node:path";
 
 import {
+  appendRfcFrontmatterListEntry,
   listRfcFiles,
   readAndParseRfc,
   readRfcFrontmatter,
@@ -203,6 +205,40 @@ export async function runRfcValidate(
     );
   }
 
+  // RFC-1534: --fix is scoped to the V-19 amends/amendedBy counterpart only —
+  // it re-applies the same line-level merge rfc.create --amends performs, then
+  // drops the repaired violations so the run reflects the post-fix state.
+  const fix = input.flags["fix"] === true;
+  const fixes: Array<{ file: string; key: string; added: string[] }> = [];
+  if (fix) {
+    const V19_ASYMMETRY =
+      /^(\S+)\.(amends|amendedBy) includes (\S+), but \3\.(amends|amendedBy) does not include \1$/;
+    const repaired = new Set<RfcValidationViolation>();
+    for (const v of violations) {
+      if (v.rule !== "V-19") continue;
+      const m = v.message.match(V19_ASYMMETRY);
+      if (!m) continue;
+      const [, fromId, , refId, missingKey] = m;
+      const entry = allParsed.get(refId!);
+      if (!entry) continue;
+      const wrote = await appendRfcFrontmatterListEntry(
+        path.join(rfcDirPath, entry.fileName),
+        missingKey!,
+        [fromId!],
+      );
+      if (wrote) {
+        repaired.add(v);
+        fixes.push({ file: `${RFC_DIR}/${entry.fileName}`, key: missingKey!, added: wrote.added });
+      }
+    }
+    for (const v of repaired) violations.splice(violations.indexOf(v), 1);
+    if (outputFormat === "pretty") {
+      for (const f of fixes) {
+        logger.info(`rfc.validate fix: merged ${f.added.join(", ")} into ${f.key} of ${f.file}`);
+      }
+    }
+  }
+
   const hasErrors = violations.some((v) => v.severity === "error");
   const resultStatus = hasErrors ? "fail" : "pass";
 
@@ -239,6 +275,7 @@ export async function runRfcValidate(
       violations,
       markers: allMarkers,
       coverage: coverage.length > 0 ? coverage : undefined,
+      ...(fixes.length > 0 ? { fixes } : {}),
     },
     exitCode: hasErrors ? 1 : 0,
     summary: hasErrors

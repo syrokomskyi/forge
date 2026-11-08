@@ -7,14 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474</history>
+  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482</history>
 </CHANGE_SUMMARY>
 */
 
@@ -125,6 +125,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
             description:
               "RFC-1482: comma-separated command names seeded into commands.added; each name gets one `probe: reachable` acceptance stub.",
           },
+          amends: {
+            kind: "string",
+            description:
+              "RFC-1534: RFC-NNNN this draft amends — seeds amends: and writes the amendedBy counterpart on the amended file in the same pass.",
+          },
         },
         execute: runRfcCreate,
       },
@@ -152,6 +157,11 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         scope: "workspace",
         flags: {
           id: { kind: "string", description: "Target a single RFC by id (e.g. RFC-0609)." },
+          fix: {
+            kind: "boolean",
+            description:
+              "RFC-1534: repair V-19 amends/amendedBy asymmetries by merging the missing counterpart into the referenced file.",
+          },
         },
         reads: ["docs/rfcs/**/*.md"],
         execute: runRfcValidate,

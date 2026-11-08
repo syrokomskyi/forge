@@ -12,12 +12,12 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458, RFC-1467</history>
+  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458, RFC-1467, RFC-1483</history>
 </CHANGE_SUMMARY>
  ***************************************************************/
 
@@ -638,6 +638,9 @@ export interface RfcCreateResult {
   blocked?: boolean;
   /** RFC-1467: the operator-visible remedy for a blocked create. */
   remedy?: string;
+  /** RFC-1534: --amends counterpart outcome — wroteCounterpart false means
+   * the amended file was missing/unreadable and V-19 still applies. */
+  amendsSync?: { amended: string; wroteCounterpart: boolean };
 }
 
 export interface RfcNextIdResult {

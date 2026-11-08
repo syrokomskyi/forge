@@ -7,6 +7,7 @@
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <item>RFC-1534: V-PROBE-META-01 metachar lint — warning on unescaped parens and `**` + slash glob shapes in file-contains/test probe patterns at authoring statuses; `probe-meta: intentional` comment suppresses per-pattern via raw frontmatterSource scan.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
@@ -532,6 +533,69 @@ export function collectMarkers(body: string, status: string, createdAt: string):
   return markers;
 }
 
+// ─── RFC-1534: probe-pattern metachar lint (V-PROBE-META-01) ────────────────
+
+export interface ProbeMetaHit {
+  criterion: string;
+  probe: "file-contains" | "test";
+  pattern: string;
+  chars: string[];
+  suggestion: string;
+}
+
+const PROBE_META_MARKER = "probe-meta: intentional";
+
+/**
+ * Scans file-contains/test probe patterns for regexp-trap characters —
+ * patterns execute via `new RegExp(...)`, so an unescaped `(` or `)` groups
+ * instead of matching literally and a `**` + slash glob shape is a
+ * nested-quantifier error. A `# <!-- probe-meta: intentional -->` comment on the `pattern:` line
+ * (or the line directly above it) in the frontmatter suppresses the warning
+ * for that pattern only; YAML drops comments at parse time, so the marker is
+ * located in the raw frontmatter source.
+ */
+export function collectProbeMetacharHits(
+  acceptance: unknown,
+  frontmatterSource: string,
+): ProbeMetaHit[] {
+  const probes = Array.isArray(acceptance) ? (acceptance as AcceptanceProbe[]) : [];
+  const fmLines = frontmatterSource.split("\n");
+  const suppressed = (field: string, value: string): boolean => {
+    for (let i = 0; i < fmLines.length; i++) {
+      const line = fmLines[i]!;
+      if (!line.includes(`${field}:`) || !line.includes(value)) continue;
+      return (
+        line.includes(PROBE_META_MARKER) || (fmLines[i - 1] ?? "").includes(PROBE_META_MARKER)
+      );
+    }
+    return false;
+  };
+  const hits: ProbeMetaHit[] = [];
+  for (const probe of probes) {
+    const kind = probe.probe;
+    if (kind !== "file-contains" && kind !== "test") continue;
+    // file-contains runs `new RegExp(pattern)`; test passes testName to
+    // `vitest -t` — a regexp filter on both paths.
+    const field = kind === "test" ? "testName" : "pattern";
+    const raw = (probe as unknown as Record<string, unknown>)[field];
+    const pattern = typeof raw === "string" ? raw : "";
+    if (!pattern) continue;
+    const chars: string[] = [];
+    if (/(^|[^\\])\(/.test(pattern)) chars.push("unescaped `(`");
+    if (/(^|[^\\])\)/.test(pattern)) chars.push("unescaped `)`");
+    if (pattern.includes("**/")) chars.push("`**/` glob shape");
+    if (chars.length === 0 || suppressed(field, pattern)) continue;
+    hits.push({
+      criterion: typeof probe.criterion === "string" ? probe.criterion : "?",
+      probe: kind,
+      pattern,
+      chars,
+      suggestion: pattern.replace(/\*\*\//g, "(?:.*/)?").replace(/([()])/g, "\\$1"),
+    });
+  }
+  return hits;
+}
+
 export async function validateSingleRfc(
   fileName: string,
   parsed: ParsedRfc,
@@ -926,6 +990,24 @@ export async function validateSingleRfc(
           }
         }
       }
+    }
+  }
+
+  // V-PROBE-META-01 (RFC-1534): regexp-trap metachar lint — warning at
+  // authoring statuses (draft/reviewing/accepted), never a blocking error;
+  // terminal statuses are archival and stay silent.
+  if (status === "draft" || status === "reviewing" || status === "accepted") {
+    for (const hit of collectProbeMetacharHits(
+      fm["acceptance"],
+      parsed.frontmatterSource ?? "",
+    )) {
+      addViolation(
+        rfcId,
+        relFile,
+        "V-PROBE-META-01",
+        `${hit.criterion} ${hit.probe} pattern "${hit.pattern}" carries ${hit.chars.join(", ")} — probe patterns execute via new RegExp, so these characters group/glob instead of matching literally. Escape or rewrite (e.g. "${hit.suggestion}"); an intentional regexp takes a # <!-- probe-meta: intentional --> comment on the pattern line or the line above.`,
+        "warning",
+      );
     }
   }
 

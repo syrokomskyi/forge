@@ -28,6 +28,7 @@ maturation skips parked/deferred items; uncovered imperative ask sites
 gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1250: re-review wave — blocked dependsOn cascade, manifest-failure gating, generated artifacts</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <item>RFC-1534: QUEUE-05 decision-ledger collision diagnostic names the next free Q-id computed at read time (max numeric suffix + 1).</item>
   <history>RFC-1250</history>
 </CHANGE_SUMMARY>
 */
@@ -345,11 +346,26 @@ export async function loadDecisionLedger(
 
   // QUEUE-05-family: decision ids are queue-global — window codes and
   // PENDING DECISION markers address them, so duplicates corrupt arbitration.
+  // RFC-1534: the diagnostic names the next free id computed at read time
+  // (max numeric suffix + 1 across the ledger — never a remembered counter).
+  let maxQ = 0;
+  for (const entry of ledger.items) {
+    const m = entry.id.match(/^Q-(\d+)$/);
+    if (m) maxQ = Math.max(maxQ, parseInt(m[1]!, 10));
+  }
+  const nextFree = `Q-${maxQ + 1}`;
   const seenDecisions = new Set<string>();
   const manifestDocs = new Set((manifest?.items ?? []).map((i) => i.id.trim().toUpperCase()));
   for (const entry of ledger.items) {
     if (seenDecisions.has(entry.id)) {
-      errors.push(diag("QUEUE-05", "error", `Duplicate decision id "${entry.id}"`, displayPath));
+      errors.push(
+        diag(
+          "QUEUE-05",
+          "error",
+          `Duplicate decision id "${entry.id}" — collides with an earlier entry; next free id: ${nextFree}`,
+          displayPath,
+        ),
+      );
       continue;
     }
     seenDecisions.add(entry.id);

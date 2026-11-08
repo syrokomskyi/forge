@@ -21,11 +21,13 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
+  <item>RFC-1534: frontmatterSource captured on both parse paths (probe-meta marker scan); mergeFrontmatterListEntry / appendRfcFrontmatterListEntry — line-level list merge preserving comments and key order (F-0056 discipline, never a YAML.stringify round-trip).</item>
   <history>RFC-0268</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo as fs } from "../../src/utils/io.ts";
+import { writeFileAtomic } from "../../src/utils/fs-atomic.ts";
 import path from "node:path";
 import { open as fsOpen } from "node:fs/promises";
 import YAML from "yaml";
@@ -33,6 +35,9 @@ import YAML from "yaml";
 export interface ParsedRfc {
   frontmatter: Record<string, unknown>;
   body: string;
+  /** RFC-1534: raw YAML frontmatter text — marker scans (probe-meta) need the
+   * un-parsed source because YAML comments never reach the parsed map. */
+  frontmatterSource?: string;
 }
 
 export function parseRfcFile(source: string): ParsedRfc {
@@ -43,7 +48,90 @@ export function parseRfcFile(source: string): ParsedRfc {
   return {
     frontmatter: (YAML.parse(match[1]!) ?? {}) as Record<string, unknown>,
     body: match[2] ?? "",
+    frontmatterSource: match[1]!,
   };
+}
+
+/**
+ * RFC-1534: merges `ids` into a frontmatter list `key` by line-level edit —
+ * preserves comments, key order, and existing entries (F-0056 discipline;
+ * a YAML.stringify round-trip would strip the template's comment lines).
+ * Returns the rewritten source plus the ids actually added; `undefined` when
+ * every id was already present.
+ */
+export function mergeFrontmatterListEntry(
+  source: string,
+  key: string,
+  ids: string[],
+): { content: string; added: string[] } | undefined {
+  const match = source.match(/^(---\r?\n)([\s\S]*?)(\r?\n---\r?\n?)([\s\S]*)$/);
+  if (!match) return undefined;
+  const [, open, fm, close, body] = match;
+  const lines = fm!.split("\n");
+  const keyRe = new RegExp(`^${key}:(.*)$`);
+  const keyIdx = lines.findIndex((l) => keyRe.test(l));
+  const existing = new Set<string>();
+  let insertAt = -1;
+
+  if (keyIdx !== -1) {
+    const inline = keyRe.exec(lines[keyIdx]!)![1]!.trim();
+    if (inline.startsWith("[")) {
+      for (const m of inline.replace(/^\[/, "").replace(/\]$/, "").split(",")) {
+        const item = m.trim().replace(/^["']|["']$/g, "");
+        if (item) existing.add(item);
+      }
+      lines[keyIdx] = `${key}:`;
+      insertAt = keyIdx + 1;
+    } else {
+      insertAt = keyIdx + 1;
+      while (insertAt < lines.length && /^\s+-\s+/.test(lines[insertAt]!)) {
+        existing.add(lines[insertAt]!.replace(/^\s+-\s+/, "").trim().replace(/^["']|["']$/g, ""));
+        insertAt++;
+      }
+    }
+  } else {
+    // No key — anchor after amends:/amendedBy:/supersededBy: block when one
+    // exists so relationship keys stay adjacent, else end of frontmatter.
+    let anchor = lines.length;
+    for (const anchorKey of ["amends", "amendedBy", "supersededBy", "supersedes"]) {
+      const idx = lines.findIndex((l) => new RegExp(`^${anchorKey}:`).test(l));
+      if (idx !== -1) {
+        anchor = idx + 1;
+        while (anchor < lines.length && /^\s+-\s+/.test(lines[anchor]!)) anchor++;
+        break;
+      }
+    }
+    lines.splice(anchor, 0, `${key}:`);
+    insertAt = anchor + 1;
+  }
+
+  const added = ids.filter((id) => !existing.has(id));
+  if (added.length === 0) return undefined;
+  lines.splice(insertAt, 0, ...added.map((id) => `  - ${id}`));
+  return { content: `${open}${lines.join("\n")}${close}${body}`, added };
+}
+
+/**
+ * RFC-1534: re-reads the file immediately before merging (never a
+ * blind-append over a cached parse — the counterpart write races a parallel
+ * edit of the amended file). Returns `{ added }`; `undefined` when the file
+ * was unreadable or every id was already present.
+ */
+export async function appendRfcFrontmatterListEntry(
+  filePath: string,
+  key: string,
+  ids: string[],
+): Promise<{ added: string[] } | undefined> {
+  let source: string;
+  try {
+    source = await fs.readFile(filePath);
+  } catch {
+    return undefined;
+  }
+  const merged = mergeFrontmatterListEntry(source, key, ids);
+  if (!merged) return undefined;
+  await writeFileAtomic(filePath, merged.content);
+  return { added: merged.added };
 }
 
 export async function listRfcFiles(rfcDirPath: string): Promise<string[]> {
@@ -162,7 +250,7 @@ export async function readRfcFrontmatter(
   }
   try {
     const frontmatter = (YAML.parse(match[1]!) ?? {}) as Record<string, unknown>;
-    return { fileName, parsed: { frontmatter, body: "" } };
+    return { fileName, parsed: { frontmatter, body: "", frontmatterSource: match[1]! } };
   } catch (e) {
     return parseErrorResult(fileName, e);
   }
