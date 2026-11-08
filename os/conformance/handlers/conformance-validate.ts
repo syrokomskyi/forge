@@ -4,7 +4,9 @@
 lint over forge.yaml contractProducers[] declarations. CONF-01 entry schema +
 {bundle} placeholder, CONF-02 test wiring, CONF-03 argv script-path resolution,
 CONF-04 absent consumer.root (warning), CONF-05 duplicate ids, CONF-06 missing
-mirror (warning).</purpose>
+mirror (warning); RFC-1539 CONF-07 consumer.package not exact-pinned, CONF-08
+consumer.package not installed / bin missing, CONF-09 consumer.root while a
+published conformance validator is installed (warning).</purpose>
 <non-goals>
   <item>Do not run the conformance legs — this is a static lint; forge.conformance.run executes.</item>
   <item>Do not execute or re-implement consumer validation rules.</item>
@@ -14,6 +16,7 @@ mirror (warning).</purpose>
   <item>RFC-1365: step 2 — forge.conformance.validate handler (CONF-01..06).</item>
   <item>RFC-1365: step 2 — forge.conformance.run/validate commands + dual-surface registration</item>
   <item>RFC-1365: review round 1 — CONF-03 rescoped producer-side (Q-9), producers[] json shape, crash guard + leg output, transport attribution, env semantics, writes declared, regen sweep</item>
+  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,7 +24,44 @@ import path from "node:path";
 import { parse as parseYaml } from "yaml";
 import * as fs from "../../../src/utils/sync-fs.ts";
 import { contractProducerSchema } from "../../../src/config/forge-config.ts";
-import type { ContractProducerDecl } from "../../../src/conformance/index.ts";
+import {
+  resolvePackageConsumerBin,
+  type ContractProducerDecl,
+} from "../../../src/conformance/index.ts";
+import { createRequire } from "node:module";
+
+/** An exact semver pin: no range operators, wildcards, tags or protocols (RFC-1539 CONF-07). */
+const EXACT_PIN = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+function readRootDevDependencies(workspaceRoot: string): Record<string, string> {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(workspaceRoot, "package.json"), "utf8")) as {
+      devDependencies?: Record<string, string>;
+    };
+    return manifest.devDependencies ?? {};
+  } catch {
+    return {};
+  }
+}
+
+function installedManifest(workspaceRoot: string, pkg: string): Record<string, unknown> | null {
+  try {
+    const req = createRequire(path.join(workspaceRoot, "package.json"));
+    return JSON.parse(fs.readFileSync(req.resolve(`${pkg}/package.json`), "utf8")) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function isPackageInstalled(workspaceRoot: string, pkg: string): boolean {
+  return installedManifest(workspaceRoot, pkg) !== null;
+}
+
+/** A validator package marks itself with `"forge": { "conformanceValidator": true }` (RFC-1539 CONF-09). */
+function isPublishedConformanceValidator(workspaceRoot: string, pkg: string): boolean {
+  const forge = installedManifest(workspaceRoot, pkg)?.["forge"] as { conformanceValidator?: unknown } | undefined;
+  return forge?.conformanceValidator === true;
+}
 import type {
   Diagnostic,
   ForgeCommandInput,
@@ -190,6 +230,11 @@ export async function runConformanceValidate(
     }
   }
 
+  const rootDevDependencies = readRootDevDependencies(workspaceRoot);
+  const publishedValidators = Object.keys(rootDevDependencies).filter((name) =>
+    isPublishedConformanceValidator(workspaceRoot, name),
+  );
+
   const seenIds = new Set<string>();
   for (const entry of entries) {
     const decl = entry.decl;
@@ -280,20 +325,58 @@ export async function runConformanceValidate(
       }
     }
 
-    // CONF-04: consumer root absent — self-skip dead-gate risk (warning)
-    const consumerRoot = path.isAbsolute(decl.consumer.root)
-      ? decl.consumer.root
-      : path.resolve(workspaceRoot, decl.consumer.root);
-    const consumerRootExists = fs.existsSync(consumerRoot);
-    if (!consumerRootExists) {
-      diagnostics.push(
-        diagnostic(
-          "CONF-04",
-          "warning",
-          `producer "${decl.id}": consumer.root absent on this machine (${decl.consumer.root}) — runs will self-skip here; enforce --require-consumer where the checkout is guaranteed`,
-          decl.id,
-        ),
-      );
+    if (decl.consumer.package !== undefined) {
+      // RFC-1539 — a published validator package: exact pin (CONF-07), installed with its bin (CONF-08).
+      const pkgName = decl.consumer.package;
+      const pin = rootDevDependencies[pkgName];
+      if (pin === undefined || !EXACT_PIN.test(pin)) {
+        diagnostics.push(
+          diagnostic(
+            "CONF-07",
+            "error",
+            `producer "${decl.id}": consumer.package ${pkgName} must be an exact-pinned devDependency of the root package.json (found ${pin === undefined ? "no entry" : `"${pin}"`})`,
+            decl.id,
+          ),
+        );
+      }
+      const bin = resolvePackageConsumerBin(workspaceRoot, decl.consumer.validator.argv[0]);
+      if (!isPackageInstalled(workspaceRoot, pkgName) || bin === null) {
+        diagnostics.push(
+          diagnostic(
+            "CONF-08",
+            "error",
+            `producer "${decl.id}": consumer.package ${pkgName} is not installed or has no bin "${decl.consumer.validator.argv[0]}" in node_modules/.bin — the consumer leg would fail`,
+            decl.id,
+          ),
+        );
+      }
+    } else {
+      // CONF-04: consumer root absent — self-skip dead-gate risk (warning)
+      const consumerRoot = path.isAbsolute(decl.consumer.root)
+        ? decl.consumer.root
+        : path.resolve(workspaceRoot, decl.consumer.root);
+      const consumerRootExists = fs.existsSync(consumerRoot);
+      if (!consumerRootExists) {
+        diagnostics.push(
+          diagnostic(
+            "CONF-04",
+            "warning",
+            `producer "${decl.id}": consumer.root absent on this machine (${decl.consumer.root}) — runs will self-skip here; enforce --require-consumer where the checkout is guaranteed`,
+            decl.id,
+          ),
+        );
+      }
+      // CONF-09: a published conformance validator is installed, yet this producer still uses a checkout.
+      if (publishedValidators.length > 0) {
+        diagnostics.push(
+          diagnostic(
+            "CONF-09",
+            "warning",
+            `producer "${decl.id}": consumer.root is used while ${publishedValidators.join(", ")} ${publishedValidators.length === 1 ? "is a published conformance validator" : "are published conformance validators"} in devDependencies — switch to consumer.package if it validates this contract (RFC-1539)`,
+            decl.id,
+          ),
+        );
+      }
     }
 
     // CONF-03 (Q-9): producer-side argv only — consumer-side execution errors

@@ -10,6 +10,7 @@
   <item>RFC-1240: consumer-aware front — foreignOwned flag/list, foreign deps are not local blockers, --consumer flag resolution.</item>
   <item>FIX: loadRfcStatuses delegated to loadRfcStatusMap (recursive) — archived implemented RFCs resolve their status, so terminal dependencies unblock the front instead of collapsing nodes to stale draft.</item>
   <item>RFC-1363: fail-closed amendment loader SPEC-14 + target repairs AMD-008..011</item>
+  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,6 +59,8 @@ interface SpecStatusEntry {
   /** RFC-1240: nodes excluded from the front by consumer ownership. */
   foreignOwned: string[];
   progress: SpecProgress;
+  /** RFC-1539: where the spec was read from. */
+  source: { kind: "vendored" } | { kind: "package"; package: string; version: string };
   amendments?: {
     proposed: number;
     accepted: number;
@@ -100,6 +103,7 @@ async function loadRfcStatuses(
 }
 
 import { loadAmendments } from "./spec-amendments.ts";
+import { listSpecSources, type SpecSource } from "../../src/spec/resolve-spec-source.ts";
 
 function computeFront(
   nodes: SpecNodeStatus[],
@@ -142,16 +146,27 @@ export async function runSpecStatus(
   const rfcDir = path.join(workspaceRoot, "docs", "rfcs");
   const filterSpec = input.flags["spec"] as string | undefined;
 
-  let specDirs = await listSpecDirs(specsRoot);
-  if (filterSpec) {
-    specDirs = specDirs.filter((d) => d === filterSpec);
-  }
+  const vendoredTargets = (await listSpecDirs(specsRoot)).map((specId) => ({
+    specId,
+    specDir: path.join(specsRoot, specId),
+    source: { kind: "vendored" } as SpecStatusEntry["source"],
+  }));
+  // RFC-1539: installed spec packages declared in forge.yaml specPackages[].
+  const packageTargets = listSpecSources(workspaceRoot)
+    .sources.filter((s): s is Extract<SpecSource, { kind: "package" }> => s.kind === "package")
+    .map((s) => ({
+      specId: s.specId,
+      specDir: s.dir,
+      source: { kind: "package", package: s.package, version: s.version } as SpecStatusEntry["source"],
+    }));
+  const targets = [...vendoredTargets, ...packageTargets].filter(
+    (t) => !filterSpec || t.specId === filterSpec,
+  );
 
   const rfcStatuses = await loadRfcStatuses(rfcDir);
   const results: SpecStatusEntry[] = [];
 
-  for (const specId of specDirs) {
-    const specDir = path.join(specsRoot, specId);
+  for (const { specId, specDir, source } of targets) {
     const forgeSpecPath = path.join(specDir, "forge-spec.yaml");
     const rawSpec = await readYaml<unknown>(forgeSpecPath);
     if (!rawSpec) continue;
@@ -243,6 +258,7 @@ export async function runSpecStatus(
       front,
       foreignOwned: nodes.filter((n) => n.foreignOwned).map((n) => n.id),
       progress,
+      source,
       amendments: {
         proposed: amendments.filter((a) => a.status === "proposed").length,
         accepted: acceptedAmendments.length,
