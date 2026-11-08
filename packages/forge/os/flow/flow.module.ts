@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1503</history>
+  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503</history>
 </CHANGE_SUMMARY>
 */
 
@@ -279,6 +279,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-INT-12", severity: "error" },
           { id: "FLOW-INT-13", severity: "error" },
           { id: "FLOW-INT-14", severity: "error" },
+          { id: "FLOW-INT-15", severity: "error" },
+          { id: "FLOW-INT-16", severity: "warning" },
           { id: "FLOW-07", severity: "error" },
           { id: "WT-GATE-01", severity: "error" },
         ],

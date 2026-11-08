@@ -20,18 +20,25 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: regenerable dirt classifier (importer-materialize, skill-twin-sync), cheap-first open-mission check (WT-GATE-01), toleratedState surfacing</item>
+  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
 </CHANGE_SUMMARY>
 */
 
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import type {
   CommandRegistry,
+  ForgeFlagValue,
   ForgeInvokeCommand,
   ForgeRegisteredCommandInfo,
   WorkspaceIO,
 } from "../../src/types.ts";
 import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
+import {
+  isGeneratedContent,
+  isGeneratedPathName,
+  REGEN_FLAGS,
+} from "../core/archive-regen.ts";
 import { openMissionsIn } from "../mission/open-missions.ts";
 import { currentBranch, git, statusTracked } from "./git.ts";
 
@@ -629,4 +636,83 @@ export async function runIntegratePreflight(
   }
 
   return { ok: true, checked, skipped, tolerated };
+}
+
+// ── RFC-1538: generated-conflict classification ──────────────────────────
+
+export interface ConflictOwner {
+  path: string;
+  command: string;
+  flags: Record<string, ForgeFlagValue>;
+}
+
+export interface RebaseConflictVerdict {
+  /** Generated paths with a discoverable owner command — auto-resolvable. */
+  owners: ConflictOwner[];
+  /** Non-generated paths, or generated paths with no owner → FLOW-INT-02. */
+  nonGenerated: string[];
+}
+
+/** `.generated.` basenames whose owner command is fixed by convention. */
+const GENERATED_BASENAME_OWNERS: Record<string, string> = {
+  "ecosystem.generated.yaml": "ecosystem.manifest.generate",
+  "command-manifest.generated.yaml": "command.manifest.generate",
+};
+
+/**
+ * Classify a rebase conflict set (RFC-1538): every path must classify
+ * generated via isGeneratedPathName/isGeneratedContent (stage-2/3 content),
+ * and every generated path must name an owner command — from its own
+ * generated header (`command:`/`regenerateCommand:`/`ownerCommand:`), or the
+ * `.generated.` basename registry. Anything else stays nonGenerated and the
+ * integrate refuses FLOW-INT-02 exactly as before.
+ */
+export async function classifyRebaseConflicts(
+  repo: string,
+  io: WorkspaceIO,
+  paths: string[],
+  deps: { runGit: typeof git } = { runGit: git },
+): Promise<RebaseConflictVerdict> {
+  const owners: ConflictOwner[] = [];
+  const nonGenerated: string[] = [];
+  for (const p of paths) {
+    let content = "";
+    for (const stage of [":2:", ":3:"]) {
+      const r = await deps.runGit(repo, io, ["show", `${stage}${p}`]);
+      if (r.exitCode === 0 && r.stdout.length > 0) {
+        content = r.stdout;
+        break;
+      }
+    }
+    const byName = isGeneratedPathName(p);
+    const byContent = content !== "" && isGeneratedContent(content);
+    if (!byName && !byContent) {
+      nonGenerated.push(p);
+      continue;
+    }
+    const header = /^(?:command|regenerateCommand|ownerCommand):\s*(\S.*?)\s*$/m.exec(
+      content.split("\n").slice(0, 15).join("\n"),
+    )?.[1];
+    const line = header ?? GENERATED_BASENAME_OWNERS[basename(p)] ?? null;
+    if (line === null) {
+      nonGenerated.push(p);
+      continue;
+    }
+    const [name, ...rest] = line.split(/\s+/);
+    const flags: Record<string, ForgeFlagValue> = { ...(REGEN_FLAGS[name] ?? {}) };
+    for (let i = 0; i < rest.length; i++) {
+      const t = rest[i];
+      if (!t.startsWith("--")) continue;
+      const eq = t.indexOf("=");
+      if (eq > 2) {
+        flags[t.slice(2, eq)] = t.slice(eq + 1);
+      } else if (i + 1 < rest.length && !rest[i + 1].startsWith("--")) {
+        flags[t.slice(2)] = rest[++i];
+      } else {
+        flags[t.slice(2)] = true;
+      }
+    }
+    owners.push({ path: p, command: name, flags });
+  }
+  return { owners, nonGenerated };
 }
