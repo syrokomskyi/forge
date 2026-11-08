@@ -17,6 +17,7 @@ checkout owns a write, given the invocation cwd.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1536: owning-checkout resolution for session-artifact writes</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
+  <item>RFC-1536: session-checkout bare-repo degrade to primary semantics</item>
 </CHANGE_SUMMARY>
 */
 
@@ -128,7 +129,13 @@ export async function resolveOwningCheckout(
     return { ok: true, checkout: { kind: "primary" }, warnings };
   }
 
-  const primary = await primaryWorktree(io, repoRoot);
+  let primary: string;
+  try {
+    primary = await primaryWorktree(io, repoRoot);
+  } catch {
+    // Bare repo or unreadable worktree list — keep cwd semantics.
+    return { ok: true, checkout: { kind: "primary" }, warnings };
+  }
   if (!(await samePath(cwd, primary))) {
     // cwd is neither a registered worktree nor the primary — a bare/other
     // checkout the flow model does not govern; keep cwd semantics.
