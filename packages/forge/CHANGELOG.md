@@ -6,6 +6,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.4.0] — 2026-11-08
+
+_Published contracts: Forge can read a specification from an installed npm package, run a consumer validator that a producer installs from npm, and record contract package versions in version sets. Flow integration is faster, explains its refusals better and recovers from more broken states._
+
+### Added
+
+- **Published spec packages**: `forge.yaml` `specPackages[]` declares a spec consumed as an installed npm package instead of a vendored `docs/specs/` copy. `spec.validate` and `spec.status` read it under the same rules, and `@warpgogol/forge/spec` exports `resolveSpecSource()`. New rules: SPEC-15 (vendored copy of a published spec, warning), SPEC-16 (not installed), SPEC-17 (not an exact root pin), SPEC-18 (duplicate id) (RFC-1539).
+- **Published consumer validators**: `contractProducers[].consumer.package` runs the installed bin of a validator package and never self-skips. `forge.conformance.validate` gains CONF-07 (not an exact devDependency pin), CONF-08 (not installed or bin missing) and CONF-09 (`consumer.root` while a published validator is installed, warning). A validator package marks itself with `"forge": { "conformanceValidator": true }` (RFC-1539, RFC-1540).
+- **`forge/version-set@2`**: `system.versionset.record` records `contracts` (product → package → version from each tag's root lockfile importer) and `warnings`. Scenario checks gain the kinds `validator` (producer conformance) and `pin-drift` (warning-only lag against npm `latest`). `system.outbox.scan` lists `pinBumps`, and `system.map.validate` lints the new check kinds (SYSTEM-MAP-07). Recorded `@1` sets stay readable (RFC-1541).
+- **Integration-gate reports** are persisted per attempt and linked from the flow journal (RFC-1532). Pending flow branches are surfaced at session start and inside `flow.open` (RFC-1533).
+- **Corrected invocations** are attached to blocking diagnostics so a retry is one command (RFC-1514).
+
+### Changed
+
+- **`flow.integrate`** batches committed-review reads (RFC-1513), reuses scoped-gate pass verdicts across reruns (RFC-1519), revalidates its preconditions after taking the lock (RFC-1538), classifies regenerable worktree dirt and orders refusals cheapest first (RFC-1537), and offers remediation flags for vanished worktrees (RFC-1531).
+- **Publishing** fails early when a package's `CHANGELOG.md` has no section for the release (RFC-1517).
+- **Plugin docs** are checked against the live module registry (RFC-1518); rule-file byte budgets are enforced (RFC-1522).
+- **Acceptance probes** are linted for patterns, amends counterparts and ledger ids (RFC-1534).
+
+### Fixed
+
+- Worktree lifecycle survives vanished paths, forge-local state and dead lock holders (RFC-1515); session-end and integration staleness checks are hardened (RFC-1528).
+- The staged commit path detects a stale index and preserves identifier casing (RFC-1535); session-artifact writes and governance-id allocation go through the session checkout (RFC-1536).
+- The stamp sync chain tolerates long-running evidence (RFC-1516); YAML quoting is validated on parse (RFC-0493).
+
 ## [9.3.1] — 2026-11-04
 
 ### Fixed
