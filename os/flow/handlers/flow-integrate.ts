@@ -20,13 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <item>RFC-1537: classify regenerable dirt (importer-prune/materialize, skill-twin-sync) instead of refusing FLOW-INT-01/03; journal every refusal as integrate-refusal for flow.status discoverability</item>
-<item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: bounded preflight between dirty checks and the gate — classified lockfile diffs, early primary check, manifest/RFC/friction validators (FLOW-INT-12/13/14)</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509</history>
+  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -59,6 +58,7 @@ import {
 } from "../locks.ts";
 import {
   appendJournal,
+readJournal,
   commonGitDir,
   FlowRegistrySchemaError,
   INTEGRATE_LOCK_RELATIVE_PATH,
@@ -99,6 +99,14 @@ export interface FlowIntegrateData {
   /** RFC-1537: declared regenerable dirt tolerated this run — {path, class}
    * per classified path; journaled, never committed or silently absorbed. */
   toleratedDirt?: Array<{ path: string; class: string }>;
+  /** RFC-1538: "already-integrated" when the branch's work is already in
+   * develop and nothing remains to do — idempotent exit, no cleanup run. */
+  disposition?: "already-integrated";
+  /** RFC-1538: generated-file rebase conflicts auto-resolved via their owner
+   * commands — journaled, never silently merged. */
+  autoResolved?: string[];
+  /** RFC-1538: which checkout's build ran the integration gate. */
+  gateEngine?: "session" | "primary";
   /** RFC-1515: holder payload when FLOW-INT-08 refused on a held lock. */
   lock?: LockDiagnostic;
   diagnostics: Diagnostic[];
@@ -150,6 +158,7 @@ async function cleanupIntegrated(
   journalEvent: "integrate" | "backmerge" = "integrate",
   journalBase?: string,
   journalToleratedDirt?: Array<{ path: string; class: string }>,
+  journalAutoResolved?: string[],
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -264,6 +273,9 @@ async function cleanupIntegrated(
       ...(journalToleratedDirt !== undefined && journalToleratedDirt.length > 0
         ? { toleratedDirt: journalToleratedDirt }
         : {}),
+      ...(journalAutoResolved !== undefined && journalAutoResolved.length > 0
+        ? { autoResolved: journalAutoResolved }
+        : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -367,6 +379,35 @@ async function integrateFlowBranchAttempt(
   }
   const { common, entry } = resolved;
   if (entry === null) {
+    // RFC-1538: a second integrate after a successful one finds no entry —
+    // report "already-integrated" (exit 0) instead of FLOW-INT-06 when the
+    // journal proves the branch landed or develop already contains its tip.
+    let contained = false;
+    try {
+      const journal = await readJournal(io, common);
+      contained = journal.some(
+        (e) => e.branch === branch && (e.event === "integrate" || e.event === "backmerge"),
+      );
+    } catch {
+      contained = false;
+    }
+    if (!contained && (await branchExists(repoRoot, io, branch))) {
+      const tip = (await git(repoRoot, io, ["rev-parse", branch])).stdout.trim();
+      contained = await isAncestor(repoRoot, io, tip, "develop");
+    }
+    if (contained) {
+      return {
+        branch,
+        integrated: true,
+        developBefore: null,
+        developAfter: null,
+        rebased: false,
+        gate: null,
+        cleanedUp: true,
+        disposition: "already-integrated",
+        diagnostics: [],
+      };
+    }
     return refuse(
       "FLOW-INT-06",
       `${branch} is not a registered session/task branch`,
@@ -479,14 +520,52 @@ async function integrateFlowBranchAttempt(
       };
     }
 
+    // RFC-1538: post-lock revalidation — the registry observed pre-lock can
+    // have changed while this run waited on the integration lock (F-0138:
+    // a racing integrate's teardown deleted entry+worktree under us).
+    const liveRegistry = await readRegistry(io, common);
+    const liveEntry = liveRegistry.branches.find((b) => b.name === branch);
+    if (liveEntry === undefined) {
+      // Registration vanished mid-wait. Contained work already landed → the
+      // winner completed; report idempotently. Otherwise mid-teardown.
+      const liveBranch = await branchExists(primary, io, branch);
+      const liveContained =
+        liveBranch &&
+        (await isAncestor(
+          primary,
+          io,
+          (await git(primary, io, ["rev-parse", branch])).stdout.trim(),
+          "develop",
+        ));
+      if (liveContained || !liveBranch) {
+        return {
+          branch,
+          integrated: true,
+          developBefore,
+          developAfter: developBefore,
+          rebased: false,
+          gate: null,
+          cleanedUp: true,
+          disposition: "already-integrated",
+          diagnostics: [],
+        };
+      }
+      return refuse(
+        "FLOW-INT-15",
+        `registry entry for ${branch} vanished while waiting on the integration lock, but the branch is not contained in develop (mid-teardown state)`,
+        "run flow.status for the live view; recover the orphaned entry with flow.discard",
+        { branch, developBefore },
+      );
+    }
+
     // (2) the branch worktree must exist and be clean.
     const worktrees = await worktreeList(primary, io);
-    const branchWorktree = worktrees.find((w) => w.branch === branch)?.path ?? entry.worktree;
+    const branchWorktree = worktrees.find((w) => w.branch === branch)?.path ?? liveEntry.worktree;
     if (branchWorktree === null || !(await io.exists(branchWorktree))) {
       return refuse(
-        "FLOW-07",
-        `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist (vanished)`,
-        "run flow.discard to drop the registry entry and force-delete the branch — the worktree is gone",
+        "FLOW-INT-15",
+        `registry entry for ${branch} names worktree ${branchWorktree}, which does not exist (vanished mid-teardown state — the branch is not contained in develop)`,
+        "run flow.status for the live view; recover the orphaned entry with flow.discard",
         { branch, developBefore },
         { vanished: true },
       );
@@ -601,30 +680,111 @@ async function integrateFlowBranchAttempt(
     }
 
     // (3) rebase onto the current develop — never for port entries.
+    // RFC-1538: a conflict confined to generated artifacts resolves via its
+    // owner command (checkout --theirs + regenerate + continue) — the
+    // generated-file doctrine applied inside the rebase path; anything else
+    // still refuses FLOW-INT-02 for a human.
     const rebaseBase = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-    const rebase =
-      entry.port !== null
-        ? { exitCode: 0, stdout: "", stderr: "" }
-        : await git(branchWorktree, io, ["rebase", "develop"]);
-    if (rebase.exitCode !== 0) {
-      const conflicts = await git(branchWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
-      const paths = conflicts.stdout
-        .split("\n")
-        .map((l) => l.trim())
-        .filter((l) => l.length > 0);
-      await git(branchWorktree, io, ["rebase", "--abort"]);
-      return refuse(
-        "FLOW-INT-02",
-        `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}`,
-        "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
-        { branch, developBefore },
-      );
+    const autoResolved: string[] = [];
+    if (entry.port === null) {
+      let rebase = await git(branchWorktree, io, ["rebase", "develop"]);
+      let guard = 0;
+      while (rebase.exitCode !== 0 && guard++ < 8) {
+        const conflicts = await git(branchWorktree, io, [
+          "diff",
+          "--name-only",
+          "--diff-filter=U",
+        ]);
+        const paths = conflicts.stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
+        const { classifyRebaseConflicts } = await import("../preflight.ts");
+        const verdict = await classifyRebaseConflicts(branchWorktree, io, paths);
+        const resolvable =
+          paths.length > 0 &&
+          verdict.nonGenerated.length === 0 &&
+          verdict.owners.length === paths.length &&
+          opts.invoke !== undefined;
+        if (!resolvable) {
+          await git(branchWorktree, io, ["rebase", "--abort"]);
+          return refuse(
+            "FLOW-INT-02",
+            `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}` +
+              (verdict.owners.length > 0
+                ? opts.invoke === undefined
+                  ? " — generated conflicts present but no invoke port is available to regenerate them"
+                  : " — mixed generated/non-generated conflict set"
+                : ""),
+            "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
+            { branch, developBefore },
+          );
+        }
+        let failed = false;
+        for (const o of verdict.owners) {
+          await git(branchWorktree, io, ["checkout", "--theirs", "--", o.path]);
+          const regen = await opts.invoke!(o.command, o.flags);
+          if (regen.ok === false || (regen.exitCode !== undefined && regen.exitCode !== 0)) {
+            await git(branchWorktree, io, ["rebase", "--abort"]);
+            failed = true;
+            return refuse(
+              "FLOW-INT-02",
+              `auto-resolve of generated conflict ${o.path} failed: ${o.command} — ${regen.summary ?? `exit ${regen.exitCode}`}`,
+              "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
+              { branch, developBefore },
+            );
+          }
+          await git(branchWorktree, io, ["add", "--", o.path]);
+          opts.onProgress?.(`conflict: ${o.path} — regenerated via ${o.command}`);
+          autoResolved.push(o.path);
+        }
+        if (failed) break;
+        rebase = await git(branchWorktree, io, [
+          "-c",
+          "core.editor=true",
+          "rebase",
+          "--continue",
+        ]);
+      }
+      if (rebase.exitCode !== 0) {
+        const conflicts = await git(branchWorktree, io, [
+          "diff",
+          "--name-only",
+          "--diff-filter=U",
+        ]);
+        const paths = conflicts.stdout
+          .split("\n")
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
+        await git(branchWorktree, io, ["rebase", "--abort"]);
+        return refuse(
+          "FLOW-INT-02",
+          `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}`,
+          "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
+          { branch, developBefore },
+        );
+      }
     }
 
-    // (4) integration gate — the primary's copy gates the branch.
+    // (4) integration gate — the primary's script, executed by the session
+    // engine's build when the worktree carries one (RFC-1538): the code
+    // under review judges itself; the checks it faces stay primary-owned.
+    const { resolveGateEngine } = await import("../gate-engine.ts");
+    const engine = await resolveGateEngine(branchWorktree, primary, io);
+    const warnings: Diagnostic[] = [];
+    if (engine.source === "primary" && (await io.exists(join(primary, "hooks", "integration-gate.sh")))) {
+      warnings.push({
+        ruleId: "FLOW-INT-16",
+        severity: "warning",
+        message: `no session engine build under ${branchWorktree} — the integration gate runs the primary engine`,
+        fixHint:
+          "run pnpm install inside the session worktree to have its own build judged; the F-0137 self-referential escape is a backport worktree",
+      });
+    }
+    opts.onProgress?.(`gate engine: ${engine.source} (${engine.root})`);
     const gate = await runFlowScript(io, "integration-gate", {
       primary,
-      cwd: branchWorktree,
+      cwd: engine.root,
       env: {
         FLOW_PRIMARY: primary,
         FLOW_BRANCH: branch,
@@ -705,7 +865,9 @@ async function integrateFlowBranchAttempt(
       cleanedUp: false,
       ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
       ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
-      diagnostics: [],
+      ...(autoResolved.length > 0 ? { autoResolved } : {}),
+      gateEngine: engine.source,
+      diagnostics: warnings,
     };
   };
 
@@ -776,6 +938,7 @@ async function integrateFlowBranchAttempt(
     entry.port !== null ? "backmerge" : "integrate",
     inner.developBefore ?? undefined,
     inner.toleratedDirt,
+    inner.autoResolved,
   );
   return {
     ...inner,

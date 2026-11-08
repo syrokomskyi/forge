@@ -11,22 +11,13 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
-
-The dirty gate for session worktrees now uses full porcelain status
-(untracked files included) because it predicts 'git worktree remove';
-the primary-clean gate keeps tracked-only semantics because it predicts
-'merge --ff-only'. Lock release verifies the held payload before
-unlinking. Registry/journal failures map to FLOW-07 in every handler.
-The final branch-name collision reports FLOW-OPEN-04, flow.discard
-propagates its teardown result and predicts FLOW-DIS-03 on --dry-run,
-and integrate exposes teardown as its own field.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
+  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -396,7 +387,7 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     });
 
     expect(data.integrated).toBe(false);
-    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-07");
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-15");
     expect(data.diagnostics[0]?.message).toContain("vanished");
     expect(data.diagnostics[0]?.data?.["vanished"]).toBe(true);
     expect(data.diagnostics[0]?.fixHint).toContain("flow.discard");
@@ -440,5 +431,130 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     expect(data.lock).toBeUndefined();
     expect(data.integrated).toBe(false);
     await rm(lockPath, { force: true });
+  }, 20_000);
+});
+
+describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, auto-resolve", () => {
+  it("a second integrate on an already-integrated branch exits idempotently (AC-1/AC-5)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "again");
+    await commitIn(session.worktree!, "a.txt", "a");
+
+    const first = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(first.integrated).toBe(true);
+
+    const second = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(second.disposition).toBe("already-integrated");
+    expect(second.integrated).toBe(true);
+    expect(second.diagnostics).toEqual([]);
+    expect(second.cleanedUp).toBe(true);
+    expect(await ambientIo.exists(session.worktree!)).toBe(false);
+  }, 20_000);
+
+  it("an unregistered branch never contained still refuses FLOW-INT-06", async () => {
+    const repo = await governedRepo();
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: "auto/session-261108-99-never",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-06");
+    expect(data.disposition).toBeUndefined();
+  }, 20_000);
+
+  it("an unregistered branch fully contained in develop reports already-integrated — nothing to do", async () => {
+    const repo = await governedRepo();
+    await gitExec(repo, ["branch", "auto/session-261108-99-merged"]);
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: "auto/session-261108-99-merged",
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.disposition).toBe("already-integrated");
+    expect(data.integrated).toBe(true);
+    expect(data.diagnostics).toEqual([]);
+  }, 20_000);
+
+  it("the gate binds the session engine build when the worktree has node_modules (AC-2)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "engine");
+    await commitIn(session.worktree!, "e.txt", "e");
+    await mkdir(join(session.worktree!, "node_modules"), { recursive: true });
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.integrated).toBe(true);
+    expect(data.gateEngine).toBe("session");
+  }, 20_000);
+
+  it("a generated-only conflict auto-resolves via the owner command and lands (AC-3)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "genconf");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    const sessionIndex =
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n";
+    const developIndex =
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n";
+    await commitIn(session.worktree!, "docs/rfcs/index.yaml", sessionIndex);
+    await commitIn(repo, "docs/rfcs/index.yaml", developIndex);
+
+    const resolved = "command: rfc.index.generate\ngeneratedAt: 2026-11-09\ncount: 10\n";
+    const invoked: string[] = [];
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: async (name, flags) => {
+        invoked.push(`${name} ${JSON.stringify(flags ?? {})}`);
+        await writeFile(join(session.worktree!, "docs/rfcs/index.yaml"), resolved);
+        return { ok: true, exitCode: 0 };
+      },
+    });
+
+    expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(data.integrated).toBe(true);
+    expect(data.autoResolved).toEqual(["docs/rfcs/index.yaml"]);
+    expect(invoked).toEqual(['rfc.index.generate {"write":true}']);
+    expect((await gitExec(repo, ["cat-file", "-e", "develop:docs/rfcs/index.yaml"])).exitCode).toBe(
+      0,
+    );
+  }, 20_000);
+
+  it("a mixed generated/non-generated conflict set still refuses FLOW-INT-02 (AC-3 boundary)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "mixed");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    const sessionIndex =
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n";
+    const developIndex =
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n";
+    await commitIn(session.worktree!, "docs/rfcs/index.yaml", sessionIndex);
+    await commitIn(session.worktree!, "real.txt", "session-side");
+    await commitIn(repo, "docs/rfcs/index.yaml", developIndex);
+    await commitIn(repo, "real.txt", "develop-side");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: async () => ({ ok: true, exitCode: 0 }),
+    });
+
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
+    expect(data.diagnostics[0]?.message).toContain("real.txt");
   }, 20_000);
 });
