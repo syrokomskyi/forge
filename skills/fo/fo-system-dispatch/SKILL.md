@@ -63,3 +63,4 @@ Task files, briefs and collected reports live under `queue/` in the system repos
 - **Never commit or integrate inside a product checkout.** Integration is the product session's own governed step.
 - **A `needs-decision` report becomes one operator question** — relay it verbatim, do not answer it yourself.
 - **Briefs are the whole contract.** If a brief would not let a cold session finish the task, rewrite the brief before dispatching.
+- **Task state changes only through `system.task.move`, dispatch, and collect** — free text goes into the brief or the report, never into `history` (F-0141).
