@@ -22,6 +22,7 @@ forge/journal.jsonl.</purpose>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1537: integrate-refusal journal event + rule/toleratedDirt fields — every flow.integrate refusal journals {branch, rule, summary, at} for flow.status lastRefusal; appendJournal now serializes toleratedState (was silently dropped)</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -134,15 +135,22 @@ export interface FlowJournalEvent {
     | "push"
     | "publish"
     | "publish-superseded"
-    | "publish-retired";
+    | "publish-retired"
+    | "integrate-refusal";
   branch: string;
   sha: string;
   detail: string;
   /** develop before (integrate/backmerge/cut/hold); branch base (discard) — W1-1. */
   base?: string;
+  /** RFC-1537: diagnostic rule id on integrate-refusal (FLOW-INT-01/WT-GATE-01/…)
+   * — flow.status renders it as lastRefusal.rule. */
+  rule?: string;
   /** RFC-1515: forge-local state the integrate/discard tolerated and deleted
    * with the worktree — recorded so the journal carries the allowlist hit. */
   toleratedState?: string[];
+  /** RFC-1537: declared regenerable dirt tolerated during integrate —
+   * {path, class} per classified path. */
+  toleratedDirt?: Array<{ path: string; class: string }>;
   /** hold only — the new (base, sha] range of every replayed item. */
   rewrites?: Array<{
     branch: string;
@@ -251,6 +259,9 @@ export async function appendJournal(
     detail: event.detail,
   };
   if (event.base !== undefined) line.base = event.base;
+  if (event.rule !== undefined) line.rule = event.rule;
+  if (event.toleratedState !== undefined) line.toleratedState = event.toleratedState;
+  if (event.toleratedDirt !== undefined) line.toleratedDirt = event.toleratedDirt;
   if (event.rewrites !== undefined) line.rewrites = event.rewrites;
   await io.appendFile(file, `${JSON.stringify(line)}\n`);
 }
