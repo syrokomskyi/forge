@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503</history>
+  <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
 
@@ -261,7 +261,10 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "path a bounded preflight (classified dirty-tree checks, " +
           "ecosystem.manifest.validate, scoped rfc.validate, " +
           "friction.validate) refuses before the rebase and the gate " +
-          "(RFC-1528). Refusals: FLOW-INT-01..14.",
+          "(RFC-1528). Refusals: FLOW-INT-01..17. RFC-1531 remediation " +
+          "flags: --reattach recreates a vanished worktree, --auto-clean " +
+          "deletes closed-class disposable dirt, --autocommit sweeps the " +
+          "rest into a fixed-subject commit.",
         scope: "workspace",
         contract: "flow",
         rules: [
@@ -281,6 +284,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-INT-14", severity: "error" },
           { id: "FLOW-INT-15", severity: "error" },
           { id: "FLOW-INT-16", severity: "warning" },
+          { id: "FLOW-INT-17", severity: "error" },
           { id: "FLOW-07", severity: "error" },
           { id: "WT-GATE-01", severity: "error" },
         ],
@@ -300,6 +304,24 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             required: false,
             description:
               "Registered auto branch to integrate; defaults to the branch checked out in the cwd worktree.",
+          },
+          reattach: {
+            kind: "boolean",
+            required: false,
+            description:
+              "RFC-1531: recreate a vanished registered worktree at its recorded (or canonical sibling) path instead of refusing.",
+          },
+          "auto-clean": {
+            kind: "boolean",
+            required: false,
+            description:
+              "RFC-1531: delete dirty paths in the closed disposable class (coverage/, tmp*/, *.log, *.stale), then re-evaluate.",
+          },
+          autocommit: {
+            kind: "boolean",
+            required: false,
+            description:
+              "RFC-1531: sweep all remaining dirty entries into the fixed-subject commit 'chore(flow): sweep session leftovers' before the rebase.",
           },
           "dry-run": {
             kind: "boolean",

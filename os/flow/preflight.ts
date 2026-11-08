@@ -21,6 +21,7 @@ Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: regenerable dirt classifier (importer-materialize, skill-twin-sync), cheap-first open-mission check (WT-GATE-01), toleratedState surfacing</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
+  <item>RFC-1531: shared DirtyClass enum via dirty-classify.ts (Q-4), classified FLOW-INT-01/03 data.entries, classifyDirtyEntries for the remediation flags</item>
 </CHANGE_SUMMARY>
 */
 
@@ -40,6 +41,12 @@ import {
   REGEN_FLAGS,
 } from "../core/archive-regen.ts";
 import { openMissionsIn } from "../mission/open-missions.ts";
+import {
+  classifyDirtyPath,
+  summarizeClasses,
+  type ClassifiedDirtyEntry,
+  type DirtyClass,
+} from "./dirty-classify.ts";
 import { currentBranch, git, statusTracked } from "./git.ts";
 
 export type LockfileClassification = "importer-prune-only" | "other";
@@ -157,16 +164,14 @@ async function classifyDirtyLockfile(
 }
 
 // ── RFC-1537: regenerable dirt classifier ────────────────────────────────
+// Q-4 (RFC-1531): the class enum is shared — dirty-classify.ts owns the
+// closed vocabulary; this module only assigns its diff-aware members.
 
-export type DirtClass =
-  | "importer-prune"
-  | "importer-materialize"
-  | "skill-twin-sync"
-  | "unattributed";
+export type { DirtyClass } from "./dirty-classify.ts";
 
 export interface ToleratedEntry {
   path: string;
-  class: DirtClass;
+  class: DirtyClass;
 }
 
 export interface DirtVerdict {
@@ -344,6 +349,31 @@ export async function classifyDirt(
   return { tolerated, unattributed };
 }
 
+/**
+ * RFC-1531 AC-6: classify EVERY dirty entry — tolerated-family classes come
+ * from the diff-aware classifyDirt; the remaining entries get their
+ * path-only class (disposable or work — importer/twin classes can only be
+ * diff-assigned, so they never appear here). Used for FLOW-INT-01's
+ * data.entries and by the remediation flags.
+ */
+export async function classifyDirtyEntries(
+  repo: string,
+  io: WorkspaceIO,
+  entries: string[],
+  deps: { runGit: typeof git } = { runGit: git },
+): Promise<ClassifiedDirtyEntry[]> {
+  const verdict = await classifyDirt(repo, io, entries, deps);
+  const out: ClassifiedDirtyEntry[] = verdict.tolerated.map((t) => ({
+    path: t.path,
+    class: t.class,
+  }));
+  for (const line of verdict.unattributed) {
+    const path = line.slice(3).trim();
+    out.push({ path, class: classifyDirtyPath(path) });
+  }
+  return out;
+}
+
 const LOCKFILE_PRUNE_HINT =
   " — its diff matches the vanished mission-importer prune shape; restore it " +
   "(`git checkout -- pnpm-lock.yaml` is blocked for agents: copy HEAD bytes " +
@@ -463,9 +493,21 @@ export async function runIntegratePreflight(
               : "") +
             (lockfile === "importer-prune-only" ? ` — pnpm-lock.yaml${LOCKFILE_PRUNE_HINT}` : ""),
           fixHint:
-            "commit or revert the uncommitted changes inside the session worktree, then re-run",
+            "commit or revert the uncommitted changes inside the session worktree, or remediate with --auto-clean / --autocommit, then re-run",
           data: {
-            entries: verdict.unattributed.map((line) => line.slice(3)),
+            // RFC-1531 AC-6: per-path classes so the remedy is read from
+            // the diagnostic — disposable members may --auto-clean away,
+            // work members must be committed or reverted (or --autocommit).
+            entries: verdict.unattributed.map((line) => {
+              const path = line.slice(3).trim();
+              return { path, class: classifyDirtyPath(path) };
+            }),
+            classes: summarizeClasses(
+              verdict.unattributed.map((line) => {
+                const path = line.slice(3).trim();
+                return { path, class: classifyDirtyPath(path) };
+              }),
+            ),
             toleratedState: opts.worktreeDirty.toleratedState,
             toleratedDirt: verdict.tolerated,
             ...(lockfile !== null ? { lockfileClassification: lockfile } : {}),
@@ -510,7 +552,10 @@ export async function runIntegratePreflight(
           fixHint:
             "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
           data: {
-            entries: verdict.unattributed.map((line) => line.slice(3)),
+            entries: verdict.unattributed.map((line) => {
+              const path = line.slice(3).trim();
+              return { path, class: classifyDirtyPath(path) };
+            }),
             toleratedDirt: verdict.tolerated,
             ...(lockfile !== null ? { lockfileClassification: lockfile } : {}),
           },

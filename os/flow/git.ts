@@ -18,6 +18,7 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
+  <item>RFC-1531: worktreeAdd for --reattach; isForgeStatePath exported for the shared dirty classifier</item>
   <history>RFC-1486, RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -295,6 +296,20 @@ export async function worktreeList(repoRoot: string, io: WorkspaceIO): Promise<F
   return worktrees;
 }
 
+/**
+ * RFC-1531: `git worktree add <path> <branch>` for an EXISTING branch — the
+ * reattach leg of a vanished registered worktree. Thin wrapper: the caller
+ * reads the exit code (FLOW-INT-17 on failure); it never throws.
+ */
+export async function worktreeAdd(
+  repoRoot: string,
+  io: WorkspaceIO,
+  path: string,
+  branch: string,
+): Promise<ExecResult> {
+  return git(repoRoot, io, ["worktree", "add", path, branch]);
+}
+
 /** `git config --get` — null when the key is unset (exit 1). */
 export async function configGet(
   repoRoot: string,
@@ -351,7 +366,8 @@ export interface DirtyStatus {
   vanished: boolean;
 }
 
-function isForgeStatePath(path: string): boolean {
+/** Exported for the RFC-1531 dirty classifier — same path allowlist check. */
+export function isForgeStatePath(path: string): boolean {
   return FORGE_STATE_FILES.some((entry) =>
     entry.endsWith("/") ? path === entry || path.startsWith(entry) : path === entry,
   );
