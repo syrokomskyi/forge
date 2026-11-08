@@ -22,6 +22,7 @@ shouldRunArchiveRegen makes the report-only contract a tested unit instead of an
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>F-0126: tighten owner predicate — generates[] or all-generated writes[]; required flags must be REGEN_FLAGS-covered; excluded[] diagnostics</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
+  <item>RFC-1535: stageMovedPairs — self-staging helper for move pairs (F-0038)</item>
   <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -32,6 +33,7 @@ import picomatch from "picomatch";
 import { hasGeneratedMarker } from "../../src/utils/generated-marker.ts";
 import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
 import type {
+  ExecResult,
   ForgeFlagValue,
   ForgeRegisteredCommandInfo,
   ForgeRuntimeContext,
@@ -246,4 +248,32 @@ export async function runArchiveRegen(options: {
     }
   }
   return outcome;
+}
+
+/**
+ * RFC-1535 (F-0038): self-staging — every moved pair lands BOTH sides in the
+ * index (destination add + source delete) so the next commit captures the
+ * move as one unit instead of a split add/delete across two commits.
+ * `git add -A` on the union of moved from/to paths covers both sides; a
+ * non-git or already-clean tree degrades to a warn-only outcome — the
+ * commit-side EC-31 check is the safety net for any half-staged survivor.
+ */
+export async function stageMovedPairs(options: {
+  movedPaths: string[];
+  workspaceRoot: string;
+  exec: (command: string, args: string[], opts?: { cwd?: string }) => Promise<ExecResult>;
+}): Promise<{ staged: number; error?: string }> {
+  const { movedPaths, workspaceRoot, exec } = options;
+  if (movedPaths.length === 0) return { staged: 0 };
+  try {
+    const result = await exec("git", ["add", "-A", "--", ...movedPaths], {
+      cwd: workspaceRoot,
+    });
+    if (result.exitCode !== 0) {
+      return { staged: 0, error: result.stderr || `git add exit ${result.exitCode}` };
+    }
+    return { staged: movedPaths.length };
+  } catch (error) {
+    return { staged: 0, error: error instanceof Error ? error.message : String(error) };
+  }
 }
