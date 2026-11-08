@@ -14,6 +14,7 @@ error-severity diagnostic exists.</purpose>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
+  <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
 </CHANGE_SUMMARY>
 */
 
@@ -63,7 +64,7 @@ export async function runSystemMapValidate(
       diagnostics.push(...(await validateSystemMap(map, io)));
       const scenarios = await loadScenarios(root, io);
       diagnostics.push(...scenarios.diagnostics);
-      diagnostics.push(...validateScenarios(map, scenarios.scenarios));
+      diagnostics.push(...validateScenarios(map, scenarios.scenarios, root));
     }
   }
 
@@ -99,7 +100,8 @@ export async function runSystemMapValidate(
         ? [{ action: "Fix the error-severity system-map diagnostics above", kind: "required" }]
         : [
             {
-              action: "Declare products, offered contracts and edges under system/ as the system grows",
+              action:
+                "Declare products, offered contracts and edges under system/ as the system grows",
               kind: "optional",
             },
           ],

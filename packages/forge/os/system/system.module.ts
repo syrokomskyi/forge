@@ -13,12 +13,12 @@ dispatch's product side is limited to opening the task branch and writing
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
   <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
   <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
-  <history>RFC-1508, RFC-1509</history>
+  <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
+  <history>RFC-1508, RFC-1509, RFC-1510</history>
 </CHANGE_SUMMARY>
 */
 
@@ -43,7 +43,8 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
       {
         name: "system.map.validate",
         description:
-          "Read-only system-map validator (RFC-1508). Refuses outside the " +
+          "Read-only system-map validator (RFC-1508; RFC-1541 SYSTEM-MAP-07 " +
+          "lints pin-drift authorities and validator producers). Refuses outside the " +
           "system profile (SYSTEM-01), reports missing or schema-invalid map " +
           "files (SYSTEM-MAP-01), duplicate product ids and unknown edge " +
           "consumers (SYSTEM-MAP-02), edges naming contracts no product " +
@@ -62,6 +63,7 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "SYSTEM-MAP-04", severity: "error" },
           { id: "SYSTEM-MAP-05", severity: "warning" },
           { id: "SYSTEM-MAP-06", severity: "error" },
+          { id: "SYSTEM-MAP-07", severity: "error" },
         ],
         mutatesState: false,
         writes: [],
@@ -112,14 +114,36 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         ],
         cacheable: false,
         flags: {
-          product: { kind: "string", required: true, description: "Product id from system/products.yaml" },
-          slug: { kind: "string", required: true, description: "kebab-case slug for the product branch" },
+          product: {
+            kind: "string",
+            required: true,
+            description: "Product id from system/products.yaml",
+          },
+          slug: {
+            kind: "string",
+            required: true,
+            description: "kebab-case slug for the product branch",
+          },
           title: { kind: "string", required: true, description: "Human-readable task title" },
-          kind: { kind: "string", required: true, description: "change | adoption | dependency-update | verification" },
+          kind: {
+            kind: "string",
+            required: true,
+            description: "change | adoption | dependency-update | verification",
+          },
           contracts: { kind: "string[]", description: "Contracts the task touches (repeatable)" },
-          "depends-on": { kind: "string[]", description: "Task ids that must be done first (repeatable)" },
-          origin: { kind: "string", description: "<kind>:<ref> — operator | outbox | decision | scenario (default operator)" },
-          reason: { kind: "string", description: "Optional note recorded on the creation history row" },
+          "depends-on": {
+            kind: "string[]",
+            description: "Task ids that must be done first (repeatable)",
+          },
+          origin: {
+            kind: "string",
+            description:
+              "<kind>:<ref> — operator | outbox | decision | scenario (default operator)",
+          },
+          reason: {
+            kind: "string",
+            description: "Optional note recorded on the creation history row",
+          },
           "dry-run": { kind: "boolean", description: "Plan only — write nothing" },
         },
         execute: runSystemTaskCreate,
@@ -165,8 +189,14 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         flags: {
           task: { kind: "string", required: true, description: "Task id T-NNNN" },
           to: { kind: "string", required: true, description: "Target state" },
-          reason: { kind: "string", description: "Required by transitions the table marks reason-bearing" },
-          "version-set": { kind: "string", description: "Required for integrated → verified — names system/version-sets/<id>.yaml" },
+          reason: {
+            kind: "string",
+            description: "Required by transitions the table marks reason-bearing",
+          },
+          "version-set": {
+            kind: "string",
+            description: "Required for integrated → verified — names system/version-sets/<id>.yaml",
+          },
           "dry-run": { kind: "boolean", description: "Plan only — write nothing" },
         },
         execute: runSystemTaskMove,
@@ -276,8 +306,15 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         ],
         cacheable: false,
         flags: {
-          task: { kind: "string", required: true, description: "Task id T-NNNN (dispatched or reported)" },
-          "mark-failed": { kind: "boolean", description: "Mark the task failed instead of collecting a report" },
+          task: {
+            kind: "string",
+            required: true,
+            description: "Task id T-NNNN (dispatched or reported)",
+          },
+          "mark-failed": {
+            kind: "boolean",
+            description: "Mark the task failed instead of collecting a report",
+          },
           reason: { kind: "string", description: "Required with --mark-failed" },
           "dry-run": { kind: "boolean", description: "Plan only — write nothing" },
         },
@@ -346,6 +383,8 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
         description:
           "Scan every product's committed docs/outbox/ entries from develop " +
           "(RFC-1510). Matches each open entry's contract to the offering " +
+          "product (RFC-1541: also lists pin-bump proposals from the newest " +
+          "version set's W01 warnings — never materialized as tasks), " +
           "product, classifies the edge via edgeVerdict and prints " +
           "OutboxProposal rows. SYSTEM-OUTBOX-01 warns on contracts nobody " +
           "offers, SYSTEM-OUTBOX-02 errors on forbidden edges (no task), " +
@@ -398,7 +437,13 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           "system/version-sets/VS-NNNN.yaml with sha256 evidence per " +
           "scenario only when all checks pass — a failing check leaves the " +
           "logs but writes no set (DNA-106). --dry-run validates flags, " +
-          "scenarios, folders and tags without creating worktrees.",
+          "scenarios, folders and tags without creating worktrees. " +
+          "RFC-1541: writes forge/version-set@2 — contracts (product → package → " +
+          "version from each tag's root lockfile importer; SYSTEM-VS-06 when a " +
+          "declared spec/validator package cannot be resolved), check kinds " +
+          "validator (producer conformance over the shared path; SYSTEM-VS-07 " +
+          "for a consumer.root producer) and pin-drift (warning-only W01 lag ≥ " +
+          "maxLag or unlisted pin, W02 registry unreachable).",
         scope: "workspace",
         contract: "system",
         rules: [
@@ -409,6 +454,10 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
           { id: "SYSTEM-VS-03", severity: "error" },
           { id: "SYSTEM-VS-04", severity: "error" },
           { id: "SYSTEM-VS-05", severity: "warning" },
+          { id: "SYSTEM-VS-06", severity: "error" },
+          { id: "SYSTEM-VS-07", severity: "error" },
+          { id: "SYSTEM-VS-W01", severity: "warning" },
+          { id: "SYSTEM-VS-W02", severity: "warning" },
         ],
         mutatesState: true,
         idempotency: "rerun-safe",
@@ -440,7 +489,10 @@ export async function createForgeSystemModule(): Promise<ForgeModule> {
             required: true,
             description: "Comma-separated scenario ids from system/scenarios/",
           },
-          "dry-run": { kind: "boolean", description: "Validate only — create no worktree, write nothing" },
+          "dry-run": {
+            kind: "boolean",
+            description: "Validate only — create no worktree, write nothing",
+          },
         },
         execute: runSystemVersionSetRecord,
       },

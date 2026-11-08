@@ -17,6 +17,7 @@ because a product cannot know the system's name.</purpose>
   <item>RFC-1510: implement RFC-1510 — product outbox for dependency-contract requests</item>
   <item>RFC-1510: close RFC-1510 review r1 findings — folder crash guard, ls-tree allowlist, OUTBOX-02 on develop</item>
   <item>RFC-1510: close RFC-1510 review r2 — declare OUTBOX-02 in scan rules, flat-scope test, readdir TOCTOU guard</item>
+  <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,9 +42,21 @@ import { assertSystemRepository, edgeVerdict, loadSystemMap } from "../repo.ts";
 import { listTasks } from "../task-store.ts";
 import { createTask, writeTaskWithBrief } from "./system-task-create.ts";
 
+/** RFC-1541: a contract pin a consumer should bump, from the newest version set's W01 warnings. */
+export interface PinBumpProposal {
+  kind: "pin-bump";
+  versionSet: string;
+  product: string;
+  package: string;
+  from: string;
+  to: string;
+}
+
 export interface SystemOutboxScanResult {
   command: "system.outbox.scan";
   proposals: OutboxProposal[];
+  /** RFC-1541: proposals only — never materialized as tasks by --create. */
+  pinBumps: PinBumpProposal[];
   created: string[];
   diagnostics: Diagnostic[];
 }
@@ -57,6 +70,44 @@ function diag(
   return fixHint ? { ruleId, severity, message, fixHint } : { ruleId, severity, message };
 }
 
+/** RFC-1541: W01 pin-drift warnings of the highest-numbered version set (@2 only). */
+async function readPinBumps(root: string, io: WorkspaceIO): Promise<PinBumpProposal[]> {
+  const dir = path.join(root, "system", "version-sets");
+  let names: string[] = [];
+  try {
+    names = (await io.readdir(dir))
+      .filter((e) => !e.isDirectory && /^VS-\d{4}\.yaml$/.test(e.name))
+      .map((e) => e.name)
+      .sort();
+  } catch {
+    return [];
+  }
+  const newest = names.at(-1);
+  if (!newest) return [];
+  type VersionSetDoc = { schema?: unknown; id?: unknown; warnings?: unknown };
+  let doc: VersionSetDoc | null;
+  try {
+    doc = YAML.parse(await io.readFile(path.join(dir, newest))) as VersionSetDoc | null;
+  } catch {
+    return [];
+  }
+  if (doc?.schema !== "forge/version-set@2" || !Array.isArray(doc.warnings)) return [];
+  const out: PinBumpProposal[] = [];
+  for (const w of doc.warnings as Array<Record<string, unknown>>) {
+    if (w.code !== "SYSTEM-VS-W01") continue;
+    if (typeof w.product !== "string" || typeof w.package !== "string") continue;
+    out.push({
+      kind: "pin-bump",
+      versionSet: String(doc.id),
+      product: w.product,
+      package: w.package,
+      from: String(w.from ?? "unknown"),
+      to: String(w.to ?? "unknown"),
+    });
+  }
+  return out;
+}
+
 /** Word-boundary match for a kebab system id inside a product-side file. */
 function systemIdNeedleFor(id: string): RegExp {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -64,11 +115,7 @@ function systemIdNeedleFor(id: string): RegExp {
 }
 
 /** Committed file contents on the product's develop, or null when unreadable. */
-async function gitShow(
-  io: WorkspaceIO,
-  repo: string,
-  spec: string,
-): Promise<string | null> {
+async function gitShow(io: WorkspaceIO, repo: string, spec: string): Promise<string | null> {
   const res = await io.exec("git", ["show", spec], { cwd: repo });
   return res.exitCode === 0 ? res.stdout : null;
 }
@@ -108,10 +155,7 @@ export async function runSystemOutboxScan(
     }
 
     for (const product of map.products.products) {
-      const folder = Object.prototype.hasOwnProperty.call(
-        map.local?.folders ?? {},
-        product.id,
-      )
+      const folder = Object.prototype.hasOwnProperty.call(map.local?.folders ?? {}, product.id)
         ? map.local!.folders[product.id]
         : undefined;
       if (folder === undefined) {
@@ -147,11 +191,9 @@ export async function runSystemOutboxScan(
 
       let tree: Awaited<ReturnType<WorkspaceIO["exec"]>>;
       try {
-        tree = await io.exec(
-          "git",
-          ["ls-tree", "--name-only", "develop", `${OUTBOX_DIR}/`],
-          { cwd: productRoot },
-        );
+        tree = await io.exec("git", ["ls-tree", "--name-only", "develop", `${OUTBOX_DIR}/`], {
+          cwd: productRoot,
+        });
       } catch {
         diagnostics.push(
           diag(
@@ -189,7 +231,10 @@ export async function runSystemOutboxScan(
         );
       }
 
-      for (const rel of tree.stdout.split("\n").map((l) => l.trim()).filter((l) => l.endsWith(".yaml"))) {
+      for (const rel of tree.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.endsWith(".yaml"))) {
         const raw = await gitShow(io, productRoot, `develop:${rel}`);
         if (raw === null) continue;
         if (systemIdNeedle.test(raw)) {
@@ -227,10 +272,7 @@ export async function runSystemOutboxScan(
             ),
           );
         }
-        if (
-          parsed !== null &&
-          path.posix.basename(rel, ".yaml") !== parsed.id
-        ) {
+        if (parsed !== null && path.posix.basename(rel, ".yaml") !== parsed.id) {
           diagnostics.push(
             diag(
               "OUTBOX-02",
@@ -300,11 +342,13 @@ export async function runSystemOutboxScan(
     }
   }
 
+  const pinBumps = await readPinBumps(root, io);
+
   const errors = diagnostics.filter((d) => d.severity === "error").length;
   return {
-    data: { command: "system.outbox.scan", proposals, created, diagnostics },
+    data: { command: "system.outbox.scan", proposals, pinBumps, created, diagnostics },
     exitCode: errors > 0 ? 1 : 0,
-    summary: `system.outbox.scan: ${proposals.length} proposal(s), ${created.length} task(s) created, ${errors} error(s)`,
+    summary: `system.outbox.scan: ${proposals.length} proposal(s), ${pinBumps.length} pin-bump proposal(s), ${created.length} task(s) created, ${errors} error(s)`,
     nextSteps:
       proposals.length > 0
         ? [

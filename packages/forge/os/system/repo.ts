@@ -15,18 +15,17 @@ resolver shared with the task queue and outbox RFCs.</purpose>
   <item>RFC-1508: review r1 — contract-exact map shape (root, folders-based local map, strict schemas), read failures stay diagnostics, stat-based folder check</item>
   <item>RFC-1508: close rfc-1508 review r2 findings on folder lookup and diagnostics</item>
   <item>RFC-1511: scenarios, version sets and system.versionset.record</item>
+  <item>RFC-1541: version-set@2 contracts with validator and pin-drift scenario checks</item>
 </CHANGE_SUMMARY>
 */
 
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import YAML from "yaml";
 import type { z } from "zod";
 
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
-import {
-  SYSTEM_SCENARIOS_DIR,
-  systemScenarioSchema,
-} from "./scenario-schemas.ts";
+import { SYSTEM_SCENARIOS_DIR, systemScenarioSchema } from "./scenario-schemas.ts";
 import type { SystemScenario } from "./scenario-schemas.ts";
 import {
   systemEdgesSchema,
@@ -178,10 +177,7 @@ async function loadRequired<S extends z.ZodType>(
  * map. An absent products.local.yaml is not an error (local: null); a
  * malformed one is SYSTEM-MAP-01 like any required file.
  */
-export async function loadSystemMap(
-  root: string,
-  io: WorkspaceIO,
-): Promise<SystemMapLoadResult> {
+export async function loadSystemMap(root: string, io: WorkspaceIO): Promise<SystemMapLoadResult> {
   const diagnostics: Diagnostic[] = [];
 
   const [sys, pro, edg] = await Promise.all([
@@ -225,10 +221,7 @@ function edgeKey(consumer: string, contract: string): string {
  * Evaluate every cross-file rule against a loaded map. Needs the io port only
  * for the products.local.yaml folder checks (SYSTEM-MAP-05).
  */
-export async function validateSystemMap(
-  map: SystemMap,
-  io: WorkspaceIO,
-): Promise<Diagnostic[]> {
+export async function validateSystemMap(map: SystemMap, io: WorkspaceIO): Promise<Diagnostic[]> {
   const diagnostics: Diagnostic[] = [];
   const products = map.products.products;
   const ids = new Set<string>();
@@ -394,13 +387,17 @@ export async function loadScenarios(
 export function validateScenarios(
   map: SystemMap,
   scenarios: Map<string, SystemScenario>,
+  root?: string,
 ): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const productIds = new Set(map.products.products.map((p) => p.id));
   const offered = new Set(map.products.products.flatMap((p) => p.offers));
   for (const scenario of scenarios.values()) {
     const file = `${SYSTEM_SCENARIOS_DIR}/${scenario.id}.yaml`;
-    for (const named of new Set([...scenario.products, ...scenario.checks.map((c) => c.product)])) {
+    const checkProducts = scenario.checks.flatMap((c) =>
+      c.kind === "pin-drift" ? [c.authority] : [c.product],
+    );
+    for (const named of new Set([...scenario.products, ...checkProducts])) {
       if (!productIds.has(named)) {
         diagnostics.push({
           ruleId: "SYSTEM-MAP-06",
@@ -409,6 +406,54 @@ export function validateScenarios(
           message: `scenario "${scenario.id}" names undeclared product "${named}"`,
           fixHint: `Declare "${named}" in ${SYSTEM_PRODUCTS_FILE} or remove it from the scenario.`,
         });
+      }
+    }
+    // RFC-1541 SYSTEM-MAP-07 — check-kind lints.
+    for (const check of scenario.checks) {
+      if (check.kind === "pin-drift") {
+        const authority = map.products.products.find((p) => p.id === check.authority);
+        if (authority && !authority.offers.includes(check.contract)) {
+          diagnostics.push({
+            ruleId: "SYSTEM-MAP-07",
+            severity: "error",
+            file,
+            message: `scenario "${scenario.id}" pin-drift names authority "${check.authority}", which does not offer contract "${check.contract}"`,
+            fixHint: `Name the product that offers "${check.contract}" in ${SYSTEM_PRODUCTS_FILE}.`,
+          });
+        }
+      } else if (check.kind === "validator") {
+        const folder =
+          map.local !== null && Object.hasOwn(map.local.folders, check.product)
+            ? map.local.folders[check.product]
+            : undefined;
+        if (!folder || root === undefined) {
+          diagnostics.push({
+            ruleId: "SYSTEM-MAP-07",
+            severity: "warning",
+            file,
+            message: `scenario "${scenario.id}" validator check on "${check.product}" not linted — no local checkout mapped`,
+          });
+          continue;
+        }
+        const productRoot = path.isAbsolute(folder) ? folder : path.join(root, folder);
+        let producers: unknown[] = [];
+        try {
+          const doc = YAML.parse(readFileSync(path.join(productRoot, "forge.yaml"), "utf8")) as {
+            contractProducers?: unknown[];
+          };
+          producers = doc?.contractProducers ?? [];
+        } catch {
+          producers = [];
+        }
+        if (!producers.some((p) => (p as { id?: unknown })?.id === check.producer)) {
+          diagnostics.push({
+            ruleId: "SYSTEM-MAP-07",
+            severity: "error",
+            file,
+            message: `scenario "${scenario.id}" validator check names producer "${check.producer}", which ${check.product}'s forge.yaml does not declare`,
+            fixHint: `Declare "${check.producer}" in ${check.product}'s forge.yaml contractProducers[] or fix the scenario.`,
+          });
+        }
       }
     }
     for (const contract of scenario.contracts) {
@@ -434,11 +479,7 @@ export function validateScenarios(
  * Fixed precedence: a contract the consumer itself offers is `own-contract`
  * (product-internal call), then `forbidden`, then `allowed`, else `undeclared`.
  */
-export function edgeVerdict(
-  map: SystemMap,
-  consumer: string,
-  contract: string,
-): EdgeVerdict {
+export function edgeVerdict(map: SystemMap, consumer: string, contract: string): EdgeVerdict {
   const product = map.products.products.find((p) => p.id === consumer);
   if (product?.offers.includes(contract)) return "own-contract";
   if (map.edges.forbidden.some((e) => e.consumer === consumer && e.contract === contract)) {
