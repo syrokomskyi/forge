@@ -15,6 +15,7 @@ the branch worktree and the declared FLOW_* environment.</purpose>
   <item>stderrTail is the last 40 lines — enough for the report without flooding it (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
+  <item>RFC-1532: parse the integration-gate's `gate-report:` stdout marker into FlowScriptResult.reportPath</item>
   <item>RFC-1487: step 2 — primary-side hook-script runner</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
@@ -40,6 +41,10 @@ export interface FlowScriptResult {
   stderrTail: string;
   /** stdout truncated to 64 KiB with a trailing `…[truncated]` marker. */
   stdout: string;
+  /** RFC-1532: repo-relative `gate-reports/<file>` parsed from the
+   * integration-gate's stdout marker; null when the gate wrote none (or a
+   * WT-GATE-07 write failure), absent for other scripts and older gates. */
+  reportPath?: string | null;
 }
 
 const STDERR_TAIL_LINES = 40;
@@ -74,7 +79,13 @@ export async function runFlowScript(
     result.stdout.length > STDOUT_CAP
       ? `${result.stdout.slice(0, STDOUT_CAP)}…[truncated]`
       : result.stdout;
+  // RFC-1532: the gate prints `gate-report: <repo-relative path>` on stdout —
+  // the only channel through the --quiet hook wrapper.
+  const reportPath =
+    name === "integration-gate"
+      ? (result.stdout.match(/^gate-report: (\S+)\s*$/m)?.[1] ?? null)
+      : undefined;
   return result.exitCode === 0
-    ? { status: "done", exitCode: result.exitCode, stderrTail: tail, stdout }
-    : { status: "failed", exitCode: result.exitCode, stderrTail: tail, stdout };
+    ? { status: "done", exitCode: result.exitCode, stderrTail: tail, stdout, ...(reportPath !== undefined ? { reportPath } : {}) }
+    : { status: "failed", exitCode: result.exitCode, stderrTail: tail, stdout, ...(reportPath !== undefined ? { reportPath } : {}) };
 }
