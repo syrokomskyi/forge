@@ -18,12 +18,12 @@ hooks/worktree-setup.sh.</purpose>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 2 — registry fix/port widening, FORGE_FLOW_COMMIT gitCommit helper, verified version-files writes</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: step 5 — flow.backmerge (port branch, fixed merge message, conflict + --redo paths)</item>
   <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
-  <history>RFC-1487</history>
+  <item>ADR-0124: enable git rerere in flow-managed repositories</item>
+  <history>RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -37,6 +37,7 @@ import type {
 import { resolveIo } from "../../../src/utils/io.ts";
 import {
   branchExists,
+  ensureRerere,
   git,
   listLocalBranches,
   listRemoteBranches,
@@ -256,6 +257,21 @@ export async function openFlowBranchCore(
   const ownerId = opts.owner.id;
   const iso = now.toISOString();
 
+  // ADR-0124: repair shared rerere config idempotently at worktree setup —
+  // a repo adopted before ADR-0124 self-heals on the next session open.
+  // Never blocks: a config write failure is a warning, not a refusal.
+  const rerereDiags: Diagnostic[] = [];
+  if (!opts.dryRun) {
+    for (const failure of await ensureRerere(repoRoot, io)) {
+      rerereDiags.push({
+        ruleId: "FLOW-OPEN-08",
+        severity: "warning",
+        message: `rerere config repair failed: ${failure}`,
+        fixHint: `run git config rerere.enabled true && git config rerere.autoupdate true in ${repoRoot}`,
+      });
+    }
+  }
+
   for (let attempt = 1; attempt <= OPEN_MAX_ATTEMPTS; attempt++) {
     const name = formatFlowBranch({ kind: opts.kind as FlowBranchKind, date: now, seq, slug: opts.slug });
     // candidates gains each tried name so a collision retry picks the next NN.
@@ -381,7 +397,7 @@ export async function openFlowBranchCore(
       baseSha,
       opened: true,
       setup,
-      diagnostics: setupDiag,
+      diagnostics: [...rerereDiags, ...setupDiag],
     };
   }
   return refuse(

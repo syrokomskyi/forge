@@ -18,7 +18,6 @@ embedded flow.check report.</purpose>
   <item>markerSource resolves at plan time (RFC-1498): a non-network origin warns in the step detail by kind, never by path, and execution reuses the planned value — one git call, no plan/execute drift.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 2 — network-only marker source
 
@@ -27,6 +26,7 @@ markerSource accepts only network-shaped origins — http/https/ssh/git schemes 
 
 listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <history>RFC-1486, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -56,6 +56,7 @@ import {
   worktreeList,
   configGet,
   branchExists,
+  ensureRerere,
   revListCount,
 } from "../git.ts";
 import {
@@ -96,6 +97,7 @@ export interface InstallStepReport {
     | "primary"
     | "develop"
     | "hooksPath"
+    | "rerere"
     | "checkout"
     | "guard"
     | "pre-commit"
@@ -127,6 +129,7 @@ export interface InstallPlan {
   refusal: Diagnostic | null;
   developAction: DevelopAction;
   hooksPathAction: "set" | "already";
+  rerereAction: "set" | "already";
   checkoutAction: "switch" | "already";
   guardChange: "write" | "identical";
   /** hooks/flow-guard.sh already exists in the commit's parent ref. */
@@ -183,6 +186,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
       refusal: diagnostic,
       developAction: { kind: "already-equal" },
       hooksPathAction: "already",
+      rerereAction: "already",
       checkoutAction: "already",
       guardChange: "identical",
       guardCommitted: false,
@@ -374,6 +378,18 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
         `repoint core.hooksPath to 'hooks' and move existing hooks under hooks/`,
       ),
     );
+  }
+
+  // 4b. rerere — ADR-0124: shared repository config, never --worktree.
+  const rerereEnabled = await configGet(repoRoot, io, "rerere.enabled");
+  const rerereAutoupdate = await configGet(repoRoot, io, "rerere.autoupdate");
+  let rerereAction: InstallPlan["rerereAction"];
+  if (rerereEnabled === "true" && rerereAutoupdate === "true") {
+    rerereAction = "already";
+    steps.push({ step: "rerere", status: "planned", detail: "rerere.enabled/.autoupdate already true" });
+  } else {
+    rerereAction = "set";
+    steps.push({ step: "rerere", status: "planned", detail: "set rerere.enabled and rerere.autoupdate to true" });
   }
 
   // 5. checkout — the primary must be on main or develop.
@@ -674,6 +690,7 @@ export async function planInstall(repoRoot: string, io: WorkspaceIO): Promise<In
     refusal: null,
     developAction,
     hooksPathAction,
+    rerereAction,
     checkoutAction,
     guardChange,
     guardCommitted,
@@ -860,6 +877,17 @@ export async function executeInstall(
     setStep(plan, "hooksPath", "done", "core.hooksPath set to 'hooks'");
   } else {
     setStep(plan, "hooksPath", "skipped", "core.hooksPath already 'hooks'");
+  }
+
+  // 4b. rerere — ADR-0124 shared config repair.
+  if (plan.rerereAction === "set") {
+    const failures = await ensureRerere(repoRoot, io);
+    if (failures.length > 0) {
+      return failStep("rerere", failures.join("; "));
+    }
+    setStep(plan, "rerere", "done", "rerere.enabled and rerere.autoupdate set to true");
+  } else {
+    setStep(plan, "rerere", "skipped", "rerere.enabled/.autoupdate already true");
   }
 
   // 5. checkout
