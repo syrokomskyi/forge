@@ -21,7 +21,8 @@ at cleanup without moving develop again.</purpose>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1537: classify regenerable dirt (importer-prune/materialize, skill-twin-sync) instead of refusing FLOW-INT-01/03; journal every refusal as integrate-refusal for flow.status discoverability</item>
+<item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: bounded preflight between dirty checks and the gate — classified lockfile diffs, early primary check, manifest/RFC/friction validators (FLOW-INT-12/13/14)</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
@@ -95,6 +96,9 @@ export interface FlowIntegrateData {
   /** RFC-1515: forge-local state paths the cleanliness check tolerated this
    * run — journaled so "tolerated" is auditable, never a suppressed blocker. */
   toleratedState?: string[];
+  /** RFC-1537: declared regenerable dirt tolerated this run — {path, class}
+   * per classified path; journaled, never committed or silently absorbed. */
+  toleratedDirt?: Array<{ path: string; class: string }>;
   /** RFC-1515: holder payload when FLOW-INT-08 refused on a held lock. */
   lock?: LockDiagnostic;
   diagnostics: Diagnostic[];
@@ -116,6 +120,7 @@ function refuse(
     gate: partial?.gate ?? null,
     cleanedUp: partial?.cleanedUp ?? false,
     ...(partial?.toleratedState !== undefined ? { toleratedState: partial.toleratedState } : {}),
+    ...(partial?.toleratedDirt !== undefined ? { toleratedDirt: partial.toleratedDirt } : {}),
     ...(partial?.lock !== undefined ? { lock: partial.lock } : {}),
     diagnostics: [
       { ruleId, severity: "error", message, fixHint, ...(diagData ? { data: diagData } : {}) },
@@ -144,6 +149,7 @@ async function cleanupIntegrated(
   nowIso: string,
   journalEvent: "integrate" | "backmerge" = "integrate",
   journalBase?: string,
+  journalToleratedDirt?: Array<{ path: string; class: string }>,
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -255,6 +261,9 @@ async function cleanupIntegrated(
       detail: journalEvent === "backmerge" ? `back-merged into develop` : `integrated into develop`,
       base: journalBase,
       ...(toleratedPaths.length > 0 ? { toleratedState: toleratedPaths } : {}),
+      ...(journalToleratedDirt !== undefined && journalToleratedDirt.length > 0
+        ? { toleratedDirt: journalToleratedDirt }
+        : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -279,8 +288,40 @@ async function cleanupIntegrated(
 /**
  * Core of flow.integrate — callable with an injected clock. Refusal paths
  * return diagnostics; `integrated`/`cleanedUp` report what really happened.
+ * The exported wrapper journals every refusal (RFC-1537); this attempt body
+ * stays pure.
  */
 export async function integrateFlowBranch(
+  repoRoot: string,
+  io: WorkspaceIO,
+  opts: Parameters<typeof integrateFlowBranchAttempt>[2],
+): Promise<FlowIntegrateData> {
+  const data = await integrateFlowBranchAttempt(repoRoot, io, opts);
+  const error = data.diagnostics.find((d) => d.severity === "error");
+  if (error !== undefined && data.branch !== null) {
+    // Best-effort bookkeeping — a journal write failure never adds a refusal.
+    try {
+      const common = await commonGitDir(io, repoRoot);
+      const sha =
+        (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/heads/${data.branch}`]))
+          .stdout.trim() || "unknown";
+      await appendJournal(io, common, {
+        event: "integrate-refusal",
+        branch: data.branch,
+        sha,
+        detail: error.message,
+        rule: error.ruleId,
+        ...(data.toleratedState !== undefined ? { toleratedState: data.toleratedState } : {}),
+        ...(data.toleratedDirt !== undefined ? { toleratedDirt: data.toleratedDirt } : {}),
+      });
+    } catch {
+      /* journal is audit, not gate */
+    }
+  }
+  return data;
+}
+
+async function integrateFlowBranchAttempt(
   repoRoot: string,
   io: WorkspaceIO,
   opts: {
@@ -454,6 +495,9 @@ export async function integrateFlowBranch(
     if (dirty.toleratedState.length > 0) {
       opts.onProgress?.(`tolerated forge-local state: ${dirty.toleratedState.join(", ")}`);
     }
+    // RFC-1537: declared regenerable dirt tolerated on this attempt —
+    // surfaced in data + journaled on integrate/refusal, never committed.
+    let toleratedDirt: Array<{ path: string; class: string }> = [];
     // RFC-1528: bounded preflight — dirty-tree checks with lockfile
     // classification, then the four validators that used to fire only inside
     // the expensive integration gate. Non-port path only (port entries keep
@@ -470,6 +514,7 @@ export async function integrateFlowBranch(
         invoke: opts.invoke,
         commandRegistry: opts.commandRegistry,
       });
+      toleratedDirt = preflight.tolerated;
       for (const skipped of preflight.skipped) {
         opts.onProgress?.(
           skipped.reason === "no-invoke"
@@ -477,29 +522,56 @@ export async function integrateFlowBranch(
             : `preflight: ${skipped.check} skipped — command not in the live inventory`,
         );
       }
+      for (const t of preflight.tolerated) {
+        opts.onProgress?.(`tolerated regenerable state: ${t.path} (${t.class})`);
+      }
       if (!preflight.ok && preflight.refuse) {
         return refuse(
           preflight.refuse.ruleId,
           preflight.refuse.message,
           preflight.refuse.fixHint,
-          { branch, developBefore },
+          {
+            branch,
+            developBefore,
+            toleratedState: dirty.toleratedState,
+            toleratedDirt: preflight.tolerated,
+          },
           preflight.refuse.data,
         );
       }
     } else if (dirty.entries.length > 0) {
-      return refuse(
-        "FLOW-INT-01",
-        `worktree ${branchWorktree} has ${dirty.entries.length} uncommitted change(s): ${dirty.entries.slice(0, 10).join(", ")}` +
-          (dirty.toleratedState.length > 0
-            ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
-            : ""),
-        "commit or revert the uncommitted changes inside the session worktree, then re-run",
-        { branch, developBefore, toleratedState: dirty.toleratedState },
-        {
-          entries: dirty.entries.map((line) => line.slice(3)),
-          toleratedState: dirty.toleratedState,
-        },
-      );
+      // Port path keeps its own refusal surface but the same regenerable
+      // classes still tolerate (RFC-1537) — an importer-materializing port
+      // worktree is no harder to integrate than a session one.
+      const { classifyDirt } = await import("../preflight.ts");
+      const verdict = await classifyDirt(branchWorktree, io, dirty.entries);
+      toleratedDirt = verdict.tolerated;
+      for (const t of verdict.tolerated) {
+        opts.onProgress?.(`tolerated regenerable state: ${t.path} (${t.class})`);
+      }
+      if (verdict.unattributed.length > 0) {
+        return refuse(
+          "FLOW-INT-01",
+          `worktree ${branchWorktree} has ${verdict.unattributed.length} uncommitted change(s): ${verdict.unattributed.slice(0, 10).join(", ")}` +
+            (verdict.tolerated.length > 0
+              ? ` — tolerated regenerable state: ${verdict.tolerated.map((t) => `${t.path} (${t.class})`).join(", ")}`
+              : "") +
+            (dirty.toleratedState.length > 0
+              ? ` — tolerated forge-local state: ${dirty.toleratedState.join(", ")}`
+              : ""),
+          "commit or revert the uncommitted changes inside the session worktree, then re-run",
+          {
+            branch,
+            developBefore,
+            toleratedState: dirty.toleratedState,
+            toleratedDirt: verdict.tolerated,
+          },
+          {
+            entries: verdict.unattributed.map((line) => line.slice(3)),
+            toleratedState: dirty.toleratedState,
+          },
+        );
+      }
     }
 
     // Port entries (RFC-1490): develop must not have moved since the port
@@ -569,18 +641,40 @@ export async function integrateFlowBranch(
       );
     }
 
-    // (5) primary must sit clean on develop, then fast-forward.
+    // (5) primary must sit clean on develop, then fast-forward. Mid-gate
+    // importer churn from another session's open mission tolerates here too
+    // (RFC-1537) — the same classifier the preflight ran.
     const primaryBranch = await currentBranch(primary, io);
     const primaryDirty = await statusTracked(primary, io);
     if (primaryBranch !== "develop" || primaryDirty.entries.length > 0) {
-      return refuse(
-        "FLOW-INT-03",
-        primaryBranch !== "develop"
-          ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
-          : `primary worktree has ${primaryDirty.entries.length} uncommitted change(s)`,
-        "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
-        { branch, developBefore, rebased: entry.port === null, gate },
-      );
+      let unattributed = primaryDirty.entries;
+      if (primaryDirty.entries.length > 0) {
+        const { classifyDirt } = await import("../preflight.ts");
+        const verdict = await classifyDirt(primary, io, primaryDirty.entries);
+        unattributed = verdict.unattributed;
+        if (verdict.tolerated.length > 0) {
+          toleratedDirt = [...toleratedDirt, ...verdict.tolerated];
+          for (const t of verdict.tolerated) {
+            opts.onProgress?.(`tolerated regenerable state on primary: ${t.path} (${t.class})`);
+          }
+        }
+      }
+      if (primaryBranch !== "develop" || unattributed.length > 0) {
+        return refuse(
+          "FLOW-INT-03",
+          primaryBranch !== "develop"
+            ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
+            : `primary worktree has ${unattributed.length} uncommitted change(s)`,
+          "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
+          {
+            branch,
+            developBefore,
+            rebased: entry.port === null,
+            gate,
+            ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
+          },
+        );
+      }
     }
     const developNow = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
     if (!(await isAncestor(primary, io, developNow, branch))) {
@@ -610,6 +704,7 @@ export async function integrateFlowBranch(
       gate,
       cleanedUp: false,
       ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
+      ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
       diagnostics: [],
     };
   };
@@ -680,6 +775,7 @@ export async function integrateFlowBranch(
     now.toISOString(),
     entry.port !== null ? "backmerge" : "integrate",
     inner.developBefore ?? undefined,
+    inner.toleratedDirt,
   );
   return {
     ...inner,
@@ -724,6 +820,14 @@ export async function runFlowIntegrate(
         `  develop:   ${data.developBefore?.slice(0, 9)} → ${data.developAfter?.slice(0, 9)}`,
       );
       logger.info(`  cleanedUp: ${data.cleanedUp}`);
+      if (data.toleratedDirt !== undefined && data.toleratedDirt.length > 0) {
+        logger.info(
+          `  tolerated: ${data.toleratedDirt.map((t) => `${t.path} (${t.class})`).join(", ")}`,
+        );
+      }
+      if (data.toleratedState !== undefined && data.toleratedState.length > 0) {
+        logger.info(`  tolerated forge state: ${data.toleratedState.join(", ")}`);
+      }
     }
   }
 

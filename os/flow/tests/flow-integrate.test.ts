@@ -11,7 +11,6 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 4 — flow.integrate with lock, primary-side gate, ff-only merge and cleanup resume</item>
   <item>RFC-1487: close rfc-1487 review findings — dirty-check parity with git worktree remove, ownership-verified lock release, FLOW-07 registry-error mapping, residual RFC-1462 docs removed
 
 The dirty gate for session worktrees now uses full porcelain status
@@ -27,6 +26,7 @@ and integrate exposes teardown as its own field.</item>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
+  <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -40,7 +40,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { ambientIo } from "../../../src/utils/io.ts";
 import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
-import { commonGitDir, INTEGRATE_LOCK_RELATIVE_PATH } from "../registry.ts";
+import { collectFlowStatus } from "../handlers/flow-status.ts";
+import { commonGitDir, INTEGRATE_LOCK_RELATIVE_PATH, readJournal } from "../registry.ts";
 import { gitExec, initRepo } from "./helpers.ts";
 
 const NOW = new Date("2026-11-02T12:00:00Z");
@@ -293,6 +294,62 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     expect(diag?.message).toContain("tolerated forge-local state: .forge/knowledge-conflicts.txt");
     expect(data.integrated).toBe(false);
     expect(await sha(repo, "develop")).toBe(developSha);
+  }, 20_000);
+
+  it("journals every refusal as integrate-refusal {branch, rule, summary, at} — flow.status exposes lastRefusal/orphaned (RFC-1537 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "refused");
+    await commitIn(session.worktree!, "k.txt", "k");
+    await writeFile(join(session.worktree!, "scratch.log"), "scratch\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-01");
+
+    const common = await commonGitDir(ambientIo, repo);
+    const journal = await readJournal(ambientIo, common);
+    const refusal = [...journal]
+      .reverse()
+      .find((e) => e.event === "integrate-refusal" && e.branch === session.branch);
+    expect(refusal).toBeDefined();
+    expect(refusal?.rule).toBe("FLOW-INT-01");
+    expect(refusal?.sha).toBe(await sha(repo, session.branch!));
+    expect(refusal?.detail).toContain("scratch.log");
+    expect(refusal?.at).toBeDefined();
+
+    const status = await collectFlowStatus(repo, ambientIo);
+    const b = status.data.branches.find((x) => x.name === session.branch);
+    expect(b?.orphaned).toBe(true);
+    expect(b?.lastRefusal?.rule).toBe("FLOW-INT-01");
+    expect(b?.lastRefusal?.summary).toContain("scratch.log");
+  }, 20_000);
+
+  it("a later non-refusal event clears orphaned while lastRefusal stays (RFC-1537)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "later");
+    await commitIn(session.worktree!, "k.txt", "k");
+    await writeFile(join(session.worktree!, "scratch.log"), "scratch\n");
+    await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    const common = await commonGitDir(ambientIo, repo);
+    await (await import("../registry.ts")).appendJournal(ambientIo, common, {
+      event: "hold",
+      branch: session.branch!,
+      sha: await sha(repo, session.branch!),
+      detail: "held",
+    });
+
+    const status = await collectFlowStatus(repo, ambientIo);
+    const b = status.data.branches.find((x) => x.name === session.branch);
+    expect(b?.orphaned).toBe(false);
+    expect(b?.lastRefusal?.rule).toBe("FLOW-INT-01");
   }, 20_000);
 
   it("a held-lock refusal carries the holder payload — pid, host, at, heldMs, disposition (AC-4)", async () => {

@@ -24,6 +24,7 @@ collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* b
 
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1537: branches[].lastRefusal + derived orphaned flag — the newest integrate-refusal journal event per branch is the discoverable escape path after a refused flow.integrate</item>
   <history>RFC-1487</history>
 </CHANGE_SUMMARY>
 */
@@ -51,8 +52,10 @@ import {
 import {
   commonGitDir,
   FlowRegistrySchemaError,
+  readJournal,
   readRegistry,
   STALE_AFTER_HOURS,
+  type FlowJournalEvent,
   type FlowRegistryEntry,
 } from "../registry.ts";
 import { primaryWorktree } from "../worktree-path.ts";
@@ -76,6 +79,12 @@ export interface FlowBranchStatus {
   held: { heldAt: string; riskCategory: string; reason: string; tip: string } | null;
   /** Back-merge port payload when the entry is a port branch (RFC-1490). */
   port: { mainSha: string; tags: string[] } | null;
+  /** RFC-1537: newest journaled integrate refusal for this branch — the
+   * discoverable escape path after a refused flow.integrate. */
+  lastRefusal: { rule: string | null; at: string; summary: string } | null;
+  /** RFC-1537: the branch's newest journal event is an integrate refusal
+   * while the branch still exists — nothing reclaimed it since. */
+  orphaned: boolean;
 }
 
 export interface FlowStatusData {
@@ -126,6 +135,21 @@ export async function collectFlowStatus(
   const primaryDirty = primaryStatus.entries;
 
   const common = await commonGitDir(io, repoRoot);
+  // RFC-1537: journal is read-only here — a corrupt or unreadable journal
+  // degrades lastRefusal/orphaned to absent, never breaks status.
+  let journal: FlowJournalEvent[] = [];
+  try {
+    journal = await readJournal(io, common);
+  } catch {
+    journal = [];
+  }
+  // Append order keeps the newest event last — the last hit per branch wins.
+  const lastEventByBranch = new Map<string, FlowJournalEvent>();
+  const lastRefusalByBranch = new Map<string, FlowJournalEvent>();
+  for (const e of journal) {
+    lastEventByBranch.set(e.branch, e);
+    if (e.event === "integrate-refusal") lastRefusalByBranch.set(e.branch, e);
+  }
   let entries: FlowRegistryEntry[] = [];
   let registryError: FlowRegistrySchemaError | null = null;
   try {
@@ -214,6 +238,13 @@ export async function collectFlowStatus(
       stale,
       held,
       port: entry?.port ?? null,
+      lastRefusal: (() => {
+        const r = lastRefusalByBranch.get(name);
+        return r === undefined
+          ? null
+          : { rule: r.rule ?? null, at: r.at, summary: r.detail };
+      })(),
+      orphaned: lastEventByBranch.get(name)?.event === "integrate-refusal",
     });
   }
 
@@ -265,6 +296,11 @@ export async function runFlowStatus(
           ? `  ${b.name}: held (${b.held.riskCategory}): ${b.held.reason}`
           : `  ${b.name}: ${b.registered ? "registered" : "unregistered"}, worktree ${b.worktreeExists ? "present" : b.vanished ? "vanished" : "absent"}, dirty ${b.dirty ?? "-"}, +${b.aheadOfDevelop ?? "-"}/-${b.behindDevelop ?? "-"}, stale ${b.stale}`,
       );
+      if (b.orphaned && b.lastRefusal !== null) {
+        logger.info(
+          `    └─ last integrate refused (${b.lastRefusal.rule ?? "unknown"}) at ${b.lastRefusal.at}: ${b.lastRefusal.summary}`,
+        );
+      }
     }
     for (const d of outcome.diagnostics) {
       logger.error(`  ${d.ruleId}: ${d.message}`);

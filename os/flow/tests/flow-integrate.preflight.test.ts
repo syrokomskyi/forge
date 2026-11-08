@@ -14,11 +14,17 @@ git/status/invoke seams.</purpose>
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
+  <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
 </CHANGE_SUMMARY>
 */
 
 import { describe, it, expect } from "vitest";
-import { classifyLockfileDiff, runIntegratePreflight } from "../preflight.ts";
+import {
+  classifyDirt,
+  classifyLockfileDiff,
+  classifyLockfileMaterialize,
+  runIntegratePreflight,
+} from "../preflight.ts";
 import type {
   CommandRegistry,
   ForgeCommandDefinition,
@@ -169,14 +175,13 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     expect(invokes).toEqual([]);
   });
 
-  it("a prune-shaped dirty lockfile is classified in the FLOW-INT-01 refusal", async () => {
+  it("a prune-shaped dirty lockfile is tolerated regenerable dirt (RFC-1537)", async () => {
     const result = await runIntegratePreflight(
       baseOpts({ worktreeDirty: { entries: [" M pnpm-lock.yaml"], toleratedState: [] } }),
       stubDeps({ lockfileDiff: PRUNE_DIFF }),
     );
-    expect(result.refuse?.ruleId).toBe("FLOW-INT-01");
-    expect(result.refuse?.data?.["lockfileClassification"]).toBe("importer-prune-only");
-    expect(result.refuse?.message).toContain("importer prune");
+    expect(result.ok).toBe(true);
+    expect(result.tolerated).toEqual([{ path: "pnpm-lock.yaml", class: "importer-prune" }]);
   });
 
   it("primary tracked dirt refuses FLOW-INT-03 before validators", async () => {
@@ -268,6 +273,7 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     expect(result.ok).toBe(true);
     expect(result.checked).toEqual(["worktree-dirty", "primary-dirty"]);
     expect(result.skipped).toEqual([
+      { check: "open-mission", reason: "unresolvable" },
       { check: "ecosystem.manifest.validate", reason: "no-invoke" },
       { check: "friction.validate", reason: "no-invoke" },
     ]);
@@ -283,6 +289,7 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     );
     expect(result.ok).toBe(true);
     expect(result.skipped).toEqual([
+      { check: "open-mission", reason: "unresolvable" },
       { check: "ecosystem.manifest.validate", reason: "unresolvable" },
       { check: "friction.validate", reason: "unresolvable" },
     ]);
@@ -314,7 +321,7 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     );
     expect(result.ok).toBe(true);
     expect(invokes).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
-    expect(result.skipped).toEqual([]);
+    expect(result.skipped).toEqual([{ check: "open-mission", reason: "unresolvable" }]);
   });
 
   it("all-clean run reports the full bounded check list", async () => {
@@ -330,6 +337,225 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
       "rfc.validate:RFC-1528",
       "friction.validate",
     ]);
-    expect(result.skipped).toEqual([]);
+    expect(result.skipped).toEqual([{ check: "open-mission", reason: "unresolvable" }]);
+  });
+});
+
+// ── RFC-1537: regenerable dirt classifier + cheap-first mission check ─────
+
+const ioWith = (shape: {
+  /** repo path → mission id → manifest body ("corrupt" = unreadable). */
+  missionsByRepo?: Record<string, Record<string, string | "corrupt">>;
+  files?: Record<string, string>;
+  dirs?: string[];
+}): WorkspaceIO =>
+  ({
+    glob: async (pattern: string, opts?: { cwd?: string }) => {
+      if (pattern === "missions/*/mission.yaml") {
+        return Object.keys(shape.missionsByRepo?.[opts?.cwd ?? ""] ?? {}).map(
+          (id) => `missions/${id}/mission.yaml`,
+        );
+      }
+      // `.agents/skills/<dir>/**` — enumerate the fake twin dir's files.
+      const twin = /^\.agents\/skills\/([^/]+)\/\*\*$/.exec(pattern);
+      if (twin) {
+        const prefix = `${opts?.cwd ?? ""}/.agents/skills/${twin[1]}/`;
+        return Object.keys(shape.files ?? {})
+          .filter((p) => p.startsWith(prefix))
+          .map((p) => p.slice((opts?.cwd ?? "").length + 1));
+      }
+      return [];
+    },
+    readFile: async (p: string) => {
+      const m = /^(.+)\/missions\/([^/]+)\/mission\.yaml$/.exec(p);
+      if (m) {
+        const v = shape.missionsByRepo?.[m[1]]?.[m[2]];
+        if (v === "corrupt") throw new Error("unparseable");
+        if (v !== undefined) return v;
+      }
+      if (p in (shape.files ?? {})) return shape.files![p];
+      throw new Error(`ENOENT ${p}`);
+    },
+    exists: async (p: string) =>
+      p in (shape.files ?? {}) || (shape.dirs ?? []).includes(p),
+    readFileBytes: async (p: string) => {
+      if (p in (shape.files ?? {})) return new TextEncoder().encode(shape.files![p]);
+      throw new Error(`ENOENT ${p}`);
+    },
+  }) as unknown as WorkspaceIO;
+
+const MATERIALIZE_DIFF = `diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index abc..def 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -10,6 +10,8 @@ importers:
+   packages/forge:
+     dependencies: {}
++  missions/m000214/workpiece:
++    dependencies: {}
+   packages/werkstatt-site:
+`;
+
+describe("classifyLockfileMaterialize (RFC-1537)", () => {
+  it("labels an added missions/<id>/workpiece importer block", () => {
+    expect(classifyLockfileMaterialize(MATERIALIZE_DIFF)).toEqual(["m000214"]);
+  });
+
+  it("any removed line is ambiguous — null", () => {
+    expect(classifyLockfileMaterialize(PRUNE_DIFF)).toBeNull();
+    expect(classifyLockfileMaterialize(MIXED_DIFF)).toBeNull();
+  });
+
+  it("additions outside the importer block are ambiguous — null", () => {
+    const foreign = `@@ -10,6 +10,7 @@ importers:
++  other/pkg:
++    dependencies: {}
+`;
+    expect(classifyLockfileMaterialize(foreign)).toBeNull();
+  });
+});
+
+describe("classifyDirt (RFC-1537 AC-1/AC-2/AC-5)", () => {
+  it("importer add-block + open mission workpiece → importer-materialize", async () => {
+    const io = ioWith({ missionsByRepo: { "/repo": { m000214: "state: open\n" } } });
+    const verdict = await classifyDirt("/repo", io, [" M pnpm-lock.yaml"], {
+      runGit: async () => ({ stdout: MATERIALIZE_DIFF, stderr: "", exitCode: 0 }),
+    });
+    expect(verdict.tolerated).toEqual([{ path: "pnpm-lock.yaml", class: "importer-materialize" }]);
+    expect(verdict.unattributed).toEqual([]);
+  });
+
+  it("importer add-block without an open mission stays unattributed", async () => {
+    const io = ioWith({ missionsByRepo: { "/repo": { m000214: "state: closed\n" } } });
+    const verdict = await classifyDirt("/repo", io, [" M pnpm-lock.yaml"], {
+      runGit: async () => ({ stdout: MATERIALIZE_DIFF, stderr: "", exitCode: 0 }),
+    });
+    expect(verdict.tolerated).toEqual([]);
+    expect(verdict.unattributed).toEqual([" M pnpm-lock.yaml"]);
+  });
+
+  it("byte-identical skill twin → skill-twin-sync", async () => {
+    const body = "# fo-x skill\n";
+    const io = ioWith({
+      files: {
+        "/repo/.agents/skills/fo-x/SKILL.md": body,
+        "/repo/packages/forge/skills/fo/fo-x/SKILL.md": body,
+      },
+      dirs: ["/repo/packages/forge/skills/fo/fo-x"],
+    });
+    const verdict = await classifyDirt("/repo", io, ["?? .agents/skills/fo-x/SKILL.md"]);
+    expect(verdict.tolerated).toEqual([
+      { path: ".agents/skills/fo-x/SKILL.md", class: "skill-twin-sync" },
+    ]);
+    expect(verdict.unattributed).toEqual([]);
+  });
+
+  it("an edited skill twin is unattributed — real work, never tolerated", async () => {
+    const io = ioWith({
+      files: {
+        "/repo/.agents/skills/fo-x/SKILL.md": "# fo-x skill\n# EDITED\n",
+        "/repo/packages/forge/skills/fo/fo-x/SKILL.md": "# fo-x skill\n",
+      },
+      dirs: ["/repo/packages/forge/skills/fo/fo-x"],
+    });
+    const verdict = await classifyDirt("/repo", io, ["?? .agents/skills/fo-x/SKILL.md"]);
+    expect(verdict.tolerated).toEqual([]);
+    expect(verdict.unattributed).toEqual(["?? .agents/skills/fo-x/SKILL.md"]);
+  });
+
+  it(".prettierignore twin-sync additions → skill-twin-sync", async () => {
+    const io = ioWith({});
+    const diff = `@@ -1,2 +1,4 @@\n node_modules/\n+.agents/skills/fo-x/\n+.agents/skills/fo-y/\n`;
+    const verdict = await classifyDirt("/repo", io, [" M .prettierignore"], {
+      runGit: async () => ({ stdout: diff, stderr: "", exitCode: 0 }),
+    });
+    expect(verdict.tolerated).toEqual([{ path: ".prettierignore", class: "skill-twin-sync" }]);
+  });
+
+  it("an untracked twin directory tolerates only when every file byte-matches (F-0118 shape)", async () => {
+    const body = "# fo-x skill\n";
+    const io = ioWith({
+      files: {
+        "/repo/.agents/skills/fo-x/SKILL.md": body,
+        "/repo/.agents/skills/fo-x/.forge-managed": "",
+        "/repo/packages/forge/skills/fo/fo-x/SKILL.md": body,
+      },
+      dirs: ["/repo/packages/forge/skills/fo/fo-x"],
+    });
+    const verdict = await classifyDirt("/repo", io, ["?? .agents/skills/fo-x/"]);
+    expect(verdict.tolerated).toEqual([{ path: ".agents/skills/fo-x/", class: "skill-twin-sync" }]);
+    expect(verdict.unattributed).toEqual([]);
+  });
+
+  it("a stray file inside an untracked twin dir keeps the whole entry unattributed", async () => {
+    const io = ioWith({
+      files: {
+        "/repo/.agents/skills/fo-x/SKILL.md": "# fo-x skill\n",
+        "/repo/.agents/skills/fo-x/notes.md": "mine\n",
+        "/repo/packages/forge/skills/fo/fo-x/SKILL.md": "# fo-x skill\n",
+      },
+      dirs: ["/repo/packages/forge/skills/fo/fo-x"],
+    });
+    const verdict = await classifyDirt("/repo", io, ["?? .agents/skills/fo-x/"]);
+    expect(verdict.tolerated).toEqual([]);
+    expect(verdict.unattributed).toEqual(["?? .agents/skills/fo-x/"]);
+  });
+
+  it("unknown dirt stays unattributed", async () => {
+    const verdict = await classifyDirt("/repo", ioWith({}), [" M src/x.ts", "?? stray/"]);
+    expect(verdict.tolerated).toEqual([]);
+    expect(verdict.unattributed).toEqual([" M src/x.ts", "?? stray/"]);
+  });
+});
+
+describe("open-mission preflight ordering (RFC-1537 AC-3)", () => {
+  it("an open mission in the integrating worktree refuses before validators spawn", async () => {
+    const invokes: string[] = [];
+    const result = await runIntegratePreflight(
+      baseOpts({
+        io: ioWith({ missionsByRepo: { "/wt": { m000214: "state: open\n" } } }),
+        invoke: async (name) => {
+          invokes.push(name);
+          return { ok: true, exitCode: 0 } as ForgeInvokeResult;
+        },
+      }),
+      stubDeps({}),
+    );
+    expect(result.ok).toBe(false);
+    expect(result.refuse?.ruleId).toBe("WT-GATE-01");
+    expect(result.checked).toEqual(["open-mission"]);
+    expect(invokes).toEqual([]);
+  });
+
+  it("a corrupt mission manifest counts as open (DNA-106 parity)", async () => {
+    const result = await runIntegratePreflight(
+      baseOpts({ io: ioWith({ missionsByRepo: { "/wt": { m000214: "corrupt" } } }) }),
+      stubDeps({}),
+    );
+    expect(result.refuse?.ruleId).toBe("WT-GATE-01");
+  });
+
+  it("no open missions → the check runs clean and ordering continues", async () => {
+    const result = await runIntegratePreflight(
+      baseOpts({ io: ioWith({ missionsByRepo: { "/wt": { m000214: "state: closed\n" } } }) }),
+      stubDeps({}),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.checked[0]).toBe("open-mission");
+  });
+});
+
+describe("primary importer-materialize tolerance (RFC-1537 AC-2)", () => {
+  it("a primary lockfile materialize for another session's open mission is tolerated", async () => {
+    const io = ioWith({ missionsByRepo: { "/primary": { m000214: "state: open\n" } } });
+    const result = await runIntegratePreflight(
+      baseOpts({ io }),
+      stubDeps({
+        primaryDirty: { entries: [" M pnpm-lock.yaml"], toleratedState: [], vanished: false },
+        lockfileDiff: MATERIALIZE_DIFF,
+      }),
+    );
+    expect(result.ok).toBe(true);
+    expect(result.tolerated).toEqual([{ path: "pnpm-lock.yaml", class: "importer-materialize" }]);
   });
 });
