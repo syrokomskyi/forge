@@ -10,11 +10,13 @@ Unit tests for lifecycle covering RFC-CMD-02/03 cutoff behavior. It also guards 
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the lifecycle suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
 </CHANGE_SUMMARY>
 */
 
 import { test, expect, describe } from "vitest";
 import { collectRfcCommandLifecycleViolations } from "./lifecycle.ts";
+import { validateSingleRfc } from "./validate-rules.ts";
 import type { ParsedRfc } from "../frontmatter-io.ts";
 import type { CommandRegistry } from "../../../src/types.ts";
 import { tmpdir } from "node:os";
@@ -195,5 +197,139 @@ describe("RFC-1482 RFC-CMD-03 early warning on commands.changed", () => {
   test("pre-cutoff draft → no warning", async () => {
     const cmd03 = await collect("draft", "2026-01-01", { changed: ["nonexistent.command"] });
     expect(cmd03).toHaveLength(0);
+  });
+});
+
+// RFC-1534: V-PROBE-META-01 — warning on regexp-trap metacharacters in
+// file-contains/test probe patterns at authoring statuses; a
+// `probe-meta: intentional` comment on (or directly above) the pattern line
+// in the frontmatter suppresses it per-pattern.
+describe("RFC-1534 V-PROBE-META-01 probe-pattern lint", () => {
+  const KNOWN_KEYS = new Set([
+    "id", "title", "status", "kind", "scope", "owners", "createdAt", "updatedAt",
+    "acceptance", "commands", "satisfies", "related", "amends", "amendedBy",
+    "supersedes", "supersededBy", "reviewers", "enhancedAt", "implementedAt",
+    "closedAt", "specRef", "versionBump", "appsImpacted", "packagesImpacted",
+    "successSignals", "nonGoals", "verificationTier",
+  ]);
+
+  const lintParsed = (
+    status: string,
+    acceptance: unknown[],
+    frontmatterSource = "",
+  ): ParsedRfc => ({
+    frontmatter: {
+      id: "RFC-9999",
+      title: "Test RFC",
+      status,
+      kind: "policy",
+      scope: "workspace",
+      owners: ["architecture"],
+      createdAt: "2026-01-01",
+      updatedAt: "2026-01-01",
+      commands: {},
+      acceptance,
+    },
+    body: "",
+    frontmatterSource,
+  });
+
+  const runLint = async (parsed: ParsedRfc) => {
+    const violations: Array<{ rule: string; message: string; severity?: string }> = [];
+    await validateSingleRfc(
+      "rfc-9999-test.md",
+      parsed,
+      new Map([
+        ["RFC-9999", { fileName: "rfc-9999-test.md", frontmatter: parsed.frontmatter }],
+      ]),
+      new Map(),
+      new Set<number>(),
+      new Set<number>(),
+      KNOWN_KEYS,
+      testWorkspaceRoot,
+      (_rfcId, _file, rule, message, severity) => {
+        violations.push({ rule, message, severity });
+      },
+    );
+    return violations.filter((v) => v.rule === "V-PROBE-META-01");
+  };
+
+  test("AC-1: glob-shape + unescaped parens warn with criterion, chars, and a rewritten suggestion", async () => {
+    const hits = await runLint(
+      lintParsed("draft", [
+        { probe: "file-contains", criterion: "AC-2", path: "x.ts", pattern: "**/manifest-debt-zero.test.ts" },
+        { probe: "test", criterion: "AC-3", file: "t.ts", testName: "skipped: dependency-failed (WT-GATE-02)", expect: { exitCode: 0 } },
+      ]),
+    );
+    expect(hits).toHaveLength(2);
+    expect(hits[0]!.message).toContain("AC-2");
+    expect(hits[0]!.message).toContain("**");
+    expect(hits[1]!.message).toContain("AC-3");
+    expect(hits[1]!.message).toContain("`(`");
+    expect(hits[1]!.message).toContain("\\(WT-GATE-02\\)");
+    expect(hits.every((h) => h.severity === "warning")).toBe(true);
+  });
+
+  test("clean patterns stay silent — escaped parens and plain literals", async () => {
+    const hits = await runLint(
+      lintParsed("draft", [
+        { probe: "file-contains", criterion: "AC-1", path: "x.ts", pattern: "chore\\(flow\\): sweep session leftovers" },
+      ]),
+    );
+    expect(hits).toHaveLength(0);
+  });
+
+  test("AC-4: probe-meta: intentional marker suppresses only the marked pattern", async () => {
+    const fm = [
+      "acceptance:",
+      "  - probe: file-contains",
+      "    criterion: AC-1",
+      "    path: x.ts",
+      "    # <!-- probe-meta: intentional -->",
+      '    pattern: "^## (Decisions|Findings)$"',
+      "  - probe: file-contains",
+      "    criterion: AC-2",
+      "    path: y.ts",
+      '    pattern: "unescaped (paren)"',
+    ].join("\n");
+    const hits = await runLint(
+      lintParsed("draft", [
+        { probe: "file-contains", criterion: "AC-1", path: "x.ts", pattern: "^## (Decisions|Findings)$" },
+        { probe: "file-contains", criterion: "AC-2", path: "y.ts", pattern: "unescaped (paren)" },
+      ], fm),
+    );
+    expect(hits).toHaveLength(1);
+    expect(hits[0]!.message).toContain("AC-2");
+  });
+
+  test("marker on the same line suppresses; implemented status is silent", async () => {
+    const fm = [
+      "acceptance:",
+      "  - probe: file-contains",
+      "    criterion: AC-1",
+      "    path: x.ts",
+      '    pattern: "unescaped (paren)"  # <!-- probe-meta: intentional -->',
+    ].join("\n");
+    const marked = await runLint(
+      lintParsed("draft", [
+        { probe: "file-contains", criterion: "AC-1", path: "x.ts", pattern: "unescaped (paren)" },
+      ], fm),
+    );
+    expect(marked).toHaveLength(0);
+    const terminal = await runLint(
+      lintParsed("implemented", [
+        { probe: "file-contains", criterion: "AC-1", path: "x.ts", pattern: "unescaped (paren)" },
+      ]),
+    );
+    expect(terminal).toHaveLength(0);
+  });
+
+  test("accepted status still warns (authoring surface)", async () => {
+    const hits = await runLint(
+      lintParsed("accepted", [
+        { probe: "file-contains", criterion: "AC-1", path: "x.ts", pattern: "unescaped (paren)" },
+      ]),
+    );
+    expect(hits).toHaveLength(1);
   });
 });

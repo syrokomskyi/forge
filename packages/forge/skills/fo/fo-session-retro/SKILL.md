@@ -20,12 +20,12 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1487: step 7 — remove RFC-1462 session-worktree paths, COMMIT-FGN-01 guard, and .sessions model; document flow lifecycle</item>
   <item>RFC-1487: drop RFC-1487 id from fo-session-retro instruction text (SKILL-17)</item>
   <item>RFC-1491: step 6 — outbound AGENTS paragraphs, retro step 3f, FLOW-PUSH/HOLD/GUARD-05/10/INT-11 catalog</item>
   <item>RFC-1528: worktree-first preamble — session-end writes go through a dedicated session worktree; docs.archive prefers the kernel host</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
-  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460</history>
+  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
+  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -194,7 +194,7 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 - This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently). When the worktree-first preamble opened a retro worktree, run the integration from that worktree — the whole session's writes ride it.
 - After the clean-tree commit, run `flow.integrate` from the session worktree — it rebases the branch onto `develop`, runs the primary checkout's `hooks/integration-gate.sh`, and fast-forwards `develop`.
 - On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
-- A FLOW-INT-01 dirty refusal is different: `data.entries` carries each path's class (`disposable`/`work`/…) — remediate via the RFC-1531 flags (`--auto-clean` when every entry is disposable, `--autocommit` to sweep the rest into the fixed-subject commit) or leave the branch for the next session with the classification reported.
+- A FLOW-INT-01 dirty refusal is different: `data.entries` carries each path's class (`disposable`/`work`/…) — remediate via the flow.integrate remediation flags (`--auto-clean` when every entry is disposable, `--autocommit` to sweep the rest into the fixed-subject commit) or leave the branch for the next session with the classification reported.
 - When the operator said to drop the work, run `flow.discard --reason "<operator words>"` instead of `flow.integrate`.
 
 **3f. List pending outbound items (dormant when not on the fixed branch model):**

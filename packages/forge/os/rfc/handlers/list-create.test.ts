@@ -15,6 +15,7 @@ with candidates listed.
   <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
   <item>RFC-1482: extract-safe RFC-1482 template path + changelog for 9.1.0</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
+  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
 </CHANGE_SUMMARY>
 */
 
@@ -234,5 +235,71 @@ describe("RFC-1482 validation-compliant skeleton", () => {
     const body = await readFile(join(root, result.data!.file!), "utf8");
     expect(body).not.toMatch(/^  - probe: reachable$/gm);
     expect(body).not.toMatch(/^acceptance:/m);
+  });
+});
+
+// RFC-1534: --amends writes the amendedBy counterpart on the amended file in
+// the same pass — the merge is by frontmatter key and never clobbers existing
+// entries (F-0056).
+const AMENDED_BODY = `---
+id: RFC-1200
+title: "Amended predecessor"
+status: implemented
+kind: architecture
+scope: workspace
+owners: [architecture]
+createdAt: 2026-01-01
+updatedAt: 2026-01-01
+amends: []
+amendedBy:
+  - RFC-1100
+related: []
+---
+
+# RFC-1200: Amended predecessor
+`;
+
+describe("RFC-1534 rfc.create --amends counterpart", () => {
+  beforeEach(async () => {
+    await seedRealTemplate();
+    await writeFile(join(root, "docs", "rfcs", "rfc-1200-amended.md"), AMENDED_BODY);
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("AC-2: --amends merges the new id into the amended file's amendedBy[] in the same pass", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Tame the registry loader", amends: "RFC-1200" }) } as never,
+      context(),
+    );
+    expect(result.data?.status).toBe("ok");
+    const newId = result.data!.id!;
+    expect(result.data?.amendsSync).toEqual({ amended: "RFC-1200", wroteCounterpart: true });
+
+    const draft = await readFile(join(root, result.data!.file!), "utf8");
+    expect(draft).toContain(`amends:\n  - RFC-1200`);
+
+    const amended = await readFile(join(root, "docs", "rfcs", "rfc-1200-amended.md"), "utf8");
+    expect(amended).toContain(`  - ${newId}`);
+  });
+
+  test("merge preserves existing amendedBy[] entries and stays idempotent (F-0056)", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Tame the registry loader", amends: "RFC-1200" }) } as never,
+      context(),
+    );
+    expect(result.data?.status).toBe("ok");
+    const amended = await readFile(join(root, "docs", "rfcs", "rfc-1200-amended.md"), "utf8");
+    expect(amended).toContain("amendedBy:\n  - RFC-1100\n  - RFC-");
+  });
+
+  test("--amends on a missing counterpart reports pending, does not fail the create", async () => {
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Tame the registry loader", amends: "RFC-1201" }) } as never,
+      context(),
+    );
+    expect(result.data?.status).toBe("ok");
+    expect(result.data?.amendsSync).toEqual({ amended: "RFC-1201", wroteCounterpart: false });
   });
 });

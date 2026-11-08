@@ -11,6 +11,7 @@ Unit tests for decision ledger covering decisionLedgerSchema (RFC-1250); decisio
   <item>RFC-1311: Compass header sweep — declares the decision suite's contract for test-file scaffold coverage.</item>
   <item>RFC-1350: queue-batch hardening — ledger baseline field, manifest packagesImpacted + QUEUE-09, COMMIT-GOV-02 manifest scope, test-first policy</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
+  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
 </CHANGE_SUMMARY>
 */
 
@@ -252,5 +253,22 @@ describe("decisionLedgerPath / loadDecisionLedger (RFC-1250)", () => {
     const queue01 = errors.filter((e) => e.ruleId === "QUEUE-01");
     expect(queue01.length).toBeGreaterThan(0);
     expect(queue01.every((e) => !e.message.includes("minimal shape"))).toBe(true);
+  });
+
+  // RFC-1534 AC-3: the collision diagnostic names the colliding id AND the
+  // next free id computed at read time (max suffix + 1, never a counter).
+  test("duplicate decision id → QUEUE-05 names the collision and next free id", async () => {
+    await fs.writeFile(
+      path.join(tmpDir, "docs/queues/block-f.decisions.yaml"),
+      "id: block-f.decisions\nqueue: block-f\ncreatedAt: 2026-10-09\nitems:\n" +
+        "  - id: Q-1\n    doc: RFC-1243\n    stage: enhance\n    question: first\n    resolutionPath: none\n    status: open\n" +
+        "  - id: Q-7\n    doc: RFC-1243\n    stage: enhance\n    question: second\n    resolutionPath: none\n    status: open\n" +
+        "  - id: Q-1\n    doc: RFC-1244\n    stage: plan\n    question: dup\n    resolutionPath: none\n    status: open\n",
+    );
+    const { errors } = await loadDecisionLedger(tmpDir, "docs/queues/block-f.yaml");
+    const q5 = errors.filter((e) => e.ruleId === "QUEUE-05");
+    expect(q5).toHaveLength(1);
+    expect(q5[0]!.message).toContain('"Q-1"');
+    expect(q5[0]!.message).toContain("next free id: Q-8");
   });
 });
