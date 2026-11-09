@@ -22,6 +22,7 @@ operator-owned.
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial implementation — plan/apply + delimited-block reconcile.</item>
   <item>RFC-1255: Enumerate generated AGENTS.md paths (root + nested workspaces via discoverWorkspaces) in the managed block — prettier normalization byte-diverges from the generator render and trips doctor's stale check on every format-on-commit.</item>
+  <item>RFC-1550: FIXED_ENTRIES gains `.forge/task/` — forge-owned task scratch paths are prettier-irrelevant and must not be normalized or linted by consumers.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +58,7 @@ const PRETTIER_CONFIG_NAMES = [
 
 /** Non-skill generated-artifact entries, in stable order. */
 const FIXED_ENTRIES = [
+  ".forge/task/",
   "**/*.generated.yaml",
   "docs/sessions/",
   "docs/metrics/",
