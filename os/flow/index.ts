@@ -15,11 +15,13 @@ reachable, else the version-file value.</purpose>
   <item>Untagged is not an error — it resolves to the version-file value; only a missing or unparsable version file throws.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1493: step 1 — forge public release-line version reader</item>
   <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1495: steps 2-3 - workshop paths resolver and call-site migration</item>
   <item>RFC-1519: add advisory gate-verdict store for scoped pass reuse across reruns and the commit-integrate boundary</item>
+  <item>RFC-1549: route generated onboarding-status commits through session flow on fixed branches
+
+commitWerkstattSideEffects skips git add+commit when classifyBranch() yields non-flow (protected/nonconforming), reports written outputPaths; status-hook and deploy/leitstand results propagate onboardingStatus metadata; leitstand.promote surfaces an optional session-worktree integration nextStep. Flow-branch commit behavior unchanged; mission-open fixture rebased to conforming auto/task-YYMMDD-NN branch. AC-1..AC-3 checked.</item>
   <history>RFC-1493</history>
 </CHANGE_SUMMARY>
 */
@@ -43,6 +45,8 @@ export { primaryWorktree, resolveStateRoots, worktreeList };
 export { FORGE_STATE_FILES } from "./git.ts";
 export type { StateRoots };
 export type { FlowWorktree } from "./git.ts";
+export { classifyBranch } from "./branch-name.ts";
+export type { BranchClass } from "./branch-name.ts";
 
 export interface RepositoryLineVersion {
   /** "6.451.0+12.ab12cd34e" for a tagged line, "6.451.0" from the version file otherwise. */
