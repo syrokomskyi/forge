@@ -11,13 +11,13 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <history>RFC-1487, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
@@ -530,6 +530,104 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
     expect((await gitExec(repo, ["cat-file", "-e", "develop:docs/rfcs/index.yaml"])).exitCode).toBe(
       0,
     );
+  }, 20_000);
+
+  it("a generated-only conflict without an invoke port engages the standalone adapter — spawn failure escalates FLOW-INT-02 (RFC-1545 AC-2/AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "standalone");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n",
+    );
+    await commitIn(
+      repo,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n",
+    );
+
+    // No invoke port — the adapter spawns `pnpm exec werkstatt run …` in the
+    // bare fixture worktree where no werkstatt binary resolves; the failure
+    // escalates as FLOW-INT-02, proving the standalone path engaged.
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
+    expect(data.diagnostics[0]?.message).toContain("auto-resolve of generated conflict");
+  }, 20_000);
+
+  it("a failing generator escalates to FLOW-INT-02 with its stderr in diagnostics (RFC-1545 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "genfail");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n",
+    );
+    await commitIn(
+      repo,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n",
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: async () => ({
+        ok: false,
+        exitCode: 1,
+        summary: "rfc.index.generate crashed: schema error at docs/rfcs/rfc-0001.md",
+      }),
+    });
+
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
+    expect(data.diagnostics[0]?.message).toContain("auto-resolve of generated conflict");
+    expect(data.diagnostics[0]?.message).toContain("schema error");
+  }, 20_000);
+
+  it("a generator that leaves residual conflict markers escalates to FLOW-INT-02 (RFC-1545 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "genmarkers");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n",
+    );
+    await commitIn(
+      repo,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n",
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: async () => {
+        // A "successful" regen that writes marker-laden output must not land.
+        await writeFile(
+          join(session.worktree!, "docs/rfcs/index.yaml"),
+          "command: rfc.index.generate\n<<<<<<< HEAD\ncount: 9\n=======\ncount: 2\n>>>>>>> branch\n",
+        );
+        return { ok: true, exitCode: 0 };
+      },
+    });
+
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
+    expect(data.diagnostics[0]?.message).toContain("conflict markers");
   }, 20_000);
 
   it("a mixed generated/non-generated conflict set still refuses FLOW-INT-02 (AC-3 boundary)", async () => {

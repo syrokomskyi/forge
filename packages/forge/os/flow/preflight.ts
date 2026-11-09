@@ -14,11 +14,11 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: regenerable dirt classifier (importer-materialize, skill-twin-sync), cheap-first open-mission check (WT-GATE-01), toleratedState surfacing</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: shared DirtyClass enum via dirty-classify.ts (Q-4), classified FLOW-INT-01/03 data.entries, classifyDirtyEntries for the remediation flags</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -725,7 +725,7 @@ export interface RebaseConflictVerdict {
 }
 
 /** `.generated.` basenames whose owner command is fixed by convention. */
-const GENERATED_BASENAME_OWNERS: Record<string, string> = {
+export const GENERATED_BASENAME_OWNERS: Record<string, string> = {
   "ecosystem.generated.yaml": "ecosystem.manifest.generate",
   "command-manifest.generated.yaml": "command.manifest.generate",
 };

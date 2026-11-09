@@ -20,11 +20,11 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: remediation flags --reattach/--auto-clean/--autocommit on the classified dirty set, FLOW-INT-17 remediation-failure refusals, classified FLOW-INT-01 data</item>
   <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
+  <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
@@ -77,6 +77,7 @@ readJournal,
   type FlowRegistryEntry,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
+import { standaloneInvoke } from "../standalone-invoke.ts";
 import { preserveTaskFiles } from "../task-files.ts";
 import { flowWorktreePath, primaryWorktree } from "../worktree-path.ts";
 import { pruneReservationsForSession } from "../../rfc/next-id.ts";
@@ -912,35 +913,59 @@ async function integrateFlowBranchAttempt(
           .filter((l) => l.length > 0);
         const { classifyRebaseConflicts } = await import("../preflight.ts");
         const verdict = await classifyRebaseConflicts(branchWorktree, io, paths);
+        // RFC-1545 AC-2: without a kernel invoke port the standalone adapter
+        // spawns the allowlisted owner commands in the worktree — the
+        // resolution contract is identical either way.
+        const invoker =
+          opts.invoke ??
+          standaloneInvoke(
+            io,
+            branchWorktree,
+            verdict.owners.map((o) => o.command),
+          );
         const resolvable =
           paths.length > 0 &&
           verdict.nonGenerated.length === 0 &&
-          verdict.owners.length === paths.length &&
-          opts.invoke !== undefined;
+          verdict.owners.length === paths.length;
         if (!resolvable) {
           await git(branchWorktree, io, ["rebase", "--abort"]);
           return refuse(
             "FLOW-INT-02",
             `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}` +
-              (verdict.owners.length > 0
-                ? opts.invoke === undefined
-                  ? " — generated conflicts present but no invoke port is available to regenerate them"
-                  : " — mixed generated/non-generated conflict set"
-                : ""),
+              (verdict.owners.length > 0 ? " — mixed generated/non-generated conflict set" : ""),
             "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
             { branch, developBefore },
           );
         }
         let failed = false;
         for (const o of verdict.owners) {
-          await git(branchWorktree, io, ["checkout", "--theirs", "--", o.path]);
-          const regen = await opts.invoke!(o.command, o.flags);
+          // `git checkout --theirs` is blocked by the agent-session git
+          // wrapper — materialize the stage-3 (theirs) blob through the
+          // read-only `git show` + io write instead (RFC-1545).
+          const theirs = await git(branchWorktree, io, ["show", `:3:${o.path}`]);
+          if (theirs.exitCode === 0) {
+            await io.writeFile(join(branchWorktree, o.path), theirs.stdout);
+          }
+          const regen = await invoker(o.command, o.flags);
           if (regen.ok === false || (regen.exitCode !== undefined && regen.exitCode !== 0)) {
             await git(branchWorktree, io, ["rebase", "--abort"]);
             failed = true;
             return refuse(
               "FLOW-INT-02",
               `auto-resolve of generated conflict ${o.path} failed: ${o.command} — ${regen.summary ?? `exit ${regen.exitCode}`}`,
+              "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
+              { branch, developBefore },
+            );
+          }
+          // RFC-1545 AC-4: a successful generator that left conflict markers
+          // behind must not be committed — escalate like a failure.
+          const regenerated = await io.readFile(join(branchWorktree, o.path));
+          if (/^(<{7}|={7}|>{7})/m.test(regenerated)) {
+            await git(branchWorktree, io, ["rebase", "--abort"]);
+            failed = true;
+            return refuse(
+              "FLOW-INT-02",
+              `auto-resolve of generated conflict ${o.path} failed: ${o.command} left conflict markers in the regenerated output`,
               "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
               { branch, developBefore },
             );
