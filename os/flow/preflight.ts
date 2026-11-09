@@ -14,12 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: shared DirtyClass enum via dirty-classify.ts (Q-4), classified FLOW-INT-01/03 data.entries, classifyDirtyEntries for the remediation flags</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
-  <history>RFC-1528, RFC-1537</history>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <history>RFC-1528, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -41,7 +41,8 @@ import {
   type ClassifiedDirtyEntry,
   type DirtyClass,
 } from "./dirty-classify.ts";
-import { currentBranch, git, statusTracked } from "./git.ts";
+import { currentBranch, git, statusTracked, worktreeList } from "./git.ts";
+import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { claimCoversPath, liveClaims, type OpClaim } from "./ops-registry.ts";
 
 export type LockfileClassification = "importer-prune-only" | "other";
@@ -49,10 +50,12 @@ export type LockfileClassification = "importer-prune-only" | "other";
 /**
  * Strict match for the pnpm-prune shape: ONLY removed lines, every one either
  * a `missions/<id>/workpiece:` importer key or a deeper-indented member of
- * such a key's block. Any added line, any other removed line, or a diff with
- * no removals classifies "other" — ambiguous diffs stay ordinary refusals.
+ * such a key's block. Returns the sorted pruned mission ids on match, null
+ * otherwise — any added line, any other removed line, or a diff with no
+ * removals is ambiguous and stays an ordinary refusal.
  */
-export function classifyLockfileDiff(diffText: string): LockfileClassification {
+export function classifyLockfilePruneIds(diffText: string): string[] | null {
+  const ids = new Set<string>();
   let sawImporterKey = false;
   let openBlockIndent: number | null = null;
   for (const raw of diffText.split("\n")) {
@@ -67,7 +70,7 @@ export function classifyLockfileDiff(diffText: string): LockfileClassification {
       if (raw.startsWith("@@")) openBlockIndent = null;
       continue;
     }
-    if (raw.startsWith("+")) return "other";
+    if (raw.startsWith("+")) return null;
     const line = raw.slice(1);
     if (raw[0] === " ") {
       const indent = line.length - line.trimStart().length;
@@ -79,19 +82,25 @@ export function classifyLockfileDiff(diffText: string): LockfileClassification {
     if (raw[0] !== "-") continue;
     if (line.trim().length === 0) {
       // A blank removed line only tolerates inside an open importer block.
-      if (openBlockIndent === null) return "other";
+      if (openBlockIndent === null) return null;
       continue;
     }
     const indent = line.length - line.trimStart().length;
-    if (/^\s*missions\/[^\s/]+\/workpiece:\s*$/.test(line)) {
+    const key = /^\s*missions\/([^\s/]+)\/workpiece:\s*$/.exec(line);
+    if (key) {
       sawImporterKey = true;
+      ids.add(key[1]);
       openBlockIndent = indent;
       continue;
     }
     if (openBlockIndent !== null && indent > openBlockIndent) continue;
-    return "other";
+    return null;
   }
-  return sawImporterKey ? "importer-prune-only" : "other";
+  return sawImporterKey ? [...ids].sort() : null;
+}
+
+export function classifyLockfileDiff(diffText: string): LockfileClassification {
+  return classifyLockfilePruneIds(diffText) !== null ? "importer-prune-only" : "other";
 }
 
 /**
@@ -167,6 +176,66 @@ export type { DirtyClass } from "./dirty-classify.ts";
 export interface ToleratedEntry {
   path: string;
   class: DirtyClass;
+  /** RFC-1544: pruned mission ids for the lockfile importer classes. */
+  missionIds?: string[];
+}
+
+/**
+ * RFC-1544: referent state for one pruned `missions/<id>/workpiece` importer
+ * — where the directory still exists and whether its mission is open. The
+ * classifier stays pure: referents are injected by the caller.
+ */
+export interface ImporterReferent {
+  missionId: string;
+  /** `missions/<id>/workpiece` exists in the checkout being classified. */
+  existsHere: boolean;
+  /** Other registered worktrees where the directory exists. */
+  existsInCheckout: string[];
+  /** An open `missions/<id>/mission.yaml` exists in any registered checkout. */
+  missionOpen: boolean;
+}
+
+/**
+ * Default referent resolver — `git worktree list` for the checkout set and
+ * `openMissionsIn` per checkout for mission state (the same enumeration
+ * `flow.status` performs; never cwd-relative guesses).
+ */
+export async function resolveImporterReferents(
+  repo: string,
+  io: WorkspaceIO,
+  missionIds: string[],
+): Promise<ImporterReferent[]> {
+  const worktrees = await worktreeList(repo, io);
+  const here = canonicalRepoDir(repo);
+  const others = worktrees.filter((w) => w.path !== here).map((w) => w.path);
+  const openCache = new Map<string, Set<string>>();
+  const openIn = async (dir: string): Promise<Set<string>> => {
+    let set = openCache.get(dir);
+    if (set === undefined) {
+      try {
+        set = new Set(await openMissionsIn(dir, io));
+      } catch {
+        set = new Set();
+      }
+      openCache.set(dir, set);
+    }
+    return set;
+  };
+  const out: ImporterReferent[] = [];
+  for (const missionId of missionIds) {
+    const rel = join("missions", missionId, "workpiece");
+    const existsHere = await io.exists(join(repo, rel));
+    const existsInCheckout: string[] = [];
+    for (const dir of others) {
+      if (await io.exists(join(dir, rel))) existsInCheckout.push(dir);
+    }
+    let missionOpen = (await openIn(repo)).has(missionId);
+    for (const dir of others) {
+      if (!missionOpen && (await openIn(dir)).has(missionId)) missionOpen = true;
+    }
+    out.push({ missionId, existsHere, existsInCheckout: existsInCheckout.sort(), missionOpen });
+  }
+  return out;
 }
 
 export interface DirtVerdict {
@@ -239,6 +308,7 @@ export async function classifyDirt(
   entries: string[],
   deps: { runGit: typeof git } = { runGit: git },
   claims: OpClaim[] = [],
+  resolveReferents?: (missionIds: string[]) => Promise<ImporterReferent[]>,
 ): Promise<DirtVerdict> {
   const tolerated: ToleratedEntry[] = [];
   const unattributed: string[] = [];
@@ -260,8 +330,36 @@ export async function classifyDirt(
   outer: for (const [path, lines] of byPath) {
     if (path === "pnpm-lock.yaml") {
       const diff = await deps.runGit(repo, io, ["diff", "HEAD", "--", "pnpm-lock.yaml"]);
-      if (classifyLockfileDiff(diff.stdout) === "importer-prune-only") {
-        tolerated.push({ path, class: "importer-prune" });
+      const pruneIds = classifyLockfilePruneIds(diff.stdout);
+      if (pruneIds !== null) {
+        // RFC-1544: the pruned importer's referent decides the class — a
+        // foreign checkout's open mission (foreign-open-mission, auto-
+        // restored by flow.integrate), dead residue (importer-prune-stale,
+        // accepted cleanup), or anything else (importer-prune, unchanged).
+        // An unresolvable referent set (no exec/ io capability) degrades to
+        // the inert importer-prune — "couldn't resolve" is not "resolved to
+        // nothing".
+        let referents: ImporterReferent[] | undefined;
+        if (resolveReferents !== undefined) {
+          try {
+            referents = await resolveReferents(pruneIds);
+          } catch {
+            referents = undefined;
+          }
+        }
+        if (
+          referents !== undefined &&
+          referents.every((r) => !r.existsHere && r.missionOpen && r.existsInCheckout.length > 0)
+        ) {
+          tolerated.push({ path, class: "foreign-open-mission", missionIds: pruneIds });
+        } else if (
+          referents !== undefined &&
+          referents.every((r) => !r.existsHere && r.existsInCheckout.length === 0 && !r.missionOpen)
+        ) {
+          tolerated.push({ path, class: "importer-prune-stale", missionIds: pruneIds });
+        } else {
+          tolerated.push({ path, class: "importer-prune", missionIds: pruneIds });
+        }
         continue;
       }
       const ids = classifyLockfileMaterialize(diff.stdout);
@@ -492,9 +590,16 @@ export async function runIntegratePreflight(
   // regenerable classes journal as tolerated (RFC-1537).
   checked.push("worktree-dirty");
   if (opts.worktreeDirty.entries.length > 0) {
-    const verdict = await classifyDirt(opts.branchWorktree, io, opts.worktreeDirty.entries, {
-      runGit: deps.runGit,
-    });
+    const verdict = await classifyDirt(
+      opts.branchWorktree,
+      io,
+      opts.worktreeDirty.entries,
+      {
+        runGit: deps.runGit,
+      },
+      [],
+      (ids) => resolveImporterReferents(opts.branchWorktree, io, ids),
+    );
     tolerated.push(...verdict.tolerated);
     if (verdict.unattributed.length > 0) {
       const lockfile = await classifyDirtyLockfile(
@@ -566,6 +671,7 @@ export async function runIntegratePreflight(
       primaryDirty.entries,
       { runGit: deps.runGit },
       await liveClaims(opts.primary, io),
+      (ids) => resolveImporterReferents(opts.primary, io, ids),
     );
     tolerated.push(...verdict.tolerated);
     const foreignOnly =

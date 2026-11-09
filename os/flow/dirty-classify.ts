@@ -19,6 +19,7 @@ classifyDirt, which emits the same enum.</purpose>
   <item>RFC-1531: closed dirty-path classifier + remediation flags on flow.integrate</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +32,9 @@ import { isForgeStatePath } from "./git.ts";
  * - `tolerated` — FORGE_STATE_FILES member; journaled, never blocks.
  * - `disposable` — declared debris; `--auto-clean` may delete it.
  * - `importer-prune` — RFC-1528 lockfile shape; assigned by classifyDirt.
+ * - `foreign-open-mission` / `importer-prune-stale` — RFC-1544 referent-aware
+ *   prune classes; assigned by classifyDirt when the caller injects importer
+ *   referents, tolerated by the pipeline.
  * - `importer-materialize` / `skill-twin-sync` — RFC-1537 regenerable shapes;
  *   assigned by classifyDirt, tolerated by the pipeline.
  * - `work` — everything else; always blocks and is never auto-deleted.
@@ -40,6 +44,8 @@ export type DirtyClass =
   | "disposable"
   | "importer-prune"
   | "importer-materialize"
+  | "foreign-open-mission"
+  | "importer-prune-stale"
   | "skill-twin-sync"
   | "in-flight-foreign"
   | "work";

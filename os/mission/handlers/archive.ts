@@ -13,11 +13,11 @@ archive subdirectories back to missions/.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1397: harden ship-in-flight guard per independent review (RFC-1397)</item>
   <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
   <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <history>RFC-0573, RFC-0733, RFC-0801, RFC-0804, RFC-0982, RFC-1097, RFC-1138, RFC-1397, warpgogol-m000175</history>
 </CHANGE_SUMMARY>
 */
@@ -47,7 +47,7 @@ import {
   type MissionArchiveResult,
 } from "../types.ts";
 import { loadPinnedManifest, isPinned, isIntraDirMove } from "../../core/handlers/pinned-check.ts";
-import { restoreTrackedLockfile, execFileSyncAdapter } from "../lockfile.ts";
+import { pruneMissionImportersFromLockfile, execFileSyncAdapter } from "../lockfile.ts";
 import { resolveStateRoots } from "../../flow/worktree-path.ts";
 
 const SERVICE_FOLDERS = [
@@ -668,20 +668,28 @@ export async function runMissionArchive(
       );
     }
     try {
-      // Restore runs even when install failed — a partially-rewritten
-      // lockfile is still mission-local churn, never tracked bytes.
-      const restored = await restoreTrackedLockfile(workspaceRoot, {
-        ...execFileSyncAdapter(),
-        writeFile: async (target, content) => {
-          await writeFileIfChanged(target, content);
+      // RFC-1544 AC-5: the moved missions' importer blocks are legitimate
+      // tracked removals — HEAD-minus-importers is staged for the archive
+      // bookkeeping commit; every other install churn is still discarded.
+      const pruned = await pruneMissionImportersFromLockfile(
+        workspaceRoot,
+        moved.map((m) => m.missionId),
+        {
+          ...execFileSyncAdapter(),
+          writeFile: async (target, content) => {
+            await writeFileIfChanged(target, content);
+          },
         },
-      });
-      if (restored) {
-        logger.info("  Restored pnpm-lock.yaml to HEAD bytes (install churn discarded)");
-      } else {
-        logger.warn(
-          "  No tracked pnpm-lock.yaml at HEAD — install churn left in place; nothing to restore",
+      );
+      if (pruned.pruned.length > 0) {
+        logger.info(
+          `  Pruned importer(s) ${pruned.pruned.map((id) => `missions/${id}/workpiece`).join(", ")} from pnpm-lock.yaml` +
+            (pruned.staged
+              ? " — staged for the bookkeeping commit"
+              : " — staging failed; prune left in the working tree"),
         );
+      } else {
+        logger.info("  Restored pnpm-lock.yaml to HEAD bytes (install churn discarded)");
       }
     } catch (refreshErr) {
       logger.warn(
