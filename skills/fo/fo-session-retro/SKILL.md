@@ -20,12 +20,17 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 6 — outbound AGENTS paragraphs, retro step 3f, FLOW-PUSH/HOLD/GUARD-05/10/INT-11 catalog</item>
   <item>RFC-1528: worktree-first preamble — session-end writes go through a dedicated session worktree; docs.archive prefers the kernel host</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>ADR-0126: docs-rule batch — 16 friction measures landed</item>
-  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487</history>
+  <item>RFC-1460: draft mechanical-obligation RFCs and land harvest doc rules
+
+RFC-1460 harvest wave 2026-11-09: five draft RFCs (derive-and-repair flow
+surfaces, quiet kernel output, staged-commit/invocation guards, fixed-branch
+onboarding-status routing, forge task prettier coverage), seven docs-rule
+landings, registry flips — 25 entries served, F-0025 stays external.</item>
+  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -103,7 +108,8 @@ The agent reconstructs the current session's conversation from its context windo
 
 **Instructions:**
 
-1. Create the directory `docs/sessions/.raw/` if it does not exist.
+1. Create the directory `docs/sessions/.raw/` if it does not exist. **Synthesized timestamps MUST fall inside the real session window** — `session.save` derives the session id from the first timestamp, so a 2025-epoch placeholder produces a wrongly-dated session file and forces a redo. Anchor the first line to the session's actual start and step forward from there.
+
 2. Generate a timestamp-based filename: `<YYYY-MM-DD-HH-MM-SS>-session.atif` (use current time in the operator's timezone).
 3. Reconstruct the conversation from context — include every user message and assistant response you can recall from the current session, in chronological order. This is a best-effort reconstruction: the agent's context window is the source, not an external export tool.
 4. **Redact sensitive information** — remove API keys, passwords, PII, and secret values before writing. Replace with `<redacted>`.
