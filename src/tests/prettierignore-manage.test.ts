@@ -10,6 +10,7 @@ prettier-free consumers.</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1154: initial prettierignore plan/apply tests.</item>
+  <item>RFC-1550: `.forge/task/` block entry + exactly-once-after-regeneration assertion.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,11 +85,21 @@ test("AC-2: block contains generated.yaml glob, sessions, metrics, queues entrie
   expect(result).toBe("written");
   const content = await readFile(join(tmpDir, ".prettierignore"), "utf8");
   expect(content).toContain(PRETTIERIGNORE_BLOCK_BEGIN);
+  expect(content).toContain(".forge/task/");
   expect(content).toContain("**/*.generated.yaml");
   expect(content).toContain("docs/sessions/");
   expect(content).toContain("docs/metrics/");
   expect(content).toContain("docs/queues/session-*.yaml");
   expect(content).toContain(PRETTIERIGNORE_BLOCK_END);
+});
+
+test("RFC-1550 AC-3: .forge/task/ appears exactly once after repeated regeneration", async () => {
+  await withPrettier(tmpDir);
+  await applyPrettierignore(tmpDir, await planPrettierignore(tmpDir));
+  const result = await applyPrettierignore(tmpDir, await planPrettierignore(tmpDir));
+  expect(result).toBe("unchanged");
+  const content = await readFile(join(tmpDir, ".prettierignore"), "utf8");
+  expect(content.split(".forge/task/").length - 1).toBe(1);
 });
 
 test("skill entries enumerate only marker-carrying dirs (AC-9)", async () => {
