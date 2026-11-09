@@ -14,14 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: initial — classifyLockfileDiff + runIntegratePreflight (FLOW-INT-01/03 classification, FLOW-INT-12/13/14 validator refusals).</item>
-  <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
-
-Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: regenerable dirt classifier (importer-materialize, skill-twin-sync), cheap-first open-mission check (WT-GATE-01), toleratedState surfacing</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: shared DirtyClass enum via dirty-classify.ts (Q-4), classified FLOW-INT-01/03 data.entries, classifyDirtyEntries for the remediation flags</item>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -577,24 +575,17 @@ export async function runIntegratePreflight(
     };
   }
 
-  // (3) ecosystem.manifest.validate — stale generated manifest refuses early.
+  // (3) ecosystem.manifest.validate — stale generated manifest is a
+  // recoverable violation (RFC-1546): the failure is recorded and the
+  // remaining checks still run. Only when the drift is the SOLE violation
+  // does the owner command regenerate in place and the validator re-run —
+  // a coexisting refusal below must skip the regeneration entirely.
+  let manifestDrift: { summary?: string; exitCode?: number } | undefined;
   if (resolvable("ecosystem.manifest.validate")) {
     checked.push("ecosystem.manifest.validate");
     const result = await opts.invoke!("ecosystem.manifest.validate", {});
     if (result.ok === false || (result.exitCode !== undefined && result.exitCode !== 0)) {
-      return {
-        ok: false,
-        checked,
-        skipped,
-        tolerated,
-        refuse: {
-          ruleId: "FLOW-INT-12",
-          message: `preflight: ecosystem.manifest.validate refused — ${result.summary ?? `exit ${result.exitCode}`}`,
-          fixHint:
-            "regenerate the manifest via `pnpm exec werkstatt run ecosystem.manifest.generate`, commit, then re-run flow.integrate",
-          data: { command: "ecosystem.manifest.validate", summary: result.summary },
-        },
-      };
+      manifestDrift = { summary: result.summary, exitCode: result.exitCode };
     }
   } else {
     skipped.push({
@@ -678,6 +669,41 @@ export async function runIntegratePreflight(
       check: "friction.validate",
       reason: opts.invoke === undefined ? "no-invoke" : "unresolvable",
     });
+  }
+
+  // RFC-1546: every other check passed — the manifest drift is the sole
+  // violation, so the owner command regenerates in place and the validator
+  // re-runs. A coexisting violation already refused above without ever
+  // reaching the regeneration.
+  if (manifestDrift !== undefined) {
+    if (resolvable("ecosystem.manifest.generate")) {
+      const regen = await opts.invoke!(
+        "ecosystem.manifest.generate",
+        REGEN_FLAGS["ecosystem.manifest.generate"] ?? {},
+      );
+      if (regen.ok !== false && (regen.exitCode === undefined || regen.exitCode === 0)) {
+        checked.push("ecosystem.manifest.generate", "ecosystem.manifest.validate");
+        const result = await opts.invoke!("ecosystem.manifest.validate", {});
+        if (result.ok !== false && (result.exitCode === undefined || result.exitCode === 0)) {
+          manifestDrift = undefined;
+        }
+      }
+    }
+    if (manifestDrift !== undefined) {
+      return {
+        ok: false,
+        checked,
+        skipped,
+        tolerated,
+        refuse: {
+          ruleId: "FLOW-INT-12",
+          message: `preflight: ecosystem.manifest.validate refused — ${manifestDrift.summary ?? `exit ${manifestDrift.exitCode}`}`,
+          fixHint:
+            "regenerate the manifest via `pnpm exec werkstatt run ecosystem.manifest.generate`, commit, then re-run flow.integrate",
+          data: { command: "ecosystem.manifest.validate", summary: manifestDrift.summary },
+        },
+      };
+    }
   }
 
   return { ok: true, checked, skipped, tolerated };

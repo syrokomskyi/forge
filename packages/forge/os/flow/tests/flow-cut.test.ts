@@ -21,6 +21,7 @@ resume path (AC-5: subject-named tags missing → tail re-runs).</purpose>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -320,4 +321,24 @@ describe("flow.cut — ordinary path", () => {
     );
     expect(result.data?.diagnostics[0]?.ruleId).toBe("FLOW-INT-06");
   }, 30_000);
+});
+
+describe("flow.cut — resume requires matching --lines (RFC-1546 AC-3)", () => {
+  it("a chore(release): tip with mismatched --lines cuts fresh, not a resume", async () => {
+    const repo = await adoptedRepo({ packageLine: true });
+    // Leave a partial repo-line release as the develop tip (hook fails).
+    const hookPath = join(repo, "hooks/release-fingerprints.sh");
+    await writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    const refused = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(refused.diagnostics[0]?.ruleId).toBe("FLOW-CUT-08");
+    const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
+    expect(subject).toBe("chore(release): v0.1.1");
+    await rm(hookPath);
+    // Requested set (repo+lib) differs from the tip subject's (repo only) —
+    // the tip must not be adopted as a resumable tail.
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: ["lib"], dryRun: false });
+    expect(data.resumed).toBe(false);
+    expect(data.released).toBe(true);
+    expect(data.tags).toContain("lib@2.0.1");
+  }, 60_000);
 });
