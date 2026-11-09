@@ -12,6 +12,7 @@ and the sweep subject stays the fixed literal the RFC pins.</purpose>
   <item>RFC-1531: closed dirty-path classifier + remediation flags on flow.integrate</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -171,3 +172,80 @@ describe("classifyDirt — op-claim attribution (RFC-1543)", () => {
   });
 });
 
+// RFC-1544 AC-1/AC-3: the importer-prune class splits by referent — a live
+// foreign open mission yields foreign-open-mission; residue in no checkout
+// and no open mission yields importer-prune-stale; no resolver keeps the
+// legacy importer-prune class.
+const PRUNE_DIFF_1544 = [
+  "diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml",
+  "index abc..def 100644",
+  "--- a/pnpm-lock.yaml",
+  "+++ b/pnpm-lock.yaml",
+  "@@ -10,7 +10,6 @@ importers:",
+  "-  missions/m000214/workpiece:",
+  "-    dependencies:",
+  "-      vite: 5.0.0",
+  " packages:",
+].join("\n");
+
+describe("classifyDirt — importer-prune referents (RFC-1544)", () => {
+  const runGit = async () => ({ exitCode: 0, stdout: PRUNE_DIFF_1544, stderr: "" });
+  const entries = [" M pnpm-lock.yaml"];
+
+  it("AC-1: a foreign checkout's open mission classifies foreign-open-mission", async () => {
+    const { classifyDirt } = await import("../preflight.ts");
+    const repo = await mkdtemp(join(tmpdir(), "dirt-"));
+    dirs.push(repo);
+    const verdict = await classifyDirt(repo, ambientIo, entries, { runGit }, [], async (ids) =>
+      ids.map((missionId) => ({
+        missionId,
+        existsHere: false,
+        existsInCheckout: ["/repo@auto/foreign"],
+        missionOpen: true,
+      })),
+    );
+    expect(verdict.tolerated).toEqual([
+      {
+        path: "pnpm-lock.yaml",
+        class: "foreign-open-mission",
+        missionIds: ["m000214"],
+      },
+    ]);
+    expect(verdict.unattributed).toEqual([]);
+  });
+
+  it("AC-3: residue in no checkout and no open mission classifies importer-prune-stale", async () => {
+    const { classifyDirt } = await import("../preflight.ts");
+    const repo = await mkdtemp(join(tmpdir(), "dirt-"));
+    dirs.push(repo);
+    const verdict = await classifyDirt(repo, ambientIo, entries, { runGit }, [], async (ids) =>
+      ids.map((missionId) => ({
+        missionId,
+        existsHere: false,
+        existsInCheckout: [],
+        missionOpen: false,
+      })),
+    );
+    expect(verdict.tolerated).toEqual([
+      {
+        path: "pnpm-lock.yaml",
+        class: "importer-prune-stale",
+        missionIds: ["m000214"],
+      },
+    ]);
+  });
+
+  it("no resolver keeps the legacy importer-prune class", async () => {
+    const { classifyDirt } = await import("../preflight.ts");
+    const repo = await mkdtemp(join(tmpdir(), "dirt-"));
+    dirs.push(repo);
+    const verdict = await classifyDirt(repo, ambientIo, entries, { runGit });
+    expect(verdict.tolerated).toEqual([
+      {
+        path: "pnpm-lock.yaml",
+        class: "importer-prune",
+        missionIds: ["m000214"],
+      },
+    ]);
+  });
+});

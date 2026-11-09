@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: remediation flags --reattach/--auto-clean/--autocommit on the classified dirty set, FLOW-INT-17 remediation-failure refusals, classified FLOW-INT-01 data</item>
   <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1536, RFC-1537</history>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1536, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -125,6 +125,10 @@ export interface FlowIntegrateData {
   autoCleaned?: string[];
   /** RFC-1531: sha of the --autocommit sweep commit (SWEEP_COMMIT_SUBJECT). */
   autocommitSha?: string;
+  /** RFC-1544: foreign-open-mission importer ids restored into the lockfile. */
+  restoredImporters?: string[];
+  /** RFC-1544: sha of the stale-importer prune commit, when one was written. */
+  staleImporterCommitSha?: string;
   /** RFC-1515: holder payload when FLOW-INT-08 refused on a held lock. */
   lock?: LockDiagnostic;
   diagnostics: Diagnostic[];
@@ -150,6 +154,12 @@ function refuse(
     ...(partial?.reattachedTo !== undefined ? { reattachedTo: partial.reattachedTo } : {}),
     ...(partial?.autoCleaned !== undefined ? { autoCleaned: partial.autoCleaned } : {}),
     ...(partial?.autocommitSha !== undefined ? { autocommitSha: partial.autocommitSha } : {}),
+    ...(partial?.restoredImporters !== undefined
+      ? { restoredImporters: partial.restoredImporters }
+      : {}),
+    ...(partial?.staleImporterCommitSha !== undefined
+      ? { staleImporterCommitSha: partial.staleImporterCommitSha }
+      : {}),
     ...(partial?.lock !== undefined ? { lock: partial.lock } : {}),
     diagnostics: [
       { ruleId, severity: "error", message, fixHint, ...(diagData ? { data: diagData } : {}) },
@@ -180,7 +190,13 @@ async function cleanupIntegrated(
   journalBase?: string,
   journalToleratedDirt?: Array<{ path: string; class: string }>,
   journalAutoResolved?: string[],
-  journalRemediation?: { reattachedTo?: string; autoCleaned?: string[]; autocommitSha?: string },
+  journalRemediation?: {
+    reattachedTo?: string;
+    autoCleaned?: string[];
+    autocommitSha?: string;
+    restoredImporters?: string[];
+    staleImporterCommitSha?: string;
+  },
   journalGateReport?: string,
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
@@ -307,6 +323,13 @@ async function cleanupIntegrated(
         : {}),
       ...(journalRemediation?.autocommitSha !== undefined
         ? { autocommitSha: journalRemediation.autocommitSha }
+        : {}),
+      ...(journalRemediation?.restoredImporters !== undefined &&
+      journalRemediation.restoredImporters.length > 0
+        ? { restoredImporters: journalRemediation.restoredImporters }
+        : {}),
+      ...(journalRemediation?.staleImporterCommitSha !== undefined
+        ? { staleImporterCommitSha: journalRemediation.staleImporterCommitSha }
         : {}),
       ...(journalGateReport !== undefined ? { gateReport: journalGateReport } : {}),
     });
@@ -687,6 +710,76 @@ async function integrateFlowBranchAttempt(
       opts.onProgress?.(`tolerated forge-local state: ${dirty.toleratedState.join(", ")}`);
     }
 
+    // RFC-1544 AC-2: referent-aware importer-prune resolution — before any
+    // remediation, so --autocommit can never sweep a foreign mission's live
+    // importer into a commit. `foreign-open-mission` restores the committed
+    // importer subtree (never a whole-file checkout — sibling lockfile diffs
+    // keep their own classification); `importer-prune-stale` accepts the
+    // prune as cleanup and commits it so dead residue stops churning.
+    let restoredImporters: string[] | undefined;
+    let staleImporterCommitSha: string | undefined;
+    if (dirty.entries.some((line) => line.slice(3).trim() === "pnpm-lock.yaml")) {
+      const { classifyDirt, resolveImporterReferents } = await import("../preflight.ts");
+      const { extractImporterBlock, insertImporterBlock } =
+        await import("../../mission/importer-block.ts");
+      const pruneVerdict = await classifyDirt(
+        branchWorktree,
+        io,
+        dirty.entries,
+        { runGit: git },
+        [],
+        (ids) => resolveImporterReferents(branchWorktree, io, ids),
+      );
+      const lockTolerated = pruneVerdict.tolerated.find((t) => t.path === "pnpm-lock.yaml");
+      if (
+        lockTolerated?.class === "foreign-open-mission" &&
+        lockTolerated.missionIds !== undefined
+      ) {
+        const head = await git(branchWorktree, io, ["show", "HEAD:pnpm-lock.yaml"]);
+        if (head.exitCode === 0) {
+          let next = await io.readFile(join(branchWorktree, "pnpm-lock.yaml"));
+          const restored: string[] = [];
+          for (const id of lockTolerated.missionIds) {
+            const key = `missions/${id}/workpiece`;
+            const block = extractImporterBlock(head.stdout, key);
+            if (block === null) continue;
+            const spliced = insertImporterBlock(next, key, block);
+            if (spliced === null) continue;
+            next = spliced;
+            restored.push(id);
+          }
+          if (restored.length > 0) {
+            await io.writeFile(join(branchWorktree, "pnpm-lock.yaml"), next);
+            restoredImporters = restored;
+            opts.onProgress?.(
+              `restored foreign mission importer(s): ${restored.map((id) => `missions/${id}/workpiece`).join(", ")}`,
+            );
+            dirty = await statusDirty(branchWorktree, io);
+          }
+        }
+      } else if (lockTolerated?.class === "importer-prune-stale") {
+        const add = await git(branchWorktree, io, ["add", "pnpm-lock.yaml"]);
+        const commit =
+          add.exitCode === 0
+            ? await gitCommit(
+                branchWorktree,
+                io,
+                ["commit", "-m", "chore(flow): prune stale mission importer"],
+                "integrate",
+              )
+            : add;
+        if (commit.exitCode === 0) {
+          staleImporterCommitSha = (
+            await git(branchWorktree, io, ["rev-parse", "HEAD"])
+          ).stdout.trim();
+          opts.onProgress?.(
+            `committed stale importer prune ${staleImporterCommitSha.slice(0, 9)} (${(lockTolerated.missionIds ?? []).map((id) => `missions/${id}/workpiece`).join(", ")})`,
+          );
+          dirty = await statusDirty(branchWorktree, io);
+        }
+      }
+    }
+
     // RFC-1531 remediation flags — before the dirty checks: --auto-clean
     // deletes ONLY disposable-class paths (closed allowlist — a work-class
     // member in the set deletes nothing and still refuses FLOW-INT-01, and
@@ -822,6 +915,8 @@ async function integrateFlowBranchAttempt(
             reattachedTo,
             autoCleaned,
             autocommitSha,
+            restoredImporters,
+            staleImporterCommitSha,
           },
           preflight.refuse.data,
         );
@@ -859,6 +954,8 @@ async function integrateFlowBranchAttempt(
             reattachedTo,
             autoCleaned,
             autocommitSha,
+            restoredImporters,
+            staleImporterCommitSha,
           },
           {
             entries,
@@ -1102,6 +1199,10 @@ async function integrateFlowBranchAttempt(
       ...(reattachedTo !== undefined ? { reattachedTo } : {}),
       ...(autoCleaned !== undefined && autoCleaned.length > 0 ? { autoCleaned } : {}),
       ...(autocommitSha !== undefined ? { autocommitSha } : {}),
+      ...(restoredImporters !== undefined && restoredImporters.length > 0
+        ? { restoredImporters }
+        : {}),
+      ...(staleImporterCommitSha !== undefined ? { staleImporterCommitSha } : {}),
       gateEngine: engine.source,
       diagnostics: warnings,
     };
@@ -1181,6 +1282,8 @@ async function integrateFlowBranchAttempt(
       reattachedTo: inner.reattachedTo,
       autoCleaned: inner.autoCleaned,
       autocommitSha: inner.autocommitSha,
+      restoredImporters: inner.restoredImporters,
+      staleImporterCommitSha: inner.staleImporterCommitSha,
     },
     inner.gate?.reportPath ?? undefined,
   );

@@ -9,13 +9,14 @@ git/status/invoke seams.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: initial — classifier shapes, refusal ordering, resolvability skips, FLOW-INT-12/13/14.</item>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -182,7 +183,9 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
       stubDeps({ lockfileDiff: PRUNE_DIFF }),
     );
     expect(result.ok).toBe(true);
-    expect(result.tolerated).toEqual([{ path: "pnpm-lock.yaml", class: "importer-prune" }]);
+    expect(result.tolerated).toEqual([
+      { path: "pnpm-lock.yaml", class: "importer-prune", missionIds: ["m000214"] },
+    ]);
   });
 
   it("primary tracked dirt refuses FLOW-INT-03 before validators", async () => {

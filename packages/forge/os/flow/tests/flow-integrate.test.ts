@@ -11,12 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
-  <history>RFC-1487, RFC-1515, RFC-1528</history>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -805,3 +805,106 @@ describe("flow.integrate — recoverable manifest drift (RFC-1546 AC-1)", () => 
   }, 20_000);
 });
 
+// RFC-1544 AC-2/AC-4: referent-aware importer-prune resolution inside
+// flow.integrate — a foreign checkout's open mission restores its importer
+// subtree (journaled), a stale prune commits as cleanup, and any prune diff
+// that is not importer-only still refuses FLOW-INT-01.
+const LOCK_WITH_IMPORTER = [
+  "importers:",
+  "",
+  "  .:",
+  "    dependencies: {}",
+  "",
+  "  missions/m-foreign/workpiece:",
+  "    dependencies:",
+  "      vite: 5.0.0",
+  "",
+  "packages:",
+  "  vite: 5.0.0",
+  "",
+].join("\n");
+const LOCK_PRUNED = [
+  "importers:",
+  "",
+  "  .:",
+  "    dependencies: {}",
+  "",
+  "packages:",
+  "  vite: 5.0.0",
+  "",
+].join("\n");
+
+describe("flow.integrate — mission importer referents (RFC-1544)", () => {
+  it("AC-2: a foreign-open-mission prune is auto-restored and journaled", async () => {
+    const repo = await governedRepo();
+    await commitIn(repo, "pnpm-lock.yaml", LOCK_WITH_IMPORTER);
+    const session = await openSession(repo, "importer-foreign");
+    await commitIn(session.worktree!, "session.txt", "work");
+    // The foreign checkout: a detached worktree holding the open mission.
+    const foreign = join(repo, "..", `foreign-holder-${Date.now()}`);
+    dirs.push(foreign);
+    const add = await gitExec(repo, ["worktree", "add", "--detach", foreign, "develop"]);
+    expect(add.exitCode).toBe(0);
+    await mkdir(join(foreign, "missions", "m-foreign", "workpiece"), { recursive: true });
+    await writeFile(join(foreign, "missions", "m-foreign", "mission.yaml"), 'state: "open"\n');
+    // The session worktree's install pruned the importer it cannot see.
+    await writeFile(join(session.worktree!, "pnpm-lock.yaml"), LOCK_PRUNED);
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics).toEqual([]);
+    expect(data.integrated).toBe(true);
+    expect(data.restoredImporters).toEqual(["m-foreign"]);
+    // The restored lockfile matched HEAD — no prune commit reached develop.
+    const headLock = await gitExec(repo, ["show", "develop:pnpm-lock.yaml"]);
+    expect(headLock.stdout).toContain("missions/m-foreign/workpiece:");
+  }, 30_000);
+
+  it("AC-4: a prune diff that is not importer-only still refuses FLOW-INT-01", async () => {
+    const repo = await governedRepo();
+    await commitIn(repo, "pnpm-lock.yaml", LOCK_WITH_IMPORTER);
+    const session = await openSession(repo, "importer-mixed");
+    await commitIn(session.worktree!, "session.txt", "work");
+    // Importer prune + an unrelated removal — ambiguous, never computed.
+    await writeFile(
+      join(session.worktree!, "pnpm-lock.yaml"),
+      LOCK_PRUNED.replace("  vite: 5.0.0\n", ""),
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-01");
+    expect(data.restoredImporters).toBeUndefined();
+    expect(data.staleImporterCommitSha).toBeUndefined();
+  }, 30_000);
+
+  it("a prune whose referent exists nowhere commits as stale cleanup", async () => {
+    const repo = await governedRepo();
+    await commitIn(repo, "pnpm-lock.yaml", LOCK_WITH_IMPORTER);
+    const session = await openSession(repo, "importer-stale");
+    await commitIn(session.worktree!, "session.txt", "work");
+    await writeFile(join(session.worktree!, "pnpm-lock.yaml"), LOCK_PRUNED);
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics).toEqual([]);
+    expect(data.integrated).toBe(true);
+    expect(data.staleImporterCommitSha).toBeDefined();
+    // The prune commit rode the branch into develop — residue is gone.
+    const headLock = await gitExec(repo, ["show", "develop:pnpm-lock.yaml"]);
+    expect(headLock.stdout).not.toContain("missions/m-foreign/workpiece:");
+  }, 30_000);
+});

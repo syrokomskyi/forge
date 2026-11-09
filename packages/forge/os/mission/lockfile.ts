@@ -16,12 +16,14 @@ restores the file committed at HEAD so the worktree returns clean.
   <item>RFC-1505: steps 3-5 — tracked lockfile restore, no side-effect commits</item>
   <item>RFC-1505: review r1 — durable projections and lockfile restore hardening</item>
   <item>RFC-1505: review r2 — clone-only sternsystem enumeration and mission-gated lockfile net</item>
+  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { execFileSync } from "../../src/utils/sync-fs.ts";
 import type { ExecOptions, ExecResult, WorkspaceIO } from "../../src/types.ts";
+import { extractImporterBlock, removeImporterBlock } from "./importer-block.ts";
 
 const LOCKFILE_NAME = "pnpm-lock.yaml";
 
@@ -81,4 +83,43 @@ export function execFileSyncAdapter(): Pick<WorkspaceIO, "exec"> {
       }
     },
   };
+}
+
+/**
+ * RFC-1544 AC-5: drop the listed missions' `missions/<id>/workpiece`
+ * importer subtrees from the tracked `pnpm-lock.yaml` and stage the result
+ * for the archive bookkeeping commit. The written bytes are HEAD-minus-
+ * importers — the post-archive `pnpm install` may churn unrelated lockfile
+ * state, and only the importer removal is legitimate tracked change, so
+ * everything else is discarded exactly like `restoreTrackedLockfile` did.
+ *
+ * Returns `pruned` = mission ids whose importer block was actually removed;
+ * `staged` = whether `pnpm-lock.yaml` reached the index. When no listed
+ * importer exists at HEAD the tracked file is restored instead (the old
+ * churn-discard behavior) and `staged` stays false.
+ */
+export async function pruneMissionImportersFromLockfile(
+  root: string,
+  missionIds: string[],
+  io: Pick<WorkspaceIO, "exec" | "writeFile">,
+): Promise<{ pruned: string[]; staged: boolean }> {
+  const head = await io.exec("git", ["show", `HEAD:${LOCKFILE_NAME}`], { cwd: root });
+  if (head.exitCode !== 0) return { pruned: [], staged: false };
+  let next = head.stdout;
+  const pruned: string[] = [];
+  for (const missionId of missionIds) {
+    const key = `missions/${missionId}/workpiece`;
+    if (extractImporterBlock(next, key) === null) continue;
+    next = removeImporterBlock(next, key);
+    pruned.push(missionId);
+  }
+  const target = path.join(root, LOCKFILE_NAME);
+  if (pruned.length === 0) {
+    // Nothing legitimately prunes — keep the discard-churn restore.
+    await io.writeFile(target, head.stdout);
+    return { pruned, staged: false };
+  }
+  await io.writeFile(target, next);
+  const add = await io.exec("git", ["add", LOCKFILE_NAME], { cwd: root });
+  return { pruned, staged: add.exitCode === 0 };
 }
