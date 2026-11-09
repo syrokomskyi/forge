@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: remediation flags --reattach/--auto-clean/--autocommit on the classified dirty set, FLOW-INT-17 remediation-failure refusals, classified FLOW-INT-01 data</item>
   <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1537</history>
+  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1536, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -67,7 +67,7 @@ import {
 } from "../locks.ts";
 import {
   appendJournal,
-readJournal,
+  readJournal,
   commonGitDir,
   FlowRegistrySchemaError,
   INTEGRATE_LOCK_RELATIVE_PATH,
@@ -302,8 +302,7 @@ async function cleanupIntegrated(
       ...(journalRemediation?.reattachedTo !== undefined
         ? { reattachedTo: journalRemediation.reattachedTo }
         : {}),
-      ...(journalRemediation?.autoCleaned !== undefined &&
-        journalRemediation.autoCleaned.length > 0
+      ...(journalRemediation?.autoCleaned !== undefined && journalRemediation.autoCleaned.length > 0
         ? { autoCleaned: journalRemediation.autoCleaned }
         : {}),
       ...(journalRemediation?.autocommitSha !== undefined
@@ -349,8 +348,9 @@ export async function integrateFlowBranch(
     try {
       const common = await commonGitDir(io, repoRoot);
       const sha =
-        (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/heads/${data.branch}`]))
-          .stdout.trim() || "unknown";
+        (
+          await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/heads/${data.branch}`])
+        ).stdout.trim() || "unknown";
       await appendJournal(io, common, {
         event: "integrate-refusal",
         branch: data.branch,
@@ -394,6 +394,8 @@ async function integrateFlowBranchAttempt(
     autoClean?: boolean;
     /** RFC-1531: sweep remaining dirty entries into a fixed-subject commit. */
     autocommit?: boolean;
+    /** RFC-1543: seconds to wait for live foreign claim-holders on primary (default 600, 0 = fail-fast). */
+    waitForeignSeconds?: number;
   },
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
@@ -503,8 +505,11 @@ async function integrateFlowBranchAttempt(
           {
             ruleId: "FLOW-07",
             severity: "error",
-            message: `registry entry for ${branch} names worktree ${wtPath}, which does not exist (vanished)` +
-              (wouldReattach !== undefined ? ` — --reattach would recreate it at ${wouldReattach}` : ""),
+            message:
+              `registry entry for ${branch} names worktree ${wtPath}, which does not exist (vanished)` +
+              (wouldReattach !== undefined
+                ? ` — --reattach would recreate it at ${wouldReattach}`
+                : ""),
             fixHint:
               "re-run with --reattach to recreate the worktree at its recorded path, or run flow.discard to drop the registry entry and force-delete the branch",
             data: { vanished: true, ...(wouldReattach !== undefined ? { wouldReattach } : {}) },
@@ -631,8 +636,7 @@ async function integrateFlowBranchAttempt(
     // worktree with the branch — a foreign tree squats there.
     const occupied =
       live === null && liveEntry.worktree !== null && (await io.exists(liveEntry.worktree));
-    const vanished =
-      !occupied && (branchWorktree === null || !(await io.exists(branchWorktree)));
+    const vanished = !occupied && (branchWorktree === null || !(await io.exists(branchWorktree)));
     if (opts.reattach === true && occupied) {
       return refuse(
         "FLOW-INT-17",
@@ -699,8 +703,7 @@ async function integrateFlowBranchAttempt(
       // — AC-4 names importer-prune a refusal class: restoring/committing a
       // lockfile is a content decision, never a cleanup step.
       const blocker = classified.filter(
-        (c) =>
-          c.class !== "disposable" && !AUTO_CLEAN_PASS_CLASSES.includes(c.class),
+        (c) => c.class !== "disposable" && !AUTO_CLEAN_PASS_CLASSES.includes(c.class),
       );
       if (opts.autoClean === true) {
         // A blocker refuses only when nothing downstream will commit it:
@@ -753,11 +756,12 @@ async function integrateFlowBranchAttempt(
             { branch, developBefore, autoCleaned },
           );
         }
-        const commit = await gitCommit(branchWorktree, io, [
-          "commit",
-          "-m",
-          SWEEP_COMMIT_SUBJECT,
-        ], "integrate");
+        const commit = await gitCommit(
+          branchWorktree,
+          io,
+          ["commit", "-m", SWEEP_COMMIT_SUBJECT],
+          "integrate",
+        );
         if (commit.exitCode !== 0) {
           return refuse(
             "FLOW-INT-17",
@@ -766,9 +770,7 @@ async function integrateFlowBranchAttempt(
             { branch, developBefore, autoCleaned },
           );
         }
-        autocommitSha = (
-          await git(branchWorktree, io, ["rev-parse", "HEAD"])
-        ).stdout.trim();
+        autocommitSha = (await git(branchWorktree, io, ["rev-parse", "HEAD"])).stdout.trim();
         opts.onProgress?.(
           `autocommit: swept ${paths.length} path(s) into ${autocommitSha.slice(0, 9)} (${SWEEP_COMMIT_SUBJECT})`,
         );
@@ -793,6 +795,8 @@ async function integrateFlowBranchAttempt(
         worktreeDirty: dirty,
         invoke: opts.invoke,
         commandRegistry: opts.commandRegistry,
+        waitForeignSeconds: opts.waitForeignSeconds,
+        onProgress: opts.onProgress,
       });
       toleratedDirt = preflight.tolerated;
       for (const skipped of preflight.skipped) {
@@ -902,11 +906,7 @@ async function integrateFlowBranchAttempt(
       let rebase = await git(branchWorktree, io, ["rebase", "develop"]);
       let guard = 0;
       while (rebase.exitCode !== 0 && guard++ < 8) {
-        const conflicts = await git(branchWorktree, io, [
-          "diff",
-          "--name-only",
-          "--diff-filter=U",
-        ]);
+        const conflicts = await git(branchWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
         const paths = conflicts.stdout
           .split("\n")
           .map((l) => l.trim())
@@ -975,19 +975,10 @@ async function integrateFlowBranchAttempt(
           autoResolved.push(o.path);
         }
         if (failed) break;
-        rebase = await git(branchWorktree, io, [
-          "-c",
-          "core.editor=true",
-          "rebase",
-          "--continue",
-        ]);
+        rebase = await git(branchWorktree, io, ["-c", "core.editor=true", "rebase", "--continue"]);
       }
       if (rebase.exitCode !== 0) {
-        const conflicts = await git(branchWorktree, io, [
-          "diff",
-          "--name-only",
-          "--diff-filter=U",
-        ]);
+        const conflicts = await git(branchWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
         const paths = conflicts.stdout
           .split("\n")
           .map((l) => l.trim())
@@ -1008,7 +999,10 @@ async function integrateFlowBranchAttempt(
     const { resolveGateEngine } = await import("../gate-engine.ts");
     const engine = await resolveGateEngine(branchWorktree, primary, io);
     const warnings: Diagnostic[] = [];
-    if (engine.source === "primary" && (await io.exists(join(primary, "hooks", "integration-gate.sh")))) {
+    if (
+      engine.source === "primary" &&
+      (await io.exists(join(primary, "hooks", "integration-gate.sh")))
+    ) {
       warnings.push({
         ruleId: "FLOW-INT-16",
         severity: "warning",
@@ -1222,6 +1216,11 @@ export async function runFlowIntegrate(
     reattach: input.flags["reattach"] === true,
     autoClean: input.flags["auto-clean"] === true,
     autocommit: input.flags["autocommit"] === true,
+    waitForeignSeconds:
+      typeof input.flags["wait-foreign"] === "string" ||
+      typeof input.flags["wait-foreign"] === "number"
+        ? Number(input.flags["wait-foreign"])
+        : undefined,
   });
 
   const refused = data.diagnostics.find((d) => d.severity === "error");

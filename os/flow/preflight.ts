@@ -14,12 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1537: regenerable dirt classifier (importer-materialize, skill-twin-sync), cheap-first open-mission check (WT-GATE-01), toleratedState surfacing</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: shared DirtyClass enum via dirty-classify.ts (Q-4), classified FLOW-INT-01/03 data.entries, classifyDirtyEntries for the remediation flags</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
-  <history>RFC-1528</history>
+  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <history>RFC-1528, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -33,11 +33,7 @@ import type {
   WorkspaceIO,
 } from "../../src/types.ts";
 import { loadLiveCommandInventory } from "../../src/utils/command-inventory.ts";
-import {
-  isGeneratedContent,
-  isGeneratedPathName,
-  REGEN_FLAGS,
-} from "../core/archive-regen.ts";
+import { isGeneratedContent, isGeneratedPathName, REGEN_FLAGS } from "../core/archive-regen.ts";
 import { openMissionsIn } from "../mission/open-missions.ts";
 import {
   classifyDirtyPath,
@@ -46,6 +42,7 @@ import {
   type DirtyClass,
 } from "./dirty-classify.ts";
 import { currentBranch, git, statusTracked } from "./git.ts";
+import { claimCoversPath, liveClaims, type OpClaim } from "./ops-registry.ts";
 
 export type LockfileClassification = "importer-prune-only" | "other";
 
@@ -176,6 +173,13 @@ export interface DirtVerdict {
   tolerated: ToleratedEntry[];
   /** Porcelain lines that match no declared regenerable shape — still refuse. */
   unattributed: string[];
+  /**
+   * RFC-1543: unattributed paths covered by a LIVE op-claim — class
+   * `in-flight-foreign`. They never block silently: the caller either waits
+   * for the holder or refuses FLOW-INT-03 naming it. Resolved only for the
+   * primary checkout — worktrees are single-owner.
+   */
+  foreignInFlight: { path: string; holder: OpClaim }[];
 }
 
 const TWIN_ROOT = ".agents/skills/";
@@ -234,9 +238,11 @@ export async function classifyDirt(
   io: WorkspaceIO,
   entries: string[],
   deps: { runGit: typeof git } = { runGit: git },
+  claims: OpClaim[] = [],
 ): Promise<DirtVerdict> {
   const tolerated: ToleratedEntry[] = [];
   const unattributed: string[] = [];
+  const foreignInFlight: { path: string; holder: OpClaim }[] = [];
   const byPath = new Map<string, string[]>();
   for (const line of entries) {
     const p = line.slice(3).trim();
@@ -344,7 +350,20 @@ export async function classifyDirt(
     }
     unattributed.push(...lines);
   }
-  return { tolerated, unattributed };
+  // RFC-1543 AC-3: unattributed paths covered by a live claim reclassify as
+  // in-flight-foreign — every other unattributed path stays work-class.
+  if (claims.length > 0) {
+    const stillUnattributed: string[] = [];
+    for (const line of unattributed) {
+      const path = line.slice(3).trim();
+      const holder = claims.find((c) => claimCoversPath(c, path));
+      if (holder !== undefined) foreignInFlight.push({ path, holder });
+      else stillUnattributed.push(line);
+    }
+    unattributed.length = 0;
+    unattributed.push(...stillUnattributed);
+  }
+  return { tolerated, unattributed, foreignInFlight };
 }
 
 /**
@@ -365,6 +384,9 @@ export async function classifyDirtyEntries(
     path: t.path,
     class: t.class,
   }));
+  for (const f of verdict.foreignInFlight) {
+    out.push({ path: f.path, class: "in-flight-foreign" });
+  }
   for (const line of verdict.unattributed) {
     const path = line.slice(3).trim();
     out.push({ path, class: classifyDirtyPath(path) });
@@ -414,6 +436,12 @@ export async function runIntegratePreflight(
     /** Already-computed statusDirty() of the branch worktree. */
     worktreeDirty: { entries: string[]; toleratedState: string[] };
     invoke?: ForgeInvokeCommand;
+    /**
+     * RFC-1543 AC-4: seconds to wait for live foreign claim-holders before
+     * FLOW-INT-03 refuses — default 600, 0 restores fail-fast.
+     */
+    waitForeignSeconds?: number;
+    onProgress?: (line: string) => void;
     commandRegistry?: CommandRegistry;
     /** Test seam — overrides the live inventory union (registry + command manifest). */
     commands?: ForgeRegisteredCommandInfo[];
@@ -450,7 +478,8 @@ export async function runIntegratePreflight(
         refuse: {
           ruleId: "WT-GATE-01",
           message: `worktree has ${openMissions.length} open mission(s): ${openMissions.join(", ")}`,
-          fixHint: "close or abort the mission(s) in the worktree before integrating or tearing down",
+          fixHint:
+            "close or abort the mission(s) in the worktree before integrating or tearing down",
           data: { openMissions },
         },
       };
@@ -519,19 +548,56 @@ export async function runIntegratePreflight(
   // classification; the post-gate check stays (primary can dirty mid-gate).
   checked.push("primary-dirty");
   const primaryBranch = await deps.runCurrentBranch(opts.primary, io);
-  const primaryDirty = await deps.runStatusTracked(opts.primary, io);
-  if (primaryDirty.entries.length > 0) {
-    const verdict = await classifyDirt(opts.primary, io, primaryDirty.entries, {
-      runGit: deps.runGit,
-    });
+  // RFC-1543 AC-4: primary-side foreign claims get a bounded wait — the poll
+  // re-reads both dirt and claims (≤30s cadence) until they clear or the
+  // budget expires; unattributed work refuses instantly as before.
+  const waitForeignMs = Math.max(0, (opts.waitForeignSeconds ?? 600) * 1000);
+  const foreignDeadline = Date.now() + waitForeignMs;
+  let primaryClean = false;
+  for (;;) {
+    const primaryDirty = await deps.runStatusTracked(opts.primary, io);
+    if (primaryDirty.entries.length === 0) {
+      primaryClean = true;
+      break;
+    }
+    const verdict = await classifyDirt(
+      opts.primary,
+      io,
+      primaryDirty.entries,
+      { runGit: deps.runGit },
+      await liveClaims(opts.primary, io),
+    );
     tolerated.push(...verdict.tolerated);
-    if (primaryBranch !== "develop" || verdict.unattributed.length > 0) {
+    const foreignOnly =
+      verdict.unattributed.length === 0 &&
+      verdict.foreignInFlight.length > 0 &&
+      primaryBranch === "develop";
+    if (foreignOnly && Date.now() < foreignDeadline) {
+      const holders = verdict.foreignInFlight.map(
+        (f) =>
+          `${f.holder.command} ${f.holder.opId} (pid ${f.holder.pid}, started ${f.holder.startedAt})`,
+      );
+      opts.onProgress?.(
+        `primary held by foreign op(s): ${holders.join("; ")} — waiting up to ${Math.ceil((foreignDeadline - Date.now()) / 1000)}s`,
+      );
+      await new Promise((r) => setTimeout(r, Math.min(30_000, foreignDeadline - Date.now())));
+      continue;
+    }
+    if (
+      primaryBranch !== "develop" ||
+      verdict.unattributed.length > 0 ||
+      verdict.foreignInFlight.length > 0
+    ) {
       const lockfile = await classifyDirtyLockfile(
         opts.primary,
         io,
         verdict.unattributed,
         deps.runGit,
       );
+      const holderNote =
+        verdict.foreignInFlight.length > 0
+          ? ` — in-flight holder(s): ${verdict.foreignInFlight.map((f) => `${f.holder.command} ${f.holder.opId} (pid ${f.holder.pid})`).join("; ")}`
+          : "";
       return {
         ok: false,
         checked,
@@ -542,7 +608,10 @@ export async function runIntegratePreflight(
           message:
             (primaryBranch !== "develop"
               ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
-              : `primary worktree has ${verdict.unattributed.length} uncommitted change(s)`) +
+              : verdict.unattributed.length > 0
+                ? `primary worktree has ${verdict.unattributed.length} uncommitted change(s)`
+                : `primary worktree held by ${verdict.foreignInFlight.length} in-flight foreign op(s)`) +
+            holderNote +
             (verdict.tolerated.length > 0
               ? ` — tolerated regenerable state: ${verdict.tolerated.map((t) => `${t.path} (${t.class})`).join(", ")}`
               : "") +
@@ -554,13 +623,23 @@ export async function runIntegratePreflight(
               const path = line.slice(3).trim();
               return { path, class: classifyDirtyPath(path) };
             }),
+            foreignHolders: verdict.foreignInFlight.map((f) => ({
+              path: f.path,
+              opId: f.holder.opId,
+              command: f.holder.command,
+              pid: f.holder.pid,
+              startedAt: f.holder.startedAt,
+            })),
             toleratedDirt: verdict.tolerated,
             ...(lockfile !== null ? { lockfileClassification: lockfile } : {}),
           },
         },
       };
     }
-  } else if (primaryBranch !== "develop") {
+    primaryClean = true;
+    break;
+  }
+  if (!primaryClean && primaryBranch !== "develop") {
     return {
       ok: false,
       checked,

@@ -11,10 +11,23 @@ and the sweep subject stays the fixed literal the RFC pins.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1531: closed dirty-path classifier + remediation flags on flow.integrate</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
+  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
 </CHANGE_SUMMARY>
 */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, afterEach } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { ambientIo } from "../../../src/utils/io.ts";
+
+const dirs: string[] = [];
+afterEach(async () => {
+  for (const dir of dirs.splice(0)) {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 
 import {
   AUTO_CLEAN_PASS_CLASSES,
@@ -90,9 +103,7 @@ describe("classifyDirtyTree / summarizeClasses", () => {
   });
 
   it("a trailing-slash untracked dir still classifies on its name", () => {
-    expect(classifyDirtyTree(["?? tmp-e2e/"])).toEqual([
-      { path: "tmp-e2e/", class: "disposable" },
-    ]);
+    expect(classifyDirtyTree(["?? tmp-e2e/"])).toEqual([{ path: "tmp-e2e/", class: "disposable" }]);
   });
 });
 
@@ -114,3 +125,49 @@ describe("constants the RFC pins", () => {
     expect(AUTO_CLEAN_PASS_CLASSES).not.toContain("work");
   });
 });
+
+// RFC-1543 AC-3/AC-5: classifyDirt's claims step — unattributed paths covered
+// by a live op-claim reclassify in-flight-foreign; everything else stays
+// work. The classifier consumes the claim LIST the caller resolved —
+// liveness itself is ops-registry's job.
+describe("classifyDirt — op-claim attribution (RFC-1543)", () => {
+  const liveClaim: import("../ops-registry.ts").OpClaim = {
+    schema: "forge/op-claim@1",
+    opId: "op-live",
+    command: "leitstand.ship",
+    pid: process.pid,
+    host: "h",
+    startedAt: new Date().toISOString(),
+    heartbeatAt: new Date().toISOString(),
+    workspaceRoot: "/repo",
+    paths: ["docs/", "pnpm-lock.yaml"],
+  };
+
+  it("an unattributed path under a live claim classifies in-flight-foreign", async () => {
+    const { classifyDirt } = await import("../preflight.ts");
+    const repo = await mkdtemp(join(tmpdir(), "dirt-"));
+    dirs.push(repo);
+    const verdict = await classifyDirt(
+      repo,
+      ambientIo,
+      [" M src/work.ts", " M docs/rfcs/rfc-1.md"],
+      { runGit: async () => ({ exitCode: 1, stdout: "", stderr: "" }) },
+      [liveClaim],
+    );
+    expect(verdict.foreignInFlight).toEqual([{ path: "docs/rfcs/rfc-1.md", holder: liveClaim }]);
+    expect(verdict.unattributed).toEqual([" M src/work.ts"]);
+  });
+
+  it("no claims → identical unattributed output (AC-5: claims only add tolerance)", async () => {
+    const { classifyDirt } = await import("../preflight.ts");
+    const repo = await mkdtemp(join(tmpdir(), "dirt-"));
+    dirs.push(repo);
+    const entries = [" M docs/rfcs/rfc-1.md", " M src/work.ts"];
+    const withClaims = await classifyDirt(repo, ambientIo, entries, {
+      runGit: async () => ({ exitCode: 1, stdout: "", stderr: "" }),
+    });
+    expect(withClaims.unattributed).toEqual(entries);
+    expect(withClaims.foreignInFlight).toEqual([]);
+  });
+});
+

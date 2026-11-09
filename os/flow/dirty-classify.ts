@@ -18,6 +18,7 @@ classifyDirt, which emits the same enum.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1531: closed dirty-path classifier + remediation flags on flow.integrate</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
+  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -40,6 +41,7 @@ export type DirtyClass =
   | "importer-prune"
   | "importer-materialize"
   | "skill-twin-sync"
+  | "in-flight-foreign"
   | "work";
 
 export interface ClassifiedDirtyEntry {
