@@ -11,14 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
-
-Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
-  <history>RFC-1487, RFC-1515</history>
+  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <history>RFC-1487, RFC-1515, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -330,7 +328,9 @@ describe("flow.integrate — RFC-1515 lifecycle hardening", () => {
     });
 
     const common = await commonGitDir(ambientIo, repo);
-    await (await import("../registry.ts")).appendJournal(ambientIo, common, {
+    await (
+      await import("../registry.ts")
+    ).appendJournal(ambientIo, common, {
       event: "hold",
       branch: session.branch!,
       sha: await sha(repo, session.branch!),
@@ -503,10 +503,8 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
     const session = await openSession(repo, "genconf");
     await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
     await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
-    const sessionIndex =
-      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n";
-    const developIndex =
-      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n";
+    const sessionIndex = "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n";
+    const developIndex = "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n";
     await commitIn(session.worktree!, "docs/rfcs/index.yaml", sessionIndex);
     await commitIn(repo, "docs/rfcs/index.yaml", developIndex);
 
@@ -630,15 +628,82 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
     expect(data.diagnostics[0]?.message).toContain("conflict markers");
   }, 20_000);
 
+  it("primary dirt held only by a live foreign claim waits, then refuses FLOW-INT-03 naming the holder (RFC-1543 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "foreign");
+    await commitIn(session.worktree!, "f.txt", "f");
+    await commitIn(repo, "claimed.txt", "base");
+    // A live foreign op claims the file it is about to dirty on primary.
+    const { claimOp } = await import("../ops-registry.ts");
+    const { writeFile: wf } = await import("node:fs/promises");
+    await claimOp(repo, ambientIo, {
+      opId: "ship-001",
+      command: "leitstand.ship",
+      workspaceRoot: repo,
+      paths: ["claimed.txt"],
+    });
+    await wf(join(repo, "claimed.txt"), "dirty-in-flight");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      waitForeignSeconds: 1,
+    });
+
+    expect(data.integrated).toBe(false);
+    const diag = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-03");
+    expect(diag).toBeDefined();
+    expect(diag?.message).toContain("leitstand.ship ship-001");
+    expect((diag?.data?.["foreignHolders"] as { opId: string }[] | undefined)?.[0]?.opId).toBe(
+      "ship-001",
+    );
+  }, 30_000);
+
+  it("foreign-held primary dirt clears mid-wait and the integration proceeds (RFC-1543 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "foreign2");
+    await commitIn(session.worktree!, "f2.txt", "f2");
+    await commitIn(repo, "claimed.txt", "base");
+    const { claimOp, releaseOp } = await import("../ops-registry.ts");
+    const { writeFile: wf } = await import("node:fs/promises");
+    await claimOp(repo, ambientIo, {
+      opId: "ship-002",
+      command: "leitstand.ship",
+      workspaceRoot: repo,
+      paths: ["claimed.txt"],
+    });
+    await wf(join(repo, "claimed.txt"), "dirty-in-flight");
+
+    // The foreign op finishes mid-wait: claim released, dirt committed away.
+    const clearer = setTimeout(() => {
+      void (async () => {
+        await releaseOp(repo, ambientIo, "ship-002");
+        await wf(join(repo, "claimed.txt"), "committed-away");
+        await gitExec(repo, ["add", "claimed.txt"]);
+        await gitExec(repo, ["commit", "-m", "foreign op lands its write"]);
+      })();
+    }, 1200);
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      waitForeignSeconds: 8,
+    });
+    clearTimeout(clearer);
+
+    expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(data.integrated).toBe(true);
+  }, 30_000);
+
   it("a mixed generated/non-generated conflict set still refuses FLOW-INT-02 (AC-3 boundary)", async () => {
     const repo = await governedRepo();
     const session = await openSession(repo, "mixed");
     await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
     await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
-    const sessionIndex =
-      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n";
-    const developIndex =
-      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n";
+    const sessionIndex = "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n";
+    const developIndex = "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n";
     await commitIn(session.worktree!, "docs/rfcs/index.yaml", sessionIndex);
     await commitIn(session.worktree!, "real.txt", "session-side");
     await commitIn(repo, "docs/rfcs/index.yaml", developIndex);
@@ -719,9 +784,11 @@ describe("flow.integrate — recoverable manifest drift (RFC-1546 AC-1)", () => 
       branch: session.branch!,
       io: ambientIo,
       worktreeDirty: { entries: [], toleratedState: [] },
-      commands: ["ecosystem.manifest.validate", "ecosystem.manifest.generate", "friction.validate"].map(
-        cmd,
-      ),
+      commands: [
+        "ecosystem.manifest.validate",
+        "ecosystem.manifest.generate",
+        "friction.validate",
+      ].map(cmd),
       invoke: async (name) => {
         invoked.push(name);
         if (name === "ecosystem.manifest.validate") {
@@ -737,3 +804,4 @@ describe("flow.integrate — recoverable manifest drift (RFC-1546 AC-1)", () => 
     expect(invoked).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
   }, 20_000);
 });
+

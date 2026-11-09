@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517</history>
+  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +34,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
   const { runFlowPush } = await import("./handlers/flow-push.ts");
   const { runFlowPublicationRetire } = await import("./handlers/flow-publication-retire.ts");
   const { runFlowStatus } = await import("./handlers/flow-status.ts");
+  const { runFlowPeers } = await import("./handlers/flow-peers.ts");
   const { runFlowUnhold } = await import("./handlers/flow-unhold.ts");
   const { runFlowVersion } = await import("./handlers/flow-version.ts");
   return {
@@ -322,6 +323,12 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             required: false,
             description:
               "RFC-1531: sweep all remaining dirty entries into the fixed-subject commit 'chore(flow): sweep session leftovers' before the rebase.",
+          },
+          "wait-foreign": {
+            kind: "string",
+            required: false,
+            description:
+              "RFC-1543: seconds to wait for live foreign op-claim holders on the primary before FLOW-INT-03 refuses (default 600; 0 restores fail-fast).",
           },
           "dry-run": {
             kind: "boolean",
@@ -857,6 +864,26 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
         cacheable: false,
         flags: {},
         execute: runFlowStatus,
+      },
+      {
+        name: "flow.peers",
+        description:
+          "Read-only live resource map (RFC-1543): integrate.lock holder, " +
+          "live op-claims grouped by checkout, open missions per worktree " +
+          "and registered in-flight branches — the forge/peers@1 report a " +
+          "second session reads before waiting on a held primary.",
+        scope: "workspace",
+        contract: "flow",
+        rules: [],
+        mutatesState: false,
+        execOnReadOnly: true,
+        writes: [],
+        coverage: "operator",
+        coverageNote: "shared-checkout visibility — RFC-1543",
+        reads: [".git/**"],
+        cacheable: false,
+        flags: {},
+        execute: runFlowPeers,
       },
     ],
     pipelines: [],
