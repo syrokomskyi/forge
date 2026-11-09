@@ -10,6 +10,7 @@ reported→integrated, and --mark-failed.</purpose>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -264,6 +265,21 @@ describe("system.task.collect", () => {
     const result = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
     expect(result.exitCode).toBe(1);
     expect(result.data?.diagnostics.some((d) => d.ruleId === "SYSTEM-TASK-02")).toBe(true);
+  });
+
+  it("RFC-1546 AC-5: a refusal's text summary names the ruleId and message", async () => {
+    const productRoot = await makeProduct();
+    const systemRoot = await makeSystemRepo({
+      "system/system.yaml": VALID_SYSTEM_YAML,
+      "system/products.yaml": VALID_PRODUCTS_YAML,
+      "system/edges.yaml": VALID_EDGES_YAML,
+      "system/products.local.yaml": localMapFor({ alpha: productRoot }),
+      "queue/tasks/T-0001.yaml": taskYaml({ state: "ready" }),
+    });
+    const result = await runSystemTaskCollect(input({ task: "T-0001" }), makeContext(systemRoot));
+    expect(result.exitCode).toBe(1);
+    expect(result.summary).toContain("SYSTEM-TASK-02");
+    expect(result.summary).toContain("T-0001 is ready");
   });
 });
 

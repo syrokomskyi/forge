@@ -19,6 +19,7 @@ sha — never from report commit ids. One call may apply dispatched → reported
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
   <item>RFC-1509: address RFC-1509 review r2 — mark-failed without product, journal-read warning, status map diagnostics, V-49 deviations</item>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -290,11 +291,16 @@ export async function runSystemTaskCollect(
     },
     exitCode: errors > 0 ? 1 : 0,
     summary:
-      task === null
-        ? `system.task.collect refused (${errors} error(s))`
-        : dryRun
-          ? `system.task.collect would process ${task.id} (state ${task.state})`
-          : `system.task.collect: ${task.id} is now ${task.state}${task.integratedCommit ? ` (integrated ${task.integratedCommit.slice(0, 9)})` : ""}`,
+      errors > 0
+        ? `system.task.collect refused — ${diagnostics
+            .filter((d) => d.severity === "error")
+            .map((d) => `${d.ruleId}: ${d.message}`)
+            .join("; ")}`
+        : task === null
+          ? "system.task.collect refused (0 error(s))"
+          : dryRun
+            ? `system.task.collect would process ${task.id} (state ${task.state})`
+            : `system.task.collect: ${task.id} is now ${task.state}${task.integratedCommit ? ` (integrated ${task.integratedCommit.slice(0, 9)})` : ""}`,
     nextSteps:
       task?.state === "reported"
         ? [{ action: "integrate the product branch, then re-run system.task.collect", kind: "optional" }]

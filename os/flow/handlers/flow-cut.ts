@@ -20,12 +20,12 @@ released with no mutation.</purpose>
   <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
-  <history>RFC-1490, RFC-1491, RFC-1494</history>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <history>RFC-1490, RFC-1491, RFC-1494, RFC-1502</history>
 </CHANGE_SUMMARY>
 */
 
@@ -278,17 +278,34 @@ async function planOrdinaryCut(
       .split(",")
       .map((t) => t.trim())
       .filter((t) => t.length > 0);
-    const existence = await Promise.all(
-      named.map(
-        async (t) =>
-          (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/tags/${t}`])).exitCode ===
-          0,
+    // RFC-1546: the subject only keys a resume when its tags encode the same
+    // line set this invocation requested — a mismatched --lines cut proceeds
+    // fresh instead of "resuming" somebody else's release declaration.
+    const byPrefixDesc = [...lines].sort((a, b) => b.tagPrefix.length - a.tagPrefix.length);
+    const subjectLineIds = [
+      ...new Set(
+        named
+          .map((t) => byPrefixDesc.find((l) => t.startsWith(l.tagPrefix))?.id)
+          .filter((id): id is string => id !== undefined),
       ),
-    );
-    if (named.length > 0 && existence.every((e) => e) && mainTip === ref) {
-      return { kind: "completed", ref, tags: named, allLines: lines, mainTip };
+    ].sort();
+    const requestedIds = selected.map((l) => l.id).sort();
+    const linesMatch =
+      subjectLineIds.length === requestedIds.length &&
+      subjectLineIds.every((id, i) => id === requestedIds[i]);
+    if (linesMatch) {
+      const existence = await Promise.all(
+        named.map(
+          async (t) =>
+            (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/tags/${t}`])).exitCode ===
+            0,
+        ),
+      );
+      if (named.length > 0 && existence.every((e) => e) && mainTip === ref) {
+        return { kind: "completed", ref, tags: named, allLines: lines, mainTip };
+      }
+      if (named.length > 0) resumeTags = named;
     }
-    if (named.length > 0) resumeTags = named;
   }
 
   const cutLines: CutLine[] = [];

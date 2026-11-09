@@ -11,14 +11,14 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
 
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
-  <history>RFC-1487</history>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <history>RFC-1487, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 
@@ -556,5 +556,86 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
     expect(data.integrated).toBe(false);
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
     expect(data.diagnostics[0]?.message).toContain("real.txt");
+  }, 20_000);
+});
+
+describe("flow.integrate — recoverable manifest drift (RFC-1546 AC-1)", () => {
+  it("sole FLOW-INT-12 drift regenerates the manifest and continues", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "regen");
+    const { runIntegratePreflight } = await import("../preflight.ts");
+    const invoked: string[] = [];
+    let validateCalls = 0;
+    const cmd = (name: string) => ({
+      name,
+      provider: "workspace" as const,
+      description: name,
+      scope: "workspace" as const,
+    });
+    const preflight = await runIntegratePreflight({
+      primary: repo,
+      branchWorktree: session.worktree!,
+      branch: session.branch!,
+      io: ambientIo,
+      worktreeDirty: { entries: [], toleratedState: [] },
+      commands: [
+        "ecosystem.manifest.validate",
+        "ecosystem.manifest.generate",
+        "rfc.validate",
+        "friction.validate",
+      ].map(cmd),
+      invoke: async (name) => {
+        invoked.push(name);
+        if (name === "ecosystem.manifest.validate") {
+          validateCalls++;
+          return validateCalls === 1
+            ? { ok: false, exitCode: 1, summary: "stale: docs/ecosystem.generated.yaml" }
+            : { ok: true, exitCode: 0 };
+        }
+        return { ok: true, exitCode: 0 };
+      },
+    });
+    expect(preflight.ok).toBe(true);
+    expect(invoked).toEqual([
+      "ecosystem.manifest.validate",
+      "friction.validate",
+      "ecosystem.manifest.generate",
+      "ecosystem.manifest.validate",
+    ]);
+  }, 20_000);
+
+  it("a second violation alongside drift refuses without regenerating", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "regen");
+    const { runIntegratePreflight } = await import("../preflight.ts");
+    const invoked: string[] = [];
+    const cmd = (name: string) => ({
+      name,
+      provider: "workspace" as const,
+      description: name,
+      scope: "workspace" as const,
+    });
+    const preflight = await runIntegratePreflight({
+      primary: repo,
+      branchWorktree: session.worktree!,
+      branch: session.branch!,
+      io: ambientIo,
+      worktreeDirty: { entries: [], toleratedState: [] },
+      commands: ["ecosystem.manifest.validate", "ecosystem.manifest.generate", "friction.validate"].map(
+        cmd,
+      ),
+      invoke: async (name) => {
+        invoked.push(name);
+        if (name === "ecosystem.manifest.validate") {
+          return { ok: false, exitCode: 1, summary: "stale: docs/ecosystem.generated.yaml" };
+        }
+        // friction.validate is also red — drift is not the sole violation.
+        return { ok: false, exitCode: 1, summary: `${name} failed` };
+      },
+    });
+    expect(preflight.ok).toBe(false);
+    // The coexisting refusal fires; the regeneration never ran.
+    expect(preflight.refuse?.ruleId).toBe("FLOW-INT-14");
+    expect(invoked).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
   }, 20_000);
 });

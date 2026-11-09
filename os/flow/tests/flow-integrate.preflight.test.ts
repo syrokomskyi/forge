@@ -15,6 +15,7 @@ git/status/invoke seams.</purpose>
 Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -202,7 +203,7 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     expect(invokes).toEqual([]);
   });
 
-  it("a stale manifest refuses FLOW-INT-12 before RFC/friction checks", async () => {
+  it("a stale manifest without a resolvable generator still refuses FLOW-INT-12 (RFC-1546: after the other checks establish sole-ness)", async () => {
     const invokes: string[] = [];
     const result = await runIntegratePreflight(
       baseOpts({
@@ -216,7 +217,7 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
       stubDeps({}),
     );
     expect(result.refuse?.ruleId).toBe("FLOW-INT-12");
-    expect(invokes).toEqual(["ecosystem.manifest.validate"]);
+    expect(invokes).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
   });
 
   it("rfc.validate is scoped to RFC files changed on develop...branch", async () => {

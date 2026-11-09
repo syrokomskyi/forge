@@ -6,13 +6,12 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
-  <item>RFC-1467: address review r1 findings — object-shaped colliding payload, cite all colliding siblings, reviewBand field, supersede.propose escalation, flag-shape guard</item>
   <item>RFC-1482: emit validation-compliant RFC skeletons and surface contract breaches at authoring time</item>
   <item>RFC-1534: --amends flag seeds amends: and merges the draft id into the amended file's amendedBy[] in the same pass (line-level, F-0056); unreadable counterpart downgrades to a pending report.</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
-  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139, RFC-1364</history>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <history>RFC-0303, RFC-1097, RFC-1138, RFC-1139, RFC-1364, RFC-1467</history>
 </CHANGE_SUMMARY>
 */
 
@@ -46,6 +45,7 @@ import { RFC_DIR, RFC_KINDS, RFC_SCOPES, RFC_METADATA_CUTOFF } from "../types.ts
 import { DNA_DOCS, loadInvariantIds, toIsoDate, resolveRfcTemplate } from "./shared.ts";
 import { allocateNextRfcId, appendReservation } from "../next-id.ts";
 import { currentBranch } from "../../flow/git.ts";
+import { REGEN_FLAGS } from "../../core/archive-regen.ts";
 import {
   collectDecisionLog,
   scoreDecisions,
@@ -531,6 +531,32 @@ export async function runRfcCreate(
     );
   }
 
+  // RFC-1546: seeded commands.* buckets invalidate the ecosystem manifest —
+  // regenerate in the same invocation so the commit gate doesn't refuse on
+  // stale docs/ecosystem.generated.yaml. Advisory: the create succeeded; a
+  // missing invoke port or a failed regen only lands in the data payload.
+  let manifestRegen: { invoked: boolean; ok: boolean; summary?: string } | undefined;
+  if (proposed.length > 0 || added.length > 0) {
+    if (context.invoke) {
+      const regen = await context.invoke(
+        "ecosystem.manifest.generate",
+        REGEN_FLAGS["ecosystem.manifest.generate"] ?? {},
+      );
+      manifestRegen = {
+        invoked: true,
+        ok: regen.ok !== false && (regen.exitCode === undefined || regen.exitCode === 0),
+        ...(regen.summary !== undefined ? { summary: regen.summary } : {}),
+      };
+      if (!manifestRegen.ok) {
+        logger.warn(
+          `rfc.create: ecosystem.manifest.generate failed — ${regen.summary ?? `exit ${regen.exitCode}`} — regenerate before committing`,
+        );
+      }
+    } else {
+      manifestRegen = { invoked: false, ok: false };
+    }
+  }
+
   if (outputFormat === "pretty") {
     logger.success(`Created ${nextId}: ${title}`);
     logger.info(`File: ${relativeFile}`);
@@ -567,6 +593,7 @@ export async function runRfcCreate(
       ...(colliding.length > 0 ? { colliding, blocked: false } : {}),
       ...(reviewBand.length > 0 ? { reviewBand } : {}),
       ...(amendsSync ? { amendsSync } : {}),
+      ...(manifestRegen ? { manifestRegen } : {}),
     },
     summary: `Created ${nextId}: ${title}`,
     nextSteps: [

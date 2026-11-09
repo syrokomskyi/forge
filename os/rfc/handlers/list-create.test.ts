@@ -16,6 +16,7 @@ with candidates listed.
   <item>RFC-1482: extract-safe RFC-1482 template path + changelog for 9.1.0</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
+  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -301,5 +302,48 @@ describe("RFC-1534 rfc.create --amends counterpart", () => {
     );
     expect(result.data?.status).toBe("ok");
     expect(result.data?.amendsSync).toEqual({ amended: "RFC-1201", wroteCounterpart: false });
+  });
+});
+
+describe("RFC-1546 AC-2: commands.* frontmatter regenerates the manifest", () => {
+  beforeEach(async () => {
+    await seed();
+  });
+  afterEach(async () => {
+    await rm(root, { recursive: true, force: true });
+  });
+
+  test("--proposed invokes ecosystem.manifest.generate after the write", async () => {
+    const invoked: string[] = [];
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Tame the registry loader", proposed: "foo.bar" }) } as never,
+      {
+        ...context(),
+        invoke: async (name: string) => {
+          invoked.push(name);
+          return { ok: true, exitCode: 0 };
+        },
+      } as never,
+    );
+    expect(result.data?.status).toBe("ok");
+    expect(invoked).toEqual(["ecosystem.manifest.generate"]);
+    expect(result.data?.manifestRegen).toMatchObject({ invoked: true, ok: true });
+  });
+
+  test("no commands.* seeds — the generator is never invoked", async () => {
+    const invoked: string[] = [];
+    const result = await runRfcCreate(
+      { flags: flags({ title: "Tame the registry loader" }) } as never,
+      {
+        ...context(),
+        invoke: async (name: string) => {
+          invoked.push(name);
+          return { ok: true, exitCode: 0 };
+        },
+      } as never,
+    );
+    expect(result.data?.status).toBe("ok");
+    expect(invoked).toEqual([]);
+    expect(result.data?.manifestRegen).toBeUndefined();
   });
 });
