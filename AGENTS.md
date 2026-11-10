@@ -1,38 +1,32 @@
-# @warpgogol/forge Agent Guide
+# `@warpgogol/forge` — Agent Guide
 
-Portable governance skills and command modules extracted from the engine (RFC-0374).
+Portable governance skills and command modules — the `forge` CLI. Skill lifecycle (`fo-*`), agent-guides generation, RFC/ADR governance, session tooling, and project scaffolding (`forge create`, `forge.init`).
 
-> **Budget rule (RFC-1522):** topic detail lives in `docs/agent-guides/forge-*.md` — this file keeps architecture and the skill-twin contract within the injection budget.
+> This repository is the standalone published form of the package. Issues and PRs are welcome here; the upstream source of truth lives in the Warpgogol werkstatt monorepo.
 
 ## Architecture
 
-- `src/` — portable, no kernel imports. Contains skill schema, registry, validators, onboarding handlers, config module, canonical types, and utilities.
-- `os/` — ForgeModule registrations. RFC-0556: `os/compass/` and `os/werkstatt/` are fully autonomous — all command handlers are inlined in `os/*/handlers/` and no longer dynamically import `@warpgogol/*` packages. Other `os/` modules may still use dynamic imports where kernel integration is needed. RFC-0940: all `os/*.module.ts` files declare a required `runtime` field (`"autonomous"` or `"werkstatt-adapter"`). Only `os/werkstatt/` may import `@warpgogol/werkstatt-engine` — all other `os/` directories are autonomous. ADR-0019: `@warpgogol/werkstatt-shared` is no longer a dependency — `scanDirectoryForImports` is inlined in `os/core/handlers/forge-autonomy-validate.ts`. `forge.autonomy.validate` enforces FORGE-AUTONOMY-01. Type-only imports (`import type`) are exempt. 2026-09-22: the `@warpgogol/werkstatt-engine` devDependency was removed from `package.json` to break the turbo-reported forge↔engine package cycle — `os/werkstatt/handlers/workspace-deps.ts` now bridges fingerprinting via `@warpgogol/werkstatt-shared/fingerprint` (canonical home since RFC-1104). Do not re-add an engine dependency; new bridge needs go through `werkstatt-shared` subpaths.
-- **Forge helpers accept `io?: WorkspaceIO` as an OPTIONAL type-only parameter** (`import type { WorkspaceIO } from "@warpgogol/werkstatt-shared/kernel/workspace-io"`). Agents MUST NOT import `createDefaultIO` or any runtime binding from `@warpgogol/werkstatt-shared` into `packages/forge/src` — FORGE-AUTONOMY-01 (ADR-0019) exempts `import type` only. The ambient path stays the default for the standalone CLI; kernel callers pass `context.io` explicitly so operations flow through the recording adapter. First application: `writeFileIfChanged` in `src/utils/fs-idempotent.ts` (RFC-1149 follow-up, 2026-09-25).
-- `bin/` — CLI entrypoint (`forge` command) for autonomous usage without `@warpgogol/werkstatt-engine`. **New `os/` modules MUST be registered manually in `bin/cli.ts` `buildRegistry()`** — the standalone CLI has no module auto-discovery. A module exported via `package.json` and wired in `tools/kernel.config.ts` profiles is still invisible to `forge <cmd>` until added to the registry array. Discovered 2026-09-16: `forge-adr` (and 6 other modules) existed in source but were unreachable via the CLI.
-- **Search the existing command surface before registering a new command.** `command.manifest.generate` + `docs/command-manifest.generated.yaml` (or `grep -rn "<cmd>" packages/forge/os/`) show what already runs — a drafted `rules.budget.check` was built and withdrawn when RFC-1466's `instructions.budget.validate` proved to scan the same AGENTS.md surface. Prefer `commands.changed` (enhance + tighten config) over `commands.added` (RFC-1522).
-- `skills/` — forge-managed skill definitions (33 fo skills + 5 shared + 3 meta = 41 skills). Project-declared skill packs (RFC-0539) live outside forge and are discovered via `discoverPackSkills` from `forge.yaml` `skillPacks` config. `fo-system-dispatch` and `fo-task-run` (RFC-1512) are the system-queue pair: the first runs a task end to end inside a `system`-profile repository, the second executes the dispatched brief inside the product worktree.
-- **`docs/queues/*.decisions.yaml` shape comes from `os/queue/decision-ledger.ts`, never invented** — top-level `id`/`queue`/`createdAt`, `resolutionPath` enum `codebase | convention | profile | policy | none`, each option carrying `label` + `consequence` + `recommended`. A malformed entry fails `queue.validate` with a schema error, not a helpful message (F-0128).
-- **`skills/**` is the canonical source; `.agents/skills/**` is a byte-identical runtime twin** enforced by `src/tests/skill-agents-sync.test.ts` (written by `forge.init`/`forge.upgrade`). Edit the canonical file — never edit `.agents/skills/` directly. `ecosystem.commit`'s CHANGE_SUMMARY injection (RFC-1095) rewrites canonical bytes at commit time, and RFC-1435 rewrites each injected canonical's `.agents` twin byte-identically inside the SAME commit — agents MUST NOT hand-copy twins after a skill-touching governed commit (the commit carries both sides; a manual copy afterwards is a no-op at best and a stray diff at worst). A commit without a governance id injects nothing; stage an already-drifted twin alongside its canonical to resync it. The in-commit rewrite covers only **pre-existing** twins — a NEW skill has no twin yet, so its first commit must create and stage `.agents/skills/<name>/` alongside the canonical or `skill-agents-sync.test.ts` fails (RFC-1522, fo-doctor).
-- **Adding or removing a skill under `skills/` breaks the `agents-generate` golden fixtures.** `forge.agents.generate` renders the skill table into workspace AGENTS.md output, so `src/tests/fixtures/agents-generate-*.txt` goldens fail the commit gate the first time a new skill is committed — update the fixture rows in the same commit (render the table via the test's own helpers rather than hand-padding). Hit twice during wave-6 (`fo-outbox`, then `fo-system-dispatch`/`fo-task-run`).
-- **`ecosystem.commit --files` sweeps only foreign paths — unstaged edits to payload files still reach the gate's test snapshot.** Gate isolation stashes non-payload changes only, so a payload file left dirty mid-commit produces a hybrid tree the scoped tests run against (missing sibling modules, half-reverted code). Keep every payload file untouched from `git add` until the commit returns; if a payload file must change mid-gate, wait for the run to finish first.
-- **Restoring pre-commit backups loses commit-time CHANGE_SUMMARY injections.** `ecosystem.commit` appends the governance item to each touched file's `<CHANGE_SUMMARY>` AND folds older items into `<history>` at commit time — a backup taken before the commit lacks both, so a blind restore drops them. After restoring, diff the file against `git show HEAD:<path>` and re-apply the injected item/history lines, or regenerate the backup from the committed blob.
-- **Helpers that call `io.exec` must degrade when `io` lacks `exec`.** Reduced fake-io test harnesses (e.g. `const io = {} as WorkspaceIO`) crash on `io.exec is not a function` the moment a helper shells out — the gate caught it in `ops-registry`'s `opsDir` and again in `resolveImporterReferents`. Resolve lazily, guard `typeof io.exec === "function"`, or treat resolution failure as "unresolvable" and degrade to the pre-feature inert path — never let a missing capability classify as a concrete verdict.
+- `src/` — portable, no kernel imports: skill schema, registry, validators, onboarding handlers, config module, canonical types, utilities.
+- `os/` — ForgeModule registrations. `os/compass/` and `os/werkstatt/` are fully autonomous (handlers inlined); every `os/*.module.ts` declares a required `runtime` field (`"autonomous"` or `"werkstatt-adapter"`). Only `os/werkstatt/` may import `@warpgogol/werkstatt-engine`; all other `os/` directories are autonomous. Type-only imports (`import type`) are exempt — `forge.autonomy.validate` (FORGE-AUTONOMY-01) enforces this.
+- Forge helpers accept `io?: WorkspaceIO` as an OPTIONAL type-only parameter — never import `createDefaultIO` or runtime bindings into `src/`; the ambient path stays the standalone-CLI default and kernel callers pass `context.io` explicitly.
+- `bin/` — the `forge` CLI entrypoint for autonomous usage. **New `os/` modules MUST be registered manually in `bin/cli.ts` `buildRegistry()`** — there is no module auto-discovery; a module unregistered there is invisible to `forge <cmd>`.
+- `skills/` — the forge-managed skill definitions (`fo-*`). `skills/**` is the canonical source; `.agents/skills/**` in consumer repos is a byte-identical runtime twin written by `forge.init`/`forge.upgrade` — edit the canonical file, never the twin.
 
-## Skills
+## Rules
 
-Skills live in `skills/` (canonical source) and are synced to `.agents/skills/` as **byte-identical runtime twins** enforced by `src/tests/skill-agents-sync.test.ts`. Edit the canonical file only — never `.agents/skills/`; governed commits rewrite both sides in-commit (RFC-1435). Twin path is flat: `.agents/skills/<name>/SKILL.md`.
+- Adding or removing a skill under `skills/` changes the `agents.generate` skill table — update affected fixtures/goldens in the same change.
+- No `any`, no `@ts-ignore`; helpers stay portable and framework-free in `src/`.
+- Use existing dependency versions from `package.json`; do not add deps the task does not need.
+- Keep changes small, typed, and tested.
 
-- Adding/removing a skill breaks `agents-generate` golden fixtures — regenerate them in the same commit.
-- Drifted twins resync by staging alongside the canonical; a governance-id-free commit injects nothing.
-- New pipeline-phase `fo-*` skills must be wired into implementation-document skills (`fo-idea-implement`, …) — an uncalled skill is dead tooling.
-- `concerns` taxonomy: `read-only` / `document-only` / `content-mutation` / `code-mutation` (SKILL-12). Skill packs (RFC-0539) come from `forge.yaml skillPacks`; packs may depend on forge skills, never the reverse (SKILL-07). Skill-model detail: `docs/agent-guides/forge-architecture.md`.
+## Commands
 
-## Topic guides
+```bash
+pnpm install
+pnpm run typecheck   # tsc --noEmit
+pnpm run lint        # eslint src os
+pnpm run test        # vitest run --passWithNoTests
+pnpm run build       # tsc -p tsconfig.build.json
+```
 
-| Guide | Covers |
-| --- | --- |
-| `docs/agent-guides/forge-architecture.md` | OS modules, import rules, stack profiles, bindings/output contracts, skill packs, spec vendoring |
-| `docs/agent-guides/forge-rfc-lifecycle.md` | RFC/ADR lifecycle rules, frontmatter, acceptance probes, evidence gates, stamping |
-| `docs/agent-guides/forge-commit-config.md` | Commit & config loading rules, prettier/skill markers, pinned files, CLI fixtures |
-| `docs/agent-guides/forge-flow-release.md` | Fixed branch model, archive convention, NPM publish workflow |
+Run typecheck + lint + test before finishing a change; state environment failures explicitly instead of claiming green.
