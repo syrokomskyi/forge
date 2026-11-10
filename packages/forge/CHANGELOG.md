@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.4.1] — 2026-11-10
+
+_Flow surfaces self-repair: cross-checkout dirt is attributed to its live operation, generated rebase conflicts regenerate, and recoverable state is derived instead of refused._
+
+### Added
+
+- **`flow.peers`**: shared-checkout dirt is attributed to the live operation that produced it, and pending operations become visible across registered checkouts (RFC-1543).
+
+### Changed
+
+- **Mission lockfile churn** is attributed to the owning checkout, and foreign importer diffs auto-restore on `flow.integrate` instead of blocking (RFC-1544).
+- **Generated rebase conflicts** confined to declared-generated files regenerate via the owning command instead of refusing (RFC-1545); recoverable state on flow surfaces is derived and repaired the same way (RFC-1546).
+- **Generated `onboarding.status` commits** route through the session flow on fixed branches (RFC-1549); `.forge/task/` scratch paths are excluded from managed prettier coverage (RFC-1550).
+- **READMEs** gained a cover image (EN/UK).
+
 ## [9.4.0] — 2026-11-08
 
 _Published contracts: Forge can read a specification from an installed npm package, run a consumer validator that a producer installs from npm, and record contract package versions in version sets. Flow integration is faster, explains its refusals better and recovers from more broken states._
