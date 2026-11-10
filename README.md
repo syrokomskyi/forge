@@ -10,6 +10,8 @@ A repository-native control layer for AI-assisted development. Decisions, rules,
 
 [![npm version](https://img.shields.io/npm/v/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![npm downloads](https://img.shields.io/npm/dm/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![CI](https://github.com/syrokomskyi/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/syrokomskyi/forge/actions) [![Node](https://img.shields.io/badge/Node-24%2B-green.svg)](https://nodejs.org) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE) <!-- pkg-health-12: domain name, not a command -->
 
+![Cover - Forge](https://raw.githubusercontent.com/syrokomskyi/forge/main/images/cover.webp)
+
 ---
 
 ## Start right now
@@ -50,8 +52,8 @@ One bootstrap command. After that, work through your coding agent.
 
 Forge is project-agnostic. Stack profiles provide ready-made starting points.
 
-| Profile       | Use case                                              |
-| ------------- | ----------------------------------------------------- |
+| Profile         | Use case                                              |
+| --------------- | ----------------------------------------------------- |
 | `forge-shell`   | Governance-only projects, libraries, non-web projects |
 | `typescript`    | TypeScript monorepo with best-practice validators     |
 | `phaser-game`   | Browser games, interactive experiences                |

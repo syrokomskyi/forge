@@ -10,6 +10,8 @@
 
 [![npm version](https://img.shields.io/npm/v/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![npm downloads](https://img.shields.io/npm/dm/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![CI](https://github.com/syrokomskyi/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/syrokomskyi/forge/actions) [![Node](https://img.shields.io/badge/Node-24%2B-green.svg)](https://nodejs.org) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE)
 
+![Обкладинка - Forge](https://raw.githubusercontent.com/syrokomskyi/forge/main/images/cover.webp)
+
 ---
 
 ## Почни зараз
@@ -50,14 +52,14 @@ pnpm dlx @warpgogol/forge@latest create --in-place --profile typescript
 
 Forge не залежить від типу проєкту. Профілі стеку — готові стартові точки.
 
-| Профіль       | Призначення                                 |
-| ------------- | ------------------------------------------- |
-| `forge-shell`   | Лише управління, бібліотеки, не-веб проєкти   |
-| `typescript`    | TypeScript монорепозиторій з валідаторами     |
-| `phaser-game`   | Браузерні ігри, інтерактивні досвіди          |
-| `godot-game`    | Десктопні/мобільні ігри на Godot 4.x + C#     |
-| `knowledge`     | Бази знань з підтримкою доказів               |
-| `site-workshop` | Пер-клієнтські майстерні Werkstatt            |
+| Профіль         | Призначення                                 |
+| --------------- | ------------------------------------------- |
+| `forge-shell`   | Лише управління, бібліотеки, не-веб проєкти |
+| `typescript`    | TypeScript монорепозиторій з валідаторами   |
+| `phaser-game`   | Браузерні ігри, інтерактивні досвіди        |
+| `godot-game`    | Десктопні/мобільні ігри на Godot 4.x + C#   |
+| `knowledge`     | Бази знань з підтримкою доказів             |
+| `site-workshop` | Пер-клієнтські майстерні Werkstatt          |
 
 ```sh
 # Перелічити доступні профілі
