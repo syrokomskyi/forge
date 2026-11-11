@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1536, RFC-1537, RFC-1538</history>
+  <item>ADR-0130: foreign-open-mission restore writes HEAD verbatim — whole diff classified as importer churn, a block splice would leave induced additions to be swept</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -206,7 +206,9 @@ async function rebaseConflictRefusal(
         ? `rebase stderr tail: ${rebaseStderrTail.join(" | ")}`
         : "no unmerged paths and empty rebase output";
     const dirt =
-      statusPorcelain.length > 0 ? `worktree status: ${statusPorcelain.join(" | ")}` : "worktree status: clean";
+      statusPorcelain.length > 0
+        ? `worktree status: ${statusPorcelain.join(" | ")}`
+        : "worktree status: clean";
     message = `rebase onto develop failed without unmerged paths — ${cause} — ${dirt}${messageSuffix}`;
     fixHint = "clean the listed worktree state, then re-run flow.integrate";
   }
@@ -770,8 +772,6 @@ async function integrateFlowBranchAttempt(
     let staleImporterCommitSha: string | undefined;
     if (dirty.entries.some((line) => line.slice(3).trim() === "pnpm-lock.yaml")) {
       const { classifyDirt, resolveImporterReferents } = await import("../preflight.ts");
-      const { extractImporterBlock, insertImporterBlock } =
-        await import("../../mission/importer-block.ts");
       const pruneVerdict = await classifyDirt(
         branchWorktree,
         io,
@@ -785,27 +785,21 @@ async function integrateFlowBranchAttempt(
         lockTolerated?.class === "foreign-open-mission" &&
         lockTolerated.missionIds !== undefined
       ) {
+        // ADR-0130: write HEAD verbatim — the diff already classified as
+        // importer churn end-to-end (strict prune, or prune + induced
+        // `optional: true`/`packages:`/`snapshots:` additions via the
+        // extended classifier), so the committed file is the canonical
+        // state and a whole-file restore reverts exactly that churn. A
+        // block splice would leave the induced additions behind, which
+        // is what used to land in the sweep commit.
         const head = await git(branchWorktree, io, ["show", "HEAD:pnpm-lock.yaml"]);
         if (head.exitCode === 0) {
-          let next = await io.readFile(join(branchWorktree, "pnpm-lock.yaml"));
-          const restored: string[] = [];
-          for (const id of lockTolerated.missionIds) {
-            const key = `missions/${id}/workpiece`;
-            const block = extractImporterBlock(head.stdout, key);
-            if (block === null) continue;
-            const spliced = insertImporterBlock(next, key, block);
-            if (spliced === null) continue;
-            next = spliced;
-            restored.push(id);
-          }
-          if (restored.length > 0) {
-            await io.writeFile(join(branchWorktree, "pnpm-lock.yaml"), next);
-            restoredImporters = restored;
-            opts.onProgress?.(
-              `restored foreign mission importer(s): ${restored.map((id) => `missions/${id}/workpiece`).join(", ")}`,
-            );
-            dirty = await statusDirty(branchWorktree, io);
-          }
+          await io.writeFile(join(branchWorktree, "pnpm-lock.yaml"), head.stdout);
+          restoredImporters = lockTolerated.missionIds;
+          opts.onProgress?.(
+            `restored foreign mission importer(s): ${lockTolerated.missionIds.map((id) => `missions/${id}/workpiece`).join(", ")}`,
+          );
+          dirty = await statusDirty(branchWorktree, io);
         }
       } else if (lockTolerated?.class === "importer-prune-stale") {
         const add = await git(branchWorktree, io, ["add", "pnpm-lock.yaml"]);
