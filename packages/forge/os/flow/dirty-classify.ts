@@ -20,6 +20,7 @@ classifyDirt, which emits the same enum.</purpose>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,6 +59,18 @@ export interface ClassifiedDirtyEntry {
 
 /** Fixed autocommit sweep subject (FI-1) — AC-9 probes this literal. */
 export const SWEEP_COMMIT_SUBJECT = "chore(flow): sweep session leftovers";
+
+/**
+ * ADR-0129 (F-0186): the remedy for unattributed dirt in the primary checkout
+ * depends on who owns the content — "commit or revert" alone is wrong for
+ * foreign authored work. Shared verbatim by FLOW-INT-03 (refusal) and
+ * FLOW-OPEN-01 (warning).
+ */
+export const FOREIGN_PRIMARY_DIRT_HINT =
+  "pick the remedy by whose work it is: (1) your own work — commit it in the primary; " +
+  "(2) work that belongs to a session — copy the file into that session's worktree, " +
+  "then restore the primary copy with `git show HEAD:<path> > <path>`; " +
+  "(3) another session's work in progress — wait for it, or ask its owner";
 
 /**
  * Classes `--auto-clean` may pass without deleting anything: the RFC-1537

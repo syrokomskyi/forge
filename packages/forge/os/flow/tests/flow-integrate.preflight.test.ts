@@ -9,13 +9,11 @@ git/status/invoke seams.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: flow.integrate bounded preflight before rebase and gate
-
-Classified lockfile diffs on FLOW-INT-01/03, early primary check, and resolvable validators (ecosystem.manifest.validate, scoped rfc.validate, friction.validate) refusing as FLOW-INT-12/13/14.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
+  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -206,6 +204,30 @@ describe("runIntegratePreflight (RFC-1528 AC-2/AC-4)", () => {
     expect(invokes).toEqual([]);
   });
 
+  it("FLOW-INT-03 names the unattributed paths and the three-way remedy (ADR-0129 F-0186)", async () => {
+    const entries = Array.from(
+      { length: 23 },
+      (_, i) => ` M docs/file-${String(i).padStart(2, "0")}.md`,
+    );
+    const result = await runIntegratePreflight(
+      baseOpts({
+        invoke: async () => ({ ok: true, exitCode: 0 }) as ForgeInvokeResult,
+      }),
+      stubDeps({
+        primaryDirty: { entries, toleratedState: [], vanished: false },
+      }),
+    );
+    expect(result.refuse?.ruleId).toBe("FLOW-INT-03");
+    expect(result.refuse?.message).toContain("docs/file-00.md");
+    expect(result.refuse?.message).toContain("docs/file-19.md");
+    expect(result.refuse?.message).not.toContain("docs/file-20.md");
+    expect(result.refuse?.message).toContain("(+3 more)");
+    expect(result.refuse?.fixHint).toContain("your own work");
+    expect(result.refuse?.fixHint).toContain("git show HEAD:<path> > <path>");
+    expect(result.refuse?.fixHint).toContain("another session's work in progress");
+    expect(result.refuse?.data?.unattributed).toHaveLength(23);
+  });
+
   it("a stale manifest without a resolvable generator still refuses FLOW-INT-12 (RFC-1546: after the other checks establish sole-ness)", async () => {
     const invokes: string[] = [];
     const result = await runIntegratePreflight(
@@ -380,8 +402,7 @@ const ioWith = (shape: {
       if (p in (shape.files ?? {})) return shape.files![p];
       throw new Error(`ENOENT ${p}`);
     },
-    exists: async (p: string) =>
-      p in (shape.files ?? {}) || (shape.dirs ?? []).includes(p),
+    exists: async (p: string) => p in (shape.files ?? {}) || (shape.dirs ?? []).includes(p),
     readFileBytes: async (p: string) => {
       if (p in (shape.files ?? {})) return new TextEncoder().encode(shape.files![p]);
       throw new Error(`ENOENT ${p}`);

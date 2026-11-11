@@ -14,12 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0130: induced-change lockfile classifiers — BFS reachability for optional-flag removals, collapse pairs, induced packages/snapshots additions</item>
-  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538</history>
+  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
+  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -38,6 +38,7 @@ import { isGeneratedContent, isGeneratedPathName, REGEN_FLAGS } from "../core/ar
 import { openMissionsIn } from "../mission/open-missions.ts";
 import {
   classifyDirtyPath,
+  FOREIGN_PRIMARY_DIRT_HINT,
   summarizeClasses,
   type ClassifiedDirtyEntry,
   type DirtyClass,
@@ -1043,7 +1044,15 @@ export async function runIntegratePreflight(
             (primaryBranch !== "develop"
               ? `primary worktree is on ${primaryBranch ?? "detached HEAD"}, not develop`
               : verdict.unattributed.length > 0
-                ? `primary worktree has ${verdict.unattributed.length} uncommitted change(s)`
+                ? // ADR-0129 (F-0186): name the paths — the remedy differs by
+                  // whose work each one is.
+                  `primary worktree has ${verdict.unattributed.length} uncommitted change(s): ${verdict.unattributed
+                    .slice(0, 20)
+                    .map((line) => line.slice(3).trim())
+                    .join(", ")}` +
+                  (verdict.unattributed.length > 20
+                    ? ` (+${verdict.unattributed.length - 20} more)`
+                    : "")
                 : `primary worktree held by ${verdict.foreignInFlight.length} in-flight foreign op(s)`) +
             holderNote +
             (verdict.tolerated.length > 0
@@ -1051,8 +1060,11 @@ export async function runIntegratePreflight(
               : "") +
             (lockfile === "importer-prune-only" ? ` — pnpm-lock.yaml${LOCKFILE_PRUNE_HINT}` : ""),
           fixHint:
-            "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased",
+            primaryBranch !== "develop"
+              ? "switch the primary to develop and commit or revert its tracked changes, then re-run — the branch stays rebased"
+              : `${FOREIGN_PRIMARY_DIRT_HINT}, then re-run`,
           data: {
+            unattributed: verdict.unattributed.map((line) => line.slice(3).trim()),
             entries: verdict.unattributed.map((line) => {
               const path = line.slice(3).trim();
               return { path, class: classifyDirtyPath(path) };
