@@ -10,12 +10,12 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1478: yaml.scalars.validate + EC-25 colon-space staged lint (F-0006)</item>
   <item>RFC-1486: step 5 — forge-flow module registration + dual CLI/kernel wiring</item>
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
-  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1472, RFC-1473</history>
+  <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1472, RFC-1473, RFC-1478</history>
 </CHANGE_SUMMARY>
 */
 
@@ -63,10 +63,21 @@ import type {
   ForgeRuntimeContext,
   CommandRegistry,
   ForgeRegisteredCommandInfo,
+  WorkspaceIO,
 } from "../src/types.ts";
 import { renderNextSteps, renderIdeRecommendation, generateHelp } from "../src/cli-output.ts";
 import { resolveCliFlags } from "../src/cli-flags.ts";
 import type { ForgeModule, ForgeModuleRegistry, ForgePipelineStep } from "../src/forge-module.ts";
+import { resolveIo } from "../src/utils/io.ts";
+import { commonGitDir } from "../os/flow/registry.ts";
+import { GATE_RUN_ID_ENV, detachPointerLines, detachSelf } from "../os/gate-run/detach.ts";
+import {
+  finishGateRun,
+  repoRelativeCwd,
+  saveGateRun,
+  startGateRun,
+} from "../os/gate-run/record.ts";
+import type { GateRunRecord } from "../os/gate-run/types.ts";
 
 class ForgeCliRegistry implements ForgeModuleRegistry, CommandRegistry {
   private commands = new Map<string, ForgeCommandDefinition>();
@@ -139,6 +150,7 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
     ),
     await import("../os/notes/notes.module.ts").then((m) => m.createForgeNotesModule()),
     await import("../os/queue/queue.module.ts").then((m) => m.createForgeQueueModule()),
+    await import("../os/gate-run/gate-run.module.ts").then((m) => m.createForgeGateRunModule()),
     await import("../os/authority/authority.module.ts").then((m) => m.createForgeAuthorityModule()),
     await import("../os/conformance/conformance.module.ts").then((m) =>
       m.createForgeConformanceModule(),
@@ -183,8 +195,8 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
 function readVersion(): string {
   // Source: packages/forge/bin/cli.ts → packages/forge/package.json (one up)
   // Compiled: dist/bin/cli.js → package.json (two up)
-  for (const up of ["..", "../.."]) {
-    // pkg-health-10: candidates probe bin/ and dist/bin/ layouts — in extract ../.. lands on the package root
+  // pkg-health-10 suppression lives on the literal's own line — candidates probe bin/ and dist/bin/ layouts, in extract ../.. lands on the package root.
+  for (const up of ["..", "../.."]) { // pkg-health-10: bin/ and dist/bin/ probe layouts
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
@@ -201,8 +213,8 @@ const VERSION = readVersion();
 function resolveForgeRootFromCli(): string | undefined {
   // Source: packages/forge/bin/cli.ts → packages/forge/ (one up)
   // Compiled: dist/bin/cli.js → packages/forge/ (two up)
-  for (const up of ["..", "../.."]) {
-    // pkg-health-10: candidates probe bin/ and dist/bin/ layouts — in extract ../.. lands on the package root
+  // pkg-health-10 suppression lives on the literal's own line — candidates probe bin/ and dist/bin/ layouts, in extract ../.. lands on the package root.
+  for (const up of ["..", "../.."]) { // pkg-health-10: bin/ and dist/bin/ probe layouts
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
@@ -362,6 +374,86 @@ async function main(): Promise<void> {
     commandRegistry: registry,
   };
 
+  // RFC-1568: --detach on a non-detachable command refuses GATE-RUN-01 before
+  // any work; under --dry-run GATE-RUN-02. On a detachable command the parent
+  // re-spawns itself detached, prints the pointer block, and exits 0 — the
+  // outcome lives in the durable gate-run record.
+  if (flags["detach"] === true && command.flags?.["detach"] === undefined) {
+    const io = resolveIo(undefined);
+    if (command.detachable !== true) {
+      logger.error(
+        `[${commandName}] GATE-RUN-01 --detach requires the command to declare \`detachable: true\` — ${commandName} does not`,
+      );
+      process.exit(1);
+    }
+    if (dryRun) {
+      logger.error(
+        `[${commandName}] GATE-RUN-02 --detach with --dry-run detaches nothing — run the dry-run attached`,
+      );
+      process.exit(1);
+    }
+    const common = await commonGitDir(io, workspaceRoot);
+    const record = await startGateRun({
+      commonGitDir: common,
+      command: commandName,
+      argv: rest.filter((t) => t !== "--detach" && !t.startsWith("--detach=")),
+      cwd: repoRelativeCwd(common, workspaceRoot),
+      detached: true,
+      io,
+    });
+    const detached = await detachSelf({
+      entry: process.argv[1] ?? "",
+      argv: [commandName, ...rest.filter((t) => t !== "--detach" && !t.startsWith("--detach="))],
+      record,
+      commonGitDir: common,
+    });
+    record.pid = detached.pid;
+    await saveGateRun(common, record, io);
+    if (outputFormat === "json") {
+      console.log(
+        JSON.stringify(
+          {
+            data: { runId: detached.runId, pid: detached.pid, logPath: detached.logPath },
+            nextSteps: [],
+          },
+          null,
+          2,
+        ),
+      );
+    } else {
+      for (const line of detachPointerLines(detached, common, "pnpm exec forge gate.run.status")) {
+        console.log(line);
+      }
+    }
+    process.exit(0);
+  }
+
+  // RFC-1568: durable gate-run record for attached executions of detachable
+  // commands; the detached child adopts the parent's record via env handoff.
+  const ioForRecord = command.detachable === true ? resolveIo(undefined) : null;
+  let gateRun: { common: string; record: GateRunRecord; io: WorkspaceIO } | null = null;
+  if (ioForRecord !== null && command.detachable === true) {
+    try {
+      const common = await commonGitDir(ioForRecord, workspaceRoot);
+      const adoptedId = process.env[GATE_RUN_ID_ENV];
+      gateRun = {
+        common,
+        io: ioForRecord,
+        record: await startGateRun({
+          commonGitDir: common,
+          command: commandName,
+          argv: rest,
+          cwd: repoRelativeCwd(common, workspaceRoot),
+          detached: adoptedId !== undefined,
+          io: ioForRecord,
+          ...(adoptedId !== undefined ? { runId: adoptedId } : {}),
+        }),
+      };
+    } catch (error) {
+      logger.warn(`[gate-run] record start failed (gate still runs): ${(error as Error).message}`);
+    }
+  }
+
   try {
     const result = (await command.execute(input, context)) as ForgeCommandResult | void;
     if (result && outputFormat === "json") {
@@ -380,8 +472,27 @@ async function main(): Promise<void> {
       }
     }
     const exitCode = result?.exitCode ?? 0;
+    if (gateRun !== null) {
+      try {
+        await finishGateRun(
+          gateRun.common,
+          gateRun.record,
+          { exitCode, ...(result?.summary ? { summary: result.summary } : {}) },
+          gateRun.io,
+        );
+      } catch (recordError) {
+        logger.warn(`[gate-run] record finish failed: ${(recordError as Error).message}`);
+      }
+    }
     process.exit(exitCode);
   } catch (error) {
+    if (gateRun !== null) {
+      try {
+        await finishGateRun(gateRun.common, gateRun.record, { exitCode: 1 }, gateRun.io);
+      } catch {
+        // warn-only — never mask the real error below
+      }
+    }
     logger.error(
       error instanceof Error ? error.message : String(error),
       error instanceof Error && error.stack ? error.stack : undefined,

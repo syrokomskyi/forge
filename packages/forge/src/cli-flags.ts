@@ -14,6 +14,7 @@ with `TypeError: targetId.toLowerCase is not a function`.</purpose>
   <item>RFC-1389 (port of RFC-1381): bare `-m` rewrites to `--message` when the merged schema declares `message` — other `-x` tokens stay KERNEL-ARG-01, now with honest hints (a known declared short alias, the command's single unsatisfied required non-boolean flag, or a truthful see-`--help` fallback) instead of the fabricated `--id <token>` template; alias-shaped tokens are never consumed as flag values.</item>
   <item>RFC-1395: port --output → --json alias into forge CLI parser</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
+  <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
 </CHANGE_SUMMARY>
 */
 
@@ -34,6 +35,11 @@ export const CLI_UNIVERSAL_FLAGS: Record<string, ForgeFlagSpec> = {
   "dry-run": { kind: "boolean", description: "Report intended mutations without writing them." },
   force: { kind: "boolean", description: "Bypass a normally-blocking safety check." },
   help: { kind: "boolean", description: "Print command help instead of executing." },
+  detach: {
+    kind: "boolean",
+    description:
+      "RFC-1568: run a `detachable` command as a detached child — returns immediately with a run id; poll via gate.run.status.",
+  },
 };
 
 /**
@@ -43,6 +49,7 @@ export const CLI_UNIVERSAL_FLAGS: Record<string, ForgeFlagSpec> = {
  */
 const CLI_BOOLEAN_FLAGS = new Set<string>([
   "all",
+  "detach",
   "all-apps",
   "approve-all",
   "dry-run",

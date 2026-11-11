@@ -176,9 +176,17 @@
       "types": "./os/queue/index.ts",
       "default": "./os/queue/index.ts"
     },
+    "./os/gate-run": {
+      "types": "./os/gate-run/index.ts",
+      "default": "./os/gate-run/index.ts"
+    },
     "./os/queue-module": {
       "types": "./os/queue/queue.module.ts",
       "default": "./os/queue/queue.module.ts"
+    },
+    "./os/gate-run-module": {
+      "types": "./os/gate-run/gate-run.module.ts",
+      "default": "./os/gate-run/gate-run.module.ts"
     },
     "./authority": {
       "types": "./src/authority/index.ts",
@@ -500,9 +508,17 @@
         "types": "./dist/os/queue/index.d.ts",
         "default": "./dist/os/queue/index.js"
       },
+      "./os/gate-run": {
+        "types": "./dist/os/gate-run/index.d.ts",
+        "default": "./dist/os/gate-run/index.js"
+      },
       "./os/queue-module": {
         "types": "./dist/os/queue/queue.module.d.ts",
         "default": "./dist/os/queue/queue.module.js"
+      },
+      "./os/gate-run-module": {
+        "types": "./dist/os/gate-run/gate-run.module.d.ts",
+        "default": "./dist/os/gate-run/gate-run.module.js"
       },
       "./conformance": {
         "types": "./dist/src/conformance/index.d.ts",

@@ -9,12 +9,12 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1533: surface pending flow branches in flow.open and the pre-user-prompt nudge</item>
   <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528</history>
+  <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1533</history>
 </CHANGE_SUMMARY>
 */
 
@@ -250,6 +250,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
       },
       {
         name: "flow.integrate",
+        detachable: true,
         description:
           "Integrate a registered auto branch into develop as a linear " +
           "fast-forward (RFC-1487), idempotent and rerun-safe: under the " +
