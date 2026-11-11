@@ -12,11 +12,12 @@ with candidates listed.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
   <item>RFC-1482: extract-safe RFC-1482 template path + changelog for 9.1.0</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
+  <history>RFC-1485</history>
 </CHANGE_SUMMARY>
 */
 
@@ -187,7 +188,7 @@ describe("RFC-1482 validation-compliant skeleton", () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  test("AC-1: emitted draft passes rfc.validate with zero V-45/V-48/V-50 violations", async () => {
+  test("AC-1: emitted draft passes rfc.validate with zero V-45/V-48/V-50/V-53/V-54 violations", async () => {
     const result = await runRfcCreate(
       { flags: flags({ title: "Rotate the cache eviction cadence" }) } as never,
       context(),
@@ -196,14 +197,22 @@ describe("RFC-1482 validation-compliant skeleton", () => {
     const id = result.data!.id!;
     const v = await runRfcValidate({ argv: [], flags: { id } } as never, context());
     const violations = v.data?.violations ?? [];
-    const named = violations.filter((x) => ["V-45", "V-48", "V-50"].includes(x.rule));
+    const named = violations.filter((x) =>
+      ["V-45", "V-48", "V-50", "V-53", "V-54"].includes(x.rule),
+    );
     expect(named, JSON.stringify(violations, null, 1)).toEqual([]);
     expect(v.data?.status, JSON.stringify(violations, null, 1)).toBe("pass");
   });
 
   test("AC-2: --proposed/--added seed commands.* and emit one reachable stub each", async () => {
     const result = await runRfcCreate(
-      { flags: flags({ title: "Tame the registry loader", proposed: "foo.bar,baz.qux", added: "foo.new" }) } as never,
+      {
+        flags: flags({
+          title: "Tame the registry loader",
+          proposed: "foo.bar,baz.qux",
+          added: "foo.new",
+        }),
+      } as never,
       context(),
     );
     expect(result.data?.status).toBe("ok");
@@ -224,7 +233,7 @@ describe("RFC-1482 validation-compliant skeleton", () => {
     );
     const body = await readFile(join(root, result.data!.file!), "utf8");
     expect(body).toContain("## Fixed inputs");
-    expect(body).toContain("| ID | Value | Source | Checked by |");
+    expect(body).toMatch(/\|\s*ID\s*\| Value \| Source \| Checked by \|/);
     expect(body).not.toMatch(/^\|\s*FI-/m);
   });
 

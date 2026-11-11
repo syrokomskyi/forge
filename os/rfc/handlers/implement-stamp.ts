@@ -12,12 +12,12 @@ verification evidence, and atomically mutates RFC frontmatter.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1504: step 4 — shared stamp lock for rfc and adr stamp handlers</item>
   <item>RFC-1504: review fixes — legacy acquiredAt fallback, atomic break claim, verified stamp release, onStale warnings</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
-  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-1453, RFC-IMP-07</history>
+  <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
+  <history>RFC-0268, RFC-0476, RFC-0756, RFC-0795, RFC-0997, RFC-1053, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1321, RFC-1322, RFC-1330, RFC-1333, RFC-1383, RFC-1391, RFC-1453, RFC-1454, RFC-IMP-07</history>
 </CHANGE_SUMMARY>
 */
 
@@ -40,6 +40,7 @@ import {
   loadRfcStatusMap,
 } from "../frontmatter-io.ts";
 import { evaluateAcceptanceCriteria, stripFencedCodeBlocks } from "./validate-rules.ts";
+import { parseEvidenceAnnotation } from "../evidence-annotation.ts";
 import { evaluateDeviationGate } from "./implement-stamp-deviations.ts";
 import { toIsoDate } from "./shared.ts";
 import { byteHashHex, normalizeProbes, runRfcVerificationEmit } from "../verification-evidence.ts";
@@ -388,23 +389,21 @@ export async function resolveCriterionEvidence(
       return false;
     }
   };
-  if (annotation.startsWith("probe:")) {
-    const refId = annotation.slice("probe:".length).trim();
-    return (envelope?.probes ?? []).some((r) => r.probe?.criterion === refId && r.ok === true);
+  // RFC-1569: the annotation grammar lives in os/rfc/evidence-annotation.ts —
+  // this resolver consumes it, no second regex here.
+  const parsed = parseEvidenceAnnotation(annotation);
+  switch (parsed.kind) {
+    case "probe":
+      return (envelope?.probes ?? []).some(
+        (r) => r.probe?.criterion === parsed.criterion && r.ok === true,
+      );
+    case "test":
+    case "file":
+    case "path-line":
+      return statFile(parsed.path);
+    case "invalid":
+      return false;
   }
-  if (annotation.startsWith("test:") || annotation.startsWith("file:")) {
-    // A trailing :line / :line-range rides the annotation, not the path.
-    const filePath = annotation
-      .slice(annotation.indexOf(":") + 1)
-      .trim()
-      .replace(/:\d+(?:-\d+)?$/, "");
-    return statFile(filePath);
-  }
-  if (/^[^:]+:\d+(?:-\d+)?$/.test(annotation)) {
-    const filePath = annotation.slice(0, annotation.lastIndexOf(":")).trim();
-    return statFile(filePath);
-  }
-  return false;
 }
 
 /**
@@ -556,7 +555,11 @@ async function evaluateStampEvidenceGates(opts: {
   // ── RFC-IMP-10 / RFC-IMP-11: git-derived origin gates (RFC-1330) ─────────
   // Derived fresh at stamp time (head = HEAD) — the committed envelope's
   // origin records are volatile context and may predate later commits.
-  if (runIndependent && hasProbes && String(opts.frontmatter["createdAt"] ?? "") >= RFC_ORIGIN_CUTOFF) {
+  if (
+    runIndependent &&
+    hasProbes &&
+    String(opts.frontmatter["createdAt"] ?? "") >= RFC_ORIGIN_CUTOFF
+  ) {
     const probes = acceptance as AcceptanceProbe[];
     const origins = await deriveProbeOrigins({
       git: createOriginGit(opts.workspaceRoot),
@@ -899,9 +902,7 @@ export async function runRfcImplementStamp(
       // sync chain — probes re-execute even inside the freshness window.
       syncReport = await context.invoke("rfc.evidence.sync", {
         id: targetId,
-        ...(input.flags["no-evidence-reuse"] === true
-          ? { "no-evidence-reuse": "true" }
-          : {}),
+        ...(input.flags["no-evidence-reuse"] === true ? { "no-evidence-reuse": "true" } : {}),
       });
     } catch (err) {
       violations.push({
@@ -1238,9 +1239,7 @@ export async function runRfcImplementStamp(
               flags: {
                 id: targetId,
                 ...(waiveOutcome ? { "waive-outcome": waiveOutcome } : {}),
-                ...(input.flags["no-evidence-reuse"] === true
-                  ? { "no-evidence-reuse": true }
-                  : {}),
+                ...(input.flags["no-evidence-reuse"] === true ? { "no-evidence-reuse": true } : {}),
               },
             },
             context,
@@ -1459,9 +1458,7 @@ export async function runRfcImplementStamp(
             flags: {
               id: targetId,
               ...(waiveOutcome ? { "waive-outcome": waiveOutcome } : {}),
-              ...(input.flags["no-evidence-reuse"] === true
-                ? { "no-evidence-reuse": true }
-                : {}),
+              ...(input.flags["no-evidence-reuse"] === true ? { "no-evidence-reuse": true } : {}),
             },
           },
           context,

@@ -6,8 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
-  <item>RFC-1534: V-PROBE-META-01 metachar lint — warning on unescaped parens and `**` + slash glob shapes in file-contains/test probe patterns at authoring statuses; `probe-meta: intentional` comment suppresses per-pattern via raw frontmatterSource scan.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
@@ -20,7 +18,8 @@ process (per-spec null on missing objects, wholesale null on spawn or
 framing failure). collectCommittedReviews prefers it and keeps the
 sequential show loop for stubs. rfc.validate memoizes the index once
 per run and V-49 consumes it — identical diagnostics, one batched read.</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453</history>
+  <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1455, RFC-1534</history>
 </CHANGE_SUMMARY>
 */
 
@@ -37,11 +36,8 @@ import { execFile } from "../../../src/utils/sync-fs.ts";
 import { parse as yamlParse } from "yaml";
 import { proofSpecSchema } from "../../../src/formal/proof-spec.ts";
 import { validateAcceptanceShape } from "../acceptance.ts";
-import {
-  scoreDecisions,
-  REPROPOSED_SCORE,
-  TERMINAL_KINDS,
-} from "../decision-log.ts";
+import { EVIDENCE_FORMS, parseEvidenceAnnotation } from "../evidence-annotation.ts";
+import { scoreDecisions, REPROPOSED_SCORE, TERMINAL_KINDS } from "../decision-log.ts";
 import type { DecisionLogEntry } from "../types.ts";
 import type { ParsedRfc, RfcCorpusEntry } from "../frontmatter-io.ts";
 import type { ReadAndParseRfcResult } from "../frontmatter-io.ts";
@@ -564,9 +560,7 @@ export function collectProbeMetacharHits(
     for (let i = 0; i < fmLines.length; i++) {
       const line = fmLines[i]!;
       if (!line.includes(`${field}:`) || !line.includes(value)) continue;
-      return (
-        line.includes(PROBE_META_MARKER) || (fmLines[i - 1] ?? "").includes(PROBE_META_MARKER)
-      );
+      return line.includes(PROBE_META_MARKER) || (fmLines[i - 1] ?? "").includes(PROBE_META_MARKER);
     }
     return false;
   };
@@ -584,13 +578,25 @@ export function collectProbeMetacharHits(
     if (/(^|[^\\])\(/.test(pattern)) chars.push("unescaped `(`");
     if (/(^|[^\\])\)/.test(pattern)) chars.push("unescaped `)`");
     if (pattern.includes("**/")) chars.push("`**/` glob shape");
+    // RFC-1569 (F-0202): a mid-pattern `$`/`^` anchors silently — the probe can
+    // never match; unescaped `{}`/`[]` quantify/group instead of matching.
+    const rest = pattern.slice(1).replace(/\\\^/g, "");
+    if (rest.includes("^")) chars.push("mid-pattern `^` anchor");
+    const head = pattern.slice(0, -1).replace(/\\\$/g, "");
+    if (head.includes("$")) chars.push("mid-pattern `$` anchor");
+    if (/(^|[^\\])[{}]/.test(pattern)) chars.push("unescaped `{`/`}`");
+    if (/(^|[^\\])[[\]]/.test(pattern)) chars.push("unescaped `[`/`]`");
     if (chars.length === 0 || suppressed(field, pattern)) continue;
     hits.push({
       criterion: typeof probe.criterion === "string" ? probe.criterion : "?",
       probe: kind,
       pattern,
       chars,
-      suggestion: pattern.replace(/\*\*\//g, "(?:.*/)?").replace(/([()])/g, "\\$1"),
+      suggestion: pattern
+        .replace(/\*\*\//g, "(?:.*/)?")
+        .replace(/([()[\]{}^$])/g, "\\$1")
+        .replace(/^\\\^/, "^")
+        .replace(/\\\$$/, "$"),
     });
   }
   return hits;
@@ -993,14 +999,155 @@ export async function validateSingleRfc(
     }
   }
 
+  // V-53 (RFC-1569): evidence annotation SHAPE on every criterion line —
+  // the stamp's grammar, applied at authoring time. Warning at
+  // draft/reviewing, error from accepted on; V-37 keeps its checked-line
+  // resolution semantics (the double-fire on checked lines is deliberate).
+  const v53Probes = Array.isArray(fm["acceptance"]) ? (fm["acceptance"] as AcceptanceProbe[]) : [];
+  if (acceptanceSection) {
+    const v53Severity = status === "draft" || status === "reviewing" ? "warning" : "error";
+    for (const line of acceptanceSection.split("\n")) {
+      if (!/^- \[[ xX]\]/.test(line)) continue;
+      const v53Matches = [...line.matchAll(/\(evidence:\s*(.+?)\)/g)];
+      const v53Match = v53Matches.at(-1);
+      if (!v53Match) continue;
+      const v53Parsed = parseEvidenceAnnotation(v53Match[1]!);
+      if (v53Parsed.kind === "invalid") {
+        addViolation(
+          rfcId,
+          relFile,
+          "V-53",
+          `evidence "${v53Parsed.raw.trim()}" is not a resolvable form (expected ${EVIDENCE_FORMS}) — rfc.implement.stamp would refuse it with STAMP-CHECK-01`,
+          v53Severity,
+        );
+      } else if (v53Parsed.kind === "probe") {
+        const refId = v53Parsed.criterion;
+        // AC-N existence comes from the checklist; a design:<heading>
+        // criterion "exists" when a frontmatter probe declares it.
+        const exists =
+          criteriaEval.criterionIds.includes(refId) || v53Probes.some((p) => p.criterion === refId);
+        if (!exists) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-53",
+            `evidence "probe:${refId}" references a criterion that does not exist in acceptance criteria`,
+            v53Severity,
+          );
+        } else if (v53Probes.length > 0 && !v53Probes.some((p) => p.criterion === refId)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-53",
+            `evidence "probe:${refId}" references a criterion with no bound probe`,
+            v53Severity,
+          );
+        }
+      }
+    }
+  }
+
+  // V-54 (RFC-1569, F-0175): transient probe targets — a target that only
+  // resolves while a mission is open cannot carry stamp evidence. Warning
+  // only: app-scope fallbacks to the cache clone are legitimate (RFC-1025).
+  {
+    let outcomeBuildRe: RegExp | null = null;
+    try {
+      const ob = loadForgeConfig(workspaceRoot).bindings?.commands.outcomeBuild;
+      if (typeof ob === "string" && ob.trim()) {
+        outcomeBuildRe = new RegExp(
+          `^${ob
+            .trim()
+            .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+            .replace(/\\\{target\\\}/g, "\\S+")}$`,
+        );
+      }
+    } catch {
+      // forge.yaml unreadable → no binding → nothing to exempt.
+    }
+    let appScopedCommands: Set<string> | null = null;
+    const runProbes = v53Probes.filter((p) => p.probe === "run");
+    if (runProbes.length > 0) {
+      let manifestRaw: string | null = null;
+      try {
+        manifestRaw = await io.readFile(
+          path.join(workspaceRoot, "docs", "command-manifest.generated.yaml"),
+        );
+      } catch {
+        // Manifest absent (forge-only consumer repos) → skip the arm.
+      }
+      if (manifestRaw !== null) {
+        try {
+          const manifest = yamlParse(manifestRaw) as {
+            commands?: { name?: string; scope?: string }[];
+          };
+          const entries = manifest?.commands;
+          if (!Array.isArray(entries)) throw new Error("no commands[]");
+          appScopedCommands = new Set(
+            entries
+              .filter((c) => c?.scope === "app" && typeof c?.name === "string")
+              .map((c) => c.name as string),
+          );
+        } catch {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-54",
+            `command manifest malformed — app-scope arm of V-54 skipped for this run`,
+            "warning",
+          );
+        }
+      }
+    }
+    for (const probe of v53Probes) {
+      const kind = probe.probe;
+      const criterion = typeof probe.criterion === "string" ? probe.criterion : "?";
+      if (kind === "file-exists" || kind === "file-contains" || kind === "json-schema") {
+        const p = "path" in probe ? String(probe.path ?? "") : "";
+        if (/^missions\/(?!archive\/)/.test(p)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-54",
+            `${criterion} ${kind} probe path "${p}" lives under missions/ outside missions/archive/ — it resolves only while a mission is open; bind a durable target instead`,
+            "warning",
+          );
+        }
+      }
+      if (kind === "run") {
+        const cmd = "command" in probe ? String(probe.command ?? "") : "";
+        if (!cmd || (outcomeBuildRe && outcomeBuildRe.test(cmd.trim()))) continue;
+        if (/(^|\s)--mission(\s|=|$)/.test(cmd)) {
+          addViolation(
+            rfcId,
+            relFile,
+            "V-54",
+            `${criterion} run probe "${cmd}" carries a --mission flag — the command resolves only while that mission is open; use a test probe or a durable target`,
+            "warning",
+          );
+          continue;
+        }
+        if (appScopedCommands !== null) {
+          const hit = cmd.split(/\s+/).find((tok) => appScopedCommands!.has(tok));
+          if (hit) {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-54",
+              `${criterion} run probe invokes app-scoped command "${hit}" — it needs an open site workpiece to run; prefer a test probe, a durable target, or the outcomeBuild binding`,
+              "warning",
+            );
+          }
+        }
+      }
+    }
+  }
+
   // V-PROBE-META-01 (RFC-1534): regexp-trap metachar lint — warning at
   // authoring statuses (draft/reviewing/accepted), never a blocking error;
   // terminal statuses are archival and stay silent.
   if (status === "draft" || status === "reviewing" || status === "accepted") {
-    for (const hit of collectProbeMetacharHits(
-      fm["acceptance"],
-      parsed.frontmatterSource ?? "",
-    )) {
+    for (const hit of collectProbeMetacharHits(fm["acceptance"], parsed.frontmatterSource ?? "")) {
       addViolation(
         rfcId,
         relFile,
