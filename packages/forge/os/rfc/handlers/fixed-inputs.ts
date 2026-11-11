@@ -17,6 +17,7 @@ warning nudge. All functions are pure — no I/O.
 <CHANGE_SUMMARY>
   <item>RFC-1455: fixed-inputs section parser + V-50/V-51 evaluator for rfc.validate.</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
+  <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
 </CHANGE_SUMMARY>
 */
 
@@ -235,8 +236,17 @@ export function evaluateFixedInputs(
     }
 
     const literals = fixedInputLiterals(row.value);
+    // RFC-1569: compare against the regex-UNESCAPED pattern too — a literal
+    // carrying metacharacters (${WORKSPACE_ROOT}) cannot be both escaped in
+    // the pattern and contained verbatim; `\d`/`\w` shorthand keeps its
+    // backslash (unescaping it would fake coverage for single-char literals).
+    const unescapePattern = (field: string): string =>
+      field.replace(/\\([.*+?^${}()|[\]\\])/g, "$1");
     const uncovered = literals.filter(
-      (literal) => !outcomeFields.some((field) => field.includes(literal)),
+      (literal) =>
+        !outcomeFields.some(
+          (field) => field.includes(literal) || unescapePattern(field).includes(literal),
+        ),
     );
     if (uncovered.length > 0) {
       diagnostics.push({

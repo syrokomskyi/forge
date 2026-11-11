@@ -225,8 +225,8 @@ interface ExampleResult {
      system behavior — they are checks that the document is complete.
      Use DR-N: identifiers. V-38 enforces completeness for accepted+ post-cutoff RFCs.
 
-- [ ] DR-1: Every considered alternative has a stated reason for rejection (evidence: file: <path:line>)
-- [ ] DR-2: The RFC enumerates every existing artifact it touches (evidence: file: <path:line>)
+- [ ] DR-1: Every considered alternative has a stated reason for rejection (evidence: file:<path>:<line>)
+- [ ] DR-2: The RFC enumerates every existing artifact it touches (evidence: file:<path>:<line>)
 - [ ] DR-3: The RFC states whether the decision is reversible and at what cost
 -->
 
@@ -235,12 +235,12 @@ interface ExampleResult {
 <!-- V-50 contract (RFC-1455): every value this RFC pins for the shipped
      result (verbatim copy, labels, names, decided option values) is a row
      bound to exactly one AC-N criterion whose probes observe the value.
-     Emit the header schema only — a live placeholder row would itself trip
+     V-50 containment compares each literal against the regex-UNESCAPED probe pattern — escaping a metachar literal keeps coverage. Emit the header schema only — a live placeholder row would itself trip
      V-50. Add rows only when the draft fixes real inputs; delete this
      section's table when none exist. -->
 
-| ID | Value | Source | Checked by |
-| --- | --- | --- | --- |
+| ID  | Value | Source | Checked by |
+| --- | ----- | ------ | ---------- |
 
 ## Acceptance criteria
 
@@ -248,11 +248,11 @@ interface ExampleResult {
      Each criterion is a falsifiable claim about an observable artifact, written in EARS form with a stable AC-N: identifier.
      Required mix: behavior, contract, negative, sync. 3–10 items. One claim = one checking mechanism. -->
 
-- [ ] AC-1: WHEN `<command> --json` is invoked, THE command SHALL return a JSON object matching the documented output schema (evidence: probe:AC-1 or test: <path>)
-- [ ] AC-2: THE `<command>` SHALL be registered in the kernel module with the correct name and scope (evidence: file: <module-path>)
-- [ ] AC-3: IF `<command>` receives invalid input, THEN THE command SHALL report a blocking error (evidence: test: <path/to/test>)
-- [ ] AC-4: IF `<command>` receives invalid input, THEN THE command SHALL exit non-zero (evidence: test: <path/to/test>)
-- [ ] AC-5: THE relevant `AGENTS.md` SHALL reference this RFC where agent behavior rules changed (evidence: file: <path:line>)
+- [ ] AC-1: WHEN `<command> --json` is invoked, THE command SHALL return a JSON object matching the documented output schema (evidence: probe:AC-1)
+- [ ] AC-2: THE `<command>` SHALL be registered in the kernel module with the correct name and scope (evidence: file:<module-path>)
+- [ ] AC-3: IF `<command>` receives invalid input, THEN THE command SHALL report a blocking error (evidence: test:<path/to/test>)
+- [ ] AC-4: IF `<command>` receives invalid input, THEN THE command SHALL exit non-zero (evidence: test:<path/to/test>)
+- [ ] AC-5: THE relevant `AGENTS.md` SHALL reference this RFC where agent behavior rules changed (evidence: file:<path>:<line>)
 
 ## Implementation notes for agents
 
