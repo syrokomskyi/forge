@@ -15,14 +15,14 @@ reachable, else the version-file value.</purpose>
   <item>Untagged is not an error — it resolves to the version-file value; only a missing or unparsable version file throws.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1495: steps 2-3 - workshop paths resolver and call-site migration</item>
   <item>RFC-1519: add advisory gate-verdict store for scoped pass reuse across reruns and the commit-integrate boundary</item>
   <item>RFC-1549: route generated onboarding-status commits through session flow on fixed branches
 
 commitWerkstattSideEffects skips git add+commit when classifyBranch() yields non-flow (protected/nonconforming), reports written outputPaths; status-hook and deploy/leitstand results propagate onboardingStatus metadata; leitstand.promote surfaces an optional session-worktree integration nextStep. Flow-branch commit behavior unchanged; mission-open fixture rebased to conforming auto/task-YYMMDD-NN branch. AC-1..AC-3 checked.</item>
-  <history>RFC-1493</history>
+  <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <history>RFC-1493, RFC-1494</history>
 </CHANGE_SUMMARY>
 */
 
@@ -32,11 +32,7 @@ import { hasManagedBlock, PRECOMMIT_FILE } from "./guard-files.ts";
 import { deriveLineVersion } from "./line-version.ts";
 import { detectRepoKind } from "./repo-kind.ts";
 import { discoverReleaseLines } from "./release-lines.ts";
-import {
-  primaryWorktree,
-  resolveStateRoots,
-  type StateRoots,
-} from "./worktree-path.ts";
+import { primaryWorktree, resolveStateRoots, type StateRoots } from "./worktree-path.ts";
 
 // RFC-1495: state-root resolution — Forge owns the roots (mission.archive,
 // werkstatt.lock.recover build state paths and Forge must not import
@@ -47,6 +43,8 @@ export type { StateRoots };
 export type { FlowWorktree } from "./git.ts";
 export { classifyBranch } from "./branch-name.ts";
 export type { BranchClass } from "./branch-name.ts";
+// RFC-1568: gate-run hosts share the common-git-dir resolution.
+export { commonGitDir } from "./registry.ts";
 
 export interface RepositoryLineVersion {
   /** "6.451.0+12.ab12cd34e" for a tagged line, "6.451.0" from the version file otherwise. */

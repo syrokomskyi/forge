@@ -9,18 +9,12 @@ can be registered in a Warpgogol kernel without direct dependency.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1360: step 2 — env-input declaration sweep (59 commands)
-
-Declare every reachable env read on its owning command across engine/site/
-forge (fresh full-registry replay worklist: 151 ENV-INPUT-01, 60 commands).
-ForgeCommandMetadata gains the mirrored envInputs contract field. The
-npm_execpath ambient read in open-source-page.ts is removed for a
-deterministic PATH spawn (DNA-105) — undeclarable name class, ledger Q-9.</item>
   <item>RFC-1366: kernel resolves mission workpieceEnv + KERNEL-ENV-01 gate on required envInputs</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1463: composite gates report complete violation sets and self-ensure prerequisites — ensure/compositeGate metadata, executor ensure runner, blockedBy skip tracking, ENSURE-01..04 + GATE-CMP-01, runCompositeGate</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
-  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306, RFC-1354</history>
+  <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <history>RFC-0518, RFC-1097, RFC-1147, RFC-1231, RFC-1306, RFC-1354, RFC-1360</history>
 </CHANGE_SUMMARY>
 */
 
@@ -189,6 +183,13 @@ export interface ForgeCommandMetadata {
    * KernelCommandMetadata.
    */
   mutatingFlags?: string[];
+  /**
+   * RFC-1568: the command may run under `--detach` and every execution
+   * writes a durable gate-run record. Structurally mirrors
+   * KernelCommandMetadata — the standalone CLI checks this field on forge
+   * commands.
+   */
+  detachable?: true;
   /**
    * RFC-1327: rerun-safety class for mutating commands — structurally
    * mirrors KernelCommandMetadata. `rerun-safe` requires a sibling
