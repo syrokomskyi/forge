@@ -20,12 +20,12 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1531: remediation flags --reattach/--auto-clean/--autocommit on the classified dirty set, FLOW-INT-17 remediation-failure refusals, classified FLOW-INT-01 data</item>
   <item>RFC-1532: persist integration-gate reports per attempt and link them from the flow journal</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1536, RFC-1537, RFC-1538</history>
+  <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1536, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -165,6 +165,56 @@ function refuse(
       { ruleId, severity: "error", message, fixHint, ...(diagData ? { data: diagData } : {}) },
     ],
   };
+}
+
+/**
+ * ADR-0128 (F-0188): FLOW-INT-02 always carries an actionable cause.
+ * Unmerged paths are capped at 20 with a (+N more) tail; when the rebase
+ * failed without unmerged paths the message names the cause instead —
+ * the rebase stderr tail plus the worktree's porcelain status.
+ */
+async function rebaseConflictRefusal(
+  branchWorktree: string,
+  io: WorkspaceIO,
+  rebase: { stderr?: string; stdout?: string },
+  paths: string[],
+  partial: Partial<FlowIntegrateData>,
+  messageSuffix = "",
+): Promise<FlowIntegrateData> {
+  const porcelain = await git(branchWorktree, io, ["status", "--porcelain"]);
+  const statusPorcelain = porcelain.stdout
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length > 0)
+    .slice(0, 20);
+  const stderrLines = (rebase.stderr ?? rebase.stdout ?? "")
+    .split("\n")
+    .map((l) => l.trimEnd())
+    .filter((l) => l.length > 0);
+  const rebaseStderrTail = stderrLines.slice(-20);
+  let message: string;
+  let fixHint: string;
+  if (paths.length > 0) {
+    const shown = paths.slice(0, 20);
+    const more = paths.length - shown.length;
+    message = `rebase onto develop conflicts in: ${shown.join(", ")}${more > 0 ? ` (+${more} more)` : ""}${messageSuffix}`;
+    fixHint =
+      "resolve the listed conflicts in the session worktree, commit, and re-run flow.integrate";
+  } else {
+    const cause =
+      rebaseStderrTail.length > 0
+        ? `rebase stderr tail: ${rebaseStderrTail.join(" | ")}`
+        : "no unmerged paths and empty rebase output";
+    const dirt =
+      statusPorcelain.length > 0 ? `worktree status: ${statusPorcelain.join(" | ")}` : "worktree status: clean";
+    message = `rebase onto develop failed without unmerged paths — ${cause} — ${dirt}${messageSuffix}`;
+    fixHint = "clean the listed worktree state, then re-run flow.integrate";
+  }
+  return refuse("FLOW-INT-02", message, fixHint, partial, {
+    conflictedPaths: paths,
+    rebaseStderrTail,
+    statusPorcelain,
+  });
 }
 
 async function resolveEntry(
@@ -1026,12 +1076,13 @@ async function integrateFlowBranchAttempt(
           verdict.owners.length === paths.length;
         if (!resolvable) {
           await git(branchWorktree, io, ["rebase", "--abort"]);
-          return refuse(
-            "FLOW-INT-02",
-            `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}` +
-              (verdict.owners.length > 0 ? " — mixed generated/non-generated conflict set" : ""),
-            "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
+          return rebaseConflictRefusal(
+            branchWorktree,
+            io,
+            rebase,
+            paths,
             { branch, developBefore },
+            verdict.owners.length > 0 ? " — mixed generated/non-generated conflict set" : "",
           );
         }
         let failed = false;
@@ -1081,12 +1132,7 @@ async function integrateFlowBranchAttempt(
           .map((l) => l.trim())
           .filter((l) => l.length > 0);
         await git(branchWorktree, io, ["rebase", "--abort"]);
-        return refuse(
-          "FLOW-INT-02",
-          `rebase onto develop conflicts in: ${paths.join(", ") || "(unknown paths)"}`,
-          "resolve the rebase inside the session worktree, commit, and re-run flow.integrate",
-          { branch, developBefore },
-        );
+        return rebaseConflictRefusal(branchWorktree, io, rebase, paths, { branch, developBefore });
       }
     }
 

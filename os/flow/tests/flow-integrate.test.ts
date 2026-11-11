@@ -11,12 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
-  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537</history>
+  <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
+  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -126,6 +126,72 @@ describe("flow.integrate", () => {
     // rebase aborted — the session worktree is back to a clean branch tip.
     const wt = await gitExec(session.worktree!, ["status", "--porcelain"]);
     expect(wt.stdout.trim()).toBe("");
+  }, 20_000);
+
+  it("names the cause when the rebase fails without unmerged paths (ADR-0128, F-0188)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "blocked");
+    // the session branch needs a unique commit so the integrate actually
+    // reaches the rebase stage; without it the branch fast-forwards trivially.
+    await commitIn(session.worktree!, "session.txt", "session work\n");
+    // develop-only path whose worktree twin is tolerated dirt — the dirty
+    // preflight lets it through (FORGE_STATE_FILES) but the rebase checkout
+    // refuses on it before any unmerged path exists.
+    await mkdir(join(repo, ".forge"), { recursive: true });
+    await commitIn(repo, ".forge/knowledge-conflicts.txt", "develop content\n");
+    await mkdir(join(session.worktree!, ".forge"), { recursive: true });
+    await writeFile(
+      join(session.worktree!, ".forge/knowledge-conflicts.txt"),
+      "session-local state\n",
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
+    const message = data.diagnostics[0]?.message ?? "";
+    expect(message).toContain("failed without unmerged paths");
+    expect(message).toContain("knowledge-conflicts.txt");
+    expect(data.diagnostics[0]?.fixHint).toContain("clean the listed worktree state");
+    const details = (data.diagnostics[0] as { data?: Record<string, unknown> }).data;
+    expect(details?.conflictedPaths).toEqual([]);
+    expect((details?.rebaseStderrTail as string[]).join("\n")).toContain(
+      "knowledge-conflicts.txt",
+    );
+    expect((details?.statusPorcelain as string[]).join("\n")).toContain(".forge/");
+  }, 20_000);
+
+  it("caps the conflicted path list at 20 and reports the remainder (ADR-0128, F-0188)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "many");
+    // 22 files conflict in ONE commit each side — the rebase stops with all
+    // of them unmerged at once.
+    for (let i = 0; i < 22; i++) {
+      await writeFile(join(session.worktree!, `f${String(i).padStart(2, "0")}.txt`), "session\n");
+    }
+    await gitExec(session.worktree!, ["add", "."]);
+    await gitExec(session.worktree!, ["commit", "-m", "session adds 22 files"]);
+    for (let i = 0; i < 22; i++) {
+      await writeFile(join(repo, `f${String(i).padStart(2, "0")}.txt`), "develop\n");
+    }
+    await gitExec(repo, ["add", "."]);
+    await gitExec(repo, ["commit", "-m", "develop edits 22 files"]);
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
+    const message = data.diagnostics[0]?.message ?? "";
+    expect(message).toContain("(+2 more)");
+    expect(message).not.toContain("f21.txt");
+    const details = (data.diagnostics[0] as { data?: Record<string, unknown> }).data;
+    expect((details?.conflictedPaths as string[]).length).toBe(22);
   }, 20_000);
 
   it("refuses FLOW-INT-05 when the primary gate fails though the branch's copy passes (AC-5)", async () => {
