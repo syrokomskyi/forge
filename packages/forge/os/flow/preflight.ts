@@ -14,16 +14,17 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1531: shared DirtyClass enum via dirty-classify.ts (Q-4), classified FLOW-INT-01/03 data.entries, classifyDirtyEntries for the remediation flags</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
-  <history>RFC-1528, RFC-1537, RFC-1538</history>
+  <item>ADR-0130: induced-change lockfile classifiers — BFS reachability for optional-flag removals, collapse pairs, induced packages/snapshots additions</item>
+  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
 import { basename, dirname, join } from "node:path";
+import { parse as parseYaml } from "yaml";
 
 import type {
   CommandRegistry,
@@ -152,6 +153,302 @@ export function classifyLockfileMaterialize(diffText: string): string[] | null {
     return null;
   }
   return sawImporterKey ? [...ids].sort() : null;
+}
+
+// ---------------------------------------------------------------------------
+// ADR-0130 (F-0201): induced-change lockfile shapes
+//
+// A `pnpm install` against a lockfile whose `importers:` list includes open
+// mission workpieces produces diffs that are never pure block additions or
+// removals — the dependency-graph write also adds/drops `optional: true`
+// flags, collapses `key:\n  optional: true` pairs to `key: {}`, and adds or
+// removes `packages:`/`snapshots:` members. The strict one-shape classifiers
+// above see the extra hunks and degrade to `work`, which is the ping-pong the
+// ADR stops. These extended classifiers accept the strict shape first and
+// then the induced shape, bounded by where each hunk anchors in the HEAD
+// lockfile.
+// ---------------------------------------------------------------------------
+
+const DIFF_HEADER = /^(diff |index |--- |\+\+\+ |@@ )/;
+const TOP_LEVEL_KEY = /^(\S[^:]*):\s*$/;
+const IMPORTER_KEY = /^\s*missions\/([^\s/]+)\/workpiece:\s*$/;
+const OPTIONAL_TRUE = /^\s*optional: true\s*$/;
+
+interface DiffLine {
+  kind: "add" | "del" | "ctx" | "hunk";
+  text: string;
+  oldLine: number; // anchor position in the HEAD file (for `add`: line after which it inserts)
+}
+
+/** Parse `git diff` output into positioned lines (single-file diffs only). */
+function parseDiffLines(diffText: string): DiffLine[] {
+  const lines: DiffLine[] = [];
+  let oldCursor = 0;
+  for (const raw of diffText.split("\n")) {
+    const hunk = /^@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@/.exec(raw);
+    if (hunk) {
+      oldCursor = Number(hunk[1]);
+      lines.push({ kind: "hunk", text: raw, oldLine: oldCursor });
+      continue;
+    }
+    if (DIFF_HEADER.test(raw) || raw === "") continue;
+    if (raw.startsWith("+")) {
+      lines.push({ kind: "add", text: raw.slice(1), oldLine: oldCursor });
+      continue;
+    }
+    if (raw.startsWith("-")) {
+      lines.push({ kind: "del", text: raw.slice(1), oldLine: oldCursor });
+      oldCursor += 1;
+      continue;
+    }
+    lines.push({ kind: "ctx", text: raw.slice(1), oldLine: oldCursor });
+    oldCursor += 1;
+  }
+  return lines;
+}
+
+/** Top-level (`key:`) section containing old-file line `n` (1-based). */
+function topLevelSectionAt(headLines: string[], n: number): string | null {
+  let section: string | null = null;
+  for (let i = 0; i < Math.min(n, headLines.length); i++) {
+    const m = TOP_LEVEL_KEY.exec(headLines[i]);
+    if (m) section = m[1];
+  }
+  return section;
+}
+
+/** Second-level `key:` (one-indent) enclosing old-file line `n` inside `section`. */
+function secondLevelKeyAt(headLines: string[], n: number, section: string): string | null {
+  let inSection = false;
+  let key: string | null = null;
+  for (let i = 0; i < Math.min(n, headLines.length); i++) {
+    const line = headLines[i];
+    const top = TOP_LEVEL_KEY.exec(line);
+    if (top) {
+      inSection = top[1] === section;
+      key = null;
+      continue;
+    }
+    if (!inSection || line.trim() === "") continue;
+    const m = /^ {2}('?[^:]*'?):\s*(?:\{\})?\s*$/.exec(line);
+    if (m) key = m[1].replace(/^'|'$/g, "");
+  }
+  return key;
+}
+
+/**
+ * Snapshot keys reachable from `missionIds` in the working lockfile — BFS
+ * from each `missions/<id>/workpiece` importer through `dependencies`,
+ * `devDependencies` and `optionalDependencies` version specifiers, then
+ * through each reached snapshot's own dependency maps. Specifiers that are
+ * not registry resolutions (`link:`, `workspace:`, `file:`) have no snapshot
+ * entry and are ignored.
+ */
+export function reachableSnapshotKeys(lockText: string, missionIds: string[]): Set<string> {
+  const reachable = new Set<string>();
+  let parsed: unknown;
+  try {
+    parsed = parseYaml(lockText);
+  } catch {
+    return reachable;
+  }
+  const root = parsed as Record<string, unknown> | null;
+  const importers = (root?.importers ?? {}) as Record<string, unknown>;
+  const snapshots = (root?.snapshots ?? {}) as Record<string, Record<string, unknown>>;
+  const depMaps = (entry: Record<string, unknown>): string[] => {
+    const out: string[] = [];
+    for (const field of ["dependencies", "devDependencies", "optionalDependencies"]) {
+      const deps = entry[field] as Record<string, unknown> | undefined;
+      if (!deps) continue;
+      for (const [name, spec] of Object.entries(deps)) {
+        const version =
+          typeof spec === "string" ? spec : ((spec as Record<string, unknown>)?.version as string);
+        if (typeof version !== "string") continue;
+        if (/^(link|workspace|file):/.test(version)) continue;
+        // pnpm strips the name for plain resolutions inside importers
+        // (version only) but snapshot keys carry `name@version`.
+        out.push(version.startsWith(`${name}@`) ? version : `${name}@${version}`);
+      }
+    }
+    return out;
+  };
+  const queue: string[] = [];
+  for (const id of missionIds) {
+    const entry = importers[`missions/${id}/workpiece`] as Record<string, unknown> | undefined;
+    if (entry) queue.push(...depMaps(entry));
+  }
+  while (queue.length > 0) {
+    const key = queue.shift()!;
+    if (reachable.has(key)) continue;
+    reachable.add(key);
+    const snap = snapshots[key];
+    if (snap) queue.push(...depMaps(snap));
+  }
+  return reachable;
+}
+
+/**
+ * ADR-0130 criterion (b)+(c): materialize shape extended with induced
+ * changes. Removed lines must be `optional: true` on snapshots reachable
+ * from the added mission importers, or `key:` lines paired with an added
+ * `key: {}` collapse. Added lines outside mission importer blocks must
+ * anchor under `packages:` or `snapshots:` in the HEAD file.
+ */
+export function classifyLockfileMaterializeExtended(
+  diffText: string,
+  headText: string,
+  workText: string,
+): string[] | null {
+  const strict = classifyLockfileMaterialize(diffText);
+  if (strict !== null) return strict;
+  const headLines = headText.split("\n");
+  const lines = parseDiffLines(diffText);
+  const missionIds = new Set<string>();
+  const collapsedKeys = new Set<string>();
+  const optionalRemovedOn = new Set<string>();
+  let importerBlockIndent: number | null = null;
+  let sawDiff = false;
+  for (const line of lines) {
+    if (line.kind === "hunk") {
+      importerBlockIndent = null;
+      continue;
+    }
+    if (line.kind === "ctx") {
+      const indent = line.text.length - line.text.trimStart().length;
+      if (
+        line.text.trim().length > 0 &&
+        importerBlockIndent !== null &&
+        indent <= importerBlockIndent
+      ) {
+        importerBlockIndent = null;
+      }
+      continue;
+    }
+    sawDiff = true;
+    if (line.kind === "add") {
+      const text = line.text;
+      const indent = text.length - text.trimStart().length;
+      const key = IMPORTER_KEY.exec(text);
+      if (key) {
+        missionIds.add(key[1]);
+        importerBlockIndent = indent;
+        continue;
+      }
+      if (importerBlockIndent !== null && (indent > importerBlockIndent || text.trim() === "")) {
+        continue; // member of an open importer block
+      }
+      if (indent <= (importerBlockIndent ?? indent)) importerBlockIndent = null;
+      // Non-importer additions must anchor inside the dependency-graph
+      // sections — the induced write never touches anything else.
+      const section = topLevelSectionAt(headLines, line.oldLine);
+      if (section === "packages" || section === "snapshots") continue;
+      return null;
+    }
+    // removed line
+    const text = line.text;
+    if (OPTIONAL_TRUE.test(text)) {
+      const owner = secondLevelKeyAt(headLines, line.oldLine, "snapshots");
+      if (owner === null) return null;
+      optionalRemovedOn.add(owner);
+      continue;
+    }
+    const removedKey = /^(\s*'?[^:]*'?):\s*$/.exec(text);
+    if (removedKey) {
+      // allowed only as the `key:` → `key: {}` collapse — an added
+      // `key: {}` must appear somewhere in the diff.
+      collapsedKeys.add(removedKey[1].trim());
+      const owner = removedKey[1].trim().replace(/^'|'$/g, "");
+      const section = topLevelSectionAt(headLines, line.oldLine);
+      if (section !== "snapshots") return null;
+      optionalRemovedOn.add(owner);
+      continue;
+    }
+    return null;
+  }
+  if (!sawDiff || missionIds.size === 0) return null;
+  // every removed `key:` must be matched by an added `key: {}` — an
+  // unmatched one is a real snapshot removal, not a collapse.
+  for (const key of collapsedKeys) {
+    const hasPair = lines.some((l) => l.kind === "add" && l.text.trim() === `${key}: {}`);
+    if (!hasPair) return null;
+  }
+  const reachable = reachableSnapshotKeys(workText, [...missionIds]);
+  for (const owner of optionalRemovedOn) {
+    if (!reachable.has(owner)) return null;
+  }
+  return [...missionIds].sort();
+}
+
+/**
+ * ADR-0130 prune direction: removed lines must still be importer-block
+ * members (strict rule); added lines are tolerated only when they anchor
+ * inside `packages:`/`snapshots:` — the inverse induced write (`optional:
+ * true` re-additions, `transitivePeerDependencies`, snapshot entries).
+ */
+export function classifyLockfilePruneIdsExtended(
+  diffText: string,
+  headText: string,
+): string[] | null {
+  const strict = classifyLockfilePruneIds(diffText);
+  if (strict !== null) return strict;
+  const headLines = headText.split("\n");
+  const lines = parseDiffLines(diffText);
+  const ids = new Set<string>();
+  const expandedKeys = new Set<string>();
+  let sawImporterKey = false;
+  let openBlockIndent: number | null = null;
+  for (const line of lines) {
+    if (line.kind === "hunk") {
+      openBlockIndent = null;
+      continue;
+    }
+    if (line.kind === "ctx") {
+      const indent = line.text.length - line.text.trimStart().length;
+      if (line.text.trim().length > 0 && openBlockIndent !== null && indent <= openBlockIndent) {
+        openBlockIndent = null;
+      }
+      continue;
+    }
+    if (line.kind === "add") {
+      const section = topLevelSectionAt(headLines, line.oldLine);
+      if (section === "packages" || section === "snapshots") continue;
+      return null;
+    }
+    const text = line.text;
+    if (text.trim().length === 0) {
+      if (openBlockIndent === null) return null;
+      continue;
+    }
+    // inverse of the materialize collapse — the prune re-expands
+    // `key: {}` into `key:` + `optional: true` children.
+    const emptyEntry = /^(\s*'?[^:]*'?):\s*\{\}\s*$/.exec(text);
+    if (emptyEntry) {
+      const section = topLevelSectionAt(headLines, line.oldLine);
+      if (section === "snapshots" || section === "packages") {
+        expandedKeys.add(emptyEntry[1].trim());
+        continue;
+      }
+      return null;
+    }
+    const indent = text.length - text.trimStart().length;
+    const key = IMPORTER_KEY.exec(text);
+    if (key) {
+      sawImporterKey = true;
+      ids.add(key[1]);
+      openBlockIndent = indent;
+      continue;
+    }
+    if (openBlockIndent !== null && indent > openBlockIndent) continue;
+    return null;
+  }
+  if (!sawImporterKey) return null;
+  // every removed `key: {}` must pair with an added `key:` — an unmatched
+  // one is a real snapshot removal, not a re-expansion.
+  for (const key of expandedKeys) {
+    const hasPair = lines.some((l) => l.kind === "add" && l.text.trim() === `${key}:`);
+    if (!hasPair) return null;
+  }
+  return [...ids].sort();
 }
 
 /** Classify the pnpm-lock.yaml diff of `repo` when the lockfile is dirty. */
@@ -330,7 +627,32 @@ export async function classifyDirt(
   outer: for (const [path, lines] of byPath) {
     if (path === "pnpm-lock.yaml") {
       const diff = await deps.runGit(repo, io, ["diff", "HEAD", "--", "pnpm-lock.yaml"]);
-      const pruneIds = classifyLockfilePruneIds(diff.stdout);
+      // ADR-0130: the induced-change shapes need the HEAD and working
+      // contents — fetched lazily, only when the strict shapes miss.
+      let headLock: string | null = null;
+      let workLock: string | null = null;
+      const lockContents = async (): Promise<{ head: string; work: string } | null> => {
+        if (headLock === null || workLock === null) {
+          const head = await deps.runGit(repo, io, ["show", "HEAD:pnpm-lock.yaml"]);
+          if (head.exitCode !== 0) return null;
+          let work: string;
+          try {
+            work = await io.readFile(join(repo, "pnpm-lock.yaml"));
+          } catch {
+            return null; // reduced io — degrade to the strict-shape verdict
+          }
+          headLock = head.stdout;
+          workLock = work;
+        }
+        return { head: headLock, work: workLock };
+      };
+      let pruneIds = classifyLockfilePruneIds(diff.stdout);
+      if (pruneIds === null) {
+        const contents = await lockContents();
+        if (contents !== null) {
+          pruneIds = classifyLockfilePruneIdsExtended(diff.stdout, contents.head);
+        }
+      }
       if (pruneIds !== null) {
         // RFC-1544: the pruned importer's referent decides the class — a
         // foreign checkout's open mission (foreign-open-mission, auto-
@@ -362,7 +684,13 @@ export async function classifyDirt(
         }
         continue;
       }
-      const ids = classifyLockfileMaterialize(diff.stdout);
+      let ids = classifyLockfileMaterialize(diff.stdout);
+      if (ids === null) {
+        const contents = await lockContents();
+        if (contents !== null) {
+          ids = classifyLockfileMaterializeExtended(diff.stdout, contents.head, contents.work);
+        }
+      }
       if (ids !== null) {
         const open = await openMissionIds();
         if (ids.every((id) => open.has(id))) {
