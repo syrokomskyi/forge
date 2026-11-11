@@ -13,6 +13,7 @@
 <CHANGE_SUMMARY>
   <item>RFC-1568: step 4 — gate.run.status handler</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <item>RFC-1562: rfc-1562 acceptance evidence, regenerated manifests, gate contract tag</item>
 </CHANGE_SUMMARY>
 */
 
@@ -142,6 +143,7 @@ export const gateRunStatusCommand = {
     "0 whenever records are readable — the gate's outcome lives in " +
     "`data.runs[].status`, never in this command's exit code (DNA-106).",
   scope: "workspace" as const,
+  contract: "gate",
   rules: [
     { id: "GATE-RUN-01", severity: "error" as const },
     { id: "GATE-RUN-02", severity: "error" as const },
