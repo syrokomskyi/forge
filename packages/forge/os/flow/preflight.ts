@@ -14,12 +14,12 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0130: induced-change lockfile classifiers — BFS reachability for optional-flag removals, collapse pairs, induced packages/snapshots additions</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
-  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1546</history>
+  <item>RFC-0000: skip rfc-0000 template in integrate preflight id extraction; regen ecosystem manifest; file F-0207</item>
+  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1138,7 +1138,9 @@ export async function runIntegratePreflight(
               l.trim(),
             )?.[1],
         )
-        .filter((m): m is string => m !== undefined)
+        // rfc-0000-template.md is corpus-excluded (listRfcFiles) — it is a
+        // template, not a validateable RFC.
+        .filter((m): m is string => m !== undefined && m !== "0000")
         .map((n) => `RFC-${n.padStart(4, "0")}`),
     ),
   ];
