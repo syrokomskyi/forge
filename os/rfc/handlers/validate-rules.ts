@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1467: block rfc.create on terminal-kind near-duplicates until --revisit acknowledges + V-52 validate mirror</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
@@ -19,7 +18,8 @@ framing failure). collectCommittedReviews prefers it and keeps the
 sequential show loop for stubs. rfc.validate memoizes the index once
 per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1455, RFC-1534</history>
+  <item>RFC-1563: share the kernel command-result cache across session worktrees — one SQLite DB in the primary checkout, @@WORKSPACE_ROOT@@ payload anchoring, scoped --force clear, kernel.cache.prune</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1534</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1003,9 +1003,14 @@ export async function validateSingleRfc(
   // the stamp's grammar, applied at authoring time. Warning at
   // draft/reviewing, error from accepted on; V-37 keeps its checked-line
   // resolution semantics (the double-fire on checked lines is deliberate).
+  // Implemented and archived RFCs are sealed — historical annotations
+  // degrade to warning (re-authoring them would falsify the record).
   const v53Probes = Array.isArray(fm["acceptance"]) ? (fm["acceptance"] as AcceptanceProbe[]) : [];
   if (acceptanceSection) {
-    const v53Severity = status === "draft" || status === "reviewing" ? "warning" : "error";
+    const v53Severity =
+      status === "draft" || status === "reviewing" || status === "implemented" || isArchived
+        ? "warning"
+        : "error";
     for (const line of acceptanceSection.split("\n")) {
       if (!/^- \[[ xX]\]/.test(line)) continue;
       const v53Matches = [...line.matchAll(/\(evidence:\s*(.+?)\)/g)];
