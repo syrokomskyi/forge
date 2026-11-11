@@ -18,12 +18,11 @@ hooks/worktree-setup.sh.</purpose>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 6 — flow.fix + fix-mode cut (patch-only, rebase on moved main, gate target main, trailing back-merge)</item>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
   <item>RFC-1533: pending-branch summary + primaryMutations on the result; FLOW-OPEN-02 freed for the registry-unreadable warning (refusal renumbered to FLOW-OPEN-11)</item>
+  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <history>RFC-1487, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
@@ -47,6 +46,7 @@ import {
   topLevel,
 } from "../git.ts";
 import { formatFlowBranch, parseFlowBranch, type FlowBranchKind } from "../branch-name.ts";
+import { FOREIGN_PRIMARY_DIRT_HINT } from "../dirty-classify.ts";
 import { LockTimeoutError } from "../locks.ts";
 import { detectRepoKind } from "../repo-kind.ts";
 import {
@@ -134,10 +134,7 @@ function refuse(ruleId: string, message: string, fixHint: string): FlowOpenData 
 const SLUG_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 
 /** Highest NN for `date` among candidate auto branch names; returns max+1. */
-export function nextFlowSeq(
-  names: string[],
-  yymmdd: string,
-): number {
+export function nextFlowSeq(names: string[], yymmdd: string): number {
   let max = 0;
   for (const raw of names) {
     const parsed = parseFlowBranch(raw);
@@ -157,7 +154,11 @@ export async function openFlowBranch(
 ): Promise<FlowOpenData> {
   // Flags — FLOW-OPEN-10/05 first, before any git fact is consulted.
   if (opts.kind !== "session" && opts.kind !== "task") {
-    return refuse("FLOW-OPEN-10", `invalid --kind '${opts.kind}'`, "use --kind session or --kind task");
+    return refuse(
+      "FLOW-OPEN-10",
+      `invalid --kind '${opts.kind}'`,
+      "use --kind session or --kind task",
+    );
   }
   if (opts.kind === "task" && (opts.owner === null || opts.owner === "")) {
     return refuse(
@@ -249,10 +250,11 @@ export async function openFlowBranchCore(
         severity: "warning",
         message:
           `primary checkout carries ${primaryMutations.length} tracked mutation(s): ${shown.join(", ")}` +
-          (primaryMutations.length > shown.length ? ` (+${primaryMutations.length - shown.length} more)` : "") +
+          (primaryMutations.length > shown.length
+            ? ` (+${primaryMutations.length - shown.length} more)`
+            : "") +
           " — they are NOT swept into the worktree; commit or move them first",
-        fixHint:
-          "commit them in the primary checkout or move them into the session worktree before integrating",
+        fixHint: FOREIGN_PRIMARY_DIRT_HINT,
       });
     }
   }
@@ -326,8 +328,7 @@ export async function openFlowBranchCore(
         {
           ruleId: "FLOW-OPEN-02" as const,
           severity: "warning" as const,
-          message:
-            "flow registry absent or unreadable — pending-branch summary unavailable",
+          message: "flow registry absent or unreadable — pending-branch summary unavailable",
           fixHint: `run flow.check for registry diagnostics; repair or remove ${registryPath(common)}`,
         },
       ],
@@ -339,9 +340,7 @@ export async function openFlowBranchCore(
       if (!(await io.exists(registryPath(common)))) return unreadable;
       const status = await collectFlowStatus(repoRoot, io, { now });
       if (status.registryError) throw status.registryError;
-      const siblings = status.data.branches.filter(
-        (b) => b.registered && b.name !== excludeName,
-      );
+      const siblings = status.data.branches.filter((b) => b.registered && b.name !== excludeName);
       return {
         pending: {
           total: siblings.length,
@@ -360,7 +359,12 @@ export async function openFlowBranchCore(
   };
 
   for (let attempt = 1; attempt <= OPEN_MAX_ATTEMPTS; attempt++) {
-    const name = formatFlowBranch({ kind: opts.kind as FlowBranchKind, date: now, seq, slug: opts.slug });
+    const name = formatFlowBranch({
+      kind: opts.kind as FlowBranchKind,
+      date: now,
+      seq,
+      slug: opts.slug,
+    });
     // candidates gains each tried name so a collision retry picks the next NN.
     const worktree = flowWorktreePath(primary, name);
 
@@ -388,16 +392,10 @@ export async function openFlowBranchCore(
       };
     }
 
-    const add = await git(primary, io, [
-      "worktree",
-      "add",
-      "-b",
-      name,
-      worktree,
-      baseRef,
-    ]);
+    const add = await git(primary, io, ["worktree", "add", "-b", name, worktree, baseRef]);
     if (add.exitCode !== 0) {
-      const collision = add.stderr.includes("already exists") || add.stderr.includes("is already used");
+      const collision =
+        add.stderr.includes("already exists") || add.stderr.includes("is already used");
       if (collision) {
         if (attempt < OPEN_MAX_ATTEMPTS) {
           seq = nextFlowSeq([...candidates, name], today);
@@ -490,12 +488,7 @@ export async function openFlowBranchCore(
       setup,
       primaryMutations,
       pending: pending.pending,
-      diagnostics: [
-        ...dirtyPrimaryDiags,
-        ...pending.diags,
-        ...rerereDiags,
-        ...setupDiag,
-      ],
+      diagnostics: [...dirtyPrimaryDiags, ...pending.diags, ...rerereDiags, ...setupDiag],
     };
   }
   return refuse(

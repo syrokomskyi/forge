@@ -16,7 +16,6 @@ by flow.install step 9.</purpose>
   <item>A stray auto branch (RFC-1498) reports FLOW-07 the moment it exists — it has no registry entry and no worktree, so the 72 h staleness grace never applied to it.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
 
@@ -25,7 +24,8 @@ collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* b
 
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
-  <history>RFC-1486, RFC-1487, RFC-1488</history>
+  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +39,7 @@ import type {
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import { classifyBranch } from "../branch-name.ts";
+import { FOREIGN_PRIMARY_DIRT_HINT } from "../dirty-classify.ts";
 import {
   branchExists,
   configGet,
@@ -61,11 +62,7 @@ import {
 import { MARKER_FILE, markerContentIsValid } from "../markers.ts";
 import { detectRepoKind, readRepoRootFile } from "../repo-kind.ts";
 import { collectFlowStatus } from "./flow-status.ts";
-import {
-  discoverReleaseLines,
-  readLineVersionFile,
-  type ReleaseLine,
-} from "../release-lines.ts";
+import { discoverReleaseLines, readLineVersionFile, type ReleaseLine } from "../release-lines.ts";
 import { listLineTags } from "../release-tags.ts";
 import { compareVersions, parseVersion } from "../semver.ts";
 import { STALE_AFTER_HOURS } from "../registry.ts";
@@ -181,8 +178,7 @@ export async function collectFlowCheck(
           `primary checkout carries ${paths.length} tracked mutation(s): ${shown.join(", ")}` +
           (paths.length > shown.length ? ` (+${paths.length - shown.length} more)` : "") +
           " — they are NOT swept into the worktree; commit or move them first",
-        fixHint:
-          "commit them in the primary checkout or move them into the session worktree before integrating",
+        fixHint: FOREIGN_PRIMARY_DIRT_HINT,
       });
     }
   } catch {
@@ -262,9 +258,7 @@ export async function collectFlowCheck(
   // view: stale auto branches warn, and registry/git/worktree disagreements
   // warn (a schema-invalid registry escalates to error). Skipped on bare
   // repositories — a bare repo has no worktrees to inspect.
-  const status = bare
-    ? null
-    : await collectFlowStatus(repoRoot, io, { now: opts?.now });
+  const status = bare ? null : await collectFlowStatus(repoRoot, io, { now: opts?.now });
   for (const b of status?.data.branches ?? []) {
     if (b.stale) {
       diagnostics.push({
@@ -291,7 +285,8 @@ export async function collectFlowCheck(
       ruleId: "FLOW-07",
       severity: "warning",
       message: `registry entry '${e.name}' names a branch ref that does not exist`,
-      fixHint: "re-run flow.integrate/flow.discard to finish the cleanup, or repair the registry entry",
+      fixHint:
+        "re-run flow.integrate/flow.discard to finish the cleanup, or repair the registry entry",
     });
   }
   for (const e of status?.missingWorktreeEntries ?? []) {
@@ -299,7 +294,8 @@ export async function collectFlowCheck(
       ruleId: "FLOW-07",
       severity: "warning",
       message: `registry entry '${e.name}' names worktree ${e.worktree}, which does not exist`,
-      fixHint: "re-run flow.integrate/flow.discard to finish the cleanup, or repair the registry entry",
+      fixHint:
+        "re-run flow.integrate/flow.discard to finish the cleanup, or repair the registry entry",
     });
   }
   for (const path of status?.unregisteredWorktrees ?? []) {
@@ -319,7 +315,7 @@ export async function collectFlowCheck(
       message: `branch '${name}' has no registry entry and no worktree`,
       fixHint:
         "inspect with flow.status; integrate it through a registered session or drop it " +
-        "with flow.discard --reason \"<why>\" — a branch with unique commits needs a human decision",
+        'with flow.discard --reason "<why>" — a branch with unique commits needs a human decision',
     });
   }
 
@@ -370,7 +366,8 @@ async function collectLineDiagnostics(
         : fileVersion === null || compareVersions(fileVersion, tagVersion) !== 0;
     if (differs) {
       const fileHigher =
-        fileVersion !== null && (tagVersion === null || compareVersions(fileVersion, tagVersion) > 0);
+        fileVersion !== null &&
+        (tagVersion === null || compareVersions(fileVersion, tagVersion) > 0);
       diagnostics.push({
         ruleId: "FLOW-08",
         severity: "error",
@@ -395,7 +392,8 @@ async function collectLineDiagnostics(
         severity: "error",
         file: markerPath,
         message: `package line '${line.id}' has no valid forge.generated.yaml in ${line.paths[0]}`,
-        fixHint: "run pnpm exec forge flow.install — the markers step writes it into the adoption commit",
+        fixHint:
+          "run pnpm exec forge flow.install — the markers step writes it into the adoption commit",
       });
     }
     const extractPath = `${line.paths[0]}/extract.config.yaml`;
@@ -408,7 +406,8 @@ async function collectLineDiagnostics(
         severity: "warning",
         file: extractPath,
         message: `release line '${line.id}' declares versionBump in ${extractPath} — repo-extract would rewrite the version during export`,
-        fixHint: "remove versionBump from extract.config.yaml — versions are cut by the release flow",
+        fixHint:
+          "remove versionBump from extract.config.yaml — versions are cut by the release flow",
       });
     }
   }
