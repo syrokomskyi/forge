@@ -19,14 +19,16 @@ and return the RFC publications[] row for the journal.</purpose>
   <item>RFC-1517 r1: the fixture scan enumerates `../` candidates AT `ref` via one `git grep -nI --full-name` — the extract materializes the ref's tree, so an untracked dist/ or a post-tag fix can't false-refuse or evade the way a working-tree walk did. Each candidate path is then judged by the same isShippedEntry/literalEscapesInLine core PKG-HEALTH-10 uses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: step 7 — remediation entries, docs, deviations, generated indexes</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>ADR-0131: pkg-health-10 suppression on the line above the literal
 
 literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
-  <history>RFC-1491, RFC-1499</history>
+  <item>RFC-1574: close review REVIEW-CODE-2026-11-12-05 findings
+
+Step (3b) judges only paths the owner run changed, validates before staging, skips owners not runnable without an engine build, runs ecosystem.manifest.generate last; e2e log write guarded and run-stamped; Unhandled Errors rule out timeout-only; lost-run wait test; publish pre-filter comment. RFC-1574/1575/1576 record DEV-1..8.</item>
+  <history>RFC-1491, RFC-1499, RFC-1502</history>
 </CHANGE_SUMMARY>
 */
 
@@ -220,6 +222,8 @@ async function preflightExtractGates(
         continue;
       }
       const fileDir = dirname(join(projectRoot, rel));
+      // Cheap pre-filter: most grep hits are suppressed or in-root on their own
+      // line — only real candidates pay for the at-ref previous-line fetch.
       const sameLine = literalEscapesInLine(rel, text!, Number(lineNo), fileDir, projectRoot);
       if (sameLine.length === 0) continue;
       // ADR-0131: the suppression may sit on the line above — fetched from

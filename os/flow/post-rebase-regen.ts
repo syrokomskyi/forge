@@ -50,23 +50,33 @@ export async function postRebaseOwners(
     const path = `${GENERATED_DIR}/${basename}`;
     if (await io.exists(join(branchWorktree, path))) owners.push({ path, command });
   }
-  return owners;
+  // archive-regen ordering contract: the ecosystem manifest hashes the other
+  // generated artifacts, so its generator always runs last.
+  return owners.sort(
+    (a, b) =>
+      Number(a.command === "ecosystem.manifest.generate") -
+      Number(b.command === "ecosystem.manifest.generate"),
+  );
+}
+
+/** Porcelain line → path→status map (rename targets resolved to the new path). */
+async function porcelainSnapshot(
+  branchWorktree: string,
+  io: WorkspaceIO,
+): Promise<Map<string, string>> {
+  const status = await git(branchWorktree, io, ["status", "--porcelain", "--untracked-files=all"]);
+  const map = new Map<string, string>();
+  for (const l of status.stdout.split("\n")) {
+    if (l.length <= 3) continue;
+    const p = l.slice(3);
+    const arrow = p.indexOf(" -> ");
+    map.set(arrow >= 0 ? p.slice(arrow + 4) : p, l.slice(0, 2));
+  }
+  return map;
 }
 
 function failed(r: { ok?: boolean; exitCode?: number }): boolean {
   return r.ok === false || (r.exitCode !== undefined && r.exitCode !== 0);
-}
-
-/** Porcelain v1 paths (rename targets resolved to the new path). */
-function porcelainPaths(stdout: string): string[] {
-  return stdout
-    .split("\n")
-    .filter((l) => l.length > 3)
-    .map((l) => {
-      const p = l.slice(3);
-      const arrow = p.indexOf(" -> ");
-      return arrow >= 0 ? p.slice(arrow + 4) : p;
-    });
 }
 
 export async function regenerateAfterRebase(input: {
@@ -75,11 +85,21 @@ export async function regenerateAfterRebase(input: {
   invoke: ForgeInvokeCommand;
   owners: ReadonlyArray<{ path: string; command: string }>;
   onProgress?: (line: string) => void;
+  /** Owner commands the invoker cannot run here — skipped with a progress line. */
+  notRunnable?: ReadonlySet<string>;
 }): Promise<PostRebaseRegenResult | PostRebaseRegenRefusal> {
-  const { branchWorktree, io, invoke, owners } = input;
+  const { branchWorktree, io, invoke } = input;
   const ran: string[] = [];
+  const owners = input.owners.filter((o) => {
+    if (!input.notRunnable?.has(o.command)) return true;
+    input.onProgress?.(`post-rebase regeneration: ${o.command} not runnable here — skipped`);
+    return false;
+  });
   if (owners.length === 0) return { ran, committed: [] };
 
+  // Only paths the owner run changes are judged — pre-existing tolerated
+  // state (untracked forge files) is not the generators' doing.
+  const before = await porcelainSnapshot(branchWorktree, io);
   for (const o of owners) {
     const result = await invoke(o.command, REGEN_FLAGS[o.command] ?? {});
     if (failed(result)) {
@@ -92,8 +112,8 @@ export async function regenerateAfterRebase(input: {
     ran.push(o.command);
   }
 
-  const status = await git(branchWorktree, io, ["status", "--porcelain", "--untracked-files=all"]);
-  const changed = porcelainPaths(status.stdout);
+  const after = await porcelainSnapshot(branchWorktree, io);
+  const changed = [...after.entries()].filter(([p, st]) => before.get(p) !== st).map(([p]) => p);
   const owned = new Set(owners.map((o) => o.path));
   const foreign = changed.filter((p) => !owned.has(p));
   if (foreign.length > 0) {
@@ -108,6 +128,20 @@ export async function regenerateAfterRebase(input: {
   if (committed.length === 0) {
     input.onProgress?.("post-rebase regeneration: no drift");
     return { ran, committed };
+  }
+
+  // A generator bug must never be masked: validate the regenerated tree
+  // before anything is staged, so a red result leaves no commit behind.
+  if (ran.includes("ecosystem.manifest.generate")) {
+    const validate = await invoke("ecosystem.manifest.validate", {});
+    if (failed(validate)) {
+      return {
+        refused: true,
+        message: `post-rebase regeneration: ecosystem.manifest.validate still red — ${validate.summary ?? `exit ${validate.exitCode}`}`,
+        fixHint:
+          "the regenerated manifest is itself invalid — fix the generator input, regenerate, commit, re-run flow.integrate",
+      };
+    }
   }
 
   const add = await git(branchWorktree, io, ["add", "--", ...committed]);
@@ -129,18 +163,6 @@ export async function regenerateAfterRebase(input: {
     };
   }
   const sha = (await git(branchWorktree, io, ["rev-parse", "HEAD"])).stdout.trim();
-
-  // A generator bug must never be masked: the regenerated manifest is
-  // validated once more when the validator is available.
-  const validate = await invoke("ecosystem.manifest.validate", {});
-  if (failed(validate)) {
-    return {
-      refused: true,
-      message: `post-rebase regeneration: ecosystem.manifest.validate still red — ${validate.summary ?? `exit ${validate.exitCode}`}`,
-      fixHint:
-        "the regenerated manifest is itself invalid — fix the generator input, regenerate, commit, re-run flow.integrate",
-    };
-  }
   input.onProgress?.(
     `post-rebase regeneration: committed ${committed.join(", ")} (${sha.slice(0, 9)})`,
   );

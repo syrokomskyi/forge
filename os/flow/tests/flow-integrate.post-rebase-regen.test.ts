@@ -58,11 +58,14 @@ async function session(repo: string, slug: string) {
 /** Stub owner port: the generator writes `content` into the manifest; extra writes simulate a misbehaving owner. */
 function stubInvoke(
   worktree: () => string,
-  opts: { content?: string; fail?: boolean; extra?: string },
+  opts: { content?: string; fail?: boolean; extra?: string; validateRed?: boolean },
 ): { invoke: ForgeInvokeCommand; calls: string[] } {
   const calls: string[] = [];
   const invoke: ForgeInvokeCommand = async (name) => {
     calls.push(name);
+    if (name === "ecosystem.manifest.validate" && opts.validateRed) {
+      return { ok: false, exitCode: 1, summary: "regenerated manifest invalid" };
+    }
     if (name === "ecosystem.manifest.generate") {
       if (opts.fail) return { ok: false, exitCode: 1, summary: "generator crashed" };
       if (opts.content !== undefined) await writeFile(join(worktree(), MANIFEST), opts.content);
@@ -147,5 +150,60 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
     expect(diag?.message).toContain("stray.txt");
     const subjects = (await gitExec(s.worktree!, ["log", "--format=%s", "-3"])).stdout;
     expect(subjects).not.toContain(POST_REBASE_REGEN_SUBJECT);
+  }, 30_000);
+
+  // Test-Reason: defect REVIEW-CODE-2026-11-12-05 A-1
+  it("pre-existing untracked forge state is not judged as owner-dirtied", async () => {
+    const repo = await repoWithManifest();
+    const s = await session(repo, "forgestate");
+    await mkdir(join(s.worktree!, ".forge"), { recursive: true });
+    await writeFile(join(s.worktree!, ".forge", "knowledge-conflicts.txt"), "x\n");
+    const stub = stubInvoke(() => s.worktree!, { content: "contentHash: new\n" });
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: s.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: stub.invoke,
+    });
+    expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(data.postRebaseRegen?.committed).toEqual([MANIFEST]);
+  }, 30_000);
+
+  // Test-Reason: defect REVIEW-CODE-2026-11-12-05 A-2
+  it("a red validate after regeneration refuses with no regeneration commit", async () => {
+    const repo = await repoWithManifest();
+    const s = await session(repo, "redvalidate");
+    const stub = stubInvoke(() => s.worktree!, {
+      content: "contentHash: bad\n",
+      validateRed: true,
+    });
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: s.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: stub.invoke,
+    });
+    expect(data.integrated).toBe(false);
+    expect(data.diagnostics.find((d) => d.ruleId === "FLOW-INT-12")?.message).toContain(
+      "still red",
+    );
+    const subjects = (await gitExec(s.worktree!, ["log", "--format=%s", "-3"])).stdout;
+    expect(subjects).not.toContain(POST_REBASE_REGEN_SUBJECT);
+  }, 30_000);
+
+  // Test-Reason: defect REVIEW-CODE-2026-11-12-05 A-3
+  it("standalone without an engine build skips the owners instead of refusing", async () => {
+    const repo = await repoWithManifest();
+    const s = await session(repo, "standalone");
+    const progress: string[] = [];
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: s.branch!,
+      dryRun: false,
+      now: NOW,
+      onProgress: (l: string) => progress.push(l),
+    });
+    expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(data.integrated).toBe(true);
+    expect(progress.some((l) => l.includes("not runnable here — skipped"))).toBe(true);
   }, 30_000);
 });

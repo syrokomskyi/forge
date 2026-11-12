@@ -8,6 +8,7 @@
 */
 // Test-Reason: requirement AC-1, AC-2, AC-3 (RFC-1575)
 import { spawnSync } from "node:child_process";
+
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
@@ -97,4 +98,17 @@ describe("gate.run.status (RFC-1575)", () => {
     const result = await runGateRunStatus({ argv: [], flags: { id: "gr-c" } }, ctx(root));
     expect(result.data?.wait).toBeUndefined();
   });
+
+  // Test-Reason: regression lost-run wait mapping (REVIEW-CODE-2026-11-12-05 E-2)
+  it("a dead-holder (lost) run ends the wait as completed — it left running", async () => {
+    const root = await repo();
+    const dead = spawnSync(process.execPath, ["-e", ""]).pid!;
+    await saveGateRun(join(root, ".git"), record("gr-d", { pid: dead }), resolveIo(undefined));
+    const result = await runGateRunStatus(
+      { argv: [], flags: { id: "gr-d", wait: "5" } },
+      ctx(root),
+    );
+    expect(result.data?.runs[0]?.status).toBe("lost");
+    expect(result.data?.wait?.outcome).toBe("completed");
+  }, 20_000);
 });
