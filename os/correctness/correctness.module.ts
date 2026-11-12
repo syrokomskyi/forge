@@ -18,6 +18,11 @@ F1 code-only anchor scan (markdown fences never declare anchors); F2 generated i
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: gate line, ecosystem.commit early run, reference page
+
+typescript profile integration-gate.sh runs the primary install's correctness.audit against FLOW_BASE_SHA; werkstatt ecosystem.commit gains EC-34 (correctness.audit --staged, refuses introduced CORR-AUDIT-01..03, warns on CORR-AUDIT-04); in-code CREATE TABLE tables (Durable Object storage) are unverifiable instead of D1 findings; correctness.audit declares generates: []; reference page and agent guides.
+
+Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 legacy sql.schema.conform findings (packages/warpgogol-billing-cloudflare against schemas outside the repo), 127 unverifiable statements, no state machines; CORR-AUDIT-04 present (verify equals test) — fixed by the werkstatt gate-wiring queue task.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -93,6 +98,8 @@ export async function createForgeCorrectnessModule(): Promise<ForgeModule> {
         execOnReadOnly: true,
         reads: ["forge.yaml"],
         writes: ["docs/maintenance-debt/correctness.ledger.yaml"],
+        // The survival ledger is dated state, not a deterministic projection.
+        generates: [],
         cacheable: false,
         flags: {
           base: {
