@@ -214,7 +214,6 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
     const s = await session(repo, "commitfail");
     const hooks = await mkdtemp(join(tmpdir(), "flow-regen-hooks-"));
     dirs.push(hooks);
-    await mkdir(hooks, { recursive: true });
     await writeFile(join(hooks, "pre-commit"), "#!/bin/sh\necho refused >&2\nexit 1\n");
     await chmod(join(hooks, "pre-commit"), 0o755);
     await gitExec(s.worktree!, ["config", "core.hooksPath", hooks]);
