@@ -20,12 +20,14 @@ triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC"
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>RFC-1361: path-scoped commits by default — EC-24 pre-commit message lint with governed-prefix exemption</item>
   <item>RFC-1433: friction fast-path — step-3 grilling skipped when the caller supplies open/flagged docs/frictions.yaml entry ids; entries carry the justification, output stays draft.</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
-  <history>RFC-1097</history>
+  <item>RFC-1578: correctness manifest, validator, promotes gate
+
+Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <history>RFC-1097, RFC-1247</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -84,6 +86,8 @@ Before creating the file, invoke the `/grilling` skill to stress-test the propos
 Address every concern the grilling raises by adjusting the metadata, scope, or concept before proceeding. Do not create the RFC file until the grilling is satisfied with the concept.
 
 Every grilling answer that fixes an observable value — verbatim copy, a label, a name, a decided option value — becomes a row in the RFC's `## Fixed inputs` section plus the `AC-N` criterion and outcome probe that checks it. Texts supplied by clients or operators are pasted into the row in full, never referenced by pointer.
+
+Mark criteria that describe **lasting behaviour** in the frontmatter `promotes: [AC-N, …]` list — behaviour the product must keep after the stamp (a transition is written, a query matches the schema, a response shape is accepted). One-off criteria (a command is registered, a file exists, a doc names a value) stay unpromoted. `rfc.validate` refuses an id that is not one of the RFC's criteria (V-55); in a project binding a correctness manifest, `rfc.implement.stamp` refuses until each promoted criterion has a `source: rfc-ac` manifest entry (RFC-IMP-16).
 
 #### Friction fast-path
 

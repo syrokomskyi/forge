@@ -23,6 +23,9 @@ triggerPhrases: ["audit this RFC", "check RFC for ecosystem fit", "review RFC ag
   <item>RFC-1097: sweep — SKILL.md headers + classification fixes
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
+  <item>RFC-1578: correctness manifest, validator, promotes gate
+
+Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -138,6 +141,7 @@ This ecosystem is forward-only — no backward compatibility layers, no expand-t
 - **Status gate**: the RFC does not contain self-authorizing language ("may proceed while draft", "implementation can start before acceptance"). Draft RFCs cannot grant implementation permission.
 - **Implementation notes** reference the correct governance rules: RFC-XXXX (accepted→implemented transition), RFC-XXXX (if touching agent surface), RFC-XXXX (supersede escalation on invariant conflict), RFC-XXXX (verification evidence for probe-bearing RFCs).
 - **Anti-fabrication**: if the RFC's acceptance criteria include content authoring (prose, business records, claims), the criteria distinguish between code changes an agent can make and content that requires human authoring. The RFC must not claim content will be "auto-generated" when it requires human authoring.
+- **Criterion promotion**: every criterion describing lasting behaviour (a write, a transition, a schema match, an accepted response shape) is listed in `promotes`; one-off criteria (registered command, file exists, doc literal) are not. Report each mis-marked criterion as a finding — promotion decides whether the behaviour stays checked by the product's correctness manifest after the stamp.
 - **Storage policy**: if the RFC touches persistence, it does not introduce cookies (`document.cookie`, `Set-Cookie`). Client-side persistence is `localStorage` only; server-side is `unstorage`.
 - **NEEDS CLARIFICATION markers**: List all unresolved `NEEDS CLARIFICATION` markers with line numbers. If none are found, state "No unresolved markers." Markers in `draft` status are informational; markers in `reviewing`+ status are a blocking finding.
 

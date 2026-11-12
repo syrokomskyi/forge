@@ -53,6 +53,9 @@ export async function loadForgeCommandModules(): Promise<ForgeModule[]> {
     await import("../os/checks/checks.module.ts").then((m) => m.forgeChecksModule),
     await import("../os/context/context.module.ts").then((m) => m.forgeContextModule),
     await import("../os/trajectory/trajectory.module.ts").then((m) => m.forgeTrajectoryModule),
+    await import("../os/correctness/correctness.module.ts").then((m) =>
+      m.createForgeCorrectnessModule(),
+    ),
   ];
   return modules.filter((m): m is ForgeModule => m !== null);
 }

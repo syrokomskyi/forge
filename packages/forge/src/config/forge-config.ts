@@ -6,18 +6,13 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: close RFC-1391 review r1 findings — evidence freshness, config classification, contract guards
-
-REVIEW-CODE-2026-10-24-04 (warning): a stale .cache/proofs report could
-fabricate proved; forge.yaml now resolves inside runProofCheck so a malformed
-config is error not unavailable, and both surfaces share one path; {entry} is
-required in formal.tools.command; spec/entry paths are confined to the
-workspace; the exhaustive entry dispatches per packageManager; proved runs
-record log, counterexample stays the refuted-path record.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
   <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
   <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
   <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
+  <item>RFC-1578: correctness manifest, validator, promotes gate
+
+Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
   <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
@@ -62,6 +57,9 @@ export const forgeBindingsSchema = z.object({
       // serve ({target} → first stdout line {"url","pid"}, keep running).
       outcomeBuild: z.string().nullable().default(null),
       outcomeServe: z.string().nullable().default(null),
+      // RFC-1578: runs one correctness-manifest oracle ({file} placeholder);
+      // required when correctness.mode is enforce.
+      checkRun: z.string().nullable().default(null),
       // RFC-1224: consumer-defined command keys (e.g. createRfc) stay in the
       // parsed config so resolveBinding can resolve them.
     })
@@ -72,6 +70,8 @@ export const forgeBindingsSchema = z.object({
     reviewsDir: z.string().nullable().default(null),
     handoffsDir: z.string().nullable().default(null),
     sessionsDir: z.string().nullable().default(null),
+    // RFC-1578: product correctness manifest — null = no manifest declared.
+    correctnessManifest: z.string().nullable().default(null),
   }),
   terminology: z.record(z.string(), z.string()).default({}),
   // RFC-1096: consumer-level Compass policy overrides (same shape as the
@@ -129,6 +129,8 @@ export interface ForgeBindings {
     // RFC-1453: outcome-probe bindings ({target} placeholder).
     outcomeBuild: string | null;
     outcomeServe: string | null;
+    // RFC-1578: runs one correctness-manifest oracle ({file} placeholder).
+    checkRun?: string | null;
   };
   paths: {
     invariantsFile: string | null;
@@ -136,6 +138,8 @@ export interface ForgeBindings {
     reviewsDir: string | null;
     handoffsDir: string | null;
     sessionsDir: string | null;
+    // RFC-1578: product correctness manifest — null/absent = no manifest declared.
+    correctnessManifest?: string | null;
   };
   terminology: Record<string, string>;
   compass?: CompassPolicyOverrides;
@@ -360,6 +364,12 @@ export const forgeConfigSchema = z
      * passing outcome probe (RFC-IMP-14). Absent means no surfaces declared.
      */
     outcomeSurfaces: z.array(z.string()).default([]),
+    /**
+     * RFC-1578: product correctness section (`mode`, `tier`). Loosely typed
+     * here on purpose — `correctness.manifest.validate` reports invalid values
+     * as CORR-02 instead of every forge command failing to load forge.yaml.
+     */
+    correctness: z.record(z.string(), z.unknown()).optional(),
     // RFC-1224: consumer-owned top-level sections (e.g. `plugins:`) stay in the
     // parsed config so full-serialization writes do not silently drop them.
   })
@@ -407,6 +417,8 @@ export interface ForgeConfig {
   profileResolution?: "resolved" | "unknown" | "absent" | "catalog-unavailable";
   /** RFC-1453: picomatch globs naming user-visible outcome surfaces (RFC-IMP-14). */
   outcomeSurfaces: string[];
+  /** RFC-1578: raw `correctness:` section — validated by correctness.manifest.validate (CORR-02). */
+  correctness?: Record<string, unknown>;
 }
 
 // ---------------------------------------------------------------------------
@@ -478,6 +490,7 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     verifyReproduction: null,
     outcomeBuild: null,
     outcomeServe: null,
+    checkRun: null,
   };
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
     const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];
@@ -525,6 +538,7 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
         reviewsDir: "docs/reviews",
         handoffsDir: "docs/handoffs",
         sessionsDir: "docs/sessions",
+        correctnessManifest: null,
       },
       terminology: {},
       compass: {},

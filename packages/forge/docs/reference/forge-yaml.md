@@ -81,6 +81,9 @@ bindings:
 | `handoffsDir` | string | Cross-repo handoff documents directory |
 | `sessionsDir` | string | Session records directory |
 | `compassDocs` | string[] | Compass docs corpus paths (RFC-1253) — see [compass-docs.md](compass-docs.md). Written by `compass.docs.scaffold` |
+| `correctnessManifest` | string \| null | Product correctness manifest (RFC-1578), default `null` = none declared — see [correctness-manifest.md](correctness-manifest.md) |
+
+`bindings.commands.checkRun` (RFC-1578) runs one correctness-manifest oracle; `{file}` is replaced by the oracle's check file. Required when `correctness.mode` is `enforce` (CORR-01).
 
 ## bindings.terminology
 
@@ -164,6 +167,18 @@ formal:
 ```
 
 A spec selects a tool via `tool: tlc` and pins `toolVersion`. Missing executable → `unavailable` (non-zero); version mismatch → `error`; a `command` without `{entry}` is rejected at config validation.
+
+## correctness
+
+Optional. The product correctness contour (RFC-1578). Values are validated by `correctness.manifest.validate` (CORR-02), never by the forge.yaml loader.
+
+```yaml
+correctness:
+  mode: warn        # warn (default) | enforce | exempt
+  tier: standard    # standard (default) | high | formal — repository-level
+```
+
+`exempt` declares a repository without a product runtime (the verbund hub): the manifest rules do not apply, and a manifest binding beside it is a CORR-02 error. See [correctness-manifest.md](correctness-manifest.md).
 
 ## Extension points
 
