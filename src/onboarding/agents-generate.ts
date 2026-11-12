@@ -7,14 +7,16 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1255: Single blank line after the generated header — header ends in a newline so "\n\n" produced two blank lines that prettier collapsed, ping-ponging doctor's stale check. wsTypes resolution moved to shared resolveWorkspaceTypes.</item>
   <item>RFC-1365: step 4 — DNA-115, CONF-* remediation entries, agents-generate convention section</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
   <item>RFC-1500: step 4 — branch-model AGENTS section and consumer docs</item>
   <item>RFC-1539: amend dna-55 and dna-115 for published spec packages
 
 Guides, fo-spec-ingest routing, command descriptions and regenerated command docs, remediation entries for SPEC-15..18 and CONF-07..09; resyncs the stale .agents fo-system-dispatch mirror (ADR-0126 source line).</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1097, RFC-1253</history>
+  <item>RFC-1573: step 6 — detach line in generated Branch model section
+
+forge.agents.generate lists detachable forge commands from their declarations and points agents at gate.run.status --wait.</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1097, RFC-1253, RFC-1255</history>
 </CHANGE_SUMMARY>
 */
 
@@ -436,6 +438,18 @@ export async function runAgentsGenerate(
       dynamicLines.push(`- Every session starts with \`${prefix} flow.open --kind session --slug <slug>\`; work and commit only in the returned worktree. The guard refuses commits on \`develop\` and \`main\`.`);
       dynamicLines.push(`- \`${prefix} flow.integrate --branch <name>\` (operator) rebases, gates and fast-forwards \`develop\`; \`${prefix} flow.discard\` drops a session.`);
       dynamicLines.push(`- Releases are \`${prefix} flow.cut\` (repository line) and \`${prefix} flow.cut --lines <line>\` (package lines); nothing leaves the machine except \`${prefix} flow.push --digest <id>\` after the operator has read \`${prefix} flow.digest\`.`);
+      // RFC-1573: the detachable set comes from the command declarations
+      // (one module list shared with bin/cli.ts), never a hand-kept copy.
+      const { loadForgeCommandModules } = await import("../command-modules.ts");
+      const detachable = (await loadForgeCommandModules())
+        .flatMap((m) => m.commands)
+        .filter((c) => c.detachable === true)
+        .map((c) => c.name)
+        .sort();
+      if (detachable.length > 0) {
+        const list = detachable.map((n) => `\`${n}\``).join(", ");
+        dynamicLines.push(`- Multi-minute commands (${list}) take \`--detach\`: it prints a run id and returns at once; then \`${prefix} gate.run.status --id <runId> --wait 600\`. Exit 0 from \`--detach\` means started, not passed — read \`data.runs[0].status\`.` + " Never a background shell or `timeout`.");
+      }
       dynamicLines.push("- Never edit `forge/registry.yaml`, `forge/journal.jsonl` or `forge/*.lock` in the git directory.");
       dynamicLines.push("");
     }
