@@ -14,6 +14,9 @@
   <item>RFC-1568: step 4 — gate.run.status handler</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1562: rfc-1562 acceptance evidence, regenerated manifests, gate contract tag</item>
+  <item>RFC-1575: gate.run.status uncacheable, --wait ends with a verdict
+
+cacheable: false keeps live gate-run state out of the kernel result cache; --id --wait returns data.wait {requestedSeconds, waitedMs, outcome: completed|budget-expired} and a summary suffix. CMD-MAN-06 dropped after its live census (~100 warnings, no true positive): falsified route in the plan, ledger Q-8.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -30,9 +33,22 @@ import type { GateRunRecord, GateRunStatus } from "./types.ts";
 const WAIT_MAX_SECONDS = 600;
 const WAIT_POLL_MS = 2_000;
 
+/** RFC-1575: terminal verdict of a `--wait` — whether the run left `running` or the budget ran out. */
+export interface GateRunWaitVerdict {
+  requestedSeconds: number;
+  waitedMs: number;
+  /** completed: the run left `running` during or before the wait; budget-expired: still running at the deadline */
+  outcome: "completed" | "budget-expired";
+}
+
 export interface GateRunStatusData {
   runs: Array<GateRunRecord & { status: GateRunStatus }>;
+  /** RFC-1575: present only for `--id` with `--wait` > 0. */
+  wait?: GateRunWaitVerdict;
 }
+
+/** RFC-1575 FI-1 — summary suffix when the wait budget expires. */
+export const WAIT_EXPIRED_SUFFIX = "wait budget expired, still running";
 
 function flag(input: ForgeCommandInput, name: string): string | undefined {
   const v = input.flags[name];
@@ -79,7 +95,8 @@ export async function runGateRunStatus(
   const waitSeconds = waitRaw === undefined ? 0 : Math.min(Number(waitRaw) || 0, WAIT_MAX_SECONDS);
 
   if (id !== undefined) {
-    const deadline = Date.now() + waitSeconds * 1_000;
+    const waitStarted = Date.now();
+    const deadline = waitStarted + waitSeconds * 1_000;
     for (;;) {
       const all = await listGateRuns(common, io);
       const found = all.find((r) => r.runId === id);
@@ -95,10 +112,23 @@ export async function runGateRunStatus(
       }
       const classified = withClassified(found);
       if (classified.status !== "running" || Date.now() >= deadline) {
+        if (waitSeconds <= 0) {
+          return { exitCode: 0, summary: formatRunLine(classified), data: { runs: [classified] } };
+        }
+        const waitedMs = Date.now() - waitStarted;
+        const wait: GateRunWaitVerdict = {
+          requestedSeconds: waitSeconds,
+          waitedMs,
+          outcome: classified.status === "running" ? "budget-expired" : "completed",
+        };
+        const suffix =
+          wait.outcome === "budget-expired"
+            ? ` — ${WAIT_EXPIRED_SUFFIX} (${waitSeconds} s)`
+            : ` — left running after ${Math.round(waitedMs / 1000)} s`;
         return {
           exitCode: 0,
-          summary: formatRunLine(classified),
-          data: { runs: [classified] },
+          summary: formatRunLine(classified) + suffix,
+          data: { runs: [classified], wait },
         };
       }
       await new Promise((r) =>
@@ -151,6 +181,9 @@ export const gateRunStatusCommand = {
   ],
   mutatesState: false,
   execOnReadOnly: true,
+  // RFC-1575: live process state — never served from the kernel result cache
+  // (the records live under the git common dir, outside any cache digest).
+  cacheable: false,
   reads: ["forge/gate-runs/**"],
   flags: {
     id: { kind: "string" as const, description: "One run id." },
