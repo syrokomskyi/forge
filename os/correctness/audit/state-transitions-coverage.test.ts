@@ -13,6 +13,9 @@ loops, and SQL column literals cover a target; undeclared machines skip.</purpos
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -90,5 +93,22 @@ describe("state.transitions.coverage", () => {
   it("without a declared machine the auditor reports a skip", async () => {
     const result = await coverage({});
     expect(result.skipped).toContain("state.transitions.coverage: no-declared-machine");
+  });
+
+  it("a marker without a parseable table is reported, never a silent pass", async () => {
+    const result = await coverage({
+      "apps/api/src/m.ts": `// ${MARK}[broken] (writers: go)\nexport const T = new Map([["a", "b"]]);\n`,
+    });
+    expect(result.findings.map((x) => x.subject)).toEqual(["broken:unparseable-table"]);
+  });
+
+  it("method-call writers cover; a WHERE clause from-state does not", async () => {
+    const result = await coverage({
+      "packages/domain/src/candidate.ts": EDGES,
+      "apps/api/src/svc.ts":
+        'export const run = (repo: any) => { repo.transition(db, "c", "approved"); repo.transition(db, "c", "queued"); };\n' +
+        "export const q = \"UPDATE candidates SET updated_at = 1 WHERE state = 'send_ready'\";\n",
+    });
+    expect(result.findings.map((x) => x.subject)).toEqual(["candidate:approved→send_ready"]);
   });
 });

@@ -19,6 +19,9 @@ SQL UPDATE/INSERT literal setting the declared column to `'S'`.</purpose>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -73,8 +76,8 @@ function parseTable(literal: string): { from: string; to: string }[] {
   const edges: { from: string; to: string }[] = [];
   if (literal.startsWith("[")) {
     for (const obj of literal.matchAll(/\{[^{}]*\}/g)) {
-      const from = new RegExp(`\\bfrom\\s*:\\s*${STR}`).exec(obj[0])?.[1];
-      const to = new RegExp(`\\bto\\s*:\\s*${STR}`).exec(obj[0])?.[1];
+      const from = new RegExp(`["']?\\bfrom["']?\\s*:\\s*${STR}`).exec(obj[0])?.[1];
+      const to = new RegExp(`["']?\\bto["']?\\s*:\\s*${STR}`).exec(obj[0])?.[1];
       if (from && to) edges.push({ from, to });
     }
   } else {
@@ -139,7 +142,8 @@ function stringLiterals(text: string): string[] {
 /** States a writer call or literal-tuple loop feeding it covers in one file. */
 function coveredByCalls(text: string, writer: string): Set<string> {
   const covered = new Set<string>();
-  const callRe = new RegExp(`(?<![\\w$.])${writer.replace(/\$/g, "\\$")}\\s*\\(`, "g");
+  // Free functions and method calls (`repo.transition(…)`) both count.
+  const callRe = new RegExp(`(?<![\\w$])${writer.replace(/\$/g, "\\$")}\\s*\\(`, "g");
   // Loop variables bound to literal tuples: for (const v of ["a", "b"] as const) { … }
   const loops: { variable: string; states: string[]; start: number; end: number }[] = [];
   for (const m of text.matchAll(/for\s*\(\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s+of\s+\[/g)) {
@@ -175,7 +179,9 @@ function coveredBySql(file: string, text: string, column: string): Set<string> {
   const covered = new Set<string>();
   for (const st of scanStatements(file, text)) {
     if (st.kind === "update") {
-      for (const m of st.sql.matchAll(new RegExp(`\\b${column}\\s*=\\s*'([^']+)'`, "g")))
+      // Only the SET clause writes; `WHERE state = 'approved'` names the from-state.
+      const set = /\bSET\b([\s\S]*?)(?:\bWHERE\b|\bRETURNING\b|$)/i.exec(st.sql)?.[1] ?? "";
+      for (const m of set.matchAll(new RegExp(`\\b${column}\\s*=\\s*'([^']+)'`, "g")))
         covered.add(m[1]!);
     } else if (st.kind === "insert" || st.kind === "replace") {
       const cols = /\(([^)]*)\)\s*VALUES\s*\(([^)]*)\)/i.exec(st.sql);
@@ -205,6 +211,17 @@ export function auditStateTransitions(snapshot: TreeSnapshot): AuditorOutput {
     ([f]) => /\.(?:ts|mts|tsx)$/.test(f) && !isTestFile(f),
   );
   for (const machine of machines) {
+    if (machine.edges.length === 0) {
+      // A marker whose table cannot be parsed is reported, never a silent pass.
+      findings.push({
+        check: "state.transitions.coverage",
+        subject: `${machine.name}:unparseable-table`,
+        severity: "error",
+        message: `@state-machine[${machine.name}] marks no parseable transition table (expected an array of { from, to } literals or a Record<State, State[]> object literal directly below the marker)`,
+        location: { file: machine.file, line: machine.line },
+      });
+      continue;
+    }
     const covered = new Set<string>();
     for (const [file, text] of codeFiles) {
       for (const writer of machine.writers)

@@ -17,6 +17,9 @@ Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-
 typescript profile integration-gate.sh runs the primary install's correctness.audit against FLOW_BASE_SHA; werkstatt ecosystem.commit gains EC-34 (correctness.audit --staged, refuses introduced CORR-AUDIT-01..03, warns on CORR-AUDIT-04); in-code CREATE TABLE tables (Durable Object storage) are unverifiable instead of D1 findings; correctness.audit declares generates: []; reference page and agent guides.
 
 Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 legacy sql.schema.conform findings (packages/warpgogol-billing-cloudflare against schemas outside the repo), 127 unverifiable statements, no state machines; CORR-AUDIT-04 present (verify equals test) — fixed by the werkstatt gate-wiring queue task.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -125,5 +128,43 @@ describe("sql.schema.conform", () => {
     const f = fixture();
     const out = await runCorrectnessAudit(f.root, { base: "no-such-ref" });
     expect(out.ok).toBe(false);
+  });
+
+  it("an INSERT naming a column the table lacks is a finding (SQLite's 'has no column named')", async () => {
+    const f = fixture();
+    f.write(
+      "apps/api/src/ins.ts",
+      'export const q = "INSERT INTO openers (id, candidate_id) VALUES (?, ?)";\n',
+    );
+    const out = await runCorrectnessAudit(f.root, { base: f.base });
+    if (!out.ok) throw new Error(out.usageError);
+    const subjects = out.result.findings
+      .filter((x) => x.check === "sql.schema.conform")
+      .map((x) => x.subject);
+    expect(subjects).toEqual(["apps/api/src/ins.ts:openers.candidate_id"]);
+  });
+
+  it("an alias-qualified missing column names the real table", async () => {
+    const f = fixture();
+    f.write(
+      "apps/api/src/alias.ts",
+      'export const q = "SELECT o.id FROM openers o WHERE o.candidate_id = ?";\n',
+    );
+    const out = await runCorrectnessAudit(f.root, { base: f.base });
+    if (!out.ok) throw new Error(out.usageError);
+    expect(out.result.findings.find((x) => x.check === "sql.schema.conform")?.subject).toBe(
+      "apps/api/src/alias.ts:openers.candidate_id",
+    );
+  });
+
+  it("in-code DDL suppresses findings only inside its own package", async () => {
+    const f = fixture();
+    f.write("packages/storage/src/do.ts", 'export const ddl = "CREATE TABLE journal (id TEXT)";\n');
+    f.write("packages/other/src/q.ts", 'export const q = "SELECT id FROM journal";\n');
+    const out = await runCorrectnessAudit(f.root, { base: f.base });
+    if (!out.ok) throw new Error(out.usageError);
+    expect(
+      out.result.findings.filter((x) => x.check === "sql.schema.conform").map((x) => x.subject),
+    ).toEqual(["packages/other/src/q.ts:journal"]);
   });
 });

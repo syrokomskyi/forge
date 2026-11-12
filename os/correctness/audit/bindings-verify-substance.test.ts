@@ -13,6 +13,9 @@ invocations are errors; exempt repositories skip.</purpose>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -64,5 +67,13 @@ describe("bindings.verify.substance", () => {
     const exempt = auditVerifySubstance(NULL_VERIFY, true);
     expect(exempt.findings).toEqual([]);
     expect(exempt.skipped).toEqual(["bindings.verify.substance: exempt"]);
+  });
+
+  it("shell no-ops add no substance and invalid YAML is reported as such", () => {
+    expect(isTrivialVerify("pnpm test && echo ok")).toBe(true);
+    expect(isTrivialVerify("cd . && pnpm test")).toBe(true);
+    expect(auditVerifySubstance("bindings: [unclosed", false).findings[0]?.message).toMatch(
+      /not valid YAML/,
+    );
   });
 });

@@ -26,9 +26,9 @@ pnpm exec forge correctness.audit --write-ledger [--dry-run] [--json]
 
 Each D1 binding of a `wrangler.json` / `wrangler.jsonc` (`d1_databases[]`, top level and `env.*`) yields one schema keyed by `database_name`: its `migrations_dir` (default `migrations/`, relative to the config) is applied in filename order to its own in-memory `node:sqlite` database. A `wrangler.toml` is reported `skipped: unsupported-config`.
 
-String and template literals in non-test `*.ts` / `*.mts` files whose trimmed text starts with an **uppercase** keyword and SQL structure — `SELECT … FROM`, `INSERT INTO`, `UPDATE … SET`, `DELETE FROM`, `WITH … AS (`, `REPLACE INTO` — are prepared with `DatabaseSync.prepare()` against the schemas of the statement's package (the deepest wrangler config above the file), or against every schema when the file belongs to no such package. A statement is a finding only when it fails against every candidate with `no such column` (subject `<file>:<table>.<column>`) or `no such table` (subject `<file>:<table>`).
+String and template literals in non-test `*.ts` / `*.mts` files whose trimmed text starts with an **uppercase** keyword and SQL structure — `SELECT … FROM`, `INSERT INTO`, `UPDATE … SET`, `DELETE FROM`, `WITH … AS (`, `REPLACE INTO` — are prepared with `DatabaseSync.prepare()` against the schemas of the statement's package (the deepest wrangler config above the file), or against every schema when the file belongs to no such package. A statement is a finding only when it fails against every candidate with `no such column` / `table <t> has no column named <c>` (subject `<file>:<table>.<column>`, aliases resolved) or `no such table` (subject `<file>:<table>`).
 
-Counted as **unverifiable** (severity info, never blocking): template literals with `${…}`, statements whose other `prepare()` errors come from D1-only syntax, statements in a package whose migrations failed, and statements touching a table that only an in-code `CREATE TABLE` literal creates (Durable Object storage is another database). A migration that fails to apply is itself an error with the migration file as subject — never a partial schema.
+Counted as **unverifiable** (severity info, never blocking): template literals with `${…}`, statements whose other `prepare()` errors come from D1-only syntax, statements in a package whose migrations failed, and statements touching a table that only an in-code `CREATE TABLE` literal of the same package creates (Durable Object storage is another database). A migration that fails to apply is itself an error with the migration file as subject — never a partial schema.
 
 ### 2. `ledger.orphans`
 
@@ -46,7 +46,7 @@ export const EDGES = [
 ];
 ```
 
-Grammar: `// @state-machine[<name>] (writers: <fn>[, <fn>]) [(column: <sql column>)]`. Table shapes: an array of object literals with string-literal `from`/`to`, or an object literal `Record<State, State[]>`. A target `S` is covered when a non-test file calls a declared writer with `S` as a string-literal argument, iterates a literal tuple containing `S` into that call (`for (const to of ["send_ready", "queued"] as const) { transition(db, id, to) }`), or holds a static SQL `UPDATE`/`INSERT` literal setting the declared column to `'S'`. Every edge whose target is uncovered is a finding with subject `<machine>:<from>→<to>`. Without any marker the auditor reports `skipped: no-declared-machine`. `compass.validate` treats the marker as an ordinary comment.
+Grammar: `// @state-machine[<name>] (writers: <fn>[, <fn>]) [(column: <sql column>)]`. Table shapes: an array of object literals with string-literal `from`/`to`, or an object literal `Record<State, State[]>`. A marker without a parseable table is itself an error (`<machine>:unparseable-table`). A target `S` is covered when a non-test file calls a declared writer (free function or method call) with `S` as a string-literal argument, iterates a literal tuple containing `S` into that call (`for (const to of ["send_ready", "queued"] as const) { transition(db, id, to) }`), or holds a static SQL `UPDATE` (SET clause only) / `INSERT` literal setting the declared column to `'S'`. Every edge whose target is uncovered is a finding with subject `<machine>:<from>→<to>`. Without any marker the auditor reports `skipped: no-declared-machine`. `compass.validate` treats the marker as an ordinary comment.
 
 ### 4. `bindings.verify.substance`
 
@@ -56,7 +56,7 @@ Error when `bindings.commands.verify` is `null`, equals `bindings.commands.test`
 
 Auditors 1–3 run over the base revision (blobs read through one `git cat-file --batch` process, no checkout) and over the working tree or the staged index. Each finding has a key `sha256(check + "\0" + subject)` and an occurrence count:
 
-- **introduced** — key new, or present at base with a lower count → blocks when the severity is `error`;
+- **introduced** — key new, or present at base with a lower count, a lower severity, or a different finding kind → blocks when the severity is `error`;
 - **legacy** — present at base with an equal or higher count → reported, never blocking;
 - **resolved** — present at base only → reported;
 - **accepted** — matched by `correctness.audit.allow[]` → reported, never blocking.
