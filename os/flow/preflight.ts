@@ -14,12 +14,14 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0130: induced-change lockfile classifiers — BFS reachability for optional-flag removals, collapse pairs, induced packages/snapshots additions</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <item>RFC-0000: skip rfc-0000 template in integrate preflight id extraction; regen ecosystem manifest; file F-0207</item>
-  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1545, RFC-1546</history>
+  <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
+
+flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
+  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1198,25 +1200,15 @@ export async function runIntegratePreflight(
     });
   }
 
-  // RFC-1546: every other check passed — the manifest drift is the sole
-  // violation, so the owner command regenerates in place and the validator
-  // re-runs. A coexisting violation already refused above without ever
-  // reaching the regeneration.
+  // RFC-1574 (amends RFC-1546): every other check passed — the manifest
+  // drift is the sole violation. The preflight writes nothing: a resolvable
+  // owner defers the regeneration to flow.integrate step (3b), which runs on
+  // the rebased tree and commits the result. Without an owner the drift
+  // still refuses here.
   if (manifestDrift !== undefined) {
     if (resolvable("ecosystem.manifest.generate")) {
-      const regen = await opts.invoke!(
-        "ecosystem.manifest.generate",
-        REGEN_FLAGS["ecosystem.manifest.generate"] ?? {},
-      );
-      if (regen.ok !== false && (regen.exitCode === undefined || regen.exitCode === 0)) {
-        checked.push("ecosystem.manifest.generate", "ecosystem.manifest.validate");
-        const result = await opts.invoke!("ecosystem.manifest.validate", {});
-        if (result.ok !== false && (result.exitCode === undefined || result.exitCode === 0)) {
-          manifestDrift = undefined;
-        }
-      }
-    }
-    if (manifestDrift !== undefined) {
+      opts.onProgress?.("preflight: ecosystem manifest drift — regenerating after the rebase");
+    } else {
       return {
         ok: false,
         checked,

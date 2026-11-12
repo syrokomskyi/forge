@@ -11,12 +11,14 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
-  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538</history>
+  <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
+
+flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
+  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -789,7 +791,7 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
 });
 
 describe("flow.integrate — recoverable manifest drift (RFC-1546 AC-1)", () => {
-  it("sole FLOW-INT-12 drift regenerates the manifest and continues", async () => {
+  it("sole FLOW-INT-12 drift defers regeneration to the post-rebase step and writes nothing (RFC-1574 AC-4)", async () => {
     const repo = await governedRepo();
     const session = await openSession(repo, "regen");
     const { runIntegratePreflight } = await import("../preflight.ts");
@@ -825,12 +827,11 @@ describe("flow.integrate — recoverable manifest drift (RFC-1546 AC-1)", () => 
       },
     });
     expect(preflight.ok).toBe(true);
-    expect(invoked).toEqual([
-      "ecosystem.manifest.validate",
-      "friction.validate",
-      "ecosystem.manifest.generate",
-      "ecosystem.manifest.validate",
-    ]);
+    // RFC-1574: the preflight never invokes the generator — step (3b) does,
+    // on the rebased tree, and commits the result.
+    expect(invoked).toEqual(["ecosystem.manifest.validate", "friction.validate"]);
+    const status = await gitExec(session.worktree!, ["status", "--porcelain"]);
+    expect(status.stdout.trim(), "the preflight must leave the worktree clean").toBe("");
   }, 20_000);
 
   it("a second violation alongside drift refuses without regenerating", async () => {
