@@ -7,7 +7,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1365: step 4 — DNA-115, CONF-* remediation entries, agents-generate convention section</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
   <item>RFC-1500: step 4 — branch-model AGENTS section and consumer docs</item>
   <item>RFC-1539: amend dna-55 and dna-115 for published spec packages
@@ -16,7 +15,10 @@ Guides, fo-spec-ingest routing, command descriptions and regenerated command doc
   <item>RFC-1573: step 6 — detach line in generated Branch model section
 
 forge.agents.generate lists detachable forge commands from their declarations and points agents at gate.run.status --wait.</item>
-  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1097, RFC-1253, RFC-1255</history>
+  <item>RFC-1573: close review REVIEW-CODE-2026-11-12-01 findings
+
+Restore same-line pkg-health-10 suppressions in forge bin/cli.ts (prettier-ignore) and revert unrelated registry.ts reflows; DETACH-01 also matches call sites (slice cap cut mission.close off before runMissionValidate); exempt marker anchored to a non-global line-comment regex; live-source test pins entrypoint resolution and the flow.cut/mission.close negative control; command-modules test; AC-8 literal comment; RFC Deviations DEV-1..3.</item>
+  <history>RFC-0391, RFC-0393, RFC-0548, RFC-0549, RFC-0551, RFC-0611, RFC-0640, RFC-0643, RFC-0664, RFC-1097, RFC-1253, RFC-1255, RFC-1365</history>
 </CHANGE_SUMMARY>
 */
 
@@ -448,6 +450,7 @@ export async function runAgentsGenerate(
         .sort();
       if (detachable.length > 0) {
         const list = detachable.map((n) => `\`${n}\``).join(", ");
+        // The tail is a plain string on purpose: RFC-1573 AC-8 probes this source for the unescaped literal.
         dynamicLines.push(`- Multi-minute commands (${list}) take \`--detach\`: it prints a run id and returns at once; then \`${prefix} gate.run.status --id <runId> --wait 600\`. Exit 0 from \`--detach\` means started, not passed — read \`data.runs[0].status\`.` + " Never a background shell or `timeout`.");
       }
       dynamicLines.push("- Never edit `forge/registry.yaml`, `forge/journal.jsonl` or `forge/*.lock` in the git directory.");
