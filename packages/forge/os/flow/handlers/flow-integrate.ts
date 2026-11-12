@@ -20,14 +20,16 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>ADR-0130: foreign-open-mission restore writes HEAD verbatim — whole diff classified as importer churn, a block splice would leave induced additions to be swept</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
 flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1545</history>
+  <item>RFC-1574: close review REVIEW-CODE-2026-11-12-05 findings
+
+Step (3b) judges only paths the owner run changed, validates before staging, skips owners not runnable without an engine build, runs ecosystem.manifest.generate last; e2e log write guarded and run-stamped; Unhandled Errors rule out timeout-only; lost-run wait test; publish pre-filter comment. RFC-1574/1575/1576 record DEV-1..8.</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1545</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1152,12 +1154,21 @@ async function integrateFlowBranchAttempt(
             ...owners.map((o) => o.command),
             "ecosystem.manifest.validate",
           ]);
+        // RFC-1574: the standalone fallback spawns `pnpm exec werkstatt run`
+        // in the worktree — without an engine build there it cannot run, and
+        // the owners are skipped rather than refused.
+        const notRunnable =
+          opts.invoke === undefined &&
+          !(await io.exists(join(branchWorktree, "node_modules", ".bin", "werkstatt")))
+            ? new Set(owners.map((o) => o.command))
+            : undefined;
         const regen = await regenerateAfterRebase({
           branchWorktree,
           io,
           invoke: invoker,
           owners,
           onProgress: opts.onProgress,
+          ...(notRunnable ? { notRunnable } : {}),
         });
         if ("refused" in regen) {
           return refuse("FLOW-INT-12", regen.message, regen.fixHint, {
