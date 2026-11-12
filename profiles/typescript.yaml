@@ -540,6 +540,19 @@ workspace:
         - Engine: @warpgogol/forge
         - Plugin: @warpgogol/werkstatt-typescript
         - Stack profile: typescript
+    - path: docs/correctness.yaml
+      content: |
+        # Product correctness manifest (RFC-1578, forge/correctness-manifest@1).
+        # Each entry roots a check in a requirement (req | dna | rfc-ac |
+        # fixed-input | domain), anchors it to @ai-invariant[INV-…] code
+        # markers, and lists oracles with their substrate (L0 double · L1
+        # engine · L2 runtime · L3 live). Validate with:
+        #   pnpm exec forge correctness.manifest.validate
+        # Reference: node_modules/@warpgogol/forge/docs/reference/correctness-manifest.md
+        schema: forge/correctness-manifest@1
+        entries: []
+        support: []
+        exemptions: []
     - path: hooks/worktree-setup.sh
       content: |
         #!/bin/sh

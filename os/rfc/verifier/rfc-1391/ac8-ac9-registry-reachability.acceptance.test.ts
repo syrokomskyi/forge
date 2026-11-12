@@ -19,6 +19,9 @@ Round-0 verdict counterexamples (CX-1: emit dead for proof-probe RFCs),
 fixed in 1342fe21a; round-1 verdict pass — 47/47 checks, AC-1..AC-10 all
 verified on the real implementation surface, non-vacuity re-verified by
 mutation.</item>
+  <item>RFC-1578: correctness manifest, validator, promotes gate
+
+Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -64,9 +67,11 @@ describe("AC-8: proof.check registered in the kernel command registry", () => {
     // The registered definition is the real handler, not a stub.
     expect(cmd!.execute).toBe(runProofCheckCommand);
     expect(cmd!.flags?.["spec"]).toMatchObject({ kind: "string", required: true });
-    // And the CLI registers every module command — verify that loop exists.
+    // And the CLI registers every module command — the module list lives in
+    // src/command-modules.ts since RFC-1573; bin/cli.ts loops over it.
+    const modules = readFileSync(join(FORGE_ROOT, "src/command-modules.ts"), "utf8");
+    expect(modules).toContain("createForgeFormalModule()");
     const cli = readFileSync(join(FORGE_ROOT, "bin/cli.ts"), "utf8");
-    expect(cli).toContain("createForgeFormalModule()");
     expect(cli).toMatch(
       /for \(const cmd of mod\.commands\)\s*\{[\s\S]*?registry\.registerCommand\(cmd\)/,
     );

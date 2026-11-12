@@ -240,6 +240,14 @@
       "types": "./os/friction/friction.module.ts",
       "default": "./os/friction/friction.module.ts"
     },
+    "./os/correctness": {
+      "types": "./os/correctness/index.ts",
+      "default": "./os/correctness/index.ts"
+    },
+    "./os/correctness-module": {
+      "types": "./os/correctness/correctness.module.ts",
+      "default": "./os/correctness/correctness.module.ts"
+    },
     "./os/yaml": {
       "types": "./os/yaml/index.ts",
       "default": "./os/yaml/index.ts"
@@ -563,6 +571,14 @@
       "./os/friction-module": {
         "types": "./dist/os/friction/friction.module.d.ts",
         "default": "./dist/os/friction/friction.module.js"
+      },
+      "./os/correctness": {
+        "types": "./dist/os/correctness/index.d.ts",
+        "default": "./dist/os/correctness/index.js"
+      },
+      "./os/correctness-module": {
+        "types": "./dist/os/correctness/correctness.module.d.ts",
+        "default": "./dist/os/correctness/correctness.module.js"
       },
       "./os/yaml": {
         "types": "./dist/os/yaml/index.d.ts",

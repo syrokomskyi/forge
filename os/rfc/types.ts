@@ -12,14 +12,16 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1516: bind evidence reuse to the oldest replayed result and harden committed-envelope reads for rfc-1516</item>
   <item>RFC-1514: attach corrected invocations to blocking diagnostics so retry is one-shot</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1578: correctness manifest, validator, promotes gate
+
+Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
   <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458, RFC-1467, RFC-1483, RFC-1516</history>
 </CHANGE_SUMMARY>
- ***************************************************************/
+*/
 
 import type { Diagnostic } from "../../src/types.ts";
 
@@ -296,6 +298,14 @@ export interface RfcFrontmatter {
    * Filterable via `rfc.list --batch <slug>`.
    */
   batch?: string;
+
+  /**
+   * RFC-1578: acceptance criteria (`AC-N`) that describe lasting behaviour.
+   * Each must be one of this RFC's criteria (V-55); in a project with a
+   * correctness-manifest binding, `rfc.implement.stamp` refuses while a
+   * promoted criterion has no `source: rfc-ac` manifest entry (RFC-IMP-16).
+   */
+  promotes?: string[];
 } // ─── RFC-0268: acceptance probes ───────────────────────────────────────────
 
 /**
@@ -820,6 +830,9 @@ export type RfcImplementStampRule =
   // RFC-1454: a committed review report's amend designDeviation is absent
   // from the RFC's "## Deviations" section, or the record is malformed.
   | "RFC-IMP-15"
+  // RFC-1578: a promoted criterion has no `source: rfc-ac` entry in the
+  // product correctness manifest (warning when no manifest is bound).
+  | "RFC-IMP-16"
   // RFC-1310: commit-time governance provenance — the implementation commit
   // must carry the X-RFC trailer or an injected CHANGE_SUMMARY item.
   | "STAMP-GOV-01"
@@ -917,6 +930,7 @@ export const RFC_KNOWN_KEYS: readonly string[] = [
   "liveSpec",
   "dependsOn",
   "batch",
+  "promotes",
 ] as const;
 
 /**
