@@ -20,13 +20,18 @@ Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-
 typescript profile integration-gate.sh runs the primary install's correctness.audit against FLOW_BASE_SHA; werkstatt ecosystem.commit gains EC-34 (correctness.audit --staged, refuses introduced CORR-AUDIT-01..03, warns on CORR-AUDIT-04); in-code CREATE TABLE tables (Durable Object storage) are unverifiable instead of D1 findings; correctness.audit declares generates: []; reference page and agent guides.
 
 Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 legacy sql.schema.conform findings (packages/warpgogol-billing-cloudflare against schemas outside the repo), 127 unverifiable statements, no state machines; CORR-AUDIT-04 present (verify equals test) — fixed by the werkstatt gate-wiring queue task.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
-import { createOriginGit } from "../../rfc/verification-origin.ts";
+import { execFile } from "node:child_process";
+
+import { createOriginGit, gitEnvForCwd } from "../../rfc/verification-origin.ts";
 import { listWorkspaceFiles } from "../workspace.ts";
 
 export interface TreeSnapshot {
@@ -59,7 +64,8 @@ export function isAuditRelevant(rel: string): boolean {
 }
 
 /** Uppercase SQL keywords a statement literal must start with (case-sensitive prefilter). */
-export const SQL_KEYWORD_PREFILTER = "\\b(SELECT|INSERT|UPDATE|DELETE|WITH|REPLACE|CREATE)\\b";
+// No `\b`: BSD/macOS ERE lacks it; the prefilter only needs a superset.
+export const SQL_KEYWORD_PREFILTER = "(SELECT|INSERT|UPDATE|DELETE|WITH|REPLACE|CREATE)";
 export const STATE_MACHINE_MARKER = "@state-machine[";
 const SQL_KEYWORD_RE = new RegExp(SQL_KEYWORD_PREFILTER);
 const TS_RE = /\.(?:ts|mts|tsx)$/;
@@ -134,7 +140,9 @@ export async function loadSnapshot(
     });
   };
   const grep = async (args: string[]): Promise<string[]> => {
-    const out = await git.run([
+    // `git grep` exits 1 on "no match"; any other failure must not read as an
+    // empty tree (that would fail open on the judged side).
+    const { code, stdout } = await gitGrep(workspaceRoot, [
       "grep",
       "-l",
       "-z",
@@ -145,9 +153,10 @@ export async function loadSnapshot(
       "*.mts",
       "*.tsx",
     ]);
-    if (out === null) return []; // git grep exits 1 on no match
+    if (code === 1) return [];
+    if (code !== 0) throw new Error(`git grep failed with exit ${code}`);
     const prefix = which.kind === "rev" ? `${which.sha}:` : "";
-    return out
+    return stdout
       .split("\0")
       .filter((l) => l.length > 0)
       .map((l) => (prefix && l.startsWith(prefix) ? l.slice(prefix.length) : l))
@@ -164,6 +173,22 @@ export async function loadSnapshot(
     await read(more);
   }
   return { label: which.kind === "rev" ? which.sha : "index", files };
+}
+
+function gitGrep(cwd: string, args: string[]): Promise<{ code: number | null; stdout: string }> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      args,
+      { cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, env: gitEnvForCwd() },
+      (err, stdout) => {
+        const code = err
+          ? (((err as { code?: unknown }).code as number | null | undefined) ?? null)
+          : 0;
+        resolve({ code: typeof code === "number" ? code : null, stdout: String(stdout ?? "") });
+      },
+    );
+  });
 }
 
 /** Resolve a revision to a full sha; null when it does not resolve. */

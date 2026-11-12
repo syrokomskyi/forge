@@ -14,6 +14,9 @@ written) is a warning so a migration-first change does not block.</purpose>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,10 +52,13 @@ export function auditLedgerOrphans(
   }
   for (const schema of discovery.schemas) {
     for (const m of schema.migrations) {
-      const access = tableAccess(snapshot.files.get(m) ?? "");
-      // Only seeding INSERTs count from migrations; DDL-time selects are not readers.
-      for (const t of access.writes) {
-        if (/\bINSERT\b/i.test(snapshot.files.get(m) ?? "")) writes.add(t);
+      // Only seeding INSERT/REPLACE targets count from migrations; DDL-time
+      // UPDATE/DELETE/SELECT are neither writers nor readers of the ledger.
+      const sql = snapshot.files.get(m) ?? "";
+      for (const seed of sql.matchAll(
+        /\b(?:INSERT\s+(?:OR\s+[A-Za-z]+\s+)?INTO|REPLACE\s+INTO)\s+["`[]?([A-Za-z_][A-Za-z0-9_]*)/gi,
+      )) {
+        writes.add(seed[1]!.toLowerCase());
       }
     }
   }

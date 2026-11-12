@@ -20,10 +20,17 @@ Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-
 typescript profile integration-gate.sh runs the primary install's correctness.audit against FLOW_BASE_SHA; werkstatt ecosystem.commit gains EC-34 (correctness.audit --staged, refuses introduced CORR-AUDIT-01..03, warns on CORR-AUDIT-04); in-code CREATE TABLE tables (Durable Object storage) are unverifiable instead of D1 findings; correctness.audit declares generates: []; reference page and agent guides.
 
 Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 legacy sql.schema.conform findings (packages/warpgogol-billing-cloudflare against schemas outside the repo), 127 unverifiable statements, no state machines; CORR-AUDIT-04 present (verify equals test) — fixed by the werkstatt gate-wiring queue task.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { parse as parseYaml } from "yaml";
+
+import { createOriginGit } from "../../rfc/verification-origin.ts";
 
 import { auditVerifySubstance } from "./bindings-verify-substance.ts";
 import { attribute, readAllowList } from "./differential.ts";
@@ -70,12 +77,13 @@ function statementsOf(snapshot: TreeSnapshot): SqlStatement[] {
 
 const DDL_RE = /CREATE\s+(?:VIRTUAL\s+)?TABLE/i;
 
-/** Literal texts carrying in-code DDL (non-test TypeScript only). */
-function literalTextsOf(snapshot: TreeSnapshot): string[] {
-  const out: string[] = [];
+/** Literal texts carrying in-code DDL (non-test TypeScript only), with their file. */
+function literalTextsOf(snapshot: TreeSnapshot): { file: string; text: string }[] {
+  const out: { file: string; text: string }[] = [];
   for (const [file, text] of snapshot.files) {
     if (!/\.(?:ts|mts|tsx)$/.test(file) || isTestFile(file) || !DDL_RE.test(text)) continue;
-    for (const lit of scanLiterals(text)) if (DDL_RE.test(lit.text)) out.push(lit.text);
+    for (const lit of scanLiterals(text))
+      if (DDL_RE.test(lit.text)) out.push({ file, text: lit.text });
   }
   return out;
 }
@@ -150,20 +158,40 @@ export async function runCorrectnessAudit(
     };
   }
   const judgedKind: SnapshotKind = options.staged ? { kind: "index" } : { kind: "worktree" };
-  const now = await loadSnapshot(workspaceRoot, judgedKind, declaredWriters);
-  const then = await loadSnapshot(workspaceRoot, { kind: "rev", sha: base }, declaredWriters);
+  const configOnly = options.check === "bindings.verify.substance";
+  const empty = { findings: [] as RawFinding[], unverifiable: 0, skipped: [] as string[] };
+  let now: TreeSnapshot | null;
+  let then: TreeSnapshot | null;
+  try {
+    if (configOnly) {
+      // The configuration auditor needs only forge.yaml — no base or code reads.
+      const forgeYaml = options.staged
+        ? await createOriginGit(workspaceRoot).run(["show", ":forge.yaml"])
+        : (() => {
+            try {
+              return readFileSync(path.join(workspaceRoot, "forge.yaml"), "utf8");
+            } catch {
+              return null;
+            }
+          })();
+      now = {
+        label: judgedKind.kind,
+        files: new Map(forgeYaml ? [["forge.yaml", forgeYaml]] : []),
+      };
+      then = { label: base, files: new Map() };
+    } else {
+      now = await loadSnapshot(workspaceRoot, judgedKind, declaredWriters);
+      then = await loadSnapshot(workspaceRoot, { kind: "rev", sha: base }, declaredWriters);
+    }
+  } catch (err) {
+    return { ok: false, usageError: `cannot read the trees: ${(err as Error).message}` };
+  }
   if (!now || !then)
     return { ok: false, usageError: `cannot read the ${!now ? "judged tree" : `base ${base}`}` };
 
-  const codeOnly =
-    options.check && options.check !== "bindings.verify.substance" ? options.check : undefined;
-  const runCode = !options.check || options.check !== "bindings.verify.substance";
-  const nowPass = runCode
-    ? runCodeAuditors(now, codeOnly)
-    : { findings: [], unverifiable: 0, skipped: [] };
-  const basePass = runCode
-    ? runCodeAuditors(then, codeOnly)
-    : { findings: [], unverifiable: 0, skipped: [] };
+  const codeOnly = options.check && !configOnly ? options.check : undefined;
+  const nowPass = configOnly ? empty : runCodeAuditors(now, codeOnly);
+  const basePass = configOnly ? empty : runCodeAuditors(then, codeOnly);
 
   const doc = forgeDoc(now);
   const exempt = (doc as { correctness?: { mode?: unknown } })?.correctness?.mode === "exempt";

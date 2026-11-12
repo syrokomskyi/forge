@@ -19,6 +19,9 @@ JSONC stripper used for wrangler.json/jsonc.</purpose>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -104,6 +107,24 @@ export function scanLiterals(source: string): StringLiteral[] {
       i += 2;
       continue;
     }
+    if (ch === "/" && regexAllowed(source, i)) {
+      // Regex literal: skip to the closing unescaped `/` (character classes
+      // respected) so a quote or backtick inside it opens no string.
+      let j = i + 1;
+      let inClass = false;
+      while (j < n && source[j] !== "\n") {
+        const c = source[j]!;
+        if (c === "\\") j += 1;
+        else if (c === "[") inClass = true;
+        else if (c === "]") inClass = false;
+        else if (c === "/" && !inClass) break;
+        j += 1;
+      }
+      if (j < n && source[j] === "/") {
+        i = j + 1;
+        continue;
+      }
+    }
     if (ch === '"' || ch === "'") {
       const startLine = line;
       const q = ch;
@@ -131,6 +152,20 @@ export function scanLiterals(source: string): StringLiteral[] {
     i += 1;
   }
   return out;
+}
+
+/** A `/` starts a regex literal when the previous significant token cannot end an expression. */
+function regexAllowed(source: string, at: number): boolean {
+  let k = at - 1;
+  while (k >= 0 && /\s/.test(source[k]!)) k -= 1;
+  if (k < 0) return true;
+  const prev = source[k]!;
+  if ("(,=:[!&|?{};+-*%<>~^".includes(prev)) return true;
+  const word = /([A-Za-z_$][\w$]*)$/.exec(source.slice(Math.max(0, k - 10), k + 1))?.[1];
+  return (
+    word !== undefined &&
+    ["return", "typeof", "case", "in", "of", "delete", "void", "throw", "new"].includes(word)
+  );
 }
 
 export type StatementKind = "select" | "insert" | "update" | "delete" | "with" | "replace";
@@ -184,21 +219,38 @@ const WRITE_RES = [
   new RegExp(`\\bDELETE\\s+FROM\\s+${IDENT}`, "gi"),
 ];
 const READ_RE = new RegExp(`\\b(FROM|JOIN)\\s+${IDENT}`, "gi");
+const COMMA_TABLE_RE = new RegExp(
+  `^(?:\\s+(?:AS\\s+)?[A-Za-z_][A-Za-z0-9_]*)?\\s*,\\s*${IDENT}`,
+  "i",
+);
 
 /** Tables a statement (or migration script) reads and writes, lower-cased. */
 export function tableAccess(sql: string): { reads: Set<string>; writes: Set<string> } {
+  // String literals and comments never name tables ('copied from legacy').
+  const text = sql
+    .replace(/'(?:[^']|'')*'/g, "''")
+    .replace(/--[^\n]*/g, " ")
+    .replace(/\/\*[\s\S]*?\*\//g, " ");
   const reads = new Set<string>();
   const writes = new Set<string>();
   const deleteTargets = new Set<number>();
   for (const re of WRITE_RES) {
-    for (const m of sql.matchAll(re)) {
+    for (const m of text.matchAll(re)) {
       writes.add(m[1]!.toLowerCase());
       if (/^DELETE/i.test(m[0])) deleteTargets.add(m.index! + m[0].toUpperCase().indexOf("FROM"));
     }
   }
-  for (const m of sql.matchAll(READ_RE)) {
+  for (const m of text.matchAll(READ_RE)) {
     if (deleteTargets.has(m.index!)) continue;
     reads.add(m[2]!.toLowerCase());
+    // Comma joins: FROM a, b AS x, c
+    if (m[1]!.toUpperCase() === "FROM") {
+      let rest = text.slice(m.index! + m[0].length);
+      for (let c = COMMA_TABLE_RE.exec(rest); c; c = COMMA_TABLE_RE.exec(rest)) {
+        reads.add(c[1]!.toLowerCase());
+        rest = rest.slice(c[0].length);
+      }
+    }
   }
   return { reads, writes };
 }

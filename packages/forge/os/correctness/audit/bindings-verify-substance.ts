@@ -15,6 +15,9 @@ whenever present. `correctness.mode: exempt` skips it.</purpose>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
+
+F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +26,18 @@ import { parse as parseYaml } from "yaml";
 import type { AuditorOutput } from "./types.ts";
 
 const TRIVIAL = new Set(["test", "typecheck", "build:check", "tsc", "vitest"]);
+const NO_OPS = new Set([
+  "echo",
+  "true",
+  "cd",
+  ":",
+  "tee",
+  "printf",
+  "exit",
+  "set",
+  "export",
+  "sleep",
+]);
 const RUNNERS = new Set([
   "pnpm",
   "npm",
@@ -75,9 +90,10 @@ export function isTrivialVerify(cmd: string): boolean {
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
   if (segments.length === 0) return true;
+  // Shell no-ops and builtins add no substance (`pnpm test && echo ok`).
   return segments.every((seg) => {
     const target = invokedTarget(seg);
-    return target === null || TRIVIAL.has(target);
+    return target === null || TRIVIAL.has(target) || NO_OPS.has(target);
   });
 }
 
@@ -93,8 +109,20 @@ export function auditVerifySubstance(
       bindings?: { commands?: Record<string, unknown> };
     };
     commands = doc?.bindings?.commands ?? {};
-  } catch {
-    commands = {};
+  } catch (err) {
+    return {
+      findings: [
+        {
+          check: "bindings.verify.substance",
+          subject: "bindings.commands.verify",
+          severity: "error",
+          message: `forge.yaml is not valid YAML (${(err as Error).message.split("\n")[0]}) — the verify binding cannot be judged`,
+          location: { file: "forge.yaml", line: 1 },
+        },
+      ],
+      unverifiable: 0,
+      skipped: [],
+    };
   }
   const verify =
     typeof commands["verify"] === "string" ? normalize(commands["verify"] as string) : null;
