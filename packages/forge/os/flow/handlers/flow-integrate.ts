@@ -20,12 +20,14 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>ADR-0130: foreign-open-mission restore writes HEAD verbatim — whole diff classified as importer churn, a block splice would leave induced additions to be swept</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538</history>
+  <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
+
+flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1545</history>
 </CHANGE_SUMMARY>
 */
 
@@ -77,6 +79,11 @@ import {
   type FlowRegistryEntry,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
+import {
+  postRebaseOwners,
+  regenerateAfterRebase,
+  type PostRebaseRegenResult,
+} from "../post-rebase-regen.ts";
 import { standaloneInvoke } from "../standalone-invoke.ts";
 import { preserveTaskFiles } from "../task-files.ts";
 import { flowWorktreePath, primaryWorktree } from "../worktree-path.ts";
@@ -115,6 +122,8 @@ export interface FlowIntegrateData {
   /** RFC-1538: generated-file rebase conflicts auto-resolved via their owner
    * commands — journaled, never silently merged. */
   autoResolved?: string[];
+  /** RFC-1574: post-rebase regeneration of derived manifests (step 3b). */
+  postRebaseRegen?: PostRebaseRegenResult;
   /** RFC-1538: which checkout's build ran the integration gate. */
   gateEngine?: "session" | "primary";
   /** RFC-1531: worktree path --reattach created this run. */
@@ -1130,6 +1139,37 @@ async function integrateFlowBranchAttempt(
       }
     }
 
+    // (3b) RFC-1574: post-rebase regeneration — derived manifests depend on
+    // develop + branch, so they are regenerated on the rebased tree and the
+    // change is committed before the gate judges it (F-0168).
+    let postRebaseRegen: PostRebaseRegenResult | undefined;
+    if (entry.port === null) {
+      const owners = await postRebaseOwners(branchWorktree, io);
+      if (owners.length > 0) {
+        const invoker =
+          opts.invoke ??
+          standaloneInvoke(io, branchWorktree, [
+            ...owners.map((o) => o.command),
+            "ecosystem.manifest.validate",
+          ]);
+        const regen = await regenerateAfterRebase({
+          branchWorktree,
+          io,
+          invoke: invoker,
+          owners,
+          onProgress: opts.onProgress,
+        });
+        if ("refused" in regen) {
+          return refuse("FLOW-INT-12", regen.message, regen.fixHint, {
+            branch,
+            developBefore,
+            rebased: true,
+          });
+        }
+        postRebaseRegen = regen;
+      }
+    }
+
     // (4) integration gate — the primary's script, executed by the session
     // engine's build when the worktree carries one (RFC-1538): the code
     // under review judges itself; the checks it faces stay primary-owned.
@@ -1236,6 +1276,7 @@ async function integrateFlowBranchAttempt(
       ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
       ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
       ...(autoResolved.length > 0 ? { autoResolved } : {}),
+      ...(postRebaseRegen !== undefined ? { postRebaseRegen } : {}),
       ...(reattachedTo !== undefined ? { reattachedTo } : {}),
       ...(autoCleaned !== undefined && autoCleaned.length > 0 ? { autoCleaned } : {}),
       ...(autocommitSha !== undefined ? { autocommitSha } : {}),
