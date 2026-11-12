@@ -9,12 +9,14 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1537: classify regenerable worktree dirt and journal integrate refusals cheapest-first</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1533</history>
+  <item>RFC-1573: step 2 — declare flow.cut, flow.backmerge, mission.close detachable
+
+Each runs a long gate (integrateFlowBranch / runMissionValidate); leitstand.ship stays attached (Q-1).</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1533, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -341,6 +343,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
       },
       {
         name: "flow.cut",
+        // RFC-1573: runs the integration gate (integrateFlowBranch) under the lock.
+        detachable: true,
         description:
           "Cut a release on the fixed branch model (RFC-1490): plan refusals " +
           "FLOW-CUT-01..07, then under the integration lock — release branch " +
@@ -424,6 +428,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
       },
       {
         name: "flow.backmerge",
+        // RFC-1573: the clean path delegates to integrateFlowBranch under the lock.
+        detachable: true,
         description:
           "Port main into develop through a gated port branch (RFC-1490): " +
           "release tags on develop..main (oldest first) name the merge " +
