@@ -15,25 +15,14 @@
   <item>Module attribution is provider-aware: deriveModulePackageMap returns separate workshop/site maps because module names collide across buckets (deploy is engine() AND sitePlugin()), and each command resolves through the map matching its manifest siteScope — a flat last-write-wins map silently misattributed the engine deploy.* family to the private site package (RFC-1518 r2, deviation D-004).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
-
-Live-inventory docs gate: PKG-HEALTH-11 flags registered commands absent
-from the package DOCS_SURFACE, PKG-HEALTH-12 flags dead x.y doc tokens.
-loadCommandInventory unions the runtime registry with the generated
-command manifest (getLiveCommands precedent); namespace + TLD-tail
-resolution keep property paths and domains silent. Same-line
-pkg-health-11/12 markers journal intentional exceptions.
-
-Audit diff to land green: canonical forge.* names in forge docs,
-leitstand.access.* expansions, registered-surface listings for
-projektarchiv-operations/werkstatt-journal/werkstatt-engine, and 100+
-journaled suppressions for code paths, family prefixes, and the planned
-werkstatt-knowledge CLI surface.</item>
   <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
   <item>RFC-1518: key decision for private-package docs-gate scope</item>
   <item>RFC-1518: provider-aware module attribution, per-rule markers, tld-tail scoping</item>
   <item>RFC-1518: key decision for provider-aware attribution</item>
-  <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255, RFC-1517</history>
+  <item>ADR-0131: pkg-health-10 suppression on the line above the literal
+
+literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
+  <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255, RFC-1517, RFC-1518</history>
 </CHANGE_SUMMARY>
 */
 
@@ -158,6 +147,8 @@ const BINARY_FILE_RE =
 const QUOTED_PARENT_RE = /["'`]([^"'`\n]*(?:\.\.\/)+[^"'`\n]*)["'`]/g;
 const RAW_PARENT_RE = /(?:\.\.\/)+[^\s"'`)\],;:}]*/g;
 const SUPPRESS_RE = /pkg-health-10:/;
+/** ADR-0131: a line comment directly above the literal carrying the token. */
+const PREV_LINE_SUPPRESS_RE = new RegExp("^\\s*//.*pkg-health-10:");
 
 /** File extensions the fixture scan judges (docs and binaries are excluded). */
 export function fixtureScanSkipped(file: string): boolean {
@@ -167,9 +158,11 @@ export function fixtureScanSkipped(file: string): boolean {
 /**
  * The single `../` literal matcher shared by the working-tree scan and the
  * publish at-ref scan — apply the per-extension mode to one source line and
- * report every literal resolving outside `rootAbs`. Same-line
- * `pkg-health-10:` suppression only (JSON and fixture templates cannot carry
- * comments — those go through the config suppressions list instead).
+ * report every literal resolving outside `rootAbs`. A `pkg-health-10:`
+ * suppression on the literal's own line, or (ADR-0131) in a `//` line comment
+ * directly above it — the placement prettier keeps stable — silences the
+ * line; reach is exactly one line. JSON and fixture templates cannot carry
+ * comments — those go through the config suppressions list instead.
  */
 export function literalEscapesInLine(
   file: string,
@@ -177,8 +170,10 @@ export function literalEscapesInLine(
   lineNo: number,
   fileDirAbs: string,
   rootAbs: string,
+  prevLine?: string,
 ): FixtureEscape[] {
   if (SUPPRESS_RE.test(text)) return [];
+  if (prevLine !== undefined && PREV_LINE_SUPPRESS_RE.test(prevLine)) return [];
   const re = TS_FAMILY_RE.test(file) ? QUOTED_PARENT_RE : RAW_PARENT_RE;
   const out: FixtureEscape[] = [];
   for (const m of text.matchAll(re)) {
@@ -219,7 +214,9 @@ export function scanFixturePathEscapes(
     }
     const lines = source.split("\n");
     for (let i = 0; i < lines.length; i++) {
-      escapes.push(...literalEscapesInLine(file, lines[i]!, i + 1, path.dirname(abs), root));
+      escapes.push(
+        ...literalEscapesInLine(file, lines[i]!, i + 1, path.dirname(abs), root, lines[i - 1]),
+      );
     }
   }
   return escapes.sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);

@@ -19,12 +19,14 @@ and return the RFC publications[] row for the journal.</purpose>
   <item>RFC-1517 r1: the fixture scan enumerates `../` candidates AT `ref` via one `git grep -nI --full-name` — the extract materializes the ref's tree, so an untracked dist/ or a post-tag fix can't false-refuse or evade the way a working-tree walk did. Each candidate path is then judged by the same isShippedEntry/literalEscapesInLine core PKG-HEALTH-10 uses.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1499: step 2 — retire publish-forge/bump-forge scripts, add extract-verify hook</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: step 7 — remediation entries, docs, deviations, generated indexes</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
-  <history>RFC-1491</history>
+  <item>ADR-0131: pkg-health-10 suppression on the line above the literal
+
+literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
+  <history>RFC-1491, RFC-1499</history>
 </CHANGE_SUMMARY>
 */
 
@@ -200,6 +202,7 @@ async function preflightExtractGates(
     projectDirRel,
   ]);
   const escapes: FixtureEscape[] = [];
+  const atRefLines = new Map<string, string[]>();
   if (grep.exitCode === 0) {
     for (const row of grep.stdout.split("\n")) {
       if (!row.startsWith(`${ref}:`)) continue;
@@ -216,13 +219,25 @@ async function preflightExtractGates(
       ) {
         continue;
       }
+      const fileDir = dirname(join(projectRoot, rel));
+      const sameLine = literalEscapesInLine(rel, text!, Number(lineNo), fileDir, projectRoot);
+      if (sameLine.length === 0) continue;
+      // ADR-0131: the suppression may sit on the line above — fetched from
+      // the ref only for candidate lines (rare), cached per file.
+      let lines = atRefLines.get(relPath!);
+      if (lines === undefined) {
+        const shown = await git(primary, io, ["show", `${ref}:${relPath}`]);
+        lines = shown.exitCode === 0 ? shown.stdout.split("\n") : [];
+        atRefLines.set(relPath!, lines);
+      }
       escapes.push(
         ...literalEscapesInLine(
           rel,
           text!,
           Number(lineNo),
-          dirname(join(projectRoot, rel)),
+          fileDir,
           projectRoot,
+          lines[Number(lineNo) - 2],
         ),
       );
     }

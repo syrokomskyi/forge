@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
 
@@ -24,7 +23,10 @@ journaled suppressions for code paths, family prefixes, and the planned
 werkstatt-knowledge CLI surface.</item>
   <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
   <item>RFC-1518: provider-aware module attribution, per-rule markers, tld-tail scoping</item>
-  <history>RFC-1311</history>
+  <item>ADR-0131: pkg-health-10 suppression on the line above the literal
+
+literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
+  <history>RFC-1311, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
 
@@ -618,6 +620,26 @@ test("scanFixturePathEscapes honors suppression, raw-mode, and per-extension mod
   expect(escapes[0]?.file).toBe("notes.yaml");
   expect(escapes[0]?.line).toBe(1);
   expect(escapes[0]?.literal).toContain("../");
+});
+
+// Test-Reason: invariant ADR-0131 suppression placement
+test("ADR-0131: a pkg-health-10 line comment directly above the literal suppresses it; two lines up or a non-comment line does not", () => {
+  const pkgDir = join(tmpDir, "packages", "above");
+  mkdirSync(pkgDir, { recursive: true });
+  writeFileSync(
+    join(pkgDir, "above.ts"),
+    '// pkg-health-10: probe both layouts\nconst a = "../../outside.md";\n', // pkg-health-10: fixture text
+  );
+  writeFileSync(
+    join(pkgDir, "two-up.ts"),
+    '// pkg-health-10: too far\n\nconst b = "../../outside.md";\n', // pkg-health-10: fixture text
+  );
+  writeFileSync(
+    join(pkgDir, "not-comment.ts"),
+    'const note = "pkg-health-10: not a comment";\nconst c = "../../outside.md";\n', // pkg-health-10: fixture text
+  );
+  const escapes = scanFixturePathEscapes(pkgDir, ["above.ts", "two-up.ts", "not-comment.ts"]);
+  expect(escapes.map((e) => e.file).sort()).toEqual(["not-comment.ts", "two-up.ts"]);
 });
 
 test("deriveShippedFiles applies ignoreDirs, excludePathSegments, and excludeExtensions", () => {

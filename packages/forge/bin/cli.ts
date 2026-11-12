@@ -10,7 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1573: step 3 — single forge command-module list
@@ -19,7 +18,10 @@ buildRegistry() consumes loadForgeCommandModules() from src/command-modules.ts s
   <item>RFC-1573: close review REVIEW-CODE-2026-11-12-01 findings
 
 Restore same-line pkg-health-10 suppressions in forge bin/cli.ts (prettier-ignore) and revert unrelated registry.ts reflows; DETACH-01 also matches call sites (slice cap cut mission.close off before runMissionValidate); exempt marker anchored to a non-global line-comment regex; live-source test pins entrypoint resolution and the flow.cut/mission.close negative control; command-modules test; AC-8 literal comment; RFC Deviations DEV-1..3.</item>
-  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1472, RFC-1473, RFC-1478, RFC-1486, RFC-1508</history>
+  <item>ADR-0131: pkg-health-10 suppression on the line above the literal
+
+literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
+  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1472, RFC-1473, RFC-1478, RFC-1486, RFC-1508, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
 
@@ -160,9 +162,9 @@ async function buildRegistry(): Promise<ForgeCliRegistry> {
 function readVersion(): string {
   // Source: packages/forge/bin/cli.ts → packages/forge/package.json (one up)
   // Compiled: dist/bin/cli.js → package.json (two up)
-  // pkg-health-10 suppression lives on the literal's own line — candidates probe bin/ and dist/bin/ layouts, in extract ../.. lands on the package root.
-  // prettier-ignore
-  for (const up of ["..", "../.."]) { // pkg-health-10: bin/ and dist/bin/ probe layouts
+  // Candidates probe bin/ and dist/bin/ layouts; in extract ../.. lands on the package root.
+  // pkg-health-10: bin/ and dist/bin/ probe layouts (ADR-0131 line-above placement)
+  for (const up of ["..", "../.."]) {
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { version?: string };
@@ -179,9 +181,9 @@ const VERSION = readVersion();
 function resolveForgeRootFromCli(): string | undefined {
   // Source: packages/forge/bin/cli.ts → packages/forge/ (one up)
   // Compiled: dist/bin/cli.js → packages/forge/ (two up)
-  // pkg-health-10 suppression lives on the literal's own line — candidates probe bin/ and dist/bin/ layouts, in extract ../.. lands on the package root.
-  // prettier-ignore
-  for (const up of ["..", "../.."]) { // pkg-health-10: bin/ and dist/bin/ probe layouts
+  // Candidates probe bin/ and dist/bin/ layouts; in extract ../.. lands on the package root.
+  // pkg-health-10: bin/ and dist/bin/ probe layouts (ADR-0131 line-above placement)
+  for (const up of ["..", "../.."]) {
     const pkgPath = join(__dirname, up, "package.json");
     try {
       const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string };
