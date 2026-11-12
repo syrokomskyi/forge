@@ -13,6 +13,9 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-09 findings
+
+N1 index-hint rows count only for files in the workspace listing; N2 forge create leaves exempt repositories unbound; N3 listing test stages a file. Record DEV-3/DEV-4 amendments (CORR-07 future/escaping captures, index as re-verified hint) in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,7 +28,12 @@ import path from "node:path";
 import { buildAnchorIndex } from "./anchors.ts";
 import { validateCorrectnessManifest } from "./handlers/validate.ts";
 import { listWorkspaceFiles } from "./workspace.ts";
-import { BASE_MANIFEST, MARKER, makeWorkspace } from "./tests/fixture-workspace.ts";
+import {
+  ANCHORED_SOURCE,
+  BASE_MANIFEST,
+  MARKER,
+  makeWorkspace,
+} from "./tests/fixture-workspace.ts";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => cleanups.splice(0).forEach((c) => c()));
@@ -179,6 +187,20 @@ describe("anchor index hint", () => {
     ]);
   });
 
+  it("ignores an index row whose file the workspace listing does not include", () => {
+    const w = makeWorkspace({
+      files: {
+        "docs/invariants.generated.yaml": indexYaml("dist/dispatch.ts"),
+        "dist/dispatch.ts": ANCHORED_SOURCE,
+      },
+    });
+    cleanups.push(w.cleanup);
+    writeFileSync(path.join(w.root, "src/dispatch.ts"), "export {};\n");
+    const idx = buildAnchorIndex(w.root, ["src/dispatch.ts"], ["INV-dispatch-01"]);
+    expect(idx.source).toBe("scan");
+    expect(idx.anchors.has("INV-dispatch-01")).toBe(false);
+  });
+
   it("falls back to the scan when the recorded file no longer declares the anchor", () => {
     const w = makeWorkspace({
       files: { "docs/invariants.generated.yaml": indexYaml("src/deleted.ts") },
@@ -199,10 +221,12 @@ describe("workspace file listing", () => {
     const w = makeWorkspace({});
     cleanups.push(w.cleanup);
     execFileSync("git", ["init", "-q"], { cwd: w.root });
+    execFileSync("git", ["add", "src/dispatch.ts"], { cwd: w.root });
     writeFileSync(path.join(w.root, ".gitignore"), "ignored.ts\n");
     writeFileSync(path.join(w.root, "ignored.ts"), "x");
     const files = await listWorkspaceFiles(w.root);
-    expect(files).toContain("src/dispatch.ts");
+    expect(files).toContain("src/dispatch.ts"); // tracked (--cached)
+    expect(files).toContain("src/dispatch.schema.test.ts"); // untracked (--others)
     expect(files).not.toContain("ignored.ts");
   });
 });
