@@ -20,7 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: worktree-first preamble — session-end writes go through a dedicated session worktree; docs.archive prefers the kernel host</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>ADR-0126: docs-rule batch — 16 friction measures landed</item>
@@ -30,7 +29,8 @@ RFC-1460 harvest wave 2026-11-09: five draft RFCs (derive-and-repair flow
 surfaces, quiet kernel output, staged-commit/invocation guards, fixed-branch
 onboarding-status routing, forge task prettier coverage), seven docs-rule
 landings, registry flips — 25 entries served, F-0025 stays external.</item>
-  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491</history>
+  <item>RFC-1460: session-end teardown — stop worktree-held dev servers before flow.integrate</item>
+  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -205,8 +205,10 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 **3e. Integrate or discard the session flow branch:**
 
 - This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently). When the worktree-first preamble opened a retro worktree, run the integration from that worktree — the whole session's writes ride it.
+- Before integrating, stop processes that hold files inside the session worktree — dev servers (`astro dev`, `vite dev`, `node --watch`, …) started during the session keep `node_modules`/build-output handles open and make `git worktree remove` fail with FLOW-INT-04 ("Directory not empty"): the branch still integrates, but an orphaned directory shell plus a stale server stay behind. Detect holders via `/proc` cwd links — `for d in /proc/[0-9]*/cwd; do readlink "$d"; done | grep -F "<worktree path>"` (or `lsof +D <worktree>`) — terminate them, then integrate.
 - After the clean-tree commit, run `flow.integrate` from the session worktree — it rebases the branch onto `develop`, runs the primary checkout's `hooks/integration-gate.sh`, and fast-forwards `develop`.
 - On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
+- A FLOW-INT-04 (worktree removal failed) means the branch already integrated — only teardown failed: stop the file-holding process, confirm the worktree is unregistered (`git worktree list`), then remove the leftover directory.
 - A FLOW-INT-01 dirty refusal is different: `data.entries` carries each path's class (`disposable`/`work`/…) — remediate via the flow.integrate remediation flags (`--auto-clean` when every entry is disposable, `--autocommit` to sweep the rest into the fixed-subject commit) or leave the branch for the next session with the classification reported.
 - When the operator said to drop the work, run `flow.discard --reason "<operator words>"` instead of `flow.integrate`.
 
