@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
-
-runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
 
 OriginGit gains optional showMany backed by one git cat-file --batch
@@ -21,7 +18,10 @@ per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1534</history>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
+
+F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1534</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1253,7 +1253,7 @@ export async function validateSingleRfc(
         "error",
       );
     } else {
-      const known = new Set(evaluateAcceptanceCriteria(body).criterionIds);
+      const known = new Set(criteriaEval.criterionIds);
       for (const item of promotes) {
         const id = String(item);
         if (!/^AC-\d+$/.test(id)) {

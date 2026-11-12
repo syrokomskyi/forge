@@ -23,10 +23,13 @@ no rule.</purpose>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
+
+F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
 </CHANGE_SUMMARY>
 */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
@@ -64,6 +67,8 @@ import {
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 export const CAPTURE_EXPIRY_WARNING_DAYS = 7;
+/** Clock skew tolerated for a sidecar recordedAt ahead of the validator's clock. */
+const FUTURE_SKEW_MS = DAY_MS;
 
 export interface ValidateOptions {
   /** Wall clock for CORR-07 (defaults to Date.now()). */
@@ -84,42 +89,24 @@ export function evaluateCapture(
   now: number,
 ): CaptureStatus {
   const rel = normalizeRelPath(capture);
+  const fail = (problem: string): CaptureStatus => ({
+    capture: rel,
+    ok: false,
+    expiringSoon: false,
+    problem,
+  });
+  // Captures are workspace files — a path escaping the root is never evidence.
+  if (rel.startsWith("../") || rel === ".." || path.isAbsolute(rel)) {
+    return fail(`capture path ${capture} escapes the workspace`);
+  }
+  if (!existsSync(path.join(workspaceRoot, rel))) return fail(`capture file ${rel} is missing`);
+  // Sidecar: `<capture file>.capture.yaml` (one sidecar per capture file).
+  const used = `${rel}${CAPTURE_SIDECAR_SUFFIX}`;
+  let raw: string;
   try {
-    readFileSync(path.join(workspaceRoot, rel));
+    raw = readFileSync(path.join(workspaceRoot, used), "utf8");
   } catch {
-    return {
-      capture: rel,
-      ok: false,
-      expiringSoon: false,
-      problem: `capture file ${rel} is missing`,
-    };
-  }
-  // Canonical sidecar: `<capture file>.capture.yaml`; the extension-less
-  // spelling (`draft.json` → `draft.capture.yaml`) is accepted too.
-  const candidates = [
-    ...new Set([
-      `${rel}${CAPTURE_SIDECAR_SUFFIX}`,
-      `${rel.replace(/\.[^./]+$/, "")}${CAPTURE_SIDECAR_SUFFIX}`,
-    ]),
-  ];
-  let raw: string | null = null;
-  let used = candidates[0]!;
-  for (const c of candidates) {
-    try {
-      raw = readFileSync(path.join(workspaceRoot, c), "utf8");
-      used = c;
-      break;
-    } catch {
-      // try next spelling
-    }
-  }
-  if (raw === null) {
-    return {
-      capture: rel,
-      ok: false,
-      expiringSoon: false,
-      problem: `capture ${rel} has no sidecar (${candidates.join(" or ")})`,
-    };
+    return fail(`capture ${rel} has no sidecar (${used})`);
   }
   let doc: unknown;
   try {
@@ -150,6 +137,11 @@ export function evaluateCapture(
       expiringSoon: false,
       problem: `sidecar ${used} recordedAt "${parsed.data.recordedAt}" is not a timestamp`,
     };
+  }
+  if (recorded > now + FUTURE_SKEW_MS) {
+    return fail(
+      `sidecar ${used} recordedAt ${parsed.data.recordedAt} lies in the future — a capture cannot be fresher than now`,
+    );
   }
   const expiresAt = recorded + parsed.data.ttlDays * DAY_MS;
   if (now > expiresAt) {
@@ -192,7 +184,6 @@ export async function validateCorrectnessManifest(
     mode: settings.mode,
     tier: settings.tier,
     status,
-    manifest: settings.manifestPath,
     coverage,
     violations,
   });
@@ -285,7 +276,14 @@ export async function validateCorrectnessManifest(
 
   if (manifest) {
     const files = await listWorkspaceFiles(workspaceRoot);
-    const anchorIndex = entries.length > 0 ? buildAnchorIndex(workspaceRoot, files) : null;
+    const anchorIndex =
+      entries.length > 0
+        ? buildAnchorIndex(
+            workspaceRoot,
+            files,
+            entries.flatMap((x) => x.anchors),
+          )
+        : null;
 
     // CORR-02: support globs must match files.
     for (const glob of manifest.support) {

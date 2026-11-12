@@ -96,7 +96,7 @@ exemptions:
 
 ## Capture sidecar
 
-Next to each capture file sits `<capture file>.capture.yaml` (the extension-less spelling `<name>.capture.yaml` is accepted too):
+Next to each capture file sits `<capture file>.capture.yaml` — the full capture file name plus `.capture.yaml` (`draft.json` → `draft.json.capture.yaml`):
 
 ```yaml
 schema: forge/correctness-capture@1
@@ -107,7 +107,7 @@ ttlDays: 30
 origin: "L3 run: dialogue-steward correctness.capture 2026-11-12"
 ```
 
-A capture older than `ttlDays` is a CORR-07 error; within 7 days of expiry it is a warning, so a refresh can be scheduled before the integration gate (RFC-1580) refuses.
+A capture older than `ttlDays`, a `recordedAt` in the future, or a capture path outside the workspace is a CORR-07 error; within 7 days of expiry it is a warning, so a refresh can be scheduled before the integration gate (RFC-1580) refuses.
 
 ## Correctness modes
 

@@ -11,6 +11,9 @@ with the forge registry — RFC-1578 `correctness.manifest.validate`.</purpose>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
+
+F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -52,7 +55,8 @@ export async function createForgeCorrectnessModule(): Promise<ForgeModule> {
         ],
         mutatesState: false,
         execOnReadOnly: true,
-        reads: ["forge.yaml", "docs/correctness.yaml"],
+        // The manifest path is binding-driven (bindings.paths.correctnessManifest).
+        reads: ["forge.yaml"],
         cacheable: false,
         flags: {},
         execute: runCorrectnessManifestValidate,
