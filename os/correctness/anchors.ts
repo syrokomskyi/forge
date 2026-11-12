@@ -19,6 +19,9 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-09 findings
+
+N1 index-hint rows count only for files in the workspace listing; N2 forge create leaves exempt repositories unbound; N3 listing test stages a file. Record DEV-3/DEV-4 amendments (CORR-07 future/escaping captures, index as re-verified hint) in the RFC Deviations section.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -138,9 +141,13 @@ export function buildAnchorIndex(
   const wanted = [...new Set(named)];
   const hint = fromIndex(workspaceRoot);
   if (hint !== null && wanted.length > 0) {
+    // Only files the scan would read count — an index row naming an ignored
+    // or untracked-ignored file must not satisfy CORR-04 in index mode.
+    const listed = new Set(files);
     const fileOf = new Map<string, Set<string>>();
     for (const r of hint) {
-      if (!wanted.includes(r.id) || !isAnchorSourceCandidate(r.file)) continue;
+      if (!wanted.includes(r.id) || !isAnchorSourceCandidate(r.file) || !listed.has(r.file))
+        continue;
       const set = fileOf.get(r.id) ?? new Set<string>();
       set.add(r.file);
       fileOf.set(r.id, set);
