@@ -7,7 +7,8 @@
 </MODULE_CONTRACT>
 */
 // Test-Reason: requirement AC-1, AC-2, AC-3, AC-5 (RFC-1574)
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { ambientIo } from "../../../src/utils/io.ts";
@@ -205,5 +206,30 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
     expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(data.integrated).toBe(true);
     expect(progress.some((l) => l.includes("not runnable here — skipped"))).toBe(true);
+  }, 30_000);
+
+  // Test-Reason: defect REVIEW-CODE-2026-11-12-06 H-N1
+  it("a failing regeneration commit refuses FLOW-INT-12 with no new commit", async () => {
+    const repo = await repoWithManifest();
+    const s = await session(repo, "commitfail");
+    const hooks = await mkdtemp(join(tmpdir(), "flow-regen-hooks-"));
+    dirs.push(hooks);
+    await mkdir(hooks, { recursive: true });
+    await writeFile(join(hooks, "pre-commit"), "#!/bin/sh\necho refused >&2\nexit 1\n");
+    await chmod(join(hooks, "pre-commit"), 0o755);
+    await gitExec(s.worktree!, ["config", "core.hooksPath", hooks]);
+    const head = (await gitExec(s.worktree!, ["rev-parse", "HEAD"])).stdout.trim();
+    const stub = stubInvoke(() => s.worktree!, { content: "contentHash: new\n" });
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: s.branch!,
+      dryRun: false,
+      now: NOW,
+      invoke: stub.invoke,
+    });
+    expect(data.integrated).toBe(false);
+    const diag = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-12");
+    expect(diag?.message).toContain("commit failed");
+    const subjects = (await gitExec(s.worktree!, ["log", "--format=%s", `${head}..HEAD`])).stdout;
+    expect(subjects).not.toContain(POST_REBASE_REGEN_SUBJECT);
   }, 30_000);
 });
