@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.5.0] — 2026-11-12
+
+_Long gates run detached with durable records, the kernel command-result cache is shared across session worktrees, and flow refusals name their paths and remedies._
+
+### Added
+
+- **`gate.run.status`**: long gates (`flow.integrate`, `ecosystem.commit`, `mission.validate`) accept `--detach` — the parent prints a run id and log path, exits immediately, and every attempt writes an immutable durable gate-run record; `gate.run.status` reports runs, blocks on `--wait`, and classifies unfinished runs as `lost` via the same dead-holder liveness rule as flow locks (RFC-1568).
+- **Shared kernel command-result cache**: command results are cached across session worktrees so reruns of identical commands reuse the verdict instead of re-executing; `kernel.cache.prune` manages the cache (RFC-1563).
+- **RFC evidence lint**: `rfc.validate` and `rfc.create` lint evidence annotations (`test:`/`file:` prefixes) and transient probe targets while RFCs are authored (RFC-1569).
+
+### Changed
+
+- **`flow.integrate`** names the rebase stderr tail and porcelain status when no untracked file explains a conflict (ADR-0128), names unattributed paths with a three-way remedy hint (ADR-0129), classifies induced-change lockfile diffs through BFS reachability and restores foreign open-mission importer diffs verbatim (ADR-0130), and skips the rfc-0000 template in preflight id extraction.
+- **Session-end teardown** stops worktree-held dev servers before flow cleanup (RFC-1460).
+
 ## [9.4.1] — 2026-11-10
 
 _Flow surfaces self-repair: cross-checkout dirt is attributed to its live operation, generated rebase conflicts regenerate, and recoverable state is derived instead of refused._
