@@ -10,6 +10,9 @@
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
+
+F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -19,6 +22,7 @@ import { runCorrectnessManifestValidate } from "./handlers/validate.ts";
 import { validateCorrectnessManifest } from "./handlers/validate.ts";
 import { makeWorkspace } from "./tests/fixture-workspace.ts";
 import type { ForgeRuntimeContext } from "../../src/types.ts";
+import { correctnessBindingPatch } from "../../src/onboarding/create.ts";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => cleanups.splice(0).forEach((c) => c()));
@@ -76,5 +80,21 @@ describe("correctness.mode", () => {
     expect(res.mode).toBe("warn");
     expect(res.tier).toBe("standard");
     expect(res.status).toBe("pass");
+  });
+});
+
+describe("forge create binds the profile manifest", () => {
+  it("writes absent or null keys and keeps operator-set ones", () => {
+    const fresh = correctnessBindingPatch(
+      "schema: forge/config@1\nbindings:\n  paths:\n    correctnessManifest: null\n",
+      "docs/correctness.yaml",
+    );
+    expect(fresh).toMatch(/correctnessManifest: docs\/correctness.yaml/);
+    expect(fresh).toMatch(/mode: warn/);
+    const kept = correctnessBindingPatch(
+      "schema: forge/config@1\nbindings:\n  paths:\n    correctnessManifest: quality/manifest.yaml\ncorrectness:\n  mode: enforce\n  tier: high\n",
+      "docs/correctness.yaml",
+    );
+    expect(kept, "operator-set values must survive forge create").toBeNull();
   });
 });

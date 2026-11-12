@@ -10,12 +10,21 @@
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
+
+F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
 </CHANGE_SUMMARY>
 */
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { execFileSync } from "node:child_process";
+import { rmSync, writeFileSync } from "node:fs";
+import path from "node:path";
+
+import { buildAnchorIndex } from "./anchors.ts";
 import { validateCorrectnessManifest } from "./handlers/validate.ts";
+import { listWorkspaceFiles } from "./workspace.ts";
 import { BASE_MANIFEST, MARKER, makeWorkspace } from "./tests/fixture-workspace.ts";
 
 const cleanups: (() => void)[] = [];
@@ -137,5 +146,63 @@ describe("anchor chain", () => {
     expect(yaml.violations.find((x) => x.rule === "CORR-01")?.severity).toBe("error");
     const schema = await run({ manifest: "schema: forge/correctness-manifest@2\nentries: []\n" });
     expect(schema.violations.some((x) => x.rule === "CORR-02")).toBe(true);
+  });
+
+  it("a documentation code fence never declares a code anchor (CORR-04 fires)", async () => {
+    const fence =
+      "```ts\n// " +
+      MARKER +
+      "[INV-doc-01]: dispatch never sends two openers to one target (checked-by: test:src/dispatch.schema.test.ts)\n```\n";
+    const res = await run({
+      manifest: BASE_MANIFEST.replace("anchors: [INV-dispatch-01]", "anchors: [INV-doc-01]"),
+      files: { "docs/guide.md": fence },
+    });
+    expect(res.violations.find((x) => x.rule === "CORR-04")?.message).toMatch(
+      /INV-doc-01 is declared by no/,
+    );
+  });
+});
+
+describe("anchor index hint", () => {
+  const indexYaml = (file: string) =>
+    `schema: forge/invariant-index@1\ninvariants:\n  - id: INV-dispatch-01\n    file: ${file}\n    line: 2\n    statement: x\n    bindings:\n      - kind: test\n        target: src/dispatch.schema.test.ts\n        resolved: true\nretiredIds: []\n`;
+
+  it("uses the index when every named anchor re-parses from its recorded file", () => {
+    const w = makeWorkspace({
+      files: { "docs/invariants.generated.yaml": indexYaml("src/dispatch.ts") },
+    });
+    cleanups.push(w.cleanup);
+    const idx = buildAnchorIndex(w.root, ["src/dispatch.ts"], ["INV-dispatch-01"]);
+    expect(idx.source).toBe("index");
+    expect(idx.anchors.get("INV-dispatch-01")![0]!.checkedBy).toEqual([
+      "test:src/dispatch.schema.test.ts",
+    ]);
+  });
+
+  it("falls back to the scan when the recorded file no longer declares the anchor", () => {
+    const w = makeWorkspace({
+      files: { "docs/invariants.generated.yaml": indexYaml("src/deleted.ts") },
+    });
+    cleanups.push(w.cleanup);
+    rmSync(path.join(w.root, "src/dispatch.ts"));
+    const idx = buildAnchorIndex(w.root, [], ["INV-dispatch-01"]);
+    expect(idx.source).toBe("scan");
+    expect(
+      idx.anchors.has("INV-dispatch-01"),
+      "a deleted anchor must not survive through a stale index",
+    ).toBe(false);
+  });
+});
+
+describe("workspace file listing", () => {
+  it("lists tracked and untracked files and honours .gitignore in a git repository", async () => {
+    const w = makeWorkspace({});
+    cleanups.push(w.cleanup);
+    execFileSync("git", ["init", "-q"], { cwd: w.root });
+    writeFileSync(path.join(w.root, ".gitignore"), "ignored.ts\n");
+    writeFileSync(path.join(w.root, "ignored.ts"), "x");
+    const files = await listWorkspaceFiles(w.root);
+    expect(files).toContain("src/dispatch.ts");
+    expect(files).not.toContain("ignored.ts");
   });
 });

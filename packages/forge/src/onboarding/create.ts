@@ -9,22 +9,22 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — packages/forge + services clean
-
-Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1500: step 2 — forge.create adopts the fixed branch model</item>
   <item>RFC-1500: link branch-model guide in committed NEXT_STEPS.md (review r1)</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
+
+F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
   <history>RFC-0544, RFC-0548, RFC-0550, RFC-0640, RFC-0643, RFC-0664, RFC-0877, RFC-1097, RFC-1224</history>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { resolveIo } from "../utils/io.ts";
-import { stringify as stringifyYaml } from "yaml";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { runScaffoldProject } from "./scaffold-project.ts";
 import { runInit, type InitResult, type InitDomainFields } from "./init.ts";
 import { runAgentsGenerate } from "./agents-generate.ts";
@@ -36,6 +36,7 @@ import {
   resolveForgeRoot,
   resolvePackageManager,
   applyCliBindingDefaults,
+  type ForgeYamlPatch,
 } from "../config/forge-config.ts";
 import { listStackProfiles } from "../profiles/stack-profile.ts";
 import type {
@@ -125,6 +126,33 @@ function toKebabCase(s: string): string {
  * Only these are tolerated when checking for emptiness.
  */
 const ALLOWED_EXISTING_DIRS = new Set([".git"]);
+
+
+/**
+ * RFC-1578: bind a profile-shipped correctness manifest in forge.yaml — only
+ * keys that are absent or null are written, so an operator-set
+ * `correctnessManifest`, `correctness.mode`, or `correctness.tier` survives.
+ * Returns null when nothing needs patching (or the document cannot be patched).
+ */
+export function correctnessBindingPatch(raw: string, manifestRel: string): string | null {
+  let current: Record<string, unknown> = {};
+  try {
+    current = (parseYaml(raw) ?? {}) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const bindingsPaths = ((current["bindings"] as Record<string, unknown> | undefined)?.["paths"] ??
+    {}) as Record<string, unknown>;
+  const section = (current["correctness"] ?? {}) as Record<string, unknown>;
+  const patches: ForgeYamlPatch[] = [];
+  if (bindingsPaths["correctnessManifest"] == null) {
+    patches.push({ path: ["bindings", "paths", "correctnessManifest"], value: manifestRel });
+  }
+  if (section["mode"] == null) patches.push({ path: ["correctness", "mode"], value: "warn" });
+  if (section["tier"] == null) patches.push({ path: ["correctness", "tier"], value: "standard" });
+  if (patches.length === 0) return null;
+  return applyForgeYamlPatches(raw, patches);
+}
 
 export async function runCreate(
   input: ForgeCommandInput,
@@ -393,11 +421,7 @@ export async function runCreate(
     if ((await fio.exists(path.join(targetDir, manifestRel))) && (await fio.exists(forgeYamlPath))) {
       try {
         const raw = await fio.readFile(forgeYamlPath);
-        const patched = applyForgeYamlPatches(raw, [
-          { path: ["bindings", "paths", "correctnessManifest"], value: manifestRel },
-          { path: ["correctness", "mode"], value: "warn" },
-          { path: ["correctness", "tier"], value: "standard" },
-        ]);
+        const patched = correctnessBindingPatch(raw, manifestRel);
         if (patched !== null) await fio.writeFile(forgeYamlPath, patched);
       } catch {
         // Best-effort like step 11 — correctness.manifest.validate reports CORR-01 when unbound.
