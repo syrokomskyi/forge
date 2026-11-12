@@ -26,7 +26,7 @@ export const POST_REBASE_REGEN_SUBJECT = "chore(flow): regenerate derived manife
 const GENERATED_DIR = "docs";
 
 export interface PostRebaseRegenResult {
-  /** owner commands invoked, in GENERATED_BASENAME_OWNERS order */
+  /** owner commands invoked — GENERATED_BASENAME_OWNERS order with ecosystem.manifest.generate last (archive-regen ordering) */
   ran: string[];
   /** repo-relative generated paths that changed and were committed */
   committed: string[];
