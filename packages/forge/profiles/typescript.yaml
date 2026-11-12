@@ -577,5 +577,8 @@ workspace:
             pnpm run "$script"
           fi
         done
+        # RFC-1579: cross-artifact correctness audit from the PRIMARY checkout's
+        # forge install — the session under judgment cannot edit or pin it away.
+        "$FLOW_PRIMARY/node_modules/.bin/forge" correctness.audit --base "$FLOW_BASE_SHA"
 install:
   - pnpm add -wD @warpgogol/forge @warpgogol/werkstatt-typescript @warpgogol/werkstatt-engine @warpgogol/werkstatt-shared prettier vitest typescript

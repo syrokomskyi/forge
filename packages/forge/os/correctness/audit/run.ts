@@ -15,6 +15,11 @@ the status (fail only on introduced errors).</purpose>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
+  <item>RFC-1579: gate line, ecosystem.commit early run, reference page
+
+typescript profile integration-gate.sh runs the primary install's correctness.audit against FLOW_BASE_SHA; werkstatt ecosystem.commit gains EC-34 (correctness.audit --staged, refuses introduced CORR-AUDIT-01..03, warns on CORR-AUDIT-04); in-code CREATE TABLE tables (Durable Object storage) are unverifiable instead of D1 findings; correctness.audit declares generates: []; reference page and agent guides.
+
+Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 legacy sql.schema.conform findings (packages/warpgogol-billing-cloudflare against schemas outside the repo), 127 unverifiable statements, no state machines; CORR-AUDIT-04 present (verify equals test) — fixed by the werkstatt gate-wiring queue task.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,8 +29,8 @@ import { auditVerifySubstance } from "./bindings-verify-substance.ts";
 import { attribute, readAllowList } from "./differential.ts";
 import { auditLedgerOrphans } from "./ledger-orphans.ts";
 import { closeSchemas, discoverSchemas } from "./schema-db.ts";
-import { auditSqlSchemaConform } from "./sql-schema-conform.ts";
-import { scanStatements, type SqlStatement } from "./sql-scanner.ts";
+import { auditSqlSchemaConform, inCodeTables } from "./sql-schema-conform.ts";
+import { scanLiterals, scanStatements, type SqlStatement } from "./sql-scanner.ts";
 import {
   defaultBase,
   isTestFile,
@@ -63,6 +68,18 @@ function statementsOf(snapshot: TreeSnapshot): SqlStatement[] {
   return out;
 }
 
+const DDL_RE = /CREATE\s+(?:VIRTUAL\s+)?TABLE/i;
+
+/** Literal texts carrying in-code DDL (non-test TypeScript only). */
+function literalTextsOf(snapshot: TreeSnapshot): string[] {
+  const out: string[] = [];
+  for (const [file, text] of snapshot.files) {
+    if (!/\.(?:ts|mts|tsx)$/.test(file) || isTestFile(file) || !DDL_RE.test(text)) continue;
+    for (const lit of scanLiterals(text)) if (DDL_RE.test(lit.text)) out.push(lit.text);
+  }
+  return out;
+}
+
 /** Run the code auditors (1–3) over one snapshot. */
 export function runCodeAuditors(snapshot: TreeSnapshot, only?: AuditCheckId): CodePass {
   const wants = (id: AuditCheckId) => !only || only === id;
@@ -79,7 +96,11 @@ export function runCodeAuditors(snapshot: TreeSnapshot, only?: AuditCheckId): Co
       } else {
         const statements = statementsOf(snapshot);
         if (wants("sql.schema.conform")) {
-          const r = auditSqlSchemaConform(discovery, statements);
+          const r = auditSqlSchemaConform(
+            discovery,
+            statements,
+            inCodeTables(literalTextsOf(snapshot)),
+          );
           pass.findings.push(...r.findings);
           pass.unverifiable += r.unverifiable;
         }
