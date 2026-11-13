@@ -20,7 +20,6 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>ADR-0130: foreign-open-mission restore writes HEAD verbatim — whole diff classified as importer churn, a block splice would leave induced additions to be swept</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
@@ -29,7 +28,10 @@ flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tr
   <item>RFC-1574: close review REVIEW-CODE-2026-11-12-05 findings
 
 Step (3b) judges only paths the owner run changed, validates before staging, skips owners not runnable without an engine build, runs ecosystem.manifest.generate last; e2e log write guarded and run-stamped; Unhandled Errors rule out timeout-only; lost-run wait test; publish pre-filter comment. RFC-1574/1575/1576 record DEV-1..8.</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1545</history>
+  <item>RFC-1580: correctness.gate and the flow.integrate step
+
+Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545</history>
 </CHANGE_SUMMARY>
 */
 
@@ -128,6 +130,8 @@ export interface FlowIntegrateData {
   postRebaseRegen?: PostRebaseRegenResult;
   /** RFC-1538: which checkout's build ran the integration gate. */
   gateEngine?: "session" | "primary";
+  /** RFC-1580: the primary install's correctness.gate verdict for this integration. */
+  correctnessGate?: { status: string; bundlePath: string | null; acceptedWeakening: string | null };
   /** RFC-1531: worktree path --reattach created this run. */
   reattachedTo?: string;
   /** RFC-1531: reattach target a --dry-run reports without mutating. */
@@ -482,6 +486,8 @@ async function integrateFlowBranchAttempt(
     autocommit?: boolean;
     /** RFC-1543: seconds to wait for live foreign claim-holders on primary (default 600, 0 = fail-fast). */
     waitForeignSeconds?: number;
+    /** RFC-1580: operator-accepted weakening reason (isolated weakening session only). */
+    acceptWeakening?: string;
   },
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
@@ -1222,6 +1228,30 @@ async function integrateFlowBranchAttempt(
       );
     }
 
+    // (4b) RFC-1580: correctness gate from the PRIMARY install, judging the
+    // session worktree against the develop tip it integrates into.
+    const { runCorrectnessStep, CORRECTNESS_WEAKENING_TRAILER } =
+      await import("../correctness-step.ts");
+    const correctness = await runCorrectnessStep(io, {
+      primary,
+      worktree: branchWorktree,
+      base: rebaseBase,
+      ...(opts.acceptWeakening ? { acceptWeakening: opts.acceptWeakening } : {}),
+    });
+    if (correctness.refusal) {
+      return refuse(
+        "FLOW-INT-18",
+        correctness.refusal.message,
+        correctness.refusal.fixHint,
+        { branch, developBefore, rebased: entry.port === null, gate },
+        correctness.bundlePath ? { bundlePath: correctness.bundlePath } : undefined,
+      );
+    }
+    if (correctness.warning) warnings.push(correctness.warning);
+    opts.onProgress?.(
+      `correctness gate: ${correctness.status}${correctness.bundlePath ? ` (${correctness.bundlePath})` : ""}`,
+    );
+
     // (5) primary must sit clean on develop, then fast-forward. Mid-gate
     // importer churn from another session's open mission tolerates here too
     // (RFC-1537) — the same classifier the preflight ran.
@@ -1266,6 +1296,23 @@ async function integrateFlowBranchAttempt(
         { branch, developBefore, rebased: entry.port === null, gate },
       );
     }
+    if (correctness.acceptedWeakening) {
+      // RFC-1580: the accepted weakening is recorded on the integration itself.
+      const trailer = await git(branchWorktree, io, [
+        "commit",
+        "--allow-empty",
+        "-m",
+        `flow: accept correctness weakening\n\n${CORRECTNESS_WEAKENING_TRAILER}: ${correctness.acceptedWeakening.replace(/\s+/g, " ").trim()}`,
+      ]);
+      if (trailer.exitCode !== 0) {
+        return refuse(
+          "FLOW-INT-18",
+          `could not record ${CORRECTNESS_WEAKENING_TRAILER} on the branch: ${trailer.stderr.trim()}`,
+          "commit the trailer by hand in the session worktree, then re-run",
+          { branch, developBefore, rebased: entry.port === null, gate },
+        );
+      }
+    }
     const merge = await git(primary, io, ["merge", "--ff-only", branch]);
     if (merge.exitCode !== 0) {
       return refuse(
@@ -1296,6 +1343,11 @@ async function integrateFlowBranchAttempt(
         : {}),
       ...(staleImporterCommitSha !== undefined ? { staleImporterCommitSha } : {}),
       gateEngine: engine.source,
+      correctnessGate: {
+        status: correctness.status,
+        bundlePath: correctness.bundlePath,
+        acceptedWeakening: correctness.acceptedWeakening,
+      },
       diagnostics: warnings,
     };
   };
@@ -1384,7 +1436,11 @@ async function integrateFlowBranchAttempt(
     gate: inner.gate,
     teardown: cleanup.gate,
     cleanedUp: cleanup.cleanedUp,
-    diagnostics: cleanup.diagnostics,
+    // Integration warnings (FLOW-INT-16, FLOW-INT-18) survive the cleanup report.
+    diagnostics: [
+      ...inner.diagnostics.filter((d) => d.severity !== "error"),
+      ...cleanup.diagnostics,
+    ],
   };
 }
 
@@ -1411,6 +1467,10 @@ export async function runFlowIntegrate(
     reattach: input.flags["reattach"] === true,
     autoClean: input.flags["auto-clean"] === true,
     autocommit: input.flags["autocommit"] === true,
+    ...(typeof input.flags["accept-weakening"] === "string" &&
+    input.flags["accept-weakening"].trim()
+      ? { acceptWeakening: input.flags["accept-weakening"] }
+      : {}),
     waitForeignSeconds:
       typeof input.flags["wait-foreign"] === "string" ||
       typeof input.flags["wait-foreign"] === "number"

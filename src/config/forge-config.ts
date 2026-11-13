@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
   <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
   <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
@@ -15,7 +14,10 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453</history>
+  <item>RFC-1580: correctness.gate and the flow.integrate step
+
+Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481</history>
 </CHANGE_SUMMARY>
 */
 
@@ -76,6 +78,8 @@ export const forgeBindingsSchema = z.object({
     correctnessManifest: z.string().nullable().default(null),
     // RFC-1579: survival ledger written by `correctness.audit --write-ledger`.
     correctnessLedger: z.string().nullable().default(null),
+    // RFC-1580: committed forge/oracle-review@1 records (null = docs/correctness/reviews).
+    oracleReviewsDir: z.string().nullable().default(null),
   }),
   terminology: z.record(z.string(), z.string()).default({}),
   // RFC-1096: consumer-level Compass policy overrides (same shape as the
@@ -146,6 +150,8 @@ export interface ForgeBindings {
     correctnessManifest?: string | null;
     // RFC-1579: survival ledger (null/absent = docs/maintenance-debt/correctness.ledger.yaml).
     correctnessLedger?: string | null;
+    // RFC-1580: oracle review records (null/absent = docs/correctness/reviews).
+    oracleReviewsDir?: string | null;
   };
   terminology: Record<string, string>;
   compass?: CompassPolicyOverrides;
