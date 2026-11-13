@@ -5,12 +5,12 @@ RFC-1581: contracts for codebase.measure — project-scale measurement over
 git-tracked files. Categories, per-language measures, top-directory ranking.
 </purpose>
 <non-goals>
-  <item>Does not define symbol contracts — symbol counts fold into LanguageMeasure.</item>
+  <item>Does not define symbol contracts — symbol counts nest under LanguageMeasure.symbols.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1581: initial codebase.measure contracts.</item>
-  <item>RFC-1581: add codebase.measure project-scale measurement command</item>
+  <item>RFC-1581: apply REVIEW-CODE-2026-11-13-01 — contract alignment, repo-root anchor, publishConfig exports</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,28 +21,35 @@ export interface CodebaseCategoryTotals {
   code: number;
 }
 
+export interface SymbolMeasure {
+  classes: number;
+  functions: number;
+  methods: number;
+}
+
 export interface LanguageMeasure {
   language: string;
   files: number;
   code: number;
   comments: number;
   blanks: number;
-  classes: number;
-  functions: number;
-  methods: number;
+  symbols?: SymbolMeasure;
 }
 
 export interface TopDirMeasure {
-  dir: string;
+  path: string;
   code: number;
 }
 
 export interface CodebaseMeasure {
   command: "codebase.measure";
   status: "ok";
+  repo: string;
   totals: Record<CodebaseCategory, CodebaseCategoryTotals>;
   languages: LanguageMeasure[];
   topDirs: TopDirMeasure[];
-  binaryFiles: number;
   symbolsSkipped: string[];
+  binaryFiles: number;
+  exclusions: string[];
+  measuredAt: string;
 }

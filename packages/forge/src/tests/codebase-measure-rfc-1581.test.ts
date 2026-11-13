@@ -9,6 +9,7 @@ binary files, read-only default and --out snapshot writing.
 <CHANGE_SUMMARY>
   <item>RFC-1581: initial test coverage.</item>
   <item>RFC-1581: add codebase.measure project-scale measurement command</item>
+  <item>RFC-1581: apply REVIEW-CODE-2026-11-13-01 — contract alignment, repo-root anchor, publishConfig exports</item>
 </CHANGE_SUMMARY>
 */
 
@@ -17,7 +18,7 @@ import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runCodebaseMeasure } from "../../os/codebase/handlers/codebase-measure.ts";
@@ -139,9 +140,10 @@ describe("RFC-1581: codebase.measure", () => {
     );
     const { data } = await measure(root);
     const ts = data.languages.find((l) => l.language === "TypeScript");
-    expect(ts!.classes).toBe(1);
-    expect(ts!.methods).toBe(1);
-    expect(ts!.functions).toBe(3); // f + arrow g + function-expression h
+    expect(ts!.symbols).toBeDefined();
+    expect(ts!.symbols!.classes).toBe(1);
+    expect(ts!.symbols!.methods).toBe(1);
+    expect(ts!.symbols!.functions).toBe(3); // f + arrow g + function-expression h
     expect(data.symbolsSkipped).toEqual([]);
   });
 
@@ -152,7 +154,7 @@ describe("RFC-1581: codebase.measure", () => {
     const astro = data.languages.find((l) => l.language === "Astro");
     expect(astro).toBeDefined();
     expect(astro!.files).toBe(1);
-    expect(astro!.functions).toBe(1);
+    expect(astro!.symbols!.functions).toBe(1);
   });
 
   it("AC-3: missing typescript degrades to lines-only with an explicit skip", async () => {
@@ -162,7 +164,7 @@ describe("RFC-1581: codebase.measure", () => {
     expect(data.symbolsSkipped).toContain("typescript-unavailable");
     const ts = data.languages.find((l) => l.language === "TypeScript");
     expect(ts!.code).toBe(1);
-    expect(ts!.classes).toBe(0);
+    expect(ts!.symbols).toBeUndefined();
   });
 
   it("AC-2/AC-10: fails with required nextSteps outside a git repository", async () => {
@@ -180,11 +182,50 @@ describe("RFC-1581: codebase.measure", () => {
   it("binary files count toward files but contribute zero lines", async () => {
     await add(root, "src/a.ts", "const x = 1;\n");
     await add(root, "img/logo.png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
+    await add(root, "img/logo.generated.png", Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x01]));
     const { data } = await measure(root);
-    expect(data.binaryFiles).toBe(1);
-    expect(data.totals.code.files).toBe(2);
+    expect(data.binaryFiles).toBe(2);
+    expect(data.totals.code.files).toBe(2); // a.ts + logo.png (name rules apply)
+    expect(data.totals.generated.files).toBe(1); // logo.generated.png — name rule without content
     expect(data.totals.code.code).toBe(1);
     expect(data.languages).toHaveLength(1);
+  });
+
+  it("lockfiles count as generated bookkeeping mass, never as code", async () => {
+    await add(root, "pnpm-lock.yaml", "lockfileVersion: '9.0'\n");
+    await add(root, "src/a.ts", "const x = 1;\n");
+    const { data } = await measure(root);
+    expect(data.totals.generated.files).toBe(1);
+    expect(data.totals.code.files).toBe(1);
+    expect(data.totals.code.code).toBe(1);
+  });
+
+  it("AC-1: contract keys — repo, exclusions, measuredAt present in data", async () => {
+    await add(root, "missions/m1/a.ts", "const m = 1;\n");
+    await add(root, "src/a.ts", "const x = 1;\n");
+    const { data } = await measure(root);
+    expect(data.repo).toBe(basename(root));
+    expect(data.measuredAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(data.exclusions).toContain("dir:missions/");
+    expect(data.exclusions).not.toContain("dir:docs/specs/");
+  });
+
+  it("anchors on the repo root — identical measurement from a subdirectory", async () => {
+    await add(root, "src/a.ts", "const x = 1;\n");
+    await add(root, "docs/guide.md", "# g\n");
+    const sub = join(root, "src");
+    const res = await runCodebaseMeasure(NO_FLAGS, makeContext(sub));
+    expect(res.exitCode).toBe(0);
+    expect(res.data!.totals.code.files).toBe(1);
+    expect(res.data!.totals.docs.files).toBe(1);
+  });
+
+  it("empty repository exits 0 with zeroed measures", async () => {
+    const { data, exitCode } = await measure(root);
+    expect(exitCode).toBe(0);
+    expect(data.totals.code).toEqual({ files: 0, code: 0 });
+    expect(data.languages).toEqual([]);
+    expect(data.topDirs).toEqual([]);
   });
 
   it("AC-9: default invocation writes nothing; --out writes the snapshot", async () => {
@@ -211,7 +252,7 @@ describe("RFC-1581: codebase.measure", () => {
     }
     const { data } = await measure(root);
     expect(data.topDirs.length).toBe(10);
-    expect(data.topDirs[0]!.dir).toBe("pkg11/src");
+    expect(data.topDirs[0]!.path).toBe("pkg11/src");
     for (let i = 1; i < data.topDirs.length; i++) {
       expect(data.topDirs[i]!.code).toBeLessThanOrEqual(data.topDirs[i - 1]!.code);
     }
