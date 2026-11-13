@@ -20,6 +20,9 @@ an oracle calls so the correctness gate can see what it actually ran on —
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
+
+N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -46,6 +49,8 @@ export interface AnchorEventResult {
   anchor: string;
   ok: boolean;
   reason?: string;
+  /** Normalized schema hash of the handle the event was verified against. */
+  schemaHash?: string;
 }
 
 function runDir(): string | null {
@@ -167,7 +172,10 @@ export function verifyAnchorEvents(
     }
     const anchor = (event as Record<string, unknown>)?.["forge.anchor"];
     if (typeof anchor !== "string") continue;
-    results.push(verifyOne(db, anchor, (event as Record<string, unknown>)["ref"]));
+    results.push({
+      ...verifyOne(db, anchor, (event as Record<string, unknown>)["ref"]),
+      schemaHash: schemaHashOf(db),
+    });
   }
   appendJson(ANCHOR_EVENTS_FILE, results);
   return results;

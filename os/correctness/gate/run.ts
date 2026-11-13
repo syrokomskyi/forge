@@ -20,11 +20,15 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
+
+N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
 </CHANGE_SUMMARY>
 */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import { parse as parseYaml } from "yaml";
 import path from "node:path";
 
 import {
@@ -47,6 +51,7 @@ import {
   diffWeakenings,
   readFrozenSet,
   readHeadSide,
+  supportAdditions,
 } from "./frozen.ts";
 import { deriveOrigin, readReviewRecords } from "./origin.ts";
 import { checkTarget, GateRepo, sha256 } from "./repo.ts";
@@ -111,6 +116,33 @@ async function defaultProve(root: string, specRel: string): Promise<string> {
   );
   const verdict = (res.data?.verdict as { verdict?: string } | null)?.verdict;
   return verdict ?? "error";
+}
+
+/** True when forge.yaml differs between base and head only in the frozen correctness keys. */
+async function forgeYamlOnlyFrozenKeys(
+  repo: GateRepo,
+  base: string,
+  head: string,
+): Promise<boolean> {
+  const strip = (text: string | null): string => {
+    let doc: Record<string, unknown> = {};
+    try {
+      doc = ((text ? parseYaml(text) : {}) ?? {}) as Record<string, unknown>;
+    } catch {
+      return "\0unparseable";
+    }
+    const copy = JSON.parse(JSON.stringify(doc)) as Record<string, unknown>;
+    delete copy["correctness"];
+    const b = copy["bindings"] as
+      { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
+    if (b?.commands) delete b.commands["checkRun"];
+    if (b?.paths) {
+      delete b.paths["correctnessManifest"];
+      delete b.paths["oracleReviewsDir"];
+    }
+    return JSON.stringify(copy);
+  };
+  return strip(await repo.show(base, "forge.yaml")) === strip(await repo.show(head, "forge.yaml"));
 }
 
 export async function runCorrectnessGate(root: string, options: GateOptions): Promise<GateOutcome> {
@@ -220,15 +252,18 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   const weakenings: Weakening[] = [
     ...diffWeakenings(frozen, now),
     ...(await byteWeakenings(repo, base, head, frozen.files)),
+    ...(await supportAdditions(repo, base, head, frozen)),
     ...anchorWeakenings(root, files, frozen),
   ];
   let acceptedReason: string | null = null;
   if (weakenings.length > 0) {
     const reason = options.acceptWeakening?.trim();
     if (reason) {
+      const forgeYamlIsolated = await forgeYamlOnlyFrozenKeys(repo, base, head);
       const frozenPaths = new Set([
         ...frozen.files,
-        "forge.yaml",
+        ...frozen.anchorFiles,
+        ...(forgeYamlIsolated ? ["forge.yaml"] : []),
         ...[frozen.base.manifestPath, now.manifestPath]
           .filter((p): p is string => !!p)
           .map(normalizeRelPath),
@@ -270,204 +305,238 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   };
   const tier = validation.tier;
 
-  for (const entry of manifest?.entries ?? []) {
-    const bundleEntry: BundleEntry = {
-      id: entry.id,
-      ref: entry.ref ?? null,
-      seam: entry.seam,
-      covered: false,
-      oracles: [],
-    };
-    let anyNonSelf = false;
-    let anyTierOk = false;
-    let anyRunOk = false;
-    let anyAttested = false;
-    for (const [i, oracle] of entry.oracles.entries()) {
-      const file = checkTarget(oracle.check);
-      const origin = await deriveOrigin({
-        repo,
-        head,
-        check: oracle.check,
-        source: entry.source,
+  try {
+    for (const entry of manifest?.entries ?? []) {
+      const bundleEntry: BundleEntry = {
+        id: entry.id,
         ref: entry.ref ?? null,
-        rfcsDir: settings.rfcsDir,
-        reviews,
-        checkFile: file,
-        integrationBase: base,
-      });
-      const record: BundleOracle = {
-        check: oracle.check,
-        origin: origin.origin,
-        originDetail: origin.detail,
-        declaredSubstrate: oracle.substrate,
-        attestation: null,
-        command: null,
-        exitCode: null,
-        timedOut: false,
-        durationMs: 0,
-        anchorEvents: [],
-        covers: false,
+        seam: entry.seam,
+        covered: false,
+        oracles: [],
       };
-      bundleEntry.oracles.push(record);
-      if (origin.origin === "self") continue;
-      anyNonSelf = true;
-      const tierOk = tier === "high" || tier === "formal" ? origin.viaTrailer : true;
-      if (tierOk) anyTierOk = true;
-      // proof: oracles are judged by proof.check (tier formal), never through checkRun.
-      if (oracle.check.startsWith("proof:")) {
-        record.covers = false;
-        continue;
-      }
-      if (!checkRun || !file) {
-        add(
-          "CORR-GATE-07",
-          `${entry.id}: oracle ${oracle.check} cannot run — ${!checkRun ? "bindings.commands.checkRun is unset" : "check has no file"}`,
-          { entry: entry.id, check: oracle.check },
-        );
-        continue;
-      }
-      // (5) Run in a fresh per-oracle directory.
-      const runDir = path.join(runRoot, entry.id, `o${i}`);
-      mkdirSync(runDir, { recursive: true });
-      const run = await runOracle({ cwd: root, template: checkRun, file, runDir, timeoutMs });
-      record.command = run.command;
-      record.exitCode = run.exitCode;
-      record.timedOut = run.timedOut;
-      record.durationMs = run.durationMs;
-      if (run.failureClass !== "none") {
-        add(
-          "CORR-GATE-07",
-          `${entry.id}: oracle ${oracle.check} ${run.timedOut ? `timed out after ${timeoutMs}ms (timeout class)` : run.failureClass === "spawn" ? `could not start: ${run.outputTail}` : `exited ${run.exitCode}`}`,
-          { entry: entry.id, check: oracle.check },
-        );
-        continue;
-      }
-      anyRunOk = true;
-      // (6) Attestation.
-      let effective: Substrate = oracle.substrate;
-      if (oracle.substrate === "L1" || oracle.substrate === "L2") {
-        const att = readJson<SubstrateAttestation>(path.join(runDir, ATTESTATION_FILE));
-        const hashes = await expected();
-        const matches = !!att && att.level === oracle.substrate && hashes.has(att.schemaHash);
-        record.attestation = att ? { ...att, matches } : null;
-        if (!matches) {
+      let anyNonSelf = false;
+      let anyTierOk = false;
+      let anyRunOk = false;
+      let anyAttested = false;
+      for (const [i, oracle] of entry.oracles.entries()) {
+        const file = checkTarget(oracle.check);
+        const origin = await deriveOrigin({
+          repo,
+          head,
+          check: oracle.check,
+          source: entry.source,
+          ref: entry.ref ?? null,
+          rfcsDir: settings.rfcsDir,
+          reviews,
+          checkFile: file,
+          integrationBase: base,
+        });
+        const record: BundleOracle = {
+          check: oracle.check,
+          origin: origin.origin,
+          originDetail: origin.detail,
+          declaredSubstrate: oracle.substrate,
+          attestation: null,
+          command: null,
+          exitCode: null,
+          timedOut: false,
+          durationMs: 0,
+          anchorEvents: [],
+          covers: false,
+        };
+        bundleEntry.oracles.push(record);
+        if (origin.origin === "self") continue;
+        anyNonSelf = true;
+        const tierOk = tier === "high" || tier === "formal" ? origin.viaTrailer : true;
+        if (tierOk) anyTierOk = true;
+        // proof: oracles are judged by proof.check (tier formal), never through checkRun.
+        if (oracle.check.startsWith("proof:")) {
+          record.covers = false;
+          continue;
+        }
+        if (!checkRun || !file) {
+          add(
+            "CORR-GATE-07",
+            `${entry.id}: oracle ${oracle.check} cannot run — ${!checkRun ? "bindings.commands.checkRun is unset" : "check has no file"}`,
+            { entry: entry.id, check: oracle.check },
+          );
+          continue;
+        }
+        // (5) Run in a fresh per-oracle directory.
+        const runDir = path.join(runRoot, entry.id, `o${i}`);
+        mkdirSync(runDir, { recursive: true });
+        const run = await runOracle({ cwd: root, template: checkRun, file, runDir, timeoutMs });
+        record.command = run.command;
+        record.exitCode = run.exitCode;
+        record.timedOut = run.timedOut;
+        record.durationMs = run.durationMs;
+        if (run.failureClass !== "none") {
+          add(
+            "CORR-GATE-07",
+            `${entry.id}: oracle ${oracle.check} ${run.timedOut ? `timed out after ${timeoutMs}ms (timeout class)` : run.failureClass === "spawn" ? `could not start: ${run.outputTail}` : `exited ${run.exitCode}`}`,
+            { entry: entry.id, check: oracle.check },
+          );
+          continue;
+        }
+        anyRunOk = true;
+        // (6) Attestation.
+        let effective: Substrate = oracle.substrate;
+        if (oracle.substrate === "L1" || oracle.substrate === "L2") {
+          const att = readJson<SubstrateAttestation>(path.join(runDir, ATTESTATION_FILE));
+          const hashes = await expected();
+          const matches = !!att && att.level === oracle.substrate && hashes.has(att.schemaHash);
+          record.attestation = att ? { ...att, matches } : null;
+          if (!matches) {
+            add(
+              "CORR-GATE-04",
+              `${entry.id}: oracle ${oracle.check} declares ${oracle.substrate} but ${att ? `its attestation (${att.level}, ${att.schemaHash.slice(0, 12)}) does not match the repository migrations` : "left no attestation (attestSubstrate)"} — counted as L0`,
+              { entry: entry.id, check: oracle.check },
+            );
+            effective = "L0";
+          }
+        }
+        // A declared L3 is never trusted on declaration alone: without declared,
+        // fresh captures loaded through loadCapture it counts as L0.
+        if (oracle.substrate === "L3" && (oracle.captures ?? []).length === 0) {
           add(
             "CORR-GATE-04",
-            `${entry.id}: oracle ${oracle.check} declares ${oracle.substrate} but ${att ? `its attestation (${att.level}, ${att.schemaHash.slice(0, 12)}) does not match the repository migrations` : "left no attestation (attestSubstrate)"} — counted as L0`,
+            `${entry.id}: oracle ${oracle.check} declares L3 without captures — a live run leaves no evidence the gate can check; record captures (loadCapture) — counted as L0`,
             { entry: entry.id, check: oracle.check },
           );
           effective = "L0";
         }
+        // On data/lifecycle seams an L3 claim is only as good as the schema it ran on:
+        // it counts at its attested level (L1/L2), or L0 without a matching attestation.
+        if (
+          oracle.substrate === "L3" &&
+          entry.seam !== "provider" &&
+          entry.seam !== "other" &&
+          effective !== "L0"
+        ) {
+          const att = readJson<SubstrateAttestation>(path.join(runDir, ATTESTATION_FILE));
+          const hashes = await expected();
+          const matches = !!att && hashes.has(att.schemaHash);
+          record.attestation = att ? { ...att, matches } : null;
+          effective = matches ? att!.level : "L0";
+          if (!matches) {
+            add(
+              "CORR-GATE-04",
+              `${entry.id}: oracle ${oracle.check} declares L3 on a ${entry.seam} seam without a schema attestation matching the migrations — counted as L0`,
+              { entry: entry.id, check: oracle.check },
+            );
+          }
+        }
+        // Captures: loaded files must be the declared, fresh captures.
+        if ((oracle.captures ?? []).length > 0) {
+          const loaded =
+            readJson<{ path: string; sha256: string }[]>(path.join(runDir, CAPTURES_FILE)) ?? [];
+          const declared = new Set((oracle.captures ?? []).map(normalizeRelPath));
+          const fresh = (oracle.captures ?? []).every(
+            (c) => evaluateCapture(root, c, Date.now()).ok,
+          );
+          const loadedPaths = new Set(loaded.map((l) => normalizeRelPath(l.path)));
+          const honest =
+            [...declared].every((d) => loadedPaths.has(d)) &&
+            loaded.every(
+              (l) =>
+                declared.has(normalizeRelPath(l.path)) &&
+                sha256(readWorking(normalizeRelPath(l.path)) ?? "") === l.sha256,
+            );
+          if (fresh && honest && effective !== "L0") {
+            if (entry.seam === "provider") effective = "L3";
+          } else if (!honest) {
+            effective = "L0";
+            add(
+              "CORR-GATE-04",
+              `${entry.id}: oracle ${oracle.check} did not load its declared captures through loadCapture`,
+              { entry: entry.id, check: oracle.check },
+            );
+          }
+        }
+        // (7) Anchor events.
+        let anchorsOk = true;
+        if (entry.seam === "lifecycle" && substrateRank(oracle.substrate) >= substrateRank("L2")) {
+          const events = readJson<AnchorEventResult[]>(path.join(runDir, ANCHOR_EVENTS_FILE)) ?? [];
+          record.anchorEvents = events;
+          // Events count only when verified against the handle the oracle attested.
+          const attestedHash = record.attestation?.matches ? record.attestation.schemaHash : null;
+          for (const e of events) {
+            if (e.ok && (attestedHash === null || e.schemaHash !== attestedHash)) {
+              e.ok = false;
+              e.reason = "event verified against a database other than the attested handle";
+            }
+          }
+          const failed = events.filter((e) => !e.ok);
+          for (const f of failed) {
+            add(
+              "CORR-GATE-05",
+              `${entry.id}: forge.anchor ${f.anchor} failed verification — ${f.reason ?? "mismatch"}`,
+              { entry: entry.id, check: oracle.check },
+            );
+          }
+          const missing = entry.anchors.filter((a) => !events.some((e) => e.anchor === a && e.ok));
+          for (const a of missing) {
+            add(
+              "CORR-GATE-05",
+              `${entry.id}: no verified forge.anchor event for ${a} in the L2 run of ${oracle.check}`,
+              { entry: entry.id, check: oracle.check },
+            );
+          }
+          anchorsOk = failed.length === 0 && missing.length === 0;
+        }
+        const meetsSeam = substrateRank(effective) >= substrateRank(SEAM_MINIMUM[entry.seam]);
+        if (meetsSeam && effective !== "L0") anyAttested = true;
+        else if (entry.seam === "other") anyAttested = true;
+        record.covers = tierOk && meetsSeam && anchorsOk;
       }
-      // A declared L3 is never trusted on declaration alone: without declared,
-      // fresh captures loaded through loadCapture it counts as L0.
-      if (oracle.substrate === "L3" && (oracle.captures ?? []).length === 0) {
+      // (4) Formal tier: a proved proof: oracle per entry.
+      let formalOk = true;
+      if (tier === "formal") {
+        const proofs = entry.oracles
+          .map((o, i) => ({ o, rec: bundleEntry.oracles[i]! }))
+          .filter(({ o, rec }) => o.check.startsWith("proof:") && rec.origin !== "self");
+        formalOk = false;
+        for (const { o: p } of proofs) {
+          const spec = checkTarget(p.check);
+          if (!spec) continue;
+          const verdict = await (options.proveSpec
+            ? options.proveSpec(spec)
+            : defaultProve(root, spec));
+          if (verdict === "proved") formalOk = true;
+        }
+        if (!formalOk)
+          add(
+            "CORR-GATE-06",
+            `${entry.id}: tier formal needs a non-self proof: oracle whose proof.check verdict is proved`,
+            { entry: entry.id },
+          );
+      }
+      if (!anyNonSelf)
         add(
-          "CORR-GATE-04",
-          `${entry.id}: oracle ${oracle.check} declares L3 without captures — a live run leaves no evidence the gate can check; record captures (loadCapture) — counted as L0`,
-          { entry: entry.id, check: oracle.check },
-        );
-        effective = "L0";
-      }
-      // Captures: loaded files must be the declared, fresh captures.
-      if ((oracle.captures ?? []).length > 0) {
-        const loaded =
-          readJson<{ path: string; sha256: string }[]>(path.join(runDir, CAPTURES_FILE)) ?? [];
-        const declared = new Set((oracle.captures ?? []).map(normalizeRelPath));
-        const fresh = (oracle.captures ?? []).every((c) => evaluateCapture(root, c, Date.now()).ok);
-        const honest =
-          loaded.length > 0 &&
-          loaded.every(
-            (l) =>
-              declared.has(normalizeRelPath(l.path)) &&
-              sha256(readWorking(normalizeRelPath(l.path)) ?? "") === l.sha256,
-          );
-        if (fresh && honest && effective !== "L0") {
-          if (entry.seam === "provider") effective = "L3";
-        } else if (!honest) {
-          effective = "L0";
-          add(
-            "CORR-GATE-04",
-            `${entry.id}: oracle ${oracle.check} did not load its declared captures through loadCapture`,
-            { entry: entry.id, check: oracle.check },
-          );
-        }
-      }
-      // (7) Anchor events.
-      let anchorsOk = true;
-      if (entry.seam === "lifecycle" && substrateRank(oracle.substrate) >= substrateRank("L2")) {
-        const events = readJson<AnchorEventResult[]>(path.join(runDir, ANCHOR_EVENTS_FILE)) ?? [];
-        record.anchorEvents = events;
-        const failed = events.filter((e) => !e.ok);
-        for (const f of failed) {
-          add(
-            "CORR-GATE-05",
-            `${entry.id}: forge.anchor ${f.anchor} failed verification — ${f.reason ?? "mismatch"}`,
-            { entry: entry.id, check: oracle.check },
-          );
-        }
-        const missing = entry.anchors.filter((a) => !events.some((e) => e.anchor === a && e.ok));
-        for (const a of missing) {
-          add(
-            "CORR-GATE-05",
-            `${entry.id}: no verified forge.anchor event for ${a} in the L2 run of ${oracle.check}`,
-            { entry: entry.id, check: oracle.check },
-          );
-        }
-        anchorsOk = failed.length === 0 && missing.length === 0;
-      }
-      const meetsSeam = substrateRank(effective) >= substrateRank(SEAM_MINIMUM[entry.seam]);
-      if (meetsSeam && effective !== "L0") anyAttested = true;
-      else if (entry.seam === "other") anyAttested = true;
-      record.covers = tierOk && meetsSeam && anchorsOk;
-    }
-    // (4) Formal tier: a proved proof: oracle per entry.
-    let formalOk = true;
-    if (tier === "formal") {
-      const proofs = entry.oracles
-        .map((o, i) => ({ o, rec: bundleEntry.oracles[i]! }))
-        .filter(({ o, rec }) => o.check.startsWith("proof:") && rec.origin !== "self");
-      formalOk = false;
-      for (const { o: p } of proofs) {
-        const spec = checkTarget(p.check);
-        if (!spec) continue;
-        const verdict = await (options.proveSpec
-          ? options.proveSpec(spec)
-          : defaultProve(root, spec));
-        if (verdict === "proved") formalOk = true;
-      }
-      if (!formalOk)
-        add(
-          "CORR-GATE-06",
-          `${entry.id}: tier formal needs a non-self proof: oracle whose proof.check verdict is proved`,
+          "CORR-GATE-03",
+          `${entry.id}: every oracle has origin self — add a committed forge/oracle-review@1 record naming its sha256`,
           { entry: entry.id },
         );
+      else if (!anyTierOk && (tier === "high" || tier === "formal")) {
+        add(
+          "CORR-GATE-06",
+          `${entry.id}: tier ${tier} needs an oracle last changed by a verifier-trailer commit`,
+          { entry: entry.id },
+        );
+      }
+      bundleEntry.covered = formalOk && bundleEntry.oracles.some((o) => o.covers);
+      if (!bundleEntry.covered) {
+        add(
+          "CORR-GATE-08",
+          `${entry.id}: no oracle is non-self, passing, attested at or above ${SEAM_MINIMUM[entry.seam]}${entry.seam === "lifecycle" ? ", and anchor-verified" : ""}${anyRunOk && !anyAttested ? " (runs passed below the seam minimum)" : ""}`,
+          { entry: entry.id },
+        );
+      }
+      entries.push(bundleEntry);
     }
-    if (!anyNonSelf)
-      add(
-        "CORR-GATE-03",
-        `${entry.id}: every oracle has origin self — add a committed forge/oracle-review@1 record naming its sha256`,
-        { entry: entry.id },
-      );
-    else if (!anyTierOk && (tier === "high" || tier === "formal")) {
-      add(
-        "CORR-GATE-06",
-        `${entry.id}: tier ${tier} needs an oracle last changed by a verifier-trailer commit`,
-        { entry: entry.id },
-      );
-    }
-    bundleEntry.covered = formalOk && bundleEntry.oracles.some((o) => o.covers);
-    if (!bundleEntry.covered) {
-      add(
-        "CORR-GATE-08",
-        `${entry.id}: no oracle is non-self, passing, attested at or above ${SEAM_MINIMUM[entry.seam]}${entry.seam === "lifecycle" ? ", and anchor-verified" : ""}${anyRunOk && !anyAttested ? " (runs passed below the seam minimum)" : ""}`,
-        { entry: entry.id },
-      );
-    }
-    entries.push(bundleEntry);
+  } finally {
+    rmSync(runRoot, { recursive: true, force: true });
   }
-
-  rmSync(runRoot, { recursive: true, force: true });
 
   // (10) Verdict.
   if (mode === "warn") {
