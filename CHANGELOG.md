@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.6.0] — 2026-11-13
+
+_A product-level correctness contour lands — manifest, audit, and an integration gate — alongside a repository-scale measurement command._
+
+### Added
+
+- **`correctness.manifest.validate`** (RFC-1578): validates the product correctness manifest at `bindings.paths.correctnessManifest` (CORR-01..09), plus the `bindings.commands.checkRun` binding and the correctness section in `forge.yaml`.
+- **`correctness.audit`** (RFC-1579): runs four cross-artifact auditors with subject-keyed differential attribution — only introduced errors block; wired as a consumer gate line and an early `ecosystem.commit` run.
+- **`correctness.gate`** (RFC-1580): enforces the correctness manifest at `flow.integrate` with frozen oracles — spawned from the primary install after `hooks/integration-gate.sh` (CORR-GATE-01..08), plus digest trail and manifest review export.
+- **`codebase.measure`** (RFC-1581): project-scale measurement over git-tracked files — category totals (`code`/`tests`/`docs`/`generated`), per-language line metrics, real AST symbol counts for TypeScript/JavaScript via lazy `import("typescript")`, top directories, binary-file accounting, and honest `symbolsSkipped` degradation; `--json` output and `--out` snapshot modes.
+- **Single forge command-module list** (RFC-1573): `loadForgeCommandModules` is the one registry consumed by both the standalone CLI and `forge.agents.generate`; `flow.cut`, `flow.backmerge`, and `mission.close` declared detachable.
+- **Gate reports** carry the first failure cause and timeout class (RFC-1576); `gate.run.status --wait` ends with a verdict and marks itself uncacheable (RFC-1575).
+
+### Changed
+
+- **`flow.integrate`** regenerates derived manifests after the rebase and commits them, so post-rebase drift never reaches the heavyweight gate (RFC-1574).
+- **READMEs** document the measured production fleet — 8 repositories, ~5.9M code lines, measured by `codebase.measure` itself.
+
 ## [9.5.0] — 2026-11-12
 
 _Long gates run detached with durable records, the kernel command-result cache is shared across session worktrees, and flow refusals name their paths and remedies._
