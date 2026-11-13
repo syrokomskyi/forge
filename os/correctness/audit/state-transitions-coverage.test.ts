@@ -16,6 +16,9 @@ Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-
   <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
 
 F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-02 findings
+
+N1 EC-34 disowns only findings located in foreign staged files (a payload migration breaking committed code refuses); N2 case-insensitive alias resolution; N3 reference names *.tsx; N4 top-level SET clause. EC-34 payload-scoping tests.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -110,5 +113,16 @@ describe("state.transitions.coverage", () => {
         "export const q = \"UPDATE candidates SET updated_at = 1 WHERE state = 'send_ready'\";\n",
     });
     expect(result.findings.map((x) => x.subject)).toEqual(["candidate:approved→send_ready"]);
+  });
+
+  it("a sub-select WHERE inside SET does not hide a later state assignment", async () => {
+    const result = await coverage({
+      "packages/domain/src/candidate.ts": EDGES,
+      "apps/api/src/sql.ts":
+        'export const a = () => transition(db, "c", "approved");\n' +
+        "export const q = \"UPDATE candidates SET n = (SELECT 1 FROM x WHERE y = 1), state = 'send_ready' WHERE id = ?\";\n" +
+        "export const r = \"UPDATE candidates SET state = 'queued' WHERE id = ?\";\n",
+    });
+    expect(result.findings).toEqual([]);
   });
 });
