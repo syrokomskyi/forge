@@ -25,6 +25,9 @@ documents, with a VERIFY-BUNDLE.md carrying only the RFC's normative prose.
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
+
+F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -362,7 +365,16 @@ export async function buildManifestReviewWorkspace(opts: {
         await run(workspaceRoot, "git", ["ls-tree", "-r", "--name-only", candidateSha])
       ).stdout.split("\n");
       const removed: string[] = [];
-      for (const dir of MANIFEST_STRIP_DIRS) {
+      // Earlier review verdicts stay hidden from the reviewer.
+      const stripDirs = [...MANIFEST_STRIP_DIRS];
+      try {
+        const cfgText = await readFile(join(out, "forge.yaml"), "utf8");
+        const rd = /^\s*oracleReviewsDir:\s*["']?([^"'\s#]+)/m.exec(cfgText)?.[1];
+        stripDirs.push(`${(rd ?? "docs/correctness/reviews").replace(/\/$/, "")}/`);
+      } catch {
+        stripDirs.push("docs/correctness/reviews/");
+      }
+      for (const dir of stripDirs) {
         if (tracked.some((f) => f.startsWith(dir)) && existsSync(join(out, dir))) {
           await rm(join(out, dir), { recursive: true, force: true });
           removed.push(dir.replace(/\/$/, ""));
@@ -410,14 +422,12 @@ export async function buildManifestReviewWorkspace(opts: {
               const target = String(o.check ?? "")
                 .replace(/^[a-z]+:/, "")
                 .replace(/^\.\//, "");
-              let digest = "(missing)";
-              try {
-                digest = createHash("sha256")
-                  .update(await readFile(join(out, target), "utf8"))
-                  .digest("hex");
-              } catch {
-                digest = "(missing)";
-              }
+              // Hash the committed blob (git show) — the bytes the gate hashes —
+              // not the archive export, which eol/export-subst attributes may alter.
+              const blob = await run(workspaceRoot, "git", ["show", `${candidateSha}:${target}`]);
+              const digest = blob.ok
+                ? createHash("sha256").update(blob.stdout).digest("hex")
+                : "(missing)";
               lines.push(
                 `| ${entry.id ?? "?"} | ${o.check ?? "?"} | ${o.substrate ?? "?"} | ${digest} |`,
               );

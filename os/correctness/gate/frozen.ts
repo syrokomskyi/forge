@@ -16,6 +16,9 @@ capture and sidecar named by a base entry, every file matched by the base
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
+
+F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -116,8 +119,10 @@ export interface FrozenSet {
   files: string[];
   /** Anchor id → normalized statement sha at base (anchors bound by base entries). */
   anchors: Map<string, string>;
-  /** Requirement + DNA ids that existed at base (deferred exemptions for them are weakenings). */
+  /** Requirement, DNA, and manifest-entry refs that existed at base (deferred exemptions for them are weakenings). */
   baseRefs: Set<string>;
+  /** True when the base binds a manifest file that exists but does not parse. */
+  baseManifestUnreadable: boolean;
 }
 
 export async function readFrozenSet(repo: GateRepo, base: string): Promise<FrozenSet> {
@@ -127,6 +132,12 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   if (baseManifestPath)
     manifests.set(baseManifestPath, await repo.show(base, normalizeRelPath(baseManifestPath)));
   const side = sideFrom(forgeYaml, (rel) => manifests.get(rel) ?? null);
+  // A bound base manifest that exists but does not parse must not freeze
+  // nothing (fail-open) — the gate refuses until it is readable.
+  const baseManifestUnreadable =
+    baseManifestPath !== null &&
+    (manifests.get(baseManifestPath) ?? null) !== null &&
+    side.manifest === null;
   const files = new Set<string>();
   const baseFiles = await repo.files(base);
   if (side.manifest) {
@@ -177,7 +188,8 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     const text = await repo.show(base, normalizeRelPath(side.invariantsFile));
     for (const m of (text ?? "").matchAll(/^##\s+DNA-(\d+)\b/gm)) baseRefs.add(`DNA-${m[1]}`);
   }
-  return { base: side, files: [...files].sort(), anchors, baseRefs };
+  for (const e of side.manifest?.entries ?? []) if (e.ref) baseRefs.add(e.ref);
+  return { base: side, files: [...files].sort(), anchors, baseRefs, baseManifestUnreadable };
 }
 
 /** The judged side, read from the working tree of the session worktree. */
@@ -237,6 +249,10 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
       add("entry-changed", e.id, `${e.id} ref changed from ${e.ref ?? "∅"} to ${n.ref ?? "∅"}`);
     if (n.seam !== e.seam)
       add("entry-changed", e.id, `${e.id} seam changed from ${e.seam} to ${n.seam}`);
+    if (n.source !== e.source)
+      add("entry-changed", e.id, `${e.id} source changed from ${e.source} to ${n.source}`);
+    if ((n.statement ?? null) !== (e.statement ?? null))
+      add("entry-changed", e.id, `${e.id} statement changed`);
     if ([...n.anchors].sort().join(",") !== [...e.anchors].sort().join(","))
       add("entry-changed", e.id, `${e.id} anchors changed`);
     const nowOracles = new Map(n.oracles.map((o) => [normalizeCheckRef(o.check), o]));
@@ -244,12 +260,28 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
       const m = nowOracles.get(normalizeCheckRef(o.check));
       if (!m)
         add("oracle-removed", `${e.id}:${o.check}`, `${e.id} lost (or rebound) oracle ${o.check}`);
-      else if (substrateRank(m.substrate) < substrateRank(o.substrate)) {
-        add(
-          "substrate-lowered",
-          `${e.id}:${o.check}`,
-          `${e.id} oracle ${o.check} substrate lowered from ${o.substrate} to ${m.substrate}`,
-        );
+      else {
+        // Any substrate change of a frozen oracle is a weakening: lowering
+        // drops rigor, raising re-declares what the oracle runs on.
+        if (m.substrate !== o.substrate) {
+          add(
+            substrateRank(m.substrate) < substrateRank(o.substrate)
+              ? "substrate-lowered"
+              : "substrate-changed",
+            `${e.id}:${o.check}`,
+            `${e.id} oracle ${o.check} substrate changed from ${o.substrate} to ${m.substrate}`,
+          );
+        }
+        const kept = new Set((m.captures ?? []).map(normalizeRelPath));
+        for (const c of o.captures ?? []) {
+          if (!kept.has(normalizeRelPath(c))) {
+            add(
+              "capture-dropped",
+              `${e.id}:${o.check}`,
+              `${e.id} oracle ${o.check} dropped capture ${c}`,
+            );
+          }
+        }
       }
     }
   }
@@ -305,7 +337,9 @@ export function anchorWeakenings(root: string, files: string[], frozen: FrozenSe
     const now = index.anchors.get(id) ?? [];
     if (now.length === 0)
       out.push({ kind: "anchor-removed", subject: id, message: `frozen anchor ${id} was removed` });
-    else if (!now.some((a) => invariantStatementSha(a.statement) === sha)) {
+    // Every copy must keep the frozen statement — a duplicate comment carrying
+    // the old text must not mask a reworded real anchor.
+    else if (!now.every((a) => invariantStatementSha(a.statement) === sha)) {
       out.push({
         kind: "anchor-reworded",
         subject: id,

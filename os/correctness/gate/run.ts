@@ -17,10 +17,13 @@ weakening session is accepted.</purpose>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
+
+F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -121,6 +124,18 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   const add = (rule: GateRuleId, message: string, extra: { entry?: string; check?: string } = {}) =>
     violations.push({ rule, severity: "error", message, ...extra });
 
+  // The gate runs oracles on the working tree but derives origin from HEAD.
+  const dirty =
+    (await repo.git.run(["status", "--porcelain", "--untracked-files=no"]))?.trim() ?? "";
+  if (dirty.length > 0) {
+    violations.push({
+      rule: "CORR-GATE-01",
+      severity: "warning",
+      message:
+        "the session worktree has uncommitted tracked changes — oracles ran on the working tree while origins were derived from HEAD",
+    });
+  }
+
   // (1) Validate at HEAD.
   const validation = await validateCorrectnessManifest(root);
   const mode = validation.mode;
@@ -148,7 +163,11 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       options.bundleDir ??
       path.join((await repo.commonDir()) ?? path.join(root, ".git"), "forge", "gate-reports");
     mkdirSync(dir, { recursive: true });
-    const runId = `${new Date().toISOString().replace(/[:.]/g, "-")}-${process.pid}`;
+    // RFC-1532 naming (`<branch>-<ts>…json`) so the gate-report retention pruner covers bundles.
+    const branch = (
+      (await repo.git.run(["rev-parse", "--abbrev-ref", "HEAD"]))?.trim() || "detached"
+    ).replace(/[^A-Za-z0-9._-]+/g, "-");
+    const runId = `${branch}-${new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "")}-${process.pid}`;
     const bundlePath = path.join(dir, `${runId}.correctness.json`);
     writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
     return {
@@ -192,6 +211,12 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   };
   const now = readHeadSide(root, readWorking);
   const files = await listWorkspaceFiles(root);
+  if (frozen.baseManifestUnreadable) {
+    add(
+      "CORR-GATE-02",
+      `the base manifest ${frozen.base.manifestPath} does not parse with this forge — the frozen set cannot be read; integrate with a forge that reads it`,
+    );
+  }
   const weakenings: Weakening[] = [
     ...diffWeakenings(frozen, now),
     ...(await byteWeakenings(repo, base, head, frozen.files)),
@@ -268,6 +293,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
         rfcsDir: settings.rfcsDir,
         reviews,
         checkFile: file,
+        integrationBase: base,
       });
       const record: BundleOracle = {
         check: oracle.check,
@@ -287,6 +313,11 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       anyNonSelf = true;
       const tierOk = tier === "high" || tier === "formal" ? origin.viaTrailer : true;
       if (tierOk) anyTierOk = true;
+      // proof: oracles are judged by proof.check (tier formal), never through checkRun.
+      if (oracle.check.startsWith("proof:")) {
+        record.covers = false;
+        continue;
+      }
       if (!checkRun || !file) {
         add(
           "CORR-GATE-07",
@@ -328,8 +359,18 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
           effective = "L0";
         }
       }
-      // Provider captures: loaded files must be the declared, fresh captures.
-      if (entry.seam === "provider" && (oracle.captures ?? []).length > 0) {
+      // A declared L3 is never trusted on declaration alone: without declared,
+      // fresh captures loaded through loadCapture it counts as L0.
+      if (oracle.substrate === "L3" && (oracle.captures ?? []).length === 0) {
+        add(
+          "CORR-GATE-04",
+          `${entry.id}: oracle ${oracle.check} declares L3 without captures — a live run leaves no evidence the gate can check; record captures (loadCapture) — counted as L0`,
+          { entry: entry.id, check: oracle.check },
+        );
+        effective = "L0";
+      }
+      // Captures: loaded files must be the declared, fresh captures.
+      if ((oracle.captures ?? []).length > 0) {
         const loaded =
           readJson<{ path: string; sha256: string }[]>(path.join(runDir, CAPTURES_FILE)) ?? [];
         const declared = new Set((oracle.captures ?? []).map(normalizeRelPath));
@@ -341,8 +382,10 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
               declared.has(normalizeRelPath(l.path)) &&
               sha256(readWorking(normalizeRelPath(l.path)) ?? "") === l.sha256,
           );
-        if (fresh && honest && effective !== "L0") effective = "L3";
-        else if (!honest) {
+        if (fresh && honest && effective !== "L0") {
+          if (entry.seam === "provider") effective = "L3";
+        } else if (!honest) {
+          effective = "L0";
           add(
             "CORR-GATE-04",
             `${entry.id}: oracle ${oracle.check} did not load its declared captures through loadCapture`,
@@ -352,7 +395,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       }
       // (7) Anchor events.
       let anchorsOk = true;
-      if (entry.seam === "lifecycle") {
+      if (entry.seam === "lifecycle" && substrateRank(oracle.substrate) >= substrateRank("L2")) {
         const events = readJson<AnchorEventResult[]>(path.join(runDir, ANCHOR_EVENTS_FILE)) ?? [];
         record.anchorEvents = events;
         const failed = events.filter((e) => !e.ok);
@@ -381,9 +424,11 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     // (4) Formal tier: a proved proof: oracle per entry.
     let formalOk = true;
     if (tier === "formal") {
-      const proofs = entry.oracles.filter((o) => o.check.startsWith("proof:"));
+      const proofs = entry.oracles
+        .map((o, i) => ({ o, rec: bundleEntry.oracles[i]! }))
+        .filter(({ o, rec }) => o.check.startsWith("proof:") && rec.origin !== "self");
       formalOk = false;
-      for (const p of proofs) {
+      for (const { o: p } of proofs) {
         const spec = checkTarget(p.check);
         if (!spec) continue;
         const verdict = await (options.proveSpec
@@ -394,7 +439,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       if (!formalOk)
         add(
           "CORR-GATE-06",
-          `${entry.id}: tier formal needs a proof: oracle whose proof.check verdict is proved`,
+          `${entry.id}: tier formal needs a non-self proof: oracle whose proof.check verdict is proved`,
           { entry: entry.id },
         );
     }
@@ -421,6 +466,8 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     }
     entries.push(bundleEntry);
   }
+
+  rmSync(runRoot, { recursive: true, force: true });
 
   // (10) Verdict.
   if (mode === "warn") {
