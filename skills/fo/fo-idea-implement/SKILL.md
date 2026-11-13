@@ -20,7 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>COMMIT-02: commit templates — governed ids moved to the scope position (fix(rfc-xxxx): repair …, never fix: RFC-XXXX — …); illegal trace: prefix replaced with docs(adr-xxxx):</item>
   <item>RFC-1440: fo-reproduce skill + pipeline wiring
 
 New fo-reproduce skill (bounded 5-attempt reproduction loop, no-source-
@@ -33,7 +32,10 @@ compass inventory regenerated.</item>
   <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
 
 fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
-  <history>RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332, RFC-1333</history>
+  <item>RFC-1580: digest trail, manifest review export, operating model and skills
+
+flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
+  <history>COMMIT-02, RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332, RFC-1333</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -212,6 +214,10 @@ Only when the document declares `verificationTier: high`. Run after the implemen
 4. For every confirmed counterexample: fix the code, then commit the verifier's minimized check **verbatim** (only location/imports may change) as a regression test together with its `probe: test` binding in the document's `acceptance:` block, in a separate commit carrying `X-Expectation-Origin: independent-verifier` and `X-Verifier-Report: <report path>`. Later edits by you to that file make it `self` again.
 5. Disputed counterexamples go to the decision ledger for the operator. Repeat with a fresh verifier at most two fix rounds; a third failure parks the item.
 6. Stamping requires a committed `verdict: pass`, `isolation: subagent` report whose candidate is followed only by verifier-trailer or docs commits.
+
+#### 4.4c. Oracle review for product correctness-manifest oracles
+
+When the session added or changed oracles of the product correctness manifest (`ref(forge.yaml bindings.paths.correctnessManifest)`) — every promoted acceptance criterion's oracle included — run one oracle review before integrating: commit the implementation, export with `rfc.verify.workspace --manifest --candidate <committed-sha>`, dispatch `fo-review` in oracle review mode as a fresh clean-context subagent on that export, and commit the returned `forge/oracle-review@1` record in its own commit with `X-Expectation-Origin: independent-verifier` + `X-Verifier-Report: <record path>`. Until that record lands, `correctness.gate` counts the oracles as `self` and an `enforce`-mode integration refuses. A later edit by you to a reviewed oracle makes it `self` again (and, once frozen on develop, a weakening). Never pass `flow.integrate --accept-weakening` on your own — it is an operator decision.
 
 #### 4.5. Fix errors
 

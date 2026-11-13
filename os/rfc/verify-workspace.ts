@@ -22,6 +22,9 @@ documents, with a VERIFY-BUNDLE.md carrying only the RFC's normative prose.
 <CHANGE_SUMMARY>
   <item>RFC-1333: initial implementation — git-free export, self-test and RFC-document stripping, VERIFY-BUNDLE.md.</item>
   <item>RFC-1333: review hardening — piped export, root node_modules mirroring, failure cleanup, sha resolution, Windows links.</item>
+  <item>RFC-1580: digest trail, manifest review export, operating model and skills
+
+flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -304,12 +307,166 @@ export async function buildVerifyWorkspace(opts: {
   return result;
 }
 
+/** RFC-1580: narrative directories stripped from an oracle-review export. */
+const MANIFEST_STRIP_DIRS = [
+  "docs/plans/",
+  "docs/reviews/",
+  "docs/sessions/",
+  "docs/handoffs/",
+  "docs/audits/",
+  "docs/queues/",
+  "docs/explorations/",
+  "docs/metrics/",
+  "docs/rfcs/verification/",
+  ".agents/memory/",
+  ".agents/notes/",
+];
+
+/**
+ * RFC-1580: export a committed candidate for a clean-context oracle review —
+ * the manifest, requirement documents, anchored code, oracle and support
+ * files, and captures stay; narrative directories are stripped;
+ * MANIFEST-REVIEW-BUNDLE.md lists every manifest oracle with its sha256 (the
+ * value a forge/oracle-review@1 record must name).
+ */
+export async function buildManifestReviewWorkspace(opts: {
+  workspaceRoot: string;
+  candidateSha: string;
+  outDir?: string;
+}): Promise<RfcVerifyWorkspaceResult> {
+  const { workspaceRoot } = opts;
+  const resolved = (
+    await run(workspaceRoot, "git", ["rev-parse", "--verify", `${opts.candidateSha}^{commit}`])
+  ).stdout.trim();
+  const candidateSha = resolved || opts.candidateSha;
+  const fail = (error: string): RfcVerifyWorkspaceResult => ({
+    command: "rfc.verify.workspace",
+    status: "fail",
+    rfcId: "",
+    candidateSha,
+    path: null,
+    removed: [],
+    error,
+  });
+  if (!resolved) return fail(`candidate ${opts.candidateSha} is not a commit`);
+  const selfCreated = opts.outDir === undefined;
+  const out = opts.outDir ?? (await mkdtemp(join(tmpdir(), "rfc-verify-manifest-")));
+  let result: RfcVerifyWorkspaceResult;
+  try {
+    await mkdir(out, { recursive: true });
+    const exportError = await exportTree(workspaceRoot, candidateSha, out);
+    if (exportError) {
+      result = fail(`export failed: ${exportError}`);
+    } else {
+      const tracked = (
+        await run(workspaceRoot, "git", ["ls-tree", "-r", "--name-only", candidateSha])
+      ).stdout.split("\n");
+      const removed: string[] = [];
+      for (const dir of MANIFEST_STRIP_DIRS) {
+        if (tracked.some((f) => f.startsWith(dir)) && existsSync(join(out, dir))) {
+          await rm(join(out, dir), { recursive: true, force: true });
+          removed.push(dir.replace(/\/$/, ""));
+        }
+      }
+      await mirrorNodeModules(workspaceRoot, out, ".");
+      for (const pj of tracked.filter(
+        (f) => f.endsWith("/package.json") && !f.includes("node_modules/"),
+      )) {
+        await mirrorNodeModules(workspaceRoot, out, dirname(pj));
+      }
+      const { parse } = await import("yaml");
+      const { createHash } = await import("node:crypto");
+      let manifestRel: string | null = null;
+      try {
+        const cfg = parse(await readFile(join(out, "forge.yaml"), "utf8")) as {
+          bindings?: { paths?: { correctnessManifest?: unknown } };
+        };
+        const p = cfg?.bindings?.paths?.correctnessManifest;
+        manifestRel = typeof p === "string" ? p : null;
+      } catch {
+        manifestRel = null;
+      }
+      const lines = [
+        "# Oracle review bundle (forge/oracle-review@1)",
+        "",
+        `Candidate: ${candidateSha}`,
+        `Manifest: ${manifestRel ?? "(none bound)"}`,
+        "",
+        "For every oracle: does it exercise its entry's requirement, assert against the attested handle (not a second, mocked one), and make its substrate claim plausibly? Record verdicts in a forge/oracle-review@1 file naming each check with the sha256 below.",
+        "",
+        "Removed from this tree (narrative, intentionally hidden):",
+        ...removed.map((r) => `- ${r}`),
+        "",
+        "| Entry | Check | Substrate | sha256 |",
+        "| --- | --- | --- | --- |",
+      ];
+      if (manifestRel) {
+        try {
+          const manifest = parse(await readFile(join(out, manifestRel), "utf8")) as {
+            entries?: { id?: string; oracles?: { check?: string; substrate?: string }[] }[];
+          };
+          for (const entry of manifest?.entries ?? []) {
+            for (const o of entry.oracles ?? []) {
+              const target = String(o.check ?? "")
+                .replace(/^[a-z]+:/, "")
+                .replace(/^\.\//, "");
+              let digest = "(missing)";
+              try {
+                digest = createHash("sha256")
+                  .update(await readFile(join(out, target), "utf8"))
+                  .digest("hex");
+              } catch {
+                digest = "(missing)";
+              }
+              lines.push(
+                `| ${entry.id ?? "?"} | ${o.check ?? "?"} | ${o.substrate ?? "?"} | ${digest} |`,
+              );
+            }
+          }
+        } catch {
+          lines.push("| (manifest unreadable) | | | |");
+        }
+      }
+      await writeFile(join(out, "MANIFEST-REVIEW-BUNDLE.md"), `${lines.join("\n")}\n`);
+      result = {
+        command: "rfc.verify.workspace",
+        status: "pass",
+        rfcId: "",
+        candidateSha,
+        path: out,
+        removed,
+      };
+    }
+  } catch (e) {
+    result = fail(e instanceof Error ? e.message : String(e));
+  }
+  if (result.status === "fail" && selfCreated) await rm(out, { recursive: true, force: true });
+  return result;
+}
+
 export async function runRfcVerifyWorkspace(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<RfcVerifyWorkspaceResult>> {
   const rfcId = String(input.flags["id"] ?? "").toUpperCase();
   const candidateSha = String(input.flags["candidate"] ?? "");
+  if (input.flags["manifest"] === true) {
+    if (!candidateSha) {
+      return { exitCode: 1, summary: "rfc.verify.workspace --manifest: --candidate is required" };
+    }
+    const data = await buildManifestReviewWorkspace({
+      workspaceRoot: context.workspaceRoot,
+      candidateSha,
+    });
+    return {
+      data,
+      exitCode: data.status === "pass" ? 0 : 1,
+      summary:
+        data.status === "pass"
+          ? `rfc.verify.workspace --manifest: ${candidateSha.slice(0, 9)} → ${data.path} (${data.removed.length} narrative dir(s) hidden; see MANIFEST-REVIEW-BUNDLE.md)`
+          : `rfc.verify.workspace --manifest: ${data.error}`,
+    };
+  }
   if (!rfcId || !candidateSha) {
     const data: RfcVerifyWorkspaceResult = {
       command: "rfc.verify.workspace",

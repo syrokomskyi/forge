@@ -50,6 +50,8 @@ New automated tests need a concrete reason: a protected requirement, a reproduce
 - **HIGH** — security, access rights, contracts, data, migrations, critical integrations, significant external effects: additionally verify negative scenarios, boundaries, invariants, rollback, compatibility. Use independent verification where it genuinely reduces risk (e.g. clean-context review).
 - **FORMAL** — only for important, stable, precisely specifiable properties where formalization cost is justified. Tool by task: Lean (math/inductive), Dafny (algorithm correctness), Verus (supported Rust), TLA+/model checking (protocols/concurrency), property/fuzz (broad input classes without full proof). Not installed globally, never mandatory for ordinary changes; record spec, assumptions, proof scope, tool version, and unverified runtime boundaries — a successful proof does not prove business intent or the whole system. Only a mechanical checker verdict (`proof.check` → `proved`, bound to a `forge/proof-spec@1` file) counts as formal-tier evidence — an agent-written argument, a random-sampling property test, or an unavailable checker never does.
 
+Product correctness tiers (`forge.yaml` `correctness.tier`, enforced by `correctness.gate` at `flow.integrate`): at `high` a manifest oracle covers only when its bytes came from the clean-context verifier (the last commit touching it carries the verifier trailer pair); at `formal` each manifest entry additionally needs a `proof:` oracle whose `proof.check` verdict is `proved`.
+
 ## 8. Expectation sources
 
 Every significant check has an expectation origin:
@@ -60,6 +62,8 @@ Every significant check has an expectation origin:
 - **external** — an authoritative external system, reference data, or observable environment supplies ground truth.
 
 Another AI agent is not automatically an independent verifier — independence is defined by criterion origin, access to normative sources, and real ability to catch the executor's error. Declare the class on probes via `expectationSource:`; declare what a check does not cover via `limitations:`. The `self` class is derived from git history of the implementation range (acceptance transition → HEAD), not taken on the author's word: a probe whose declaration or test file changed after acceptance is `self` unless the change came from the sanctioned independent-verifier workflow, and a declaration that history contradicts blocks the stamp. Declare `self` honestly for checks you wrote while implementing.
+
+A `self` oracle never covers an anchor of a product correctness manifest: `correctness.gate` derives each manifest oracle's origin from git (verifier trailer pair, a committed `forge/oracle-review@1` record naming its current sha256, or byte-identity with the governing RFC's acceptance commit) and refuses an `enforce`-mode integration whose entry is covered only by `self` oracles. Frozen oracles, captures, and support files change only through the verifier workflow; any other byte change is a weakening that lands only in an isolated session the operator accepts (`flow.integrate --accept-weakening`).
 
 ## 9. Evidence trust boundary
 
