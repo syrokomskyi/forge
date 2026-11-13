@@ -19,6 +19,9 @@ F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since 
   <item>RFC-1579: close review REVIEW-CODE-2026-11-13-02 findings
 
 N1 EC-34 disowns only findings located in foreign staged files (a payload migration breaking committed code refuses); N2 case-insensitive alias resolution; N3 reference names *.tsx; N4 top-level SET clause. EC-34 payload-scoping tests.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-03 observations
+
+R1 sub-select text in SET never counts as a state write; R2 DEV-2 and rollout step 5 describe the foreign-staged rule; correctness.audit listed under commands.added.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -124,5 +127,15 @@ describe("state.transitions.coverage", () => {
         "export const r = \"UPDATE candidates SET state = 'queued' WHERE id = ?\";\n",
     });
     expect(result.findings).toEqual([]);
+  });
+
+  it("a state named only inside a sub-select WHERE is not a write", async () => {
+    const result = await coverage({
+      "packages/domain/src/candidate.ts": EDGES,
+      "apps/api/src/sub.ts":
+        'export const a = () => { transition(db, "c", "approved"); transition(db, "c", "queued"); };\n' +
+        "export const q = \"UPDATE candidates SET n = (SELECT 1 FROM x WHERE state = 'send_ready') WHERE id = ?\";\n",
+    });
+    expect(result.findings.map((x) => x.subject)).toEqual(["candidate:approved→send_ready"]);
   });
 });
