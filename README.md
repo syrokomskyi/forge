@@ -6,6 +6,8 @@
 
 A repository-native control layer for AI-assisted development. Decisions, rules, skills and verification stay with the project — independent of the agent that works on it.
 
+**Battle-tested at scale — not a demo.** Forge already governs a ~5.9M-line engineering fleet: 8 repositories, 40,000+ tracked files, from the monorepo that builds Forge itself to production data platforms. [The measured fleet ↓](#forged-in-production)
+
 > Engineered at [Warpgogol](https://warpgogol.com) · Released as open source. <!-- pkg-health-12: domain name, not a command -->
 
 [![npm version](https://img.shields.io/npm/v/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![npm downloads](https://img.shields.io/npm/dm/@warpgogol/forge.svg)](https://www.npmjs.com/package/@warpgogol/forge) [![CI](https://github.com/syrokomskyi/forge/actions/workflows/ci.yml/badge.svg)](https://github.com/syrokomskyi/forge/actions) [![Node](https://img.shields.io/badge/Node-24%2B-green.svg)](https://nodejs.org) [![License: Apache-2.0](https://img.shields.io/badge/License-Apache--2.0-blue.svg)](LICENSE) <!-- pkg-health-12: domain name, not a command -->
@@ -287,6 +289,34 @@ pnpm exec forge doctor
 - [Profiles](docs/reference/profiles.md)
 - [Programmatic API](docs/reference/programmatic-api.md)
 - [Publishing](docs/maintainers/publishing.md)
+
+---
+
+## Forged in production
+
+Forge does not govern toy projects. It is the control layer of a working engineering fleet — measured 2026-11-13 by Forge's own `codebase.measure` over git-tracked files only (generated, vendored, and mirrored content is classified separately; export mirrors and deployment caches are excluded to avoid double counting).
+
+| Repository | Role | Files | Code lines | code | tests | docs | generated | Top language |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| pipelines | Production document pipeline suite | 22,609 | 3,122,894 | 1,215,172 | 127,237 | 1,747,517 | 32,968 | Markdown |
+| werkstatt | The platform monorepo that builds Forge itself | 14,084 | 1,737,825 | 808,969 | 351,999 | 233,302 | 343,555 | TypeScript |
+| dater | Production product monorepo | 1,419 | 479,041 | 380,487 | 51,992 | 31,716 | 14,846 | JSON |
+| hdri | Client repository | 1,510 | 463,226 | 402,796 | 38,774 | 13,763 | 7,893 | TypeScript |
+| lagebild | Client-facing data platform | 486 | 50,096 | 16,660 | 13,319 | 10,774 | 9,343 | TypeScript |
+| metads | Product monorepo | 283 | 48,011 | 34,096 | 3,310 | 1,456 | 9,149 | TypeScript |
+| dialogue-steward | Product monorepo | 288 | 34,698 | 13,935 | 5,666 | 4,665 | 10,432 | TypeScript |
+| warpgogol-verbund | System hub — product registry and task queue | 132 | 9,671 | 7,160 | 0 | 1,467 | 1,044 | Other |
+| **Fleet total** |  | 40,811 | 5,945,462 | 2,879,275 | 592,297 | 2,044,660 | 429,230 |  |
+
+Language rollup across the fleet: Markdown 34.1%, TypeScript 25.3%, JSON 19.1%, YAML 15.3%, XML 3.2% — a fleet where a third of the mass is written knowledge, which is exactly what a governance layer exists to keep coherent.
+
+Symbol counts come from a real TypeScript AST pass — 98,494 symbols measured (1,721 classes, 90,761 functions, 6,012 methods), not regex estimates. Where a workspace resolves a compiler the walker cannot use, the command reports `symbolsSkipped` instead of fabricating numbers.
+
+Measure your own repository:
+
+```sh
+pnpm exec forge codebase.measure --json
+```
 
 ---
 
