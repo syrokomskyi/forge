@@ -20,7 +20,6 @@ triggerPhrases: ["проверим всё ли сделали правильно
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1247: triggerPhrases vocabulary sync — mined operator phrasing applied to this skill's trigger set.</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
 REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
@@ -36,7 +35,10 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1333: step 4 — acceptance verification mode in fo-review, step 4.4b in fo-idea-implement, RFC-IMP-12 docs</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
-  <history>RFC-1097, RFC-1250</history>
+  <item>RFC-1580: digest trail, manifest review export, operating model and skills
+
+flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
+  <history>RFC-1097, RFC-1247, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -84,6 +86,18 @@ Invoked as `fo-review --acceptance --rfc <RFC-id> --workspace <path>` by `fo-ide
 - **Output:** a counterexample list — `id` (CX-N), `criterion`, `input`, `expected` (quoting the document text the expectation follows from), `observed`, `reproCommand` — and a verdict `pass | counterexamples | inconclusive`. The verifier writes nothing in the main checkout; the dispatcher persists `docs/reviews/acceptance/<rfc-id-lower>/acceptance-<YYYY-MM-DD>-r<round>.md` with YAML frontmatter `rfcId, candidateSha, round, isolation, verifierModel, verdict, counterexamples`.
 - **Isolation and model:** dispatch a fresh clean-context subagent per round; record `isolation` truthfully (`subagent | isolated-inline | inline`) and the model actually used. A different vendor model may be requested where the platform allows.
 - **Loop cap:** at most two fix rounds (round 0 verification, then rounds 1 and 2 after fixes). A third failing verdict parks the item for operator arbitration; disputed counterexamples go to the decision ledger, never resolved by the executor.
+
+## Oracle review mode
+
+Invoked as a clean-context subagent by `fo-idea-implement` (and by correctness retrofit tasks) when a session adds or changes product correctness-manifest oracles. Input: the tree exported by `rfc.verify.workspace --manifest --candidate <sha>` — manifest, requirement documents, anchored code, oracle and support files, captures, and `MANIFEST-REVIEW-BUNDLE.md` with each oracle's sha256; plans, reviews, sessions, and narrative are stripped. Never the implementer's story.
+
+Per oracle, decide `pass` or `fail`:
+
+1. It exercises its entry's requirement (the `ref` / `statement`), not a neighbouring behaviour.
+2. It asserts against the handle it attests (`attestSubstrate`), not a second, mocked one — record `attestedHandleIsUnderTest`.
+3. Its declared substrate (L0 double · L1 engine · L2 runtime · L3 live) is plausible for what it runs on; lifecycle oracles verify `forge.anchor` events against the attested database.
+
+Output: a `forge/oracle-review@1` YAML record (`schema`, `reviewedAt`, `isolation: subagent`, `candidate`, `export: "rfc.verify.workspace --manifest"`, overall `verdict`, and per oracle `check`, `sha256` copied from the bundle, `verdict`, `attestedHandleIsUnderTest`, `notes`). The dispatcher writes it under `ref(forge.yaml bindings.paths.oracleReviewsDir)` (default `docs/correctness/reviews/`) and commits it in its own commit carrying `X-Expectation-Origin: independent-verifier` and `X-Verifier-Report: <record path>`. One review pass covers every oracle the session added. The implementer never edits a record or writes the trailer pair itself.
 
 ## Process
 

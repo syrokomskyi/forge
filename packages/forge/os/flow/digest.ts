@@ -18,7 +18,6 @@ flow.push must quote.</purpose>
   <item>tagTriggers (RFC-1498) is part of digestId input: a workflow-file change between digest and push must invalidate the quoted id. Unparseable workflows and ununderstood patterns warn FLOW-11 and match nothing — never block the digest.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
 
 Steering-session verification of wave 2 found two outbound defects:
@@ -29,6 +28,9 @@ Steering-session verification of wave 2 found two outbound defects:
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
+  <item>RFC-1580: digest trail, manifest review export, operating model and skills
+
+flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -104,6 +106,16 @@ export interface FlowDigestData {
    * get an entry.
    */
   tagTriggers: Array<{ tag: string; workflows: string[] }>;
+  /**
+   * RFC-1580: the correctness trail of the unpushed develop range — every
+   * `X-Correctness-Weakening` trailer (an accepted weakening) and every
+   * verifier-trailer commit (`X-Expectation-Origin: independent-verifier`),
+   * so the operator sees both at the flow.push hard stop.
+   */
+  correctnessTrail: {
+    weakenings: Array<{ sha: string; subject: string; reason: string }>;
+    verifierCommits: Array<{ sha: string; subject: string; report: string | null }>;
+  };
   diagnostics: Diagnostic[];
 }
 
@@ -166,6 +178,29 @@ async function readPathConfig(
   } catch {
     return { specsDir: DEFAULT_SPECS_DIR, invariantsFile: DEFAULT_INVARIANTS_FILE };
   }
+}
+
+/** RFC-1580: weakening and verifier trailers among the given commits (oldest first). */
+async function correctnessTrailOf(
+  repoRoot: string,
+  io: WorkspaceIO,
+  shas: string[],
+): Promise<FlowDigestData["correctnessTrail"]> {
+  const trail: FlowDigestData["correctnessTrail"] = { weakenings: [], verifierCommits: [] };
+  if (shas.length === 0) return trail;
+  const result = await git(repoRoot, io, ["show", "-s", "--format=%H%x1f%s%x1f%B%x1e", ...shas]);
+  if (result.exitCode !== 0) return trail;
+  for (const chunk of result.stdout.split("\x1e")) {
+    const [sha, subject, body] = chunk.replace(/^\s+/, "").split("\x1f");
+    if (!sha || body === undefined) continue;
+    const weak = /^X-Correctness-Weakening:\s*(.+)$/m.exec(body);
+    if (weak) trail.weakenings.push({ sha: sha.trim(), subject: subject ?? "", reason: weak[1]!.trim() });
+    if (/^X-Expectation-Origin:\s*independent-verifier\s*$/m.test(body)) {
+      const report = /^X-Verifier-Report:\s*(\S+)\s*$/m.exec(body)?.[1] ?? null;
+      trail.verifierCommits.push({ sha: sha.trim(), subject: subject ?? "", report });
+    }
+  }
+  return trail;
 }
 
 /** X-RFC trailer ids + subjects of the commits in (base, tip], oldest first. */
@@ -766,6 +801,8 @@ export async function collectDigest(
     if (workflows.length > 0) tagTriggers.push({ tag, workflows });
   }
 
+  const correctnessTrail = await correctnessTrailOf(repoRoot, io, developTail);
+
   const byCategory = Object.fromEntries(RISK_CATEGORIES.map((c) => [c, [] as string[]])) as Record<
     RiskCategory,
     string[]
@@ -779,6 +816,7 @@ export async function collectDigest(
         main: { local: mainLocal, remote: mainRemote, ahead: mainTail.length },
         tags,
         tagTriggers,
+        correctnessTrail,
         pendingPublications,
         supersededPublications,
         items: items.map((i) => ({ id: i.id, tip: i.tip })),
@@ -800,6 +838,7 @@ export async function collectDigest(
     pendingPublications,
     supersededPublications,
     tagTriggers,
+    correctnessTrail,
     diagnostics,
   };
 }

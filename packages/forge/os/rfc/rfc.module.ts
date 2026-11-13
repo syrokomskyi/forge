@@ -7,14 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
-
-runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
   <item>RFC-1516: add an evidence-freshness window to the stamp-sync chain for rfc-1516</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482, RFC-1483</history>
+  <item>RFC-1580: digest trail, manifest review export, operating model and skills
+
+flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482, RFC-1483, RFC-1489</history>
 </CHANGE_SUMMARY>
 */
 
@@ -294,7 +294,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
           "clean-context acceptance verifier — implementer in-range tests, the RFC's plan/review/" +
           "session/queue documents, and its evidence envelope are stripped; VERIFY-BUNDLE.md carries " +
           "only the RFC's Context/Problem/Decision/Design/Acceptance criteria. Writes nothing in the repository. " +
-          "Required flags: `--id`, `--candidate`.",
+          "Required flags: `--id`, `--candidate`. RFC-1580: `--manifest --candidate <sha>` exports the " +
+          "candidate for an oracle review instead — the product correctness manifest, requirement documents, " +
+          "anchored code, oracle/support files and captures stay; plans, reviews, sessions, handoffs, audits, " +
+          "queues, explorations, and evidence are stripped; MANIFEST-REVIEW-BUNDLE.md lists each oracle with its sha256.",
         scope: "workspace",
         // Exports via `git archive | tar -x` subprocesses + temp-dir writes —
         // read-only toward the repository; execOnReadOnly keeps the subprocess
@@ -308,11 +311,21 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         reads: ["docs/rfcs/**/*.md"],
         cacheable: false,
         flags: {
-          id: { kind: "string", required: true, description: "Target RFC id." },
+          id: {
+            kind: "string",
+            required: false,
+            description: "Target RFC id (required unless --manifest).",
+          },
           candidate: {
             kind: "string",
             required: true,
             description: "Committed candidate SHA to export.",
+          },
+          manifest: {
+            kind: "boolean",
+            required: false,
+            description:
+              "RFC-1580: export for a clean-context oracle review of the product correctness manifest.",
           },
         },
         execute: runRfcVerifyWorkspace,
