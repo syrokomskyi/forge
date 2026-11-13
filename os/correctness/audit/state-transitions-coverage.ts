@@ -25,6 +25,9 @@ F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since 
   <item>RFC-1579: close review REVIEW-CODE-2026-11-13-02 findings
 
 N1 EC-34 disowns only findings located in foreign staged files (a payload migration breaking committed code refuses); N2 case-insensitive alias resolution; N3 reference names *.tsx; N4 top-level SET clause. EC-34 payload-scoping tests.</item>
+  <item>RFC-1579: close review REVIEW-CODE-2026-11-13-03 observations
+
+R1 sub-select text in SET never counts as a state write; R2 DEV-2 and rollout step 5 describe the foreign-staged rule; correctness.audit listed under commands.added.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -178,11 +181,12 @@ function coveredByCalls(text: string, writer: string): Set<string> {
   return covered;
 }
 
-/** The SET clause of an UPDATE, cut at the first top-level WHERE / RETURNING (sub-selects kept). */
+/** The top-level SET clause of an UPDATE (sub-selects blanked), cut at the first top-level WHERE / RETURNING. */
 function topLevelSetClause(sql: string): string {
   const start = /\bSET\b/i.exec(sql);
   if (!start) return "";
   let depth = 0;
+  let out = "";
   for (let i = start.index + 3; i < sql.length; i += 1) {
     const ch = sql[i]!;
     if (ch === "(") depth += 1;
@@ -191,11 +195,12 @@ function topLevelSetClause(sql: string): string {
       depth === 0 &&
       /^(?:WHERE|RETURNING)\b/i.test(sql.slice(i)) &&
       /\W/.test(sql[i - 1] ?? " ")
-    ) {
-      return sql.slice(start.index + 3, i);
-    }
+    )
+      break;
+    // Sub-select text is blanked: `(SELECT … WHERE state = 'x')` writes nothing.
+    out += depth > 0 || ch === ")" ? " " : ch;
   }
-  return sql.slice(start.index + 3);
+  return out;
 }
 
 function coveredBySql(file: string, text: string, column: string): Set<string> {
