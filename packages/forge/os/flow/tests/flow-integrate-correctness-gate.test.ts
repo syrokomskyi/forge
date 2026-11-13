@@ -14,6 +14,9 @@ warning; a missing primary binary refuses.</purpose>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
+
+F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -75,13 +78,16 @@ async function productRepo(oracle: string): Promise<string> {
   );
   await write(repo, ORACLE_PATH, oracle);
   await write(repo, "docs/correctness.yaml", manifestYaml({}));
-  await write(
-    repo,
-    "docs/correctness/reviews/2026-11-13-base.yaml",
-    reviewYaml([{ check: `test:${ORACLE_PATH}`, content: oracle }]),
-  );
   await gitExec(repo, ["add", "-A"]);
   await gitExec(repo, ["commit", "-m", "product with manifest"]);
+  const review = "docs/correctness/reviews/2026-11-13-base.yaml";
+  await write(repo, review, reviewYaml([{ check: `test:${ORACLE_PATH}`, content: oracle }]));
+  await gitExec(repo, ["add", "-A"]);
+  await gitExec(repo, [
+    "commit",
+    "-m",
+    `review: oracle review\n\nX-Expectation-Origin: independent-verifier\nX-Verifier-Report: ${review}`,
+  ]);
   await gitExec(repo, ["branch", "develop", "HEAD"]);
   await gitExec(repo, ["switch", "develop"]);
   return repo;
@@ -157,4 +163,93 @@ describe("flow.integrate — correctness gate (RFC-1580)", () => {
       /binary is missing/,
     );
   }, 60_000);
+
+  it("a reviewed, attested oracle lets the integration through the real gate", async () => {
+    const { L1_ORACLE } = await import("../../correctness/gate/tests/gate-fixture.ts");
+    const repo = await productRepo(L1_ORACLE);
+    await realPrimaryForge(repo);
+    const session = await sessionWithCommit(repo);
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
+    expect(data.integrated).toBe(true);
+    expect(data.correctnessGate?.status).toBe("pass");
+  }, 120_000);
+
+  it("--accept-weakening lands an isolated weakening with an X-Correctness-Weakening trailer", async () => {
+    const repo = await productRepo("process.exit(0);\n");
+    await realPrimaryForge(repo);
+    const data0 = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "weak",
+      brief: null,
+      owner: null,
+      dryRun: false,
+      now: NOW,
+    });
+    dirs.push(data0.worktree!);
+    const wt = data0.worktree!;
+    await writeFile(
+      join(wt, "docs/correctness.yaml"),
+      'schema: forge/correctness-manifest@1\nentries: []\nsupport: []\nexemptions:\n  - ref: REQ-01\n    kind: deferred\n    task: "verbund:T-0001"\n',
+    );
+    await gitExec(wt, ["add", "-A"]);
+    await gitExec(wt, ["commit", "-m", "retire the entry"]);
+    const refused = await integrateFlowBranch(repo, ambientIo, {
+      branch: data0.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(refused.diagnostics.find((d) => d.ruleId === "FLOW-INT-18")?.message).toMatch(
+      /CORR-GATE-02/,
+    );
+    const accepted = await integrateFlowBranch(repo, ambientIo, {
+      branch: data0.branch!,
+      dryRun: false,
+      now: NOW,
+      acceptWeakening: "operator: REQ-01 retired",
+    });
+    expect(
+      accepted.diagnostics.filter((d) => d.severity === "error"),
+      JSON.stringify(accepted.diagnostics),
+    ).toEqual([]);
+    expect(accepted.integrated).toBe(true);
+    const log = await gitExec(repo, ["log", "-1", "--format=%B", "develop"]);
+    expect(log.stdout).toMatch(/X-Correctness-Weakening: operator: REQ-01 retired/);
+  }, 180_000);
+});
+
+describe("correctness step output parsing", () => {
+  it("the unknown-command phrase inside gate JSON never degrades the refusal (spoof guard)", async () => {
+    const { runCorrectnessStep } = await import("../correctness-step.ts");
+    const repo = await initRepo({ prefix: "corrstep-" });
+    dirs.push(repo);
+    const json = JSON.stringify({
+      status: "fail",
+      bundlePath: null,
+      violations: [
+        {
+          rule: "CORR-GATE-02",
+          severity: "error",
+          message:
+            "weakening (exemption): unverifiable exemption added for Unknown command: correctness.gate",
+        },
+      ],
+    });
+    await writeFile(
+      join(repo, "node_modules", ".bin", "forge"),
+      `#!/bin/sh\necho '${json}'\necho 'Unknown command: correctness.gate' >&2\nexit 1\n`,
+    );
+    await chmod(join(repo, "node_modules", ".bin", "forge"), 0o755);
+    const res = await runCorrectnessStep(ambientIo, {
+      primary: repo,
+      worktree: repo,
+      base: "HEAD",
+    });
+    expect(res.warning).toBeUndefined();
+    expect(res.refusal?.message).toMatch(/CORR-GATE-02/);
+  });
 });

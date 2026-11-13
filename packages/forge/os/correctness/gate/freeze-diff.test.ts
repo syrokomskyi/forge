@@ -10,6 +10,9 @@
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
+
+F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -82,7 +85,7 @@ describe("frozen-set diff", () => {
     const msgs = (await gate(f)).violations
       .filter((x) => x.rule === "CORR-GATE-02")
       .map((x) => x.message);
-    expect(msgs.some((m) => /substrate lowered from L1 to L0/.test(m))).toBe(true);
+    expect(msgs.some((m) => /substrate changed from L1 to L0/.test(m))).toBe(true);
     expect(msgs.some((m) => /unverifiable exemption added for REQ-01/.test(m))).toBe(true);
     expect(msgs.some((m) => /bindings.commands.checkRun changed/.test(m))).toBe(true);
   });
