@@ -13,6 +13,9 @@ canonical YAML fixture strings keep tests focused on the variable under test.</p
   <item>RFC-1508: implement RFC-1508 — system profile, system map schemas and system.map.validate</item>
   <item>RFC-1508: align rfc-1508 schemas with the normative contract after review r1</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
+  <item>RFC-1580: correctness.gate and the flow.integrate step
+
+Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -111,10 +114,12 @@ launcher:
  * Returns the absolute product root.
  */
 export async function makeProduct(prefix = "forge-product-"): Promise<string> {
-  const { gitExec } = await import("../../flow/tests/helpers.ts");
+  const { gitExec, installFakePrimaryForge } = await import("../../flow/tests/helpers.ts");
   const root = await mkdtemp(path.join(os.tmpdir(), prefix));
   const init = await gitExec(root, ["init", "-b", "main"]);
   if (init.exitCode !== 0) throw new Error(`git init failed: ${init.stderr}`);
+  // RFC-1580: flow.integrate spawns the primary install's correctness.gate.
+  await installFakePrimaryForge(root);
   await gitExec(root, ["config", "user.email", "system-test@example.invalid"]);
   await gitExec(root, ["config", "user.name", "system-test"]);
   await gitExec(root, ["config", "commit.gpgsign", "false"]);

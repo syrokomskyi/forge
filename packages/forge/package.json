@@ -244,6 +244,10 @@
       "types": "./os/correctness/index.ts",
       "default": "./os/correctness/index.ts"
     },
+    "./correctness": {
+      "types": "./src/correctness/index.ts",
+      "default": "./src/correctness/index.ts"
+    },
     "./os/correctness-module": {
       "types": "./os/correctness/correctness.module.ts",
       "default": "./os/correctness/correctness.module.ts"
@@ -575,6 +579,10 @@
       "./os/correctness": {
         "types": "./dist/os/correctness/index.d.ts",
         "default": "./dist/os/correctness/index.js"
+      },
+      "./correctness": {
+        "types": "./dist/src/correctness/index.d.ts",
+        "default": "./dist/src/correctness/index.js"
       },
       "./os/correctness-module": {
         "types": "./dist/os/correctness/correctness.module.d.ts",

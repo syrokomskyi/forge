@@ -2,13 +2,12 @@
 <MODULE_CONTRACT>
 <purpose>Register the correctness contour commands (contract `correctness`)
 with the forge registry — RFC-1578 `correctness.manifest.validate`, RFC-1579
-`correctness.audit`.</purpose>
+`correctness.audit`, RFC-1580 `correctness.gate`.</purpose>
 <non-goals>
   <item>Do not implement handler logic here — delegate to handlers/.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: initial module — correctness.manifest.validate, rules CORR-01..09.</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
@@ -23,6 +22,10 @@ Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-
 typescript profile integration-gate.sh runs the primary install's correctness.audit against FLOW_BASE_SHA; werkstatt ecosystem.commit gains EC-34 (correctness.audit --staged, refuses introduced CORR-AUDIT-01..03, warns on CORR-AUDIT-04); in-code CREATE TABLE tables (Durable Object storage) are unverifiable instead of D1 findings; correctness.audit declares generates: []; reference page and agent guides.
 
 Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 legacy sql.schema.conform findings (packages/warpgogol-billing-cloudflare against schemas outside the repo), 127 unverifiable statements, no state machines; CORR-AUDIT-04 present (verify equals test) — fixed by the werkstatt gate-wiring queue task.</item>
+  <item>RFC-1580: correctness.gate and the flow.integrate step
+
+Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <history>RFC-1578</history>
 </CHANGE_SUMMARY>
 */
 
@@ -31,6 +34,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 export async function createForgeCorrectnessModule(): Promise<ForgeModule> {
   const { runCorrectnessManifestValidate } = await import("./handlers/validate.ts");
   const { runCorrectnessAuditCommand } = await import("./handlers/audit.ts");
+  const { runCorrectnessGateCommand } = await import("./handlers/gate.ts");
   return {
     name: "forge-correctness",
     version: "0.1.0",
@@ -123,6 +127,54 @@ export async function createForgeCorrectnessModule(): Promise<ForgeModule> {
           },
         },
         execute: runCorrectnessAuditCommand,
+      },
+      {
+        name: "correctness.gate",
+        description:
+          "Enforce the product correctness manifest at integration (RFC-1580). Spawned by " +
+          "flow.integrate from the primary checkout's forge install. CORR-GATE-01 manifest " +
+          "invalid at HEAD; CORR-GATE-02 weakening against the frozen set at --base (entries, " +
+          "oracles, substrates, exemptions, allow-list, bindings, mode/tier, anchor statements, " +
+          "any byte change of a frozen oracle/capture/support file not made by a verifier-trailer " +
+          "commit) — refuses in warn mode too; CORR-GATE-03 only self oracles (no committed " +
+          "forge/oracle-review@1 record, no verifier trailer, not unchanged since acceptance); " +
+          "CORR-GATE-04 L1/L2 without a matching schema-hash attestation; CORR-GATE-05 lifecycle " +
+          "anchor without a verified forge.anchor event; CORR-GATE-06 tier high/formal origin or " +
+          "proof requirements; CORR-GATE-07 oracle run failed or timed out; CORR-GATE-08 entry " +
+          "uncovered. warn mode downgrades 03..08 to warnings. Writes a forge/correctness-bundle@1 " +
+          "under <git-common-dir>/forge/gate-reports/.",
+        scope: "workspace",
+        contract: "correctness",
+        rules: [
+          { id: "CORR-GATE-01", severity: "error" },
+          { id: "CORR-GATE-02", severity: "error" },
+          { id: "CORR-GATE-03", severity: "error" },
+          { id: "CORR-GATE-04", severity: "error" },
+          { id: "CORR-GATE-05", severity: "error" },
+          { id: "CORR-GATE-06", severity: "error" },
+          { id: "CORR-GATE-07", severity: "error" },
+          { id: "CORR-GATE-08", severity: "error" },
+        ],
+        // Writes its forge/correctness-bundle@1 and spawns the oracles (checkRun).
+        mutatesState: true,
+        writes: [".git/forge/gate-reports/**"],
+        generates: [],
+        execOnReadOnly: true,
+        reads: ["forge.yaml"],
+        cacheable: false,
+        flags: {
+          base: {
+            kind: "string",
+            required: true,
+            description: "Develop tip the session integrates into — the frozen set is read here.",
+          },
+          "accept-weakening": {
+            kind: "string",
+            description:
+              "Operator decision: accept the weakening of an isolated session whose diff touches frozen-set paths only.",
+          },
+        },
+        execute: runCorrectnessGateCommand,
       },
     ],
     pipelines: [],

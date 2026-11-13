@@ -13,11 +13,13 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
+  <item>RFC-1580: correctness.gate and the flow.integrate step
+
+Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <history>RFC-1486</history>
 </CHANGE_SUMMARY>
 */
@@ -39,11 +41,7 @@ import {
 const PREMERGE_MANAGED_BLOCK = managedBlock("pre-merge-commit");
 const PREPUSH_MANAGED_BLOCK = managedBlock("pre-push");
 
-export {
-  GUARD_BEGIN_MARKER,
-  GUARD_END_MARKER,
-  MANAGED_BLOCK,
-};
+export { GUARD_BEGIN_MARKER, GUARD_END_MARKER, MANAGED_BLOCK };
 
 /** Absolute path of the shipped guard asset — resolved on first use. */
 export const GUARD_ASSET = resolveGuardAssetPath();
@@ -61,6 +59,40 @@ export function gitExec(
  * git config may leak in). `seedCommit` creates a root commit — skipped for
  * unborn-HEAD cases.
  */
+/**
+ * RFC-1580: flow.integrate spawns `<primary>/node_modules/.bin/forge
+ * correctness.gate` and refuses FLOW-INT-18 when it is missing. Test
+ * primaries get a stand-in that answers a passing gate (or the verdict in
+ * `<primary>/.correctness-gate.json` when a test drops one there). The path
+ * is excluded via .git/info/exclude so it never reads as primary dirt.
+ */
+export async function installFakePrimaryForge(repo: string): Promise<void> {
+  const bin = join(repo, "node_modules", ".bin");
+  await mkdir(bin, { recursive: true });
+  const script = join(bin, "forge");
+  await writeFile(
+    script,
+    [
+      "#!/bin/sh",
+      'if [ "$1" = "correctness.gate" ]; then',
+      '  primary="$(dirname "$(dirname "$(dirname "$0")")")"',
+      '  if [ -f "$primary/.correctness-gate.json" ]; then cat "$primary/.correctness-gate.json"; exit "$(cat "$primary/.correctness-gate.exit" 2>/dev/null || echo 0)"; fi',
+      '  echo \'{"command":"correctness.gate","mode":"warn","status":"pass","bundlePath":null,"violations":[],"weakenings":[],"acceptedWeakening":null}\'',
+      "  exit 0",
+      "fi",
+      'echo "fake forge: unsupported $*" >&2',
+      "exit 64",
+      "",
+    ].join("\n"),
+  );
+  await chmod(script, 0o755);
+  const exclude = join(repo, ".git", "info", "exclude");
+  await mkdir(join(repo, ".git", "info"), { recursive: true });
+  await writeFile(exclude, "node_modules/\n.correctness-gate.json\n.correctness-gate.exit\n", {
+    flag: "a",
+  });
+}
+
 export async function initRepo(opts?: {
   branch?: string;
   seedCommit?: boolean;
@@ -72,6 +104,7 @@ export async function initRepo(opts?: {
   await gitExec(dir, ["config", "user.email", "flow-test@example.invalid"]);
   await gitExec(dir, ["config", "user.name", "flow-test"]);
   await gitExec(dir, ["config", "commit.gpgsign", "false"]);
+  await installFakePrimaryForge(dir);
   if (opts?.seedCommit !== false) {
     await writeFile(join(dir, "seed.txt"), "seed\n");
     await gitExec(dir, ["add", "seed.txt"]);
@@ -104,18 +137,12 @@ export async function installGuard(repo: string): Promise<void> {
 }
 
 /** Attempt a commit; env overrides merge over process.env (set "" to neutralize). */
-export function tryCommit(
-  repo: string,
-  env?: Record<string, string>,
-): Promise<ExecResult> {
+export function tryCommit(repo: string, env?: Record<string, string>): Promise<ExecResult> {
   return gitExec(repo, ["commit", "--allow-empty", "-m", "probe"], env);
 }
 
 /** Invoke the installed guard directly with HEAD on the current branch. */
-export function runGuardDirect(
-  repo: string,
-  env?: Record<string, string>,
-): Promise<ExecResult> {
+export function runGuardDirect(repo: string, env?: Record<string, string>): Promise<ExecResult> {
   return ambientIo.exec("sh", [join(repo, "hooks", "flow-guard.sh"), "pre-commit"], {
     cwd: repo,
     env,
@@ -145,10 +172,7 @@ export async function initRepoWithOrigin(
   await gitExec(repo, ["config", "user.name", "flow-test"]);
   await gitExec(repo, ["config", "commit.gpgsign", "false"]);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
-  await writeFile(
-    join(repo, "pnpm-workspace.yaml"),
-    "packages:\n  - packages/*\n",
-  );
+  await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
   await writeFile(join(repo, "seed.txt"), "seed\n");
   await gitExec(repo, ["add", "-A"]);
   const seed = await gitExec(repo, ["commit", "-m", "seed"]);
@@ -162,6 +186,7 @@ export async function initRepoWithOrigin(
   const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"]);
   if (push.exitCode !== 0) throw new Error(`initial push failed: ${push.stderr}`);
 
+  await installFakePrimaryForge(repo);
   if (opts?.fakeExtract) await installFakeRepoExtract(repo, extractLog);
   return { repo, origin, extractLog, parent };
 }
@@ -176,10 +201,7 @@ export async function initRepoWithOrigin(
  * env — or drop a `.fail-extract` marker in the caller's cwd — to make it
  * exit 3 (FLOW-PUSH-05 / FLOW-CUT-13 tests).
  */
-export async function installFakeRepoExtract(
-  repo: string,
-  log: string,
-): Promise<string> {
+export async function installFakeRepoExtract(repo: string, log: string): Promise<string> {
   const bin = join(repo, "node_modules", ".bin");
   await mkdir(bin, { recursive: true });
   const script = join(bin, "repo-extract");
@@ -228,8 +250,7 @@ git -C "$dest" remote add origin "$dorigin"
 
 /** Switch to a branch, creating it when it does not exist yet. */
 export async function checkoutOrCreate(repo: string, name: string): Promise<void> {
-  const exists =
-    (await gitExec(repo, ["branch", "--list", name])).stdout.trim().length > 0;
+  const exists = (await gitExec(repo, ["branch", "--list", name])).stdout.trim().length > 0;
   const result = exists
     ? await gitExec(repo, ["switch", name])
     : await gitExec(repo, ["switch", "-c", name]);
