@@ -19,6 +19,9 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
+
+N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -123,6 +126,12 @@ export interface FrozenSet {
   baseRefs: Set<string>;
   /** True when the base binds a manifest file that exists but does not parse. */
   baseManifestUnreadable: boolean;
+  /** Base `support` globs (new files matching them are frozen-set additions). */
+  supportGlobs: string[];
+  /** Files at base that declare a frozen anchor (an isolated anchor change touches them). */
+  anchorFiles: string[];
+  /** Every file path at base. */
+  baseFiles: string[];
 }
 
 export async function readFrozenSet(repo: GateRepo, base: string): Promise<FrozenSet> {
@@ -159,6 +168,7 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   // Anchor statements at base, for ids bound by base entries.
   const wanted = new Set((side.manifest?.entries ?? []).flatMap((e) => e.anchors));
   const anchors = new Map<string, string>();
+  const anchorFiles = new Set<string>();
   if (wanted.size > 0) {
     const grep = await repo.git.run(["grep", "-l", "-z", "-F", "@ai-invariant[", base, "--"]);
     const hits = (grep ?? "")
@@ -170,6 +180,7 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
       const text = await repo.show(base, rel);
       if (!text) continue;
       for (const a of anchorsFromSource(rel, text)) {
+        if (wanted.has(a.id)) anchorFiles.add(rel);
         if (wanted.has(a.id) && !anchors.has(a.id))
           anchors.set(a.id, invariantStatementSha(a.statement));
       }
@@ -189,7 +200,16 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     for (const m of (text ?? "").matchAll(/^##\s+DNA-(\d+)\b/gm)) baseRefs.add(`DNA-${m[1]}`);
   }
   for (const e of side.manifest?.entries ?? []) if (e.ref) baseRefs.add(e.ref);
-  return { base: side, files: [...files].sort(), anchors, baseRefs, baseManifestUnreadable };
+  return {
+    base: side,
+    files: [...files].sort(),
+    anchors,
+    baseRefs,
+    baseManifestUnreadable,
+    supportGlobs: side.manifest?.support ?? [],
+    anchorFiles: [...anchorFiles].sort(),
+    baseFiles,
+  };
 }
 
 /** The judged side, read from the working tree of the session worktree. */
@@ -329,6 +349,34 @@ export async function byteWeakenings(
 }
 
 /** Anchor weakenings: a frozen anchor id removed, or its normalized statement changed. */
+/**
+ * Files new at HEAD that match a base `support` glob (a new runner config or
+ * setup file shapes how frozen oracles run) — weakenings unless a verifier
+ * commit added them.
+ */
+export async function supportAdditions(
+  repo: GateRepo,
+  base: string,
+  head: string,
+  frozen: FrozenSet,
+): Promise<Weakening[]> {
+  void base;
+  if (frozen.supportGlobs.length === 0) return [];
+  const before = new Set(frozen.baseFiles);
+  const matchers = frozen.supportGlobs.map((g) => picomatch(normalizeRelPath(g), { dot: true }));
+  const out: Weakening[] = [];
+  for (const rel of await repo.files(head)) {
+    if (before.has(rel) || !matchers.some((m) => m(rel))) continue;
+    if (await repo.lastTouchIsVerifier(head, rel)) continue;
+    out.push({
+      kind: "frozen-file",
+      subject: rel,
+      message: `new file ${rel} matches a frozen support glob and was not added by a verifier commit`,
+    });
+  }
+  return out;
+}
+
 export function anchorWeakenings(root: string, files: string[], frozen: FrozenSet): Weakening[] {
   if (frozen.anchors.size === 0) return [];
   const index = buildAnchorIndex(root, files, [...frozen.anchors.keys()]);

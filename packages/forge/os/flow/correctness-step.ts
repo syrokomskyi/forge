@@ -21,6 +21,9 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
+
+N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -52,6 +55,20 @@ function parseJson(stdout: string): GateJson | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * True when forge.yaml at the integration base binds a correctness manifest or
+ * declares a correctness section — the repository has adopted the gate, so a
+ * primary forge that lacks it is a downgrade, not a bootstrap.
+ */
+async function baseAdoptedGate(io: WorkspaceIO, worktree: string, base: string): Promise<boolean> {
+  const shown = await io.exec("git", ["show", `${base}:forge.yaml`], { cwd: worktree });
+  if (shown.exitCode !== 0) return false;
+  const text = shown.stdout;
+  const bound = /^\s*correctnessManifest:\s*(?!null\b|~|$)\S+/m.test(text);
+  const section = /^correctness:\s*$/m.test(text);
+  return bound || section;
 }
 
 export async function runCorrectnessStep(
@@ -95,6 +112,12 @@ export async function runCorrectnessStep(
     result.stderr
       .split("\n")
       .some((line) => /^\s*(?:✖\s*)?Unknown command: correctness\.gate\s*$/.test(line));
+  if (unknownCommand && (await baseAdoptedGate(io, opts.worktree, opts.base))) {
+    return notRun(
+      "the primary install's forge does not know correctness.gate, but the base revision already adopted the correctness contour — a forge downgrade must not drop the gate",
+      `restore an @warpgogol/forge with correctness.gate in ${opts.primary} (pnpm install), then re-run`,
+    );
+  }
   if (unknownCommand) {
     return {
       status: "not-run",

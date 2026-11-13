@@ -9,7 +9,7 @@ pnpm exec forge flow.integrate --accept-weakening "<reason>"   # operator decisi
 pnpm exec forge rfc.verify.workspace --manifest --candidate <sha>
 ```
 
-`flow.integrate` spawns `"$FLOW_PRIMARY/node_modules/.bin/forge" correctness.gate --base "$FLOW_BASE_SHA" --json` with cwd = the session worktree, after `hooks/integration-gate.sh` passes and before the fast-forward. The code under review never judges its own gate, and a session-pinned forge cannot drop it. A missing primary binary, a spawn failure, unparseable output, or a failing gate refuses with `FLOW-INT-18`. Only a primary install that answers `Unknown command: correctness.gate` (its forge predates RFC-1580 — the integration that installs the gate) degrades to a `FLOW-INT-18` warning.
+`flow.integrate` spawns `"$FLOW_PRIMARY/node_modules/.bin/forge" correctness.gate --base "$FLOW_BASE_SHA" --json` with cwd = the session worktree, after `hooks/integration-gate.sh` passes and before the fast-forward. The code under review never judges its own gate. A missing primary binary, a spawn failure, unparseable output, or a failing gate refuses with `FLOW-INT-18`. Bootstrap only: a primary install that answers exactly `Unknown command: correctness.gate` (its forge predates RFC-1580) degrades to a `FLOW-INT-18` warning while forge.yaml at the base has not adopted the contour; after adoption the same answer refuses, so a forge downgrade cannot drop the gate.
 
 ## Frozen set (read at `--base`)
 
@@ -26,8 +26,8 @@ pnpm exec forge rfc.verify.workspace --manifest --candidate <sha>
 3. **Origin** of each oracle, from git only: `verified` (verifier trailer pair on the last commit touching the check file, or a committed `forge/oracle-review@1` record naming the check with its current sha256 and `verdict: pass`), `requirement` (`rfc-ac`/`fixed-input` entry whose check file is byte-identical to its state at the governing RFC's `accepted` commit), `self` otherwise. A `self` oracle never covers (`CORR-GATE-03`).
 4. **Tier** — `high`: only verifier-trailer oracles cover; `formal`: each entry also needs a `proof:` oracle whose `proof.check` verdict is `proved` (`CORR-GATE-06`).
 5. **Run** each non-self oracle through the frozen `checkRun` (argv form, `{file}` is one argument), with `FORGE_CORRECTNESS_DIR=<fresh run dir>/<entry>/o<N>` and a per-oracle timeout (`correctness.oracleTimeoutMs`, default 300000). Non-zero exit, spawn failure, or timeout → `CORR-GATE-07`.
-6. **Substrate attestation** — an L1/L2 oracle covers only when its run left an attestation whose level matches and whose normalized schema hash equals the hash of the repository's D1 migrations; otherwise `CORR-GATE-04` and it counts as L0.
-7. **Anchor events** — a lifecycle entry's L2 run must leave, for each anchor, a verified `forge.anchor` event; a failed or missing event → `CORR-GATE-05`.
+6. **Substrate attestation** — an L1/L2 oracle covers only when its run left an attestation whose level matches and whose normalized schema hash equals the hash of the repository's D1 migrations; otherwise `CORR-GATE-04` and it counts as L0. A declared L3 needs every declared capture loaded through `loadCapture` (provider seams) or a matching attestation (data/lifecycle seams, where it counts at the attested level).
+7. **Anchor events** — a lifecycle entry's L2 run must leave, for each anchor, a `forge.anchor` event verified against the attested handle; a failed, missing, or foreign-handle event → `CORR-GATE-05`.
 8. **Coverage** — each entry needs ≥ 1 oracle that is non-self, passing, attested at or above the seam minimum, and (lifecycle) anchor-verified; else `CORR-GATE-08`.
 9. **Bundle** `forge/correctness-bundle@1` at `<git-common-dir>/forge/gate-reports/<runId>.correctness.json`.
 10. **Verdict** — `enforce`: any error refuses; `warn`: `CORR-GATE-03..08` become warnings; `CORR-GATE-02` refuses in both modes.

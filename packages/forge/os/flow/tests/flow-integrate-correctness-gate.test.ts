@@ -17,6 +17,9 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
+
+N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -133,21 +136,38 @@ describe("flow.integrate — correctness gate (RFC-1580)", () => {
     expect(refusal?.message, "the failing oracle must be named").toMatch(/CORR-GATE-07/);
   }, 120_000);
 
-  it("a primary install that predates correctness.gate degrades to a FLOW-INT-18 warning", async () => {
-    const repo = await productRepo("process.exit(0);\n");
-    await writeFile(
-      join(repo, "node_modules", ".bin", "forge"),
-      "#!/bin/sh\necho '  ✖ Unknown command: correctness.gate' >&2\nexit 1\n",
-    );
-    const session = await sessionWithCommit(repo);
-    const data = await integrateFlowBranch(repo, ambientIo, {
-      branch: session.branch,
+  it("a primary forge without correctness.gate degrades to a FLOW-INT-18 warning only before adoption", async () => {
+    const plain = await initRepo({ prefix: "flow-corrgate-boot-" });
+    dirs.push(plain);
+    await writeFile(join(plain, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await gitExec(plain, ["add", "forge.yaml"]);
+    await gitExec(plain, ["commit", "-m", "governed"]);
+    await gitExec(plain, ["branch", "develop", "HEAD"]);
+    await gitExec(plain, ["switch", "develop"]);
+    const unknown = "#!/bin/sh\necho '  ✖ Unknown command: correctness.gate' >&2\nexit 1\n";
+    await writeFile(join(plain, "node_modules", ".bin", "forge"), unknown);
+    const s1 = await sessionWithCommit(plain);
+    const boot = await integrateFlowBranch(plain, ambientIo, {
+      branch: s1.branch,
       dryRun: false,
       now: NOW,
     });
-    expect(data.integrated).toBe(true);
-    expect(data.diagnostics.find((d) => d.ruleId === "FLOW-INT-18")?.severity).toBe("warning");
-  }, 60_000);
+    expect(boot.integrated).toBe(true);
+    expect(boot.diagnostics.find((d) => d.ruleId === "FLOW-INT-18")?.severity).toBe("warning");
+
+    const adopted = await productRepo("process.exit(0);\n");
+    await writeFile(join(adopted, "node_modules", ".bin", "forge"), unknown);
+    const s2 = await sessionWithCommit(adopted);
+    const downgrade = await integrateFlowBranch(adopted, ambientIo, {
+      branch: s2.branch,
+      dryRun: false,
+      now: NOW,
+    });
+    expect(downgrade.integrated, "a forge downgrade must not drop an adopted gate").toBe(false);
+    expect(downgrade.diagnostics.find((d) => d.ruleId === "FLOW-INT-18")?.message).toMatch(
+      /already adopted/,
+    );
+  }, 90_000);
 
   it("a missing primary forge binary refuses", async () => {
     const repo = await productRepo("process.exit(0);\n");
