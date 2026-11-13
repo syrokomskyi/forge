@@ -2,10 +2,11 @@
 <MODULE_CONTRACT>
 <purpose>
 RFC-1581: codebase.measure handler — measures project scale over the
-git-tracked file set. Enumerates `git ls-files`, applies the hardcoded
-exclusion contour, classifies categories, counts code/comment/blank lines
-per language, and returns totals + per-language + top-dir measures.
-Read-only by default; `--out <path>` writes an explicit snapshot.
+git-tracked file set. Anchors on `git rev-parse --show-toplevel`, enumerates
+`git ls-files`, applies the hardcoded exclusion contour, classifies
+categories, counts code/comment/blank lines per language, and returns
+totals + per-language + top-dir measures. Read-only by default;
+`--out <path>` writes an explicit dated snapshot.
 </purpose>
 <non-goals>
   <item>Does not count untracked files — the contour is the tracked tree.</item>
@@ -15,14 +16,16 @@ Read-only by default; `--out <path>` writes an explicit snapshot.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1581: initial codebase.measure handler.</item>
-  <item>RFC-1581: add codebase.measure project-scale measurement command</item>
+  <item>RFC-1581 review: repo-root anchor via rev-parse, contract-aligned
+    measure shape (repo/exclusions/measuredAt, symbols nested, topDirs path),
+    name-driven category for binary/unreadable files, single-read I/O.</item>
 </CHANGE_SUMMARY>
 */
 
 import { basename, dirname, extname, join, resolve } from "node:path";
 import { stringify as yamlStringify } from "yaml";
 
-import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { resolveIo } from "../../../src/utils/io.ts";
 import { hasGeneratedMarker } from "../../../src/utils/generated-marker.ts";
 import type {
   ForgeCommandInput,
@@ -41,24 +44,39 @@ import { measureSymbols } from "./codebase-measure-symbols.ts";
 // Exclusion contour — paths dropped from the measurement entirely.
 // ---------------------------------------------------------------------------
 
-const EXCLUDED_PATHS: RegExp[] = [
-  /(^|\/)dist\//,
-  /(^|\/)\.turbo\//,
-  /(^|\/)\.cache\//,
-  /(^|\/)\.coverage\//,
-  /(^|\/)\.astro\//,
-  /^\.agents\/skills\//,
-  /^missions\//,
-  /^docs\/specs\//,
-  /^docs\/metrics\//,
-  /^docs\/rfcs\/archive\//,
-  /^docs\/plans\/archive\//,
-  /^docs\/audits\//,
-  /(^|\/)node_modules\//,
+interface ExclusionRule {
+  label: string;
+  re: RegExp;
+}
+
+const EXCLUSION_RULES: ExclusionRule[] = [
+  { label: "dir:dist/", re: /(^|\/)dist\// },
+  { label: "dir:.turbo/", re: /(^|\/)\.turbo\// },
+  { label: "dir:.cache/", re: /(^|\/)\.cache\// },
+  { label: "dir:.coverage/", re: /(^|\/)\.coverage\// },
+  { label: "dir:.astro/", re: /(^|\/)\.astro\// },
+  { label: "dir:.agents/skills/", re: /^\.agents\/skills\// },
+  { label: "dir:missions/", re: /^missions\// },
+  { label: "dir:docs/specs/", re: /^docs\/specs\// },
+  { label: "dir:docs/metrics/", re: /^docs\/metrics\// },
+  { label: "dir:docs/rfcs/archive/", re: /^docs\/rfcs\/archive\// },
+  { label: "dir:docs/plans/archive/", re: /^docs\/plans\/archive\// },
+  { label: "dir:docs/audits/", re: /^docs\/audits\// },
+  { label: "dir:node_modules/", re: /(^|\/)node_modules\// },
 ];
 
 const GENERATED_NAME = /\.generated\./;
 const GENERATED_TOKEN = "@generated";
+
+/** Machine bookkeeping mass — counted under `generated`, never under `code`. */
+const LOCKFILE_NAMES = new Set([
+  "pnpm-lock.yaml",
+  "package-lock.json",
+  "npm-shrinkwrap.json",
+  "yarn.lock",
+  "bun.lockb",
+  "bun.lock",
+]);
 
 const TEST_PATH = /(^|\/)(__tests__|tests|e2e)\//;
 const TEST_NAME = /\.(test|spec)\.[cm]?[jt]sx?$/;
@@ -172,8 +190,8 @@ const BINARY_EXTS = new Set([
 // Pure helpers (exported for tests)
 // ---------------------------------------------------------------------------
 
-export function isExcluded(path: string): boolean {
-  return EXCLUDED_PATHS.some((re) => re.test(path));
+export function exclusionFor(path: string): string | null {
+  return EXCLUSION_RULES.find((rule) => rule.re.test(path))?.label ?? null;
 }
 
 export function languageFor(path: string): { language: string; comments: CommentSpec } {
@@ -192,7 +210,7 @@ export function categoryFor(
 ): "code" | "tests" | "docs" | "generated" {
   const base = basename(path);
   const ext = extname(base).toLowerCase();
-  if (generated) return "generated";
+  if (generated || LOCKFILE_NAMES.has(base)) return "generated";
   if (TEST_NAME.test(base) || TEST_PATH.test(path)) return "tests";
   if (ext === ".md" || ((ext === ".yaml" || ext === ".yml") && path.startsWith("docs/"))) {
     return "docs";
@@ -217,6 +235,7 @@ export function countLines(
   const lines = content.split("\n");
   // A terminal newline produces a phantom empty tail element — not a real line.
   if (lines.length > 1 && lines[lines.length - 1] === "") lines.pop();
+  if (lines.length === 1 && lines[0] === "") return { code: 0, comments: 0, blanks: 0 };
   for (const raw of lines) {
     const line = raw.trim();
     if (inBlock) {
@@ -239,8 +258,6 @@ export function countLines(
       if (!line.slice(blockHit[0].length).includes(blockHit[1])) inBlock = blockHit[1];
       continue;
     }
-    // Inline block end inside a code line still counts as code (handled above by
-    // the startsWith checks); nothing else to do.
     code++;
   }
   return { code, comments: commentLines, blanks };
@@ -261,9 +278,23 @@ export async function runCodebaseMeasure(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
 ): Promise<ForgeCommandResult<CodebaseMeasure>> {
-  const io = resolveIo(context.io) ?? ambientIo;
+  const io = resolveIo(context.io);
   const { workspaceRoot } = context;
-  const outPath = input.flags["out"] as string | undefined;
+  // `outPath` stays an ident bound directly to input.flags["out"] — the
+  // mutation scan recognises `if (outPath)` as the declared mutatingFlags gate.
+  const outPath = input.flags["out"];
+  if (outPath !== undefined && (typeof outPath !== "string" || outPath.length === 0)) {
+    return {
+      exitCode: 1,
+      summary: "[codebase.measure] failed — --out expects a file path",
+      nextSteps: [
+        {
+          action: "Pass --out <path> with a non-empty relative or absolute file path.",
+          kind: "required",
+        },
+      ],
+    };
+  }
 
   if (typeof io.exec !== "function") {
     return {
@@ -279,7 +310,25 @@ export async function runCodebaseMeasure(
     };
   }
 
-  const listed = await io.exec("git", ["ls-files", "-z"], { cwd: workspaceRoot });
+  // Repo-root anchor — identical measurement from any subdirectory.
+  const rootProbe = await io.exec("git", ["rev-parse", "--show-toplevel"], {
+    cwd: workspaceRoot,
+  });
+  const repoRoot = rootProbe.exitCode === 0 ? rootProbe.stdout.trim() : null;
+  if (!repoRoot) {
+    return {
+      exitCode: 1,
+      summary: "[codebase.measure] failed — not inside a git repository",
+      nextSteps: [
+        {
+          action: "Run inside a forge repository checkout (git rev-parse --show-toplevel failed).",
+          kind: "required",
+        },
+      ],
+    };
+  }
+
+  const listed = await io.exec("git", ["ls-files", "-z"], { cwd: repoRoot });
   if (listed.exitCode !== 0) {
     return {
       exitCode: 1,
@@ -293,7 +342,13 @@ export async function runCodebaseMeasure(
     };
   }
 
-  const tracked = listed.stdout.split("\0").filter((p) => p.length > 0 && !isExcluded(p));
+  const appliedExclusions = new Set<string>();
+  const tracked = listed.stdout.split("\0").filter((p) => {
+    if (p.length === 0) return false;
+    const label = exclusionFor(p);
+    if (label) appliedExclusions.add(label);
+    return label === null;
+  });
 
   const totals: Record<CodebaseCategory, { files: number; code: number }> = {
     code: { files: 0, code: 0 },
@@ -310,38 +365,31 @@ export async function runCodebaseMeasure(
   let totalCode = 0;
 
   for (const rel of tracked) {
-    const abs = join(workspaceRoot, rel);
+    const abs = join(repoRoot, rel);
     const base = basename(rel);
-    if (isBinaryName(rel)) {
-      binaryFiles++;
-      totalFiles++;
-      totals.code.files++;
-      continue;
-    }
+
     let content: string;
     try {
-      content = await io.readFile(abs);
+      const bytes = await io.readFileBytes(abs);
+      // Binary: known extension or NUL byte in the first 8 KB — counts as a
+      // file, contributes zero lines (classified by name rules only).
+      if (isBinaryName(rel) || bytes.subarray(0, 8192).includes(0)) {
+        binaryFiles++;
+        totalFiles++;
+        totals[categoryFor(rel, GENERATED_NAME.test(base))].files++;
+        continue;
+      }
+      content = new TextDecoder().decode(bytes);
     } catch {
       totalFiles++;
-      totals.code.files++;
+      totals[categoryFor(rel, GENERATED_NAME.test(base))].files++;
       symbolsSkipped.push(`unreadable:${rel}`);
       continue;
     }
-    const bytes = await io
-      .readFileBytes(abs)
-      .then((b) => b.subarray(0, 8192).includes(0))
-      .catch(() => false);
-    if (bytes) {
-      binaryFiles++;
-      totalFiles++;
-      totals.code.files++;
-      continue;
-    }
 
+    const head = content.slice(0, 4096);
     const generated =
-      GENERATED_NAME.test(base) ||
-      hasGeneratedMarker(content.slice(0, 4096)) ||
-      content.slice(0, 4096).includes(GENERATED_TOKEN);
+      GENERATED_NAME.test(base) || hasGeneratedMarker(head) || head.includes(GENERATED_TOKEN);
     const category = categoryFor(rel, generated);
     const { language, comments } = languageFor(rel);
     const counts = countLines(content, comments);
@@ -353,16 +401,7 @@ export async function runCodebaseMeasure(
 
     let lm = languages.get(language);
     if (!lm) {
-      lm = {
-        language,
-        files: 0,
-        code: 0,
-        comments: 0,
-        blanks: 0,
-        classes: 0,
-        functions: 0,
-        methods: 0,
-      };
+      lm = { language, files: 0, code: 0, comments: 0, blanks: 0 };
       languages.set(language, lm);
     }
     lm.files++;
@@ -378,38 +417,43 @@ export async function runCodebaseMeasure(
     }
   }
 
-  const symbols = await measureSymbols(tsFiles, workspaceRoot);
+  const symbols = await measureSymbols(tsFiles, repoRoot);
   symbolsSkipped.push(...symbols.skipped);
   for (const [path, s] of symbols.byFile) {
-    const lang = languages.get(languageFor(path).language);
-    if (!lang) continue;
-    lang.classes += s.classes;
-    lang.functions += s.functions;
-    lang.methods += s.methods;
+    const lm = languages.get(languageFor(path).language);
+    if (!lm) continue;
+    lm.symbols ??= { classes: 0, functions: 0, methods: 0 };
+    lm.symbols.classes += s.classes;
+    lm.symbols.functions += s.functions;
+    lm.symbols.methods += s.methods;
   }
 
   const languageRows = [...languages.values()].sort(
-    (a, b) => b.code - a.code || a.language.localeCompare(b.language),
+    (a, b) => b.code - a.code || (a.language < b.language ? -1 : 1),
   );
   const topDirs: TopDirMeasure[] = [...dirCode.entries()]
-    .map(([dir, code]) => ({ dir, code }))
-    .sort((a, b) => b.code - a.code || a.dir.localeCompare(b.dir))
+    .map(([path, code]) => ({ path, code }))
+    .sort((a, b) => b.code - a.code || (a.path < b.path ? -1 : 1))
     .slice(0, 10);
 
+  const measuredAt = new Date().toISOString();
   const data: CodebaseMeasure = {
     command: "codebase.measure",
     status: "ok",
+    repo: basename(repoRoot),
     totals,
     languages: languageRows,
     topDirs,
-    binaryFiles,
     symbolsSkipped,
+    binaryFiles,
+    exclusions: [...appliedExclusions].sort(),
+    measuredAt,
   };
 
   if (outPath) {
-    const target = resolve(workspaceRoot, outPath);
+    const target = resolve(repoRoot, outPath);
     try {
-      await io.writeFile(target, yamlStringify({ measuredAt: new Date().toISOString(), ...data }));
+      await io.writeFile(target, yamlStringify(data));
     } catch (error) {
       return {
         exitCode: 1,
@@ -417,7 +461,7 @@ export async function runCodebaseMeasure(
         summary: `[codebase.measure] measured but failed to write --out ${outPath}`,
         nextSteps: [
           {
-            action: `Ensure the --out parent directory exists and is writable (${error instanceof Error ? error.message : String(error)}).`,
+            action: `Ensure the --out path is writable (${error instanceof Error ? error.message : String(error)}).`,
             kind: "required",
           },
         ],
@@ -433,17 +477,16 @@ export async function runCodebaseMeasure(
       );
     }
     for (const row of languageRows) {
-      const sym =
-        row.classes + row.functions + row.methods > 0
-          ? ` | ${row.classes} classes, ${row.functions + row.methods} functions`
-          : "";
+      const sym = row.symbols
+        ? ` | ${row.symbols.classes} classes, ${row.symbols.functions + row.symbols.methods} functions`
+        : "";
       context.logger.info(
         `  ${row.language.padEnd(12)} ${row.files} files, ${row.code} code, ${row.comments} comments, ${row.blanks} blanks${sym}`,
       );
     }
     if (topDirs.length > 0) {
       context.logger.info("  top dirs:");
-      for (const d of topDirs) context.logger.info(`    ${d.code} ${d.dir}`);
+      for (const d of topDirs) context.logger.info(`    ${d.code} ${d.path}`);
     }
     if (symbolsSkipped.length > 0) {
       context.logger.info(`  symbolsSkipped: ${symbolsSkipped.join(", ")}`);

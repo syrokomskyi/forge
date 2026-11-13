@@ -11,6 +11,7 @@ project-scale measurement command. Autonomous runtime; no new dependencies.
 <CHANGE_SUMMARY>
   <item>RFC-1581: initial forge-codebase module.</item>
   <item>RFC-1581: add codebase.measure project-scale measurement command</item>
+  <item>RFC-1581: apply REVIEW-CODE-2026-11-13-01 — contract alignment, repo-root anchor, publishConfig exports</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,13 +39,15 @@ export async function createForgeCodebaseModule(): Promise<ForgeModule> {
         execOnReadOnly: true,
         // `--out` upgrades this invocation to the real adapter — the only write.
         mutatingFlags: ["out"],
+        coverage: "operator",
+        coverageNote:
+          "Operator-invoked measurement — never wired into build.check, gates, or commit paths.",
         flags: {
           out: {
             kind: "string",
             description: "Write a dated YAML snapshot of the measurement to this explicit path.",
           },
         },
-        reads: ["git-tracked file set"],
         writes: [],
         execute: runCodebaseMeasure,
       },

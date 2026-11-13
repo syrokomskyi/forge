@@ -648,6 +648,14 @@
         "types": "./dist/os/context/context.module.d.ts",
         "default": "./dist/os/context/context.module.js"
       },
+      "./os/codebase": {
+        "types": "./dist/os/codebase/index.d.ts",
+        "default": "./dist/os/codebase/index.js"
+      },
+      "./os/codebase-module": {
+        "types": "./dist/os/codebase/codebase.module.d.ts",
+        "default": "./dist/os/codebase/codebase.module.js"
+      },
       "./os/context": {
         "types": "./dist/os/context/index.d.ts",
         "default": "./dist/os/context/index.js"
