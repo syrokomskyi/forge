@@ -56,6 +56,7 @@ export async function loadForgeCommandModules(): Promise<ForgeModule[]> {
     await import("../os/correctness/correctness.module.ts").then((m) =>
       m.createForgeCorrectnessModule(),
     ),
+    await import("../os/codebase/codebase.module.ts").then((m) => m.createForgeCodebaseModule()),
   ];
   return modules.filter((m): m is ForgeModule => m !== null);
 }

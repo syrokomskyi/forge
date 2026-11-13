@@ -300,6 +300,14 @@
       "types": "./os/checks/index.ts",
       "default": "./os/checks/index.ts"
     },
+    "./os/codebase": {
+      "types": "./os/codebase/index.ts",
+      "default": "./os/codebase/index.ts"
+    },
+    "./os/codebase-module": {
+      "types": "./os/codebase/codebase.module.ts",
+      "default": "./os/codebase/codebase.module.ts"
+    },
     "./os/context-module": {
       "types": "./os/context/context.module.ts",
       "default": "./os/context/context.module.ts"
