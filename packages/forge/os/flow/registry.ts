@@ -17,13 +17,12 @@ forge/journal.jsonl.</purpose>
   <item>`held` is typed null now — the wave-2 outbound RFC widens it to { heldAt, riskCategory, reason }.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
-  <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1537: integrate-refusal journal event + rule/toleratedDirt fields — every flow.integrate refusal journals {branch, rule, summary, at} for flow.status lastRefusal; appendJournal now serializes toleratedState (was silently dropped)</item>
   <item>RFC-1532: FlowJournalEvent.gateReport — the repo-relative path links integrate/backmerge and integrate-refusal events to the attempt's persisted gate report</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
-  <history>RFC-1487, RFC-1490, RFC-1491</history>
+  <item>RFC-1589: run the integration gate outside the integration lock</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1503, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 
@@ -97,7 +96,8 @@ export const flowRegistryEntrySchema = z
     message: "base 'main' ⇔ kind 'fix' — task/session branches always base on develop (RFC-1490)",
   })
   .refine((e) => (e.worktree === null) === (e.held !== null), {
-    message: "worktree null ⇔ held — a held branch keeps no worktree, an unheld one always has one (RFC-1491)",
+    message:
+      "worktree null ⇔ held — a held branch keeps no worktree, an unheld one always has one (RFC-1491)",
   });
 
 export const flowRegistrySchema = z
@@ -164,6 +164,14 @@ export interface FlowJournalEvent {
    * events whose gate wrote a report — the journal's link to the attempt's
    * full check evidence. */
   gateReport?: string;
+  /** RFC-1589: how the integration gate ran — "pre-lock" | "locked-delta" |
+   * "locked-full"; absent on the legacy under-lock sequence. */
+  gateMode?: string;
+  /** RFC-1589: wall time integrate.lock was held — the pre-lock comparison
+   * metric. */
+  lockHeldMs?: number;
+  /** RFC-1589: Phase-A runs the integrate needed. */
+  preLockAttempts?: number;
   /** hold only — the new (base, sha] range of every replayed item. */
   rewrites?: Array<{
     branch: string;
@@ -200,10 +208,7 @@ export async function commonGitDir(io: WorkspaceIO, cwd: string): Promise<string
 }
 
 /** Read the registry; a missing file yields the empty registry. */
-export async function readRegistry(
-  io: WorkspaceIO,
-  commonGitDir: string,
-): Promise<FlowRegistryV1> {
+export async function readRegistry(io: WorkspaceIO, commonGitDir: string): Promise<FlowRegistryV1> {
   const file = registryPath(commonGitDir);
   if (!(await io.exists(file))) return emptyRegistry();
   let raw: unknown;
@@ -280,6 +285,9 @@ export async function appendJournal(
   if (event.autoCleaned !== undefined) line.autoCleaned = event.autoCleaned;
   if (event.autocommitSha !== undefined) line.autocommitSha = event.autocommitSha;
   if (event.gateReport !== undefined) line.gateReport = event.gateReport;
+  if (event.gateMode !== undefined) line.gateMode = event.gateMode;
+  if (event.lockHeldMs !== undefined) line.lockHeldMs = event.lockHeldMs;
+  if (event.preLockAttempts !== undefined) line.preLockAttempts = event.preLockAttempts;
   if (event.rewrites !== undefined) line.rewrites = event.rewrites;
   await io.appendFile(file, `${JSON.stringify(line)}\n`);
 }
