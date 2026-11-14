@@ -338,7 +338,7 @@ Full API reference: [docs/reference/programmatic-api.md](docs/reference/programm
 | `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
 | `os/` | ForgeModule registrations. All `os/` modules are autonomous except `werkstatt` — the only adapter importing `@warpgogol/werkstatt-engine`. |
 | `bin/` | CLI entrypoint (`forge` command). |
-| `skills/` | 41 skill definitions (34 fo + 4 shared + 3 meta) with SKILL.md frontmatter. |
+| `skills/` | <!-- forge:skills-count -->41 skills (34 fo + 4 shared + 3 meta)<!-- /forge:skills-count --> with SKILL.md frontmatter. |
 | `profiles/` | Stack profiles for `scaffold`. |
 
 ---

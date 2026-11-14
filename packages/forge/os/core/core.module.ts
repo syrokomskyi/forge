@@ -41,6 +41,7 @@ import { resolveOwningCheckout } from "../flow/session-checkout.ts";
 export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runScaffold } = await import("../../src/onboarding/scaffold.ts");
   const { runSkillValidate } = await import("../../src/validators/skill-validate.ts");
+  const { runSkillDocSync } = await import("../../src/validators/skill-doc-sync.ts");
   const { runPortValidate } = await import("../../src/validators/port-validate.ts");
   const { runDoctor } = await import("../../src/onboarding/doctor.ts");
   const { runAgentsGenerate } = await import("../../src/onboarding/agents-generate.ts");
@@ -118,6 +119,21 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       data: result,
       exitCode: result.status === "pass" ? 0 : 1,
       summary: result.status === "pass" ? `[forge.skill.validate] OK — 0 violations` : undefined,
+    };
+  };
+
+  const skillDocSyncWrapper = async (
+    input: ForgeCommandInput,
+    context: ForgeRuntimeContext,
+  ): Promise<ForgeCommandResult> => {
+    const result = await runSkillDocSync(input, context);
+    return {
+      data: result,
+      exitCode: result.status === "pass" ? 0 : 1,
+      summary:
+        result.status === "pass"
+          ? `[forge.skill.doc-sync] OK — ${result.filesScanned} files, ${result.markedRegions} marked regions${result.written.length > 0 ? `, rewrote ${result.written.length}` : ""}`
+          : `[forge.skill.doc-sync] ${result.drift.length} drift entries — run with --write to re-render marked regions`,
     };
   };
 
@@ -298,6 +314,33 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         flags: {},
         reads: ["packages/forge/src/registry.ts"],
         execute: skillListWrapper,
+      },
+      {
+        name: "forge.skill.doc-sync",
+        mutatesState: true,
+        contract: "forge",
+        rules: [],
+        description:
+          "Derive skill counts and inventory tables in docs from FORGE_SKILLS. --write re-renders <!-- forge:skills-* --> regions; default --check fails on marked-region drift and stale skill-count claims.",
+        scope: "workspace",
+        acceptsAllFlag: false,
+        flags: {
+          write: {
+            kind: "boolean",
+            description: "Re-render marked regions in place (default: check only).",
+          },
+          files: {
+            kind: "string",
+            description:
+              "Comma-separated doc paths (default: README*.md, AGENTS.md, docs/**/*.md minus record trees).",
+          },
+          root: { kind: "string", description: "Package root to scan (default: workspace root)." },
+        },
+        reads: ["README*.md", "AGENTS.md", "docs/**/*.md", "src/registry.ts"],
+        writes: ["README*.md", "AGENTS.md", "docs/**/*.md"],
+        generates: [],
+        cacheable: false,
+        execute: skillDocSyncWrapper,
       },
       {
         name: "forge.port.validate",
@@ -1199,9 +1242,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           let regenSkipped: string[] = [];
           let regenExcluded: Array<{ command: string; reason: string }> = [];
           let regenFailures: Array<{ command: string; error: string }> = [];
-          const { shouldRunArchiveRegen, runArchiveRegen, stageMovedPairs } = await import(
-            "./archive-regen.ts"
-          );
+          const { shouldRunArchiveRegen, runArchiveRegen, stageMovedPairs } =
+            await import("./archive-regen.ts");
           if (shouldRunArchiveRegen(dryRun, totalMoved)) {
             const movedPaths = new Set<string>();
             for (const data of Object.values(results)) {
@@ -1216,7 +1258,10 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 }
               }
             }
-            const regen = await runArchiveRegen({ movedPaths: [...movedPaths], context: routedContext });
+            const regen = await runArchiveRegen({
+              movedPaths: [...movedPaths],
+              context: routedContext,
+            });
             regenerated = regen.regenerated;
             regenFailures = regen.failures;
             regenSkipped = regen.skipped;
@@ -1274,9 +1319,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             } else if (staged.staged > 0) {
               stagedMovePairs = staged.staged;
               if (outputFormat === "pretty") {
-                logger.info(
-                  `  docs.archive: staged ${staged.staged} move path(s) (both sides)`,
-                );
+                logger.info(`  docs.archive: staged ${staged.staged} move path(s) (both sides)`);
               }
             }
           }
