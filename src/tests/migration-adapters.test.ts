@@ -237,7 +237,7 @@ test("migrate skips forge-protected files", async () => {
   expect(existsSync(join(appDir, "docs", "rfcs", "rfc-0001.md"))).toBe(false);
 });
 
-test("migrate copies untracked/git-ignored files like .env to apps/<appName>/", async () => {
+test("migrate blocks secret-looking files by default (no git, no allowedPaths)", async () => {
   const sourceDir = join(tempDir, "source");
   const targetDir = join(tempDir, "target");
 
@@ -256,14 +256,82 @@ test("migrate copies untracked/git-ignored files like .env to apps/<appName>/", 
   const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
   const result = nodeTypescriptPnpmAdapter.migrate(sourceDir, targetDir, analysis);
 
-  expect(result.filesCopied).toContain(".env");
-  expect(result.filesCopied).toContain(".env.local");
+  // Secrets are excluded by default — the operator did not opt in.
+  expect(result.filesSkipped).toContain(".env");
+  expect(result.filesSkipped).toContain(".env.local");
   expect(result.filesCopied).toContain(".gitignore");
 
   const appDir = join(targetDir, "apps", "test-app");
-  expect(existsSync(join(appDir, ".env"))).toBe(true);
-  expect(existsSync(join(appDir, ".env.local"))).toBe(true);
+  expect(existsSync(join(appDir, ".env"))).toBe(false);
+  expect(existsSync(join(appDir, ".env.local"))).toBe(false);
   expect(existsSync(join(appDir, ".gitignore"))).toBe(true);
+});
+
+test("migrate copies secrets only when operator allows them via allowedPaths", async () => {
+  const sourceDir = join(tempDir, "source");
+  const targetDir = join(tempDir, "target");
+
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(targetDir, { recursive: true });
+
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test-app" }));
+  await writeFile(join(sourceDir, "tsconfig.json"), "{}");
+  await writeFile(join(sourceDir, "pnpm-lock.yaml"), "");
+  await writeFile(join(sourceDir, ".env"), "SECRET=hello");
+  await writeFile(join(sourceDir, ".env.local"), "API_KEY=secret");
+  await writeFile(join(sourceDir, ".gitignore"), ".env\n.env.local\n");
+
+  const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
+  // Operator approved .env but declined .env.local.
+  const result = nodeTypescriptPnpmAdapter.migrate(sourceDir, targetDir, analysis, {
+    allowedPaths: [".env"],
+  });
+
+  expect(result.filesCopied).toContain(".env");
+  expect(result.filesSkipped).toContain(".env.local");
+
+  const appDir = join(targetDir, "apps", "test-app");
+  expect(existsSync(join(appDir, ".env"))).toBe(true);
+  expect(existsSync(join(appDir, ".env.local"))).toBe(false);
+});
+
+test("migrate honors operator refusal for git-ignored categories (git source)", async () => {
+  const sourceDir = join(tempDir, "source");
+  const targetDir = join(tempDir, "target");
+
+  await mkdir(sourceDir, { recursive: true });
+  await mkdir(targetDir, { recursive: true });
+  await mkdir(join(sourceDir, "data"), { recursive: true });
+
+  await writeFile(join(sourceDir, "package.json"), JSON.stringify({ name: "test-app" }));
+  await writeFile(join(sourceDir, "tsconfig.json"), "{}");
+  await writeFile(join(sourceDir, "pnpm-lock.yaml"), "");
+  await writeFile(join(sourceDir, ".env"), "SECRET=hello");
+  await writeFile(join(sourceDir, "data", "dump.db"), "binary-db");
+  await writeFile(join(sourceDir, ".gitignore"), ".env\ndata/\n");
+
+  const { execSync } = await import("node:child_process");
+  execSync("git init", { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.email "test@test.com"', { cwd: sourceDir, stdio: "pipe" });
+  execSync('git config user.name "Test"', { cwd: sourceDir, stdio: "pipe" });
+  execSync("git add .gitignore package.json tsconfig.json pnpm-lock.yaml", {
+    cwd: sourceDir,
+    stdio: "pipe",
+  });
+  execSync("git commit -m initial", { cwd: sourceDir, stdio: "pipe" });
+
+  // Operator declined the config/secrets category but approved the data dir.
+  const analysis = nodeTypescriptPnpmAdapter.analyze(sourceDir);
+  const result = nodeTypescriptPnpmAdapter.migrate(sourceDir, targetDir, analysis, {
+    allowedPaths: ["data"],
+  });
+
+  expect(result.filesSkipped).toContain(".env");
+  expect(result.filesCopied).toContain("data/dump.db");
+
+  const appDir = join(targetDir, "apps", "test-app");
+  expect(existsSync(join(appDir, ".env"))).toBe(false);
+  expect(existsSync(join(appDir, "data", "dump.db"))).toBe(true);
 });
 
 test("migrate excludes .git directory from copy", async () => {

@@ -15,8 +15,15 @@
 
 import * as fs from "../../utils/sync-fs.ts";
 import path from "node:path";
-import type { MigrationAdapter, AdapterAnalysis, MigrationResult, Conflict } from "../types.ts";
-import { FORGE_PROTECTED_PATHS, DEFAULT_EXCLUDE_PATTERNS } from "../types.ts";
+import type {
+  MigrationAdapter,
+  AdapterAnalysis,
+  MigrationResult,
+  Conflict,
+  MigrateOptions,
+} from "../types.ts";
+import { FORGE_PROTECTED_PATHS, DEFAULT_EXCLUDE_PATTERNS, isPathExcluded } from "../types.ts";
+import { collectMigrationBlockedPaths } from "../ignored-files.ts";
 import { runPostSetup } from "../git-utils.ts";
 
 interface PackageJson {
@@ -76,17 +83,24 @@ export const phaserPnpmAdapter: MigrationAdapter = {
     };
   },
 
-  migrate(sourceDir: string, targetDir: string, analysis: AdapterAnalysis): MigrationResult {
+  migrate(
+    sourceDir: string,
+    targetDir: string,
+    analysis: AdapterAnalysis,
+    options?: MigrateOptions,
+  ): MigrationResult {
     const destDir = path.join(targetDir, analysis.placement, analysis.appName);
     const filesCopied: string[] = [];
     const filesSkipped: string[] = [];
     const conflicts: Conflict[] = [];
+    const blockedPaths = collectMigrationBlockedPaths(sourceDir, options?.allowedPaths);
 
     copyDirectory(
       sourceDir,
       destDir,
       sourceDir,
       analysis.excludePatterns,
+      blockedPaths,
       filesCopied,
       filesSkipped,
       conflicts,
@@ -140,6 +154,7 @@ function copyDirectory(
   dest: string,
   rootSrc: string,
   excludePatterns: string[],
+  blockedPaths: ReadonlySet<string>,
   filesCopied: string[],
   filesSkipped: string[],
   conflicts: Conflict[],
@@ -157,12 +172,13 @@ function copyDirectory(
     const relPath = path.relative(rootSrc, srcPath).replace(/\\/g, "/");
 
     if (entry.isDirectory()) {
-      if (isExcluded(relPath, excludePatterns)) continue;
+      if (isExcluded(relPath, excludePatterns) || isPathExcluded(relPath, blockedPaths)) continue;
       copyDirectory(
         srcPath,
         destPath,
         rootSrc,
         excludePatterns,
+        blockedPaths,
         filesCopied,
         filesSkipped,
         conflicts,
@@ -170,7 +186,7 @@ function copyDirectory(
     } else if (entry.isFile()) {
       if (isExcluded(relPath, excludePatterns)) continue;
 
-      if (isForgeProtected(relPath)) {
+      if (isForgeProtected(relPath) || isPathExcluded(relPath, blockedPaths)) {
         filesSkipped.push(relPath);
         continue;
       }

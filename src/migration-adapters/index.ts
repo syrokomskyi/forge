@@ -13,12 +13,28 @@ Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PU
 </CHANGE_SUMMARY>
 */
 
-export type { MigrationAdapter, AdapterAnalysis, MigrationResult, Conflict } from "./types.ts";
+export type {
+  MigrationAdapter,
+  AdapterAnalysis,
+  MigrationResult,
+  Conflict,
+  MigrateOptions,
+} from "./types.ts";
 
-export { FORGE_PROTECTED_PATHS, DEFAULT_EXCLUDE_PATTERNS } from "./types.ts";
+export {
+  FORGE_PROTECTED_PATHS,
+  DEFAULT_EXCLUDE_PATTERNS,
+  normalizeRelPath,
+  isPathExcluded,
+} from "./types.ts";
 
 export { nodeTypescriptPnpmAdapter } from "./node-typescript-pnpm/index.ts";
 export { phaserPnpmAdapter } from "./phaser-pnpm/index.ts";
 export { getAdapters, detectAdapter, detectAdapters } from "./registry.ts";
-export { discoverIgnoredFiles, formatSize } from "./ignored-files.ts";
+export {
+  discoverIgnoredFiles,
+  discoverSensitiveFiles,
+  collectMigrationBlockedPaths,
+  formatSize,
+} from "./ignored-files.ts";
 export type { IgnoredFileCategory, IgnoredFileCategoryId } from "./ignored-files.ts";

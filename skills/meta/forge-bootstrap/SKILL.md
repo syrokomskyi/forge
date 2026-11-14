@@ -48,15 +48,15 @@ Interactive skill for configuring a freshly created forge project. Runs after `f
 - The skill never skips the auto-doctor step — it runs internally, not as a suggested operator action.
 - The skill never skips the silent auto-ADR step — the ADR is created, not suggested, for both greenfield and transplant.
 - The skill never copies the `.git` directory directly — git history transfer uses `git format-patch` + `git am` only.
-- The skill always transfers untracked and git-ignored files (e.g. `.env`, `.env.local`, secret config files, local certificates, input data, runtime state) from the source project — these are necessary for the project to work immediately after onboarding. The `migrate()` adapter copies all files on disk, not just git-tracked files. Only build artifacts (`node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`), `.git/`, and forge-protected files are excluded.
-- The skill always offers the operator an interactive selection of git-ignored files before copying them — the operator chooses which categories to transfer (config, data, runtime-state, cache, other). Config files (`.env`, secrets, certificates) are selected by default and the operator must explicitly opt out. The operator never loses files from their previous project without being asked.
+- The skill transfers the operator's files needed for the project to work immediately after onboarding, but secrets are opt-in: git-ignored files and secret-looking files (`.env*`, `*.key`, `*.pem`, certificates) are NEVER copied by `migrate()` unless the operator explicitly approves them. The adapter enforces this in code — `migrate()` blocks every ignored or sensitive path not on the operator's `allowedPaths` list. Only build artifacts (`node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`), `.git/`, and forge-protected files are excluded unconditionally.
+- The skill always offers the operator an interactive selection of git-ignored files BEFORE calling `migrate()` — discovery runs first, the operator's decision is passed into `migrate()` via its `allowedPaths` option. Config/secret files are NOT selected by default — the operator must explicitly opt in to transfer secrets. Other categories (data, runtime-state, cache, other) are selected by default and the operator may opt out. The operator never loses files from their previous project without being asked, and a refusal to copy secrets is honored by the adapter itself, not just by convention.
 - The skill never collects personal data as a separate interview before the first creation moment — personal data emerges naturally from the creative dialogue.
 - `operator-profile.md` is local and private — it is in `.gitignore` and is not committed to the repository. The operator can delete it at any time.
 - Gender is optional — the operator may decline to provide it. If declined, the skill uses gender-neutral addressing and notes the absence in `operator-profile.md`.
 - Form of address defaults to formal if the operator skips the question.
 - The skill never informs the operator about migration, version numbers, or upgrade mechanics — the silent version check in step 0 is invisible to the operator.
 - The skill never asks the operator for permission to migrate — if versions differ, migration runs automatically.
-- The skill always attempts to install RTK (Rust Token Killer) during onboarding — it is a mandatory setup step. If installation fails (network error, no Rust toolchain, permission denied), the skill continues with a note in the welcoming report. The operator can install RTK manually later.
+- The skill offers RTK (Rust Token Killer) as an OPTIONAL optimization after the core setup is complete — it requires explicit operator consent because `rtk init` modifies global AI-assistant settings outside the project directory. If the operator declines, the skill skips RTK entirely without further prompting.
 - The skill never enables aggressive RTK modes (`--ultra-compact`, aggressive `read`) during onboarding — default settings only. The operator can enable aggressive modes later via `~/.config/rtk/config.toml`.
 - The skill always creates `.bak` backups of any config files modified by `rtk init` (e.g. `~/.claude/settings.json.bak`, `~/.windsurf/settings.json.bak`).
 
@@ -167,22 +167,22 @@ The transplant mode performs real code migration via a migration-adapter registr
 1. **Source directory** — ask for an absolute or relative path to the external codebase. Resolve and validate. The source must be outside the current forge project.
 2. **Detect adapter** — iterate the migration-adapter registry, call `detect()` on each adapter against the source directory. If multiple adapters match, ask the operator to choose. If none match, report "no migration adapter detected for this project type" and fall back to the greenfield interview for bindings (no code migration).
 3. **Analyze** — call `analyze()` on the matched adapter. Present: detected stack, proposed bindings (`typecheck`, `test`, `scopedBuild`), placement (`apps/<appName>/`), exclude patterns. The operator confirms or edits.
-4. **Migrate** — call `migrate()` on the matched adapter. Show any file conflicts before copying. The operator confirms. The adapter copies ALL files from the source directory into `apps/<appName>/`, including untracked and git-ignored files (e.g. `.env`, `.env.local`, secret configuration, local certificates, input data, runtime state). Only `node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`, `.git/`, and other build artifacts are excluded. Forge-protected files (`forge.yaml`, `.agents/`, `docs/rfcs/`, `docs/adrs/`, `PREFERENCES.md`) are never overwritten. Untracked files are essential — the project must work immediately after onboarding with minimal manual fixes.
+4. **Migrate** — discovery and the operator's decision come BEFORE copying; the adapter enforces the decision in code.
 
-   4.1. **Discover git-ignored files** — before copying, scan the source project for git-ignored and untracked files using `discoverIgnoredFiles()`. This function runs `git status --ignored --porcelain` in the source directory, categorizes each ignored path, and returns sized categories:
-   - **Configuration & secrets** (`.env`, `.env.local`, `*.key`, `*.pem`, certificates, `.envrc`) — selected by default, operator must explicitly opt out.
+   4.1. **Discover git-ignored and sensitive files** — scan the source project BEFORE calling `migrate()`:
+   - `discoverIgnoredFiles()` runs `git status --ignored --porcelain` in the source directory, categorizes each ignored path, and returns sized categories:
+   - **Configuration & secrets** (`.env`, `.env.local`, `*.key`, `*.pem`, certificates, `.envrc`) — NOT selected by default; the operator must explicitly opt in. Secrets never transfer silently.
    - **Data & inputs** (`.input/`, `input/`, `data/`, `batches/`, `*.db`, `*.ndjson`) — selected by default if total size < 1 GB, otherwise ask the operator.
    - **Runtime state** (`storage/`, `.state/`, `*.log`) — not selected by default, operator must opt in.
    - **Caches** (`.cache/`, `cache/`, `.playwright`, `browser-profile`, `*.tmp`) — not selected by default, operator must opt in.
    - **Other** — any git-ignored file not matching the above categories — not selected by default, operator must opt in.
+   - `discoverSensitiveFiles()` walks the tree and finds secret-looking files (`.env*`, `*.key`, `*.pem`, certificates) even without git metadata — run it when the source has no `.git` (where `discoverIgnoredFiles()` returns nothing). Present any hits as a "Secrets" category with the same opt-in rule.
 
    For each category, present: label, description, file count, total size (formatted), and a few example paths. The operator selects which categories to transfer.
 
-   If `discoverIgnoredFiles()` returns no categories (no `.git` in source, or no ignored files), skip this step entirely — `migrate()` already copies all files on disk.
+   4.2. **Migrate with the operator's decision** — collect `allowedPaths` as the union of `paths` from every category the operator selected (plus individually approved secret paths), then call `migrate(sourceDir, targetDir, analysis, { allowedPaths })`. Show any file conflicts before copying; the operator confirms. The adapter copies all files EXCEPT: build artifacts (`node_modules/`, `dist/`, `.next/`, `.cache/`, `.turbo/`), `.git/`, forge-protected files (`forge.yaml`, `.agents/`, `docs/rfcs/`, `docs/adrs/`, `PREFERENCES.md`), and every ignored or secret-looking path not in `allowedPaths`. Unapproved secrets never reach the target — `collectMigrationBlockedPaths()` enforces this inside the adapter, not by agent discipline. Approved paths are copied by `migrate()` itself — no separate copy step is needed. Blocked paths land in `result.filesSkipped`.
 
-   4.2. **Copy selected ignored files** — after `migrate()` completes, copy the operator-selected git-ignored file categories from the source to `apps/<appName>/`. For each selected category, copy every path in that category from the source to the corresponding location under `apps/<appName>/`. Use `fs.cpSync(src, dest, { recursive: true })` for directories and `fs.copyFileSync` for individual files. Report what was copied (category, file count, total size) in human language.
-
-   4.3. **Verify untracked files** — after all copies complete, verify that essential untracked files (`.env`, `.env.local`, and other dotfiles present in the source) were copied to `apps/<appName>/`. If any are missing, copy them manually from the source. Do not skip this step — missing `.env` files are the most common cause of a non-functional project after onboarding.
+   4.3. **Verify untracked files** — inspect `result.filesSkipped` and the target tree. If files the operator approved are missing, re-run `migrate()` with those paths added to `allowedPaths` — the adapter is idempotent and skips identical existing files. If `filesSkipped` contains sensitive paths the operator never saw, list them and ask whether to transfer any — never copy skipped secrets without explicit opt-in.
 
 5. **Git history transfer** — if the source project has a `.git` directory, ask the operator:
 
@@ -229,11 +229,17 @@ rtk git commit -m "chore: sync Forge skills"
 
 This ensures skills are tracked in version control from the start. The commit includes only `.agents/skills/` — no other files.
 
-### 6.10. RTK setup (token optimization, mandatory)
+### 6.10. RTK setup (token optimization, optional)
 
 RTK (Rust Token Killer) is a CLI proxy that filters and compresses terminal command output before it reaches the LLM context, cutting up to 90% of bash output on common operations. It is installed once per machine and shared across all forge projects.
 
-The skill installs and configures RTK with **default settings only** — no `--ultra-compact`, no aggressive `read` modes. The operator can enable aggressive modes later via `~/.config/rtk/config.toml`.
+RTK is **optional** — it modifies the machine outside the project directory (installs a global binary, runs `rtk init -g` against the operator's AI-assistant settings). The skill MUST ask for explicit consent before doing anything in this step:
+
+> Optional: Forge can set up RTK, a token-optimization proxy for AI-assistant shell commands. This installs a tool on your machine and adjusts your assistant's global settings (a backup is created first). Set it up? (yes/no)
+
+If the operator declines, skip the rest of this step entirely — note "RTK: declined by operator" in the welcoming report and do not prompt again this run.
+
+If the operator consents, the skill installs and configures RTK with **default settings only** — no `--ultra-compact`, no aggressive `read` modes. The operator can enable aggressive modes later via `~/.config/rtk/config.toml`.
 
 #### 6.10.1. Check if RTK is installed
 

@@ -358,7 +358,8 @@
     "test": "vitest run --passWithNoTests",
     "test:coverage": "vitest run --coverage --passWithNoTests",
     "test:watch": "vitest",
-    "test:tarball:node24": "node test-fixtures/node24-consumer/smoke.mjs"
+    "test:tarball:node24": "node test-fixtures/node24-consumer/smoke.mjs",
+    "prepublishOnly": "pnpm run test:tarball:node24"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

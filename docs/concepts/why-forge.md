@@ -12,7 +12,7 @@ Forge keeps AI-assisted development under engineering control. Project rules, ar
 
 **Agents can change. Models can change. IDEs can change. Engineering rules stay with the project.**
 
-Forge is not another AI model or coding agent. It is the project control layer that sits between any AI agent and your repository, ensuring that development follows engineering discipline regardless of which tool you use.
+Forge is not another AI model or coding agent. It is the project control layer that sits between any AI agent and your repository, giving the project mechanical checks and contracts that enforce engineering discipline regardless of which tool you use.
 
 ## How it works
 

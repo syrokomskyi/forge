@@ -67,7 +67,7 @@ Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my 
 
 Replace `[describe your project]` with your idea — a game, a library, a knowledge base, anything. The AI agent installs Forge, scaffolds the project, and — for profiles that ship a runnable surface — sets up a live preview. From there on, you just talk: describe what you want, and the agent builds it. No programming, no terminal, no commands.
 
-This workflow requires an agent with filesystem and command-execution access, a compatible environment (Node.js 24+, pnpm), and permission to install dependencies.
+This workflow requires an agent with filesystem and command-execution access, a compatible environment (Node.js 24.x, pnpm), and permission to install dependencies.
 
 ### After the prompt completes — the Bootstrap skill
 
@@ -286,7 +286,7 @@ Methodology, a worked example, and limitations: [docs/reference/fleet-measuremen
 
 ### One task. One contract. One verified result.
 
-This README is the case study. Version 9.6.1 — including this file — was authored end-to-end by an AI agent under operator direction: the agent rewrote the README, Forge's own commit gate ran scoped checks, the integration gate ran the heavyweight suite, and CI ran lint/typecheck/build/test before `npm publish --provenance`. Every transition produced a verifiable artifact — [release v9.6.1](https://github.com/syrokomskyi/forge/releases/tag/v9.6.1) · [CI runs](https://github.com/syrokomskyi/forge/actions).
+This README is the case study. Version 9.6.2 — including this file — was authored end-to-end by an AI agent under operator direction: the agent rewrote the README, Forge's own commit gate ran scoped checks, the integration gate ran the heavyweight suite, and CI ran lint/typecheck/build/test before `npm publish --provenance`. Every transition produced a verifiable artifact — [release v9.6.2](https://github.com/syrokomskyi/forge/releases/tag/v9.6.2) · [CI runs](https://github.com/syrokomskyi/forge/actions) · [evidence trail](docs/evidence/release-9.6.2.md).
 
 ---
 

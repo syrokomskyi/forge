@@ -22,8 +22,24 @@ export interface MigrationAdapter {
   id: string;
   detect(sourceDir: string): boolean;
   analyze(sourceDir: string): AdapterAnalysis;
-  migrate(sourceDir: string, targetDir: string, analysis: AdapterAnalysis): MigrationResult;
+  migrate(
+    sourceDir: string,
+    targetDir: string,
+    analysis: AdapterAnalysis,
+    options?: MigrateOptions,
+  ): MigrationResult;
   postSetup(sourceDir: string, targetDir: string, analysis: AdapterAnalysis): void;
+}
+
+export interface MigrateOptions {
+  /**
+   * Repo-relative paths the operator explicitly approved for transfer —
+   * the union of `paths` from the `discoverIgnoredFiles()` categories the
+   * operator selected (plus `discoverSensitiveFiles()` hits they opted into).
+   * Every git-ignored or secret-looking path NOT on this list is skipped:
+   * secrets are excluded by default unless the operator explicitly allows them.
+   */
+  allowedPaths?: readonly string[];
 }
 
 export interface AdapterAnalysis {
@@ -70,3 +86,22 @@ export const DEFAULT_EXCLUDE_PATTERNS = [
   ".turbo",
   ".git",
 ] as const;
+
+/** Canonical logical repo-relative path: forward slashes, no `./`, no trailing `/`. */
+export function normalizeRelPath(p: string): string {
+  return p.replace(/\\/g, "/").replace(/^\.\//, "").replace(/\/+$/, "");
+}
+
+/**
+ * Repo-relative paths are logical (forward slashes, no leading `./`, no
+ * trailing `/`). An entry `dir` excludes `dir` itself and everything under
+ * `dir/`.
+ */
+export function isPathExcluded(relPath: string, excluded: ReadonlySet<string>): boolean {
+  if (excluded.size === 0) return false;
+  const normalized = normalizeRelPath(relPath);
+  for (const entry of excluded) {
+    if (normalized === entry || normalized.startsWith(entry + "/")) return true;
+  }
+  return false;
+}

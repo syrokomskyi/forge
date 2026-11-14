@@ -6,6 +6,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [Unreleased]
+
+_External-review hardening: secrets can no longer land in a target project before the operator approves them, the published tarball is smoke-gated, and docs claims now match what the code and workflows actually do._
+
+### Fixed
+
+- **Migration secrets contract (P0)** — `migrate()` previously copied every file on disk, including `.env`/ignored files, BEFORE the operator chose which categories to transfer; a refusal was cosmetic. The adapter now computes a blocked set (`collectMigrationBlockedPaths` = git-ignored paths ∪ secret-pattern files) and skips everything not on the operator's `allowedPaths` — secrets are opt-in in code, not by convention. Applies to both `node-typescript-pnpm` and `phaser-pnpm` adapters.
+- **Tarball smoke test (P0)** — `test-fixtures/node24-consumer/smoke.mjs` hard-failed on a `1.0.0` version literal and was never wired into release flow; it now builds first, checks the packed version against `package.json`, exercises `--version` plus a programmatic `import()`, and runs as `prepublishOnly` so `npm publish` cannot ship a broken tarball.
+- **Release evidence claim (P0)** — the "One task. One contract." section referenced v9.6.1 although the section itself first shipped in 9.6.2; it now cites 9.6.2 and links `docs/evidence/release-9.6.2.md`, a stage-by-stage trail (commit gate → integrate → cut → extract → CI → publish → provenance → registry) that separates what the artifacts prove from what they don't.
+- **CONTRIBUTING.md vs AGENTS.md contradiction (P0)** — CONTRIBUTING told visitors not to open PRs while AGENTS.md welcomed them. CONTRIBUTING now documents the actual model: issues and PRs are accepted here, and a maintainer ports approved patches into the upstream monorepo with credit.
+- **RTK global side-effects (P1)** — `forge-bootstrap` installed RTK as a mandatory step and ran `rtk init -g` against the operator's global AI-assistant settings. RTK is now an optional post-setup step requiring explicit consent; `existing-project.md` states the "nothing outside the project directory" boundary honestly.
+- **Node version wording (P1)** — docs said "Node.js 24+" while `engines` is `>=24 <25`; docs now say Node.js 24.x.
+- **Transplant wording (P1)** — `existing-project.md` claimed files are "moved"; the adapter copies (source tree untouched), so the guide says so.
+- **why-forge.md overclaim (P1)** — "ensuring that development follows engineering discipline" overstated the verification model; scoped to "mechanical checks and contracts that enforce" it.
+- **`cli.md` dead link (P2)** — pointed at `docs/command-manifest.generated.yaml`, which is monorepo-internal and absent from the published repo.
+- **`forge-yaml.md` stale example (P2)** — `syncedVersion: 4.1.6` replaced by a current, commented example.
+
+### Added
+
+- **`docs/evidence/release-9.6.2.md`** — the verifiable release trail and its honest limits.
+- **`docs/grants/devin-startups.md`** — public grant proposal brief: problem, solution, traction, milestones, metrics, and explicit limits.
+- **Devin reference-experiment protocol** in `docs/integrations/devin.md` — a planned, reproducible violation-detection scenario, marked as planned rather than claimed as done.
+- **`MigrateOptions`, `discoverSensitiveFiles`, `collectMigrationBlockedPaths`, `isPathExcluded`, `normalizeRelPath`** in `src/migration-adapters/`.
+
+### Removed
+
+- **`packages/forge/.github/workflows/ci.yml`** — a stale package-level workflow superseded by the generated standalone CI; its soft-fail steps (`|| true` on lint/test, `--ignore-scripts` on publish) would have become live if the generated workflow were ever disabled.
+
 ## [9.6.2] — 2026-11-14
 
 _Documentation conformance pass — counts synced to the real registry, the programmatic API rewritten against the verified surface, new integration and verification docs._
