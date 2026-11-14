@@ -21,6 +21,10 @@ _Documentation conformance pass — counts synced to the real registry, the prog
 
 - **Docs consistency**: skill counts corrected to 41 (34 fo + 4 shared + 3 meta) across README/guides; `upgrading.md` now documents the manifest-based stale-dir prune instead of claiming upgrade never deletes; `cli.md` gains `codebase.measure`; `existing-project.md` gains a safety checklist; the live-preview claim and fleet table are scoped to what they actually guarantee.
 - **`programmatic-api.md` rewritten** — module table synced to the exported modules; the registry placeholder replaced by a compiling example verified against `createForgeRfcModule`/`ForgeRuntimeContext`.
+- **README claim scoping** — "same governance" → "one project contract, multiple agents"; "safe to trust at scale" → "easier to inspect and verify"; "every commit" → "every change merged to main"; bootstrap requirements stated; the embedded API example replaced by the verified compiling snippet.
+- **"One task. One contract. One verified result."** — the v9.6.1 release itself as the public end-to-end case study (agent-authored, gate-verified, CI-published).
+- **`AGENTS.md` skill count synced** to the real `skills/` registry (34 fo + 4 shared + 3 meta).
+- **Ukrainian README edited for idiomatic phrasing** per external review.
 
 ## [9.6.1] — 2026-11-14
 
