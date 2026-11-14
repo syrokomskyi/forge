@@ -25,6 +25,28 @@ append-only pre-lock verdict records at
 <CHANGE_SUMMARY>
   <item>RFC-1589: pre-lock verdict store + locked-delta selection mirror + progress guarantee inputs</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -95,6 +117,7 @@ const DELTA_STEP_SPECS: ReadonlyArray<{
   { id: "scoped-lint", inputDomains: ["packages/**"] },
   { id: "test-depth", command: "test.depth.lint" },
   { id: "rfc-validate", command: "rfc.validate" },
+  { id: "probe-ratchet", command: "gate.probe.catalog" },
   { id: "cold-e2e", inputDomains: ["packages/**", "services/**", "integrations/**"] },
 ];
 

@@ -14,6 +14,28 @@ The gate is a fake hooks/integration-gate.sh recording lock state and env
 <CHANGE_SUMMARY>
   <item>RFC-1589: pre-lock integration gate — Phase A/B, locked-delta selection, progress guarantee</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -59,6 +81,9 @@ async function governedRepo(): Promise<string> {
       "    writes: []",
       "  - name: rfc.validate",
       '    reads: ["docs/rfcs/**"]',
+      "    writes: []",
+      "  - name: gate.probe.catalog",
+      '    reads: ["docs/gate-probes/**", "packages/**/*.ts"]',
       "    writes: []",
       "",
     ].join("\n"),
@@ -205,7 +230,7 @@ describe("flow.integrate pre-lock gate (RFC-1589)", () => {
       "open-missions",
       "rfc-validate",
     ]);
-    expect(data.deltaSelection?.total).toBe(9);
+    expect(data.deltaSelection?.total).toBe(10);
     const lines = await logLines(log);
     expect(lines).toHaveLength(2);
     expect(lines[0]).toContain("mode=pre-lock");

@@ -20,11 +20,32 @@ producer-tail tolerated).
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1474: check-execution counters — close emission-shape extraction class (round-3 review)</item>
   <item>RFC-1474: check-execution counters — null-doc inventory fail-closed + token boundaries (round-4 review)</item>
   <item>RFC-1485: sweep compass headers — forge-os-checks</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <history>RFC-1473, RFC-1474</history>
 </CHANGE_SUMMARY>
 */
@@ -45,6 +66,15 @@ import {
 } from "./counters-journal.ts";
 import { loadFrictionsTolerant } from "../../friction/store.ts";
 import type { FrictionEntry } from "../../friction/types.ts";
+import {
+  collectFixtureBindings,
+  ruleLiveness,
+  type RuleLiveness,
+} from "../../gate/handlers/liveness.ts";
+import {
+  lastRunStatusByRule,
+  readProbeRunsJournal,
+} from "../../gate/handlers/probe-runs-journal.ts";
 
 export interface ContributionRecord {
   ruleId: string;
@@ -57,6 +87,8 @@ export interface ContributionRecord {
   escapeCount: number | null;
   verdict: "earning" | "silent" | "redundant" | "guard";
   action?: "probe" | "scope" | "retire-rfc" | "keep";
+  /** RFC-1592: fixture | fired | none — the liveness ratchet's evidence join. */
+  liveness: RuleLiveness;
 }
 
 export interface VariantCandidate {
@@ -295,6 +327,11 @@ export async function runContributionReport(
     ),
   ].filter((c) => !Object.keys(contractMappings).includes(c));
 
+  // RFC-1592 liveness inputs — fixture bindings + last probe run per rule.
+  const fixtureBindings = await collectFixtureBindings(root, io);
+  const boundRules = new Set(fixtureBindings.map((b) => b.rule));
+  const lastProbeRuns = lastRunStatusByRule((await readProbeRunsJournal(root)).records);
+
   const computeView = (source: readonly CheckCounterRecord[]) => {
     const ws = computeWindowStats(source);
     const effectiveIds = ws.evaluated.filter((id) => inventoryJoinIds.has(id));
@@ -351,6 +388,12 @@ export async function runContributionReport(
         escapeCount,
         verdict,
         action,
+        liveness: ruleLiveness({
+          bound: boundRules.has(r.id),
+          lastRun: lastProbeRuns.get(r.id),
+          emitted: cs.emitted > 0,
+          coverage: ws.coverage,
+        }),
       });
     }
     const metrics = {
