@@ -47,3 +47,17 @@ The important property: Forge's checks run outside the agent's reasoning. A PR p
 - Does not guarantee semantic correctness — validators check declared conditions only.
 - Does not enforce anything by itself. A validator that CI does not run is a report, not a gate — wire `forge` checks into CI or hooks for enforcement. See [the verification model](../concepts/verification-model.md).
 - Does not require or provide a hosted service — everything is files in the repo.
+
+## Reference experiment (planned)
+
+The claim worth proving is not "Forge works" but "Forge's checks catch what the agent's self-assessment misses." The experiment we intend to publish:
+
+1. **Setup** — a clean TypeScript repo with Forge installed; versions, commit SHA and environment pinned.
+2. **Task** — Devin receives a change to an API module with explicit acceptance criteria and one architectural constraint.
+3. **Violation** — one candidate change breaks the declared contract; a Forge validator must detect it independently of Devin's self-report.
+4. **Correction** — Devin receives the validator output, fixes the code, and CI reruns green.
+5. **Evidence** — task text, commits, diffs, validator logs, and run cost are published for independent reproduction.
+
+Success criterion: a third party can repeat the scenario and see which contract prevented the incorrect change from being accepted. A follow-up comparison (same task class, Devin with vs. without Forge) measures accepted-change rate, contract violations, manual rework and cost per accepted task — not impressions.
+
+Status: **planned, not yet run.** This section will link the published artifacts when the experiment lands; until then it describes the protocol, not a result. See also the [grant proposal](../grants/devin-startups.md) where this experiment is a funded milestone.

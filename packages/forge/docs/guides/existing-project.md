@@ -18,7 +18,7 @@ Transplanting an existing codebase into Forge is an interactive, AI-guided proce
    The skill will:
    - Ask for the path to your existing codebase
    - Detect the stack automatically (Phaser, Godot, TypeScript, etc.)
-   - Migrate all files (including `.env` and git-ignored files)
+   - Migrate all files, asking first which git-ignored categories to transfer — secrets (`.env`, `*.key`, `*.pem`) are opt-in only and never copied without explicit approval
    - Optionally transfer git history
    - Verify the build
 
@@ -30,8 +30,8 @@ Transplanting an existing codebase into Forge is an interactive, AI-guided proce
 
 ## What happens during transplant
 
-- Your existing files are moved into the Forge project structure
-- Hidden files (`.env`, `.gitignore`) are preserved
+- Your existing files are copied into the Forge project structure (the source directory is not modified)
+- Hidden files (`.env`, `.gitignore`) are preserved only when you approve them — git-ignored and secret-looking files transfer on explicit opt-in
 - Git history is optionally transferred
 - The matching stack profile is detected from marker files (`phaser.config.*`, `project.godot`, etc.) <!-- pkg-health-12: code/config path, not a command -->
 - `AGENTS.md` is generated from `forge.yaml`
@@ -43,8 +43,8 @@ Before transplanting:
 
 - **Commit or stash all work in the source project** — a clean source tree makes the post-transplant diff reviewable and recovery trivial.
 - **Keep a backup of the source directory** until the transplanted project verifies green (`forge doctor` + your build). The transplant moves files; the backup is the rollback.
-- **Audit secrets before migrating.** `.env` and git-ignored files are migrated by design — afterwards, confirm secrets landed only in git-ignored paths of the target and rotate any credential that had ever been committed to history.
+- **Audit secrets before migrating.** The migration adapter blocks git-ignored and secret-looking files (`.env`, `*.key`, `*.pem`, certificates) unless you explicitly allow them during onboarding — confirm any secret you approve lands only in git-ignored paths of the target, and rotate any credential that had ever been committed to history.
 - **Review the diff before your first commit** — `git status` and `git diff` show exactly what the skill added (`forge.yaml`, `AGENTS.md`, `.agents/skills/`, profile config) versus what it left untouched.
 - **Prefer skipping git history** for projects with secrets in past commits — history transfer is optional, not required.
 
-Recovery: if verification fails, restore from the backup and re-run the bootstrap — the skill does not modify anything outside the target project directory.
+Recovery: if verification fails, restore from the backup and re-run the bootstrap. The skill does not modify anything outside the target project directory — optional global tooling (RTK token optimization) is offered only with your explicit consent and backs up any config it touches.

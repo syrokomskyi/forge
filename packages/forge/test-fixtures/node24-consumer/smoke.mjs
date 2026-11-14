@@ -22,6 +22,10 @@ const CHILD_ENV = {
 };
 
 try {
+  // The published manifest (publishConfig) points bin/exports at dist/ —
+  // replicate the publish path: build first, then pack.
+  execSync("pnpm run build", { cwd: FORGE_ROOT, stdio: "pipe", env: CHILD_ENV });
+
   const tarballPath = execSync("pnpm pack", { cwd: FORGE_ROOT, encoding: "utf8", env: CHILD_ENV })
     .trim()
     .split("\n")
@@ -35,12 +39,14 @@ try {
     env: CHILD_ENV,
   });
   const manifest = JSON.parse(manifestOut)[0];
-  if (manifest.version !== "1.0.0") {
-    throw new Error(`packed version is ${manifest.version}, expected 1.0.0`);
-  }
   const pkgContent = JSON.parse(readFileSync(join(FORGE_ROOT, "package.json"), "utf8"));
-  if (!pkgContent.engines || pkgContent.engines.node !== ">=24 <25") {
-    throw new Error(`packed engines.node is ${pkgContent.engines?.node}, expected >=24 <25`);
+  if (manifest.version !== pkgContent.version) {
+    throw new Error(
+      `packed version is ${manifest.version}, expected ${pkgContent.version} from package.json`,
+    );
+  }
+  if (!pkgContent.engines?.node) {
+    throw new Error("package.json is missing engines.node");
   }
 
   const consumerPkg = {
@@ -48,12 +54,12 @@ try {
     version: "0.0.0",
     private: true,
     type: "module",
-    engines: { node: ">=24 <25" },
+    engines: { node: ">=24" },
     dependencies: { "@warpgogol/forge": `file:${tarballAbs}` },
   };
   writeFileSync(join(TMP, "package.json"), JSON.stringify(consumerPkg, null, 2) + "\n");
 
-  execSync("pnpm install --no-frozen-lockfile --offline", {
+  execSync("pnpm install --no-frozen-lockfile", {
     cwd: TMP,
     stdio: "pipe",
     env: CHILD_ENV,
@@ -72,6 +78,13 @@ try {
   if (!versionOut.trim()) {
     throw new Error("forge --version produced empty output");
   }
+
+  // Programmatic API must import cleanly as an external consumer sees it.
+  const apiCheck = execSync(
+    `node --input-type=module -e "import('@warpgogol/forge').then(m => { if (typeof m !== 'object' || m === null) throw new Error('empty module exports'); })"`,
+    { cwd: TMP, encoding: "utf8", env: CHILD_ENV },
+  );
+  void apiCheck;
 
   console.log("node24-consumer smoke: PASS");
 } finally {

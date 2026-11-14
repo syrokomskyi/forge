@@ -19,6 +19,7 @@ Sweep batch 4: 73 Compass headers on headerless engine files (certification, com
 import * as fs from "../utils/sync-fs.ts";
 import path from "node:path";
 import { execFileSync } from "../utils/sync-fs.ts";
+import { DEFAULT_EXCLUDE_PATTERNS, normalizeRelPath, isPathExcluded } from "./types.ts";
 
 export type IgnoredFileCategoryId = "config" | "data" | "runtime-state" | "cache" | "other";
 
@@ -223,4 +224,67 @@ export function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+/**
+ * Walk the source tree and return repo-relative file paths matching the
+ * configuration/secrets matchers — `.env*`, `*.key`, `*.pem`, certificates,
+ * `.envrc`. Works without git metadata, so it is the safety net for sources
+ * where `discoverIgnoredFiles()` returns nothing (no `.git`). Build-artifact
+ * directories (`excludePatterns`) and forge-protected paths are not scanned.
+ */
+export function discoverSensitiveFiles(
+  sourceDir: string,
+  excludePatterns: readonly string[],
+): string[] {
+  const hits: string[] = [];
+  const walk = (dir: string): void => {
+    let entries;
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      const relPath = normalizeRelPath(path.relative(sourceDir, fullPath));
+      if (entry.isDirectory()) {
+        if (excludePatterns.some((p) => entry.name === p)) continue;
+        if (isForgeProtectedDir(relPath)) continue;
+        walk(fullPath);
+      } else if (entry.isFile()) {
+        if (CONFIG_MATCHERS.some((m) => m(relPath))) hits.push(relPath);
+      }
+    }
+  };
+  walk(sourceDir);
+  return hits;
+}
+
+function isForgeProtectedDir(relPath: string): boolean {
+  return relPath === ".agents" || relPath === "docs/rfcs" || relPath === "docs/adrs";
+}
+
+/**
+ * The paths `migrate()` must skip: every git-ignored path plus every
+ * secret-looking file, minus the operator's explicit allowlist. Secrets are
+ * therefore excluded by default — they transfer only when the operator opts in.
+ */
+export function collectMigrationBlockedPaths(
+  sourceDir: string,
+  allowedPaths?: readonly string[],
+): Set<string> {
+  const allowed = new Set((allowedPaths ?? []).map(normalizeRelPath));
+  const blocked = new Set<string>();
+  const consider = (relPath: string): void => {
+    const normalized = normalizeRelPath(relPath);
+    if (!isPathExcluded(normalized, allowed)) blocked.add(normalized);
+  };
+  for (const cat of discoverIgnoredFiles(sourceDir)) {
+    for (const p of cat.paths) consider(p);
+  }
+  for (const p of discoverSensitiveFiles(sourceDir, DEFAULT_EXCLUDE_PATTERNS)) {
+    consider(p);
+  }
+  return blocked;
 }

@@ -26,7 +26,7 @@ skillPacks:
   - prefix: wg
     dir: packages/my-skills/skills
 plugins: []
-syncedVersion: 4.1.6
+syncedVersion: "9.6.2" # written by forge upgrade — tracks the synced Forge version
 ```
 
 ## project
