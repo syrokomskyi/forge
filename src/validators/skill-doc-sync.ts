@@ -18,6 +18,20 @@ outside markers that contradict the registry.
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>RFC-1585: initial implementation — markers, render, drift check, claim lint, doc surface discovery.</item>
+  <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
+
+Independent fo-review (isolation: subagent) found: empty marker pairs lost
+their open tag on --write, multi-line regions collapsed line numbers, a
+leading fence injected a phantom line, --check was undocumented-undeclared,
+and --write exited 1 on a successful heal. Fixes: open-marker capture,
+newline-preserving placeholder, empty-chunk skip, check flag, healedRegions
+split (write always exits 0), dryRun/io threading, byte-exact inventory
+compare on the prettier-stable canonical form, CHECK-13 delegated through
+commandRegistry/invoke so the registry-integrity scan stays within its
+slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
+extended, two real stale claims corrected, profile templates ship empty
+markers hydrated at scaffold write time. RFC amended to implemented
+grammar/result/exclusions; command moved to commands.added.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +40,7 @@ import * as sfs from "../utils/sync-fs.ts";
 import { writeFileIfChanged } from "../utils/fs-idempotent.ts";
 import { FORGE_SKILLS } from "../registry.ts";
 import type { ForgeSkillEntry } from "../registry.ts";
+import type { WorkspaceIO } from "../types.ts";
 
 // ─── Markers ────────────────────────────────────────────────────────────────
 
@@ -103,8 +118,12 @@ export interface SkillDocSyncResult {
   status: "pass" | "fail";
   filesScanned: number;
   markedRegions: number;
+  /** Residual drift — unhealed claims in check mode, all drift in write mode. */
   drift: SkillDocDrift[];
+  /** Marked regions healed by --write. */
+  healedRegions: SkillDocDrift[];
   written: string[];
+  dryRun: boolean;
 }
 
 // ─── Claim grammar (unmarked regions only) ──────────────────────────────────
@@ -122,6 +141,8 @@ const FENCE_RE = /^```/;
 interface LintOutcome {
   drift: SkillDocDrift[];
   markedRegions: number;
+  /** Marked regions --write just healed (not residual drift). */
+  healedRegions: SkillDocDrift[];
   rewritten?: string;
 }
 
@@ -135,6 +156,7 @@ export function lintSkillDocContent(
   const counts = skillCounts(skills);
   const drift: SkillDocDrift[] = [];
   let markedRegions = 0;
+  let healedRegions: SkillDocDrift[] = [];
 
   // 1. Marked regions — compare or rewrite. Fenced code blocks are doc
   // examples, never live regions — regions are scanned per unfenced chunk.
@@ -142,18 +164,23 @@ export function lintSkillDocContent(
   {
     let fenced = false;
     let buf: string[] = [];
+    const flush = (): void => {
+      if (buf.length > 0) chunks.push({ text: buf.join("\n"), fenced });
+      buf = [];
+    };
     for (const l of content.split("\n")) {
       if (FENCE_RE.test(l.trimStart())) {
-        chunks.push({ text: buf.join("\n"), fenced });
-        buf = [l];
+        flush();
+        buf.push(l);
         fenced = !fenced;
         continue;
       }
       buf.push(l);
     }
-    chunks.push({ text: buf.join("\n"), fenced });
+    flush();
   }
 
+  const healed: SkillDocDrift[] = [];
   const processRegion = (
     whole: string,
     kind: string,
@@ -166,7 +193,7 @@ export function lintSkillDocContent(
     const line = lineBase + chunkText.slice(0, offset).split("\n").length - 1;
     const marker = kind === "skills-inventory" ? "inventory" : "count";
     const rendered = renderRegion(marker as SkillDocMarkerKind, skills);
-    if (marker === "inventory" && !inner.includes("\n") && !whole.includes("\n")) {
+    if (marker === "inventory" && !whole.includes("\n")) {
       // Inline inventory marker would corrupt layout — flag, never rewrite.
       drift.push({
         file: relFile,
@@ -177,18 +204,25 @@ export function lintSkillDocContent(
       });
       return whole;
     }
-    const expectedInner = marker === "count" ? rendered : `\n${rendered}\n`;
-    if (inner.trim() !== rendered.trim()) {
-      drift.push({
+    // Inventory's canonical inner keeps the blank lines prettier inserts
+    // around HTML comment blocks — byte-exact AND format-stable.
+    const expectedInner = marker === "count" ? rendered : `\n\n${rendered}\n\n`;
+    // Count regions tolerate padding (prettier aligns table cells); inventory
+    // compares byte-exact — whitespace drift inside a generated block is real drift.
+    const stale = marker === "count" ? inner.trim() !== rendered : inner !== expectedInner;
+    if (stale) {
+      const entry: SkillDocDrift = {
         file: relFile,
         line,
         kind: "marked-region",
         expected: rendered.split("\n")[0]!,
         found: inner.trim().split("\n")[0]!.slice(0, 80) || "(empty)",
-      });
+      };
+      (write ? healed : drift).push(entry);
     }
-    if (!write) return whole;
-    const open = whole.slice(0, whole.indexOf(inner));
+    if (!write || !stale) return whole;
+    const openEnd = whole.indexOf("-->");
+    const open = openEnd === -1 ? whole : whole.slice(0, openEnd + 3);
     const close = `<!-- /forge:${kind} -->`;
     return `${open}${expectedInner}${close}`;
   };
@@ -208,10 +242,13 @@ export function lintSkillDocContent(
     lineBase += chunk.text.split("\n").length;
   }
   const rewritten = rewrittenParts.join("\n");
+  healedRegions = healed;
 
-  // 2. Claim lint — only outside marked regions and fenced blocks.
+  // 2. Claim lint — only outside marked regions and fenced blocks. Regions
+  // collapse to whitespace that preserves their newline count — a multi-line
+  // region must not shift the line numbers of claims that follow it.
   const body = (write ? rewritten : content)
-    .replace(REGION_RE, " ")
+    .replace(REGION_RE, (m) => m.replace(/[^\n]/g, " "))
     .split("\n")
     .map((l, i) => ({ line: i + 1, text: l }));
   let inFence = false;
@@ -259,7 +296,7 @@ export function lintSkillDocContent(
     }
   }
 
-  return { drift, markedRegions, rewritten: write ? rewritten : undefined };
+  return { drift, markedRegions, healedRegions, rewritten: write ? rewritten : undefined };
 }
 
 // ─── Doc surface ────────────────────────────────────────────────────────────
@@ -268,10 +305,16 @@ export function lintSkillDocContent(
 export const SKILL_DOC_SURFACE_EXCLUDE_RES = [
   /(^|\/)CHANGELOG\.md$/,
   /\.generated\.md$/,
-  /(^|\/)docs\/(rfcs|adrs|audits|reviews|plans|queues|archive)\//,
+  /(^|\/)docs\/(rfcs|adrs|audits|reviews|plans|queues|archive|sessions|specs|historical|summits|metrics|explorations|evidence|outbox|frictions|decisions)\//,
+  /(^|\/)lagebild-archive\//,
 ];
 
-/** Collect the claim-lint surface under a package root: README*.md, AGENTS.md, docs/**. */
+/**
+ * Collect the claim-lint surface under a package root: README*.md, AGENTS.md,
+ * docs/**. Intentionally a different surface than package-health's
+ * DOCS_SURFACE — it adds README locale variants and drops the record trees
+ * (rfcs/audits/…) DOCS_SURFACE includes, since dated records quote old counts.
+ */
 export function collectSkillDocFiles(root: string): string[] {
   const files: string[] = [];
   const walk = (dir: string): void => {
@@ -306,8 +349,15 @@ export async function lintSkillDocFiles(
   files: string[],
   skills: ForgeSkillEntry[] = FORGE_SKILLS,
   write = false,
-): Promise<{ drift: SkillDocDrift[]; markedRegions: number; written: string[] }> {
+  opts: { io?: WorkspaceIO; dryRun?: boolean } = {},
+): Promise<{
+  drift: SkillDocDrift[];
+  healedRegions: SkillDocDrift[];
+  markedRegions: number;
+  written: string[];
+}> {
   const drift: SkillDocDrift[] = [];
+  const healedRegions: SkillDocDrift[] = [];
   const written: string[] = [];
   let markedRegions = 0;
   for (const abs of files) {
@@ -320,19 +370,38 @@ export async function lintSkillDocFiles(
     const rel = path.relative(root, abs).split(path.sep).join("/");
     const outcome = lintSkillDocContent(rel, content, skills, write);
     drift.push(...outcome.drift);
+    healedRegions.push(...outcome.healedRegions);
     markedRegions += outcome.markedRegions;
     if (write && outcome.rewritten !== undefined && outcome.rewritten !== content) {
-      await writeFileIfChanged(abs, outcome.rewritten);
+      if (!opts.dryRun) await writeFileIfChanged(abs, outcome.rewritten, opts.io);
       written.push(rel);
     }
   }
-  return { drift, markedRegions, written };
+  return { drift, healedRegions, markedRegions, written };
+}
+
+/**
+ * Fill marked regions in scaffolded content at create time — the literals are
+ * rendered from the registry of the forge doing the scaffolding, so profile
+ * templates never carry a hand-bumped count (RFC-1585, review F-12).
+ */
+export function hydrateSkillDocMarkers(
+  content: string,
+  skills: ForgeSkillEntry[] = FORGE_SKILLS,
+): string {
+  return content.replace(REGION_RE, (_whole, kind: string) => {
+    const marker = kind === "skills-inventory" ? "inventory" : "count";
+    const rendered = renderRegion(marker as SkillDocMarkerKind, skills);
+    const inner = marker === "count" ? rendered : `\n\n${rendered}\n\n`;
+    return `<!-- forge:${kind} -->${inner}<!-- /forge:${kind} -->`;
+  });
 }
 
 // ─── Command runner ─────────────────────────────────────────────────────────
 
 interface SkillDocSyncFlags {
   write?: boolean;
+  check?: boolean;
   files?: string;
   root?: string;
 }
@@ -345,26 +414,36 @@ export async function runSkillDocSync(
     (input as { flags?: SkillDocSyncFlags } | undefined)?.flags ??
     (input as SkillDocSyncFlags) ??
     {};
-  const ctx = (context ?? {}) as { workspaceRoot?: string };
+  const ctx = (context ?? {}) as {
+    workspaceRoot?: string;
+    io?: WorkspaceIO;
+    dryRun?: boolean;
+  };
   const root = flags.root
     ? path.resolve(ctx.workspaceRoot ?? process.cwd(), flags.root)
     : (ctx.workspaceRoot ?? process.cwd());
   const files = flags.files
     ? flags.files.split(",").map((f) => path.resolve(root, f.trim()))
     : collectSkillDocFiles(root);
+  // --check is the explicit form of the default; --write renders and always
+  // exits 0 (claim drift it cannot heal is reported, never auto-fixed).
+  const write = flags.write === true && flags.check !== true;
 
-  const { drift, markedRegions, written } = await lintSkillDocFiles(
+  const { drift, healedRegions, markedRegions, written } = await lintSkillDocFiles(
     root,
     files,
     FORGE_SKILLS,
-    flags.write === true,
+    write,
+    { io: ctx.io, dryRun: ctx.dryRun === true },
   );
   return {
     command: "forge.skill.doc-sync",
-    status: drift.length === 0 ? "pass" : "fail",
+    status: !write && drift.length > 0 ? "fail" : "pass",
     filesScanned: files.length,
     markedRegions,
     drift,
+    healedRegions,
     written,
+    dryRun: ctx.dryRun === true,
   };
 }

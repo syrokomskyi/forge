@@ -10,6 +10,20 @@ doc-surface discovery, and the --write path.
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1585: initial suite — requirement AC-1 (marked-region render), AC-2 (drift detection), AC-3 (claim lint), AC-4 (check gate exit).</item>
+  <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
+
+Independent fo-review (isolation: subagent) found: empty marker pairs lost
+their open tag on --write, multi-line regions collapsed line numbers, a
+leading fence injected a phantom line, --check was undocumented-undeclared,
+and --write exited 1 on a successful heal. Fixes: open-marker capture,
+newline-preserving placeholder, empty-chunk skip, check flag, healedRegions
+split (write always exits 0), dryRun/io threading, byte-exact inventory
+compare on the prettier-stable canonical form, CHECK-13 delegated through
+commandRegistry/invoke so the registry-integrity scan stays within its
+slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
+extended, two real stale claims corrected, profile templates ship empty
+markers hydrated at scaffold write time. RFC amended to implemented
+grammar/result/exclusions; command moved to commands.added.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -21,6 +35,7 @@ import os from "node:os";
 import type { ForgeSkillEntry } from "../registry.ts";
 import {
   collectSkillDocFiles,
+  hydrateSkillDocMarkers,
   lintSkillDocContent,
   lintSkillDocFiles,
   renderCountLiteral,
@@ -165,5 +180,54 @@ describe("surface + command runner (requirement AC-4)", () => {
     const outcome = await lintSkillDocFiles(root, [f], SKILLS);
     expect(outcome.drift).toHaveLength(1);
     expect(outcome.drift[0]!.file).toBe("README.md");
+  });
+});
+
+describe("write-path edge cases (defect REVIEW-1585-F1/F3/F5)", () => {
+  test("adjacent empty marker pair heals without deleting the open marker (F-1)", () => {
+    const doc = `<!-- ${SKILL_DOC_MARKERS.count} --><!-- /${SKILL_DOC_MARKERS.count} -->\n`;
+    const out = lintSkillDocContent("README.md", doc, SKILLS, true).rewritten!;
+    expect(out).toContain(`<!-- ${SKILL_DOC_MARKERS.count} -->`);
+    expect(out).toContain(`<!-- /${SKILL_DOC_MARKERS.count} -->`);
+    expect(out).toContain(renderCountLiteral(SKILLS));
+  });
+
+  test("a file starting with a fence gains no phantom line on --write (F-3)", () => {
+    const doc = "```\ncode block\n```\n\nText.\n";
+    const out = lintSkillDocContent("README.md", doc, SKILLS, true).rewritten!;
+    expect(out).toBe(doc);
+  });
+
+  test("claim line numbers after a multi-line region stay true (F-2)", () => {
+    const doc = `Intro.\n\n<!-- ${SKILL_DOC_MARKERS.inventory} -->\nold\nold\nold\n<!-- /${SKILL_DOC_MARKERS.inventory} -->\n\nWe ship 99 skills.\n`;
+    const drift = lintSkillDocContent("README.md", doc, SKILLS).drift;
+    const claim = drift.find((d) => d.kind === "claim-total")!;
+    expect(claim.line).toBe(9);
+  });
+
+  test("--write exits pass even when regions were healed (F-5)", async () => {
+    const root = sfs.mkdtempSync(path.join(os.tmpdir(), "skill-doc-sync-"));
+    sfs.writeFileSync(
+      path.join(root, "README.md"),
+      `<!-- ${SKILL_DOC_MARKERS.count} -->STALE<!-- /${SKILL_DOC_MARKERS.count} -->\n`,
+    );
+    const heal = await runSkillDocSync({ flags: { write: true } }, { workspaceRoot: root });
+    expect(heal.status).toBe("pass");
+    expect(heal.healedRegions).toHaveLength(1);
+  });
+
+  test("--check is the explicit form of the default", async () => {
+    const root = sfs.mkdtempSync(path.join(os.tmpdir(), "skill-doc-sync-"));
+    sfs.writeFileSync(path.join(root, "README.md"), "We ship 99 skills.\n");
+    expect(
+      (await runSkillDocSync({ flags: { check: true } }, { workspaceRoot: root })).status,
+    ).toBe("fail");
+  });
+});
+
+describe("scaffold hydration (requirement AC-5)", () => {
+  test("empty marker pairs in templates render at create time", () => {
+    const tpl = `- Skills: <!-- ${SKILL_DOC_MARKERS.count} --><!-- /${SKILL_DOC_MARKERS.count} -->\n`;
+    expect(hydrateSkillDocMarkers(tpl, SKILLS)).toContain(renderCountLiteral(SKILLS));
   });
 });

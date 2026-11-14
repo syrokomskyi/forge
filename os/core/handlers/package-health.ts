@@ -15,13 +15,26 @@
   <item>Module attribution is provider-aware: deriveModulePackageMap returns separate workshop/site maps because module names collide across buckets (deploy is engine() AND sitePlugin()), and each command resolves through the map matching its manifest siteScope — a flat last-write-wins map silently misattributed the engine deploy.* family to the private site package (RFC-1518 r2, deviation D-004).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1518: attribution merge, private-package docs gate, suppression journal</item>
   <item>RFC-1518: key decision for private-package docs-gate scope</item>
   <item>RFC-1518: provider-aware module attribution, per-rule markers, tld-tail scoping</item>
   <item>RFC-1518: key decision for provider-aware attribution</item>
   <item>ADR-0131: pkg-health-10 suppression on the line above the literal
 
 literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
+  <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
+
+Independent fo-review (isolation: subagent) found: empty marker pairs lost
+their open tag on --write, multi-line regions collapsed line numbers, a
+leading fence injected a phantom line, --check was undocumented-undeclared,
+and --write exited 1 on a successful heal. Fixes: open-marker capture,
+newline-preserving placeholder, empty-chunk skip, check flag, healedRegions
+split (write always exits 0), dryRun/io threading, byte-exact inventory
+compare on the prettier-stable canonical form, CHECK-13 delegated through
+commandRegistry/invoke so the registry-integrity scan stays within its
+slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
+extended, two real stale claims corrected, profile templates ship empty
+markers hydrated at scaffold write time. RFC amended to implemented
+grammar/result/exclusions; command moved to commands.added.</item>
   <history>PKG-HEALTH-05, RFC-1097, RFC-1254, RFC-1255, RFC-1517, RFC-1518</history>
 </CHANGE_SUMMARY>
 */
@@ -29,7 +42,7 @@ literalEscapesInLine accepts a // pkg-health-10: comment directly above the lite
 import * as fs from "../../../src/utils/sync-fs.ts";
 import path from "node:path";
 import { parse as parseYaml } from "yaml";
-import { collectSkillDocFiles, lintSkillDocFiles } from "../../../src/validators/skill-doc-sync.ts";
+import type { SkillDocDrift } from "../../../src/validators/skill-doc-sync.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -868,19 +881,52 @@ export async function runPackageHealth(
           });
         }
       }
+    }
 
-      // RFC-1585 CHECK 13 — skill-count claims and <!-- forge:skills-* -->
-      // marked regions drifted from FORGE_SKILLS. The doc-sync surface is a
-      // superset of DOCS_SURFACE (adds README variants, drops record trees).
-      const docSync = await lintSkillDocFiles(pkgDir, collectSkillDocFiles(pkgDir));
-      for (const d of docSync.drift) {
+    // RFC-1585 CHECK 13 — skill-count claims and <!-- forge:skills-* -->
+    // marked regions drifted from FORGE_SKILLS. Runs outside the command-
+    // inventory gate: the lint needs no command list. Delegated through the
+    // registry (standalone CLI) or the invoke port (kernel host — `werkstatt
+    // run` injects no commandRegistry) so the child is judged by its own
+    // declaration; an in-handler descent into the doc-sync subtree truncates
+    // the registry-integrity scan.
+    {
+      const docSyncCmd = context.commandRegistry?.getCommand("forge.skill.doc-sync");
+      let docSync: { drift?: SkillDocDrift[] } | undefined;
+      if (docSyncCmd) {
+        const r = await docSyncCmd.execute(
+          { argv: [], flags: { check: true, root: pkgDir } },
+          context,
+        );
+        docSync = r?.data as { drift?: SkillDocDrift[] } | undefined;
+      } else if (context.invoke) {
+        const r = await context.invoke("forge.skill.doc-sync", {
+          check: true,
+          root: pkgDir,
+        });
+        docSync = r.data as { drift?: SkillDocDrift[] } | undefined;
+      } else {
+        violations.push({
+          ruleId: "PKG-HEALTH-13",
+          packageName,
+          severity: "warning",
+          message: "skill doc-sync check skipped — no commandRegistry or invoke port in this host",
+          file: pkgDir,
+          fixHint:
+            "Run `forge skill.doc-sync --check` directly, or dispatch through a host that exposes the command.",
+        });
+      }
+      for (const d of docSync?.drift ?? []) {
         violations.push({
           ruleId: "PKG-HEALTH-13",
           packageName,
           severity: "error",
           message: `${d.file}:${d.line} ${d.kind} — found "${d.found}", registry renders "${d.expected}"`,
           file: path.join(pkgDir, d.file),
-          fixHint: `Run "forge skill.doc-sync --write" to re-render marked regions; for intentional pack-specific claims journal a same-line "<!-- forge-skill-count:ok: <reason> -->" exemption.`,
+          fixHint:
+            d.kind === "marked-region"
+              ? `Run "forge skill.doc-sync --write" to re-render the marked region.`
+              : `Fix the literal to the registry count, or journal a same-line "<!-- forge-skill-count:ok: <reason> -->" exemption.`,
         });
       }
     }

@@ -1108,7 +1108,7 @@ workspace:
         - Engine: @warpgogol/werkstatt-engine
         - Plugin: @warpgogol/werkstatt-godot-game
         - Stack profile: godot-game
-        - Skills: <!-- forge:skills-count -->41 skills (34 fo + 4 shared + 3 meta)<!-- /forge:skills-count --> (rendered by `forge skill.doc-sync`)
+        - Skills: <!-- forge:skills-count --><!-- /forge:skills-count --> (rendered by `forge skill.doc-sync`)
     - path: hooks/worktree-setup.sh
       content: |
         #!/bin/sh

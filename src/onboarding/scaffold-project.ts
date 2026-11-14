@@ -15,6 +15,20 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten �
   <item>RFC-1097: sweep — werkstatt-engine clean
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
+  <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
+
+Independent fo-review (isolation: subagent) found: empty marker pairs lost
+their open tag on --write, multi-line regions collapsed line numbers, a
+leading fence injected a phantom line, --check was undocumented-undeclared,
+and --write exited 1 on a successful heal. Fixes: open-marker capture,
+newline-preserving placeholder, empty-chunk skip, check flag, healedRegions
+split (write always exits 0), dryRun/io threading, byte-exact inventory
+compare on the prettier-stable canonical form, CHECK-13 delegated through
+commandRegistry/invoke so the registry-integrity scan stays within its
+slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
+extended, two real stale claims corrected, profile templates ship empty
+markers hydrated at scaffold write time. RFC amended to implemented
+grammar/result/exclusions; command moved to commands.added.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -23,6 +37,7 @@ import { resolveIo } from "../utils/io.ts";
 import { listStackProfiles, type StackProfile } from "../profiles/stack-profile.ts";
 import { checkNpmToken, workshopNeedsWarpgogolToken } from "./npm-token-check.ts";
 import { resolveForgeRoot } from "../config/forge-config.ts";
+import { hydrateSkillDocMarkers } from "../validators/skill-doc-sync.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -117,7 +132,8 @@ export async function runScaffoldProject(
   for (const file of profile.workspace.files) {
     const filePath = path.join(workspaceRoot, file.path);
     await fio.mkdir(path.dirname(filePath));
-    const content = file.content.replace(/__PROJECT_NAME__/g, effectiveProjectName);
+    let content = file.content.replace(/__PROJECT_NAME__/g, effectiveProjectName);
+    if (file.path.endsWith(".md")) content = hydrateSkillDocMarkers(content);
     await fio.writeFile(filePath, content);
     created.push(file.path);
   }
@@ -170,9 +186,10 @@ export async function runScaffoldProject(
       const filePath = path.join(wsDir, file.path);
       await fio.mkdir(path.dirname(filePath));
       // Replace placeholder names (quoted and bare)
-      const content = file.content
+      let content = file.content
         .replace(/my-site/g, effectiveProjectName)
         .replace(/my-game/g, effectiveProjectName);
+      if (file.path.endsWith(".md")) content = hydrateSkillDocMarkers(content);
       await fio.writeFile(filePath, content);
       created.push(`${wsPath}/${file.path}`);
     }
