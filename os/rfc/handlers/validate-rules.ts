@@ -6,13 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
-
-OriginGit gains optional showMany backed by one git cat-file --batch
-process (per-spec null on missing objects, wholesale null on spawn or
-framing failure). collectCommittedReviews prefers it and keeps the
-sequential show loop for stubs. rfc.validate memoizes the index once
-per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
   <item>RFC-1563: share the kernel command-result cache across session worktrees — one SQLite DB in the primary checkout, @@WORKSPACE_ROOT@@ payload anchoring, scoped --force clear, kernel.cache.prune</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
@@ -21,7 +14,10 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1534</history>
+  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
+
+loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1513, RFC-1534</history>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +53,7 @@ import {
   RFC_PROBE_BINDING_CUTOFF,
   RFC_CRITERIA_CONTENT_CUTOFF,
   RFC_FIXED_INPUTS_CUTOFF,
+  RFC_MOVES_CUTOFF,
   RFC_ORIGIN_CUTOFF,
   RFC_REACHABLE_CUTOFF,
 } from "../types.ts";
@@ -602,6 +599,26 @@ export function collectProbeMetacharHits(
     });
   }
   return hits;
+}
+
+// ─── packagesImpacted ↔ outcomeSurfaces overlap (V-48, V-56) ───────────────
+// A packagesImpacted entry `x` maps to `packages/x` (verbatim when it already
+// contains "/"); it is touched when an outcomeSurfaces glob's static prefix
+// overlaps that directory — the same matching V-48 and the V-56 subject test
+// share.
+export function impactedPackagesTouchSurfaces(impacted: string[], surfaces: string[]): string[] {
+  return impacted.filter((entry) => {
+    const pkgDir = entry.includes("/") ? entry : `packages/${entry}`;
+    return surfaces.some((glob) => {
+      const staticPrefix = glob.split(/[\*\?\[\{]/)[0]!.replace(/\/+$/, "");
+      const dir = pkgDir.replace(/\/+$/, "");
+      return (
+        staticPrefix === dir ||
+        staticPrefix.startsWith(`${dir}/`) ||
+        dir.startsWith(`${staticPrefix}/`)
+      );
+    });
+  });
 }
 
 export async function validateSingleRfc(
@@ -1410,18 +1427,7 @@ export async function validateSingleRfc(
                 )),
           );
           if (!hasOutcomeProbe) {
-            const touched = impacted.filter((entry) => {
-              const pkgDir = entry.includes("/") ? entry : `packages/${entry}`;
-              return surfaces.some((glob) => {
-                const staticPrefix = glob.split(/[\*\?\[\{]/)[0]!.replace(/\/+$/, "");
-                const dir = pkgDir.replace(/\/+$/, "");
-                return (
-                  staticPrefix === dir ||
-                  staticPrefix.startsWith(`${dir}/`) ||
-                  dir.startsWith(`${staticPrefix}/`)
-                );
-              });
-            });
+            const touched = impactedPackagesTouchSurfaces(impacted, surfaces);
             if (touched.length > 0) {
               addViolation(
                 rfcId,
@@ -1450,6 +1456,104 @@ export async function validateSingleRfc(
       probes,
     )) {
       addViolation(rfcId, relFile, diag.ruleId, diag.message, diag.severity);
+    }
+  }
+
+  // V-56 (RFC-1596): a workshop-tooling RFC must declare `moves` — the
+  // site-loop metric it intends to move, or `none` with a reason. Subject =
+  // the project declares `loopMetrics` ∧ createdAt ≥ RFC_MOVES_CUTOFF (the
+  // stamp-date adoption) ∧ kind ∈ {architecture, contract, command, policy}
+  // ∧ appsImpacted empty ∧ no packagesImpacted entry touches an
+  // outcomeSurfaces glob. Silent when `loopMetrics` is undeclared — the
+  // vocabulary is project data, so consumer workshops opt in by declaring
+  // it. Terminal statuses keep a frozen record: a `moves.metric` id the
+  // vocabulary later removed is not re-flagged.
+  if (!isArchived && createdAt >= RFC_MOVES_CUTOFF) {
+    const kindStr = String(fm["kind"] ?? "");
+    const apps = Array.isArray(fm["appsImpacted"])
+      ? (fm["appsImpacted"] as unknown[]).map(String)
+      : [];
+    const subject =
+      ["architecture", "contract", "command", "policy"].includes(kindStr) && apps.length === 0;
+    if (subject) {
+      let loopMetrics: { id: string }[] = [];
+      let surfaces: string[] = [];
+      try {
+        const cfg = loadForgeConfig(workspaceRoot);
+        loopMetrics = cfg.loopMetrics ?? [];
+        surfaces = cfg.outcomeSurfaces ?? [];
+      } catch {
+        // forge.yaml unreadable → no declared vocabulary → the rule is silent.
+      }
+      if (loopMetrics.length > 0) {
+        const impacted = Array.isArray(fm["packagesImpacted"])
+          ? (fm["packagesImpacted"] as unknown[]).map(String)
+          : [];
+        if (impactedPackagesTouchSurfaces(impacted, surfaces).length === 0) {
+          const declaredIds = loopMetrics.map((m) => m.id);
+          const isTerminal =
+            status === "implemented" || status === "rejected" || status === "superseded";
+          const moves = fm["moves"];
+          if (moves === undefined || moves === null) {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-56",
+              `workshop-tooling RFC has no \`moves\` — declare the site-loop metric it moves: moves.metric as a loopMetrics id (${declaredIds.join(", ")}) or \`none\` with a reason (RFC-1596).`,
+              "error",
+            );
+          } else if (typeof moves !== "object" || Array.isArray(moves)) {
+            addViolation(
+              rfcId,
+              relFile,
+              "V-56",
+              `\`moves\` must be a mapping {metric, baseline, target, reason?} — got ${Array.isArray(moves) ? "a list" : typeof moves} (RFC-1596).`,
+              "error",
+            );
+          } else {
+            const m = moves as Record<string, unknown>;
+            const metric = typeof m["metric"] === "string" ? m["metric"].trim() : "";
+            const nonEmpty = (v: unknown) => typeof v === "string" && v.trim().length > 0;
+            if (metric === "") {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-56",
+                `\`moves.metric\` is required — a loopMetrics id (${declaredIds.join(", ")}) or \`none\` (RFC-1596).`,
+                "error",
+              );
+            } else if (metric === "none") {
+              if (!nonEmpty(m["reason"])) {
+                addViolation(
+                  rfcId,
+                  relFile,
+                  "V-56",
+                  `\`moves.metric: none\` requires a non-empty \`moves.reason\` stating why no loop metric applies (RFC-1596).`,
+                  "error",
+                );
+              }
+            } else if (declaredIds.includes(metric)) {
+              if (!nonEmpty(m["baseline"]) || !nonEmpty(m["target"])) {
+                addViolation(
+                  rfcId,
+                  relFile,
+                  "V-56",
+                  `\`moves.metric: ${metric}\` requires non-empty \`baseline\` (current value + source) and \`target\` (RFC-1596).`,
+                  "error",
+                );
+              }
+            } else if (!isTerminal) {
+              addViolation(
+                rfcId,
+                relFile,
+                "V-56",
+                `\`moves.metric: ${metric}\` is neither a declared loopMetrics id nor \`none\` — declared ids: ${declaredIds.join(", ")} (RFC-1596).`,
+                "error",
+              );
+            }
+          }
+        }
+      }
     }
   }
 

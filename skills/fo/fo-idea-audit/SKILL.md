@@ -26,6 +26,9 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
+
+loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -142,6 +145,7 @@ This ecosystem is forward-only — no backward compatibility layers, no expand-t
 - **Implementation notes** reference the correct governance rules: RFC-XXXX (accepted→implemented transition), RFC-XXXX (if touching agent surface), RFC-XXXX (supersede escalation on invariant conflict), RFC-XXXX (verification evidence for probe-bearing RFCs).
 - **Anti-fabrication**: if the RFC's acceptance criteria include content authoring (prose, business records, claims), the criteria distinguish between code changes an agent can make and content that requires human authoring. The RFC must not claim content will be "auto-generated" when it requires human authoring.
 - **Criterion promotion**: every criterion describing lasting behaviour (a write, a transition, a schema match, an accepted response shape) is listed in `promotes`; one-off criteria (registered command, file exists, doc literal) are not. Report each mis-marked criterion as a finding — promotion decides whether the behaviour stays checked by the product's correctness manifest after the stamp.
+- **Loop-metric declaration**: when the RFC is subject to V-56 (project `loopMetrics` declared, post-adoption `createdAt`, kind `architecture`/`contract`/`command`/`policy`, `appsImpacted` empty, no `outcomeSurfaces` package), check `moves` names a real `loopMetrics` id — and flag a `target` that restates the deliverable ("command exists", "validator lands") instead of a value of the metric.
 - **Storage policy**: if the RFC touches persistence, it does not introduce cookies (`document.cookie`, `Set-Cookie`). Client-side persistence is `localStorage` only; server-side is `unstorage`.
 - **NEEDS CLARIFICATION markers**: List all unresolved `NEEDS CLARIFICATION` markers with line numbers. If none are found, state "No unresolved markers." Markers in `draft` status are informational; markers in `reviewing`+ status are a blocking finding.
 

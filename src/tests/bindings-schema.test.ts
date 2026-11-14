@@ -6,11 +6,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0639: initial test suite for semantic command keys, terminology resolution, and applyCliBindingDefaults.</item>
   <item>RFC-1224: adrImplementStamp schema/default coverage; consumer-defined command key passthrough.</item>
   <item>RFC-1224: preserve operator forge.yaml content on upgrade, promote adrImplementStamp binding</item>
   <item>RFC-1332: step 1 — verifyReproduction binding key; drop platform ids from pipeline skill text (SKILL-17)</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
+
+loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
+  <history>RFC-0639</history>
 </CHANGE_SUMMARY>
 */
 
@@ -215,6 +218,7 @@ describe("RFC-0639: resolveTerminology", () => {
       sessionsDir: "docs/sessions",
     },
     outcomeSurfaces: [],
+    loopMetrics: [],
     bindings: {
       schema: "forge/bindings@1",
       commands: {

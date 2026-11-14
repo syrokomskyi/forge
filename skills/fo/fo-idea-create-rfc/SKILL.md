@@ -20,14 +20,16 @@ triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC"
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: friction fast-path — step-3 grilling skipped when the caller supplies open/flagged docs/frictions.yaml entry ids; entries carry the justification, output stays draft.</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
-  <history>RFC-1097, RFC-1247, RFC-1361</history>
+  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
+
+loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
+  <history>RFC-1097, RFC-1247, RFC-1361, RFC-1433</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -68,6 +70,7 @@ Ask the user for, or infer from context:
 - **packagesImpacted / appsImpacted** — concrete workspace names.
 - **liveSpec** — for feature-level RFCs (not governance/policy), suggest `liveSpec: true` to auto-derive a living spec domain from `packagesImpacted[0]`, or `liveSpec: <domain>` for an explicit domain. This enables automatic delta-merge into `docs/specs/live/<domain>.md` when the RFC is implemented.
 - **satisfies** — for `architecture` or `contract` RFCs, at least one `DNA-NN` invariant from `ref(forge.yaml bindings.paths.invariantsFile)`.
+- **moves** — when the project declares `loopMetrics` in `forge.yaml` and the RFC is a tooling RFC (kind `architecture`/`contract`/`command`/`policy`, `appsImpacted` empty, no `packagesImpacted` entry on an `outcomeSurfaces` glob), collect `moves.metric` (a `loopMetrics` id or `none`), `baseline`, and `target` — or `reason` when the metric is `none`. Read the baseline from the metric's declared `source` in `loopMetrics` — never estimate a number the source already records (V-56).
 - **related** — relevant RFCs, DNA ids, anti-patterns, specs.
 - **reviewer** — if the caller specifies a reviewer identity, use it. If not, read the default reviewer(s) from the `reviewers` field comment in `docs/rfcs/rfc-0000-template.md` **only when the skill is also responsible for moving the RFC out of draft**. For a pure draft scaffold, leave `reviewers: []`.
 
