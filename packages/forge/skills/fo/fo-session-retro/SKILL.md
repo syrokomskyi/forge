@@ -20,12 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1460: draft mechanical-obligation RFCs and land harvest doc rules
-
-RFC-1460 harvest wave 2026-11-09: five draft RFCs (derive-and-repair flow
-surfaces, quiet kernel output, staged-commit/invocation guards, fixed-branch
-onboarding-status routing, forge task prettier coverage), seven docs-rule
-landings, registry flips — 25 entries served, F-0025 stays external.</item>
   <item>RFC-1460: session-end teardown — stop worktree-held dev servers before flow.integrate</item>
   <item>RFC-1573: parallelize session-end housekeeping and detach flow.integrate</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
@@ -51,6 +45,34 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - build-verification policy states blocking rules are probed or retired;
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <item>RFC-1591: typed agent tool surface generated from the command manifest
+
+command.tools.generate projects docs/command-manifest.generated.yaml plus
+forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
+(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
+serves it over stdio MCP — three meta tools (command_search /
+command_describe / command_run) plus one typed tool per front entry.
+Agents now call kernel commands as schema-validated tools instead of
+shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
+
+- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
+  additionalProperties); required list mirrors the manifest's required
+  flags; annotations derive from mutatesState
+- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
+  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
+  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
+  with --detach and return the gate-run id; runner is pnpm exec
+  werkstatt run where the bin resolves, pnpm exec forge otherwise
+- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
+  name absent from the manifest); --check fails on byte drift
+- serve regenerates the file in memory on manifestHash drift and warns;
+  agent-tools.generated.json joins the flow.integrate step-(3b) owner
+  registry
+- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
+  prefers typed tools, shell strings stay the no-server fallback
+- werkstatt-engine extract excludes build-input-set.test.ts (reads the
+  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
+  the 'recurrences' wording the addressed-match routing test pins</item>
   <history>ADR-0119, ADR-0121, ADR-0126, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534</history>
 </CHANGE_SUMMARY>
 -->
@@ -552,7 +574,7 @@ Zero hits → append nothing; the report states «трений не было» i
   A refusal exits non-zero and writes no file — fix the named vocabulary field and re-run; never retry by editing a file.
 
 - **Match on `open`** → `friction.add --recurrence-of <F-NNNN>` (increments `recurrences`, sets `lastSeen`, writes no new record); flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
-- **Match on `addressed`** → the prevention failed → `friction.add --recurrence-of <F-NNNN>`, then set `status: escalated` on the record file: leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
+- **Match on `addressed`** → the prevention failed → `friction.add --recurrence-of <F-NNNN>`, then set `status: escalated` on the record file: recurrences against an already-addressed entry mean the measure did not hold — leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
 - **Match on `escalated`** → the friction recurred while its mechanical fix is still pending → `friction.add --recurrence-of <F-NNNN>`, keep `status: escalated`, and flag it in the report as a recurrence pressing on the pending mechanism («рецидив — механическая мера ещё не внедрена»). Do NOT re-escalate, do NOT change `measure` — the counter pressing on an open mechanism is the escalation ladder's backlog pressure signal.
 - A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be added with `--status addressed --artifacts <paths>`.
 

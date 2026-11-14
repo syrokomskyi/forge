@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1493: step 4 — remove per-commit version bump, PC-01..04, version log; one commit path with universal X-RFC/X-ADR trailers</item>
   <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
@@ -17,7 +16,35 @@ Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481</history>
+  <item>RFC-1591: typed agent tool surface generated from the command manifest
+
+command.tools.generate projects docs/command-manifest.generated.yaml plus
+forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
+(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
+serves it over stdio MCP — three meta tools (command_search /
+command_describe / command_run) plus one typed tool per front entry.
+Agents now call kernel commands as schema-validated tools instead of
+shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
+
+- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
+  additionalProperties); required list mirrors the manifest's required
+  flags; annotations derive from mutatesState
+- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
+  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
+  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
+  with --detach and return the gate-run id; runner is pnpm exec
+  werkstatt run where the bin resolves, pnpm exec forge otherwise
+- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
+  name absent from the manifest); --check fails on byte drift
+- serve regenerates the file in memory on manifestHash drift and warns;
+  agent-tools.generated.json joins the flow.integrate step-(3b) owner
+  registry
+- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
+  prefers typed tools, shell strings stay the no-server fallback
+- werkstatt-engine extract excludes build-input-set.test.ts (reads the
+  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
+  the 'recurrences' wording the addressed-match routing test pins</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493</history>
 </CHANGE_SUMMARY>
 */
 
@@ -351,6 +378,17 @@ export const forgeConfigSchema = z
     migrationAdapters: z.array(forgeMigrationAdapterSchema).optional(),
     /** Contract producers (RFC-1365). Optional — absent means no declared producers. */
     contractProducers: z.array(contractProducerSchema).optional(),
+    /**
+     * RFC-1591: agent tool surface — `front` names commands projected as
+     * first-class typed tools (≤40), `deny` names commands never exposed or
+     * runnable through the MCP server. Optional — absent means no front set.
+     */
+    agentTools: z
+      .object({
+        front: z.array(z.string()).optional(),
+        deny: z.array(z.string()).optional(),
+      })
+      .optional(),
     /** Published spec packages (RFC-1539). Optional — absent means vendored specs only. */
     specPackages: z.array(specPackageSchema).optional(),
     /** External proof checkers (RFC-1391). Optional — absent means only the built-in `exhaustive` tool. */
@@ -415,6 +453,8 @@ export interface ForgeConfig {
   migrationAdapters?: ForgeMigrationAdapter[];
   /** Contract producers (RFC-1365). Optional — absent means no declared producers. */
   contractProducers?: ContractProducerEntry[];
+  /** RFC-1591: agent tool surface — front-set commands (≤40) and the deny list. */
+  agentTools?: { front?: string[]; deny?: string[] };
   /** Published spec packages (RFC-1539). Optional — absent means vendored specs only. */
   specPackages?: SpecPackageEntry[];
   /** External proof checkers (RFC-1391). Optional — absent means only the built-in `exhaustive` tool. */

@@ -10,7 +10,6 @@ registers forge modules and dispatches commands. Works autonomously without
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1573: step 3 — single forge command-module list
 
@@ -21,7 +20,35 @@ Restore same-line pkg-health-10 suppressions in forge bin/cli.ts (prettier-ignor
   <item>ADR-0131: pkg-health-10 suppression on the line above the literal
 
 literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
-  <history>RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1472, RFC-1473, RFC-1478, RFC-1486, RFC-1508, RFC-1517</history>
+  <item>RFC-1591: typed agent tool surface generated from the command manifest
+
+command.tools.generate projects docs/command-manifest.generated.yaml plus
+forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
+(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
+serves it over stdio MCP — three meta tools (command_search /
+command_describe / command_run) plus one typed tool per front entry.
+Agents now call kernel commands as schema-validated tools instead of
+shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
+
+- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
+  additionalProperties); required list mirrors the manifest's required
+  flags; annotations derive from mutatesState
+- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
+  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
+  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
+  with --detach and return the gate-run id; runner is pnpm exec
+  werkstatt run where the bin resolves, pnpm exec forge otherwise
+- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
+  name absent from the manifest); --check fails on byte drift
+- serve regenerates the file in memory on manifestHash drift and warns;
+  agent-tools.generated.json joins the flow.integrate step-(3b) owner
+  registry
+- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
+  prefers typed tools, shell strings stay the no-server fallback
+- werkstatt-engine extract excludes build-input-set.test.ts (reads the
+  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
+  the 'recurrences' wording the addressed-match routing test pins</item>
+  <history>ADR-0129, RFC-0542, RFC-0543, RFC-1140, RFC-1231, RFC-1336, RFC-1365, RFC-1391, RFC-1433, RFC-1464, RFC-1465, RFC-1466, RFC-1468, RFC-1469, RFC-1470, RFC-1472, RFC-1473, RFC-1478, RFC-1486, RFC-1508, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
 
@@ -287,6 +314,17 @@ async function main(): Promise<void> {
   if (argv[0] === "--version" || argv[0] === "-v") {
     console.log(`forge ${VERSION}`);
     process.exit(0);
+  }
+
+  // RFC-1591: `forge agent-tools serve` is a CLI verb pair, not a registry
+  // command — dispatch before command resolution so the stdio server starts
+  // without flag parsing.
+  if (argv[0] === "agent-tools" && argv[1] === "serve") {
+    const { serveAgentTools } = await import("../os/agent-tools/serve.ts");
+    await serveAgentTools({
+      workspaceRoot: process.env["FORGE_WORKSPACE_ROOT"] ?? process.cwd(),
+    });
+    return;
   }
 
   const commandName = argv[0];

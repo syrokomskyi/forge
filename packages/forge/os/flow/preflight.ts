@@ -14,14 +14,41 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0130: induced-change lockfile classifiers — BFS reachability for optional-flag removals, collapse pairs, induced packages/snapshots additions</item>
   <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <item>RFC-0000: skip rfc-0000 template in integrate preflight id extraction; regen ecosystem manifest; file F-0207</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
 flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
-  <history>RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
+  <item>RFC-1591: typed agent tool surface generated from the command manifest
+
+command.tools.generate projects docs/command-manifest.generated.yaml plus
+forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
+(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
+serves it over stdio MCP — three meta tools (command_search /
+command_describe / command_run) plus one typed tool per front entry.
+Agents now call kernel commands as schema-validated tools instead of
+shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
+
+- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
+  additionalProperties); required list mirrors the manifest's required
+  flags; annotations derive from mutatesState
+- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
+  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
+  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
+  with --detach and return the gate-run id; runner is pnpm exec
+  werkstatt run where the bin resolves, pnpm exec forge otherwise
+- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
+  name absent from the manifest); --check fails on byte drift
+- serve regenerates the file in memory on manifestHash drift and warns;
+  agent-tools.generated.json joins the flow.integrate step-(3b) owner
+  registry
+- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
+  prefers typed tools, shell strings stay the no-server fallback
+- werkstatt-engine extract excludes build-input-set.test.ts (reads the
+  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
+  the 'recurrences' wording the addressed-match routing test pins</item>
+  <history>ADR-0130, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1247,6 +1274,7 @@ export interface RebaseConflictVerdict {
 export const GENERATED_BASENAME_OWNERS: Record<string, string> = {
   "ecosystem.generated.yaml": "ecosystem.manifest.generate",
   "command-manifest.generated.yaml": "command.manifest.generate",
+  "agent-tools.generated.json": "command.tools.generate",
 };
 
 /**

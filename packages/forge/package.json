@@ -292,6 +292,14 @@
       "types": "./os/gate/index.ts",
       "default": "./os/gate/index.ts"
     },
+    "./os/agent-tools-module": {
+      "types": "./os/agent-tools/agent-tools.module.ts",
+      "default": "./os/agent-tools/agent-tools.module.ts"
+    },
+    "./os/agent-tools": {
+      "types": "./os/agent-tools/index.ts",
+      "default": "./os/agent-tools/index.ts"
+    },
     "./os/checks-module": {
       "types": "./os/checks/checks.module.ts",
       "default": "./os/checks/checks.module.ts"
@@ -363,6 +371,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@warpgogol/werkstatt-engine": "workspace:*",
     "ajv": "^8.20.0",
     "linkedom": "^0.18.14",
@@ -636,6 +645,14 @@
       "./os/gate": {
         "types": "./dist/os/gate/index.d.ts",
         "default": "./dist/os/gate/index.js"
+      },
+      "./os/agent-tools-module": {
+        "types": "./dist/os/agent-tools/agent-tools.module.d.ts",
+        "default": "./dist/os/agent-tools/agent-tools.module.js"
+      },
+      "./os/agent-tools": {
+        "types": "./dist/os/agent-tools/index.d.ts",
+        "default": "./dist/os/agent-tools/index.js"
       },
       "./os/checks-module": {
         "types": "./dist/os/checks/checks.module.d.ts",
