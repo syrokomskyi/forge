@@ -338,7 +338,7 @@ console.log(result?.exitCode); // 0 = pass, 1 = fail
 | `src/` | Портативне ядро — типи, конфіг, реєстр навичок, валідатори, онбординг. Нуль `@warpgogol/*` імпортів. |
 | `os/` | Реєстрації ForgeModule. Усі модулі `os/` автономні, крім `werkstatt` — єдиного адаптера, що імпортує `@warpgogol/werkstatt-engine`. |
 | `bin/` | Точка входу CLI (команда `forge`). |
-| `skills/` | 41 визначення навичок (34 fo + 4 спільних + 3 мета) з SKILL.md frontmatter. |
+| `skills/` | <!-- forge:skills-count -->41 skills (34 fo + 4 shared + 3 meta)<!-- /forge:skills-count --> з SKILL.md frontmatter. |
 | `profiles/` | Профілі стеку для `scaffold`. |
 
 ---

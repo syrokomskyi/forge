@@ -16,8 +16,11 @@ forge build
 ```sh
 forge skill.validate
 forge skill.list
+forge skill.doc-sync [--write] [--files <csv>] [--root <dir>]
 forge agents.generate
 ```
+
+`forge skill.doc-sync` derives skill counts and inventory tables in docs from `FORGE_SKILLS` (in the werkstatt monorepo: `werkstatt run forge.skill.doc-sync`). `--write` re-renders paired `forge:skills-count` / `forge:skills-inventory` HTML-comment marker regions in place; the default check mode fails on marked-region drift and on skill-count claims outside markers that contradict the registry (exempt intentional claims with a same-line `forge-skill-count:ok` comment). Scans `README*.md`, `AGENTS.md`, and `docs/**/*.md` minus record trees; `forge.package.health` composes the same check as PKG-HEALTH-13.
 
 ## RFC
 
@@ -281,4 +284,4 @@ forge note.orphan.detect
 
 Canonical registry names (see `docs/command-manifest.generated.yaml` for the full inventory) not covered in the usage sections above:
 
-`audit.archive`, `file.size.lint`, `flow.publication.retire`, `flow.status`, `flow.version`, `forge.assets.check`, `forge.assets.list`, `forge.build`, `forge.conformance.run`, `forge.conformance.validate`, `forge.create`, `forge.determinism.check`, `forge.dev`, `forge.doctor`, `forge.port.scaffold`, `forge.port.validate`, `forge.profile.validate`, `forge.public-surface.validate`, `forge.release.prepare`, `forge.release.publish`, `forge.scaffold`, `forge.skill.knowledge.compact`, `forge.skill.list`, `forge.skill.validate`, `forge.validate`, `memory.compact`, `mission.archive`, `outbox.validate`, `plan.archive`, `spec.live.rebuild`, `system.map.validate`, `system.outbox.scan`, `system.task.collect`, `system.task.create`, `system.task.dispatch`, `system.task.move`, `system.task.status`, `system.versionset.record`.
+`audit.archive`, `file.size.lint`, `flow.publication.retire`, `flow.status`, `flow.version`, `forge.assets.check`, `forge.assets.list`, `forge.build`, `forge.conformance.run`, `forge.conformance.validate`, `forge.create`, `forge.determinism.check`, `forge.dev`, `forge.doctor`, `forge.port.scaffold`, `forge.port.validate`, `forge.profile.validate`, `forge.public-surface.validate`, `forge.release.prepare`, `forge.release.publish`, `forge.scaffold`, `forge.skill.doc-sync`, `forge.skill.knowledge.compact`, `forge.skill.list`, `forge.skill.validate`, `forge.validate`, `memory.compact`, `mission.archive`, `outbox.validate`, `plan.archive`, `spec.live.rebuild`, `system.map.validate`, `system.outbox.scan`, `system.task.collect`, `system.task.create`, `system.task.dispatch`, `system.task.move`, `system.task.status`, `system.versionset.record`.

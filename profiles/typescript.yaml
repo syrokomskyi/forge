@@ -540,6 +540,7 @@ workspace:
         - Engine: @warpgogol/forge
         - Plugin: @warpgogol/werkstatt-typescript
         - Stack profile: typescript
+        - Skills: <!-- forge:skills-count -->41 skills (34 fo + 4 shared + 3 meta)<!-- /forge:skills-count --> (rendered by `forge skill.doc-sync`)
     - path: docs/correctness.yaml
       content: |
         # Product correctness manifest (RFC-1578, forge/correctness-manifest@1).
