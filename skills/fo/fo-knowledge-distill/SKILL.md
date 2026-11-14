@@ -25,6 +25,7 @@ triggerPhrases: ["distill knowledge", "compact skill knowledge", "knowledge life
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -61,7 +62,7 @@ Ask the operator which skill(s) to distill:
 
 ### Step 2: Read cold material
 
-Read L0 (`qa-log.md`) and, if present, `qa-log.archive.md`. This is the sanctioned wholesale read of the cold layer (hot/warm/cold discipline).
+Read every L0 shard under `qa-log/` in name order and, if present, `qa-log.archive.md`. This is the sanctioned wholesale read of the cold layer (hot/warm/cold discipline).
 
 - Also read L1 (`fix-patterns.md`) and L2 (`learned-principles.md`) to understand existing distilled knowledge.
 - Report a summary: how many raw entries, how many existing patterns/principles, what themes recur.

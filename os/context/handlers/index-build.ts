@@ -13,11 +13,11 @@ rebuild from sources — no authority lives in the index.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1470: apply r2 repairs — devset real anchors, CTX-02 watermark staleness, path-scoped K-ids, eval scoring parity</item>
   <item>RFC-1470: apply r3 repair — CTX-02 session-scoped watermark vs path-compare, regression test asserts the warn fires</item>
   <item>RFC-1472: apply r1 repairs — outcomes replay on rebuild, real schema fields, anchored GREEN_RE, shard import, unique recallIds, archive coverage, trajectory kind</item>
   <item>RFC-1481: index upstream K-NNNN and consumer-local L-K-NNNN knowledge entries.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <history>RFC-1470</history>
 </CHANGE_SUMMARY>
 */
@@ -25,6 +25,8 @@ rebuild from sources — no authority lives in the index.
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { loadFrictionsTolerant } from "../../friction/store.ts";
+import type { FrictionEntry } from "../../friction/types.ts";
 import { listSessionFiles, readAndParseSession } from "../../session/frontmatter-io.ts";
 import type {
   ForgeCommandInput,
@@ -34,7 +36,17 @@ import type {
 
 export interface ContextUnit {
   id: string;
-  kind: "session-block" | "knowledge-entry" | "friction" | "remediation" | "rfc-header" | "adr-header" | "skill-manifest" | "handoff" | "decision" | "trajectory";
+  kind:
+    | "session-block"
+    | "knowledge-entry"
+    | "friction"
+    | "remediation"
+    | "rfc-header"
+    | "adr-header"
+    | "skill-manifest"
+    | "handoff"
+    | "decision"
+    | "trajectory";
   source: string;
   tokens: number;
   text: string;
@@ -56,9 +68,11 @@ export function estimateTokens(text: string): number {
 async function walk(dir: string, io: ReturnType<typeof resolveIo>, depth = 3): Promise<string[]> {
   if (depth < 0) return [];
   const out: string[] = [];
-  for (const e of await io.readdir(dir).catch(() => [] as { name: string; isDirectory: boolean }[])) {
+  for (const e of await io
+    .readdir(dir)
+    .catch(() => [] as { name: string; isDirectory: boolean }[])) {
     const abs = path.join(dir, e.name);
-    if (e.isDirectory) out.push(...await walk(abs, io, depth - 1));
+    if (e.isDirectory) out.push(...(await walk(abs, io, depth - 1)));
     else out.push(abs);
   }
   return out;
@@ -73,7 +87,8 @@ export async function runIndexBuild(
   const io = resolveIo(context.io ?? ambientIo);
   const root = context.workspaceRoot;
   const units: ContextUnit[] = [];
-  const push = (u: Omit<ContextUnit, "tokens">) => units.push({ ...u, tokens: estimateTokens(u.text) });
+  const push = (u: Omit<ContextUnit, "tokens">) =>
+    units.push({ ...u, tokens: estimateTokens(u.text) });
 
   // session-block — frontmatter fields as separate units per session.
   const sessionsDir = path.join(root, "docs", "sessions");
@@ -85,17 +100,28 @@ export async function runIndexBuild(
     const fields: [string, unknown][] = [
       ["summary", fm.summary],
       ["decisions", Array.isArray(fm.decisions) ? fm.decisions.join("\n") : fm.decisions],
-      ["remainingIssues", Array.isArray(fm.remainingIssues) ? fm.remainingIssues.join("\n") : fm.remainingIssues],
+      [
+        "remainingIssues",
+        Array.isArray(fm.remainingIssues) ? fm.remainingIssues.join("\n") : fm.remainingIssues,
+      ],
       ["systemDelta", Array.isArray(fm.systemDelta) ? fm.systemDelta.join("\n") : fm.systemDelta],
     ];
     for (const [field, val] of fields) {
       if (typeof val !== "string" || val.length < 10) continue;
-      push({ id: `session-block:${id}:${field}`, kind: "session-block", source: `docs/sessions/${rel}#${field}`, text: `${field}: ${val}`, meta: { sessionId: id, field, date: fm.date } });
+      push({
+        id: `session-block:${id}:${field}`,
+        kind: "session-block",
+        source: `docs/sessions/${rel}#${field}`,
+        text: `${field}: ${val}`,
+        meta: { sessionId: id, field, date: fm.date },
+      });
     }
   }
 
   // knowledge-entry — K-NNNN and L-K-NNNN blocks in agent knowledge files.
-  const kfiles = (await walk(path.join(root, ".agents"), io)).filter((p) => /\.(md)$/.test(p) && /(qa-log|learned-principles|fix-patterns|MEMORY)/.test(p));
+  const kfiles = (await walk(path.join(root, ".agents"), io)).filter(
+    (p) => /\.(md)$/.test(p) && /(qa-log|learned-principles|fix-patterns|MEMORY)/.test(p),
+  );
   for (const kf of kfiles) {
     const src = await io.readFile(kf).catch(() => null);
     if (src === null) continue;
@@ -107,91 +133,193 @@ export async function runIndexBuild(
       const headings = [...before.matchAll(/###\s+((?:L-)?K-\d+)/g)];
       const kid = headings[headings.length - 1]?.[1] ?? `K-${units.length}`;
       const fm = (yamlParse(m[1]!) as Record<string, unknown>) ?? {};
-      const prose = src.slice((m.index ?? 0) + m[0].length, undefined).split(/\n###\s/).at(0) ?? "";
+      const prose =
+        src
+          .slice((m.index ?? 0) + m[0].length, undefined)
+          .split(/\n###\s/)
+          .at(0) ?? "";
       const fileKid = `${rel.split("/").slice(-2).join("/").replace(".md", "")}:${kid}`;
       push({
         id: `knowledge-entry:${fileKid}`,
         kind: "knowledge-entry",
         source: `${rel}#${kid}`,
         text: `${String(fm.id ?? kid)}: ${prose.trim().slice(0, 1500)}`,
-        meta: { kId: kid, file: rel, layer: fm.layer, confirmations: fm.confirmations ?? 0, date: fm.created },
+        meta: {
+          kId: kid,
+          file: rel,
+          layer: fm.layer,
+          confirmations: fm.confirmations ?? 0,
+          date: fm.created,
+        },
       });
     }
   }
 
-  // friction — frictions.yaml rows.
-  const frictionsSrc = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-  const frParsed = yamlParse(frictionsSrc) as unknown;
-  const frictions = Array.isArray(frParsed) ? frParsed : ((frParsed as { frictions?: unknown[] } | null)?.frictions ?? []);
-  for (const fr of frictions as { id?: string; friction?: string; category?: string; recurrences?: number; created?: string; lastSeen?: string }[]) {
+  // friction — per-record files (RFC-1590 store; legacy surface included).
+  const { records: frictions } = await loadFrictionsTolerant(root, io).catch(() => ({
+    records: [] as FrictionEntry[],
+    duplicates: [] as string[],
+    sources: { dir: [], legacy: [], legacyPresent: false },
+  }));
+  for (const fr of frictions) {
     if (!fr.id) continue;
-    push({ id: `friction:${fr.id}`, kind: "friction", source: `docs/frictions.yaml#${fr.id}`, text: `${fr.id} [${fr.category ?? "?"}]: ${fr.friction ?? ""}`, meta: { fId: fr.id, category: fr.category, recurrences: fr.recurrences ?? 0, date: (fr as { lastSeen?: string }).lastSeen ?? (fr as { created?: string }).created } });
+    push({
+      id: `friction:${fr.id}`,
+      kind: "friction",
+      source: `docs/frictions/${fr.id}.yaml`,
+      text: `${fr.id} [${fr.category ?? "?"}]: ${fr.friction ?? ""}`,
+      meta: {
+        fId: fr.id,
+        category: fr.category,
+        recurrences: fr.recurrences ?? 0,
+        date: fr.lastSeen ?? fr.created,
+      },
+    });
   }
 
   // remediation — catalog entries.
-  for (const catPath of ["docs/remediation-catalog.generated.yaml", "docs/remediation-catalog.custom.yaml"]) {
+  for (const catPath of [
+    "docs/remediation-catalog.generated.yaml",
+    "docs/remediation-catalog.custom.yaml",
+  ]) {
     const catSrc = await io.readFile(path.join(root, catPath)).catch(() => null);
     if (catSrc === null) continue;
-    const cat = yamlParse(catSrc) as { entries?: { ruleId?: string; action?: string; contract?: string }[] } | null;
+    const cat = yamlParse(catSrc) as {
+      entries?: { ruleId?: string; action?: string; contract?: string }[];
+    } | null;
     for (const e of cat?.entries ?? []) {
       if (!e.ruleId) continue;
       const cat = path.basename(catPath).replace("remediation-catalog.", "").replace(".yaml", "");
-      push({ id: `remediation:${cat}:${e.ruleId}`, kind: "remediation", source: `${catPath}#${e.ruleId}`, text: `${e.ruleId}: ${e.contract ?? ""} — ${e.action ?? ""}`, meta: { ruleId: e.ruleId } });
+      push({
+        id: `remediation:${cat}:${e.ruleId}`,
+        kind: "remediation",
+        source: `${catPath}#${e.ruleId}`,
+        text: `${e.ruleId}: ${e.contract ?? ""} — ${e.action ?? ""}`,
+        meta: { ruleId: e.ruleId },
+      });
     }
   }
 
   // rfc-header / adr-header — frontmatter title + status + successSignals.
-  for (const [dir, kind] of [["docs/rfcs", "rfc-header"], ["docs/adrs", "adr-header"]] as const) {
-    for (const f of await walk(path.join(root, dir), io).then((p) => p.filter((x) => x.endsWith(".md")))) {
+  for (const [dir, kind] of [
+    ["docs/rfcs", "rfc-header"],
+    ["docs/adrs", "adr-header"],
+  ] as const) {
+    for (const f of await walk(path.join(root, dir), io).then((p) =>
+      p.filter((x) => x.endsWith(".md")),
+    )) {
       const src = await io.readFile(f).catch(() => null);
       if (src === null) continue;
       const rel = path.relative(root, f).split(path.sep).join("/");
       const fmMatch = src.match(/^---\r?\n([\s\S]*?)\r?\n---/);
       const fm = fmMatch ? (yamlParse(fmMatch[1]!) as Record<string, unknown>) : {};
       const rid = String(fm.id ?? path.basename(f, ".md").toUpperCase());
-      const signals = Array.isArray(fm.successSignals) ? (fm.successSignals as string[]).join(" ") : "";
-      push({ id: `${kind}:${rid}`, kind, source: `${rel}#${rid}`, text: `${rid}: ${String(fm.title ?? "")} [${String(fm.status ?? "?")}] ${signals}`.slice(0, 800), meta: { refId: rid, status: fm.status } });
+      const signals = Array.isArray(fm.successSignals)
+        ? (fm.successSignals as string[]).join(" ")
+        : "";
+      push({
+        id: `${kind}:${rid}`,
+        kind,
+        source: `${rel}#${rid}`,
+        text: `${rid}: ${String(fm.title ?? "")} [${String(fm.status ?? "?")}] ${signals}`.slice(
+          0,
+          800,
+        ),
+        meta: { refId: rid, status: fm.status },
+      });
     }
   }
 
   // skill-manifest — name + description + triggerPhrases.
-  for (const sp of await walk(path.join(root, "packages", "forge", "skills"), io).then((p) => p.filter((x) => x.endsWith("SKILL.md")))) {
+  for (const sp of await walk(path.join(root, "packages", "forge", "skills"), io).then((p) =>
+    p.filter((x) => x.endsWith("SKILL.md")),
+  )) {
     const src = await io.readFile(sp).catch(() => null);
     if (src === null) continue;
     const fmMatch = src.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     const fm = fmMatch ? (yamlParse(fmMatch[1]!) as Record<string, unknown>) : {};
     const name = String(fm.name ?? path.basename(path.dirname(sp)));
     const rel = path.relative(root, sp).split(path.sep).join("/");
-    push({ id: `skill-manifest:${name}`, kind: "skill-manifest", source: `${rel}#${name}`, text: `${name}: ${String(fm.description ?? "")} ${Array.isArray(fm.triggerPhrases) ? fm.triggerPhrases.join(" ") : ""}`.slice(0, 600), meta: { skill: name } });
+    push({
+      id: `skill-manifest:${name}`,
+      kind: "skill-manifest",
+      source: `${rel}#${name}`,
+      text: `${name}: ${String(fm.description ?? "")} ${Array.isArray(fm.triggerPhrases) ? fm.triggerPhrases.join(" ") : ""}`.slice(
+        0,
+        600,
+      ),
+      meta: { skill: name },
+    });
   }
 
   // handoff — docs/handoffs/*.md title + first paragraph.
-  for (const hf of await walk(path.join(root, "docs", "handoffs"), io).then((p) => p.filter((x) => x.endsWith(".md")))) {
+  for (const hf of await walk(path.join(root, "docs", "handoffs"), io).then((p) =>
+    p.filter((x) => x.endsWith(".md")),
+  )) {
     const src = await io.readFile(hf).catch(() => null);
     if (src === null) continue;
     const rel = path.relative(root, hf).split(path.sep).join("/");
-    const first = src.split("\n").filter((l) => l.trim().length > 0).slice(0, 4).join(" ").slice(0, 500);
-    push({ id: `handoff:${path.basename(hf, ".md")}`, kind: "handoff", source: `${rel}#top`, text: first, meta: { file: rel } });
+    const first = src
+      .split("\n")
+      .filter((l) => l.trim().length > 0)
+      .slice(0, 4)
+      .join(" ")
+      .slice(0, 500);
+    push({
+      id: `handoff:${path.basename(hf, ".md")}`,
+      kind: "handoff",
+      source: `${rel}#top`,
+      text: first,
+      meta: { file: rel },
+    });
   }
 
   // decision — session decision-log entries (queue ledger + session decisions).
-  for (const dl of await walk(path.join(root, "docs", "queues"), io).then((p) => p.filter((x) => x.endsWith("decisions.yaml")))) {
+  for (const dl of await walk(path.join(root, "docs", "queues"), io).then((p) =>
+    p.filter((x) => x.endsWith("decisions.yaml")),
+  )) {
     const src = await io.readFile(dl).catch(() => null);
     if (src === null) continue;
     const rel = path.relative(root, dl).split(path.sep).join("/");
-    const items = (yamlParse(src) as { items?: { id?: string; question?: string; answer?: string }[] } | null)?.items ?? [];
+    const items =
+      (yamlParse(src) as { items?: { id?: string; question?: string; answer?: string }[] } | null)
+        ?.items ?? [];
     for (const it of items) {
       if (!it.id) continue;
-      push({ id: `decision:${it.id}`, kind: "decision", source: `${rel}#${it.id}`, text: `${it.id}: ${it.question ?? ""} → ${it.answer ?? ""}`, meta: { decisionId: it.id } });
+      push({
+        id: `decision:${it.id}`,
+        kind: "decision",
+        source: `${rel}#${it.id}`,
+        text: `${it.id}: ${it.question ?? ""} → ${it.answer ?? ""}`,
+        meta: { decisionId: it.id },
+      });
     }
   }
 
   // trajectory — RFC-1472's procedure units register as a kind in the catalog.
-  const trajSrc = await io.readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml")).catch(() => "");
-  const trajUnits = (yamlParse(trajSrc) as { units?: { id?: string; situation?: { taskKind?: string }; producer?: { sessionId?: string }; text?: string }[] } | null)?.units ?? [];
+  const trajSrc = await io
+    .readFile(path.join(root, "docs", ".index", "trajectory", "units.yaml"))
+    .catch(() => "");
+  const trajUnits =
+    (
+      yamlParse(trajSrc) as {
+        units?: {
+          id?: string;
+          situation?: { taskKind?: string };
+          producer?: { sessionId?: string };
+          text?: string;
+        }[];
+      } | null
+    )?.units ?? [];
   for (const t of trajUnits) {
     if (!t.id) continue;
-    push({ id: t.id, kind: "trajectory", source: `docs/.index/trajectory/units.yaml#${t.id}`, text: t.text ?? "", meta: { taskKind: t.situation?.taskKind, sessionId: t.producer?.sessionId } });
+    push({
+      id: t.id,
+      kind: "trajectory",
+      source: `docs/.index/trajectory/units.yaml#${t.id}`,
+      text: t.text ?? "",
+      meta: { taskKind: t.situation?.taskKind, sessionId: t.producer?.sessionId },
+    });
   }
 
   const indexDir = path.join(root, "docs", ".index", "context");
@@ -199,15 +327,26 @@ export async function runIndexBuild(
   const indexRel = "docs/.index/context/index.yaml";
   // Watermark = newest SESSION source path (the corpus the index tracks for
   // staleness) — not the lexical max across all kinds (packages/… always wins).
-  const sourceWatermark = units
-    .map((u) => u.source.split("#")[0] ?? "")
-    .filter((p) => p.startsWith("docs/sessions/"))
-    .sort().at(-1) ?? "";
-  await io.writeFile(path.join(root, indexRel), yamlStringify({ schema: "forge/context-index@1", sourceWatermark, units }) + "\n");
+  const sourceWatermark =
+    units
+      .map((u) => u.source.split("#")[0] ?? "")
+      .filter((p) => p.startsWith("docs/sessions/"))
+      .sort()
+      .at(-1) ?? "";
+  await io.writeFile(
+    path.join(root, indexRel),
+    yamlStringify({ schema: "forge/context-index@1", sourceWatermark, units }) + "\n",
+  );
   const byKind: Record<string, number> = {};
   for (const u of units) byKind[u.kind] = (byKind[u.kind] ?? 0) + 1;
   return {
-    data: { command: "context.index.build", status: "ok", units: units.length, byKind, index: indexRel },
+    data: {
+      command: "context.index.build",
+      status: "ok",
+      units: units.length,
+      byKind,
+      index: indexRel,
+    },
     summary: `${units.length} unit(s) across ${Object.keys(byKind).length} kinds → ${indexRel}`,
     exitCode: 0,
   };

@@ -7,7 +7,7 @@ concerns: content-mutation
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 knowledge:
-  - qa-log.md
+  - qa-log/
   - fix-patterns.md
   - learned-principles.md
 triggerPhrases: ["sync memory from codex", "import external agent knowledge", "recall sessions from other tools", "sync memory from claude code"]
@@ -26,6 +26,7 @@ triggerPhrases: ["sync memory from codex", "import external agent knowledge", "r
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -41,9 +42,9 @@ The skill maintains three knowledge files alongside `SKILL.md`:
 
 - **`fix-patterns.md`** (L1) — baseline patterns for filtering, deduplication, and import decisions. Grown by AI per operator direction.
 - **`learned-principles.md`** (L2) — distilled concrete principles extracted from past runs, with `confirmations: N` counter. At N≥3 the skill auto-applies without asking.
-- **`qa-log.md`** (L0) — append-only raw Q&A pairs from each run. Used for meta-analysis and prioritizing suggestions.
+- **`qa-log/`** (L0) — per-session shard files `qa-log/<session-id>.md` of append-only raw Q&A pairs. Read every shard in name order for meta-analysis and prioritizing suggestions.
 
-Read L1 and L2 at the start of each run. Append to L0 during the run. Distill L2 from L0 at the end.
+Read L1, L2, and every L0 shard at the start of each run. Append to your own L0 session shard during the run. Distill L2 from L0 at the end.
 
 ## Source locations
 
@@ -171,7 +172,7 @@ Do not duplicate knowledge already present in the target. Read the target file b
 
 After the run:
 
-1. Append new Q&A pairs to `qa-log.md` (L0).
+1. Append new Q&A pairs to your own session shard `qa-log/<session-id>.md` (L0).
 2. If new filtering or import patterns emerged, propose them to the operator and append approved patterns to `fix-patterns.md` (L1).
 3. If recurring decisions were confirmed, distill principles and append to `learned-principles.md` (L2) with `confirmations: 1`. Increment existing principles if the same decision was made again.
 4. Commit knowledge file updates: `git add packages/forge/skills/fo/fo-memory-sync/ && git commit -m "chore: update fo-memory-sync knowledge from run"`.
@@ -204,7 +205,7 @@ Output a structured summary:
 - Stale: N
 
 ## Knowledge files updated
-- qa-log.md: N new entries
+- qa-log/<session-id>.md: N new entries
 - fix-patterns.md: N new patterns
 - learned-principles.md: N new/updated principles
 
@@ -219,7 +220,7 @@ Output a structured summary:
 - **Cross-platform.** Must work on Linux, WSL, and Windows. Use `os.homedir()` and `path.join()` — never hardcode path separators.
 - **Operator confirmation mandatory for imports.** Do not import any knowledge without explicit confirmation. Present findings, let the operator choose.
 - **No duplication.** Always check whether knowledge is already present in the project before importing. Read target files before editing.
-- **Dedup across projects.** Knowledge files (L0/L1/L2) are shared across all projects. Use project path or git remote as the dedup key in `qa-log.md` entries.
+- **Dedup across projects.** Knowledge files (L0/L1/L2) are shared across all projects. Use project path or git remote as the dedup key in `qa-log/` entries.
 - **Commit knowledge files.** After each run, commit updated knowledge files to the forge repo. See `_shared/fo-pipeline-conventions.md` §Commit discipline.
 - **Session limit.** Default 20 sessions. Prevents reading hundreds of old session files.
 - **Sensitive information.** Redact API keys, passwords, and PII from any imported knowledge. Same redaction pattern as `fo-handoff`.

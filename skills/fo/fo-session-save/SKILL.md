@@ -6,7 +6,7 @@ category: fo
 concerns: document-only
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
-knowledge: [qa-log.md, learned-principles.md, fix-patterns.md]
+knowledge: [qa-log/, learned-principles.md, fix-patterns.md]
 bindings:
   requires: [paths.sessionsDir, commands.sessionSave]
   optional: []
@@ -25,6 +25,7 @@ triggerPhrases: ["save this session", "enhance session transcript with annotatio
 
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -50,7 +51,7 @@ Enhance saved session transcripts with semantic annotations, summaries, and qual
 
 3. **Read the most recently saved session file** from `docs/sessions/`. If no session files exist, exit with "No session files to annotate."
 
-4. **Read knowledge files** (`qa-log.md`, `learned-principles.md`, `fix-patterns.md`) for accumulated knowledge from previous sessions. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`.
+4. **Read knowledge files** (every shard under `qa-log/` in name order, `learned-principles.md`, `fix-patterns.md`) for accumulated knowledge from previous sessions. Apply only entries with `status: active`; skip entries with `status: stale`, `superseded`, or `archived`.
 
 5. **Analyze the transcript semantically:**
    - Generate a 1-3 sentence `summary` of the session's purpose and outcome.
@@ -72,7 +73,7 @@ Enhance saved session transcripts with semantic annotations, summaries, and qual
    - Append a `## Session notes` section with structured annotations.
 
 7. **Update knowledge files** with any new insights:
-   - `qa-log.md`: Log any questions asked and operator answers.
+   - `qa-log/<session-id>.md`: Log any questions asked and operator answers into your own session shard — one file per session.
    - `learned-principles.md`: New principles learned across sessions.
    - `fix-patterns.md`: Patterns of errors in auto-extraction and their fixes.
    - In a consumer workspace, allocate new local entries as `L-K-NNNN` (max existing local ordinal + 1); Forge source entries remain `K-NNNN`.

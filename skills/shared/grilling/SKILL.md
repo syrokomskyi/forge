@@ -7,7 +7,7 @@ concerns: read-only
 dependsOn: ['my-preferences']
 languagePolicy: ref(PREFERENCES.md)
 knowledge:
-  - qa-log.md
+  - qa-log/
   - learned-principles.md
 ---
 
@@ -19,15 +19,14 @@ knowledge:
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1250: two modes — interview (standalone, interactive) and emit
   (orchestrated runs: questions land in the queue decision ledger with
   recommended answers, no interview).</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -58,4 +57,4 @@ When an answer fixes an observable value — verbatim copy, a label, a name, a d
 
 Do not enact the plan until I confirm we have reached a shared understanding.
 
-At the end of the session, perform meta-analysis: identify recurring decision patterns from `qa-log.md` (L0), formulate concrete principles, present to operator for approval, and append approved principles to `learned-principles.md` (L2). Append Q&A pairs to `qa-log.md` (L0) during the session.
+At the end of the session, perform meta-analysis: identify recurring decision patterns from every shard under `qa-log/` in name order (L0), formulate concrete principles, present to operator for approval, and append approved principles to `learned-principles.md` (L2). Append Q&A pairs to your own session shard `qa-log/<session-id>.md` (L0) during the session — one file per session, never the shared `qa-log.md`.

@@ -10,6 +10,7 @@
   <item>RFC-1470: context.index.build + context.assemble + context.slate.eval — slate-retrieval projection over the artifact corpus</item>
   <item>RFC-1470: declare generated index files in context.index.build and trajectory.index writes</item>
   <item>RFC-1485: sweep compass headers — forge-os-context</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 */
 
@@ -17,6 +18,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 import { runIndexBuild } from "./handlers/index-build.ts";
 import { runContextAssemble } from "./handlers/context-assemble.ts";
 import { runSlateEval } from "./handlers/context-slate-eval.ts";
+import { FRICTION_DIR, LEGACY_FRICTION_FILE } from "../friction/store.ts";
 
 export const forgeContextModule: ForgeModule = {
   name: "forge-context",
@@ -34,7 +36,18 @@ export const forgeContextModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {},
-      reads: ["docs/sessions/**/*.md", ".agents/**", "docs/frictions.yaml", "docs/remediation-catalog.*.yaml", "docs/rfcs/**", "docs/adrs/**", "packages/forge/skills/**", "docs/handoffs/**", "docs/queues/*decisions.yaml"],
+      reads: [
+        "docs/sessions/**/*.md",
+        ".agents/**",
+        `${FRICTION_DIR}/**`,
+        LEGACY_FRICTION_FILE,
+        "docs/remediation-catalog.*.yaml",
+        "docs/rfcs/**",
+        "docs/adrs/**",
+        "packages/forge/skills/**",
+        "docs/handoffs/**",
+        "docs/queues/*decisions.yaml",
+      ],
       writes: ["docs/.index/context/**", "docs/.index/context/index.yaml"],
       generates: [{ path: "docs/.index/context/index.yaml", phase: "on-demand" as const }],
       execute: runIndexBuild,
@@ -51,7 +64,10 @@ export const forgeContextModule: ForgeModule = {
       flags: {
         task: { kind: "string", description: "Task description to retrieve context for." },
         budget: { kind: "string", description: "Token budget for the slate (default 4000)." },
-        paths: { kind: "string", description: "Path glob terms to boost (e.g. the files being edited)." },
+        paths: {
+          kind: "string",
+          description: "Path glob terms to boost (e.g. the files being edited).",
+        },
         "auto-index": { kind: "boolean", description: "Build the index lazily when missing." },
         format: { kind: "string", description: "markdown for a paste-ready block." },
       },
@@ -68,7 +84,10 @@ export const forgeContextModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {
-        budget: { kind: "string", description: "Token budget for the recall measurement (default 4000)." },
+        budget: {
+          kind: "string",
+          description: "Token budget for the recall measurement (default 4000).",
+        },
       },
       reads: ["docs/.index/context/index.yaml", "docs/context-devset/*.yaml"],
       execute: runSlateEval,

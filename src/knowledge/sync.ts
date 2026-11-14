@@ -11,6 +11,7 @@
   <item>RFC-0660: initial append-only knowledge sync — merge by entry-ID union, local wins conflicts, skip divergent non-cumulative files, recurse into declared directories.</item>
   <item>RFC-1481: pure conflict planner — preserve upstream canonical IDs, move divergent local entries into L-K-NNNN, deduplicate by exact title/body, and remap same-file references.</item>
   <item>RFC-1481: close REVIEW-CODE-2026-11-01-11 findings on resolver safety, IO boundaries, and reporting</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 */
 
@@ -44,10 +45,7 @@ export interface KnowledgeConflictResolution {
 }
 
 export type KnowledgeConflictUnresolvedReason =
-  | "non-cumulative"
-  | "parse-failure"
-  | "ambiguous-identity"
-  | "unmapped-reference";
+  "non-cumulative" | "parse-failure" | "ambiguous-identity" | "unmapped-reference";
 
 export interface KnowledgeConflictIssue {
   file: string;
@@ -116,7 +114,9 @@ export function planKnowledgeConflictResolution(
   const destinationIds = destination.entries.map((entry) => entry.meta.id);
   // Unresolved files are never written — return an empty resolution so no
   // partial mapping can leak into cross-file remaps or the resolved ledger.
-  const unresolved = (reason: KnowledgeConflictUnresolvedReason): KnowledgeConflictResolutionPlan => ({
+  const unresolved = (
+    reason: KnowledgeConflictUnresolvedReason,
+  ): KnowledgeConflictResolutionPlan => ({
     content: null,
     resolution: emptyResolution(file),
     unresolved: [{ file, reason }],
@@ -406,22 +406,35 @@ function planFileSync(srcPath: string, destPath: string): KnowledgeSyncPlan {
 /**
  * Compute the sync plan for a declared knowledge file (or directory) without
  * writing anything. Used by doctor for stale detection.
+ *
+ * A declared DIRECTORY (e.g. `qa-log/`, RFC-1590) is seed-only shard state:
+ * its files are per-instance append-only records that must never merge — the
+ * destination may legitimately hold shards the source lacks (sessions write
+ * their own). Source files missing in the destination are seeded; files the
+ * destination already holds are left alone. Any seed → copied; none →
+ * unchanged.
  */
 export function planKnowledgeSync(srcPath: string, destPath: string): KnowledgeSyncPlan {
   if (fs.existsSync(srcPath) && fs.statSync(srcPath).isDirectory()) {
-    const aggregate: KnowledgeSyncPlan = {
-      action: "unchanged",
-      appended: [],
-      conflicts: [],
-      content: null,
-    };
-    for (const entry of fs.readdirSync(srcPath)) {
-      const sub = planKnowledgeSync(path.join(srcPath, entry), path.join(destPath, entry));
-      aggregateInto(aggregate, sub);
-    }
-    return aggregate;
+    const none = { appended: [], conflicts: [] };
+    if (missingShardFiles(srcPath, destPath)) return { action: "copied", content: null, ...none };
+    return { action: "unchanged", content: null, ...none };
   }
   return planFileSync(srcPath, destPath);
+}
+
+/** True when any source file (recursively) has no destination counterpart. */
+function missingShardFiles(srcPath: string, destPath: string): boolean {
+  for (const entry of fs.readdirSync(srcPath)) {
+    const src = path.join(srcPath, entry);
+    const dst = path.join(destPath, entry);
+    if (fs.statSync(src).isDirectory()) {
+      if (missingShardFiles(src, dst)) return true;
+    } else if (!fs.existsSync(dst)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 /**
@@ -431,10 +444,21 @@ export function planKnowledgeSync(srcPath: string, destPath: string): KnowledgeS
  */
 export function syncKnowledgeFile(srcPath: string, destPath: string): KnowledgeSyncResult {
   if (fs.existsSync(srcPath) && fs.statSync(srcPath).isDirectory()) {
+    // Seed-only shard dir (planKnowledgeSync contract): copy source files
+    // missing in the destination, never touch present ones — per-instance
+    // shards never merge.
     const aggregate: KnowledgeSyncResult = { action: "unchanged", appended: [], conflicts: [] };
     for (const entry of fs.readdirSync(srcPath)) {
-      const sub = syncKnowledgeFile(path.join(srcPath, entry), path.join(destPath, entry));
-      aggregateInto(aggregate, sub);
+      const src = path.join(srcPath, entry);
+      const dst = path.join(destPath, entry);
+      if (fs.statSync(src).isDirectory()) {
+        const sub = syncKnowledgeFile(src, dst);
+        aggregateInto(aggregate, sub);
+      } else if (!fs.existsSync(dst)) {
+        fs.mkdirSync(destPath, { recursive: true });
+        fs.copyFileSync(src, dst);
+        aggregate.action = "copied";
+      }
     }
     return aggregate;
   }

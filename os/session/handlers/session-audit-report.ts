@@ -10,12 +10,15 @@
   <item>RFC-1471: session.audit Stage-A detectors + audit.report read-model — denied-retry, blocker omission, generated-edit, retry-after-denial, false-claim</item>
   <item>RFC-1471: apply r1 repairs — AUDIT-10..14 corrected semantics, read-only --check, deterministic auditedAt, archive coverage, metrics artifact, Stage-B stub</item>
   <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { loadFrictionsTolerant } from "../../friction/store.ts";
+import type { FrictionEntry } from "../../friction/types.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -41,15 +44,24 @@ export async function runSessionAuditReport(
   const auditDir = path.join(root, "docs", "sessions", "audit");
 
   const window = input.flags["window"] as string | undefined;
-  const entries = await io.readdir(auditDir).catch(() => [] as { name: string; isDirectory: boolean }[]);
+  const entries = await io
+    .readdir(auditDir)
+    .catch(() => [] as { name: string; isDirectory: boolean }[]);
   const byRule = new Map<string, { count: number; sessions: Set<string> }>();
-  let clean = 0, warnings = 0, violations = 0;
+  let clean = 0,
+    warnings = 0,
+    violations = 0;
 
   for (const e of entries) {
     if (e.isDirectory || !e.name.endsWith(".audit.yaml")) continue;
     const src = await io.readFile(path.join(auditDir, e.name)).catch(() => null);
     if (src === null) continue;
-    const a = yamlParse(src) as { sessionId?: string; verdict?: string; findings?: { ruleId?: string }[]; auditedAt?: string } | null;
+    const a = yamlParse(src) as {
+      sessionId?: string;
+      verdict?: string;
+      findings?: { ruleId?: string }[];
+      auditedAt?: string;
+    } | null;
     if (!a) continue;
     if (window && typeof a.auditedAt === "string" && a.auditedAt < window) continue;
     if (a.verdict === "violations") violations++;
@@ -67,8 +79,18 @@ export async function runSessionAuditReport(
   // Findings classes with no friction on file — audit signal without a
   // governed scar. Structured match: the friction's `id:`/`ruleId:` fields
   // or an `audit:` reference, not bare substring (avoid coincidental text hits).
-  const frictionsSrc = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-  const unlinkedFindings = [...byRule.keys()].filter((id) => !frictionsSrc.includes(`ruleId: ${id}`) && !frictionsSrc.includes(`- ${id}`));
+  const { records: frictions } = await loadFrictionsTolerant(root, io).catch(() => ({
+    records: [] as FrictionEntry[],
+    duplicates: [] as string[],
+    sources: { dir: [], legacy: [], legacyPresent: false },
+  }));
+  const frictionRefsId = (e: FrictionEntry, id: string) =>
+    (e as { ruleId?: unknown }).ruleId === id ||
+    e.artifacts.includes(id) ||
+    (e.catalogRefs ?? []).includes(id);
+  const unlinkedFindings = [...byRule.keys()].filter(
+    (id) => !frictions.some((e) => frictionRefsId(e, id)),
+  );
 
   const metricsRel = "docs/metrics/session-audit.generated.yaml";
   const metrics = {
@@ -76,7 +98,9 @@ export async function runSessionAuditReport(
     generatedAt: new Date().toISOString(),
     sessionsAudited: clean + warnings + violations,
     verdicts: { clean, warnings, violations },
-    byRule: [...byRule.entries()].map(([ruleId, g]) => ({ ruleId, count: g.count, sessions: g.sessions.size })).sort((a, b) => b.count - a.count),
+    byRule: [...byRule.entries()]
+      .map(([ruleId, g]) => ({ ruleId, count: g.count, sessions: g.sessions.size }))
+      .sort((a, b) => b.count - a.count),
     unlinkedFindings,
   };
   await io.writeFile(path.join(root, metricsRel), yamlStringify(metrics) + "\n");
@@ -87,7 +111,9 @@ export async function runSessionAuditReport(
       status: "ok",
       sessionsAudited: clean + warnings + violations,
       verdicts: { clean, warnings, violations },
-      byRule: [...byRule.entries()].map(([ruleId, g]) => ({ ruleId, count: g.count, sessions: [...g.sessions] })).sort((a, b) => b.count - a.count),
+      byRule: [...byRule.entries()]
+        .map(([ruleId, g]) => ({ ruleId, count: g.count, sessions: [...g.sessions] }))
+        .sort((a, b) => b.count - a.count),
       unlinkedFindings,
       metrics: metricsRel,
     },

@@ -6,13 +6,13 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1473: checks.contribution.report — per-rule marginal-contribution read-model over firing history + escapes</item>
   <item>RFC-1474: per-rule check-execution counters
 
 Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply review findings (F-1..F-9)</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1485: sweep compass headers — forge-os-checks</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <history>RFC-1473</history>
 </CHANGE_SUMMARY>
 */
@@ -21,6 +21,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 import { runContributionReport } from "./handlers/contribution-report.ts";
 import { runCountersExport } from "./handlers/counters-export.ts";
 import { runCountersValidate } from "./handlers/counters-validate.ts";
+import { FRICTION_DIR, LEGACY_FRICTION_FILE } from "../friction/store.ts";
 
 export const forgeChecksModule: ForgeModule = {
   name: "forge-checks",
@@ -51,10 +52,13 @@ export const forgeChecksModule: ForgeModule = {
         "docs/validator-inventory.generated.yaml",
         "docs/.index/checks/counters.jsonl",
         "docs/sessions/audit/*.audit.yaml",
-        "docs/frictions.yaml",
+        `${FRICTION_DIR}/**`,
+        LEGACY_FRICTION_FILE,
       ],
       writes: ["docs/metrics/check-contribution.generated.yaml"],
-      generates: [{ path: "docs/metrics/check-contribution.generated.yaml", phase: "on-demand" as const }],
+      generates: [
+        { path: "docs/metrics/check-contribution.generated.yaml", phase: "on-demand" as const },
+      ],
       execute: runContributionReport,
     },
     {
@@ -68,12 +72,22 @@ export const forgeChecksModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {
-        out: { kind: "string", description: "Artifact path override (default docs/metrics/check-counters.generated.yaml)." },
-        check: { kind: "boolean", description: "Read-only — diff the computed artifact against the committed file (COUNT-03)." },
+        out: {
+          kind: "string",
+          description:
+            "Artifact path override (default docs/metrics/check-counters.generated.yaml).",
+        },
+        check: {
+          kind: "boolean",
+          description:
+            "Read-only — diff the computed artifact against the committed file (COUNT-03).",
+        },
       },
       reads: ["docs/.index/checks/counters.jsonl"],
       writes: ["docs/metrics/check-counters.generated.yaml"],
-      generates: [{ path: "docs/metrics/check-counters.generated.yaml", phase: "on-demand" as const }],
+      generates: [
+        { path: "docs/metrics/check-counters.generated.yaml", phase: "on-demand" as const },
+      ],
       execute: runCountersExport,
     },
     {

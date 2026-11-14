@@ -20,13 +20,6 @@ triggerPhrases: ["implement this RFC", "execute the implementation plan", "reali
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1440: fo-reproduce skill + pipeline wiring
-
-New fo-reproduce skill (bounded 5-attempt reproduction loop, no-source-
-modification boundary, verifier exit, honest inconclusive attempt log);
-wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
-verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
-compass inventory regenerated.</item>
   <item>RFC-1454: review deviations recorded in the RFC — IMP-15 gate, V-49 provenance, skill contract</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
@@ -35,7 +28,8 @@ fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and 
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
-  <history>COMMIT-02, RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332, RFC-1333</history>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>COMMIT-02, RFC-1097, RFC-1224, RFC-1250, RFC-1310, RFC-1317, RFC-1322, RFC-1332, RFC-1333, RFC-1440</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -160,7 +154,6 @@ No reason → no new test: run the existing suite and the document's probes inst
 For `defect`: the test is produced by invoking `fo-reproduce` **before** the fix code lands — reproduction-first, never retrofitted after. `fo-reproduce` runs its bounded loop and exits through `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason; an `inconclusive` exit carries its attempt log and never blocks the fix by itself. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`. A `regression <risk>` reason does NOT route through `fo-reproduce` — it keeps this section's path.
 
 Commits that add test files carry `Test-Reason: <reason>` (one line per file, or one shared line), plus `Repro-Verified: <pre-fix-sha>` for defect reasons.
-
 
 **Principles:**
 
@@ -467,7 +460,6 @@ No reason → no new test: run the existing suite and the document's probes inst
 For `defect`: the test is produced by invoking `fo-reproduce` **before** the fix code lands — reproduction-first, never retrofitted after. `fo-reproduce` runs its bounded loop and exits through `ref(forge.yaml bindings.commands.verifyReproduction)` with `{test}` = the test file and `{sha}` = the pre-fix commit. Only a `reproduced` verdict lets the test be committed under this reason; `not-reproduced` means the test does not capture the defect — rewrite it; `inconclusive` means it cannot run on the old code — restructure it against the old public surface or change the reason; an `inconclusive` exit carries its attempt log and never blocks the fix by itself. Without the binding, record the observed red run in the commit body and report `Degraded: commands.verifyReproduction`. A `regression <risk>` reason does NOT route through `fo-reproduce` — it keeps this section's path.
 
 Commits that add test files carry `Test-Reason: <reason>` (one line per file, or one shared line), plus `Repro-Verified: <pre-fix-sha>` for defect reasons.
-
 
 **Principles:**
 

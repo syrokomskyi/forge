@@ -21,6 +21,7 @@ languagePolicy: ref(PREFERENCES.md)
 Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1247: close RFC-1247 review r2 — CHANGE_SUMMARY items on six touched skills, fo-handoff in AGENTS enumeration, glossary applied-instance pointer, recorded per-skill phrase split</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -114,7 +115,7 @@ A skill declares its knowledge files by adding a `knowledge:` array to SKILL.md 
 
 ```yaml
 knowledge:
-  - qa-log.md
+  - qa-log/
   - learned-principles.md
 ```
 
@@ -126,7 +127,7 @@ Skills adopt 0, 1, 2, or 3 layers as needed — the pattern is adaptive, not man
 
 | Layer | File name | Role |
 | --- | --- | --- |
-| L0 | `qa-log.md` | Append-only log of questions asked and answers given during runs |
+| L0 | `qa-log/` | Per-session shards `qa-log/<session-id>.md` — append-only Q&A log; a session writes only its own|
 | L1 | `fix-patterns.md` | Baseline fix patterns for recurring violations |
 | L2 | `learned-principles.md` | Concrete principles distilled from past runs, with `confirmations: N` counter |
 
@@ -181,7 +182,7 @@ status: active
 
 #### Layer-specific rules
 
-- **L0** (`qa-log.md`): `confirmations` and `lastConfirmedAt` are forbidden.
+- **L0** (`qa-log/`): `confirmations` and `lastConfirmedAt` are forbidden.
 - **L1** (`fix-patterns.md`): `confirmations` and `lastConfirmedAt` are forbidden.
 - **L2** (`learned-principles.md`): `confirmations` and `lastConfirmedAt` are required.
 

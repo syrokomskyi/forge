@@ -12,12 +12,14 @@
   <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
 
 8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 import { runInstructionsBudgetValidate } from "./handlers/budget-validate.ts";
 import { runScarMigrate } from "./handlers/scar-migrate.ts";
+import { FRICTION_DIR, LEGACY_FRICTION_FILE } from "../friction/store.ts";
 
 export const forgeInstructionsModule: ForgeModule = {
   name: "forge-instructions",
@@ -40,7 +42,13 @@ export const forgeInstructionsModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {},
-      reads: ["forge.yaml", "AGENTS.md", "packages/*/AGENTS.md", "apps/*/AGENTS.md", "docs/remediation-catalog.custom.yaml"],
+      reads: [
+        "forge.yaml",
+        "AGENTS.md",
+        "packages/*/AGENTS.md",
+        "apps/*/AGENTS.md",
+        "docs/remediation-catalog.custom.yaml",
+      ],
       execute: runInstructionsBudgetValidate,
     },
     {
@@ -52,8 +60,16 @@ export const forgeInstructionsModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {
-        file: { kind: "string", required: true, description: "AGENTS.md path containing the scar bullet." },
-        line: { kind: "string", required: true, description: "1-based line number of the scar bullet." },
+        file: {
+          kind: "string",
+          required: true,
+          description: "AGENTS.md path containing the scar bullet.",
+        },
+        line: {
+          kind: "string",
+          required: true,
+          description: "1-based line number of the scar bullet.",
+        },
         "catalog-remedy": {
           kind: "string",
           description: "Entry id to append/extend in the fragment catalog (default SCAR-####).",
@@ -71,9 +87,20 @@ export const forgeInstructionsModule: ForgeModule = {
           description: "Override the invariant-shaped refusal (journaled).",
         },
       },
-      writes: ["docs/remediation-catalog.custom.yaml", "docs/frictions.yaml", "AGENTS.md", "packages/*/AGENTS.md", "apps/*/AGENTS.md"],
+      writes: [
+        "docs/remediation-catalog.custom.yaml",
+        `${FRICTION_DIR}/**`,
+        "AGENTS.md",
+        "packages/*/AGENTS.md",
+        "apps/*/AGENTS.md",
+      ],
       generates: [{ path: "docs/remediation-catalog.custom.yaml", phase: "on-demand" }],
-      reads: ["forge.yaml", "docs/frictions.yaml", "docs/remediation-catalog.custom.yaml"],
+      reads: [
+        "forge.yaml",
+        `${FRICTION_DIR}/**`,
+        LEGACY_FRICTION_FILE,
+        "docs/remediation-catalog.custom.yaml",
+      ],
       cacheable: false,
       execute: runScarMigrate,
     },

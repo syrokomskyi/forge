@@ -13,8 +13,6 @@ pass (lazy creation).
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: initial suite — per-rule fixtures plus the ENOENT
-  entries: 0 contract.</item>
   <item>RFC-1433: review realignment — expectations remapped to the spec's
   failure-modes table; new fixtures for signature normalization and
   artifact-path existence.</item>
@@ -22,6 +20,8 @@ pass (lazy creation).
   non-ENOENT read failure, and honest entries count on schema failure.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
 
@@ -29,6 +29,7 @@ import { test, expect, describe, beforeEach, afterEach } from "vitest";
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import YAML from "yaml";
 
 import type { ForgeRuntimeContext } from "../../src/types.ts";
 import { runFrictionValidate } from "./handlers/friction-validate.ts";
@@ -73,7 +74,18 @@ const VALID_ENTRY = `  - id: F-0001
     lastSeen: 2026-10-29
 `;
 
+/** Write the fixture records as per-record files (the RFC-1590 layout). */
 async function writeRegistry(body: string): Promise<void> {
+  const entries = YAML.parse(body) as Array<{ id?: string }>;
+  for (const e of entries ?? []) {
+    const id = typeof e?.id === "string" && e.id.length > 0 ? e.id : "F-0000";
+    await fs.mkdir(path.join(tmpDir, "docs/frictions"), { recursive: true });
+    await fs.writeFile(path.join(tmpDir, `docs/frictions/${id}.yaml`), YAML.stringify(e));
+  }
+}
+
+/** Write the fixture body to the unmigrated legacy registry file. */
+async function writeLegacy(body: string): Promise<void> {
   await fs.writeFile(path.join(tmpDir, "docs/frictions.yaml"), body);
 }
 
@@ -89,8 +101,8 @@ describe("friction.validate — absent registry", () => {
     expect(result?.data?.entries).toBe(0);
   });
 
-  test("empty list passes with entries: 0", async () => {
-    await writeRegistry("[]\n");
+  test("empty legacy list passes with entries: 0", async () => {
+    await writeLegacy("[]\n");
     const result = await validate();
     expect(result.exitCode).toBe(0);
     expect(result?.data?.entries).toBe(0);
@@ -116,21 +128,21 @@ describe("friction.validate — FRICTION-01 (shape + id)", () => {
   });
 
   test("unparseable YAML fails with FRICTION-01", async () => {
-    await writeRegistry("- id: F-0001\n  bad: [unclosed\n");
+    await writeLegacy("- id: F-0001\n  bad: [unclosed\n");
     const result = await validate();
     expect(result.exitCode).toBe(1);
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-01")).toBe(true);
   });
 
   test("non-array top level fails with FRICTION-01", async () => {
-    await writeRegistry("entries: {}\n");
+    await writeLegacy("entries: {}\n");
     const result = await validate();
     expect(result.exitCode).toBe(1);
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-01")).toBe(true);
   });
 
   test("duplicate ids fail with FRICTION-01 naming the id", async () => {
-    await writeRegistry(VALID_ENTRY + VALID_ENTRY);
+    await writeLegacy(VALID_ENTRY + VALID_ENTRY);
     const result = await validate();
     expect(result.exitCode).toBe(1);
     const dup = result?.data?.violations.find(
@@ -289,8 +301,10 @@ describe("friction.validate — FRICTION-06 (docs-only recurrence blocks)", () =
 
   test("addressed + docs-rule + recurrences >= 2 fails with FRICTION-06 naming id + signature", async () => {
     await writeRegistry(
-      ADDR_DOCS.replace("artifacts:", "measureKind: docs-rule\n    artifacts:")
-        .replace("recurrences: 0", "recurrences: 2"),
+      ADDR_DOCS.replace("artifacts:", "measureKind: docs-rule\n    artifacts:").replace(
+        "recurrences: 0",
+        "recurrences: 2",
+      ),
     );
     const result = await validate();
     expect(result.exitCode).toBe(1);
@@ -387,18 +401,21 @@ describe("friction.validate — FRICTION-08 (escalated needs an obligation token
   );
 
   test("escalated without a mechanical token in measure fails FRICTION-08", async () => {
-    await writeRegistry(ESC_BASE.replace('measure: "move gate earlier — RFC draft"', 'measure: "write another rule"'));
+    await writeRegistry(
+      ESC_BASE.replace('measure: "move gate earlier — RFC draft"', 'measure: "write another rule"'),
+    );
     const result = await validate();
     expect(result.exitCode).toBe(1);
-    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-08" && v.entry === "F-0001")).toBe(true);
+    expect(
+      result?.data?.violations.some((v) => v.rule === "FRICTION-08" && v.entry === "F-0001"),
+    ).toBe(true);
   });
 
   test("bare slash prose is not a path token — FRICTION-08 still fails", async () => {
-    for (const measure of [
-      "harden the input/output checks",
-      "split the sync/async path",
-    ]) {
-      await writeRegistry(ESC_BASE.replace('measure: "move gate earlier — RFC draft"', `measure: "${measure}"`));
+    for (const measure of ["harden the input/output checks", "split the sync/async path"]) {
+      await writeRegistry(
+        ESC_BASE.replace('measure: "move gate earlier — RFC draft"', `measure: "${measure}"`),
+      );
       const result = await validate();
       expect(
         result?.data?.violations.some((v) => v.rule === "FRICTION-08"),
@@ -414,7 +431,9 @@ describe("friction.validate — FRICTION-08 (escalated needs an obligation token
       "obligation tracked in docs/queues/session-x.yaml",
       "mechanism lands in packages/forge/os/friction/handlers/x.ts",
     ]) {
-      await writeRegistry(ESC_BASE.replace('measure: "move gate earlier — RFC draft"', `measure: "${measure}"`));
+      await writeRegistry(
+        ESC_BASE.replace('measure: "move gate earlier — RFC draft"', `measure: "${measure}"`),
+      );
       const result = await validate();
       expect(
         result?.data?.violations.some((v) => v.rule === "FRICTION-08"),
@@ -434,9 +453,62 @@ describe("friction.validate — FRICTION-08 (escalated needs an obligation token
 
   test("status: escalated is a valid enum value (AC-2)", async () => {
     await writeRegistry(
-      ESC_BASE.replace('measure: "move gate earlier — RFC draft"', 'measure: "obligation: RFC-1460"'),
+      ESC_BASE.replace(
+        'measure: "move gate earlier — RFC draft"',
+        'measure: "obligation: RFC-1460"',
+      ),
     );
     const result = await validate();
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-03")).toBe(false);
+  });
+});
+
+// RFC-1590: per-record surfaces — directory + legacy merge, cross-store
+// duplicates (09), unmigrated-legacy warning (10), filename-id agreement.
+describe("friction.validate — RFC-1590 store surfaces", () => {
+  test("dir + legacy records merge into one entries count (legacy warns FRICTION-10)", async () => {
+    await writeRegistry(VALID_ENTRY);
+    await writeLegacy(VALID_ENTRY.replace("id: F-0001", "id: F-0002"));
+    const result = await validate();
+    expect(result?.data?.entries).toBe(2);
+    expect(result.exitCode).toBe(0);
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-10")).toBe(true);
+  });
+
+  test("same id in dir and legacy fails with FRICTION-09", async () => {
+    await writeRegistry(VALID_ENTRY);
+    await writeLegacy(VALID_ENTRY);
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    const v = result?.data?.violations.find((x) => x.rule === "FRICTION-09");
+    expect(v?.entry).toBe("F-0001");
+  });
+
+  test("record file whose name does not match its id fails with FRICTION-01", async () => {
+    await fs.mkdir(path.join(tmpDir, "docs/frictions"), { recursive: true });
+    const entry = (YAML.parse(VALID_ENTRY) as { id: string }[])[0]!;
+    entry.id = "F-0002";
+    await fs.writeFile(path.join(tmpDir, "docs/frictions/F-0001.yaml"), YAML.stringify(entry));
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(
+      result?.data?.violations.some(
+        (v) => v.rule === "FRICTION-01" && v.message.includes("name must match"),
+      ),
+    ).toBe(true);
+  });
+
+  test("two dir files resolving the same id fail with FRICTION-01", async () => {
+    await fs.mkdir(path.join(tmpDir, "docs/frictions"), { recursive: true });
+    const entry = (YAML.parse(VALID_ENTRY) as { id: string }[])[0]!;
+    await fs.writeFile(path.join(tmpDir, "docs/frictions/F-0001.yaml"), YAML.stringify(entry));
+    await fs.writeFile(path.join(tmpDir, "docs/frictions/F-0001-copy.yaml"), YAML.stringify(entry));
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    expect(
+      result?.data?.violations.some(
+        (v) => v.rule === "FRICTION-01" && v.message.includes("Duplicate"),
+      ),
+    ).toBe(true);
   });
 });

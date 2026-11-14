@@ -12,17 +12,19 @@ Autonomous — source-text scan only (FORGE-AUTONOMY-01).
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
   <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
   <item>RFC-1468: apply r3 repairs — dotted catalog ruleIds, queue-ledger decision refs</item>
   <item>RFC-1481: recognize consumer-local L-K-NNNN knowledge headings.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <history>RFC-1468</history>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { loadFrictionsTolerant } from "../../friction/store.ts";
+import type { FrictionEntry } from "../../friction/types.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -64,13 +66,17 @@ function* blocks(src: string, file: string): Generator<KnowledgeEntryBlock> {
   // runs on the full section.
   // Fence must appear before the next heading — a heading without a fence
   // cannot bind the next entry's yaml to the wrong id.
-  const re = /###\s+((?:L-)?K-\d{4})\s*:(?:(?!###)[\s\S])*?```knowledge-entry\n([\s\S]*?)```([\s\S]*?)(?=\n###\s+|$)/g;
+  const re =
+    /###\s+((?:L-)?K-\d{4})\s*:(?:(?!###)[\s\S])*?```knowledge-entry\n([\s\S]*?)```([\s\S]*?)(?=\n###\s+|$)/g;
   for (const m of src.matchAll(re)) {
     yield { file, id: m[1]!, text: m[0], yaml: m[2]! };
   }
 }
 
-async function scan(root: string, io: ReturnType<typeof resolveIo>): Promise<KnowledgeEntryBlock[]> {
+async function scan(
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+): Promise<KnowledgeEntryBlock[]> {
   const out: KnowledgeEntryBlock[] = [];
   const targets: string[] = [];
   // Knowledge surfaces only — the entry convention is knowledge-file-shaped
@@ -78,13 +84,17 @@ async function scan(root: string, io: ReturnType<typeof resolveIo>): Promise<Kno
   // merely mention entries (SKILL.md docs) are not classification surfaces.
   const KNOWLEDGE_RE = /(qa-log|learned-principles|fix-patterns|MEMORY|knowledge)/i;
   const skillsRoot = path.join(root, ".agents", "skills");
-  for (const e of await io.readdir(skillsRoot).catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
+  for (const e of await io
+    .readdir(skillsRoot)
+    .catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
     if (!e.isDirectory) continue;
     const dir = path.join(skillsRoot, e.name);
     const stack: string[] = [dir];
     while (stack.length > 0) {
       const cur = stack.pop()!;
-      for (const f of await io.readdir(cur).catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
+      for (const f of await io
+        .readdir(cur)
+        .catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
         const abs = path.join(cur, f.name);
         if (f.isDirectory) stack.push(abs);
         else if (f.isFile && /\.md$/i.test(f.name) && KNOWLEDGE_RE.test(f.name)) targets.push(abs);
@@ -106,7 +116,11 @@ function extractRefs(yaml: string): string[] {
   const m = yaml.match(/\bauthorityRefs:\s*(\[[^\]]*\])?([\s\S]*?)(?=\n\s*\w+:|$)/);
   if (!m) return [];
   if (m[1]) {
-    return m[1].slice(1, -1).split(",").map((v) => v.trim()).filter(Boolean);
+    return m[1]
+      .slice(1, -1)
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
   }
   return [...m[2].matchAll(/^\s*-\s*(\S+)/gm)].map((r) => r[1]!);
 }
@@ -127,8 +141,12 @@ async function resolveRef(
   }
   if (/^decision:/i.test(ref)) return decisionIds.has(ref);
   if (/^F-\d{4}$/.test(ref)) {
-    const src = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-    return new RegExp(`^-\\s*id:\\s*${ref}\\s*$`, "m").test(src);
+    const { records } = await loadFrictionsTolerant(root, io).catch(() => ({
+      records: [] as FrictionEntry[],
+      duplicates: [] as string[],
+      sources: { dir: [], legacy: [], legacyPresent: false },
+    }));
+    return records.some((e) => e.id === ref);
   }
   // Catalog ruleIds (catalog contract refs) — a remediation row must exist.
   if (/^[A-Z][A-Z0-9]*(?:[-.][A-Z0-9]+)+$/.test(ref)) return catalogIds.has(ref);
@@ -148,7 +166,9 @@ export async function runKnowledgeAuthzProbe(
     const stack = [dir];
     while (stack.length > 0) {
       const cur = stack.pop()!;
-      for (const e of await io.readdir(cur).catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
+      for (const e of await io
+        .readdir(cur)
+        .catch(() => [] as { name: string; isFile: boolean; isDirectory: boolean }[])) {
         const abs = path.join(cur, e.name);
         if (e.isDirectory) stack.push(abs);
         else if (e.isFile) {
@@ -161,19 +181,25 @@ export async function runKnowledgeAuthzProbe(
   };
   const rfcFiles = await collectIds(path.join(root, "docs", "rfcs"));
   const adrFiles = await collectIds(path.join(root, "docs", "adrs"));
-  const dlSrc = await io.readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml")).catch(() => "");
+  const dlSrc = await io
+    .readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml"))
+    .catch(() => "");
   // decision:<doc-id> refs resolve against the log's rfcId column; literal
   // decision:D-YYYY-MM-DD-NN ids resolve against queue ledgers' decisions.
   const decisionIds = new Set<string>(
     [...dlSrc.matchAll(/rfcId:\s*(\S+)/g)].map((m) => `decision:${m[1]}`),
   );
   // Literal decision:D-* ids live in queue ledgers — scan them for refs.
-  for (const q of await io.readdir(path.join(root, "docs", "queues")).catch(() => [] as { name: string; isFile: boolean }[])) {
+  for (const q of await io
+    .readdir(path.join(root, "docs", "queues"))
+    .catch(() => [] as { name: string; isFile: boolean }[])) {
     if (!q.isFile || !q.name.endsWith(".decisions.yaml")) continue;
     const qs = await io.readFile(path.join(root, "docs", "queues", q.name)).catch(() => "");
     for (const m of qs.matchAll(/\bdecision:D-[\w:-]+/g)) decisionIds.add(m[0]!);
   }
-  const catSrc = await io.readFile(path.join(root, "docs", "remediation-catalog.generated.yaml")).catch(() => "");
+  const catSrc = await io
+    .readFile(path.join(root, "docs", "remediation-catalog.generated.yaml"))
+    .catch(() => "");
   const catalogIds = new Set([...catSrc.matchAll(/ruleId:\s*(\S+)/g)].map((m) => m[1]!));
   const diagnostics: AuthzDiagnostic[] = [];
 

@@ -12,17 +12,20 @@ plain run rewrites the regions in place.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1468: marker-region rebuild over authoritative sources</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1468: apply r1 repairs — serializer fields, id regex, ref extraction, scan surface, real decision-log shape</item>
   <item>RFC-1468: apply r2 repairs — archived-doc resolution, decision refs, catalog ids, blank-fill refusal, fence binding, fix-patterns coverage</item>
   <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1468</history>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { parse as yamlParse } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { loadFrictionsTolerant } from "../../friction/store.ts";
+import type { FrictionEntry } from "../../friction/types.ts";
 import type {
   ForgeCommandInput,
   ForgeCommandResult,
@@ -46,24 +49,35 @@ export interface RebuildData {
 const MARKER_RE =
   /<!--\s*knowledge-rebuild:begin\s+source=([a-z0-9.-]+)\s*-->([\s\S]*?)<!--\s*knowledge-rebuild:end\s*-->/g;
 
-async function sourceRows(root: string, io: ReturnType<typeof resolveIo>, key: string): Promise<string[]> {
+async function sourceRows(
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+  key: string,
+): Promise<string[]> {
   if (key === "remediation-catalog") {
-    const src = await io.readFile(path.join(root, "docs", "remediation-catalog.generated.yaml")).catch(() => "");
+    const src = await io
+      .readFile(path.join(root, "docs", "remediation-catalog.generated.yaml"))
+      .catch(() => "");
     const parsed = yamlParse(src) as { entries?: { ruleId?: string; action?: string }[] } | null;
     return (parsed?.entries ?? [])
       .filter((e) => e.ruleId && e.action)
       .map((e) => `- **${e.ruleId}** — ${e.action}`);
   }
   if (key === "frictions") {
-    const src = await io.readFile(path.join(root, "docs", "frictions.yaml")).catch(() => "");
-    const parsed = yamlParse(src) as { id?: string; measure?: string }[] | null;
-    return (parsed ?? [])
-      .filter((e) => e.id && e.measure)
-      .map((e) => `- **${e.id}** — ${e.measure}`);
+    const { records } = await loadFrictionsTolerant(root, io).catch(() => ({
+      records: [] as FrictionEntry[],
+      duplicates: [] as string[],
+      sources: { dir: [], legacy: [], legacyPresent: false },
+    }));
+    return records.filter((e) => e.id && e.measure).map((e) => `- **${e.id}** — ${e.measure}`);
   }
   if (key === "decision-log") {
-    const src = await io.readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml")).catch(() => "");
-    const parsed = yamlParse(src) as { entries?: { rfcId?: string; title?: string; status?: string }[] } | null;
+    const src = await io
+      .readFile(path.join(root, "docs", "rfcs", "decision-log.generated.yaml"))
+      .catch(() => "");
+    const parsed = yamlParse(src) as {
+      entries?: { rfcId?: string; title?: string; status?: string }[];
+    } | null;
     return (parsed?.entries ?? [])
       .filter((e) => e.rfcId && e.title && e.status === "accepted")
       .map((e) => `- **${e.rfcId}** — ${e.title}`);
@@ -133,7 +147,10 @@ export async function runKnowledgeRebuild(
             message: `${rel}: source row "${id}" missing from the rebuild region`,
           });
         }
-        if (existingIds.length === wantedIds.length && existingIds.every((i) => wantedIds.includes(i))) {
+        if (
+          existingIds.length === wantedIds.length &&
+          existingIds.every((i) => wantedIds.includes(i))
+        ) {
           diagnostics.push({
             ruleId: "REBUILD-MISSING",
             severity: "warning",
@@ -143,7 +160,8 @@ export async function runKnowledgeRebuild(
         }
         next = next.replace(
           m[0],
-          () => `<!-- knowledge-rebuild:begin source=${key} -->\n${wanted}\n<!-- knowledge-rebuild:end -->`,
+          () =>
+            `<!-- knowledge-rebuild:begin source=${key} -->\n${wanted}\n<!-- knowledge-rebuild:end -->`,
         );
       }
     }
@@ -151,9 +169,14 @@ export async function runKnowledgeRebuild(
   }
 
   for (const w of writes) await io.writeFile(w.path, w.content);
-  const status = check || diff
-    ? diagnostics.length > 0 ? "drift" : "ok"
-    : writes.length > 0 ? "rebuilt" : "ok";
+  const status =
+    check || diff
+      ? diagnostics.length > 0
+        ? "drift"
+        : "ok"
+      : writes.length > 0
+        ? "rebuilt"
+        : "ok";
 
   if (context.outputFormat === "pretty") {
     for (const d of diagnostics) context.logger.warn(`${d.ruleId} ${d.message}`);

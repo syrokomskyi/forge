@@ -6,13 +6,10 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: initial module — friction.validate over docs/frictions.yaml
-  with rules FRICTION-01..05; read-only, invoked by the session-retro autopsy
-  step and ad-hoc.</item>
   <item>RFC-1433: os/friction module, friction.validate, retro autopsy + RFC fast-path
 
 Add friction.validate (FRICTION-01..05, contract frictions) over the
-append-only docs/frictions.yaml registry; absent file passes with
+append-only legacy friction registry; absent file passes with
 entries: 0 per lazy-creation contract. fo-session-retro gains the
 autopsy step (signal checklist, signature matching, harvest mode +
 triggerPhrases) and fo-idea-create-rfc the friction fast-path. Module
@@ -28,13 +25,19 @@ violations[] shape; invented open-measure warn dropped; dead
 FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
 
+import { FRICTION_DIR, LEGACY_FRICTION_FILE } from "./store.ts";
+
 export async function createForgeFrictionModule(): Promise<ForgeModule> {
   const { runFrictionValidate } = await import("./handlers/friction-validate.ts");
+  const { runFrictionAdd } = await import("./handlers/friction-add.ts");
+  const { runFrictionMigrate } = await import("./handlers/friction-migrate.ts");
   return {
     name: "forge-friction",
     version: "0.1.0",
@@ -44,29 +47,147 @@ export async function createForgeFrictionModule(): Promise<ForgeModule> {
       {
         name: "friction.validate",
         description:
-          "Validate the append-only friction registry (docs/frictions.yaml). " +
-          "FRICTION-01 fails on unreadable/unparseable files, entry-shape " +
-          "violations, and malformed or duplicate ids; FRICTION-02 on " +
-          "categories outside the closed catalog; FRICTION-03 on bad status " +
-          "or addressed entries without artifacts; FRICTION-04 on " +
+          "Validate the friction registry — per-record files under " +
+          `${FRICTION_DIR}/ plus the legacy single-file registry while ` +
+          "it still exists. FRICTION-01 fails on unreadable/unparseable " +
+          "files, entry-shape violations, malformed or duplicate ids, and " +
+          "record files whose name does not match their id; FRICTION-02 " +
+          "on categories outside the closed catalog; FRICTION-03 on bad " +
+          "status or addressed entries without artifacts; FRICTION-04 on " +
           "lastSeen before created or negative recurrences; FRICTION-05 " +
           "warns on empty/non-normalized signatures and unresolvable " +
           "artifact paths; FRICTION-06 fails on addressed entries whose " +
           "signature recurred twice on a docs-only measure; FRICTION-07 " +
           "warns on addressed entries with no measureKind; FRICTION-08 " +
           "fails on escalated entries whose measure names no mechanical " +
-          "obligation. An absent registry passes with entries: 0 — " +
-          "the file is created lazily by the session-retro autopsy step. " +
-          "Read-only.",
+          "obligation; FRICTION-09 fails on an id present in both the " +
+          "directory and the legacy file; FRICTION-10 warns while a " +
+          "legacy file with records exists and names friction.migrate. " +
+          "An absent registry passes with entries: 0 — records are " +
+          "created by friction.add. Read-only.",
         scope: "workspace",
         contract: "frictions",
-        rules: [{ id: "FRICTION-01", severity: "error" }, { id: "FRICTION-02", severity: "error" }, { id: "FRICTION-03", severity: "error" }, { id: "FRICTION-04", severity: "error" }, { id: "FRICTION-05", severity: "warning" }, { id: "FRICTION-06", severity: "error" }, { id: "FRICTION-07", severity: "warning" }, { id: "FRICTION-08", severity: "error" }],
+        rules: [
+          { id: "FRICTION-01", severity: "error" },
+          { id: "FRICTION-02", severity: "error" },
+          { id: "FRICTION-03", severity: "error" },
+          { id: "FRICTION-04", severity: "error" },
+          { id: "FRICTION-05", severity: "warning" },
+          { id: "FRICTION-06", severity: "error" },
+          { id: "FRICTION-07", severity: "warning" },
+          { id: "FRICTION-08", severity: "error" },
+          { id: "FRICTION-09", severity: "error" },
+          { id: "FRICTION-10", severity: "warning" },
+        ],
         mutatesState: false,
         execOnReadOnly: true,
-        reads: ["docs/frictions.yaml"],
+        reads: [`${FRICTION_DIR}/**`, LEGACY_FRICTION_FILE],
         cacheable: false,
         flags: {},
         execute: runFrictionValidate,
+      },
+      {
+        name: "friction.add",
+        description:
+          "RFC-1590: the only write path for friction records. Allocates " +
+          "the next F-NNNN id on the shared governance-reservation " +
+          "surface (safe under concurrent session worktrees), validates " +
+          "the record against the friction.validate vocabulary BEFORE " +
+          "any file lands, and writes " +
+          `${FRICTION_DIR}/F-NNNN.yaml. --recurrence-of <F-NNNN> writes ` +
+          "no new file — it increments recurrences and sets lastSeen on " +
+          "the named per-record file.",
+        scope: "workspace",
+        contract: "frictions",
+        rules: [
+          { id: "FRICTION-01", severity: "error" },
+          { id: "FRICTION-02", severity: "error" },
+          { id: "FRICTION-03", severity: "error" },
+          { id: "FRICTION-05", severity: "error" },
+          { id: "FRICTION-ADD-01", severity: "error" },
+          { id: "FRICTION-ADD-02", severity: "error" },
+        ],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        reads: [`${FRICTION_DIR}/**`, LEGACY_FRICTION_FILE],
+        writes: [`${FRICTION_DIR}/**`],
+        generates: [],
+        flags: {
+          category: {
+            kind: "string",
+            required: false,
+            description: "Friction category (tooling, docs, process, environment, self).",
+          },
+          signature: {
+            kind: "string",
+            required: false,
+            description: "Short lowercase signature used for recurrence matching.",
+          },
+          friction: {
+            kind: "string",
+            required: false,
+            description: "What happened — the observed friction narrative.",
+          },
+          measure: {
+            kind: "string",
+            required: false,
+            description: "What prevents it — the measure taken or planned.",
+          },
+          "measure-kind": {
+            kind: "string",
+            required: false,
+            description:
+              "Measure class (docs-rule, skill-step, validator, code-change, flag-default, pipeline, external).",
+          },
+          status: {
+            kind: "string",
+            required: false,
+            description: "Record status (open, addressed, escalated) — default open.",
+          },
+          session: {
+            kind: "string",
+            required: false,
+            description:
+              "Session id to attribute the record to — defaults to the current branch name.",
+          },
+          artifacts: {
+            kind: "string",
+            required: false,
+            description: "Comma-separated artifact paths the measure landed in.",
+          },
+          "recurrence-of": {
+            kind: "string",
+            required: false,
+            description:
+              "Existing record id — increments recurrences and sets lastSeen instead of writing a new record.",
+          },
+        },
+        execute: runFrictionAdd,
+      },
+      {
+        name: "friction.migrate",
+        description:
+          "RFC-1590: split the legacy single-file registry into per-record " +
+          `files under ${FRICTION_DIR}/, remove the legacy file in the ` +
+          "same run, and move every .agents/skills/*/qa-log.md to " +
+          "qa-log/legacy.md. Idempotent — with no legacy file and no " +
+          "qa-log.md files it reports migrated: 0.",
+        scope: "workspace",
+        contract: "frictions",
+        rules: [{ id: "FRICTION-01", severity: "error" }],
+        mutatesState: true,
+        idempotency: "rerun-safe",
+        reads: [`${FRICTION_DIR}/**`, LEGACY_FRICTION_FILE, ".agents/skills/**"],
+        writes: [`${FRICTION_DIR}/**`, LEGACY_FRICTION_FILE, ".agents/skills/**"],
+        generates: [],
+        flags: {
+          "dry-run": {
+            kind: "boolean",
+            required: false,
+            description: "Report the split and shard moves without writing.",
+          },
+        },
+        execute: runFrictionMigrate,
       },
     ],
     pipelines: [],

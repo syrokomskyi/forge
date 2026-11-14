@@ -6,16 +6,17 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1053: register metrics.aggregate command for skill effectiveness metrics aggregation.</item>
   <item>RFC-1173: declare mutatesState on all kernel commands — collectDeclarationDiagnostics emits error-severity MUTATES-STATE-DECLARED, command.manifest.validate is the blocking consumer in packages.check, sweep declares the flag on every command definition (factories hardcode false for read-only check specs)</item>
   <item>RFC-1354: step 4 — CMD-MAN-02 sweep: writes/generates on mutating commands, mutatesState:false on read-only and port/in-memory commands, execOnReadOnly on subprocess commands (0 CMD-MAN-02; 42 ENV-INPUT-02 excluded per Q-1)</item>
   <item>RFC-1471: session.audit Stage-A detectors + audit.report read-model — denied-retry, blocker omission, generated-edit, retry-after-denial, false-claim</item>
   <item>RFC-1471: apply r1 repairs — AUDIT-10..14 corrected semantics, read-only --check, deterministic auditedAt, archive coverage, metrics artifact, Stage-B stub</item>
-  <history>RFC-0537</history>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-0537, RFC-1053</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ForgeModule } from "../../src/forge-module.ts";
+import { FRICTION_DIR, LEGACY_FRICTION_FILE } from "../friction/store.ts";
 
 export async function createForgeSessionModule(): Promise<ForgeModule> {
   const { runSessionSave } = await import("./handlers/save.ts");
@@ -186,11 +187,27 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
         ],
         flags: {
           session: { kind: "string", description: "Audit a single session by id fragment." },
-          check: { kind: "boolean", description: "Read-only audit — no sidecar writes; exits non-zero on critical findings." },
-          relabel: { kind: "boolean", description: "Force a fresh sidecar write even when findings are unchanged." },
-          deep: { kind: "boolean", description: "Request Stage-B model labeling — requires forge.yaml sessionAudit.modelBinding; warns AUDIT-02 when absent." },
+          check: {
+            kind: "boolean",
+            description:
+              "Read-only audit — no sidecar writes; exits non-zero on critical findings.",
+          },
+          relabel: {
+            kind: "boolean",
+            description: "Force a fresh sidecar write even when findings are unchanged.",
+          },
+          deep: {
+            kind: "boolean",
+            description:
+              "Request Stage-B model labeling — requires forge.yaml sessionAudit.modelBinding; warns AUDIT-02 when absent.",
+          },
         },
-        reads: ["docs/sessions/*.md", "docs/sessions/archive/*.md", "docs/sessions/.raw/*", "forge.yaml"],
+        reads: [
+          "docs/sessions/*.md",
+          "docs/sessions/archive/*.md",
+          "docs/sessions/.raw/*",
+          "forge.yaml",
+        ],
         execute: runSessionAudit,
       },
       {
@@ -202,11 +219,16 @@ export async function createForgeSessionModule(): Promise<ForgeModule> {
         scope: "workspace",
         mutatesState: true,
         writes: ["docs/metrics/session-audit.generated.yaml"],
-        generates: [{ path: "docs/metrics/session-audit.generated.yaml", phase: "on-demand" as const }],
+        generates: [
+          { path: "docs/metrics/session-audit.generated.yaml", phase: "on-demand" as const },
+        ],
         flags: {
-          window: { kind: "string", description: "Restrict to sidecars newer than an ISO date (e.g. 2026-10-01)." },
+          window: {
+            kind: "string",
+            description: "Restrict to sidecars newer than an ISO date (e.g. 2026-10-01).",
+          },
         },
-        reads: ["docs/sessions/audit/*.audit.yaml", "docs/frictions.yaml"],
+        reads: ["docs/sessions/audit/*.audit.yaml", `${FRICTION_DIR}/**`, LEGACY_FRICTION_FILE],
         execute: runSessionAuditReport,
       },
     ],
