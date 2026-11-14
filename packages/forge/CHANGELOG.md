@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
-## [Unreleased]
+## [9.6.3] — 2026-11-14
 
 _External-review hardening: secrets can no longer land in a target project before the operator approves them, the published tarball is smoke-gated, and docs claims now match what the code and workflows actually do._
 
