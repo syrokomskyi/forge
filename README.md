@@ -53,7 +53,7 @@ Agents can change. Models can change. IDEs can change. Engineering rules stay wi
 
 Forge's contract is plain files in the repository — `forge.yaml`, `AGENTS.md`, RFCs, skills. Every agent that can read a repo and run a command gets the same governance: **Devin**, Windsurf, Cursor, Claude Code, Codex CLI — and whatever ships next. No per-vendor plugin, no lock-in.
 
-That is also what makes autonomous sessions safe to trust at scale: gates are deterministic, and session audit produces evidence, not self-assessment.
+That is also what makes autonomous sessions safe to trust at scale: gates are deterministic, and session audit produces evidence, not self-assessment. For Devin CLI / Devin Cloud specifics — install order, a one-task walkthrough, and honest boundaries — see [docs/integrations/devin.md](docs/integrations/devin.md).
 
 ---
 
@@ -65,7 +65,7 @@ Create a new folder, open it in your AI IDE or point your coding agent at it, an
 Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my project. I want to build: [describe your project]
 ```
 
-Replace `[describe your project]` with your idea — a game, a library, a knowledge base, anything. The AI agent installs Forge, scaffolds the project, and sets up a live preview. From there on, you just talk: describe what you want, and the agent builds it. No programming, no terminal, no commands.
+Replace `[describe your project]` with your idea — a game, a library, a knowledge base, anything. The AI agent installs Forge, scaffolds the project, and — for profiles that ship a runnable surface — sets up a live preview. From there on, you just talk: describe what you want, and the agent builds it. No programming, no terminal, no commands.
 
 ### After the prompt completes — the Bootstrap skill
 
@@ -118,6 +118,8 @@ pnpm exec forge profile.validate
 | **Agent behavior** | Repository-local skills and workflows              |
 | **Verification**   | Doctor, validators, contracts, deterministic gates |
 | **Evolution**      | Profiles, vendored specs, additive upgrades        |
+
+Instructions, validation and enforcement are distinct levels — see [the verification model](docs/concepts/verification-model.md) for what Forge does and does not guarantee.
 
 ---
 
@@ -278,6 +280,8 @@ Measure your own repository:
 pnpm exec forge codebase.measure --json
 ```
 
+Methodology, a worked example, and limitations: [docs/reference/fleet-measurement.md](docs/reference/fleet-measurement.md). These are self-reported numbers from Forge's own instrument — an instrument reading, not an independent audit.
+
 ---
 
 ## Where Forge is going
@@ -318,7 +322,7 @@ Full API reference: [docs/reference/programmatic-api.md](docs/reference/programm
 | `src/` | Portable core — types, config, skills registry, validators, onboarding. Zero `@warpgogol/*` imports. |
 | `os/` | ForgeModule registrations. All `os/` modules are autonomous except `werkstatt` — the only adapter importing `@warpgogol/werkstatt-engine`. |
 | `bin/` | CLI entrypoint (`forge` command). |
-| `skills/` | 41 skill definitions (33 fo + 5 shared + 3 meta) with SKILL.md frontmatter. |
+| `skills/` | 41 skill definitions (34 fo + 4 shared + 3 meta) with SKILL.md frontmatter. |
 | `profiles/` | Stack profiles for `scaffold`. |
 
 ---
@@ -341,14 +345,18 @@ pnpm exec forge doctor
 - [Why Forge?](docs/concepts/why-forge.md)
 - [Project contract](docs/concepts/project-contract.md)
 - [Governance model](docs/concepts/governance-model.md)
+- [The verification model](docs/concepts/verification-model.md)
 - [Bring an existing project](docs/guides/existing-project.md)
 - [Upgrading](docs/guides/upgrading.md)
 - [Skills](docs/guides/skills.md)
 - [RFC and ADR workflows](docs/guides/rfc-adr.md)
+- [Verification & evidence scenarios](docs/guides/verification-and-evidence.md)
+- [Devin integration](docs/integrations/devin.md)
 - [CLI reference](docs/reference/cli.md)
 - [forge.yaml reference](docs/reference/forge-yaml.md)
 - [Profiles](docs/reference/profiles.md)
 - [Programmatic API](docs/reference/programmatic-api.md)
+- [Fleet measurement methodology](docs/reference/fleet-measurement.md)
 - [Publishing](docs/maintainers/publishing.md)
 
 ---

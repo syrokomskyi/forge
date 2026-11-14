@@ -36,3 +36,15 @@ Transplanting an existing codebase into Forge is an interactive, AI-guided proce
 - The matching stack profile is detected from marker files (`phaser.config.*`, `project.godot`, etc.) <!-- pkg-health-12: code/config path, not a command -->
 - `AGENTS.md` is generated from `forge.yaml`
 - Skills are deployed to `.agents/skills/`
+
+## Safety checklist
+
+Before transplanting:
+
+- **Commit or stash all work in the source project** — a clean source tree makes the post-transplant diff reviewable and recovery trivial.
+- **Keep a backup of the source directory** until the transplanted project verifies green (`forge doctor` + your build). The transplant moves files; the backup is the rollback.
+- **Audit secrets before migrating.** `.env` and git-ignored files are migrated by design — afterwards, confirm secrets landed only in git-ignored paths of the target and rotate any credential that had ever been committed to history.
+- **Review the diff before your first commit** — `git status` and `git diff` show exactly what the skill added (`forge.yaml`, `AGENTS.md`, `.agents/skills/`, profile config) versus what it left untouched.
+- **Prefer skipping git history** for projects with secrets in past commits — history transfer is optional, not required.
+
+Recovery: if verification fails, restore from the backup and re-run the bootstrap — the skill does not modify anything outside the target project directory.

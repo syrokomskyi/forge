@@ -14,7 +14,7 @@ Every RFC and ADR is tracked. Decision logs are generated automatically. `forge 
 
 ## Agent behavior
 
-Repository-local skills define repeatable workflows. Forge ships 37 skills (29 `fo-` skills + 5 shared + 3 meta). Projects can declare their own skill packs with custom prefixes.
+Repository-local skills define repeatable workflows. Forge ships 41 skills (34 `fo-` skills + 4 shared + 3 meta) plus the shared agent operating model — EXPLORE/ROUTINE/GOVERNED work modes with explicit authority boundaries and separated completion vocabulary (IMPLEMENTED / VERIFIED / ACCEPTED / RELEASED). Projects can declare their own skill packs with custom prefixes.
 
 Skills are deployed to `.agents/skills/` by `forge create` and synced by `forge upgrade`. The agent discovers and invokes skills based on their descriptions.
 
@@ -25,6 +25,14 @@ Skills are deployed to `.agents/skills/` by `forge create` and synced by `forge 
 - `forge compass.validate` — validates source-file contract blocks (MODULE_CONTRACT, CHANGE_SUMMARY)
 - `forge naming.convention.lint` — enforces kebab-case naming
 - `forge public-surface.validate` — checks README/package.json consistency
+- `forge session.audit` / `forge session.audit.report` — deterministic detectors over saved agent sessions (circumvention, blocker deception, false completion claims) and their frequency read-model
+- `forge context.index.build` / `forge context.assemble` / `forge context.slate.eval` — budgeted context slates with a recall@budget quality metric
+- `forge trajectory.index` / `forge trajectory.recall` / `forge trajectory.outcome.record` — procedure memory extracted from verified sessions only
+- `forge gate.probe` / `forge gate.probe.catalog` — seeded-violation probes proving gates still fire on their real scan paths
+- `forge conformance.run` / `forge conformance.validate` — producer→consumer contract conformance
+- `forge codebase.measure` — repository-scale line and symbol measurement
+
+Instructions, validation and enforcement are distinct levels — see [the verification model](verification-model.md) for what each level does and does not guarantee.
 
 ## Evolution
 

@@ -1,6 +1,6 @@
 # Skills
 
-Forge ships 37 skills: 29 `fo-` skills (Forge's portable skill set), 5 shared skills, and 3 meta skills.
+Forge ships 41 skills: 34 `fo-` skills (Forge's portable skill set), 4 shared skills, and 3 meta skills. The `skills/` tree also carries support material that is not itself a skill — reference documents under `skills/_shared/` (e.g. the agent operating model that skills include by reference) and the `skills/shared/knowledge/` data directory.
 
 ## How skills work
 
@@ -20,15 +20,19 @@ The AI agent reads skill descriptions and invokes skills based on the user's req
 
 ## Built-in skills
 
-Key skill categories:
+Skill categories:
 
-- **Idea pipeline** — `fo-idea`, `fo-idea-create-rfc`, `fo-idea-create-adr`, `fo-idea-plan`, `fo-idea-implement`
-- **Review** — `fo-review`, `fo-fix`
-- **Architecture** — `fo-architecture`, `fo-extract-dna`
-- **Session** — `fo-session-retro`, `fo-session-save`, `fo-handoff`
+- **Idea pipeline** — `fo-idea`, `fo-idea-audit`, `fo-idea-create-rfc`, `fo-idea-create-adr`, `fo-idea-plan`, `fo-idea-enhance`, `fo-idea-implement`, `fo-idea-status`, plus the two shortcut skills `fo-idea-i-just-want-to-see-the-plan` / `-result`
+- **Review** — `fo-review`, `fo-fix`, `fo-architecture`, `fo-design-summit`
+- **Architecture & DNA** — `fo-extract-dna`, `fo-compass-annotate`
+- **Session & memory** — `fo-session-retro`, `fo-session-save`, `fo-handoff`, `fo-memory-sync`
 - **Knowledge** — `fo-knowledge-distill`
-- **Testing** — `fo-add-tests`
-- **Grilling** — `grilling` (stress-test plans before implementation)
+- **Testing & triage** — `fo-add-tests`, `fo-reproduce`, `fo-triage`, `fo-qa`
+- **Exploration & specs** — `fo-explore`, `fo-spec-ingest`
+- **System dispatch** — `fo-system-dispatch`, `fo-task-run`, `fo-outbox`
+- **Process helpers** — `fo-step-commit`, `fo-doc-audit`, `fo-harvest`, `fo-doctor`
+- **Shared** — `grilling` (stress-test plans before implementation), `my-preferences`, `windows-ai-tooling`, `writing-great-skills`
+- **Meta** — `forge-bootstrap`, `port-to-forge`, `skill-create`
 
 ## Project-local skill packs
 
