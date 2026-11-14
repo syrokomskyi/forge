@@ -6,14 +6,33 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1474: per-rule check-execution counters
-
-Append-only counters.jsonl journaled per evaluated rule ({runId, ruleId, contract, outcome, at}; runId = commandInvocationId; outcomes pass|diagnostic|skipped|ensured; dry-run suppressed; append failures warn never fail). checks.counters.validate audits the journal against the validator inventory (COUNT-01/02); checks.counters.export projects deterministic per-rule totals (COUNT-03, generatedAt = max journal at; producer-tail tolerated). checks.contribution.report joins counters as the canonical firing source (CONTRIB-03 on absent/empty journal; coverage none|partial|complete; live effectiveCoverage positive). Validator inventory now includes every rules[]-declaring command — fail-closed gate surfaced 9 contract-declaration defects, fixed with domain contracts.</item>
   <item>RFC-1474: check-execution counters — apply review findings (F-1..F-9)</item>
   <item>RFC-1474: check-execution counters — apply re-review findings (structural skip flag, violations extraction, Date.parse ordering, DEV-5/6)</item>
   <item>RFC-1485: sweep compass headers — forge-os-checks</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
-  <history>RFC-1473</history>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <history>RFC-1473, RFC-1474</history>
 </CHANGE_SUMMARY>
 */
 
@@ -51,6 +70,8 @@ export const forgeChecksModule: ForgeModule = {
       reads: [
         "docs/validator-inventory.generated.yaml",
         "docs/.index/checks/counters.jsonl",
+        "docs/.index/gate-probes/runs.jsonl",
+        "docs/gate-probes/**",
         "docs/sessions/audit/*.audit.yaml",
         `${FRICTION_DIR}/**`,
         LEGACY_FRICTION_FILE,

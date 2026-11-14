@@ -20,7 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0126: docs-rule batch — 16 friction measures landed</item>
   <item>RFC-1460: draft mechanical-obligation RFCs and land harvest doc rules
 
 RFC-1460 harvest wave 2026-11-09: five draft RFCs (derive-and-repair flow
@@ -30,7 +29,29 @@ landings, registry flips — 25 entries served, F-0025 stays external.</item>
   <item>RFC-1460: session-end teardown — stop worktree-held dev servers before flow.integrate</item>
   <item>RFC-1573: parallelize session-end housekeeping and detach flow.integrate</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
-  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534</history>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <history>ADR-0119, ADR-0121, ADR-0126, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -512,6 +533,8 @@ Zero hits → append nothing; the report states «трений не было» i
 | `process` | repeated cycles, manual recovery | RFC / runbook |
 | `environment` | toolchain, dev-server, parallel-session dirt | env doc / script |
 | `self` | the agent's own mistake | behavior rule / skill fix |
+
+**Escapes carry a fixture.** A friction recording a gate escape — a defect that reached a rendered page, a deploy channel, or `develop` past all gates — is not complete until the known-bad case exists as a `docs/gate-probes/<contract>/<rule>/fixture.yaml` that fails for the right reason; the catching rule or probe follows it and is proven against it. The friction entry names the fixture path in `artifacts`. Recording the escape without the fixture is allowed only as an interim state — the fixture lands in the same session that found the defect.
 
 **d. Match against the friction registry.** The store is per-record files `docs/frictions/F-NNNN.yaml` (the legacy `docs/frictions.yaml` is still read until migrated — an absent registry is empty; a stale legacy file is removed once by `rtk pnpm exec werkstatt run friction.migrate`, an operator/one-time act, never a retro step). Read the files under `docs/frictions/` — never write them by hand: every write goes through `friction.add`, which reserves the id on the shared surface (safe under parallel retro worktrees) and validates before any file lands.
 

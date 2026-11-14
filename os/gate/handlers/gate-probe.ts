@@ -15,6 +15,28 @@ fixture shape. mutatesState: true (in-tree writes, always restored).
   <item>RFC-1469: gate.probe in-tree injection + invoke + restore (r1 repair)</item>
   <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
   <item>RFC-1485: sweep compass headers — forge-os-tail</item>
+  <item>RFC-1592: probe-or-retire ratchet for blocking check rules
+
+Every error-severity check rule now needs liveness evidence — a bound
+gate-probe fixture that has actually run — or an explicit entry in the
+shrink-only unprobed baseline, enforced by gate.probe.catalog --check
+(PROBE-06/07) and wired into the worktree gate as probe-ratchet.
+
+- probe-runs journal (docs/.index/gate-probes/runs.jsonl) records each
+  gate.probe fixture execution; shared liveness.ts joins fixtures x
+  journal for catalog + contribution report (liveness: none|fixture|fired)
+- gate.probe.catalog --check/--write-baseline: PROBE-06 unprobed error
+  rule, PROBE-07 stale baseline entry, PROBE-08 baseline growth refusal
+  (shrink-only, no file modification), PROBE-09 expired/undeclared
+  warnOnly provisional step
+- checks.contribution.report adds liveness to every rule record
+- KernelPipelineStep/RuleDescriptor gain provisionalUntil; the two
+  warnOnly pipeline steps carry future dates
+- worktree gate adds probe-ratchet step; gate-domains + forge pre-lock
+  DELTA_STEP_SPECS mirror updated
+- build-verification policy states blocking rules are probed or retired;
+  fo-session-retro preserves probe/retire evidence for escape frictions
+- baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,6 +48,7 @@ import type {
   ForgeCommandResult,
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
+import { recordProbeRuns, type ProbeRunRecord } from "./probe-runs-journal.ts";
 
 export interface ProbeFixture {
   rule: string;
@@ -51,14 +74,21 @@ export interface GateProbeData {
   reports: ProbeReport[];
 }
 
-async function collectFixtures(root: string, io: ReturnType<typeof resolveIo>): Promise<{ path: string; fixture: ProbeFixture }[]> {
+async function collectFixtures(
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+): Promise<{ path: string; fixture: ProbeFixture }[]> {
   const out: { path: string; fixture: ProbeFixture }[] = [];
   const base = path.join(root, "docs", "gate-probes");
-  const contracts = await io.readdir(base).catch(() => [] as { name: string; isDirectory: boolean }[]);
+  const contracts = await io
+    .readdir(base)
+    .catch(() => [] as { name: string; isDirectory: boolean }[]);
   for (const c of contracts) {
     if (!c.isDirectory || c.name.startsWith("_")) continue;
     const cdir = path.join(base, c.name);
-    for (const r of await io.readdir(cdir).catch(() => [] as { name: string; isDirectory: boolean }[])) {
+    for (const r of await io
+      .readdir(cdir)
+      .catch(() => [] as { name: string; isDirectory: boolean }[])) {
       if (!r.isDirectory) continue;
       const fp = path.join(cdir, r.name, "fixture.yaml");
       const src = await io.readFile(fp).catch(() => null);
@@ -76,7 +106,11 @@ function shapeError(fp: string, fixture: ProbeFixture): string | null {
   if (!fixture.expect || typeof fixture.expect.rule !== "string") return "missing expect.rule";
   if (!fixture.spec || typeof fixture.spec !== "object") return "missing spec";
   if (fixture.spec.from) return `spec.from: template unsupported in v1 — inline files only (${fp})`;
-  if (!fixture.spec.files || typeof fixture.spec.files !== "object" || Object.keys(fixture.spec.files).length === 0) {
+  if (
+    !fixture.spec.files ||
+    typeof fixture.spec.files !== "object" ||
+    Object.keys(fixture.spec.files).length === 0
+  ) {
     return "missing spec.files";
   }
   return null;
@@ -123,7 +157,16 @@ export async function runGateProbe(
         command: "gate.probe",
         status: "failures",
         probed: 0,
-        reports: [{ ruleId: "PROBE-01", fixture: "-", rule: "-", status: "error", diagnostics: 0, detail: "context.invoke absent — run under the kernel" }],
+        reports: [
+          {
+            ruleId: "PROBE-01",
+            fixture: "-",
+            rule: "-",
+            status: "error",
+            diagnostics: 0,
+            detail: "context.invoke absent — run under the kernel",
+          },
+        ],
       },
       summary: "gate.probe failed — invoke port absent",
       exitCode: 1,
@@ -134,14 +177,28 @@ export async function runGateProbe(
   for (const { path: fp, fixture } of selected) {
     const shape = shapeError(fp, fixture);
     if (shape !== null) {
-      reports.push({ ruleId: "PROBE-05", fixture: fp, rule: fixture.rule, status: "error", diagnostics: 0, detail: `fixture shape: ${shape}` });
+      reports.push({
+        ruleId: "PROBE-05",
+        fixture: fp,
+        rule: fixture.rule,
+        status: "error",
+        diagnostics: 0,
+        detail: `fixture shape: ${shape}`,
+      });
       continue;
     }
     const files = fixture.spec.files!;
     // Path guard — fixture files must be workspace-relative, never escape.
     const bad = Object.keys(files).find((rel) => rel.includes("..") || path.isAbsolute(rel));
     if (bad !== undefined) {
-      reports.push({ ruleId: "PROBE-05", fixture: fp, rule: fixture.rule, status: "error", diagnostics: 0, detail: `fixture path "${bad}" escapes the workspace — rejected` });
+      reports.push({
+        ruleId: "PROBE-05",
+        fixture: fp,
+        rule: fixture.rule,
+        status: "error",
+        diagnostics: 0,
+        detail: `fixture path "${bad}" escapes the workspace — rejected`,
+      });
       continue;
     }
 
@@ -168,10 +225,13 @@ export async function runGateProbe(
         await io.writeFile(abs, content);
       }
       const res = await context.invoke(fixture.expect.command ?? fixture.expect.rule, {});
-      const diags = ((res.data as { diagnostics?: { ruleId?: string; file?: string }[] } | undefined)?.diagnostics ?? []);
+      const diags =
+        (res.data as { diagnostics?: { ruleId?: string; file?: string }[] } | undefined)
+          ?.diagnostics ?? [];
       const fired = diags.filter((d) => d.ruleId === fixture.expect.rule);
-      const pathOk = !fixture.expect.pathPattern
-        || fired.some((d) => (d.file ?? "").includes(fixture.expect.pathPattern!));
+      const pathOk =
+        !fixture.expect.pathPattern ||
+        fired.some((d) => (d.file ?? "").includes(fixture.expect.pathPattern!));
       const firedCount = fired.length;
       if (firedCount >= (fixture.expect.minDiagnostics ?? 1) && pathOk) {
         reports.push({
@@ -227,7 +287,9 @@ export async function runGateProbe(
           if (prior === null) await io.rm(abs);
           else await io.writeFile(abs, prior);
         } catch (err) {
-          context.logger.warn(`probe restore failed for ${path.relative(root, abs)}: ${err instanceof Error ? err.message : String(err)}`);
+          context.logger.warn(
+            `probe restore failed for ${path.relative(root, abs)}: ${err instanceof Error ? err.message : String(err)}`,
+          );
         }
       }
       for (const dir of createdDirs.sort((a, b) => b.length - a.length)) {
@@ -235,6 +297,24 @@ export async function runGateProbe(
       }
     }
   }
+
+  // RFC-1592: journal every executed fixture — "fixture" liveness reads the
+  // last recorded run per rule. --list and a missing invoke port exit earlier
+  // and journal nothing (no run happened).
+  const runId = `gate.probe-${new Date().toISOString()}`;
+  const journalWarn = await recordProbeRuns(
+    root,
+    reports.map((r, i): ProbeRunRecord => ({
+      runId,
+      fixture: r.fixture,
+      contract: selected[i]?.fixture.contract ?? "?",
+      rule: r.rule,
+      status: r.status,
+      diagnostics: r.diagnostics,
+      at: new Date().toISOString(),
+    })),
+  );
+  if (journalWarn) context.logger.warn(journalWarn);
 
   const failed = reports.filter((r) => r.status !== "pass");
   if (context.outputFormat === "pretty") {
