@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
   <item>RFC-1563: share the kernel command-result cache across session worktrees — one SQLite DB in the primary checkout, @@WORKSPACE_ROOT@@ payload anchoring, scoped --force clear, kernel.cache.prune</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
@@ -17,7 +16,8 @@ F1 code-only anchor scan (markdown fences never declare anchors); F2 generated i
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1513, RFC-1534</history>
+  <item>RFC-1596: close REVIEW-CODE-2026-11-14-01 — packaged template moves block, typed frontmatter, forge.yaml in rfc.validate reads</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1513, RFC-1534, RFC-1569</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1403,9 +1403,8 @@ export async function validateSingleRfc(
   }
 
   // V-48: outcome-surface packages need an outcome probe (RFC-1453, warning).
-  // A packagesImpacted entry `x` maps to `packages/x` (verbatim when it
-  // already contains "/"); it is touched when an outcomeSurfaces glob's
-  // static prefix overlaps that directory.
+  // packagesImpacted ↔ outcomeSurfaces matching lives in
+  // impactedPackagesTouchSurfaces.
   if (!isArchived) {
     const impacted = Array.isArray(fm["packagesImpacted"])
       ? (fm["packagesImpacted"] as unknown[]).map(String)

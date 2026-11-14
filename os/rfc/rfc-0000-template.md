@@ -50,6 +50,16 @@ commands:
 appsImpacted: []
 # List only packages actually impacted. Leave empty if unknown.
 packagesImpacted: []
+# RFC-1596: workshop-tooling RFCs (kind architecture|contract|command|policy,
+# no appsImpacted, no outcome-surface package) created on/after 2026-11-14
+# must name the one site-loop metric they move — an id from `loopMetrics` in
+# forge.yaml — with its current value + source and the target, or `none`
+# with a reason. Exempt RFCs leave this block commented (V-56).
+# moves:
+#   metric: integrate-refusal-rate   # a loopMetrics id, or: none
+#   baseline: "22 of 51 runs refused (gate-run records YYYY-MM-DD..DD)"
+#   target: "under 10 %"
+#   reason: ""                        # required when metric is none
 successSignals: []
 nonGoals: []
 # RFC-1271: Verification tier declares the expected rigor of the acceptance

@@ -7,14 +7,14 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1582: scope integrate-gate steps to verified path domains — skipped rows, manifest-derived domains, --full-gate escape</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482, RFC-1483, RFC-1489, RFC-1516</history>
+  <item>RFC-1596: close REVIEW-CODE-2026-11-14-01 — packaged template moves block, typed frontmatter, forge.yaml in rfc.validate reads</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482, RFC-1483, RFC-1489, RFC-1516, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
@@ -166,8 +166,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
         // RFC-1582: the validator's honest surface — the RFC tree (markdown
         // plus generated indexes/verification envelopes), vendored specs,
         // and the DNA registry the satisfies/related rules resolve against.
+        // RFC-1596: forge.yaml too — V-48/V-56 read outcomeSurfaces and
+        // loopMetrics from the project config.
         // The gate derives rfc-validate's domain from this declaration.
-        reads: ["docs/rfcs/**", "docs/specs/**", "docs/architecture-dna.md"],
+        reads: ["docs/rfcs/**", "docs/specs/**", "docs/architecture-dna.md", "forge.yaml"],
         execute: runRfcValidate,
       },
       {
