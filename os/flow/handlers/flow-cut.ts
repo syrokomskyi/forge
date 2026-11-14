@@ -20,11 +20,20 @@ released with no mutation.</purpose>
   <item>RFC-1502: `git add -u` folds the release-prepare hook's tracked edits in; its untracked leftovers are listed as FLOW-CUT-14 then removed via io.rm (the integrate gate demands a clean tree, and `git clean -f` is blocked in agent sessions). Pre-tag verification extracts every named line at the release commit — a failure deletes worktree+branch before any ref or tag moves (FLOW-CUT-13).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1546: flow.cut resume keys on nearest chore(release): subject, not tip only (F-0269)
+
+A concurrent session landing on develop between a cut's own integrate and
+its tail buried the release commit — every re-run fell through to the
+fresh-cut path and refused FLOW-CUT-01 on already-bumped version files
+(the documented recovery could never fire). planOrdinaryCut now back-walks
+git log (-20) to the nearest chore(release): declaration; resume fires only
+for an incomplete release (missing tags) or a tip-resident one — a buried
+completed release never re-runs its main CAS. Regression tests cover the
+buried-pending and buried-completed cases.</item>
   <history>RFC-1490, RFC-1491, RFC-1494, RFC-1502</history>
 </CHANGE_SUMMARY>
 */
@@ -271,9 +280,17 @@ async function planOrdinaryCut(
   // still runs but the tail completes exactly the subject's tags (and tags
   // the subject names cannot block as FLOW-CUT-06).
   const tipSubject = (await git(repoRoot, io, ["log", "-1", "--format=%s", ref])).stdout.trim();
+  // The tip may sit past the release commit: a concurrent session can land
+  // on develop between this cut's own integrate and its tail — the release
+  // declaration is still the nearest `chore(release):` subject behind tip.
+  const recentSubjects = (await git(repoRoot, io, ["log", "-20", "--format=%s", ref])).stdout
+    .split("\n")
+    .map((s) => s.trim());
+  const releaseIdx = recentSubjects.findIndex((s) => s.startsWith("chore(release): "));
+  const releaseSubject = releaseIdx >= 0 ? recentSubjects[releaseIdx]! : tipSubject;
   let resumeTags: string[] | null = null;
-  if (tipSubject.startsWith("chore(release): ")) {
-    const named = tipSubject
+  if (releaseSubject.startsWith("chore(release): ")) {
+    const named = releaseSubject
       .slice("chore(release): ".length)
       .split(",")
       .map((t) => t.trim())
@@ -297,14 +314,18 @@ async function planOrdinaryCut(
       const existence = await Promise.all(
         named.map(
           async (t) =>
-            (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/tags/${t}`])).exitCode ===
-            0,
+            (await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/tags/${t}`]))
+              .exitCode === 0,
         ),
       );
       if (named.length > 0 && existence.every((e) => e) && mainTip === ref) {
         return { kind: "completed", ref, tags: named, allLines: lines, mainTip };
       }
-      if (named.length > 0) resumeTags = named;
+      // A buried release whose tags all exist already ran its tail — do not
+      // resume it to redo the main CAS. Only an incomplete release (missing
+      // tags) or the tip-resident one may resume.
+      const allNamedExist = named.length > 0 && existence.every((e) => e);
+      if (named.length > 0 && (releaseIdx === 0 || !allNamedExist)) resumeTags = named;
     }
   }
 
