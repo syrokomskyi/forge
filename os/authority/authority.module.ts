@@ -15,6 +15,12 @@ audit events.</purpose>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1336: step 5: coverage "operator" declarations — the commands are CLI-invoked by the operator (or read-only by agents), not pipeline-wired; satisfies the reachable acceptance probe.</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
+  <item>RFC-1594: activate mission.ship.routine delegation scope
+
+RFC-1594 step 3: DELEGABLE_SCOPES gains mission.ship.routine — the
+human-granted, site-scoped delegation the routine-promote-gate checks
+before an agent-run ship promotes a routine-class mission. Also declares
+WERKSTATT_AGENT_ID on mission.open's envInputs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -56,7 +62,7 @@ export async function createForgeAuthorityModule(): Promise<ForgeModule> {
             kind: "string",
             required: true,
             description:
-              "Delegation scope: editorial.signoff | rfc.decision | version.major | onboarding.decision | fleet.notify | bordbuch.<kind>.",
+              "Delegation scope: editorial.signoff | rfc.decision | version.major | onboarding.decision | fleet.notify | translation.contract.approve | mission.ship.routine | bordbuch.<kind>.",
           },
           to: {
             kind: "string",
@@ -157,7 +163,16 @@ export async function createForgeAuthorityModule(): Promise<ForgeModule> {
           "operator/agent CLI read — not wired into a pipeline; agents may audit the registry",
         mutatesState: false,
         contract: "authority",
-        rules: [{ id: "DELEG-01", severity: "error" }, { id: "DELEG-02", severity: "error" }, { id: "DELEG-03", severity: "error" }, { id: "DELEG-04", severity: "error" }, { id: "DELEG-05", severity: "error" }, { id: "DELEG-06", severity: "error" }, { id: "DELEG-07", severity: "error" }, { id: "DELEG-08", severity: "error" }],
+        rules: [
+          { id: "DELEG-01", severity: "error" },
+          { id: "DELEG-02", severity: "error" },
+          { id: "DELEG-03", severity: "error" },
+          { id: "DELEG-04", severity: "error" },
+          { id: "DELEG-05", severity: "error" },
+          { id: "DELEG-06", severity: "error" },
+          { id: "DELEG-07", severity: "error" },
+          { id: "DELEG-08", severity: "error" },
+        ],
         reads: ["authority.delegations.yaml"],
         cacheable: false,
         modulePath: "packages/forge/os/authority/handlers/delegation-validate.ts",

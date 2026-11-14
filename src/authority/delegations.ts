@@ -17,7 +17,6 @@ policy plus audit evidence — not a cryptographic security boundary.</purpose>
   <item>sites: "workspace" covers every site; explicit id lists bound scope — site-scoped queries never match site-less grants.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1336: initial module — schema, scope catalog, loader, resolver, serializer.</item>
   <item>RFC-1336: step 1: forge authority module — delegation registry schema + resolver, four authority.* commands, optional Ed25519 signing</item>
   <item>RFC-1336: delegated editorial sign-off (RFC-1336 step 3)
 
@@ -32,7 +31,13 @@ unchanged. certify/promote precondition remediation now names an active
 delegation when one covers the site.</item>
   <item>RFC-1336: delegated rfc.decision/version.major/onboarding.decision + docs (RFC-1336 steps 4-5)</item>
   <item>RFC-1485: sweep compass headers — forge-src + forge root eslint</item>
-  <history>RFC-1400</history>
+  <item>RFC-1594: activate mission.ship.routine delegation scope
+
+RFC-1594 step 3: DELEGABLE_SCOPES gains mission.ship.routine — the
+human-granted, site-scoped delegation the routine-promote-gate checks
+before an agent-run ship promotes a routine-class mission. Also declares
+WERKSTATT_AGENT_ID on mission.open's envInputs.</item>
+  <history>RFC-1336, RFC-1400</history>
 </CHANGE_SUMMARY>
 */
 
@@ -63,6 +68,8 @@ export const DELEGABLE_SCOPES = [
   "onboarding.decision",
   "fleet.notify",
   "translation.contract.approve",
+  // RFC-1594: unattended routine prod promotion — site-scoped, human-granted.
+  "mission.ship.routine",
 ] as const;
 
 export const BORDBUCH_SCOPE_PREFIX = "bordbuch.";
