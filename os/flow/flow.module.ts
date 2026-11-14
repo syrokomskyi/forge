@@ -9,7 +9,6 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1573: step 2 — declare flow.cut, flow.backmerge, mission.close detachable
@@ -18,7 +17,8 @@ Each runs a long gate (integrateFlowBranch / runMissionValidate); leitstand.ship
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1533, RFC-1537, RFC-1538</history>
+  <item>RFC-1589: run the integration gate outside the integration lock</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538</history>
 </CHANGE_SUMMARY>
 */
 
@@ -341,6 +341,12 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             required: false,
             description:
               "RFC-1543: seconds to wait for live foreign op-claim holders on the primary before FLOW-INT-03 refuses (default 600; 0 restores fail-fast).",
+          },
+          "gate-under-lock": {
+            kind: "boolean",
+            required: false,
+            description:
+              "RFC-1589: force the legacy under-lock gate sequence even when FORGE_INTEGRATE_PRELOCK=1 is set — the operator escape hatch during the rollout comparison.",
           },
           "dry-run": {
             kind: "boolean",

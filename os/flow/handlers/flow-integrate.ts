@@ -20,7 +20,6 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>ADR-0130: foreign-open-mission restore writes HEAD verbatim — whole diff classified as importer churn, a block splice would leave induced additions to be swept</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
@@ -31,7 +30,8 @@ Step (3b) judges only paths the owner run changed, validates before staging, ski
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545</history>
+  <item>RFC-1589: run the integration gate outside the integration lock</item>
+  <history>ADR-0128, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545</history>
 </CHANGE_SUMMARY>
 */
 
@@ -83,6 +83,15 @@ import {
   type FlowRegistryEntry,
 } from "../registry.ts";
 import { runFlowScript, type FlowScriptResult } from "../scripts.ts";
+import {
+  deltaChangedPaths,
+  gateReportSteps,
+  recordPreLockVerdict,
+  resolveDeltaStepDomains,
+  selectDeltaGateSteps,
+  type DeltaGateSelection,
+  type IntegrateGateMode,
+} from "../pre-lock.ts";
 import {
   postRebaseOwners,
   regenerateAfterRebase,
@@ -146,6 +155,19 @@ export interface FlowIntegrateData {
   staleImporterCommitSha?: string;
   /** RFC-1515: holder payload when FLOW-INT-08 refused on a held lock. */
   lock?: LockDiagnostic;
+  /** RFC-1589: how the integration gate ran — unset on the legacy
+   * under-lock sequence (pre-lock machinery not engaged). */
+  gateMode?: IntegrateGateMode;
+  /** RFC-1589: wall time the integration lock was held this run — the
+   * pre-lock comparison metric; unset on the legacy path. */
+  lockHeldMs?: number;
+  /** RFC-1589: Phase-A runs this integrate needed (1 unless develop moved
+   * or the branch state went stale and the attempt was discarded). */
+  preLockAttempts?: number;
+  /** RFC-1589: the locked-delta step selection computed from the develop
+   * delta — recorded for audit; the real gate's own RFC-1582 selection
+   * decides which rows actually ran. */
+  deltaSelection?: DeltaGateSelection;
   diagnostics: Diagnostic[];
 }
 
@@ -265,6 +287,7 @@ async function cleanupIntegrated(
     staleImporterCommitSha?: string;
   },
   journalGateReport?: string,
+  journalGateMode?: { gateMode: string; lockHeldMs: number; preLockAttempts: number },
 ): Promise<{ cleanedUp: boolean; diagnostics: Diagnostic[]; gate: FlowScriptResult | null }> {
   const branchExistsNow = await branchExists(primary, io, entry.name);
   let teardownRan: FlowScriptResult | null = null;
@@ -399,6 +422,7 @@ async function cleanupIntegrated(
         ? { staleImporterCommitSha: journalRemediation.staleImporterCommitSha }
         : {}),
       ...(journalGateReport !== undefined ? { gateReport: journalGateReport } : {}),
+      ...(journalGateMode !== undefined ? journalGateMode : {}),
     });
   } catch (error) {
     if (error instanceof LockTimeoutError || error instanceof FlowRegistrySchemaError) {
@@ -460,35 +484,91 @@ export async function integrateFlowBranch(
   return data;
 }
 
+interface IntegrateAttemptOpts {
+  branch: string | null;
+  dryRun: boolean;
+  now?: Date;
+  onProgress?: (m: string) => void;
+  /** Caller already holds the integration lock (flow.cut/fix releases). */
+  lockHeld?: boolean;
+  /** Test seam — shrink the lock-wait budget so a held lock refuses fast. */
+  lockWaitMs?: number;
+  /** Gate target — passed to the integration gate as FORGE_FLOW_TARGET. */
+  target?: "develop" | "main";
+  /** RFC-1528: kernel invoke port for the bounded preflight validators. */
+  invoke?: ForgeInvokeCommand;
+  /** RFC-1528: command registry for preflight resolvability. */
+  commandRegistry?: CommandRegistry;
+  /** RFC-1531: recreate a vanished registered worktree inside the lock. */
+  reattach?: boolean;
+  /** RFC-1531: delete disposable-classified dirty paths, then re-evaluate. */
+  autoClean?: boolean;
+  /** RFC-1531: sweep remaining dirty entries into a fixed-subject commit. */
+  autocommit?: boolean;
+  /** RFC-1543: seconds to wait for live foreign claim-holders on primary (default 600, 0 = fail-fast). */
+  waitForeignSeconds?: number;
+  /** RFC-1580: operator-accepted weakening reason (isolated weakening session only). */
+  acceptWeakening?: string;
+  /** RFC-1589: run the expensive gate steps BEFORE acquiring integrate.lock
+   * (FORGE_INTEGRATE_PRELOCK=1). Non-port entries only — port keeps the
+   * under-lock sequence, as does a caller-held lock. */
+  preLock?: boolean;
+  /** RFC-1589 test seam — replace the develop-delta step selection. */
+  deltaGateSelector?: (deltaPaths: string[]) => Promise<{ selected: string[]; total: number }>;
+}
+
+/** Everything the unlocked gate phase produced that the locked tail or a
+ * restart needs — the pre-lock verdict's coverage record. */
+interface IntegrateGateState {
+  branch: string;
+  entry: FlowRegistryEntry;
+  branchWorktree: string;
+  /** develop tip when the sequence started (data.developBefore). */
+  developBefore: string;
+  /** The base the branch rebased onto and the gate diffed against (B0). */
+  rebaseBase: string;
+  /** Post-gate branch tip the recorded pre-lock verdict covers. */
+  branchTip: string;
+  dirtyToleratedState: string[];
+  toleratedDirt: Array<{ path: string; class: string }>;
+  autoResolved: string[];
+  postRebaseRegen?: PostRebaseRegenResult;
+  reattachedTo?: string;
+  autoCleaned?: string[];
+  autocommitSha?: string;
+  restoredImporters?: string[];
+  staleImporterCommitSha?: string;
+  gate: FlowScriptResult;
+  engine: { source: "session" | "primary"; root: string };
+  warnings: Diagnostic[];
+  correctness: {
+    status: string;
+    bundlePath: string | null;
+    acceptedWeakening: string | null;
+  };
+}
+
+/** The gate phase either produced a complete (refused/done) integrate data
+ * or a ready state the merge tail or locked phase continues from. */
+type GatePhaseResult = FlowIntegrateData | { kind: "ready"; state: IntegrateGateState };
+
+/** RFC-1589: Phase-A attempts are bounded — two discards force locked-full. */
+const MAX_PRELOCK_ATTEMPTS = 3;
+
+type LockedPhaseResult =
+  | { kind: "restart" }
+  | {
+      kind: "result";
+      data: FlowIntegrateData;
+      mode: IntegrateGateMode;
+      lockHeldMs: number;
+      deltaSelection?: DeltaGateSelection;
+    };
+
 async function integrateFlowBranchAttempt(
   repoRoot: string,
   io: WorkspaceIO,
-  opts: {
-    branch: string | null;
-    dryRun: boolean;
-    now?: Date;
-    onProgress?: (m: string) => void;
-    /** Caller already holds the integration lock (flow.cut/fix releases). */
-    lockHeld?: boolean;
-    /** Test seam — shrink the lock-wait budget so a held lock refuses fast. */
-    lockWaitMs?: number;
-    /** Gate target — passed to the integration gate as FORGE_FLOW_TARGET. */
-    target?: "develop" | "main";
-    /** RFC-1528: kernel invoke port for the bounded preflight validators. */
-    invoke?: ForgeInvokeCommand;
-    /** RFC-1528: command registry for preflight resolvability. */
-    commandRegistry?: CommandRegistry;
-    /** RFC-1531: recreate a vanished registered worktree inside the lock. */
-    reattach?: boolean;
-    /** RFC-1531: delete disposable-classified dirty paths, then re-evaluate. */
-    autoClean?: boolean;
-    /** RFC-1531: sweep remaining dirty entries into a fixed-subject commit. */
-    autocommit?: boolean;
-    /** RFC-1543: seconds to wait for live foreign claim-holders on primary (default 600, 0 = fail-fast). */
-    waitForeignSeconds?: number;
-    /** RFC-1580: operator-accepted weakening reason (isolated weakening session only). */
-    acceptWeakening?: string;
-  },
+  opts: IntegrateAttemptOpts,
 ): Promise<FlowIntegrateData> {
   const now = opts.now ?? new Date();
 
@@ -653,7 +733,140 @@ async function integrateFlowBranchAttempt(
 
   // Steps 0–5 under the integration lock (or inside the caller's lock when
   // lockHeld — flow.cut holds it across the whole release).
-  const integrateInner = async (): Promise<FlowIntegrateData> => {
+  //
+  // RFC-1589: the sequence is factored into integrateGatePhase (everything
+  // up to and including the correctness gate) + integrateMergeTail (the
+  // primary-clean check and fast-forward) so FORGE_INTEGRATE_PRELOCK can
+  // run the expensive phase before acquiring integrate.lock and hold the
+  // lock only for revalidation, a develop-delta gate, and the merge.
+  const rebaseOnto = async (
+    worktree: string,
+    target: string,
+    partial: { branch: string; developBefore: string },
+  ): Promise<FlowIntegrateData | { autoResolved: string[] }> => {
+    const autoResolved: string[] = [];
+    let rebase = await git(worktree, io, ["rebase", target]);
+    let guard = 0;
+    while (rebase.exitCode !== 0 && guard++ < 8) {
+      const conflicts = await git(worktree, io, ["diff", "--name-only", "--diff-filter=U"]);
+      const paths = conflicts.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+      const { classifyRebaseConflicts } = await import("../preflight.ts");
+      const verdict = await classifyRebaseConflicts(worktree, io, paths);
+      // RFC-1545 AC-2: without a kernel invoke port the standalone adapter
+      // spawns the allowlisted owner commands in the worktree — the
+      // resolution contract is identical either way.
+      const invoker =
+        opts.invoke ??
+        standaloneInvoke(
+          io,
+          worktree,
+          verdict.owners.map((o) => o.command),
+        );
+      const resolvable =
+        paths.length > 0 &&
+        verdict.nonGenerated.length === 0 &&
+        verdict.owners.length === paths.length;
+      if (!resolvable) {
+        await git(worktree, io, ["rebase", "--abort"]);
+        return rebaseConflictRefusal(
+          worktree,
+          io,
+          rebase,
+          paths,
+          partial,
+          verdict.owners.length > 0 ? " — mixed generated/non-generated conflict set" : "",
+        );
+      }
+      let failed = false;
+      for (const o of verdict.owners) {
+        // `git checkout --theirs` is blocked by the agent-session git
+        // wrapper — materialize the stage-3 (theirs) blob through the
+        // read-only `git show` + io write instead (RFC-1545).
+        const theirs = await git(worktree, io, ["show", `:3:${o.path}`]);
+        if (theirs.exitCode === 0) {
+          await io.writeFile(join(worktree, o.path), theirs.stdout);
+        }
+        const regen = await invoker(o.command, o.flags);
+        if (regen.ok === false || (regen.exitCode !== undefined && regen.exitCode !== 0)) {
+          await git(worktree, io, ["rebase", "--abort"]);
+          failed = true;
+          return refuse(
+            "FLOW-INT-02",
+            `auto-resolve of generated conflict ${o.path} failed: ${o.command} — ${regen.summary ?? `exit ${regen.exitCode}`}`,
+            "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
+            partial,
+          );
+        }
+        // RFC-1545 AC-4: a successful generator that left conflict markers
+        // behind must not be committed — escalate like a failure.
+        const regenerated = await io.readFile(join(worktree, o.path));
+        if (/^(<{7}|={7}|>{7})/m.test(regenerated)) {
+          await git(worktree, io, ["rebase", "--abort"]);
+          failed = true;
+          return refuse(
+            "FLOW-INT-02",
+            `auto-resolve of generated conflict ${o.path} failed: ${o.command} left conflict markers in the regenerated output`,
+            "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
+            partial,
+          );
+        }
+        await git(worktree, io, ["add", "--", o.path]);
+        opts.onProgress?.(`conflict: ${o.path} — regenerated via ${o.command}`);
+        autoResolved.push(o.path);
+      }
+      if (failed) break;
+      rebase = await git(worktree, io, ["-c", "core.editor=true", "rebase", "--continue"]);
+    }
+    if (rebase.exitCode !== 0) {
+      const conflicts = await git(worktree, io, ["diff", "--name-only", "--diff-filter=U"]);
+      const paths = conflicts.stdout
+        .split("\n")
+        .map((l) => l.trim())
+        .filter((l) => l.length > 0);
+      await git(worktree, io, ["rebase", "--abort"]);
+      return rebaseConflictRefusal(worktree, io, rebase, paths, partial);
+    }
+    return { autoResolved };
+  };
+
+  const regenManifests = async (
+    worktree: string,
+    partial: { branch: string; developBefore: string; rebased: boolean },
+  ): Promise<PostRebaseRegenResult | FlowIntegrateData | null> => {
+    const owners = await postRebaseOwners(worktree, io);
+    if (owners.length === 0) return null;
+    const invoker =
+      opts.invoke ??
+      standaloneInvoke(io, worktree, [
+        ...owners.map((o) => o.command),
+        "ecosystem.manifest.validate",
+      ]);
+    // RFC-1574: the standalone fallback spawns `pnpm exec werkstatt run`
+    // in the worktree — without an engine build there it cannot run, and
+    // the owners are skipped rather than refused.
+    const notRunnable =
+      opts.invoke === undefined &&
+      !(await io.exists(join(worktree, "node_modules", ".bin", "werkstatt")))
+        ? new Set(owners.map((o) => o.command))
+        : undefined;
+    const regen = await regenerateAfterRebase({
+      branchWorktree: worktree,
+      io,
+      invoke: invoker,
+      owners,
+      onProgress: opts.onProgress,
+      ...(notRunnable ? { notRunnable } : {}),
+    });
+    if ("refused" in regen) {
+      return refuse("FLOW-INT-12", regen.message, regen.fixHint, partial);
+    }
+    return regen;
+  };
+
+  const integrateGatePhase = async (gateModeEnv?: IntegrateGateMode): Promise<GatePhaseResult> => {
     const developBefore = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
     const hasBranch = await branchExists(primary, io, branch);
 
@@ -1059,92 +1272,11 @@ async function integrateFlowBranchAttempt(
     // generated-file doctrine applied inside the rebase path; anything else
     // still refuses FLOW-INT-02 for a human.
     const rebaseBase = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
-    const autoResolved: string[] = [];
+    let autoResolved: string[] = [];
     if (entry.port === null) {
-      let rebase = await git(branchWorktree, io, ["rebase", "develop"]);
-      let guard = 0;
-      while (rebase.exitCode !== 0 && guard++ < 8) {
-        const conflicts = await git(branchWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
-        const paths = conflicts.stdout
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
-        const { classifyRebaseConflicts } = await import("../preflight.ts");
-        const verdict = await classifyRebaseConflicts(branchWorktree, io, paths);
-        // RFC-1545 AC-2: without a kernel invoke port the standalone adapter
-        // spawns the allowlisted owner commands in the worktree — the
-        // resolution contract is identical either way.
-        const invoker =
-          opts.invoke ??
-          standaloneInvoke(
-            io,
-            branchWorktree,
-            verdict.owners.map((o) => o.command),
-          );
-        const resolvable =
-          paths.length > 0 &&
-          verdict.nonGenerated.length === 0 &&
-          verdict.owners.length === paths.length;
-        if (!resolvable) {
-          await git(branchWorktree, io, ["rebase", "--abort"]);
-          return rebaseConflictRefusal(
-            branchWorktree,
-            io,
-            rebase,
-            paths,
-            { branch, developBefore },
-            verdict.owners.length > 0 ? " — mixed generated/non-generated conflict set" : "",
-          );
-        }
-        let failed = false;
-        for (const o of verdict.owners) {
-          // `git checkout --theirs` is blocked by the agent-session git
-          // wrapper — materialize the stage-3 (theirs) blob through the
-          // read-only `git show` + io write instead (RFC-1545).
-          const theirs = await git(branchWorktree, io, ["show", `:3:${o.path}`]);
-          if (theirs.exitCode === 0) {
-            await io.writeFile(join(branchWorktree, o.path), theirs.stdout);
-          }
-          const regen = await invoker(o.command, o.flags);
-          if (regen.ok === false || (regen.exitCode !== undefined && regen.exitCode !== 0)) {
-            await git(branchWorktree, io, ["rebase", "--abort"]);
-            failed = true;
-            return refuse(
-              "FLOW-INT-02",
-              `auto-resolve of generated conflict ${o.path} failed: ${o.command} — ${regen.summary ?? `exit ${regen.exitCode}`}`,
-              "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
-              { branch, developBefore },
-            );
-          }
-          // RFC-1545 AC-4: a successful generator that left conflict markers
-          // behind must not be committed — escalate like a failure.
-          const regenerated = await io.readFile(join(branchWorktree, o.path));
-          if (/^(<{7}|={7}|>{7})/m.test(regenerated)) {
-            await git(branchWorktree, io, ["rebase", "--abort"]);
-            failed = true;
-            return refuse(
-              "FLOW-INT-02",
-              `auto-resolve of generated conflict ${o.path} failed: ${o.command} left conflict markers in the regenerated output`,
-              "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
-              { branch, developBefore },
-            );
-          }
-          await git(branchWorktree, io, ["add", "--", o.path]);
-          opts.onProgress?.(`conflict: ${o.path} — regenerated via ${o.command}`);
-          autoResolved.push(o.path);
-        }
-        if (failed) break;
-        rebase = await git(branchWorktree, io, ["-c", "core.editor=true", "rebase", "--continue"]);
-      }
-      if (rebase.exitCode !== 0) {
-        const conflicts = await git(branchWorktree, io, ["diff", "--name-only", "--diff-filter=U"]);
-        const paths = conflicts.stdout
-          .split("\n")
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
-        await git(branchWorktree, io, ["rebase", "--abort"]);
-        return rebaseConflictRefusal(branchWorktree, io, rebase, paths, { branch, developBefore });
-      }
+      const rebased = await rebaseOnto(branchWorktree, "develop", { branch, developBefore });
+      if ("diagnostics" in rebased) return rebased;
+      autoResolved = rebased.autoResolved;
     }
 
     // (3b) RFC-1574: post-rebase regeneration — derived manifests depend on
@@ -1152,39 +1284,13 @@ async function integrateFlowBranchAttempt(
     // change is committed before the gate judges it (F-0168).
     let postRebaseRegen: PostRebaseRegenResult | undefined;
     if (entry.port === null) {
-      const owners = await postRebaseOwners(branchWorktree, io);
-      if (owners.length > 0) {
-        const invoker =
-          opts.invoke ??
-          standaloneInvoke(io, branchWorktree, [
-            ...owners.map((o) => o.command),
-            "ecosystem.manifest.validate",
-          ]);
-        // RFC-1574: the standalone fallback spawns `pnpm exec werkstatt run`
-        // in the worktree — without an engine build there it cannot run, and
-        // the owners are skipped rather than refused.
-        const notRunnable =
-          opts.invoke === undefined &&
-          !(await io.exists(join(branchWorktree, "node_modules", ".bin", "werkstatt")))
-            ? new Set(owners.map((o) => o.command))
-            : undefined;
-        const regen = await regenerateAfterRebase({
-          branchWorktree,
-          io,
-          invoke: invoker,
-          owners,
-          onProgress: opts.onProgress,
-          ...(notRunnable ? { notRunnable } : {}),
-        });
-        if ("refused" in regen) {
-          return refuse("FLOW-INT-12", regen.message, regen.fixHint, {
-            branch,
-            developBefore,
-            rebased: true,
-          });
-        }
-        postRebaseRegen = regen;
-      }
+      const regen = await regenManifests(branchWorktree, {
+        branch,
+        developBefore,
+        rebased: true,
+      });
+      if (regen !== null && "diagnostics" in regen) return regen;
+      postRebaseRegen = regen ?? undefined;
     }
 
     // (4) integration gate — the primary's script, executed by the session
@@ -1214,6 +1320,7 @@ async function integrateFlowBranchAttempt(
         FLOW_BRANCH: branch,
         FLOW_BASE_SHA: rebaseBase,
         FORGE_FLOW_TARGET: opts.target ?? "develop",
+        ...(gateModeEnv !== undefined ? { FORGE_GATE_MODE: gateModeEnv } : {}),
       },
     });
     if (gate.status === "failed") {
@@ -1230,8 +1337,7 @@ async function integrateFlowBranchAttempt(
 
     // (4b) RFC-1580: correctness gate from the PRIMARY install, judging the
     // session worktree against the develop tip it integrates into.
-    const { runCorrectnessStep, CORRECTNESS_WEAKENING_TRAILER } =
-      await import("../correctness-step.ts");
+    const { runCorrectnessStep } = await import("../correctness-step.ts");
     const correctness = await runCorrectnessStep(io, {
       primary,
       worktree: branchWorktree,
@@ -1252,6 +1358,63 @@ async function integrateFlowBranchAttempt(
       `correctness gate: ${correctness.status}${correctness.bundlePath ? ` (${correctness.bundlePath})` : ""}`,
     );
 
+    const state: IntegrateGateState = {
+      branch,
+      entry,
+      branchWorktree,
+      developBefore,
+      rebaseBase,
+      branchTip: (await git(primary, io, ["rev-parse", branch])).stdout.trim(),
+      dirtyToleratedState: dirty.toleratedState,
+      toleratedDirt,
+      autoResolved,
+      ...(postRebaseRegen !== undefined ? { postRebaseRegen } : {}),
+      ...(reattachedTo !== undefined ? { reattachedTo } : {}),
+      ...(autoCleaned !== undefined ? { autoCleaned } : {}),
+      ...(autocommitSha !== undefined ? { autocommitSha } : {}),
+      ...(restoredImporters !== undefined ? { restoredImporters } : {}),
+      ...(staleImporterCommitSha !== undefined ? { staleImporterCommitSha } : {}),
+      gate,
+      engine,
+      warnings,
+      correctness: {
+        status: correctness.status,
+        bundlePath: correctness.bundlePath,
+        acceptedWeakening: correctness.acceptedWeakening,
+      },
+    };
+    return { kind: "ready", state };
+  };
+
+  // (5) primary must sit clean on develop, then fast-forward — the locked
+  // tail shared by the legacy sequence and the pre-lock Phase B.
+  const integrateMergeTail = async (
+    s: IntegrateGateState,
+    extras?: {
+      gateMode?: IntegrateGateMode;
+      lockHeldMs?: number;
+      preLockAttempts?: number;
+      deltaSelection?: DeltaGateSelection;
+    },
+  ): Promise<FlowIntegrateData> => {
+    const {
+      branch,
+      entry,
+      branchWorktree,
+      developBefore,
+      gate,
+      engine,
+      warnings,
+      autoResolved,
+      postRebaseRegen,
+      reattachedTo,
+      autoCleaned,
+      autocommitSha,
+      restoredImporters,
+      staleImporterCommitSha,
+      correctness,
+    } = s;
+    let toleratedDirt = [...s.toleratedDirt];
     // (5) primary must sit clean on develop, then fast-forward. Mid-gate
     // importer churn from another session's open mission tolerates here too
     // (RFC-1537) — the same classifier the preflight ran.
@@ -1298,6 +1461,7 @@ async function integrateFlowBranchAttempt(
     }
     if (correctness.acceptedWeakening) {
       // RFC-1580: the accepted weakening is recorded on the integration itself.
+      const { CORRECTNESS_WEAKENING_TRAILER } = await import("../correctness-step.ts");
       const trailer = await git(branchWorktree, io, [
         "commit",
         "--allow-empty",
@@ -1331,7 +1495,7 @@ async function integrateFlowBranchAttempt(
       rebased: entry.port === null,
       gate,
       cleanedUp: false,
-      ...(dirty.toleratedState.length > 0 ? { toleratedState: dirty.toleratedState } : {}),
+      ...(s.dirtyToleratedState.length > 0 ? { toleratedState: s.dirtyToleratedState } : {}),
       ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
       ...(autoResolved.length > 0 ? { autoResolved } : {}),
       ...(postRebaseRegen !== undefined ? { postRebaseRegen } : {}),
@@ -1348,32 +1512,280 @@ async function integrateFlowBranchAttempt(
         bundlePath: correctness.bundlePath,
         acceptedWeakening: correctness.acceptedWeakening,
       },
+      ...(extras?.gateMode !== undefined ? { gateMode: extras.gateMode } : {}),
+      ...(extras?.lockHeldMs !== undefined ? { lockHeldMs: extras.lockHeldMs } : {}),
+      ...(extras?.preLockAttempts !== undefined ? { preLockAttempts: extras.preLockAttempts } : {}),
+      ...(extras?.deltaSelection !== undefined ? { deltaSelection: extras.deltaSelection } : {}),
       diagnostics: warnings,
     };
   };
 
+  const integrateInner = async (): Promise<FlowIntegrateData> => {
+    const phase = await integrateGatePhase();
+    if (!("state" in phase)) return phase;
+    return integrateMergeTail(phase.state);
+  };
+
+  /** RFC-1589 Phase B — inside integrate.lock: revalidate the Phase-A
+   * verdict's coverage, read B1, and either fast-forward on the still-fresh
+   * verdict (pre-lock), run the develop-delta selection under the lock
+   * (locked-delta), or run the complete gate (locked-full) once the attempt
+   * budget is spent. A "restart" result releases the lock and discards the
+   * attempt — the caller re-runs Phase A against the moved develop. */
+  const integrateLockedPhase = async (
+    s: IntegrateGateState,
+    attempt: number,
+  ): Promise<LockedPhaseResult> => {
+    const lockStart = Date.now();
+    const out = (
+      mode: IntegrateGateMode,
+      data: FlowIntegrateData,
+      deltaSelection?: DeltaGateSelection,
+    ): LockedPhaseResult => ({
+      kind: "result",
+      mode,
+      data,
+      lockHeldMs: Date.now() - lockStart,
+      ...(deltaSelection !== undefined ? { deltaSelection } : {}),
+    });
+
+    // RFC-1538 revalidation — the registry/worktree observed before the
+    // lock wait can have moved while Phase A ran unlocked.
+    const liveRegistry = await readRegistry(io, common);
+    const liveEntry = liveRegistry.branches.find((b) => b.name === branch);
+    if (liveEntry === undefined) {
+      const liveBranch = await branchExists(primary, io, branch);
+      const liveContained =
+        liveBranch &&
+        (await isAncestor(
+          primary,
+          io,
+          (await git(primary, io, ["rev-parse", branch])).stdout.trim(),
+          "develop",
+        ));
+      if (liveContained || !liveBranch) {
+        return out("pre-lock", {
+          branch,
+          integrated: true,
+          developBefore: s.developBefore,
+          developAfter: s.developBefore,
+          rebased: false,
+          gate: null,
+          cleanedUp: true,
+          disposition: "already-integrated",
+          diagnostics: [],
+        });
+      }
+      return out(
+        "pre-lock",
+        refuse(
+          "FLOW-INT-15",
+          `registry entry for ${branch} vanished while waiting on the integration lock, but the branch is not contained in develop (mid-teardown state)`,
+          "run flow.status for the live view; recover the orphaned entry with flow.discard",
+          { branch, developBefore: s.developBefore },
+        ),
+      );
+    }
+    if (!(await io.exists(s.branchWorktree))) {
+      return out(
+        "pre-lock",
+        refuse(
+          "FLOW-INT-15",
+          `registry entry for ${branch} names worktree ${s.branchWorktree}, which does not exist (vanished mid-wait state — the branch is not contained in develop)`,
+          "re-run with --reattach to recreate the worktree, or run flow.status for the live view and flow.discard to drop the entry",
+          { branch, developBefore: s.developBefore },
+          { vanished: true },
+        ),
+      );
+    }
+
+    // The recorded verdict binds an exact branch tip and a clean worktree —
+    // new commits or fresh dirt mean Phase A's gate no longer covers the
+    // tree; the attempt is discarded (or, on the last attempt, the full
+    // gate re-runs under the lock to cover the moved state honestly).
+    const tipNow = (await git(primary, io, ["rev-parse", branch])).stdout.trim();
+    const dirtyNow = await statusDirty(s.branchWorktree, io);
+    const tipMoved = tipNow !== s.branchTip;
+    const dirtArrived = dirtyNow.entries.length > 0;
+    if ((tipMoved || dirtArrived) && attempt < MAX_PRELOCK_ATTEMPTS) {
+      opts.onProgress?.(
+        `pre-lock attempt ${attempt}: ${tipMoved ? "branch tip" : "worktree"} moved during the lock wait — discarding and restarting Phase A`,
+      );
+      return { kind: "restart" };
+    }
+    if (dirtArrived) {
+      return out(
+        "pre-lock",
+        refuse(
+          "FLOW-INT-01",
+          `worktree ${s.branchWorktree} has ${dirtyNow.entries.length} uncommitted change(s) that arrived during the lock wait`,
+          "commit or revert the uncommitted changes inside the session worktree, then re-run",
+          { branch, developBefore: s.developBefore },
+        ),
+      );
+    }
+
+    const b1 = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
+    let mode: IntegrateGateMode;
+    let deltaSelection: DeltaGateSelection | undefined;
+    if (b1 === s.rebaseBase && !tipMoved) {
+      mode = "pre-lock";
+      opts.onProgress?.(
+        `pre-lock verdict still fresh (develop unmoved at ${b1.slice(0, 9)}) — no under-lock gate`,
+      );
+    } else {
+      if (b1 !== s.rebaseBase) {
+        // Develop moved between the Phase-A verdict and the lock — rebase
+        // and regenerate onto B1 before the delta selection runs.
+        const rebased = await rebaseOnto(s.branchWorktree, b1, {
+          branch,
+          developBefore: s.developBefore,
+        });
+        if ("diagnostics" in rebased) return out("locked-delta", rebased);
+        s.autoResolved.push(...rebased.autoResolved);
+        const regen = await regenManifests(s.branchWorktree, {
+          branch,
+          developBefore: s.developBefore,
+          rebased: true,
+        });
+        if (regen !== null && "diagnostics" in regen) return out("locked-delta", regen);
+        if (regen !== null) s.postRebaseRegen = regen;
+      }
+      if (attempt >= MAX_PRELOCK_ATTEMPTS) {
+        mode = "locked-full";
+      } else {
+        const delta =
+          b1 !== s.rebaseBase ? await deltaChangedPaths(io, primary, s.rebaseBase, b1) : [];
+        deltaSelection =
+          opts.deltaGateSelector !== undefined
+            ? await opts.deltaGateSelector(delta)
+            : selectDeltaGateSteps(delta, await resolveDeltaStepDomains(io, primary));
+        if (deltaSelection.selected.length * 2 > deltaSelection.total) {
+          opts.onProgress?.(
+            `pre-lock attempt ${attempt}: develop delta selects ${deltaSelection.selected.length}/${deltaSelection.total} gate steps — discarding and restarting Phase A against ${b1.slice(0, 9)}`,
+          );
+          return { kind: "restart" };
+        }
+        mode = "locked-delta";
+      }
+      // Under the lock the gate runs with FLOW_BASE_SHA = the recorded B0:
+      // on the judged worktree the gate's own RFC-1582 selection runs over
+      // ours ∪ delta — a superset of the delta selection + always rows,
+      // never under-selected, always judged on the tree that will land.
+      const gate = await runFlowScript(io, "integration-gate", {
+        primary,
+        cwd: s.engine.root,
+        env: {
+          FLOW_PRIMARY: primary,
+          FLOW_BRANCH: branch,
+          FLOW_BASE_SHA: s.rebaseBase,
+          FORGE_FLOW_TARGET: opts.target ?? "develop",
+          FORGE_GATE_MODE: mode,
+          ...(mode === "locked-full" ? { FLOW_GATE_FULL: "1" } : {}),
+        },
+      });
+      if (gate.status === "failed") {
+        return out(
+          mode,
+          refuse(
+            "FLOW-INT-05",
+            `hooks/integration-gate.sh refused the ${mode} integration gate (exit ${gate.exitCode}): ${gate.stderrTail}`,
+            `fix what ${primary}/hooks/integration-gate.sh demands, then re-run`,
+            { branch, developBefore: s.developBefore, rebased: true, gate },
+            gate.reportPath ? { reportPath: gate.reportPath } : undefined,
+          ),
+        );
+      }
+      s.gate = gate;
+      const { runCorrectnessStep } = await import("../correctness-step.ts");
+      const correctness = await runCorrectnessStep(io, {
+        primary,
+        worktree: s.branchWorktree,
+        base: b1,
+        ...(opts.acceptWeakening ? { acceptWeakening: opts.acceptWeakening } : {}),
+      });
+      if (correctness.refusal) {
+        return out(
+          mode,
+          refuse(
+            "FLOW-INT-18",
+            correctness.refusal.message,
+            correctness.refusal.fixHint,
+            { branch, developBefore: s.developBefore, rebased: true, gate },
+            correctness.bundlePath ? { bundlePath: correctness.bundlePath } : undefined,
+          ),
+        );
+      }
+      if (correctness.warning) s.warnings.push(correctness.warning);
+      opts.onProgress?.(
+        `correctness gate (${mode}): ${correctness.status}${correctness.bundlePath ? ` (${correctness.bundlePath})` : ""}`,
+      );
+      s.correctness = {
+        status: correctness.status,
+        bundlePath: correctness.bundlePath,
+        acceptedWeakening: correctness.acceptedWeakening,
+      };
+      s.branchTip = (await git(primary, io, ["rev-parse", branch])).stdout.trim();
+    }
+    const data = await integrateMergeTail(s);
+    return out(mode, data, deltaSelection);
+  };
+
+  /** RFC-1589 Phase A→B attempts: the gate phase runs unlocked and records
+   * a `pre-lock` verdict; the locked phase either lands it or discards the
+   * attempt (bounded — the last attempt runs locked-full). */
+  const integratePreLock = async (): Promise<FlowIntegrateData> => {
+    for (let attempt = 1; attempt <= MAX_PRELOCK_ATTEMPTS; attempt++) {
+      const phase = await integrateGatePhase("pre-lock");
+      if (!("state" in phase)) return phase;
+      const s = phase.state;
+      await recordPreLockVerdict(io, common, {
+        branch,
+        branchTip: s.branchTip,
+        base: s.rebaseBase,
+        steps: await gateReportSteps(io, primary, s.gate.reportPath),
+        ...(s.gate.reportPath ? { reportPath: s.gate.reportPath } : {}),
+      });
+      const locked = await withFlowLock(
+        lockPath,
+        lockOpts,
+        () => integrateLockedPhase(s, attempt),
+        io,
+      );
+      if (locked.kind === "restart") continue;
+      return {
+        ...locked.data,
+        gateMode: locked.mode,
+        lockHeldMs: locked.lockHeldMs,
+        preLockAttempts: attempt,
+        ...(locked.deltaSelection !== undefined ? { deltaSelection: locked.deltaSelection } : {}),
+      };
+    }
+    // Unreachable — the last attempt never returns "restart".
+    throw new Error("pre-lock integrate exhausted attempts without a result");
+  };
+
+  const lockOpts = {
+    waitMs: opts.lockWaitMs ?? INTEGRATE_LOCK_WAIT_MS,
+    staleMs: INTEGRATE_LOCK_STALE_MS,
+    progressEveryMs: 60_000,
+    onProgress: opts.onProgress,
+    onStale: (l: { reason: string; pid?: number; host?: string; at: string; ageMs: number }) =>
+      opts.onProgress?.(
+        l.reason === "dead-holder"
+          ? `broke dead-holder integration lock (pid ${l.pid ?? "?"} on ${l.host ?? "?"}, held since ${l.at})`
+          : `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
+      ),
+  };
+
   let inner: FlowIntegrateData;
   try {
-    inner =
-      opts.lockHeld === true
+    const usePreLock = opts.preLock === true && entry.port === null && opts.lockHeld !== true;
+    inner = usePreLock
+      ? await integratePreLock()
+      : opts.lockHeld === true
         ? await integrateInner()
-        : await withFlowLock(
-            lockPath,
-            {
-              waitMs: opts.lockWaitMs ?? INTEGRATE_LOCK_WAIT_MS,
-              staleMs: INTEGRATE_LOCK_STALE_MS,
-              progressEveryMs: 60_000,
-              onProgress: opts.onProgress,
-              onStale: (l) =>
-                opts.onProgress?.(
-                  l.reason === "dead-holder"
-                    ? `broke dead-holder integration lock (pid ${l.pid ?? "?"} on ${l.host ?? "?"}, held since ${l.at})`
-                    : `broke stale integration lock (held since ${l.at}, ${Math.round(l.ageMs / 60000)} min old)`,
-                ),
-            },
-            integrateInner,
-            io,
-          );
+        : await withFlowLock(lockPath, lockOpts, integrateInner, io);
   } catch (error) {
     if (error instanceof LockTimeoutError) {
       // RFC-1515 AC-4: a refused attempt reports the holder on the first
@@ -1430,6 +1842,15 @@ async function integrateFlowBranchAttempt(
       staleImporterCommitSha: inner.staleImporterCommitSha,
     },
     inner.gate?.reportPath ?? undefined,
+    inner.gateMode !== undefined &&
+      inner.lockHeldMs !== undefined &&
+      inner.preLockAttempts !== undefined
+      ? {
+          gateMode: inner.gateMode,
+          lockHeldMs: inner.lockHeldMs,
+          preLockAttempts: inner.preLockAttempts,
+        }
+      : undefined,
   );
   return {
     ...inner,
@@ -1476,6 +1897,11 @@ export async function runFlowIntegrate(
       typeof input.flags["wait-foreign"] === "number"
         ? Number(input.flags["wait-foreign"])
         : undefined,
+    // RFC-1589: FORGE_INTEGRATE_PRELOCK=1 moves the gate outside the lock;
+    // --gate-under-lock is the operator escape hatch back to the old
+    // sequence while the comparison runs.
+    preLock:
+      input.flags["gate-under-lock"] === true ? false : process.env.FORGE_INTEGRATE_PRELOCK === "1",
   });
 
   const refused = data.diagnostics.find((d) => d.severity === "error");
@@ -1490,6 +1916,11 @@ export async function runFlowIntegrate(
         `  develop:   ${data.developBefore?.slice(0, 9)} → ${data.developAfter?.slice(0, 9)}`,
       );
       logger.info(`  cleanedUp: ${data.cleanedUp}`);
+      if (data.gateMode !== undefined) {
+        logger.info(
+          `  gate mode:  ${data.gateMode}${data.lockHeldMs !== undefined ? ` (lock held ${Math.round(data.lockHeldMs / 1000)}s, attempt ${data.preLockAttempts ?? 1})` : ""}`,
+        );
+      }
       if (data.toleratedDirt !== undefined && data.toleratedDirt.length > 0) {
         logger.info(
           `  tolerated: ${data.toleratedDirt.map((t) => `${t.path} (${t.class})`).join(", ")}`,
