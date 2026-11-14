@@ -57,6 +57,9 @@ export async function loadForgeCommandModules(): Promise<ForgeModule[]> {
       m.createForgeCorrectnessModule(),
     ),
     await import("../os/codebase/codebase.module.ts").then((m) => m.createForgeCodebaseModule()),
+    await import("../os/agent-tools/agent-tools.module.ts").then((m) =>
+      m.createForgeAgentToolsModule(),
+    ),
   ];
   return modules.filter((m): m is ForgeModule => m !== null);
 }
