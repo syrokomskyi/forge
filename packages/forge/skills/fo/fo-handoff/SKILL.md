@@ -24,6 +24,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
 
 fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -78,7 +79,7 @@ state:
 
 Properties that matter: `verified` facts are distinct from assumptions (anything not confirmed by a command or test does not belong here); `rejected` hypotheses persist across resumes (agents otherwise re-run dead ends); the block stays small enough to re-inject at session start (tens of lines, not hundreds).
 
-**Dying-session fallback:** an agent that realizes a session is degrading mid-task (repeated silent turn-ends, forced `continue` nudges) writes this same block to `.agents/memory/daily/<date>.md` *before* continuing — the file the ecosystem already maintains — so the state survives even if no full handoff is ever emitted.
+**Dying-session fallback:** an agent that realizes a session is degrading mid-task (repeated silent turn-ends, forced `continue` nudges) writes this same block to `.agents/memory/daily/<date>.md` _before_ continuing — the file the ecosystem already maintains — so the state survives even if no full handoff is ever emitted.
 
 Do not duplicate content already captured in other artifacts (specs, plans, ADRs, issues, commits, diffs). Reference them by path or URL instead. Do not duplicate content from `.agents/memory/` — reference it by path.
 

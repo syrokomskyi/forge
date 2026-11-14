@@ -20,7 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>ADR-0126: docs-rule batch — 16 friction measures landed</item>
   <item>RFC-1460: draft mechanical-obligation RFCs and land harvest doc rules
 
@@ -30,7 +29,8 @@ onboarding-status routing, forge task prettier coverage), seven docs-rule
 landings, registry flips — 25 entries served, F-0025 stays external.</item>
   <item>RFC-1460: session-end teardown — stop worktree-held dev servers before flow.integrate</item>
   <item>RFC-1573: parallelize session-end housekeeping and detach flow.integrate</item>
-  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531</history>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>ADR-0119, ADR-0121, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -69,7 +69,7 @@ This skill IS the session-end protocol — it runs transcript save, temp cleanup
 
 ## Worktree-first preamble (NON-NEGOTIABLE on the fixed branch model)
 
-Session-end writes (transcript save, `docs.archive` moves, `frictions.yaml` updates, rule edits, retro commits) MUST NOT be produced in the primary checkout — the primary stays clean, and every tracked write rides a session worktree into `develop` through `flow.integrate`. Before Step 0, decide whether this retro will produce tracked writes:
+Session-end writes (transcript save, `docs.archive` moves, friction records, rule edits, retro commits) MUST NOT be produced in the primary checkout — the primary stays clean, and every tracked write rides a session worktree into `develop` through `flow.integrate`. Before Step 0, decide whether this retro will produce tracked writes:
 
 - **Writes expected** (nearly always — the Step 0 transcript alone counts when `saveSessions` is true) AND the current directory is a **primary checkout** on the fixed branch model → open a dedicated session worktree FIRST:
 
@@ -83,7 +83,7 @@ Session-end writes (transcript save, `docs.archive` moves, `frictions.yaml` upda
 
 When the preamble opened a worktree, every subsequent step — Step 0 transcript, archive, friction/registry writes, retro commits — runs inside it. All writes batch into a single `flow.integrate` at Step 3e. Do NOT open one worktree per write, and do NOT integrate from the primary checkout.
 
-**Artifact home (F-0105):** every retro artifact — the Step 0 transcript, memory writes, frictions.yaml entries, routed rules — lands in the operator's working repo (the PREFERENCES home whose `forge.yaml` resolves this run), never in the resolved skill's host repo. A skill twin resolving from another checkout does not relocate the writes.
+**Artifact home (F-0105):** every retro artifact — the Step 0 transcript, memory writes, friction records, routed rules — lands in the operator's working repo (the PREFERENCES home whose `forge.yaml` resolves this run), never in the resolved skill's host repo. A skill twin resolving from another checkout does not relocate the writes.
 
 ## Step 0: Save session transcript (NON-NEGOTIABLE when saveSessions is true)
 
@@ -162,7 +162,7 @@ Run the `docs.archive` umbrella command to move terminal RFCs, ADRs, plans, audi
 rtk pnpm exec werkstatt run docs.archive
 ```
 
-The run takes minutes on a mature tree — launch it in a **background shell** and continue with insight gathering and the friction autopsy. It touches only `docs/{audits,plans,rfcs,sessions,missions}` plus generated indexes — never `frictions.yaml`, `.agents/`, or `AGENTS.md`. **Synchronization point:** wait for it to finish before Step 3's `git status`/`git add`; its staged moves and regenerated artifacts are "our" changes committed in Step 3c.
+The run takes minutes on a mature tree — launch it in a **background shell** and continue with insight gathering and the friction autopsy. It touches only `docs/{audits,plans,rfcs,sessions,missions}` plus generated indexes — never the friction store, `.agents/`, or `AGENTS.md`. **Synchronization point:** wait for it to finish before Step 3's `git status`/`git add`; its staged moves and regenerated artifacts are "our" changes committed in Step 3c.
 
 Prefer the kernel host — under `werkstatt run` the archive regenerates every generated artifact invalidated by the moves (e.g. `docs/ecosystem.generated.yaml`, `docs/rfcs/index.yaml`) and reports them. Under a standalone forge install (`pnpm exec forge docs.archive`) the command still archives but regeneration is skipped with a printed note.
 
@@ -513,41 +513,36 @@ Zero hits → append nothing; the report states «трений не было» i
 | `environment` | toolchain, dev-server, parallel-session dirt | env doc / script |
 | `self` | the agent's own mistake | behavior rule / skill fix |
 
-**d. Match against `docs/frictions.yaml`.** Read the registry — an absent file is an empty registry; create it lazily on first append (`friction.validate` passes a missing file with `entries: 0`).
+**d. Match against the friction registry.** The store is per-record files `docs/frictions/F-NNNN.yaml` (the legacy `docs/frictions.yaml` is still read until migrated — an absent registry is empty; a stale legacy file is removed once by `rtk pnpm exec werkstatt run friction.migrate`, an operator/one-time act, never a retro step). Read the files under `docs/frictions/` — never write them by hand: every write goes through `friction.add`, which reserves the id on the shared surface (safe under parallel retro worktrees) and validates before any file lands.
 
-- **No match** → append a new entry:
+- **No match** → record via the command:
 
-  ```yaml
-  - id: F-<next free NNNN>   # ids need not be gapless; a duplicate flagged by
-                            # friction.validate means a parallel retro raced —
-                            # renumber to the next free id and re-validate
-    created: <today>
-    session: <this session's id>
-    category: <one of the five>
-    friction: "<what slowed the session — one line>"
-    signature: "<normalized match phrase>"
-    measure: "<proposed prevention + artifact type>"
-    artifacts: []
-    status: open
-    recurrences: 0
-    lastSeen: <today>
+  ```bash
+  rtk pnpm exec werkstatt run friction.add --json \
+    --category <one of the five> \
+    --signature "<normalized match phrase>" \
+    --friction "<what slowed the session — one line>" \
+    --measure "<proposed prevention + artifact type>" \
+    --session <this session's id>
   ```
 
-- **Match on `open`** → increment `recurrences`, update `lastSeen`, do NOT create a new entry; flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
-- **Match on `addressed`** → the prevention failed → increment `recurrences`, update `lastSeen`, and set `status: escalated`: leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
-- **Match on `escalated`** → the friction recurred while its mechanical fix is still pending → increment `recurrences`, update `lastSeen`, keep `status: escalated`, and flag it in the report as a recurrence pressing on the pending mechanism («рецидив — механическая мера ещё не внедрена»). Do NOT re-escalate, do NOT change `measure` — the counter pressing on an open mechanism is the escalation ladder's backlog pressure signal.
-- A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be appended directly as `status: addressed` with `artifacts` populated.
+  A refusal exits non-zero and writes no file — fix the named vocabulary field and re-run; never retry by editing a file.
 
-**e. Self-check the write.** Run `rtk pnpm exec werkstatt run friction.validate` after appending — a `fail` must be repaired before continuing (most often a duplicate id from a racing parallel retro: renumber, re-validate).
+- **Match on `open`** → `friction.add --recurrence-of <F-NNNN>` (increments `recurrences`, sets `lastSeen`, writes no new record); flag it in the report as a recurrence with its proposed documents («рецидив — мера ещё не применена»).
+- **Match on `addressed`** → the prevention failed → `friction.add --recurrence-of <F-NNNN>`, then set `status: escalated` on the record file: leave `measure` untouched for review and NEVER append a second docs-rule measure to an entry that already has one — the entry's `measure` must name the mechanical obligation (RFC/ADR id, docs/queues item, repo path, or backticked command token). `escalated` is a holding state: the entry returns to `addressed` only when the mechanism lands, with `measureKind` and `artifacts` updated.
+- **Match on `escalated`** → the friction recurred while its mechanical fix is still pending → `friction.add --recurrence-of <F-NNNN>`, keep `status: escalated`, and flag it in the report as a recurrence pressing on the pending mechanism («рецидив — механическая мера ещё не внедрена»). Do NOT re-escalate, do NOT change `measure` — the counter pressing on an open mechanism is the escalation ladder's backlog pressure signal.
+- A friction the same session already fixed (its measure was written into `AGENTS.md`, an ADR, or a doc during this session) may be added with `--status addressed --artifacts <paths>`.
+
+**e. Self-check the write.** Run `rtk pnpm exec werkstatt run friction.validate` after recording — a `fail` must be repaired before continuing.
 
 #### Harvest mode («разгребаем» / «трения» / "friction harvest")
 
 The same skill doubles as the harvest entry point. When the operator invokes it with a harvest phrase rather than a session-end phrase:
 
-1. Read `docs/frictions.yaml`; group `open` entries by category. `escalated` entries are the mechanical backlog — surface them as their own group keyed to the mechanism each `measure` names (RFC/ADR id, queue item, command token), not as new artifact proposals.
+1. Read the friction registry (`docs/frictions/F-NNNN.yaml` per-record files; the legacy `docs/frictions.yaml` only if still unmigrated); group `open` entries by category. `escalated` entries are the mechanical backlog — surface them as their own group keyed to the mechanism each `measure` names (RFC/ADR id, queue item, command token), not as new artifact proposals.
 2. Present the batch as proposed documents: per group, the prevention artifacts — RFC drafts (via the `fo-idea-create-rfc` friction fast-path), ADRs (accepted-decision fast-path), rules/doc fixes (direct instruction-layer edits).
 3. Writing happens only on «пиши» (or an explicit equivalent). Until then the batch is a proposal — plan confirmation is not an implementation command.
-4. On «пиши» execute each artifact, then flip the served entries `open → addressed` with `artifacts` populated with the created paths/ids, and re-run `friction.validate`.
+4. On «пиши» execute each artifact, then flip the served entries `open → addressed` in their per-record files (`docs/frictions/F-NNNN.yaml` — a single-record edit, not a registry rewrite) with `artifacts` populated with the created paths/ids, and re-run `friction.validate`.
 5. Recurrence-flagged entries (step d) jump the queue — they appear in every retro report immediately without waiting for a harvest.
 
 **Instruction-layer write allow-list.** Under an explicit «пиши» harvest command only, this skill may directly edit: `AGENTS.md` files, `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` (canonical + synced copy together), `docs/authoring/*.md`, `.agents/operator-profile.md`, `.agents/memory/**`. Everything else — code, RFCs, ADRs — goes through the owning skills; a draft RFC is created via the `fo-idea-create-rfc` friction fast-path, never written directly.
@@ -621,7 +616,7 @@ Recommended session-end sequence: `fo-doc-audit` → `fo-session-retro` → `fo-
 
 ## Constraints
 
-- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), `docs/frictions.yaml` (the friction registry), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
+- **Document-only.** This skill must not modify, create, or delete source code files. The only files it may directly edit are `AGENTS.md` files (for rule insights), `.agents/operator-profile.md` (for operator insights), `.agents/memory/**` files (for context insights and pending routings), the per-record files under `docs/frictions/` for harvest status flips (new records go through `friction.add`), and — under an explicit harvest «пиши» command only — `SKILL.md` files under `.agents/skills/` and `packages/forge/skills/` plus `docs/authoring/*.md`. All other routing is via delegation to skills that own their output.
 - **No `.agents/rules/` files.** Rules live in `AGENTS.md` files, which are loaded into every agent's system prompt. `.agents/**` is reference/historical only per root AGENTS.md, except `.agents/memory/` (active context store), `.agents/skills/` (synced by forge), and `.agents/operator-profile.md` (written by this skill).
 - **Delegation, not duplication.** Decision insights delegate to `fo-idea-create-adr` via its accepted-decision fast path; DNA and pattern insights are recorded as pending routings for `fo-extract-dna`/`fo-harvest`, never delegated live at session end. Do not create ADRs, RFCs, or forge packages directly.
 - **Insight acceptance is automatic (NON-NEGOTIABLE).** Every insight in the triage table is routed without asking the operator — no `ask_user_question` for insight selection, context destination, or profile review. Commits are never prompted for either: session-attributed changes commit unconditionally, unattributed files are left untouched and reported (Step 3d). The only operator-facing gate that remains inside the protocol is the unrelated non-terminal RFC status prompt (Step 4c of Pre-retro steps); the PREFERENCES.md bootstrap ask at skill start is a setup exception, not a session-end gate.

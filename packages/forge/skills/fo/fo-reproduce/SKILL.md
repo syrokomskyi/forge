@@ -29,6 +29,7 @@ wired into fo-idea-implement defect path, fo-fix reproduce-first, fo-triage
 verify step, fo-add-tests defect branch; AGENTS.md reproduction-first rule;
 compass inventory regenerated.</item>
   <item>RFC-1440: apply RFC-1440 review findings — frontmatter budgets, SKILL-17 ids, honest-exit routing</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -88,7 +89,7 @@ A loop that exhausts its budget or cannot reach the pre-fix surface exits `incon
 ## Quality bar (inherited from fo-add-tests)
 
 - **Public seam only.** No private/internal API manipulation unless the defect genuinely lives behind it — in that case the test header says so.
-- **Behavioral name.** The test name describes the defect *behavior*, not the mechanism (`returns stale pin after close`, not `testCountCommits2`).
+- **Behavioral name.** The test name describes the defect _behavior_, not the mechanism (`returns stale pin after close`, not `testCountCommits2`).
 - **Header cites the defect ref** — one comment line naming the issue/finding id and the verified pre-fix sha.
 
 ## Exit states

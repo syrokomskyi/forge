@@ -20,14 +20,14 @@ triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC"
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1361: path-scoped commits by default — EC-24 pre-commit message lint with governed-prefix exemption</item>
   <item>RFC-1433: friction fast-path — step-3 grilling skipped when the caller supplies open/flagged docs/frictions.yaml entry ids; entries carry the justification, output stays draft.</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
-  <history>RFC-1097, RFC-1247</history>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1097, RFC-1247, RFC-1361</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -91,11 +91,11 @@ Mark criteria that describe **lasting behaviour** in the frontmatter `promotes: 
 
 #### Friction fast-path
 
-Step 3 is skipped when the caller supplies `frictions: [F-NNNN, ...]` — ids of `open` or recurrence-flagged entries in `docs/frictions.yaml`. The registry entries are the justification: the friction and its measure already answer the grilling's "why" question, and the created file lands at `draft` under normal human architecture review — operator authority lives at the `draft → accepted` transition, not at file creation.
+Step 3 is skipped when the caller supplies `frictions: [F-NNNN, ...]` — ids of `open` or recurrence-flagged entries in the friction registry. The registry entries are the justification: the friction and its measure already answer the grilling's "why" question, and the created file lands at `draft` under normal human architecture review — operator authority lives at the `draft → accepted` transition, not at file creation.
 
 Contract:
 
-1. **Verify the entries exist** — read `docs/frictions.yaml`; every supplied `F-NNNN` id must resolve to an entry with `status: open` (or a flagged recurrence). A caller without matching registry entries gets the standard grilling path — no exceptions.
+1. **Verify the entries exist** — read the per-record files `docs/frictions/F-NNNN.yaml` (or the legacy `docs/frictions.yaml` when still unmigrated); every supplied `F-NNNN` id must resolve to an entry with `status: open` (or a flagged recurrence). A caller without matching registry entries gets the standard grilling path — no exceptions.
 2. **Mine the entries for the RFC body** — `friction` + `measure` supply Context and Problem; the batch's shared `category`/theme supplies the Decision's scope. Do not invent justification beyond what the entries carry.
 3. **Proceed directly to step 4** — create, fill, validate, commit as usual. The RFC records the supplying entry ids in `related[]` (as `friction:F-NNNN` provenance in the body's Context section — `related[]` holds RFC ids) and the harvest caller flips the entries to `addressed` with the created file in `artifacts[]`.
 
@@ -156,7 +156,7 @@ Commit path-scoped: `pnpm exec werkstatt run ecosystem.commit --message "rfc: cr
 
 ## Constraints
 
-- **Grilling is mandatory before file creation.** Do not skip step 3 — the concept must survive grilling before the RFC file is created. Single documented carve-out: the friction fast-path (step 3) — caller supplies `docs/frictions.yaml` entry ids as justification; entries must exist and be `open`/flagged, otherwise grilling applies.
+- **Grilling is mandatory before file creation.** Do not skip step 3 — the concept must survive grilling before the RFC file is created. Single documented carve-out: the friction fast-path (step 3) — caller supplies friction-registry entry ids as justification; entries must exist and be `open`/flagged, otherwise grilling applies.
 - Use the **full** RFC template for every RFC. Lightweight local decisions now use ADRs instead.
 - Do not change `status` past `draft`.
 - Do not add self-authorizing language such as "implementation may start before acceptance."

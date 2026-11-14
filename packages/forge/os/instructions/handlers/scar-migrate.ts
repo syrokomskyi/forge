@@ -12,17 +12,19 @@ bullet (empty sections collapse), and journals refusals.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1466: scar bullet → remediation fragment migration with invariant refusal + journal</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1466: apply r1 repairs — fragment remedies reachable via lookupRemediation, pending-marker ordering, comment-preserving catalogRefs</item>
   <item>RFC-1466: apply r2 repairs — extend-path diagnosticCodes merge, publishConfig exports, marker idempotency, walk-up fragment resolution</item>
   <item>RFC-1466: apply r3 repairs — block-style catalogRefs append, marker-stack strip, remedy id whitelist</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1466</history>
 </CHANGE_SUMMARY>
 */
 
 import path from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import { ambientIo, resolveIo } from "../../../src/utils/io.ts";
+import { LegacyRecordMutationError, updateFriction } from "../../friction/store.ts";
 import { isScar, loadBudget } from "./budget-validate.ts";
 import type {
   ForgeCommandInput,
@@ -37,6 +39,9 @@ export interface ScarMigrateData {
   removedBullet?: string;
   frictionIds: string[];
   unmatchedFrictions?: string[];
+  /** RFC-1590: cited ids still in the unmigrated legacy registry — the
+   * command never writes it; friction.migrate first, then re-run. */
+  legacyFrictions?: string[];
   pending?: boolean;
   reason?: string;
 }
@@ -80,18 +85,23 @@ export async function runScarMigrate(
     throw new Error("scar.migrate --file must be a relative workspace path");
   }
   if (!/(^|\/)AGENTS\.md$/.test(file)) {
-    throw new Error("scar.migrate --file must target an AGENTS.md file — the command only migrates instruction-layer scars");
+    throw new Error(
+      "scar.migrate --file must target an AGENTS.md file — the command only migrates instruction-layer scars",
+    );
   }
   const rel = file.split(path.sep).join("/");
   const force = input.flags["force"] === true;
   const entryId = flagId(input.flags as Record<string, unknown>);
-  const frictionRaw = (input.flags["friction"] as string | undefined)
-    ?.split(",")
-    .map((s) => s.trim())
-    .filter(Boolean) ?? [];
+  const frictionRaw =
+    (input.flags["friction"] as string | undefined)
+      ?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean) ?? [];
   const malformed = frictionRaw.filter((s) => !/^F-\d{4}$/.test(s));
   if (malformed.length > 0) {
-    throw new Error(`scar.migrate: malformed friction id(s) ${malformed.join(", ")} — expected F-XXXX`);
+    throw new Error(
+      `scar.migrate: malformed friction id(s) ${malformed.join(", ")} — expected F-XXXX`,
+    );
   }
   const frictionIds = frictionRaw;
   const diagnosticCodes = (input.flags["diagnostic-codes"] as string | undefined)
@@ -125,7 +135,9 @@ export async function runScarMigrate(
     };
   };
   if (!isScar(bullet)) {
-    return journalRefusal("not scar-classified (no failure provenance) — invariants belong in prose");
+    return journalRefusal(
+      "not scar-classified (no failure provenance) — invariants belong in prose",
+    );
   }
 
   // Invariant refusal — exempt-section membership OR invariant keywords.
@@ -134,7 +146,10 @@ export async function runScarMigrate(
   let section = "";
   for (let i = line - 1; i >= 0; i--) {
     const m = lines[i]!.match(/^#{2,3}\s+(.*)$/);
-    if (m) { section = m[1]!.trim(); break; }
+    if (m) {
+      section = m[1]!.trim();
+      break;
+    }
   }
   const invariantShaped =
     budget.exemptSections.some((s) => section.toLowerCase() === s.toLowerCase()) ||
@@ -148,7 +163,8 @@ export async function runScarMigrate(
 
   // Fragment entry — append or extend the named entry.
   const markerMatch = bullet.match(/<!--\s*migrates-to:\s*(\S+)\s+pending\s*-->/);
-  const id = entryId ?? markerMatch?.[1] ?? `SCAR-${String(fragment.entries.length + 1).padStart(4, "0")}`;
+  const id =
+    entryId ?? markerMatch?.[1] ?? `SCAR-${String(fragment.entries.length + 1).padStart(4, "0")}`;
   if (!/^[A-Za-z0-9][A-Za-z0-9-]*$/.test(id)) {
     throw new Error(`scar.migrate: --catalog-remedy id "${id}" must match [A-Za-z0-9-]+`);
   }
@@ -180,60 +196,26 @@ export async function runScarMigrate(
   await io.mkdir(path.dirname(fragmentPath));
   await io.writeFile(fragmentPath, yamlStringify(fragment));
 
-  // Friction registry — catalogRefs on the cited entries.
+  // Friction registry — catalogRefs on the cited entries (RFC-1590:
+  // per-record store updates; a legacy-resident record is left for
+  // friction.migrate — commands never write the legacy file).
   const unmatchedFrictions: string[] = [];
-  if (frictionIds.length > 0) {
-    const frictionsPath = path.join(root, "docs", "frictions.yaml");
-    const frictionsSrc = await io.readFile(frictionsPath).catch(() => null);
-    if (frictionsSrc === null) {
-      unmatchedFrictions.push(...frictionIds);
-    } else {
-      // Line-level edit preserves the authored comment header — a yaml
-      // parse/stringify round-trip would drop it.
-      const fLines = frictionsSrc.split("\n");
-      const matched = new Set<string>();
-      for (const fid of frictionIds) {
-        const idx = fLines.findIndex((l) => l.trim() === `id: ${fid}` || l.trim() === `- id: ${fid}`);
-        if (idx < 0) { unmatchedFrictions.push(fid); continue; }
-        matched.add(fid);
-        // find the end of this entry (next "- id:" or EOF) and its catalogRefs line
-        let end = fLines.length;
-        let refsIdx = -1;
-        for (let i = idx + 1; i < fLines.length; i++) {
-          if (/^\s*-\s*id:/.test(fLines[i]!)) { end = i; break; }
-          if (fLines[i]!.trim().startsWith("catalogRefs:")) refsIdx = i;
-        }
-        const indent = fLines[idx]!.match(/^\s*/)![0] + "  ";
-        if (refsIdx >= 0) {
-          const row = fLines[refsIdx]!;
-          // scan the header line AND following block-style "- item" rows for the id
-          let blockEnd = refsIdx + 1;
-          const blockRows: number[] = [];
-          while (blockEnd < fLines.length && /^\s+-\s+/.test(fLines[blockEnd]!) && fLines[blockEnd]!.match(/^\s*/)![0].length > 0) {
-            blockRows.push(blockEnd);
-            blockEnd++;
-          }
-          const idRe = new RegExp(`["'\\s,\\[-]${id}["'\\s,\\]]`);
-          const hasId = idRe.test(row) || blockRows.some((j) => idRe.test(fLines[j]!));
-          if (!hasId) {
-            const m = row.match(/^(\s*catalogRefs:\s*)\[([^\]]*)\](.*)$/);
-            if (blockRows.length > 0) {
-              // block-style catalogRefs — append a "- item" row at the same indent
-              const itemIndent = fLines[blockRows[0]!]!.match(/^\s*/)![0];
-              fLines.splice(blockRows[blockRows.length - 1]! + 1, 0, `${itemIndent}- ${id}`);
-            } else if (m) {
-              const inner = m[2]!.trim();
-              fLines[refsIdx] = `${m[1]}[${inner === "" ? id : `${inner}, ${id}`}]${m[3]}`;
-            } else {
-              // bare header (possibly with a trailing comment) — convert to flow form
-              fLines[refsIdx] = `${indent}catalogRefs: [${id}]`;
-            }
-          }
-        } else {
-          fLines.splice(end > idx ? end : idx + 1, 0, `${indent}catalogRefs: [${id}]`);
-        }
-      }
-      if (matched.size > 0) await io.writeFile(frictionsPath, fLines.join("\n"));
+  const legacyFrictions: string[] = [];
+  for (const fid of frictionIds) {
+    try {
+      await updateFriction(
+        root,
+        fid,
+        (rec) => {
+          const refs = new Set(rec.catalogRefs ?? []);
+          refs.add(id);
+          return { ...rec, catalogRefs: [...refs] };
+        },
+        io,
+      );
+    } catch (e) {
+      if (e instanceof LegacyRecordMutationError) legacyFrictions.push(fid);
+      else unmatchedFrictions.push(fid);
     }
   }
 
@@ -251,12 +233,18 @@ export async function runScarMigrate(
     while (line - 1 < lines.length) {
       const next = lines[line - 1]!;
       if (next.trim() === "") break;
-      if (/^\s*- /.test(next) && next.match(/^\s*/)![0].length > baseIndent) lines.splice(line - 1, 1);
-      else if (next.match(/^\s+\S/) && !next.startsWith("- ") && next.match(/^\s*/)![0].length > baseIndent) lines.splice(line - 1, 1);
+      if (/^\s*- /.test(next) && next.match(/^\s*/)![0].length > baseIndent)
+        lines.splice(line - 1, 1);
+      else if (
+        next.match(/^\s+\S/) &&
+        !next.startsWith("- ") &&
+        next.match(/^\s*/)![0].length > baseIndent
+      )
+        lines.splice(line - 1, 1);
       else break;
     }
     // collapse double blank lines left behind
-    for (let i = line - 1; i > 0 && i < lines.length; ) {
+    for (let i = line - 1; i > 0 && i < lines.length;) {
       if (lines[i] === "" && lines[i - 1] === "") lines.splice(i, 1);
       else break;
     }
@@ -282,6 +270,7 @@ export async function runScarMigrate(
       removedBullet: unbound ? undefined : bullet,
       frictionIds,
       unmatchedFrictions: unmatchedFrictions.length > 0 ? unmatchedFrictions : undefined,
+      legacyFrictions: legacyFrictions.length > 0 ? legacyFrictions : undefined,
       pending: unbound ? true : undefined,
     },
     summary: unbound

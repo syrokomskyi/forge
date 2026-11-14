@@ -1,6 +1,6 @@
 /*
 <MODULE_CONTRACT>
-<purpose>Friction registry schema (RFC-1433) — docs/frictions.yaml entry and
+<purpose>Friction registry schema (RFC-1433) — record and
 registry shapes, closed category/status enums, FRICTION-* rule ids, and the
 result type for friction.validate.</purpose>
 <non-goals>
@@ -8,8 +8,6 @@ result type for friction.validate.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: review realignment — result shape moved to the spec's
-  violations[] contract.</item>
   <item>RFC-1433: r2 review — signature/measure/artifacts required again
   (absence is a FRICTION-01 shape failure); present-but-empty signature
   stays a FRICTION-05 warn.</item>
@@ -21,6 +19,7 @@ F3-2: pretty output reports reportedEntries (raw count on schema failure),
 consistent with the JSON payload. r3 review verdict: pass.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
@@ -29,13 +28,7 @@ import { z } from "zod";
 
 import type { Diagnostic } from "../../src/types.ts";
 
-export const FRICTION_CATEGORIES = [
-  "tooling",
-  "docs",
-  "process",
-  "environment",
-  "self",
-] as const;
+export const FRICTION_CATEGORIES = ["tooling", "docs", "process", "environment", "self"] as const;
 export type FrictionCategory = (typeof FRICTION_CATEGORIES)[number];
 
 export const FRICTION_STATUSES = ["open", "addressed", "escalated"] as const;
@@ -90,6 +83,10 @@ export const FRICTION_RULE_IDS = [
   "FRICTION-06",
   "FRICTION-07",
   "FRICTION-08",
+  "FRICTION-09",
+  "FRICTION-10",
+  "FRICTION-ADD-01",
+  "FRICTION-ADD-02",
 ] as const;
 export type FrictionRuleId = (typeof FRICTION_RULE_IDS)[number];
 

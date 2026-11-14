@@ -10,6 +10,7 @@
   <item>RFC-1522: slim AGENTS.md to injection-safe skeletons + extract docs/agent-guides + budget gate
 
 8 rule files (1.19 MB -> 50.6 KB total) split into <=12,288-byte skeletons; 212 moved ## sections preserved verbatim across 21 guides (heading parity verified). forge.yaml instructions.budget.enforce promotes INSTR-01 to an error gate at the 3072-token ceiling. Withdrawn rules.budget.check removed — dedupe onto the RFC-1466 command. fo-doctor invokes the real gate.</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
 </CHANGE_SUMMARY>
 */
 
@@ -108,9 +109,12 @@ describe("instructions.budget.validate (RFC-1466)", () => {
 describe("scar.migrate (RFC-1466)", () => {
   test("AC-4: bound scar bullet → fragment entry + bullet removed + catalogRefs on friction", async () => {
     await seed();
+    // RFC-1590: the friction record lives in its per-record file —
+    // scar.migrate updates it through the store, never a shared registry file.
+    await mkdir(join(root, "docs", "frictions"), { recursive: true });
     await writeFile(
-      join(root, "docs", "frictions.yaml"),
-      `# authored header comment\n- id: F-0007\n  created: "2026-01-01"\n  session: s\n  category: tooling\n  friction: x\n  signature: y\n  measure: z\n  artifacts: []\n  status: open\n  recurrences: 1\n  lastSeen: "2026-01-01"\n`,
+      join(root, "docs", "frictions", "F-0007.yaml"),
+      `id: F-0007\ncreated: "2026-01-01"\nsession: s\ncategory: tooling\nfriction: x\nsignature: y\nmeasure: z\nartifacts: []\nstatus: open\nrecurrences: 1\nlastSeen: "2026-01-01"\n`,
     );
     const res = await runScarMigrate(
       flags({ file: "AGENTS.md", line: 2, friction: "F-0007", "diagnostic-codes": "FOO-01" }),
@@ -125,9 +129,27 @@ describe("scar.migrate (RFC-1466)", () => {
     expect(fragment.entries[0].diagnosticCodes).toContain("FOO-01");
     const agents = await readFile(join(root, "AGENTS.md"), "utf8");
     expect(agents).not.toContain("scar bullet");
-    const frictions = await readFile(join(root, "docs", "frictions.yaml"), "utf8");
-    expect(frictions).toContain("# authored header comment");
-    expect(frictions).toContain(`catalogRefs: [${res.data!.entryId}]`);
+    const record = yamlParse(
+      await readFile(join(root, "docs", "frictions", "F-0007.yaml"), "utf8"),
+    );
+    expect(record.catalogRefs).toEqual([res.data!.entryId]);
+  });
+
+  test("a legacy-resident friction is reported, not line-edited (RFC-1590)", async () => {
+    await seed();
+    await writeFile(
+      join(root, "docs", "frictions.yaml"),
+      `- id: F-0007\n  created: "2026-01-01"\n  session: s\n  category: tooling\n  friction: x\n  signature: y\n  measure: z\n  artifacts: []\n  status: open\n  recurrences: 1\n  lastSeen: "2026-01-01"\n`,
+    );
+    const res = await runScarMigrate(
+      flags({ file: "AGENTS.md", line: 2, friction: "F-0007" }),
+      ctx(),
+    );
+    expect(res.data?.status).toBe("migrated");
+    expect(res.data?.legacyFrictions).toEqual(["F-0007"]);
+    // The legacy file keeps its bytes — commands never write it.
+    const legacy = await readFile(join(root, "docs", "frictions.yaml"), "utf8");
+    expect(legacy).not.toContain("catalogRefs");
   });
 
   test("unbound remedy keeps the bullet with a pending marker (F-2 ordering)", async () => {

@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1468: forgeKnowledgeModule registering knowledge.rebuild + knowledge.authz.probe</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1481: register knowledge.conflicts.resolve for explicit K-ID collision remediation.</item>
   <item>RFC-1481: enforce resolver IO and path boundaries
@@ -15,6 +14,8 @@ Use WorkspaceIO for pack discovery, reject escaping knowledge paths, remap cross
   <item>RFC-1481: honor kernel dry-run and expose resolver reachability
 
 Recognize the kernel dry-run context, declare coverage and dynamic pack reads, and assert local authoring guidance plus zero-write preview behavior.</item>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <history>RFC-1468</history>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +23,7 @@ import type { ForgeModule } from "../../src/forge-module.ts";
 import { runKnowledgeRebuild } from "./handlers/knowledge-rebuild.ts";
 import { runKnowledgeAuthzProbe } from "./handlers/knowledge-authz-probe.ts";
 import { runKnowledgeConflictsResolve } from "./handlers/knowledge-conflicts-resolve.ts";
+import { FRICTION_DIR, LEGACY_FRICTION_FILE } from "../friction/store.ts";
 
 export const forgeKnowledgeModule: ForgeModule = {
   name: "forge-knowledge",
@@ -38,12 +40,23 @@ export const forgeKnowledgeModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {
-        target: { kind: "string", description: "Single file to rebuild (repeatable via --all for the declared set)." },
+        target: {
+          kind: "string",
+          description: "Single file to rebuild (repeatable via --all for the declared set).",
+        },
         all: { kind: "boolean", description: "Rebuild every declared rebuild-region target." },
         diff: { kind: "boolean", description: "Report drift without writing." },
         check: { kind: "boolean", description: "CI mode — non-zero on orphan/missing rows." },
       },
-      reads: ["docs/remediation-catalog.generated.yaml", "docs/frictions.yaml", "docs/rfcs/decision-log.generated.yaml", "AGENTS.md", ".agents/**/*.md", "docs/knowledge/**/*.md"],
+      reads: [
+        "docs/remediation-catalog.generated.yaml",
+        `${FRICTION_DIR}/**`,
+        LEGACY_FRICTION_FILE,
+        "docs/rfcs/decision-log.generated.yaml",
+        "AGENTS.md",
+        ".agents/**/*.md",
+        "docs/knowledge/**/*.md",
+      ],
       writes: ["AGENTS.md", ".agents/**/*.md", "docs/knowledge/**/*.md"],
       generates: [],
       execute: runKnowledgeRebuild,
@@ -63,7 +76,11 @@ export const forgeKnowledgeModule: ForgeModule = {
       scope: "workspace",
       acceptsAllFlag: false,
       flags: {
-        "classify-only": { kind: "boolean", description: "Propose class markers for authorization-shaped entries — assistive, writes nothing." },
+        "classify-only": {
+          kind: "boolean",
+          description:
+            "Propose class markers for authorization-shaped entries — assistive, writes nothing.",
+        },
       },
       reads: [".agents/**/*.md", "docs/knowledge/**/*.md", "docs/rfcs/**", "docs/adrs/**"],
       execute: runKnowledgeAuthzProbe,
