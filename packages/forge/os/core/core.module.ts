@@ -6,14 +6,24 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
-
-shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
-  <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>RFC-1528: note moved[] under-count on archiver throw (review F-10)</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1535: docs.archive self-stages both sides of every move pair — no half-staged EC-31 pairs (F-0038)</item>
+  <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
+
+Independent fo-review (isolation: subagent) found: empty marker pairs lost
+their open tag on --write, multi-line regions collapsed line numbers, a
+leading fence injected a phantom line, --check was undocumented-undeclared,
+and --write exited 1 on a successful heal. Fixes: open-marker capture,
+newline-preserving placeholder, empty-chunk skip, check flag, healedRegions
+split (write always exits 0), dryRun/io threading, byte-exact inventory
+compare on the prettier-stable canonical form, CHECK-13 delegated through
+commandRegistry/invoke so the registry-integrity scan stays within its
+slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
+extended, two real stale claims corrected, profile templates ship empty
+markers hydrated at scaffold write time. RFC amended to implemented
+grammar/result/exclusions; command moved to commands.added.</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -132,8 +142,8 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       exitCode: result.status === "pass" ? 0 : 1,
       summary:
         result.status === "pass"
-          ? `[forge.skill.doc-sync] OK — ${result.filesScanned} files, ${result.markedRegions} marked regions${result.written.length > 0 ? `, rewrote ${result.written.length}` : ""}`
-          : `[forge.skill.doc-sync] ${result.drift.length} drift entries — run with --write to re-render marked regions`,
+          ? `[forge.skill.doc-sync] OK — ${result.filesScanned} files, ${result.markedRegions} marked regions${result.written.length > 0 ? `, rewrote ${result.written.length}` : ""}${result.drift.length > 0 ? `, ${result.drift.length} unhealable claim drift entries` : ""}`
+          : `[forge.skill.doc-sync] ${result.drift.length} drift entries — re-render marked regions with --write; stale claim literals need manual fixes`,
     };
   };
 
@@ -325,9 +335,15 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
         scope: "workspace",
         acceptsAllFlag: false,
         flags: {
+          check: {
+            kind: "boolean",
+            description:
+              "Explicit check mode (the default): fail on marked-region drift and stale skill-count claims.",
+          },
           write: {
             kind: "boolean",
-            description: "Re-render marked regions in place (default: check only).",
+            description:
+              "Re-render marked regions in place; exits 0 and reports claim drift it cannot heal.",
           },
           files: {
             kind: "string",

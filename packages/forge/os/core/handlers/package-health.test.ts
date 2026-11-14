@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1518: docs-drift gate PKG-HEALTH-11/12 in forge.package.health
 
 Live-inventory docs gate: PKG-HEALTH-11 flags registered commands absent
@@ -26,6 +25,20 @@ werkstatt-knowledge CLI surface.</item>
   <item>ADR-0131: pkg-health-10 suppression on the line above the literal
 
 literalEscapesInLine accepts a // pkg-health-10: comment directly above the literal (one-line reach); the publish at-ref scan fetches that line via git show only for candidate lines; bin/cli.ts drops its prettier-ignore lines.</item>
+  <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
+
+Independent fo-review (isolation: subagent) found: empty marker pairs lost
+their open tag on --write, multi-line regions collapsed line numbers, a
+leading fence injected a phantom line, --check was undocumented-undeclared,
+and --write exited 1 on a successful heal. Fixes: open-marker capture,
+newline-preserving placeholder, empty-chunk skip, check flag, healedRegions
+split (write always exits 0), dryRun/io threading, byte-exact inventory
+compare on the prettier-stable canonical form, CHECK-13 delegated through
+commandRegistry/invoke so the registry-integrity scan stays within its
+slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
+extended, two real stale claims corrected, profile templates ship empty
+markers hydrated at scaffold write time. RFC amended to implemented
+grammar/result/exclusions; command moved to commands.added.</item>
   <history>RFC-1311, RFC-1517</history>
 </CHANGE_SUMMARY>
 */
@@ -684,7 +697,23 @@ function makeRegistryContext(
           description: "",
           scope: "workspace" as const,
         })),
-      getCommand: () => undefined,
+      // RFC-1585: package.health delegates CHECK-13 through the registry —
+      // resolve the real sibling handler so the positive control exercises
+      // the same in-process execution path production does.
+      getCommand: (name) =>
+        name === "forge.skill.doc-sync"
+          ? {
+              name,
+              description: "test stub — delegates to the real doc-sync runner",
+              scope: "workspace" as const,
+              execute: async (input, context) => {
+                const { runSkillDocSync } =
+                  await import("../../../src/validators/skill-doc-sync.ts");
+                const r = await runSkillDocSync(input, context);
+                return { data: r, exitCode: r.status === "pass" ? 0 : 1 };
+              },
+            }
+          : undefined,
     },
   };
 }
