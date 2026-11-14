@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1539: package-sourced specs and published consumer validators in Forge</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
@@ -44,7 +43,10 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
 - werkstatt-engine extract excludes build-input-set.test.ts (reads the
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493</history>
+  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
+
+loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539</history>
 </CHANGE_SUMMARY>
 */
 
@@ -415,6 +417,20 @@ export const forgeConfigSchema = z
      */
     outcomeSurfaces: z.array(z.string()).default([]),
     /**
+     * RFC-1596: the project's site-loop metric vocabulary — the closed set of
+     * metric ids a tooling RFC's `moves.metric` may name (V-56). Absent/empty
+     * means the project does not opt in and the rule stays silent.
+     */
+    loopMetrics: z
+      .array(
+        z.object({
+          id: z.string().min(1),
+          description: z.string().optional(),
+          source: z.string().optional(),
+        }),
+      )
+      .default([]),
+    /**
      * RFC-1578: product correctness section (`mode`, `tier`). Loosely typed
      * here on purpose — `correctness.manifest.validate` reports invalid values
      * as CORR-02 instead of every forge command failing to load forge.yaml.
@@ -469,6 +485,8 @@ export interface ForgeConfig {
   profileResolution?: "resolved" | "unknown" | "absent" | "catalog-unavailable";
   /** RFC-1453: picomatch globs naming user-visible outcome surfaces (RFC-IMP-14). */
   outcomeSurfaces: string[];
+  /** RFC-1596: site-loop metric vocabulary for `moves.metric` (V-56). */
+  loopMetrics: { id: string; description?: string; source?: string }[];
   /** RFC-1578: raw `correctness:` section — validated by correctness.manifest.validate (CORR-02). */
   correctness?: Record<string, unknown>;
 }
@@ -597,6 +615,7 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
     },
     forge: { syncedVersion: null },
     outcomeSurfaces: [],
+    loopMetrics: [],
   };
 }
 

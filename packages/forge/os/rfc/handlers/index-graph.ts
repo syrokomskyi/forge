@@ -14,6 +14,9 @@ Mechanical v1 to v2 header migration across the workspace: 942 files rewritten â
 
 Sweep batch 4: 73 Compass headers on headerless engine files (certification, component-runtime, isolation, evolution, testing), real KEY_DECISIONS on 75 files (kernel, cache, dht, swim, gitmesh, runtime), ~80 purpose expansions (CONTRACT-02/PURPOSE-02), non-goals on 13 CONTRACT-03 files, CS-07 history literal fix repo-wide (253 files). Policy: .template.ts/.template.astro excludedPaths. werkstatt-engine now 0 diagnostics.</item>
   <item>RFC-1364: robust rfc index generation â€” bounded retry, RFC-IDX-04, atomic writes</item>
+  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
+
+loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -91,6 +94,16 @@ export async function runRfcIndexGenerate(
     const fm = result.parsed.frontmatter;
     const arr = (k: string): string[] =>
       Array.isArray(fm[k]) ? (fm[k] as unknown[]).map(String) : [];
+    // RFC-1596: surface the declared loop metric so the index can count
+    // tooling RFCs per metric and the share of `none`.
+    const moves = fm["moves"];
+    const movesMetric =
+      moves !== null &&
+      typeof moves === "object" &&
+      !Array.isArray(moves) &&
+      typeof (moves as Record<string, unknown>)["metric"] === "string"
+        ? String((moves as Record<string, unknown>)["metric"])
+        : undefined;
     entries.push({
       id: String(fm["id"] ?? ""),
       title: String(fm["title"] ?? ""),
@@ -104,6 +117,7 @@ export async function runRfcIndexGenerate(
       amends: arr("amends"),
       amendedBy: arr("amendedBy"),
       related: arr("related"),
+      ...(movesMetric !== undefined ? { movesMetric } : {}),
       file: `${RFC_DIR}/${fileName}`,
     });
   }
