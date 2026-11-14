@@ -6,6 +6,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.6.1] — 2026-11-14
+
+_READMEs lead with the agent-native proof: Forge governs its own development, the supported-agent list names Devin, and the fleet table's line accounting is explicit._
+
+### Changed
+
+- **README (EN/UK)**: open with the problem Forge solves and the self-governance numbers (1,563 RFCs, 131 ADRs, 41 skills under Forge governance on the monorepo that builds it); name Devin among supported agents; group the feature list into Decisions / Agent behavior / Verification; rename the fleet table's total column and state the `code + tests + docs + generated` decomposition; add a "Where Forge is going" section.
+
 ## [9.6.0] — 2026-11-13
 
 _A product-level correctness contour lands — manifest, audit, and an integration gate — alongside a repository-scale measurement command._
