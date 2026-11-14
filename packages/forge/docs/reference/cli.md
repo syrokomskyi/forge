@@ -120,6 +120,14 @@ forge session.audit.report
 forge metrics.aggregate
 ```
 
+## Codebase measurement (RFC-1581)
+
+```sh
+forge codebase.measure [--json] [--out <path>]
+```
+
+Read-only `git ls-files` measurement: categorized line counts (`code`/`tests`/`docs`/`generated`), per-language code/comment/blank lines, AST-derived class/function/method counts for the TS/JS family, and top directories by code lines. `--json` returns the full structured measure; `--out` writes a dated YAML snapshot to an explicit path (the command's only write). See [fleet measurement methodology](fleet-measurement.md).
+
 ## Docs
 
 ```sh

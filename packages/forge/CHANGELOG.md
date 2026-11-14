@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 For the full commit history, see the [GitHub releases page](https://github.com/syrokomskyi/forge/releases).
 
+## [9.6.2] — 2026-11-14
+
+_Documentation conformance pass — counts synced to the real registry, the programmatic API rewritten against the verified surface, new integration and verification docs._
+
+### Added
+
+- **`docs/concepts/verification-model.md`** — the Instructions / Validation / Enforcement model and what Forge does not guarantee.
+- **`docs/guides/verification-and-evidence.md`** — scenario guide for session audit, trajectory memory, context assembly, gate probes, conformance, and the agent operating model.
+- **`docs/integrations/devin.md`** — Devin CLI/Cloud integration: install order, one-task walkthrough, responsibility split, honest boundaries.
+- **`docs/reference/fleet-measurement.md`** — methodology behind the README fleet table, a worked `codebase.measure` example, and limitations.
+
+### Changed
+
+- **Docs consistency**: skill counts corrected to 41 (34 fo + 4 shared + 3 meta) across README/guides; `upgrading.md` now documents the manifest-based stale-dir prune instead of claiming upgrade never deletes; `cli.md` gains `codebase.measure`; `existing-project.md` gains a safety checklist; the live-preview claim and fleet table are scoped to what they actually guarantee.
+- **`programmatic-api.md` rewritten** — module table synced to the exported modules; the registry placeholder replaced by a compiling example verified against `createForgeRfcModule`/`ForgeRuntimeContext`.
+
 ## [9.6.1] — 2026-11-14
 
 _READMEs lead with the agent-native proof: Forge governs its own development, the supported-agent list names Devin, and the fleet table's line accounting is explicit._

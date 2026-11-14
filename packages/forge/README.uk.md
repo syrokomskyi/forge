@@ -53,7 +53,7 @@ IDE / АГЕНТ / МОДЕЛЬ
 
 Контракт Forge — це звичайні файли в репозиторії: `forge.yaml`, `AGENTS.md`, RFC, навички. Кожен агент, що вміє читати репозиторій і запускати команди, отримує однакове управління: **Devin**, Windsurf, Cursor, Claude Code, Codex CLI — і будь-який наступний. Жодних плагінів під вендора, жодного lock-in.
 
-Це також те, що робить автономні сесії безпечними для довіри на масштабі: гейти детерміновані, а аудит сесій дає докази, а не самооцінку.
+Це також те, що робить автономні сесії безпечними для довіри на масштабі: гейти детерміновані, а аудит сесій дає докази, а не самооцінку. Специфіка Devin CLI / Devin Cloud — порядок встановлення, прохід однієї задачі та чесні межі — у [docs/integrations/devin.md](docs/integrations/devin.md).
 
 ---
 
@@ -65,7 +65,7 @@ IDE / АГЕНТ / МОДЕЛЬ
 Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my project. I want to build: [describe your project]
 ```
 
-Замініть `[describe your project]` своєю ідеєю — гра, бібліотека, база знань, будь-що. ШІ-агент встановить Forge, створить структуру проєкту і налаштує живий прев'ю. Далі ви просто говорите: описуєте, що хочете, і агент будує. Без програмування, без терміналу, без команд.
+Замініть `[describe your project]` своєю ідеєю — гра, бібліотека, база знань, будь-що. ШІ-агент встановить Forge, створить структуру проєкту і — для профілів із запускаємою поверхнею — налаштує живий прев'ю. Далі ви просто говорите: описуєте, що хочете, і агент будує. Без програмування, без терміналу, без команд.
 
 ### Після завершення промпту — Bootstrap skill
 
@@ -118,6 +118,8 @@ pnpm exec forge profile.validate
 | **Поведінка агента** | Локальні навички та робочі процеси                  |
 | **Перевірка**        | Doctor, валідатори, контракти, детерміновані гейти  |
 | **Еволюція**         | Профілі, вендоринг специфікацій, адитивні оновлення |
+
+Інструкції, валідація та примус — різні рівні; що гарантує кожен з них, див. [модель верифікації](docs/concepts/verification-model.md).
 
 ---
 
@@ -278,6 +280,8 @@ Forge управляє не іграшковими проєктами — поч
 pnpm exec forge codebase.measure --json
 ```
 
+Методологія, робочий приклад та обмеження: [docs/reference/fleet-measurement.md](docs/reference/fleet-measurement.md). Це самозаявлені числа власного інструменту Forge — показник приладу, а не незалежний аудит.
+
 ---
 
 ## Куди рухається Forge
@@ -318,7 +322,7 @@ await forgeRfcModule.register(registry);
 | `src/` | Портативне ядро — типи, конфіг, реєстр навичок, валідатори, онбординг. Нуль `@warpgogol/*` імпортів. |
 | `os/` | Реєстрації ForgeModule. Усі модулі `os/` автономні, крім `werkstatt` — єдиного адаптера, що імпортує `@warpgogol/werkstatt-engine`. |
 | `bin/` | Точка входу CLI (команда `forge`). |
-| `skills/` | 41 визначення навичок (33 fo + 5 спільних + 3 мета) з SKILL.md frontmatter. |
+| `skills/` | 41 визначення навичок (34 fo + 4 спільних + 3 мета) з SKILL.md frontmatter. |
 | `profiles/` | Профілі стеку для `scaffold`. |
 
 ---
@@ -341,14 +345,18 @@ pnpm exec forge doctor
 - [Чому Forge?](docs/concepts/why-forge.md)
 - [Контракт проєкту](docs/concepts/project-contract.md)
 - [Модель управління](docs/concepts/governance-model.md)
+- [Модель верифікації](docs/concepts/verification-model.md)
 - [Перенесення наявного проєкту](docs/guides/existing-project.md)
 - [Оновлення](docs/guides/upgrading.md)
 - [Навички](docs/guides/skills.md)
 - [RFC та ADR робочі процеси](docs/guides/rfc-adr.md)
+- [Сценарії верифікації та доказів](docs/guides/verification-and-evidence.md)
+- [Інтеграція Devin](docs/integrations/devin.md)
 - [Довідник CLI](docs/reference/cli.md)
 - [Довідник forge.yaml](docs/reference/forge-yaml.md)
 - [Профілі](docs/reference/profiles.md)
 - [Програмний API](docs/reference/programmatic-api.md)
+- [Методологія вимірювання флоту](docs/reference/fleet-measurement.md)
 - [Публікація](docs/maintainers/publishing.md)
 
 ---
