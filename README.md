@@ -6,7 +6,7 @@
 
 A repository-native control layer for AI-assisted development. Decisions, rules, skills and verification live with the repository — independent of the agent, model or IDE doing the work.
 
-**Proven on itself first.** The monorepo that builds Forge is governed by Forge: 1,500+ RFCs, 130+ ADRs and 41 agent skills, every commit verified by deterministic gates — not by "the agent says it's done". The same layer already governs a ~5.9M-line engineering fleet across 8 repositories. [The measured fleet ↓](#forged-in-production)
+**Proven on itself first.** The monorepo that builds Forge is governed by Forge: 1,500+ RFCs, 130+ ADRs and 41 agent skills — every change merged to main passes deterministic verification gates, not "the agent says it's done". The same layer already governs a ~5.9M-line engineering fleet across 8 repositories. [The measured fleet ↓](#forged-in-production)
 
 > Engineered at [Warpgogol](https://warpgogol.com) · Released as open source. <!-- pkg-health-12: domain name, not a command -->
 
@@ -49,11 +49,11 @@ YOUR REPOSITORY
 
 Agents can change. Models can change. IDEs can change. Engineering rules stay with the project.
 
-## Any agent. Same governance.
+## One project contract. Multiple agents.
 
-Forge's contract is plain files in the repository — `forge.yaml`, `AGENTS.md`, RFCs, skills. Every agent that can read a repo and run a command gets the same governance: **Devin**, Windsurf, Cursor, Claude Code, Codex CLI — and whatever ships next. No per-vendor plugin, no lock-in.
+Forge stores engineering rules in portable repository files — `forge.yaml`, `AGENTS.md`, RFCs, skills. Compatible agents can consume the same instructions, decisions, and workflows: **Devin**, Windsurf, Cursor, Claude Code, Codex CLI — and whatever ships next. Deterministic checks remain independent of the agent and can be enforced through CI. No per-vendor plugin, no lock-in.
 
-That is also what makes autonomous sessions safe to trust at scale: gates are deterministic, and session audit produces evidence, not self-assessment. For Devin CLI / Devin Cloud specifics — install order, a one-task walkthrough, and honest boundaries — see [docs/integrations/devin.md](docs/integrations/devin.md).
+This makes autonomous development easier to inspect and verify: deterministic gates check declared invariants, while session audits identify potential policy violations and produce reviewable findings. For Devin CLI / Devin Cloud specifics — install order, a one-task walkthrough, and honest boundaries — see [docs/integrations/devin.md](docs/integrations/devin.md).
 
 ---
 
@@ -66,6 +66,8 @@ Install https://npmjs.com/package/@warpgogol/forge in this folder and set up my 
 ```
 
 Replace `[describe your project]` with your idea — a game, a library, a knowledge base, anything. The AI agent installs Forge, scaffolds the project, and — for profiles that ship a runnable surface — sets up a live preview. From there on, you just talk: describe what you want, and the agent builds it. No programming, no terminal, no commands.
+
+This workflow requires an agent with filesystem and command-execution access, a compatible environment (Node.js 24+, pnpm), and permission to install dependencies.
 
 ### After the prompt completes — the Bootstrap skill
 
@@ -254,7 +256,7 @@ Full CLI reference: [docs/reference/cli.md](docs/reference/cli.md)
 
 ## Forged in production
 
-Forge does not govern toy projects — starting with itself. The werkstatt monorepo that builds Forge carries **1,563 RFCs and 131 ADRs** under Forge governance, and every commit lands through deterministic gates. The same control layer runs a working engineering fleet — measured 2026-11-13 by Forge's own `codebase.measure` over git-tracked files only (generated, vendored, and mirrored content is classified separately; export mirrors and deployment caches are excluded to avoid double counting).
+Forge does not govern toy projects — starting with itself. The werkstatt monorepo that builds Forge carries **1,563 RFCs and 131 ADRs** under Forge governance, and every change lands through the deterministic integration gate. The same control layer runs a working engineering fleet — measured 2026-11-13 by Forge's own `codebase.measure` over git-tracked files only (generated, vendored, and mirrored content is classified separately; export mirrors and deployment caches are excluded to avoid double counting).
 
 | Repository | Role | Files | Total | code | tests | docs | generated | Top language |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -282,6 +284,10 @@ pnpm exec forge codebase.measure --json
 
 Methodology, a worked example, and limitations: [docs/reference/fleet-measurement.md](docs/reference/fleet-measurement.md). These are self-reported numbers from Forge's own instrument — an instrument reading, not an independent audit.
 
+### One task. One contract. One verified result.
+
+This README is the case study. Version 9.6.1 — including this file — was authored end-to-end by an AI agent under operator direction: the agent rewrote the README, Forge's own commit gate ran scoped checks, the integration gate ran the heavyweight suite, and CI ran lint/typecheck/build/test before `npm publish --provenance`. Every transition produced a verifiable artifact — [release v9.6.1](https://github.com/syrokomskyi/forge/releases/tag/v9.6.1) · [CI runs](https://github.com/syrokomskyi/forge/actions).
+
 ---
 
 ## Where Forge is going
@@ -296,19 +302,29 @@ Methodology, a worked example, and limitations: [docs/reference/fleet-measuremen
 
 ```ts
 import {
-  forgeCoreModule,
-  forgeRfcModule,
-  loadForgeConfig,
-  resolveBinding,
-  FORGE_SKILLS,
+  createForgeRfcModule,
+  type ForgeLogger,
+  type ForgeRuntimeContext,
 } from "@warpgogol/forge";
 
-const config = loadForgeConfig(process.cwd());
-const cmd = resolveBinding(config, "commands.validateRfc", { id: "RFC-0001" });
+const logger: ForgeLogger = {
+  section: console.log,
+  info: console.log,
+  warn: console.warn,
+  error: console.error,
+  success: console.log,
+};
+const context: ForgeRuntimeContext = {
+  workspaceRoot: process.cwd(),
+  logger,
+  dryRun: false,
+  outputFormat: "json",
+};
 
-const registry = /* your ForgeModuleRegistry */;
-await forgeCoreModule.register(registry);
-await forgeRfcModule.register(registry);
+const rfcModule = await createForgeRfcModule();
+const rfcValidate = rfcModule.commands.find((c) => c.name === "rfc.validate");
+const result = await rfcValidate?.execute({ argv: [], flags: {} }, context);
+console.log(result?.exitCode); // 0 = pass, 1 = fail
 ```
 
 Full API reference: [docs/reference/programmatic-api.md](docs/reference/programmatic-api.md)
