@@ -12,7 +12,6 @@
  * </non-goals>
  * </MODULE_CONTRACT>
  *  * <CHANGE_SUMMARY>
-  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
@@ -21,7 +20,8 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
-  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458, RFC-1467, RFC-1483, RFC-1514, RFC-1516</history>
+  <item>RFC-1596: close REVIEW-CODE-2026-11-14-01 — packaged template moves block, typed frontmatter, forge.yaml in rfc.validate reads</item>
+  <history>RFC-0465, RFC-0478, RFC-0480, RFC-0795, RFC-0998, RFC-0999, RFC-1097, RFC-1249, RFC-1271, RFC-1306, RFC-1310, RFC-1320, RFC-1322, RFC-1330, RFC-1333, RFC-1334, RFC-1336, RFC-1364, RFC-1383, RFC-1391, RFC-1401, RFC-1445, RFC-1453, RFC-1454, RFC-1455, RFC-1458, RFC-1467, RFC-1483, RFC-1514, RFC-1516, RFC-1536</history>
 </CHANGE_SUMMARY>
 */
 
@@ -308,6 +308,21 @@ export interface RfcFrontmatter {
    * promoted criterion has no `source: rfc-ac` manifest entry (RFC-IMP-16).
    */
   promotes?: string[];
+
+  /**
+   * RFC-1596: declares the one site-loop metric this RFC moves — an id
+   * from `loopMetrics` in forge.yaml, or `none` with a `reason`.
+   * `baseline` (current value + source) and `target` are required when
+   * `metric` names a declared id. Enforced by V-56 for workshop-tooling
+   * RFCs (kind architecture|contract|command|policy, no appsImpacted,
+   * no outcome-surface package) created on/after 2026-11-14.
+   */
+  moves?: {
+    metric: string;
+    baseline?: string;
+    target?: string;
+    reason?: string;
+  };
 } // ─── RFC-0268: acceptance probes ───────────────────────────────────────────
 
 /**
