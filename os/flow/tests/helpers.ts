@@ -11,15 +11,16 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
 <KEY_DECISIONS>
   <item>Hooks live in &lt;repo&gt;/hooks (committed), never .git/hooks — worktrees check out committed content (AUDIT-RFC-1486-G1).</item>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
+  <item>Fixtures exclude docs/.index/ via info/exclude like the real .gitignore — the kernel counters journal regenerates it on every rule evaluation, and unignored it rides the flow.open sweep into branch trees and collides merges.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
   <item>RFC-1603: key the artifact cache on the copied tree and end mission.close with a converging tail sync</item>
+  <item>RFC-1603: record the sweep/journal collision friction and the fixture-ignore decision</item>
   <history>RFC-1486, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
