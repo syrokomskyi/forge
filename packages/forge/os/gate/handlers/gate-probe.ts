@@ -225,9 +225,27 @@ export async function runGateProbe(
         await io.writeFile(abs, content);
       }
       const res = await context.invoke(fixture.expect.command ?? fixture.expect.rule, {});
-      const diags =
-        (res.data as { diagnostics?: { ruleId?: string; file?: string }[] } | undefined)
-          ?.diagnostics ?? [];
+      // Checks emit their verdicts under different keys — diagnostics for the
+      // normalized runners, errors/warnings or violations for validators that
+      // keep their own report shape (friction.validate). Union them all.
+      const data = res.data as
+        | {
+            diagnostics?: { ruleId?: string; file?: string }[];
+            errors?: { ruleId?: string; file?: string }[];
+            warnings?: { ruleId?: string; file?: string }[];
+            violations?: { rule?: string; file?: string }[];
+          }
+        | undefined;
+      const diags = [
+        ...(data?.diagnostics ?? []),
+        ...(data?.errors ?? []),
+        ...(data?.warnings ?? []),
+      ];
+      // violations[] overlaps errors[]/warnings[] on validators that emit all
+      // three — only fall back when the normalized keys are absent.
+      if (diags.length === 0) {
+        diags.push(...(data?.violations ?? []).map((v) => ({ ruleId: v.rule, file: v.file })));
+      }
       const fired = diags.filter((d) => d.ruleId === fixture.expect.rule);
       const pathOk =
         !fixture.expect.pathPattern ||

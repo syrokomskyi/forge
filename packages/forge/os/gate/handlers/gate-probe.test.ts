@@ -37,7 +37,7 @@ function ctx(opts: {
 }): ForgeRuntimeContext {
   const io = {
     exists: async () => true,
-    readFile: async (p: string) => p.endsWith("fixture.yaml") ? FIXTURE : "",
+    readFile: async (p: string) => (p.endsWith("fixture.yaml") ? FIXTURE : ""),
     writeFile: async () => {},
     rm: async () => {},
     mkdir: async () => {},
@@ -76,17 +76,40 @@ describe("gate.probe (RFC-1469)", () => {
   test("AC-3: bound check fires the declared ruleId on the injected violation → pass", async () => {
     const res = await runGateProbe(
       flags({}),
-      ctx({ invoke: () => ({ exitCode: 1, ok: false, data: { diagnostics: [{ ruleId: "DEMO-19", file: "demo/broken.md" }] } }) }),
+      ctx({
+        invoke: () => ({
+          exitCode: 1,
+          ok: false,
+          data: { diagnostics: [{ ruleId: "DEMO-19", file: "demo/broken.md" }] },
+        }),
+      }),
     );
     expect(res.data?.reports[0]?.status).toBe("pass");
     expect(res.data?.status).toBe("ok");
     expect(res.exitCode).toBe(0);
   });
 
+  test("AC-3b: check reports under errors[] (validator report shape) → pass", async () => {
+    const res = await runGateProbe(
+      flags({}),
+      ctx({
+        invoke: () => ({
+          exitCode: 1,
+          ok: false,
+          data: { errors: [{ ruleId: "DEMO-19", file: "demo/broken.md" }] },
+        }),
+      }),
+    );
+    expect(res.data?.reports[0]?.status).toBe("pass");
+    expect(res.data?.status).toBe("ok");
+  });
+
   test("AC-4: check emits diagnostics of a different ruleId → PROBE-02 binding drift", async () => {
     const res = await runGateProbe(
       flags({}),
-      ctx({ invoke: () => ({ exitCode: 1, ok: false, data: { diagnostics: [{ ruleId: "OTHER-99" }] } }) }),
+      ctx({
+        invoke: () => ({ exitCode: 1, ok: false, data: { diagnostics: [{ ruleId: "OTHER-99" }] } }),
+      }),
     );
     expect(res.data?.reports[0]?.status).toBe("fail");
     expect(res.data?.reports[0]?.detail).toContain("binding drift");
@@ -111,4 +134,3 @@ describe("gate.probe (RFC-1469)", () => {
     expect(res.exitCode).toBe(0);
   });
 });
-
