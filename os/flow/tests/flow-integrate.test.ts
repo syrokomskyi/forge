@@ -11,7 +11,6 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
@@ -20,7 +19,8 @@ flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tr
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
-  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1545, RFC-1546</history>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -587,6 +587,10 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
         await writeFile(join(session.worktree!, "docs/rfcs/index.yaml"), resolved);
         return { ok: true, exitCode: 0 };
       },
+      // RFC-1597: the stub is bound to the branch worktree (kernel-invoked
+      // flow.integrate inside the session) — declare it or the write-path
+      // owner commands retarget to a standalone spawn (F-0273).
+      invokeRoot: session.worktree!,
     });
 
     expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
@@ -653,6 +657,7 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
         exitCode: 1,
         summary: "rfc.index.generate crashed: schema error at docs/rfcs/rfc-0001.md",
       }),
+      invokeRoot: session.worktree!,
     });
 
     expect(data.integrated).toBe(false);
@@ -689,6 +694,7 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
         );
         return { ok: true, exitCode: 0 };
       },
+      invokeRoot: session.worktree!,
     });
 
     expect(data.integrated).toBe(false);
@@ -782,6 +788,8 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       dryRun: false,
       now: NOW,
       invoke: async () => ({ ok: true, exitCode: 0 }),
+      // RFC-1597: worktree-bound stub (F-0273 invokeRoot contract).
+      invokeRoot: session.worktree!,
     });
 
     expect(data.integrated).toBe(false);

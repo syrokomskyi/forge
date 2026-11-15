@@ -17,11 +17,12 @@ resume path (AC-5: subject-named tags missing → tail re-runs).</purpose>
   <item>Resume is exercised by deleting the cut's tag and rewinding main — cheaper and more faithful than hand-building the intermediate state.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — flow.cut happy path, refusals, and resume tests</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1546: derive-and-repair recoverable state across flow surfaces (AC-1..AC-5)</item>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <history>RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -73,7 +74,14 @@ function stubContext(repo: string): ForgeRuntimeContext {
  * packages/lib release line (extract.config.yaml + package.json v2.0.0,
  * baseline tag lib@2.0.0, a pending lib-side commit).
  */
-async function adoptedRepo(opts?: { pending?: boolean; packageLine?: boolean }): Promise<string> {
+async function adoptedRepo(opts?: {
+  pending?: boolean;
+  packageLine?: boolean;
+  /** packageLine only: seed CHANGELOG.md with the predicted [2.0.1] section (RFC-1597). */
+  changelog?: boolean;
+  /** Extra files committed on develop before the guard install. */
+  seedFiles?: Record<string, string>;
+}): Promise<string> {
   const repo = await initRepo({ prefix: "flow-cut-" });
   dirs.push(repo);
   await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
@@ -89,6 +97,14 @@ async function adoptedRepo(opts?: { pending?: boolean; packageLine?: boolean }):
       '{\n  "name": "lib",\n  "version": "2.0.0"\n}\n',
     );
     await writeFile(join(repo, "packages/lib/extract.config.yaml"), "schema: extract\n");
+    if (opts?.changelog !== false) {
+      // FLOW-CUT-13 (RFC-1597): the package changelog must carry the predicted
+      // section — the pending lib commit bumps patch → [2.0.1].
+      await writeFile(
+        join(repo, "packages/lib/CHANGELOG.md"),
+        "# Changelog\n\n## [2.0.1]\n\n- lib work\n\n## [2.0.0]\n\n- baseline\n",
+      );
+    }
   }
   await gitExec(repo, ["add", "-A"]);
   await gitExec(repo, ["commit", "-m", "config"]);
@@ -96,6 +112,13 @@ async function adoptedRepo(opts?: { pending?: boolean; packageLine?: boolean }):
   if (opts?.pending !== false) {
     await commitIn(repo, "work.txt", "work");
     if (opts?.packageLine) await commitIn(repo, "packages/lib/libfile.txt", "lib work");
+  }
+  for (const [file, content] of Object.entries(opts?.seedFiles ?? {})) {
+    await mkdir(join(repo, file, ".."), { recursive: true });
+    await writeFile(join(repo, file), content);
+    await gitExec(repo, ["add", file]);
+    const r = await gitExec(repo, ["commit", "-m", `seed ${file}`]);
+    if (r.exitCode !== 0) throw new Error(`seed commit ${file} failed: ${r.stderr}`);
   }
   await installGuard(repo);
   await gitExec(repo, ["add", "hooks"]);
@@ -340,5 +363,191 @@ describe("flow.cut — resume requires matching --lines (RFC-1546 AC-3)", () => 
     expect(data.resumed).toBe(false);
     expect(data.released).toBe(true);
     expect(data.tags).toContain("lib@2.0.1");
+  }, 60_000);
+});
+
+describe("flow.cut — consolidated preflight (RFC-1597 AC-1)", () => {
+  it("dry-run reports every post-discovery blocker in one payload without mutating", async () => {
+    const repo = await adoptedRepo({ packageLine: true, changelog: false });
+    const before = await sha(repo, "develop");
+    // Third blocker: a dirty primary (tracked change).
+    await writeFile(
+      join(repo, "package.json"),
+      '{\n  "name": "fixture",\n  "version": "0.1.1"\n}\n',
+    );
+
+    const data = await runOrdinaryCut(repo, ambientIo, {
+      lines: ["lib", "nope"],
+      dryRun: true,
+    });
+
+    expect(data.released).toBe(false);
+    const codes = (data.preflight?.blockers ?? []).map((b) => b.code);
+    // Unknown line + missing changelog + dirty primary — collected in ONE
+    // report (previously three separate refused release cycles).
+    expect(codes).toEqual(["FLOW-CUT-03", "FLOW-CUT-13", "FLOW-CUT-07"]);
+    expect(data.preflight?.mode).toBe("refuse");
+    expect(data.diagnostics.map((d) => d.ruleId)).toEqual(codes);
+    // Per-line report carries the lib row with the predicted version.
+    const lib = data.preflight?.lines.find((l) => l.id === "lib");
+    expect(lib?.nextVersion).toBe("2.0.1");
+    expect(lib?.changelogSection).toBe(false);
+    // No mutation: refs and tags are untouched.
+    expect(await sha(repo, "develop")).toBe(before);
+    expect(
+      (await gitExec(repo, ["rev-parse", "--verify", "-q", "refs/tags/v0.1.1"])).exitCode,
+    ).not.toBe(0);
+  }, 30_000);
+
+  it("the real cut refuses with the same consolidated report", async () => {
+    const repo = await adoptedRepo({ packageLine: true, changelog: false });
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: ["lib"], dryRun: false });
+    expect(data.released).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-CUT-13");
+    expect(data.preflight?.mode).toBe("refuse");
+    expect(data.preflight?.blockers.map((b) => b.code)).toEqual(["FLOW-CUT-13"]);
+    // The refusal preceded every mutation — no release branch lingers.
+    expect((await gitExec(repo, ["branch", "--list", "auto/*"])).stdout.trim()).toBe("");
+  }, 30_000);
+});
+
+describe("flow.cut — integrate-lock report (RFC-1597 AC-5)", () => {
+  async function holdIntegrateLock(repo: string): Promise<void> {
+    await mkdir(join(repo, ".git", "forge"), { recursive: true });
+    await writeFile(
+      join(repo, ".git", "forge", "integrate.lock"),
+      JSON.stringify({ pid: process.pid, host: "test-host", at: new Date().toISOString() }),
+    );
+  }
+
+  it("dry-run names the live lock holder without waiting", async () => {
+    const repo = await adoptedRepo();
+    await holdIntegrateLock(repo);
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: true });
+    expect(data.preflight?.lock?.held).toBe(true);
+    expect(data.preflight?.lock?.holderPid).toBe(process.pid);
+    expect(data.preflight?.lock?.alive).toBe(true);
+    // A held lock does not block a clean dry-run plan.
+    expect(data.preflight?.mode).toBe("fresh");
+  }, 30_000);
+
+  it("the real cut waits within --wait-lock then refuses FLOW-CUT-15 naming the holder", async () => {
+    const repo = await adoptedRepo();
+    await holdIntegrateLock(repo);
+    const data = await runOrdinaryCut(repo, ambientIo, {
+      lines: [],
+      dryRun: false,
+      waitLockSeconds: 0,
+    });
+    expect(data.released).toBe(false);
+    expect(data.diagnostics[0]?.ruleId).toBe("FLOW-CUT-15");
+    expect(data.diagnostics[0]?.message).toContain(`pid ${process.pid}`);
+    expect(data.preflight?.lock?.holderPid).toBe(process.pid);
+  }, 30_000);
+});
+
+describe("flow.cut — primary-side heal fold-or-revert (RFC-1597 AC-3)", () => {
+  it("never writes owner-command output into the primary — the regen retargets to the worktree", async () => {
+    // A committed generated file makes the manifest an owner in step (3b).
+    const repo = await adoptedRepo({
+      seedFiles: { "docs/ecosystem.generated.yaml": "generated: 1\n" },
+    });
+    // Kernel-shaped invoke bound to the primary: under the old contract the
+    // owner command would write docs/ecosystem.generated.yaml here as
+    // uncommitted collateral (F-0273). The retarget makes this unreachable.
+    let wrote = false;
+    const invoke = async (commandName: string) => {
+      if (commandName === "ecosystem.manifest.generate") {
+        wrote = true;
+        await writeFile(join(repo, "docs/ecosystem.generated.yaml"), "generated: 2\n");
+      }
+      return { ok: true as const, exitCode: 0 };
+    };
+
+    const data = await runOrdinaryCut(repo, ambientIo, {
+      lines: [],
+      dryRun: false,
+      invoke,
+    });
+
+    expect(
+      data.diagnostics.map((d) => `${d.ruleId}: ${d.message}`),
+      "release diagnostics",
+    ).toEqual([]);
+    expect(data.released).toBe(true);
+    expect(wrote).toBe(false);
+    const status = await gitExec(repo, ["status", "--porcelain"]);
+    expect(status.stdout.trim()).toBe("");
+  }, 60_000);
+
+  it("reverts generated collateral a primary-side hook writes, on every exit path", async () => {
+    const repo = await adoptedRepo({
+      seedFiles: { "docs/ecosystem.generated.yaml": "generated: 1\n" },
+    });
+    // The fingerprints hook runs with cwd=primary — collateral it leaves is
+    // cut-produced and must be reverted before the command reports.
+    await writeFile(
+      join(repo, "hooks/release-fingerprints.sh"),
+      "#!/bin/sh\necho 'generated: 2' > docs/ecosystem.generated.yaml\necho 'key: value'\n",
+    );
+
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+
+    expect(
+      data.diagnostics.map((d) => `${d.ruleId}: ${d.message}`),
+      "release diagnostics",
+    ).toEqual([]);
+    expect(data.released).toBe(true);
+    expect(data.preflight?.manifestDrift).toContainEqual({
+      path: "docs/ecosystem.generated.yaml",
+      action: "revert",
+    });
+    const status = await gitExec(repo, [
+      "status",
+      "--porcelain",
+      "--",
+      "docs/ecosystem.generated.yaml",
+    ]);
+    expect(status.stdout.trim()).toBe("");
+    const restored = await gitExec(repo, ["show", "HEAD:docs/ecosystem.generated.yaml"]);
+    expect(restored.stdout).toContain("generated: 1");
+  }, 60_000);
+});
+
+describe("flow.cut — covers-semantics resume (RFC-1597 AC-2)", () => {
+  it("same --lines as the tip subject resumes the tail", async () => {
+    const repo = await adoptedRepo();
+    const hookPath = join(repo, "hooks/release-fingerprints.sh");
+    await writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    const refused = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(refused.diagnostics[0]?.ruleId).toBe("FLOW-CUT-08");
+    await rm(hookPath);
+
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(data.resumed).toBe(true);
+    expect(data.released).toBe(true);
+    expect(data.tags).toEqual(["v0.1.1"]);
+    expect(data.preflight?.mode).toBe("resume");
+  }, 60_000);
+
+  it("a subject naming a superset of requested lines still resumes", async () => {
+    const repo = await adoptedRepo({ packageLine: true });
+    // Land a repo+lib release commit on develop but fail before any tag —
+    // the tip subject declares BOTH tags.
+    const hookPath = join(repo, "hooks/release-fingerprints.sh");
+    await writeFile(hookPath, "#!/bin/sh\nexit 1\n");
+    const refused = await runOrdinaryCut(repo, ambientIo, { lines: ["lib"], dryRun: false });
+    expect(refused.diagnostics[0]?.ruleId).toBe("FLOW-CUT-08");
+    const subject = (await gitExec(repo, ["log", "-1", "--format=%s", "develop"])).stdout.trim();
+    expect(subject).toBe("chore(release): v0.1.1, lib@2.0.1");
+    await rm(hookPath);
+
+    // Request only the repo line — the subject's tag set still covers it.
+    const data = await runOrdinaryCut(repo, ambientIo, { lines: [], dryRun: false });
+    expect(data.resumed).toBe(true);
+    expect(data.released).toBe(true);
+    const tip = await sha(repo, "develop");
+    expect(await sha(repo, "v0.1.1^{}")).toBe(tip);
+    expect(await sha(repo, "lib@2.0.1^{}")).toBe(tip);
   }, 60_000);
 });
