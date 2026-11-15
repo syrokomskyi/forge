@@ -6,16 +6,23 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: step 6 — compass.migrate codemod run
-
-Mechanical v1 to v2 header migration across the workspace: 942 files rewritten — CHANGE_SUMMARY windows collapsed into history, forbidden v1 blocks stripped, KEY_DECISIONS seeded from @ai-invariant comments (5 files) or TODO placeholders (103 files), blocks reordered to canonical order.</item>
   <item>RFC-1097: sweep — packages/forge + services clean
 
 Sweep batch 2: real KEY_DECISIONS on 10 files, expanded purposes (CONTRACT-02/PURPOSE-02), headers on mission/index + gen-upstreams, sanitizeItemText in summary.record (literal Compass tags corrupted history), excludedPaths for wrangler types, test-fixtures testPattern. forge+services now 0 diagnostics under --mode error.</item>
   <item>RFC-1249: wire werkstatt.commands.validate into packages.check + retire CMD-OUTPUT debt</item>
   <item>RFC-1481: accept consumer-local L-K-NNNN IDs while keeping Forge-authored source IDs in the upstream K-NNNN namespace.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
-  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553, RFC-0642, RFC-0660, RFC-0661, RFC-1225, RFC-1227, SKILL-00, SKILL-17</history>
+  <item>RFC-1604: correct the validator rules pinned false-positive by the friction registry (RFC-1604)
+
+- probe-meta: mask [...] classes before metachar scans (F-0224)
+- skill.validate: exempt managed .agents/skills twins from SKILL-11 (sf-F-0004)
+- rfc-0000 template: emit reviewers ["human:<handle>"] placeholder (ds-F-0017)
+- robots.generate: drop wildcard no-op directives; PUBTXT-09 scoped to the * group (F-0232)
+- page.render.check: dead exemptions move to staleExemptions channel (F-0233)
+- cosmic.literals.lint: extend retired-channel scan to systems/*.yaml (F-0172)
+- price.presence.validate: accept Intl-emitted price shapes incl. attribute resolution (F-0231)
+- ecosystem.commit EC-33: scan over maskSource keepComments (F-0221)</item>
+  <history>RFC-0374, RFC-0393, RFC-0523, RFC-0524, RFC-0539, RFC-0548, RFC-0553, RFC-0642, RFC-0660, RFC-0661, RFC-1097, RFC-1225, RFC-1227, SKILL-00, SKILL-17</history>
 </CHANGE_SUMMARY>
 */
 
@@ -445,7 +452,12 @@ export function runSkillValidate(_input: unknown, context: unknown): SkillValida
     }
 
     // SKILL-11: No hardcoded project-specific literals in canonical skill bodies
-    {
+    // sf-F-0004 (RFC-1604): `.agents/skills/` managed twins are byte-identical
+    // copies of their canonical skill — the canonical copy is checked at its
+    // own path, so twin hits are known noise; twin identity stays enforced by
+    // skill-agents-sync.test.ts.
+    const isManagedTwin = skillPath.includes(`${path.sep}.agents${path.sep}skills${path.sep}`);
+    if (!isManagedTwin) {
       const skill11Violations = checkSkill11(entry.name, body);
       for (const v of skill11Violations) {
         v.pack = entry.pack;
