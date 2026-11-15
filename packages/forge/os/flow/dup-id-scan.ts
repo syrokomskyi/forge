@@ -56,6 +56,14 @@ function fileId(relPath: string): string | null {
 const RULE_LITERAL = /\bid\s*[:=]\s*["']?(V-\d+|RFC-IMP-\d+|FLOW-(?:INT|CUT|OPEN|GUARD)-\d+)\b/g;
 
 /**
+ * Generated projections (validator inventory, command manifest, …) mirror a
+ * source declaration — a branch regenerating one after develop added a rule
+ * in source is catching up, not allocating. Collisions are judged on source
+ * declarations only, on both sides.
+ */
+const GENERATED_PROJECTION = /\.generated\.[A-Za-z0-9]+$/;
+
+/**
  * Compare `base...head` inside `repo`: the branch's unique commits (three-dot
  * merge-base diff — rebase-replayed content counts once, and a same-id file
  * already on develop at ANY path collides only when the branch did not also
@@ -136,6 +144,7 @@ export async function scanDuplicateGovernanceIds(
         continue;
       }
       if (!line.startsWith("+") || line.startsWith("+++")) continue;
+      if (GENERATED_PROJECTION.test(currentFile)) continue;
       for (const m of line.matchAll(RULE_LITERAL)) {
         const set = added.get(m[1]!) ?? new Set<string>();
         if (set.size === 0) added.set(m[1]!, set);
@@ -160,6 +169,7 @@ export async function scanDuplicateGovernanceIds(
         // `git grep <rev>` prefixes each path with `<rev>:` — strip it for
         // the same-file comparison and keep the raw form in the payload.
         const carrier = hit.startsWith(`${base}:`) ? hit.slice(base.length + 1) : hit;
+        if (GENERATED_PROJECTION.test(carrier)) continue;
         // Same id + same file = a re-landed same-site rule — not a collision.
         if (!branchFiles.has(carrier)) {
           violations.ruleIds.push({

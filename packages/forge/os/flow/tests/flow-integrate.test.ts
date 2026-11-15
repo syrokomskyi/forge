@@ -11,14 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
-
-FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1598: refuse-before-staging index guard + checked-out-side generated-conflict resolver (RFC-1598)</item>
   <item>RFC-1600: require declaration context in the integrate dup-id scan and resolve real friction ids (F-0286)</item>
-  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574</history>
+  <item>RFC-1600: ignore generated projections in the FLOW-INT-19 duplicate-id scan</item>
+  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1191,6 +1189,63 @@ describe("FLOW-INT-19 — duplicate governance ids on the branch (RFC-1600)", ()
       session.worktree!,
       "docs/agent-guides/h.md",
       "does not judge worktree dirt — that is FLOW-INT-01\n",
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics.filter((d) => d.ruleId === "FLOW-INT-19")).toEqual([]);
+    expect(data.integrated).toBe(true);
+  }, 30_000);
+
+  // A develop commit declared a rule in source without regenerating the
+  // inventory; a branch that regenerates it adds the projection line. The
+  // projection mirrors the source declaration — catching up, not allocating.
+  it("does not flag a generated projection catching up a rule declared in source on develop", async () => {
+    const repo = await governedRepo();
+    await mkdir(join(repo, "packages/x"), { recursive: true });
+    await commitIn(repo, "packages/x/a.ts", 'const rules = [{ id: "FLOW-INT-25" }];\nexport {};\n');
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await commitIn(
+      repo,
+      "docs/validator-inventory.generated.yaml",
+      "rules:\n  - id: FLOW-INT-01\n",
+    );
+    const session = await openSession(repo, "inventory-catch-up");
+    await commitIn(
+      session.worktree!,
+      "docs/validator-inventory.generated.yaml",
+      "rules:\n  - id: FLOW-INT-01\n  - id: FLOW-INT-25\n",
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics.filter((d) => d.ruleId === "FLOW-INT-19")).toEqual([]);
+    expect(data.integrated).toBe(true);
+  }, 30_000);
+
+  it("a same-site source reland is not a duplicate of its own generated projection on develop", async () => {
+    const repo = await governedRepo();
+    await mkdir(join(repo, "packages/x"), { recursive: true });
+    await commitIn(repo, "packages/x/a.ts", 'const rules = [{ id: "FLOW-INT-25" }];\nexport {};\n');
+    await mkdir(join(repo, "docs"), { recursive: true });
+    await commitIn(
+      repo,
+      "docs/validator-inventory.generated.yaml",
+      "rules:\n  - id: FLOW-INT-25\n",
+    );
+    const session = await openSession(repo, "reland-with-projection");
+    await commitIn(
+      session.worktree!,
+      "packages/x/a.ts",
+      'const rules = [{ id: "FLOW-INT-25", severity: "error" }];\nexport {};\n',
     );
 
     const data = await integrateFlowBranch(repo, ambientIo, {
