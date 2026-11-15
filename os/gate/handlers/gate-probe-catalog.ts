@@ -5,12 +5,12 @@
   <item>TODO(compass): record the boundary this file must not take on.</item>
 </non-goals>
 <CHANGE_SUMMARY>
-  <item>RFC-1469: gate.probe.catalog fixture-inventory read-model</item>
-  <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
-  <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
   <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
   <item>RFC-1485: sweep compass headers — forge-os-tail</item>
   <item>RFC-1592: liveness ratchet — PROBE-06/07/08/09, shrink-only unprobed baseline, provisionalUntil scan</item>
+  <item>F-0287: union the committed check-counters projection into emittedIds — journals are worktree-local, so fresh session checkouts could never reproduce primary's firing evidence and the ratchet refused on inherited develop debt</item>
+  <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
+  <history>RFC-1469</history>
 </CHANGE_SUMMARY>
 */
 
@@ -56,6 +56,8 @@ interface InventoryRule {
   id: string;
   contract: string;
   severity?: string;
+  /** Owning command name — resolves the rule's execution scope. */
+  command?: string;
 }
 
 /** One PROBE-09 finding — an expired or undeclared provisional surface. */
@@ -163,6 +165,50 @@ async function loadBaseline(
   return { schema: UNPROBED_BASELINE_SCHEMA, generatedBy: "gate.probe.catalog", rules };
 }
 
+/**
+ * F-0287: rule ids with diagnostic > 0 in the committed counters artifact
+ * (docs/metrics/check-counters.generated.yaml, RFC-1474). Absent or
+ * unparseable file degrades to the empty set — the local journals stay the
+ * only evidence, matching pre-fix behavior.
+ */
+async function committedDiagnosticRuleIds(
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+): Promise<Set<string>> {
+  const src = await io
+    .readFile(path.join(root, "docs/metrics/check-counters.generated.yaml"))
+    .catch(() => null);
+  if (src === null) return new Set();
+  const parsed = yamlParse(src) as { rules?: { ruleId?: unknown; diagnostic?: unknown }[] } | null;
+  const out = new Set<string>();
+  for (const r of parsed?.rules ?? []) {
+    if (typeof r.ruleId === "string" && typeof r.diagnostic === "number" && r.diagnostic > 0)
+      out.add(r.ruleId);
+  }
+  return out;
+}
+
+/**
+ * F-0287: command name → declared scope map from the generated command
+ * manifest. Absent/unparsable manifest degrades to an empty map — every rule
+ * then resolves in-domain (fail-closed), matching pre-fix behavior.
+ */
+async function commandScopeMap(
+  root: string,
+  io: ReturnType<typeof resolveIo>,
+): Promise<Map<string, string>> {
+  const src = await io
+    .readFile(path.join(root, "docs/command-manifest.generated.yaml"))
+    .catch(() => null);
+  const out = new Map<string, string>();
+  if (src === null) return out;
+  const parsed = yamlParse(src) as { commands?: { name?: unknown; scope?: unknown }[] } | null;
+  for (const c of parsed?.commands ?? []) {
+    if (typeof c.name === "string" && typeof c.scope === "string") out.set(c.name, c.scope);
+  }
+  return out;
+}
+
 export async function runGateProbeCatalog(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -193,17 +239,34 @@ export async function runGateProbeCatalog(
   const parsed = yamlParse(manifestSrc) as {
     contracts?: {
       contract?: string;
-      validators?: { rules?: { id?: string; severity?: string }[] }[];
+      validators?: { command?: string; rules?: { id?: string; severity?: string }[] }[];
     }[];
   } | null;
   const allRules: InventoryRule[] = (parsed?.contracts ?? []).flatMap((c) =>
     (c.validators ?? []).flatMap((v) =>
       (v.rules ?? [])
         .filter((r) => typeof r.id === "string")
-        .map((r) => ({ id: r.id!, contract: c.contract ?? "?", severity: r.severity })),
+        .map((r) => ({
+          id: r.id!,
+          contract: c.contract ?? "?",
+          severity: r.severity,
+          command: typeof v.command === "string" ? v.command : undefined,
+        })),
     ),
   );
   const errorRules = allRules.filter((r) => r.severity === "error");
+  // F-0287: scope:"app" commands execute only inside app workspaces — their
+  // firing evidence lives in the app's own counters journal, where the same
+  // ratchet runs under sites-check. A workspace-scope --check is structurally
+  // blind to them, so every fresh session checkout would refuse on rules it
+  // can never prove. The generated command manifest carries each command's
+  // declared scope (context.commandRegistry is absent under `werkstatt run`,
+  // F-0287/RFC-1518 D-001); commands missing from the manifest stay in-domain
+  // (fail-closed).
+  const commandScope = await commandScopeMap(root, io);
+  const ratchetRules = errorRules.filter(
+    (r) => r.command === undefined || commandScope.get(r.command) !== "app",
+  );
   const unprobedErrorRules = errorRules.filter((r) => !bound.has(r.id)).map((r) => r.id);
   // PROBE-05: fixture bindings pointing at rules no longer declared anywhere.
   const allDeclared = new Set(allRules.map((r) => r.id));
@@ -240,7 +303,18 @@ export async function runGateProbeCatalog(
   const emittedIds = new Set(
     counterRecords.filter((r) => r.outcome === "diagnostic").map((r) => r.ruleId),
   );
-  const coverage = counterRecords.length === 0 ? ("none" as const) : ("partial" as const);
+  // F-0287: the committed counters projection is the transferable half of
+  // firing evidence. Both journals are per-worktree local state — a fresh
+  // session checkout reads `none` for rules the primary already proved, so
+  // the ratchet refused on develop debt no branch introduced. Union the
+  // committed diagnostic totals (RFC-1474 artifact) so liveness stays
+  // reproducible across checkouts; local records still cover unexported runs.
+  const committedIds = await committedDiagnosticRuleIds(root, io);
+  for (const id of committedIds) emittedIds.add(id);
+  const coverage =
+    counterRecords.length === 0 && committedIds.size === 0
+      ? ("none" as const)
+      : ("partial" as const);
   const livenessOf = (r: InventoryRule): RuleLiveness =>
     ruleLiveness({
       bound: bound.has(r.id),
@@ -248,8 +322,9 @@ export async function runGateProbeCatalog(
       emitted: emittedIds.has(`${r.contract}/${r.id}`),
       coverage,
     });
-  const livenessById = new Map(errorRules.map((r) => [r.id, livenessOf(r)]));
-  const noneRules = errorRules
+  const ratchetIds = new Set(ratchetRules.map((r) => r.id));
+  const livenessById = new Map(ratchetRules.map((r) => [r.id, livenessOf(r)]));
+  const noneRules = ratchetRules
     .filter((r) => livenessById.get(r.id) === "none")
     .map((r) => r.id)
     .sort();
@@ -257,8 +332,11 @@ export async function runGateProbeCatalog(
   const baseline = await loadBaseline(root, io);
   const baselineSet = new Set(baseline?.rules ?? []);
   const newUnprobed = noneRules.filter((id) => !baselineSet.has(id));
-  const staleBaseline = (baseline?.rules ?? []).filter(
-    (id) => !allDeclared.has(id) || livenessById.get(id) !== "none",
+  const staleBaseline = (baseline?.rules ?? []).filter((id) =>
+    // Baseline entries owned by app-scope commands are out of this surface's
+    // domain — the app-side gate judges their liveness. A rule gone from the
+    // inventory entirely is stale regardless of scope.
+    ratchetIds.has(id) ? livenessById.get(id) !== "none" : !allDeclared.has(id),
   );
 
   if (writeBaseline) {
