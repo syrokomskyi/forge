@@ -11,14 +11,16 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1545: standalone generated-conflict regeneration in flow.integrate</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
 flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
-  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1546</history>
+  <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
+
+FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
+  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -160,9 +162,7 @@ describe("flow.integrate", () => {
     expect(data.diagnostics[0]?.fixHint).toContain("clean the listed worktree state");
     const details = (data.diagnostics[0] as { data?: Record<string, unknown> }).data;
     expect(details?.conflictedPaths).toEqual([]);
-    expect((details?.rebaseStderrTail as string[]).join("\n")).toContain(
-      "knowledge-conflicts.txt",
-    );
+    expect((details?.rebaseStderrTail as string[]).join("\n")).toContain("knowledge-conflicts.txt");
     expect((details?.statusPorcelain as string[]).join("\n")).toContain(".forge/");
   }, 20_000);
 
@@ -973,5 +973,81 @@ describe("flow.integrate — mission importer referents (RFC-1544)", () => {
     // The prune commit rode the branch into develop — residue is gone.
     const headLock = await gitExec(repo, ["show", "develop:pnpm-lock.yaml"]);
     expect(headLock.stdout).not.toContain("missions/m-foreign/workpiece:");
+  }, 30_000);
+});
+
+describe("FLOW-INT-19 — duplicate governance ids on the branch (RFC-1600)", () => {
+  it("refuses a file-family id already landed on develop at a different path (AC-3)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "dup-rfc-id");
+    await mkdir(join(session.worktree!, "docs/rfcs"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/rfcs/rfc-1600-branch-side.md",
+      "---\nid: RFC-1600\ntitle: branch copy\n---\n",
+    );
+    // Meanwhile develop lands the same id at its own path — the allocation
+    // race the reservation surface could not prevent retroactively.
+    await mkdir(join(repo, "docs/rfcs"), { recursive: true });
+    await commitIn(repo, "docs/rfcs/rfc-1600-develop-side.md", "---\nid: RFC-1600\n---\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.integrated).toBe(false);
+    const refusal = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-19");
+    expect(refusal, "the duplicate must refuse before the heavyweight gate").toBeTruthy();
+    expect(refusal?.severity).toBe("error");
+    expect(refusal?.message).toContain("RFC-1600");
+    expect(refusal?.message).toContain("docs/rfcs/rfc-1600-branch-side.md");
+    expect(refusal?.message).toContain("docs/rfcs/rfc-1600-develop-side.md");
+    const dups = refusal?.data?.duplicates as { onBranch: string; onDevelop: string }[];
+    expect(dups).toHaveLength(1);
+    expect(dups[0]?.onDevelop).toBe("docs/rfcs/rfc-1600-develop-side.md");
+  }, 30_000);
+
+  it("refuses a rule literal added on the branch while develop defines it elsewhere", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "dup-rule-id");
+    await mkdir(join(session.worktree!, "packages/y"), { recursive: true });
+    await commitIn(session.worktree!, "packages/y/b.ts", 'export const r = "FLOW-INT-25";\n');
+    await mkdir(join(repo, "packages/x"), { recursive: true });
+    await commitIn(repo, "packages/x/a.ts", "// FLOW-INT-25 owns the refusal here\nexport {};\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.integrated).toBe(false);
+    const refusal = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-19");
+    expect(refusal?.message).toContain("FLOW-INT-25");
+    expect(refusal?.message).toContain("packages/y/b.ts");
+    expect(refusal?.message).toContain("packages/x/a.ts");
+  }, 30_000);
+
+  it("a rule literal re-landed in the file that already carries it is not a duplicate", async () => {
+    const repo = await governedRepo();
+    await mkdir(join(repo, "packages/x"), { recursive: true });
+    await commitIn(repo, "packages/x/a.ts", "// FLOW-INT-25 owns the refusal here\nexport {};\n");
+    const session = await openSession(repo, "reland-rule-id");
+    await commitIn(
+      session.worktree!,
+      "packages/x/a.ts",
+      "// FLOW-INT-25 owns the refusal here\n// FLOW-INT-25 re-landed same-site\nexport {};\n",
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics.filter((d) => d.ruleId === "FLOW-INT-19")).toEqual([]);
+    expect(data.integrated).toBe(true);
   }, 30_000);
 });
