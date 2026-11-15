@@ -25,6 +25,9 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
 
 fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1608: structured checkpoints + session-db retention runbook (RFC-1608)
+
+fo-handoff's state: block gains branch/worktree/dirtyPaths/openGates — a resumed session relocates the work and re-polls in-flight gates instead of re-deriving. agent-operations carries the compact sessions.db prune runbook pointing at fo-doctor's authoritative procedure. .windsurfignore + .vscode excludes defensively cover *@*/ worktrees and systems-*/ sibling dirs. docs/ecosystem.generated.yaml rides along carrying RFC-1601's queue.decision provenance row (umbrella-generator absorption).</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -70,6 +73,10 @@ Every handoff carries a compact machine-shaped state block — a resumed session
 state:
   goal: <one line>
   constraints: [<hard rules in force>]
+  branch: <current git branch>
+  worktree: <worktree root path when not the primary checkout>
+  dirtyPaths: [<uncommitted tracked/untracked paths the resume must see>]
+  openGates: [<detached gate run ids still in flight — resume re-polls, never re-runs>]
   verified: [<facts confirmed by commands/tests>]
   changed: [<files touched>]
   validation: { unit: passed|not_run, e2e: passed|failed|not_run }
@@ -77,7 +84,7 @@ state:
   next: [<ordered remaining steps>]
 ```
 
-Properties that matter: `verified` facts are distinct from assumptions (anything not confirmed by a command or test does not belong here); `rejected` hypotheses persist across resumes (agents otherwise re-run dead ends); the block stays small enough to re-inject at session start (tens of lines, not hundreds).
+Properties that matter: `verified` facts are distinct from assumptions (anything not confirmed by a command or test does not belong here); `rejected` hypotheses persist across resumes (agents otherwise re-run dead ends); `branch`/`worktree`/`dirtyPaths`/`openGates` locate the work — a resume re-checks out the same side and re-polls open gates instead of re-running them; the block stays small enough to re-inject at session start (tens of lines, not hundreds).
 
 **Dying-session fallback:** an agent that realizes a session is degrading mid-task (repeated silent turn-ends, forced `continue` nudges) writes this same block to `.agents/memory/daily/<date>.md` _before_ continuing — the file the ecosystem already maintains — so the state survives even if no full handoff is ever emitted.
 
