@@ -8,9 +8,6 @@ result type for friction.validate.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: r2 review — signature/measure/artifacts required again
-  (absence is a FRICTION-01 shape failure); present-but-empty signature
-  stays a FRICTION-05 warn.</item>
   <item>RFC-1433: r3 polish — measure min(1), consistent entries reporting
 
 F3-1: measure empty-string hole closed at shape level — absent or empty
@@ -20,6 +17,9 @@ consistent with the JSON payload. r3 review verdict: pass.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1466: bound the instruction layer — instructions.budget.validate, scar.migrate, catalog fragment merge</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1601: ledger writers assign + refusals teach the violated rule (RFC-1601)
+
+FRICTION-11 flags any out-of-vocabulary friction field value at validate, naming field+value+closed set — the mechanical detector for hand-edit corruption (F-0206/F-0244). queue.decision is the new decision-ledger writer: schema-gated append stamping createdAt/answeredAt, next-free Q-id default, QUEUE-05/QUEUE-DEC-01 refusals carrying the minimal shape. ecosystem.commit --rfc/--adr normalize bare digits or refuse EC-35 with the format statement — the F-0248 silent-injection-skip class is closed, and a summary-record failure now names the id + skipped injection. RFC-IMP-10 refusal leads with the rule statement; pipeline conventions and guides point at the command write path.</item>
   <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
@@ -85,6 +85,7 @@ export const FRICTION_RULE_IDS = [
   "FRICTION-08",
   "FRICTION-09",
   "FRICTION-10",
+  "FRICTION-11",
   "FRICTION-ADD-01",
   "FRICTION-ADD-02",
 ] as const;

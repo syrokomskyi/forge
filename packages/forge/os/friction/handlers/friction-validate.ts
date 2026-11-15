@@ -12,20 +12,15 @@ FRICTION-06 docs-only recurrence blocks (fail), FRICTION-07 measureKind
 classification debt (warn), FRICTION-08 escalated needs an obligation
 token (fail), FRICTION-09 id in both the directory and the legacy file
 (fail), FRICTION-10 unmigrated legacy file with records (warn, names
-friction.migrate). An absent registry is not an error — records are
-created by friction.add.</purpose>
+friction.migrate), FRICTION-11 any field value outside its declared
+vocabulary (fail, names field+value+closed set — RFC-1601). An absent
+registry is not an error — records are created by friction.add.</purpose>
 <non-goals>
   <item>Do not mutate the registry — read-only validation.</item>
   <item>Do not match frictions or compute recurrences — that is the retro
   skill's job; this command only checks registry integrity.</item>
 </non-goals>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: review realignment — rule ids remapped to the accepted
-  spec table (dup id → 01, category → 02, addressed-without-artifacts → 03
-  fail, lastSeen/recurrences → 04 fail unconditional, signature → 05 warn);
-  output emits the documented violations[] shape.</item>
-  <item>RFC-1433: r2 review — entries reports the raw entry count even when
-  the schema parse fails (was: 0); rule ids typed as FrictionRuleId.</item>
   <item>RFC-1433: r3 polish — measure min(1), consistent entries reporting
 
 F3-1: measure empty-string hole closed at shape level — absent or empty
@@ -37,6 +32,9 @@ consistent with the JSON payload. r3 review verdict: pass.</item>
   <item>RFC-1590: per-record store — loadFrictionSources replaces the
   single-file read; FRICTION-09 cross-store duplicate ids, FRICTION-10
   unmigrated-legacy warning, filename/id mismatch under FRICTION-01.</item>
+  <item>RFC-1601: ledger writers assign + refusals teach the violated rule (RFC-1601)
+
+FRICTION-11 flags any out-of-vocabulary friction field value at validate, naming field+value+closed set — the mechanical detector for hand-edit corruption (F-0206/F-0244). queue.decision is the new decision-ledger writer: schema-gated append stamping createdAt/answeredAt, next-free Q-id default, QUEUE-05/QUEUE-DEC-01 refusals carrying the minimal shape. ecosystem.commit --rfc/--adr normalize bare digits or refuse EC-35 with the format statement — the F-0248 silent-injection-skip class is closed, and a summary-record failure now names the id + skipped injection. RFC-IMP-10 refusal leads with the rule statement; pipeline conventions and guides point at the command write path.</item>
   <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
@@ -51,6 +49,7 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import { frictionEntrySchema } from "../types.ts";
+import { FRICTION_CATEGORIES, FRICTION_MEASURE_KINDS, FRICTION_STATUSES } from "../types.ts";
 import { FRICTION_DIR, crossStoreDuplicates, loadFrictionSources } from "../store.ts";
 import type { FrictionSourceRecord } from "../store.ts";
 import type {
@@ -129,6 +128,15 @@ function effectiveId(rec: FrictionSourceRecord): string | null {
   return rec.id ?? rec.fileId;
 }
 
+// RFC-1601 FRICTION-11: enum-typed fields and their closed vocabularies. A
+// value outside the declared set — a hand edit's concatenated token is the
+// recorded case — is an error naming field, value, and the closed vocabulary.
+const VOCABULARY_FIELDS: ReadonlyArray<{ field: string; vocab: readonly string[] }> = [
+  { field: "category", vocab: FRICTION_CATEGORIES },
+  { field: "status", vocab: FRICTION_STATUSES },
+  { field: "measureKind", vocab: FRICTION_MEASURE_KINDS },
+];
+
 export async function runFrictionValidate(
   _input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -189,6 +197,25 @@ export async function runFrictionValidate(
           rec.id,
         ),
       );
+    }
+    // FRICTION-11: present field values must be members of their closed
+    // vocabulary — checked on the raw record so a hand-edited token reports
+    // field + value + vocabulary instead of a bare schema complaint.
+    if (typeof rec.raw === "object" && rec.raw !== null) {
+      const raw = rec.raw as Record<string, unknown>;
+      for (const { field, vocab } of VOCABULARY_FIELDS) {
+        const value = raw[field];
+        if (value !== undefined && !vocab.includes(String(value))) {
+          violations.push(
+            violation(
+              "FRICTION-11",
+              "error",
+              `field "${field}" holds out-of-vocabulary value "${String(value)}" — ${field} must be one of ${vocab.join("|")}`,
+              effectiveId(rec) ?? undefined,
+            ),
+          );
+        }
+      }
     }
     const parsed = frictionEntrySchema.safeParse(rec.raw);
     if (!parsed.success) {
