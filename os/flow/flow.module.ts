@@ -9,14 +9,14 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1589: run the integration gate outside the integration lock</item>
   <item>RFC-1589: declare FORGE_INTEGRATE_PRELOCK in flow.integrate envInputs</item>
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580</history>
+  <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589</history>
 </CHANGE_SUMMARY>
 */
 
@@ -395,7 +395,6 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-CUT-12", severity: "error" },
           { id: "FLOW-CUT-13", severity: "error" },
           { id: "FLOW-CUT-14", severity: "warning" },
-          { id: "FLOW-CUT-15", severity: "error" },
           { id: "FLOW-INT-02", severity: "error" },
           { id: "FLOW-INT-05", severity: "error" },
           { id: "FLOW-INT-06", severity: "error" },

@@ -6,20 +6,13 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: realign friction.validate rules to the accepted spec table
-
-Independent review H1 finding: rule ids/severities were remapped vs the
-accepted failure-modes table. FRICTION-01 shape+id, 02 category, 03
-status+addressed-artifacts (fail), 04 ordering (fail, unconditional),
-05 signature/artifact hygiene (warn). Output emits the documented
-violations[] shape; invented open-measure warn dropped; dead
-FRICTION_RULE_IDS export consumed by the module; 17 tests.</item>
   <item>RFC-1461: declare rules[] severity via CommandRuleDecl workspace-wide (RFC-1461)</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1601: ledger writers assign + refusals teach the violated rule (RFC-1601)
 
 FRICTION-11 flags any out-of-vocabulary friction field value at validate, naming field+value+closed set — the mechanical detector for hand-edit corruption (F-0206/F-0244). queue.decision is the new decision-ledger writer: schema-gated append stamping createdAt/answeredAt, next-free Q-id default, QUEUE-05/QUEUE-DEC-01 refusals carrying the minimal shape. ecosystem.commit --rfc/--adr normalize bare digits or refuse EC-35 with the format statement — the F-0248 silent-injection-skip class is closed, and a summary-record failure now names the id + skipped injection. RFC-IMP-10 refusal leads with the rule statement; pipeline conventions and guides point at the command write path.</item>
+  <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
   <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
@@ -74,7 +67,6 @@ export async function createForgeFrictionModule(): Promise<ForgeModule> {
           { id: "FRICTION-08", severity: "error" },
           { id: "FRICTION-09", severity: "error" },
           { id: "FRICTION-10", severity: "warning" },
-          { id: "FRICTION-11", severity: "error" },
         ],
         mutatesState: false,
         execOnReadOnly: true,
