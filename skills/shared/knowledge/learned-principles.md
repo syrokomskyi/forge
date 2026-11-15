@@ -2,7 +2,7 @@
 
 # learned-principles.md (shared)
 
-Promoted cross-skill principles. Entries are added by `fo-knowledge-distill` under operator grilling — never edited directly. Each entry uses `shared/K-NNNN` as its citation id. Writes resolve under the writing session's own checkout (RFC-1599): `.agents/` roots at the nearest `.git` up from the writer's cwd; when no checkout owns the cwd, writers fall back to `.agents-local/`.
+Promoted cross-skill principles. Entries are added by `fo-knowledge-distill` under operator grilling — never edited directly. Each entry uses `shared/K-NNNN` as its citation id. Writes resolve under the writing session's own checkout (RFC-1599): `.agents/` roots at the nearest `.git` up from the writer's cwd; when no checkout owns the cwd, writers fall back to `.agents-local/`. <!-- skill-lint-disable SKILL-17 -->
 
 ### K-0001: Durable decisions are fail-closed and identity-bound
 

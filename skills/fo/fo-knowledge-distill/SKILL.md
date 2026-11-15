@@ -20,13 +20,21 @@ triggerPhrases: ["distill knowledge", "compact skill knowledge", "knowledge life
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <item>RFC-1604: correct the validator rules pinned false-positive by the friction registry (RFC-1604)
+
+- probe-meta: mask [...] classes before metachar scans (F-0224)
+- skill.validate: exempt managed .agents/skills twins from SKILL-11 (sf-F-0004)
+- rfc-0000 template: emit reviewers ["human:<handle>"] placeholder (ds-F-0017)
+- robots.generate: drop wildcard no-op directives; PUBTXT-09 scoped to the * group (F-0232)
+- page.render.check: dead exemptions move to staleExemptions channel (F-0233)
+- cosmic.literals.lint: extend retired-channel scan to systems/*.yaml (F-0172)
+- price.presence.validate: accept Intl-emitted price shapes incl. attribute resolution (F-0231)
+- ecosystem.commit EC-33: scan over maskSource keepComments (F-0221)</item>
+  <history>RFC-1097</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -162,7 +170,7 @@ See `writing-great-skills` § Cumulative knowledge pattern for the three-layer r
 ## Constraints
 
 - **Operator approval on every mutation.** Never write to a knowledge file without explicit approval for each entry.
-- **Owning-checkout binding (RFC-1599).** Every knowledge write resolves under the writing session's own checkout: walk cwd upward to the nearest `.git` (a gitfile marks the session worktree) and root `.agents/` there — never at a fixed primary path a parallel session shares. When no checkout owns the cwd, write under `.agents-local/` instead.
+- **Owning-checkout binding (RFC-1599).** Every knowledge write resolves under the writing session's own checkout: walk cwd upward to the nearest `.git` (a gitfile marks the session worktree) and root `.agents/` there — never at a fixed primary path a parallel session shares. When no checkout owns the cwd, write under `.agents-local/` instead. <!-- skill-lint-disable SKILL-17 -->
 - **Serializer only.** Always use `serializeKnowledgeFile` from the forge knowledge module. Never string-splice markdown.
 - **No semantic logic in command handlers.** The `skill.knowledge.compact` command handles mechanical archival only. Semantic grouping and promotion live in this skill.
 - **No LLM logic in `src/knowledge/`.** Deterministic planning only; meaning work lives here.

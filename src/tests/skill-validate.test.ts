@@ -9,6 +9,16 @@ Unit tests for skill validate covering SKILL-13: knowledge file existence; RFC-0
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1311: Compass header sweep — declares the skill suite's contract for test-file scaffold coverage.</item>
+  <item>RFC-1604: correct the validator rules pinned false-positive by the friction registry (RFC-1604)
+
+- probe-meta: mask [...] classes before metachar scans (F-0224)
+- skill.validate: exempt managed .agents/skills twins from SKILL-11 (sf-F-0004)
+- rfc-0000 template: emit reviewers ["human:<handle>"] placeholder (ds-F-0017)
+- robots.generate: drop wildcard no-op directives; PUBTXT-09 scoped to the * group (F-0232)
+- page.render.check: dead exemptions move to staleExemptions channel (F-0233)
+- cosmic.literals.lint: extend retired-channel scan to systems/*.yaml (F-0172)
+- price.presence.validate: accept Intl-emitted price shapes incl. attribute resolution (F-0231)
+- ecosystem.commit EC-33: scan over maskSource keepComments (F-0221)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -451,5 +461,71 @@ describe("RFC-1227: SKILL-17 comment-region exemption", () => {
     ]);
     const idViolations = result.violations.filter((v) => v.rule === "SKILL-17");
     expect(idViolations).toEqual([]);
+  });
+});
+
+describe("sf-F-0004: SKILL-11 managed-twin exemption (RFC-1604)", () => {
+  const packSkillMd = (name: string) =>
+    `---\nname: ${name}\ndescription: Fixture pack skill\ninvocation: user\ncategory: fo\nconcerns: read-only\nlanguagePolicy: ref(PREFERENCES.md)\ndependsOn: []\n---\n\nRun it:\n\n\`\`\`bash\npnpm exec werkstatt run rfc.validate --id RFC-1\n\`\`\`\n`;
+
+  const forgeYaml = (dir: string) =>
+    `schema: forge/config@1\nproject:\n  name: consumer\n  stack: []\n  packageManager: pnpm\npaths:\n  rfcsDir: docs/rfcs\n  adrsDir: docs/adrs\n  plansDir: docs/plans\n  auditsDir: docs/audits\n  specsDir: docs/specs\n  skillsDir: .agents/skills\n  sessionsDir: docs/sessions\nskillPacks:\n  - prefix: wg\n    dir: ${dir}\n`;
+
+  test("a werkstatt run literal inside a .agents/skills/ twin does not flag SKILL-11", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "forge-skill-twin-"));
+    try {
+      const forgePkg = path.join(tmpDir, "node_modules", "@warpgogol", "forge");
+      fs.mkdirSync(forgePkg, { recursive: true });
+      fs.writeFileSync(
+        path.join(forgePkg, "package.json"),
+        JSON.stringify({ name: "@warpgogol/forge", version: "9.9.9" }),
+        "utf8",
+      );
+      fs.writeFileSync(
+        path.join(tmpDir, "forge.yaml"),
+        forgeYaml(".agents/skills/wg-pack"),
+        "utf8",
+      );
+      const dir = path.join(tmpDir, ".agents/skills/wg-pack/wg-twin");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, ".agents/skills/wg-pack/forge.plugin.yaml"),
+        "id: wg\nversion: 1.0.0\n",
+        "utf8",
+      );
+      fs.writeFileSync(path.join(dir, "SKILL.md"), packSkillMd("wg-twin"), "utf8");
+      const result = runSkillValidate({}, { workspaceRoot: tmpDir });
+      const hits = result.violations.filter((v) => v.rule === "SKILL-11" && v.skill === "wg-twin");
+      expect(hits).toEqual([]);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("the same literal in a canonical pack dir still flags SKILL-11", () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "forge-skill-canon-"));
+    try {
+      const forgePkg = path.join(tmpDir, "node_modules", "@warpgogol", "forge");
+      fs.mkdirSync(forgePkg, { recursive: true });
+      fs.writeFileSync(
+        path.join(forgePkg, "package.json"),
+        JSON.stringify({ name: "@warpgogol/forge", version: "9.9.9" }),
+        "utf8",
+      );
+      fs.writeFileSync(path.join(tmpDir, "forge.yaml"), forgeYaml("packs/wg-skills"), "utf8");
+      const dir = path.join(tmpDir, "packs/wg-skills/wg-canon");
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(
+        path.join(tmpDir, "packs/wg-skills/forge.plugin.yaml"),
+        "id: wg\nversion: 1.0.0\n",
+        "utf8",
+      );
+      fs.writeFileSync(path.join(dir, "SKILL.md"), packSkillMd("wg-canon"), "utf8");
+      const result = runSkillValidate({}, { workspaceRoot: tmpDir });
+      const hits = result.violations.filter((v) => v.rule === "SKILL-11" && v.skill === "wg-canon");
+      expect(hits.length).toBeGreaterThan(0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });

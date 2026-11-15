@@ -9,6 +9,16 @@
 <CHANGE_SUMMARY>
   <item>RFC-1569: metachar extension tests (AC-8) + suppression regression</item>
   <item>RFC-1569: lint rfc evidence annotations and transient probe targets</item>
+  <item>RFC-1604: correct the validator rules pinned false-positive by the friction registry (RFC-1604)
+
+- probe-meta: mask [...] classes before metachar scans (F-0224)
+- skill.validate: exempt managed .agents/skills twins from SKILL-11 (sf-F-0004)
+- rfc-0000 template: emit reviewers ["human:<handle>"] placeholder (ds-F-0017)
+- robots.generate: drop wildcard no-op directives; PUBTXT-09 scoped to the * group (F-0232)
+- page.render.check: dead exemptions move to staleExemptions channel (F-0233)
+- cosmic.literals.lint: extend retired-channel scan to systems/*.yaml (F-0172)
+- price.presence.validate: accept Intl-emitted price shapes incl. attribute resolution (F-0231)
+- ecosystem.commit EC-33: scan over maskSource keepComments (F-0221)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -46,7 +56,7 @@ describe("V-PROBE-META-01 extensions (RFC-1569)", () => {
   test("unescaped {} and [] are flagged", () => {
     const brace = collectProbeMetacharHits(probe("a{1,2}"), fm(""));
     expect(brace.some((h) => h.chars.some((c) => c.includes("`{`/`}`")))).toBe(true);
-    const bracket = collectProbeMetacharHits(probe("a[bc]"), fm(""));
+    const bracket = collectProbeMetacharHits(probe("a]b]"), fm(""));
     expect(bracket.some((h) => h.chars.some((c) => c.includes("`[`/`]`")))).toBe(true);
   });
 
@@ -67,5 +77,15 @@ describe("V-PROBE-META-01 extensions (RFC-1569)", () => {
     const fmWithMarker = `acceptance:\n  - probe: file-contains\n    criterion: AC-1\n    path: x\n    pattern: "${pattern}"  # <!-- probe-meta: intentional -->\n`;
     const hits = collectProbeMetacharHits(probe(pattern), fmWithMarker);
     expect(hits).toEqual([]);
+  });
+
+  test("F-0224: metacharacters inside a [...] class are literals — [\\s\\S] stays clean", () => {
+    const hits = collectProbeMetacharHits(probe("[\\s\\S]+"), fm(""));
+    expect(hits).toEqual([]);
+  });
+
+  test("F-0224: a stray unclosed class still flags the bracket", () => {
+    const hits = collectProbeMetacharHits(probe("a[b"), fm(""));
+    expect(hits.some((h) => h.chars.some((c) => c.includes("`[`/`]`")))).toBe(true);
   });
 });

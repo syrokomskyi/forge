@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1563: share the kernel command-result cache across session worktrees — one SQLite DB in the primary checkout, @@WORKSPACE_ROOT@@ payload anchoring, scoped --force clear, kernel.cache.prune</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
@@ -17,7 +16,17 @@ F1 code-only anchor scan (markdown fences never declare anchors); F2 generated i
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
   <item>RFC-1596: close REVIEW-CODE-2026-11-14-01 — packaged template moves block, typed frontmatter, forge.yaml in rfc.validate reads</item>
-  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1513, RFC-1534, RFC-1569</history>
+  <item>RFC-1604: correct the validator rules pinned false-positive by the friction registry (RFC-1604)
+
+- probe-meta: mask [...] classes before metachar scans (F-0224)
+- skill.validate: exempt managed .agents/skills twins from SKILL-11 (sf-F-0004)
+- rfc-0000 template: emit reviewers ["human:<handle>"] placeholder (ds-F-0017)
+- robots.generate: drop wildcard no-op directives; PUBTXT-09 scoped to the * group (F-0232)
+- page.render.check: dead exemptions move to staleExemptions channel (F-0233)
+- cosmic.literals.lint: extend retired-channel scan to systems/*.yaml (F-0172)
+- price.presence.validate: accept Intl-emitted price shapes incl. attribute resolution (F-0231)
+- ecosystem.commit EC-33: scan over maskSource keepComments (F-0221)</item>
+  <history>RFC-0303, RFC-0722, RFC-0755, RFC-0795, RFC-0997, RFC-1006, RFC-1097, RFC-1271, RFC-1322, RFC-1330, RFC-1334, RFC-1336, RFC-1391, RFC-1453, RFC-1454, RFC-1455, RFC-1467, RFC-1489, RFC-1513, RFC-1534, RFC-1563, RFC-1569</history>
 </CHANGE_SUMMARY>
 */
 
@@ -574,17 +583,21 @@ export function collectProbeMetacharHits(
     const pattern = typeof raw === "string" ? raw : "";
     if (!pattern) continue;
     const chars: string[] = [];
-    if (/(^|[^\\])\(/.test(pattern)) chars.push("unescaped `(`");
-    if (/(^|[^\\])\)/.test(pattern)) chars.push("unescaped `)`");
-    if (pattern.includes("**/")) chars.push("`**/` glob shape");
+    // RFC-1604 (F-0224): metacharacters inside a [...] character class are
+    // literals — mask well-formed classes before scanning so `[\s\S]` does
+    // not report an unescaped `]`, a stray unclosed class still flags.
+    const masked = pattern.replace(/\[(?:[^\]\\]|\\.)*\]/g, "");
+    if (/(^|[^\\])\(/.test(masked)) chars.push("unescaped `(`");
+    if (/(^|[^\\])\)/.test(masked)) chars.push("unescaped `)`");
+    if (masked.includes("**/")) chars.push("`**/` glob shape");
     // RFC-1569 (F-0202): a mid-pattern `$`/`^` anchors silently — the probe can
     // never match; unescaped `{}`/`[]` quantify/group instead of matching.
-    const rest = pattern.slice(1).replace(/\\\^/g, "");
+    const rest = masked.slice(1).replace(/\\\^/g, "");
     if (rest.includes("^")) chars.push("mid-pattern `^` anchor");
-    const head = pattern.slice(0, -1).replace(/\\\$/g, "");
+    const head = masked.slice(0, -1).replace(/\\\$/g, "");
     if (head.includes("$")) chars.push("mid-pattern `$` anchor");
-    if (/(^|[^\\])[{}]/.test(pattern)) chars.push("unescaped `{`/`}`");
-    if (/(^|[^\\])[[\]]/.test(pattern)) chars.push("unescaped `[`/`]`");
+    if (/(^|[^\\])[{}]/.test(masked)) chars.push("unescaped `{`/`}`");
+    if (/(^|[^\\])[[\]]/.test(masked)) chars.push("unescaped `[`/`]`");
     if (chars.length === 0 || suppressed(field, pattern)) continue;
     hits.push({
       criterion: typeof probe.criterion === "string" ? probe.criterion : "?",
