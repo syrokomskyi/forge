@@ -18,12 +18,12 @@ conflicted port still reports released: true (DNA-106 per step).</purpose>
   <item>RFC-1502 r1: a refused fix cut rolls the branch back to its pre-release tip via `update-ref` + `read-tree --reset -u HEAD` (the session guard blocks reset --hard/restore/checkout --), so FLOW-CUT-12/13 stay rerun-safe without removing the fix worktree.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1494: step 1 — isFlowAdopted public export</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
-  <history>RFC-1490, RFC-1491</history>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <history>RFC-1490, RFC-1491, RFC-1494</history>
 </CHANGE_SUMMARY>
 */
 
@@ -222,6 +222,7 @@ export async function runFixCut(
     gate: null,
     backmerge: null,
     steps: [],
+    preflight: null,
     diagnostics: [],
   };
   const cutRefuse = (

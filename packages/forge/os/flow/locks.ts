@@ -15,12 +15,12 @@ locks broken, always released in finally. Used for the short registry lock
   <item>Refused attempts render the last observed holder via describeHeldLock — the `stale` disposition is near-unreachable from withFlowLock (age-stale locks are broken before the deadline check) and exists for callers classifying a lock they never waited on (RFC-1515).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1504: steps 2-3 — holderIsDead, boot-id payload, dead-holder break in withFlowLock</item>
   <item>RFC-1504: review fixes — single io.readFile parse per iteration, real ageMs on dead-holder onStale, atomic break claim</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
-  <history>RFC-1487</history>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
+  <history>RFC-1487, RFC-1504</history>
 </CHANGE_SUMMARY>
 */
 
@@ -115,6 +115,21 @@ export function describeHeldLock(
         ? "stale"
         : "live",
   };
+}
+
+/**
+ * RFC-1597: inspect the current lock holder without waiting — null when the
+ * file is absent or unreadable. Dry-run reporters use this so a non-mutating
+ * evaluation can still name the live holder (`describeHeldLock` handles the
+ * dead-pid/boot-id classification).
+ */
+export async function inspectFlowLock(
+  lockPath: string,
+  readFile: (path: string) => Promise<string>,
+  staleMs: number,
+): Promise<HeldLockDiagnostic | null> {
+  const holder = await readHolder(lockPath, readFile);
+  return holder === null ? null : describeHeldLock(holder, staleMs);
 }
 
 const defaultSleep = (ms: number): Promise<void> =>

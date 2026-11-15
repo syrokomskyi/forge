@@ -20,9 +20,6 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1574: close review REVIEW-CODE-2026-11-12-05 findings
-
-Step (3b) judges only paths the owner run changed, validates before staging, skips owners not runnable without an engine build, runs ecosystem.manifest.generate last; e2e log write guarded and run-stamped; Unhandled Errors rule out timeout-only; lost-run wait test; publish pre-filter comment. RFC-1574/1575/1576 record DEV-1..8.</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -31,6 +28,7 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574</history>
 </CHANGE_SUMMARY>
 */
@@ -518,6 +516,12 @@ interface IntegrateAttemptOpts {
   target?: "develop" | "main";
   /** RFC-1528: kernel invoke port for the bounded preflight validators. */
   invoke?: ForgeInvokeCommand;
+  /** RFC-1597 (F-0273): the workspace root `invoke` is bound to — defaults to
+   * `repoRoot`. Owner commands that WRITE (rebase auto-resolve, post-rebase
+   * regen) only use it when it equals the target worktree; an invoke bound
+   * elsewhere lands generated output in the wrong checkout. Read-only
+   * preflight validators keep the bound root regardless. */
+  invokeRoot?: string;
   /** RFC-1528: command registry for preflight resolvability. */
   commandRegistry?: CommandRegistry;
   /** RFC-1531: recreate a vanished registered worktree inside the lock. */
@@ -778,14 +782,17 @@ async function integrateFlowBranchAttempt(
       const verdict = await classifyRebaseConflicts(worktree, io, paths);
       // RFC-1545 AC-2: without a kernel invoke port the standalone adapter
       // spawns the allowlisted owner commands in the worktree — the
-      // resolution contract is identical either way.
+      // resolution contract is identical either way. RFC-1597: an invoke
+      // bound to a different root writes the regenerated files into the
+      // wrong checkout (F-0273) — retarget to the worktree spawn.
       const invoker =
-        opts.invoke ??
-        standaloneInvoke(
-          io,
-          worktree,
-          verdict.owners.map((o) => o.command),
-        );
+        opts.invoke !== undefined && (opts.invokeRoot ?? repoRoot) === worktree
+          ? opts.invoke
+          : standaloneInvoke(
+              io,
+              worktree,
+              verdict.owners.map((o) => o.command),
+            );
       const resolvable =
         paths.length > 0 &&
         verdict.nonGenerated.length === 0 &&
@@ -859,18 +866,25 @@ async function integrateFlowBranchAttempt(
   ): Promise<PostRebaseRegenResult | FlowIntegrateData | null> => {
     const owners = await postRebaseOwners(worktree, io);
     if (owners.length === 0) return null;
-    const invoker =
-      opts.invoke ??
-      standaloneInvoke(io, worktree, [
-        ...owners.map((o) => o.command),
-        "ecosystem.manifest.validate",
-      ]);
+    // RFC-1597 (F-0273): the kernel invoke port runs owner commands at the
+    // CALLER's workspace root — for flow.cut and any primary-side integrate
+    // that root is the primary, so generated writes land there uncommitted
+    // while the worktree fold sees no diff (and step (5) then refuses
+    // FLOW-INT-03 on the heal's own collateral). The kernel invoke is used
+    // only when the caller IS this worktree; otherwise the standalone spawn
+    // targets the worktree directly — skipped when it cannot run there.
+    const kernelBoundHere = opts.invoke !== undefined && (opts.invokeRoot ?? repoRoot) === worktree;
+    const invoker = kernelBoundHere
+      ? opts.invoke!
+      : standaloneInvoke(io, worktree, [
+          ...owners.map((o) => o.command),
+          "ecosystem.manifest.validate",
+        ]);
     // RFC-1574: the standalone fallback spawns `pnpm exec werkstatt run`
     // in the worktree — without an engine build there it cannot run, and
     // the owners are skipped rather than refused.
     const notRunnable =
-      opts.invoke === undefined &&
-      !(await io.exists(join(worktree, "node_modules", ".bin", "werkstatt")))
+      !kernelBoundHere && !(await io.exists(join(worktree, "node_modules", ".bin", "werkstatt")))
         ? new Set(owners.map((o) => o.command))
         : undefined;
     const regen = await regenerateAfterRebase({

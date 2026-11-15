@@ -19,6 +19,7 @@ next release version it implies.</purpose>
   <item>RFC-1488: steps 2-4 — release tags, pending level (X-RFC + versionBump), flow.version command</item>
   <item>RFC-1488: review r1 — parse guard, door/rules metadata, id-exact RFC binding, refname precision, FLOW-09 top-level anchor, test cleanup</item>
   <item>RFC-1490: step 1 — explicit ref param on tag/level helpers + W1-2 +0.<hash>.dirty shape (AC-12)</item>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -43,6 +44,8 @@ export interface PendingLevel {
   rfcs: Array<{ id: string; versionBump: string | null }>;
   /** lastVersion with `level` applied; null when `none` or no baseline tag. */
   nextVersion: string | null;
+  /** Commits in `since..ref` touching the line's paths (0 on a failed count). */
+  commitsSince: number;
   /** FLOW-VER-03 entries for RFC files that could not be read. */
   diagnostics: Diagnostic[];
 }
@@ -134,6 +137,13 @@ export async function pendingLevel(
       ? formatVersion(bumpVersion(lastVersion, level as Exclude<ReleaseLevel, "none">))
       : null;
 
-  return { line: line.id, level, rfcs, nextVersion, diagnostics };
+  return {
+    line: line.id,
+    level,
+    rfcs,
+    nextVersion,
+    commitsSince: Number.isFinite(commitsSince) ? commitsSince : 0,
+    diagnostics,
+  };
 }
 

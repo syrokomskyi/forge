@@ -24,6 +24,7 @@ rerun-safe.</purpose>
   <item>RFC-1502: step 1 — release-prepare + pre-tag verify tests</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1502: review r1 — fix-cut rollback on FLOW-CUT-12/13, populated steps[], hook validation, GIT_* env scrub</item>
+  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -87,6 +88,12 @@ async function adoptedRepo(opts?: { packageLine?: boolean }): Promise<{
     await writeFile(
       join(repo, "packages/lib/extract.config.yaml"),
       "schema: extract\ndestName: ac-dest\n",
+    );
+    // FLOW-CUT-13 (RFC-1597): the package changelog must carry the predicted
+    // section — the pending lib commit bumps patch → [2.0.1].
+    await writeFile(
+      join(repo, "packages/lib/CHANGELOG.md"),
+      "# Changelog\n\n## [2.0.1]\n\n- pending lib work\n\n## [2.0.0]\n\n- baseline\n",
     );
   }
   await gitExec(repo, ["add", "-A"]);

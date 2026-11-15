@@ -87,6 +87,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(data.integrated).toBe(true);
@@ -107,6 +108,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.integrated).toBe(true);
     expect(data.postRebaseRegen?.committed).toEqual([]);
@@ -125,6 +127,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.integrated).toBe(false);
     expect(data.diagnostics.map((d) => d.ruleId)).toContain("FLOW-INT-12");
@@ -145,6 +148,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.integrated).toBe(false);
     const diag = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-12");
@@ -165,6 +169,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
     expect(data.postRebaseRegen?.committed).toEqual([MANIFEST]);
@@ -183,6 +188,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.integrated).toBe(false);
     expect(data.diagnostics.find((d) => d.ruleId === "FLOW-INT-12")?.message).toContain(
@@ -224,6 +230,7 @@ describe("flow.integrate post-rebase regeneration (RFC-1574)", () => {
       dryRun: false,
       now: NOW,
       invoke: stub.invoke,
+      invokeRoot: s.worktree!,
     });
     expect(data.integrated).toBe(false);
     const diag = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-12");
