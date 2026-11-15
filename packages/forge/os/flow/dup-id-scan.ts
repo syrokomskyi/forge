@@ -46,8 +46,14 @@ function fileId(relPath: string): string | null {
   return f ? `F-${f[1]}` : null;
 }
 
-/** Rule literals a branch diff may add — matches the RFC-1600 taxonomy. */
-const RULE_LITERAL = /\b(V-\d+|RFC-IMP-\d+|FLOW-(?:INT|CUT|OPEN|GUARD)-\d+)\b/g;
+/**
+ * Rule literals a branch diff may add — in DECLARATION position only:
+ * `id: "X"` / `- id: X` (command `rules:` entries and their generated
+ * manifest projections). `ruleId:` emissions, fix-hints, and prose mentions
+ * recur legitimately — counting them refused this scan's own first live run
+ * on documentation alone (F-0286).
+ */
+const RULE_LITERAL = /\bid\s*[:=]\s*["']?(V-\d+|RFC-IMP-\d+|FLOW-(?:INT|CUT|OPEN|GUARD)-\d+)\b/g;
 
 /**
  * Compare `base...head` inside `repo`: the branch's unique commits (three-dot
@@ -130,12 +136,6 @@ export async function scanDuplicateGovernanceIds(
         continue;
       }
       if (!line.startsWith("+") || line.startsWith("+++")) continue;
-      // Only declaration-position literals allocate a rule id: an `id:`/
-      // `ruleId:` assignment (source `rules:` entries, generated manifest
-      // `- id:` rows). A prose mention ("that is FLOW-INT-01") or a
-      // regenerated catalog row declares nothing — counting it refused
-      // integrations on documentation alone (live F-0286 signature).
-      if (!/\b(?:id|ruleId)\s*[:=]/.test(line)) continue;
       for (const m of line.matchAll(RULE_LITERAL)) {
         const set = added.get(m[1]!) ?? new Set<string>();
         if (set.size === 0) added.set(m[1]!, set);
@@ -149,7 +149,7 @@ export async function scanDuplicateGovernanceIds(
         "grep",
         "-l",
         "-E",
-        `(id|ruleId)[[:space:]]*[:=][[:space:]]*["']?${literal}`,
+        `id[[:space:]]*[:=][[:space:]]*["']?${literal}`,
         base,
       ]);
       if (carriers.exitCode !== 0) continue; // absent on develop → not a dup
