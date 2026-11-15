@@ -28,6 +28,8 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - build-verification policy states blocking rules are probed or retired;
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <item>F-0287: committed-counters union + scope:app domain exclusion tests — evidence reproducibility across worktrees</item>
+  <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -240,5 +242,56 @@ describe("gate.probe.catalog ratchet (RFC-1592)", () => {
     );
     const fresh = await runGateProbeCatalog(flags({ check: true }), ctx());
     expect(fresh.exitCode).toBe(0);
+  });
+
+  test("F-0287: committed counters projection evidences fired rules outside the journal", async () => {
+    await seedInventory([{ id: "COMMITTED-01" }, { id: "STILL-02" }]);
+    await writeBaseline(["STILL-02"]);
+    await mkdir(join(root, "docs", "metrics"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "metrics", "check-counters.generated.yaml"),
+      `schema: forge/check-counters@1\ngeneratedAt: "2026-11-14T00:00:00.000Z"\nrunCount: 1\nrules:\n  - ruleId: knowledge/COMMITTED-01\n    contract: knowledge\n    evaluated: 3\n    diagnostic: 2\n    lastRunId: r1\n    lastAt: "2026-11-14T00:00:00.000Z"\n`,
+    );
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    const p6 = res.data?.diagnostics?.filter((d) => d.ruleId === "PROBE-06") ?? [];
+    expect(p6.map((d) => d.message).join("\n")).not.toContain("COMMITTED-01");
+    // The committed firing also marks its baseline entry stale when present.
+    expect(res.exitCode).toBe(0);
+  });
+
+  test("F-0287: scope:app commands are outside the workspace ratchet domain", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "validator-inventory.generated.yaml"),
+      `contracts:\n  - contract: site\n    validators:\n      - command: site.check\n        rules:\n          - id: APP-ONLY-01\n            severity: error\n  - contract: ws\n    validators:\n      - command: ws.check\n        rules:\n          - id: WS-ONLY-01\n            severity: error\n`,
+    );
+    await writeFile(
+      join(root, "docs", "command-manifest.generated.yaml"),
+      `commands:\n  - name: site.check\n    scope: app\n  - name: ws.check\n    scope: workspace\n`,
+    );
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    const p6 = res.data?.diagnostics?.filter((d) => d.ruleId === "PROBE-06") ?? [];
+    const msg = p6.map((d) => d.message).join("\n");
+    expect(msg).not.toContain("APP-ONLY-01");
+    expect(msg).toContain("WS-ONLY-01");
+  });
+
+  test("F-0287: app-scope baseline entries are not flagged stale; deleted rules still are", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "validator-inventory.generated.yaml"),
+      `contracts:\n  - contract: site\n    validators:\n      - command: site.check\n        rules:\n          - id: APP-BASE-01\n            severity: error\n  - contract: ws\n    validators:\n      - command: ws.check\n        rules:\n          - id: WS-BASE-01\n            severity: error\n`,
+    );
+    await writeFile(
+      join(root, "docs", "command-manifest.generated.yaml"),
+      `commands:\n  - name: site.check\n    scope: app\n  - name: ws.check\n    scope: workspace\n`,
+    );
+    await writeBaseline(["APP-BASE-01", "WS-BASE-01", "DELETED-99"]);
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    const p7 = res.data?.diagnostics?.filter((d) => d.ruleId === "PROBE-07") ?? [];
+    const msg = p7.map((d) => d.message).join("\n");
+    expect(msg).not.toContain("APP-BASE-01");
+    expect(msg).not.toContain("WS-BASE-01");
+    expect(msg).toContain("DELETED-99");
   });
 });

@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
   <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
   <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
@@ -32,6 +31,7 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>RFC-1592: retire 7 unprobeable blocking rules and probe COMPASS-DOC-01/KAUTHZ-01, unblocking the RFC-1592 ratchet</item>
+  <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
   <history>RFC-1469</history>
 </CHANGE_SUMMARY>
 */
@@ -97,8 +97,10 @@ export const forgeGateModule: ForgeModule = {
       reads: [
         "docs/gate-probes/**",
         "docs/validator-inventory.generated.yaml",
+        "docs/command-manifest.generated.yaml",
         "docs/.index/gate-probes/runs.jsonl",
         "docs/.index/checks/counters.jsonl",
+        "docs/metrics/check-counters.generated.yaml",
         "packages/**/*.ts",
       ],
       execute: runGateProbeCatalog,
