@@ -42,6 +42,8 @@ For each `proposed` task you intend to dispatch, write `queue/briefs/<id>.md` so
 
 Run `system.task.move --task <id> --to ready`. The ready gate checks the brief exists, binds to the task, and clears dependency and edge rules — fix what it reports instead of retrying.
 
+A task whose `dependsOn` has not reached `integrated` stays `proposed` — dependents are queued `proposed` and moved `ready` only after `system.task.collect` confirms the dependencies landed (vF-0008/SYSTEM-TASK-02 ordering). Do not force a `ready` move ahead of an unintegrated dependency.
+
 ### 5. Dispatch
 
 Run `system.task.dispatch --task <id>`. Dispatch opens a task worktree inside the product checkout, plants `.forge/task/brief.md` there, and prints the worktree path to `cd` into — start that session yourself or hand the printed command to the operator. When `products.local.yaml` declares `launcher.argv`, the product session is invoked automatically.

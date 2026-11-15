@@ -20,7 +20,6 @@ triggerPhrases: ["подготовим RFC", "draft an RFC", "create a full RFC"
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
@@ -29,7 +28,12 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
-  <history>RFC-1097, RFC-1247, RFC-1361, RFC-1433</history>
+  <item>RFC-1605: close the skill contract gaps recorded by session frictions (RFC-1605)
+
+- fo-idea-create-rfc: read every overlap hit's Decision before filling the draft
+- fo-idea-plan: draft->accepted requires explicit operator acceptance
+- fo-system-dispatch: document dependsOn stays-proposed gating</item>
+  <history>RFC-1097, RFC-1247, RFC-1361, RFC-1433, RFC-1455</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -110,7 +114,11 @@ Run:
 ref(forge.yaml bindings.commands.createRfc) --title="<title>" --kind=<kind> --scope=<scope>
 ```
 
-### 5. Fill every section
+### 5. Read every overlap hit
+
+`rfc.create` prints overlap hits — existing RFCs/ADRs whose scope touches the new title. Read the `## Decision` section of every hit before filling the draft. When a hit already covers the topic, stop and amend the hit instead — a parallel proposal on covered ground is the failure this step exists to prevent. When no hit applies after reading, proceed with the draft.
+
+### 6. Fill every section
 
 Read the generated file and the full template (`docs/rfcs/rfc-0000-template.md`) as a guide. Replace placeholder text in every required section:
 
@@ -127,7 +135,7 @@ Read the generated file and the full template (`docs/rfcs/rfc-0000-template.md`)
 
 When a section cannot be filled with confidence, insert `> NEEDS CLARIFICATION: <question>` instead of guessing. Do not leave sections empty or fill them with speculative content. Markers are resolved during the enhance step.
 
-### 6. Validate and report
+### 7. Validate and report
 
 Run:
 
@@ -143,7 +151,7 @@ Status: draft
 Next step: human architecture review (status may not change before acceptance).
 ```
 
-### 7. Commit
+### 8. Commit
 
 Commit the RFC draft. This is **mandatory** — the RFC file must be committed, not left in the working tree.
 
