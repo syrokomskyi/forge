@@ -13,21 +13,26 @@ line). Manifest-generation logic itself is never duplicated here.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: docs.archive regenerates invalidated generated artifacts
-
-After moves, invoke owner commands whose reads[] match a moved path via context.invoke (manifest generator last); report regenerated paths; degrade with a note without a kernel host.</item>
-  <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
-
-shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>F-0126: tighten owner predicate — generates[] or all-generated writes[]; required flags must be REGEN_FLAGS-covered; excluded[] diagnostics</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1535: stageMovedPairs — self-staging helper for move pairs (F-0038)</item>
+  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
+
+docs.archive recorded ~12-minute inline owner regen blocking session end
+(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
+The invalidated owner inventory now lands in .git/forge/deferred-regen.json
+for flow.integrate's post-rebase fold to sweep (record cleared only when
+every owner ran); bookkeeping pathspecs are validated before the first
+git add, the lockfile restore gained its index-side counterpart, and a
+post-staging sweep surfaces MM residue with the git show : remediation.
+
+RFC-1602</item>
   <history>RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import picomatch from "picomatch";
 import { hasGeneratedMarker } from "../../src/utils/generated-marker.ts";
@@ -276,4 +281,151 @@ export async function stageMovedPairs(options: {
   } catch (error) {
     return { staged: 0, error: error instanceof Error ? error.message : String(error) };
   }
+}
+
+// ── RFC-1602 (F-0212/F-0245): deferred owner-regen + atomic bookkeeping ──
+// docs.archive no longer invokes owner generators inline — it records the
+// invalidated owner inventory for the integrate fold to sweep post-rebase.
+// The record lives under the git common dir (.git/forge/) so every linked
+// worktree sees the same file, and survives commits until consumed.
+
+export interface DeferredRegenOwner {
+  command: string;
+  flags: Record<string, ForgeFlagValue>;
+  artifactPaths: string[];
+}
+
+export interface DeferredRegenRecord {
+  at: string;
+  movedPaths: string[];
+  owners: DeferredRegenOwner[];
+}
+
+export type RegenExec = (
+  command: string,
+  args: string[],
+  opts?: { cwd?: string },
+) => Promise<ExecResult>;
+
+async function gitCommonDir(workspaceRoot: string, exec: RegenExec): Promise<string | null> {
+  const result = await exec("git", ["rev-parse", "--git-common-dir"], { cwd: workspaceRoot });
+  if (result.exitCode !== 0) return null;
+  const dir = result.stdout.trim();
+  return dir.length === 0 ? null : path.resolve(workspaceRoot, dir);
+}
+
+export async function deferredRegenFilePath(
+  workspaceRoot: string,
+  exec: RegenExec,
+): Promise<string | null> {
+  const dir = await gitCommonDir(workspaceRoot, exec);
+  return dir ? path.join(dir, "forge", "deferred-regen.json") : null;
+}
+
+/**
+ * Merge-write the deferred owner inventory — a second archive run before the
+ * next integrate unions owners (dedup by command) and moved paths rather than
+ * clobbering the pending record.
+ */
+export async function recordDeferredRegen(options: {
+  workspaceRoot: string;
+  exec: RegenExec;
+  movedPaths: string[];
+  owners: DeferredRegenOwner[];
+}): Promise<{ file: string } | null> {
+  const file = await deferredRegenFilePath(options.workspaceRoot, options.exec);
+  if (!file) return null;
+  let existing: DeferredRegenRecord | null = null;
+  try {
+    existing = JSON.parse(readFileSync(file, "utf8")) as DeferredRegenRecord;
+  } catch {
+    // First record or unreadable — start fresh.
+  }
+  const owners = [...(existing?.owners ?? [])];
+  for (const owner of options.owners) {
+    if (!owners.some((o) => o.command === owner.command)) owners.push(owner);
+  }
+  const movedPaths = [...new Set([...(existing?.movedPaths ?? []), ...options.movedPaths])];
+  mkdirSync(path.dirname(file), { recursive: true });
+  const record: DeferredRegenRecord = { at: new Date().toISOString(), movedPaths, owners };
+  writeFileSync(file, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+  return { file };
+}
+
+/**
+ * Read the pending record — the integrate fold consumes it; `null` when no
+ * archive deferred anything or the record is unreadable.
+ */
+export async function consumeDeferredRegen(options: {
+  workspaceRoot: string;
+  exec: RegenExec;
+}): Promise<{ record: DeferredRegenRecord; file: string } | null> {
+  const file = await deferredRegenFilePath(options.workspaceRoot, options.exec);
+  if (!file || !existsSync(file)) return null;
+  try {
+    const record = JSON.parse(readFileSync(file, "utf8")) as DeferredRegenRecord;
+    return Array.isArray(record.owners) ? { record, file } : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearDeferredRegen(file: string): void {
+  try {
+    unlinkSync(file);
+  } catch {
+    // Already gone — clearing is best-effort.
+  }
+}
+
+/**
+ * Pre-staging validation (AC-2): every bookkeeping path must be stageable —
+ * tracked OR present on disk — before the first `git add`. An untracked
+ * `missions/<id>`-class source makes `git add -A` refuse mid-set, which is
+ * how the F-0245 partial staging happened.
+ */
+export async function findUnstageablePaths(options: {
+  paths: string[];
+  workspaceRoot: string;
+  exec: RegenExec;
+  exists: (relPath: string) => Promise<boolean>;
+}): Promise<string[]> {
+  const { paths, workspaceRoot, exec, exists } = options;
+  const tracked = new Set(
+    (await exec("git", ["ls-files"], { cwd: workspaceRoot })).stdout
+      .split("\n")
+      .filter((l) => l.length > 0),
+  );
+  const unstageable: string[] = [];
+  for (const p of paths) {
+    if (!tracked.has(p) && !(await exists(p))) unstageable.push(p);
+  }
+  return unstageable;
+}
+
+/**
+ * Post-staging MM sweep (AC-4): bookkeeping paths where index and worktree
+ * both diverge from HEAD (X≠' ' && Y∈{M,D}) — the staged-prune/HEAD-restore
+ * residue. Each surfaced path carries the exact index→worktree remediation.
+ */
+export async function sweepMmResidue(options: {
+  paths: string[];
+  workspaceRoot: string;
+  exec: RegenExec;
+}): Promise<string[]> {
+  const { paths, workspaceRoot, exec } = options;
+  if (paths.length === 0) return [];
+  const status = await exec("git", ["status", "--porcelain", "--", ...paths], {
+    cwd: workspaceRoot,
+  });
+  const warnings: string[] = [];
+  for (const line of status.stdout.split("\n")) {
+    if (line.length < 3) continue;
+    const [x, y] = [line[0], line[1]];
+    if (x !== " " && x !== "?" && x !== "!" && (y === "M" || y === "D")) {
+      const p = line.slice(3);
+      warnings.push(`${p} left in ${x}${y} state — remediate with: git show :${p} > ${p}`);
+    }
+  }
+  return warnings;
 }

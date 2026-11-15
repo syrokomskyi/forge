@@ -15,7 +15,7 @@
 */
 import { join } from "node:path";
 
-import type { ForgeInvokeCommand, WorkspaceIO } from "../../src/types.ts";
+import type { ForgeFlagValue, ForgeInvokeCommand, WorkspaceIO } from "../../src/types.ts";
 import { REGEN_FLAGS } from "../core/archive-regen.ts";
 import { git, gitCommit } from "./git.ts";
 import { GENERATED_BASENAME_OWNERS } from "./preflight.ts";
@@ -40,11 +40,18 @@ export interface PostRebaseRegenRefusal {
   fixHint: string;
 }
 
+/** A regen owner entry — `flags` overrides REGEN_FLAGS for deferred owners (RFC-1602). */
+export interface PostRebaseOwner {
+  path: string;
+  command: string;
+  flags?: Record<string, ForgeFlagValue>;
+}
+
 /** Owner commands for the generated files present in the worktree. */
 export async function postRebaseOwners(
   branchWorktree: string,
   io: WorkspaceIO,
-): Promise<Array<{ path: string; command: string }>> {
+): Promise<PostRebaseOwner[]> {
   const owners: Array<{ path: string; command: string }> = [];
   for (const [basename, command] of Object.entries(GENERATED_BASENAME_OWNERS)) {
     const path = `${GENERATED_DIR}/${basename}`;
@@ -83,7 +90,9 @@ export async function regenerateAfterRebase(input: {
   branchWorktree: string;
   io: WorkspaceIO;
   invoke: ForgeInvokeCommand;
-  owners: ReadonlyArray<{ path: string; command: string }>;
+  owners: ReadonlyArray<PostRebaseOwner>;
+  /** Extra owned paths beyond owners[].path — deferred owners own a path set (RFC-1602). */
+  extraOwnedPaths?: ReadonlyArray<string>;
   onProgress?: (line: string) => void;
   /** Owner commands the invoker cannot run here — skipped with a progress line. */
   notRunnable?: ReadonlySet<string>;
@@ -101,7 +110,7 @@ export async function regenerateAfterRebase(input: {
   // state (untracked forge files) is not the generators' doing.
   const before = await porcelainSnapshot(branchWorktree, io);
   for (const o of owners) {
-    const result = await invoke(o.command, REGEN_FLAGS[o.command] ?? {});
+    const result = await invoke(o.command, o.flags ?? REGEN_FLAGS[o.command] ?? {});
     if (failed(result)) {
       return {
         refused: true,
@@ -114,7 +123,7 @@ export async function regenerateAfterRebase(input: {
 
   const after = await porcelainSnapshot(branchWorktree, io);
   const changed = [...after.entries()].filter(([p, st]) => before.get(p) !== st).map(([p]) => p);
-  const owned = new Set(owners.map((o) => o.path));
+  const owned = new Set([...owners.map((o) => o.path), ...(input.extraOwnedPaths ?? [])]);
   const foreign = changed.filter((p) => !owned.has(p));
   if (foreign.length > 0) {
     return {

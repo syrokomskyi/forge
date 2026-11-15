@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1535: docs.archive self-stages both sides of every move pair — no half-staged EC-31 pairs (F-0038)</item>
   <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
@@ -24,6 +23,17 @@ extended, two real stale claims corrected, profile templates ship empty
 markers hydrated at scaffold write time. RFC amended to implemented
 grammar/result/exclusions; command moved to commands.added.</item>
   <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
+  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
+
+docs.archive recorded ~12-minute inline owner regen blocking session end
+(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
+The invalidated owner inventory now lands in .git/forge/deferred-regen.json
+for flow.integrate's post-rebase fold to sweep (record cleared only when
+every owner ran); bookkeeping pathspecs are validated before the first
+git add, the lockfile restore gained its index-side counterpart, and a
+post-staging sweep surfaces MM residue with the git show : remediation.
+
+RFC-1602</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -998,9 +1008,11 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           "audit.archive, session.archive, and mission.archive in sequence. " +
           "Passes --dry-run and --status through to all sub-commands. Not atomic " +
           "— if one sub-command fails, prior moves are not rolled back. " +
-          "After the moves, re-invokes the owner generator of every generated " +
-          "artifact invalidated by them (manifest last) through the kernel " +
-          "invoke port and reports the regenerated paths (RFC-1528). " +
+          "Owner generators of every generated artifact invalidated by the " +
+          "moves are deferred (manifest last) into .git/forge/deferred-regen.json " +
+          "— flow.integrate's post-rebase fold regenerates them (RFC-1602); " +
+          "--dry-run reports the would-defer set. Bookkeeping self-stages " +
+          "atomically — an unstageable pathspec refuses before the first add. " +
           "Re-running is safe (idempotent).",
         scope: "workspace",
         mutatesState: true,
@@ -1241,8 +1253,16 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                   await writeFileIfChanged(target, content);
                 },
               });
-              if (restored && outputFormat === "pretty") {
-                logger.info("  docs.archive: restored pnpm-lock.yaml to HEAD (safety net)");
+              if (restored) {
+                // RFC-1602 (F-0245): index-side counterpart — the restore put
+                // HEAD back on disk; without unstaging, the pre-restore prune
+                // stays staged and the lockfile sits MM.
+                await io.exec("git", ["reset", "-q", "--", "pnpm-lock.yaml"], {
+                  cwd: routedContext.workspaceRoot,
+                });
+                if (outputFormat === "pretty") {
+                  logger.info("  docs.archive: restored pnpm-lock.yaml to HEAD (safety net)");
+                }
               }
             } catch (refreshErr) {
               if (outputFormat === "pretty") {
@@ -1253,54 +1273,65 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
             }
           }
 
-          // ── RFC-1528: owner-regen — every generated artifact whose owner
-          // reads a moved path is re-invoked through context.invoke (AC-1/6/7).
-          // Runs after the lockfile safety net; absent invoke degrades with a
-          // note, never blocks. Owner failure → diagnostics + non-zero exit. ──
-          let regenerated: string[] = [];
-          let regenSkipped: string[] = [];
+          // ── RFC-1602 (F-0212): owner-regen is DEFERRED to the integrate
+          // fold — archive returns in seconds; flow.integrate regenerates the
+          // full owner inventory post-rebase. The deferred set is recorded in
+          // .git/forge/deferred-regen.json so the fold sweeps it (manifest
+          // last); --dry-run reports the would-defer set without writing. ──
+          const deferredOwners: string[] = [];
           let regenExcluded: Array<{ command: string; reason: string }> = [];
-          let regenFailures: Array<{ command: string; error: string }> = [];
-          const { shouldRunArchiveRegen, runArchiveRegen, stageMovedPairs } =
-            await import("./archive-regen.ts");
-          if (shouldRunArchiveRegen(dryRun, totalMoved)) {
-            const movedPaths = new Set<string>();
+          let deferredRegenFile: string | null = null;
+          const {
+            collectInvalidatedGenerators,
+            findUnstageablePaths,
+            generatedPathProbe,
+            recordDeferredRegen,
+            stageMovedPairs,
+            sweepMmResidue,
+          } = await import("./archive-regen.ts");
+          const { loadLiveCommandInventory } = await import("../../src/utils/command-inventory.ts");
+          if (totalMoved > 0) {
+            const deferredMovedPaths = new Set<string>();
             for (const data of Object.values(results)) {
               // An archiver that threw records `{error}` with no moved[] — the
-              // regen set under-counts its partial moves (pre-existing shape).
+              // deferred set under-counts its partial moves (pre-existing shape).
               const moved = (data as { moved?: Array<Record<string, unknown>> })?.moved;
               if (!Array.isArray(moved)) continue;
               for (const entry of moved) {
                 for (const key of ["from", "to", "file"] as const) {
                   const value = entry[key];
-                  if (typeof value === "string" && value.length > 0) movedPaths.add(value);
+                  if (typeof value === "string" && value.length > 0) {
+                    deferredMovedPaths.add(value);
+                  }
                 }
               }
             }
-            const regen = await runArchiveRegen({
-              movedPaths: [...movedPaths],
-              context: routedContext,
-            });
-            regenerated = regen.regenerated;
-            regenFailures = regen.failures;
-            regenSkipped = regen.skipped;
-            regenExcluded = regen.excluded;
+            const commands = loadLiveCommandInventory(
+              routedContext.workspaceRoot,
+              routedContext.commandRegistry,
+            );
+            const selection = collectInvalidatedGenerators(
+              [...deferredMovedPaths],
+              commands,
+              generatedPathProbe(routedContext.workspaceRoot),
+            );
+            deferredOwners.push(...selection.candidates.map((c) => c.command));
+            regenExcluded = selection.excluded;
+            if (!dryRun && selection.candidates.length > 0) {
+              const record = await recordDeferredRegen({
+                workspaceRoot: routedContext.workspaceRoot,
+                exec: (command, args, opts) => io.exec(command, args, opts),
+                movedPaths: [...deferredMovedPaths],
+                owners: selection.candidates,
+              });
+              deferredRegenFile = record?.file ?? null;
+            }
             if (outputFormat === "pretty") {
-              for (const regeneratedPath of regenerated) {
-                logger.info(`  docs.archive: regenerated ${regeneratedPath}`);
+              for (const command of deferredOwners) {
+                logger.info(`  docs.archive: regen deferred to integrate fold — ${command}`);
               }
               for (const item of regenExcluded) {
                 logger.info(`  docs.archive: regen excluded ${item.command} (${item.reason})`);
-              }
-              if (regen.skipReason === "no-invoke") {
-                logger.info("  docs.archive: regen skipped — no invoke port (standalone CLI)");
-              } else if (regen.skipReason === "no-inventory") {
-                logger.info("  docs.archive: regen skipped — no command inventory");
-              }
-              for (const failure of regenFailures) {
-                logger.error(
-                  `  docs.archive: regen failed for ${failure.command}: ${failure.error}`,
-                );
               }
             }
           }
@@ -1309,7 +1340,12 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           // the index (destination add + source delete) so the next commit
           // captures the move as one unit instead of splitting it across two
           // commits. --dry-run stays report-only: nothing is staged.
+          // RFC-1602 (F-0245): the bookkeeping set is validated BEFORE the
+          // first git add — an untracked missions/<id>-class pathspec makes
+          // `git add -A` refuse mid-set, which is how partially staged
+          // bookkeeping happened; refusal precedes any staging now.
           let stagedMovePairs = 0;
+          const bookkeepingWarnings: string[] = [];
           if (!dryRun && totalMoved > 0) {
             const stagePaths = new Set<string>();
             for (const data of Object.values(results)) {
@@ -1322,8 +1358,37 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 }
               }
             }
+            const stagePathList = [...stagePaths];
+            const unstageable = await findUnstageablePaths({
+              paths: stagePathList,
+              workspaceRoot: routedContext.workspaceRoot,
+              exec: (command, args, opts) => io.exec(command, args, opts),
+              exists: (relPath) => io.exists(path.join(routedContext.workspaceRoot, relPath)),
+            });
+            if (unstageable.length > 0) {
+              return {
+                exitCode: 1,
+                data: {
+                  command: "docs.archive",
+                  status: "fail",
+                  totalMoved,
+                  totalSkipped,
+                  results,
+                  dryRun,
+                  deferredRegen: {
+                    owners: deferredOwners,
+                    excluded: regenExcluded,
+                    file: deferredRegenFile,
+                  },
+                  stagedMovePairs: 0,
+                  unstageable,
+                  warnings: bookkeepingWarnings,
+                },
+                summary: `docs.archive refused before staging — pathspec(s) not stageable: ${unstageable.join(", ")}`,
+              };
+            }
             const staged = await stageMovedPairs({
-              movedPaths: [...stagePaths],
+              movedPaths: stagePathList,
               workspaceRoot: routedContext.workspaceRoot,
               exec: (command, args, opts) => io.exec(command, args, opts),
             });
@@ -1341,6 +1406,21 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
                 logger.info(`  docs.archive: staged ${staged.staged} move path(s) (both sides)`);
               }
             }
+            // RFC-1602 AC-4: MM sweep over the bookkeeping set — staged
+            // prune + worktree restore leaves X/Y both non-space residue;
+            // surface the exact index→worktree remediation, exit stays 0.
+            bookkeepingWarnings.push(
+              ...(await sweepMmResidue({
+                paths: stagePathList,
+                workspaceRoot: routedContext.workspaceRoot,
+                exec: (command, args, opts) => io.exec(command, args, opts),
+              })),
+            );
+            if (outputFormat === "pretty") {
+              for (const warning of bookkeepingWarnings) {
+                logger.warn(`  docs.archive: ${warning}`);
+              }
+            }
           }
 
           if (outputFormat === "pretty") {
@@ -1356,10 +1436,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           }
 
           return {
-            ...(regenFailures.length > 0 ? { exitCode: 1 } : {}),
             data: {
               command: "docs.archive",
-              status: regenFailures.length > 0 ? "fail" : "ok",
+              status: "ok",
               totalMoved,
               totalSkipped,
               results,
@@ -1367,11 +1446,13 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
               liveSpecMerges: liveMergeResults.length,
               liveSpecSkipped: liveMergeSkipped,
               liveSpecFailures: liveMergeFailures.length,
-              regenerated,
-              regenSkipped,
-              regenExcluded,
-              regenFailures,
+              deferredRegen: {
+                owners: deferredOwners,
+                excluded: regenExcluded,
+                file: deferredRegenFile,
+              },
               stagedMovePairs,
+              warnings: bookkeepingWarnings,
             },
             summary: dryRun
               ? `[dry-run] Would move ${totalMoved} file(s), skip ${totalSkipped}`

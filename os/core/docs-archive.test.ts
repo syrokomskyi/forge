@@ -9,20 +9,27 @@ at zero merge operations (RFC-1230, AC-3).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: owner-regen tests — collectInvalidatedGenerators, generated-path probes, runArchiveRegen (AC-1/AC-7 evidence).</item>
-  <item>RFC-1528: extract dry-run regen gate for AC-6 evidence
-
-shouldRunArchiveRegen makes the report-only contract a tested unit instead of an inline closure check.</item>
   <item>RFC-1528: close review findings — manifest-union command inventory for regen/preflight</item>
   <item>F-0126: owner-predicate exclusion tests — mixed-writes mutator, uncovered required flag, REGEN_FLAGS override, end-to-end stamp exclusion</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1535: stageMovedPairs real-git fixtures — both sides staged, non-git degrade, empty no-op</item>
-  <history>RFC-1230, RFC-1235</history>
+  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
+
+docs.archive recorded ~12-minute inline owner regen blocking session end
+(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
+The invalidated owner inventory now lands in .git/forge/deferred-regen.json
+for flow.integrate's post-rebase fold to sweep (record cleared only when
+every owner ran); bookkeeping pathspecs are validated before the first
+git add, the lockfile restore gained its index-side counterpart, and a
+post-staging sweep surfaces MM residue with the git show : remediation.
+
+RFC-1602</item>
+  <history>RFC-1230, RFC-1235, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, it, expect } from "vitest";
@@ -34,12 +41,17 @@ import {
   buildLiveMergeBlock,
 } from "../spec/live-spec-shared.ts";
 import {
+  clearDeferredRegen,
   collectInvalidatedGenerators,
+  consumeDeferredRegen,
+  findUnstageablePaths,
   isGeneratedContent,
   isGeneratedPathName,
+  recordDeferredRegen,
   runArchiveRegen,
   shouldRunArchiveRegen,
   stageMovedPairs,
+  sweepMmResidue,
 } from "./archive-regen.ts";
 import type { ForgeRegisteredCommandInfo, ForgeRuntimeContext } from "../../src/types.ts";
 
@@ -539,5 +551,134 @@ describe("RFC-1535 stageMovedPairs", () => {
     });
     expect(outcome.staged).toBe(0);
     expect(calls).toBe(0);
+  });
+});
+
+// ---- RFC-1602 (F-0212/F-0245): deferred regen record + atomic bookkeeping ----
+
+describe("RFC-1602 deferred regen record", () => {
+  const gitExec = (command: string, args: string[], opts?: { cwd?: string }) =>
+    Promise.resolve(
+      (() => {
+        try {
+          const stdout = execFileSync(command, args, { ...opts, encoding: "utf8" });
+          return { exitCode: 0, stdout, stderr: "" };
+        } catch (e) {
+          const err = e as { status?: number; stderr?: string };
+          return { exitCode: err.status ?? 1, stdout: "", stderr: err.stderr ?? "" };
+        }
+      })(),
+    );
+
+  const initRepo = (root: string) => {
+    execFileSync("git", ["-C", root, "init", "-q"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "config", "user.email", "t@t"], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "config", "user.name", "T"], { stdio: "pipe" });
+  };
+
+  it("record → consume → clear round-trips through the git common dir", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-defer-"));
+    initRepo(root);
+    const written = await recordDeferredRegen({
+      workspaceRoot: root,
+      exec: gitExec,
+      movedPaths: ["docs/rfcs/rfc-1.md", "docs/rfcs/archive/rfc-1.md"],
+      owners: [
+        {
+          command: "rfc.index.generate",
+          flags: { write: true },
+          artifactPaths: ["docs/rfcs/index.yaml"],
+        },
+      ],
+    });
+    expect(written).not.toBeNull();
+    const consumed = await consumeDeferredRegen({ workspaceRoot: root, exec: gitExec });
+    expect(consumed?.record.owners.map((o) => o.command)).toEqual(["rfc.index.generate"]);
+    expect(consumed?.record.movedPaths).toContain("docs/rfcs/rfc-1.md");
+    clearDeferredRegen(consumed!.file);
+    expect(await consumeDeferredRegen({ workspaceRoot: root, exec: gitExec })).toBeNull();
+  });
+
+  it("a second archive run merges owners instead of clobbering the record", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-defer-merge-"));
+    initRepo(root);
+    await recordDeferredRegen({
+      workspaceRoot: root,
+      exec: gitExec,
+      movedPaths: ["docs/rfcs/rfc-1.md"],
+      owners: [{ command: "rfc.index.generate", flags: {}, artifactPaths: [] }],
+    });
+    await recordDeferredRegen({
+      workspaceRoot: root,
+      exec: gitExec,
+      movedPaths: ["docs/adrs/adr-2.md"],
+      owners: [
+        { command: "rfc.index.generate", flags: { write: true }, artifactPaths: [] },
+        { command: "ecosystem.manifest.generate", flags: {}, artifactPaths: [] },
+      ],
+    });
+    const consumed = await consumeDeferredRegen({ workspaceRoot: root, exec: gitExec });
+    expect(consumed?.record.owners.map((o) => o.command)).toEqual([
+      "rfc.index.generate",
+      "ecosystem.manifest.generate",
+    ]);
+    expect(consumed?.record.movedPaths).toEqual(
+      expect.arrayContaining(["docs/rfcs/rfc-1.md", "docs/adrs/adr-2.md"]),
+    );
+  });
+
+  it("AC-2: an untracked-and-missing pathspec is caught before staging", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-unstageable-"));
+    initRepo(root);
+    mkdirSync(path.join(root, "docs"), { recursive: true });
+    writeFileSync(path.join(root, "docs/a.md"), "# a\n");
+    execFileSync("git", ["-C", root, "add", "."], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "init"], { stdio: "pipe" });
+    const unstageable = await findUnstageablePaths({
+      paths: ["docs/a.md", "missions/m-1/close-report.json"],
+      workspaceRoot: root,
+      exec: gitExec,
+      exists: (relPath) => Promise.resolve(existsSync(path.join(root, relPath))),
+    });
+    expect(unstageable).toEqual(["missions/m-1/close-report.json"]);
+    // And nothing was staged — the index is untouched.
+    const status = execFileSync("git", ["-C", root, "status", "--porcelain"], {
+      encoding: "utf8",
+    });
+    expect(status.trim()).toBe("");
+  });
+
+  it("AC-4: a staged-prune + worktree-HEAD path surfaces the git show : remediation", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-mm-"));
+    initRepo(root);
+    writeFileSync(path.join(root, "pnpm-lock.yaml"), "lock:1\n");
+    execFileSync("git", ["-C", root, "add", "."], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "init"], { stdio: "pipe" });
+    // F-0245 mechanism: stage a modification (the importer prune), then the
+    // worktree restore puts HEAD bytes back — index and worktree diverge.
+    writeFileSync(path.join(root, "pnpm-lock.yaml"), "lock:pruned\n");
+    execFileSync("git", ["-C", root, "add", "pnpm-lock.yaml"], { stdio: "pipe" });
+    writeFileSync(path.join(root, "pnpm-lock.yaml"), "lock:1\n");
+    const warnings = await sweepMmResidue({
+      paths: ["pnpm-lock.yaml"],
+      workspaceRoot: root,
+      exec: gitExec,
+    });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("git show :pnpm-lock.yaml > pnpm-lock.yaml");
+  });
+
+  it("a clean bookkeeping set sweeps no warnings", async () => {
+    const root = mkdtempSync(path.join(tmpdir(), "docs-archive-clean-"));
+    initRepo(root);
+    writeFileSync(path.join(root, "a.md"), "# a\n");
+    execFileSync("git", ["-C", root, "add", "."], { stdio: "pipe" });
+    execFileSync("git", ["-C", root, "commit", "-qm", "init"], { stdio: "pipe" });
+    const warnings = await sweepMmResidue({
+      paths: ["a.md"],
+      workspaceRoot: root,
+      exec: gitExec,
+    });
+    expect(warnings).toEqual([]);
   });
 });
