@@ -20,17 +20,24 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
-  <item>RFC-1589: run the integration gate outside the integration lock</item>
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1598: generated-conflict auto-resolve runs the owner generator inside a detached checked-out side (theirs → ours → take-theirs deferral), never the mixed mid-rebase index (RFC-1598)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
-  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574</history>
+  <item>RFC-1602: defer docs.archive owner-regen to the integrate fold and stage bookkeeping atomically
+
+docs.archive recorded ~12-minute inline owner regen blocking session end
+(F-0212) and left pnpm-lock.yaml MM after its safety-net restore (F-0245).
+The invalidated owner inventory now lands in .git/forge/deferred-regen.json
+for flow.integrate's post-rebase fold to sweep (record cleared only when
+every owner ran); bookkeeping pathspecs are validated before the first
+git add, the lockfile restore gained its index-side counterpart, and a
+post-staging sweep surfaces MM residue with the git show : remediation.
+
+RFC-1602</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574, RFC-1580, RFC-1589</history>
 </CHANGE_SUMMARY>
 */
 
@@ -98,6 +105,7 @@ import {
   type PostRebaseRegenResult,
 } from "../post-rebase-regen.ts";
 import { standaloneInvoke } from "../standalone-invoke.ts";
+import { clearDeferredRegen, consumeDeferredRegen } from "../../core/archive-regen.ts";
 import { preserveTaskFiles } from "../task-files.ts";
 import { flowWorktreePath, primaryWorktree } from "../worktree-path.ts";
 import { pruneReservationsForSession } from "../../rfc/next-id.ts";
@@ -939,6 +947,33 @@ async function integrateFlowBranchAttempt(
     partial: { branch: string; developBefore: string; rebased: boolean },
   ): Promise<PostRebaseRegenResult | FlowIntegrateData | null> => {
     const owners = await postRebaseOwners(worktree, io);
+    // RFC-1602: docs.archive defers its invalidated owner inventory into
+    // .git/forge/deferred-regen.json — the fold sweeps it here so the
+    // archive command returns in seconds. Deferred owners carry their
+    // recorded flags; their full artifact path set joins the owned set.
+    const deferred = await consumeDeferredRegen({
+      workspaceRoot: worktree,
+      exec: (command, args, cmdOpts) => io.exec(command, args, { cwd: worktree, ...cmdOpts }),
+    });
+    const extraOwnedPaths: string[] = [];
+    if (deferred) {
+      for (const owner of deferred.record.owners) {
+        const ownedPaths = owner.artifactPaths.filter((p) => !p.includes("*"));
+        extraOwnedPaths.push(...ownedPaths);
+        if (!owners.some((o) => o.command === owner.command)) {
+          owners.push({
+            path: ownedPaths[0] ?? owner.command,
+            command: owner.command,
+            flags: owner.flags,
+          });
+        }
+      }
+      owners.sort(
+        (a, b) =>
+          Number(a.command === "ecosystem.manifest.generate") -
+          Number(b.command === "ecosystem.manifest.generate"),
+      );
+    }
     if (owners.length === 0) return null;
     // RFC-1597 (F-0273): the kernel invoke port runs owner commands at the
     // CALLER's workspace root — for flow.cut and any primary-side integrate
@@ -966,11 +1001,24 @@ async function integrateFlowBranchAttempt(
       io,
       invoke: invoker,
       owners,
+      extraOwnedPaths,
       onProgress: opts.onProgress,
       ...(notRunnable ? { notRunnable } : {}),
     });
     if ("refused" in regen) {
       return refuse("FLOW-INT-12", regen.message, regen.fixHint, partial);
+    }
+    // Consume the record only when every deferred owner actually ran — a
+    // notRunnable-skipped owner keeps the record for a runnable fold.
+    if (deferred) {
+      const pending = deferred.record.owners.filter((o) => !regen.ran.includes(o.command));
+      if (pending.length === 0) {
+        clearDeferredRegen(deferred.file);
+      } else {
+        opts.onProgress?.(
+          `deferred regen: ${pending.map((o) => o.command).join(", ")} skipped here — record kept for a runnable fold`,
+        );
+      }
     }
     return regen;
   };
