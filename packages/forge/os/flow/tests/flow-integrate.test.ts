@@ -11,12 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1598: refuse-before-staging index guard + checked-out-side generated-conflict resolver (RFC-1598)</item>
   <item>RFC-1600: require declaration context in the integrate dup-id scan and resolve real friction ids (F-0286)</item>
   <item>RFC-1600: ignore generated projections in the FLOW-INT-19 duplicate-id scan</item>
-  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1600</history>
+  <item>RFC-1600: keep FLOW-INT-19 fixture ids outside the live rule range (RFC-1600)</item>
+  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1209,16 +1209,14 @@ describe("FLOW-INT-19 — duplicate governance ids on the branch (RFC-1600)", ()
     await mkdir(join(repo, "packages/x"), { recursive: true });
     await commitIn(repo, "packages/x/a.ts", 'const rules = [{ id: "FLOW-INT-25" }];\nexport {};\n');
     await mkdir(join(repo, "docs"), { recursive: true });
-    await commitIn(
-      repo,
-      "docs/validator-inventory.generated.yaml",
-      "rules:\n  - id: FLOW-INT-01\n",
-    );
+    // Fixture rule ids stay outside the live FLOW-INT range — this file is
+    // itself scanned by FLOW-INT-19 when it lands.
+    await commitIn(repo, "docs/validator-inventory.generated.yaml", "rules: []\n");
     const session = await openSession(repo, "inventory-catch-up");
     await commitIn(
       session.worktree!,
       "docs/validator-inventory.generated.yaml",
-      "rules:\n  - id: FLOW-INT-01\n  - id: FLOW-INT-25\n",
+      "rules:\n  - id: FLOW-INT-25\n",
     );
 
     const data = await integrateFlowBranch(repo, ambientIo, {
