@@ -14,7 +14,6 @@ closed by the RFC: adding a check requires an amendment.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0129: F-0186/F-0187 — FLOW-INT-03 names paths + three-way remedy, FLOW-OPEN-01 same hint, forge CLI kernel-command hint</item>
   <item>RFC-0000: skip rfc-0000 template in integrate preflight id extraction; regen ecosystem manifest; file F-0207</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
@@ -48,7 +47,8 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
 - werkstatt-engine extract excludes build-input-set.test.ts (reads the
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
-  <history>ADR-0130, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <history>ADR-0129, ADR-0130, RFC-1528, RFC-1531, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -73,6 +73,8 @@ import {
   type DirtyClass,
 } from "./dirty-classify.ts";
 import { currentBranch, git, statusTracked, worktreeList } from "./git.ts";
+import { computeForeignDirt, type ForeignDirtEntry } from "./primary-dirt.ts";
+import { commonGitDir } from "./registry.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { claimCoversPath, liveClaims, type OpClaim } from "./ops-registry.ts";
 
@@ -876,6 +878,9 @@ export interface IntegratePreflightResult {
   /** RFC-1537: regenerable dirt tolerated on this run — journaled, never
    * committed or silently absorbed. */
   tolerated: ToleratedEntry[];
+  /** RFC-1599: primary-checkout dirt while a live session worktree exists —
+   * surfaced as a warning diagnostic by the handler, never a refusal. */
+  foreignDirt?: ForeignDirtEntry[];
   refuse?: PreflightRefuse;
 }
 
@@ -1017,11 +1022,27 @@ export async function runIntegratePreflight(
   const waitForeignMs = Math.max(0, (opts.waitForeignSeconds ?? 600) * 1000);
   const foreignDeadline = Date.now() + waitForeignMs;
   let primaryClean = false;
+  // RFC-1599: primary dirt rows with live-session attribution — surfaced as
+  // the FLOW-INT-20 warning on the pass path and carried in the FLOW-INT-03
+  // refusal data; never itself a refusal input (FLOW-INT-03 owns that).
+  let foreignDirt: ForeignDirtEntry[] = [];
+  let commonForDirt: string | null = null;
   for (;;) {
     const primaryDirty = await deps.runStatusTracked(opts.primary, io);
     if (primaryDirty.entries.length === 0) {
       primaryClean = true;
+      foreignDirt = [];
       break;
+    }
+    try {
+      commonForDirt ??= await commonGitDir(io, opts.primary);
+      foreignDirt = await computeForeignDirt(
+        commonForDirt,
+        primaryDirty.entries.map((e) => e.slice(3)),
+        io,
+      );
+    } catch {
+      foreignDirt = [];
     }
     const verdict = await classifyDirt(
       opts.primary,
@@ -1106,6 +1127,7 @@ export async function runIntegratePreflight(
               startedAt: f.holder.startedAt,
             })),
             toleratedDirt: verdict.tolerated,
+            ...(foreignDirt.length > 0 ? { foreignDirt } : {}),
             ...(lockfile !== null ? { lockfileClassification: lockfile } : {}),
           },
         },
@@ -1252,7 +1274,13 @@ export async function runIntegratePreflight(
     }
   }
 
-  return { ok: true, checked, skipped, tolerated };
+  return {
+    ok: true,
+    checked,
+    skipped,
+    tolerated,
+    ...(foreignDirt.length > 0 ? { foreignDirt } : {}),
+  };
 }
 
 // ── RFC-1538: generated-conflict classification ──────────────────────────

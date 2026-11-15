@@ -16,9 +16,12 @@ hooks/worktree-setup.sh.</purpose>
   <item>NN is kind-agnostic: the highest NN for today's date across every auto name source — the daily sequence stays unique regardless of kind (RFC literal).</item>
   <item>Branch-name collisions on `worktree add -b` retry with the next NN at most 3 times — the NN race between parallel opens resolves without a lock held across git calls.</item>
   <item>A failed setup script is reported, never rolled back — the worktree and registry entry stay, and the command exits 1 (DNA-106).</item>
+  <item>RFC-1599's sweep + mid-operation refusal is opt-in via FlowOpenCoreOptions.sweepPrimary — only the flow.open command path sets it; internal opens (flow.cut release, flow.fix, backmerge port) keep the RFC-1536 warn-only contract because their branches must never adopt unrelated uncommitted paths.</item>
+  <item>Untracked repo-identity files (forge.yaml, forge.generated.yaml) are never swept — moving an in-flight adoption marker would demote the primary to ungoverned until the session integrates (detectRepoKind keys on the file itself); tracked modifications still sweep, leaving the committed base behind.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
+  <item>RFC-1599: FLOW-OPEN-01 becomes the documented sweep — every tracked-dirt + non-ignored-untracked path moves into the new worktree's index and the primary restores to HEAD via checkout-index; a mid-operation primary (merge/rebase/cherry-pick) refuses without mutating either checkout</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1536: evidence — routing/warning tests, FLOW-OPEN-10 validation renumber, owning-worktree doc rule, frictions F-0091/F-0096/F-0106/F-0119 addressed</item>
   <item>RFC-1533: pending-branch summary + primaryMutations on the result; FLOW-OPEN-02 freed for the registry-unreadable warning (refusal renumbered to FLOW-OPEN-11)</item>
@@ -47,6 +50,13 @@ import {
 } from "../git.ts";
 import { formatFlowBranch, parseFlowBranch, type FlowBranchKind } from "../branch-name.ts";
 import { FOREIGN_PRIMARY_DIRT_HINT } from "../dirty-classify.ts";
+import {
+  applySweep,
+  detectPrimaryMidOperation,
+  enumerateSweepPlan,
+  type SweepPlan,
+  type SweepResult,
+} from "../primary-dirt.ts";
 import { LockTimeoutError } from "../locks.ts";
 import { detectRepoKind } from "../repo-kind.ts";
 import {
@@ -93,6 +103,12 @@ export interface FlowOpenCoreOptions {
   port?: { mainSha: string; tags: string[] };
   /** Journal event for the open — "open" normally, "fix" for flow.fix. */
   journalEvent?: "open" | "fix";
+  /** RFC-1599: sweep all primary dirt into the new worktree's index and refuse
+   * on a mid-operation primary (merge/rebase/cherry-pick). Only the flow.open
+   * command surface opts in — internal opens (flow.cut release, flow.fix,
+   * backmerge ports) keep the RFC-1536 warn-only contract because their
+   * branches must never adopt unrelated uncommitted paths. */
+  sweepPrimary?: boolean;
 }
 
 export interface FlowOpenData {
@@ -106,6 +122,10 @@ export interface FlowOpenData {
   /** RFC-1533: tracked-dirty paths in the primary at open time (the sweep's
    * input — empty when clean or already refused before the status read). */
   primaryMutations: string[];
+  /** RFC-1599: the sweep outcome — paths moved into the worktree's index and
+   * per-path refusals left in the primary; null on dry-run, refusals, and
+   * non-sweep internal opens. */
+  sweep: SweepResult | null;
   /** RFC-1533: registered siblings excluding the branch just opened;
    * null when the registry could not be read for the summary (FLOW-OPEN-02). */
   pending: {
@@ -126,6 +146,7 @@ function refuse(ruleId: string, message: string, fixHint: string): FlowOpenData 
     opened: false,
     setup: null,
     primaryMutations: [],
+    sweep: null,
     pending: null,
     diagnostics: [{ ruleId, severity: "error", message, fixHint }],
   };
@@ -174,6 +195,7 @@ export async function openFlowBranch(
     owner: { kind: opts.kind, id: opts.owner ?? "unspecified" },
     dryRun: opts.dryRun,
     now: opts.now,
+    sweepPrimary: true,
   });
 }
 
@@ -232,13 +254,34 @@ export async function openFlowBranchCore(
   const primary = await primaryWorktree(io, repoRoot);
   const common = await commonGitDir(io, repoRoot);
 
-  // RFC-1536/RFC-1533 FLOW-OPEN-01: warn when the primary checkout carries
-  // tracked mutations — the sweep does NOT move them into the worktree.
-  // Warning severity, exit code unchanged; the same diagnostic fires at
-  // flow.check so the condition is visible between opens.
+  // RFC-1599: only the flow.open surface sweeps — internal opens keep the
+  // RFC-1536 warn-only contract (FLOW-OPEN-01 warning, no mutation).
+  const sweepPrimary = opts.sweepPrimary === true;
   const dirtyPrimaryDiags: Diagnostic[] = [];
+  let sweepPlan: SweepPlan = { entries: [], trackedPaths: [], toleratedState: [] };
   let primaryMutations: string[] = [];
-  {
+  if (sweepPrimary) {
+    // FLOW-OPEN-01: a mid-operation primary (merge/rebase/cherry-pick in
+    // flight) refuses — sweeping uncommitted state would corrupt the
+    // operation. Zero mutation on this path.
+    const midOp = await detectPrimaryMidOperation(common, io);
+    if (midOp !== null) {
+      return refuse(
+        "FLOW-OPEN-01",
+        `primary checkout is mid-${midOp} — sweeping uncommitted state would corrupt the in-flight operation`,
+        `finish or abort the ${midOp} in the primary first; to keep paths for a session, copy them into the session worktree and restore the primary copy with git show HEAD:<path> > <path>`,
+      );
+    }
+    // Enumerate the sweep input once — tracked composite state plus
+    // non-ignored untracked files. The sweep itself runs after `worktree add`
+    // inside the attempt loop, on the winning worktree only.
+    sweepPlan = await enumerateSweepPlan(primary, io);
+    primaryMutations = sweepPlan.trackedPaths;
+  } else {
+    // RFC-1536/RFC-1533 FLOW-OPEN-01 (internal callers): warn when the primary
+    // checkout carries tracked mutations — the sweep does NOT move them into
+    // the worktree. Warning severity, exit code unchanged; the same
+    // diagnostic fires at flow.check so the condition is visible between opens.
     const primaryStatus = await statusTracked(primary, io);
     if (!primaryStatus.vanished) {
       primaryMutations = primaryStatus.entries.map((e) => e.slice(3));
@@ -378,6 +421,17 @@ export async function openFlowBranchCore(
 
     if (opts.dryRun) {
       const pending = await pendingSummary(name);
+      // Command-path dry-run previews the sweep — the same FLOW-OPEN-01
+      // visibility the warn-only path gives internal callers.
+      const previewDiags: Diagnostic[] = [];
+      if (sweepPrimary && sweepPlan.entries.length > 0) {
+        previewDiags.push({
+          ruleId: "FLOW-OPEN-01",
+          severity: "warning",
+          message: `primary checkout carries ${sweepPlan.entries.length} uncommitted path(s) — a real open sweeps them into the worktree index`,
+          fixHint: "commit them in the primary first, or let the open stage them on the new branch",
+        });
+      }
       return {
         repoKind: "governed",
         branch: name,
@@ -387,8 +441,9 @@ export async function openFlowBranchCore(
         opened: false,
         setup: { status: "skipped", exitCode: null, stderrTail: "", stdout: "" },
         primaryMutations,
+        sweep: null,
         pending: pending.pending,
-        diagnostics: [...dirtyPrimaryDiags, ...pending.diags],
+        diagnostics: [...dirtyPrimaryDiags, ...previewDiags, ...pending.diags],
       };
     }
 
@@ -460,6 +515,37 @@ export async function openFlowBranchCore(
       throw error;
     }
 
+    // RFC-1599: the documented sweep — every enumerated dirt path moves into
+    // the new worktree's index and the primary restores to HEAD. Runs after
+    // registration so a per-path failure never strands an unregistered
+    // worktree; refused paths stay in the primary under a warning. Internal
+    // callers (sweepPrimary unset) never reach this — sweep stays null.
+    const sweep = sweepPrimary ? await applySweep(primary, worktree, sweepPlan.entries, io) : null;
+    const sweepDiags: Diagnostic[] = [];
+    if (sweep !== null && sweep.swept.length > 0) {
+      const shown = sweep.swept.slice(0, 10);
+      sweepDiags.push({
+        ruleId: "FLOW-OPEN-01",
+        severity: "warning",
+        message:
+          `swept ${sweep.swept.length} path(s) into the worktree index: ${shown.join(", ")}` +
+          (sweep.swept.length > shown.length
+            ? ` (+${sweep.swept.length - shown.length} more)`
+            : "") +
+          " — the primary is clean",
+        fixHint:
+          "the paths stage on the new branch — commit them inside the session worktree or move them back",
+      });
+    }
+    for (const [path, reason] of Object.entries(sweep?.refused ?? {})) {
+      sweepDiags.push({
+        ruleId: "FLOW-OPEN-01",
+        severity: "warning",
+        message: `could not sweep ${path}: ${reason} — it stays in the primary`,
+        fixHint: FOREIGN_PRIMARY_DIRT_HINT,
+      });
+    }
+
     const setup = await runFlowScript(io, "worktree-setup", {
       primary,
       cwd: worktree,
@@ -487,8 +573,15 @@ export async function openFlowBranchCore(
       opened: true,
       setup,
       primaryMutations,
+      sweep,
       pending: pending.pending,
-      diagnostics: [...dirtyPrimaryDiags, ...pending.diags, ...rerereDiags, ...setupDiag],
+      diagnostics: [
+        ...dirtyPrimaryDiags,
+        ...pending.diags,
+        ...rerereDiags,
+        ...setupDiag,
+        ...sweepDiags,
+      ],
     };
   }
   return refuse(

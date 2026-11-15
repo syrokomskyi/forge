@@ -11,10 +11,11 @@ lastCommitAt/stale/held fields matching the RFC's example shape.</purpose>
   <item>RFC-1487: step 5 — flow.status tests</item>
   <item>RFC-1487: step 5 — flow.discard, flow.status, flow.check FLOW-06/07</item>
   <item>RFC-1515: close rfc-1515 review findings — delete tolerated paths before worktree remove, prune vanished registrations, verified branch -D, shared held-lock render, gated e2e throw, journal toleratedState, edge tests</item>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
 </CHANGE_SUMMARY>
 */
 
-import { rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -119,5 +120,57 @@ describe("flow.status", () => {
     expect(row?.worktreeExists).toBe(false);
     expect(row?.vanished).toBe(true);
     expect(row?.dirty).toBeNull();
+  }, 15_000);
+
+  it("surfaces foreignDirt on the primary row with session attribution (RFC-1599 AC-4)", async () => {
+    const repo = await initRepo({ prefix: "flow-status-dirt-" });
+    dirs.push(repo);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await writeFile(join(repo, "docs", "rfcs", "rfc-1599-a.md"), "x\n");
+    await writeFile(join(repo, "notes.txt"), "n\n");
+    await gitExec(repo, ["add", "-A"]);
+    await gitExec(repo, ["commit", "-m", "seed"]);
+    await gitExec(repo, ["branch", "develop", "HEAD"]);
+    await gitExec(repo, ["switch", "develop"]);
+
+    const session = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "dirt",
+      brief: "implement RFC-1599",
+      owner: null,
+      dryRun: false,
+      now: NOW,
+    });
+    dirs.push(session.worktree!);
+
+    // Tracked primary mutations while the session worktree lives — the row
+    // carrying the brief's governance token attributes to the session; the
+    // token-less path reports owningSession: null.
+    await writeFile(join(repo, "docs", "rfcs", "rfc-1599-a.md"), "dirty\n");
+    await writeFile(join(repo, "notes.txt"), "dirty\n");
+
+    const outcome = await collectFlowStatus(repo, ambientIo, { now: NOW });
+    expect(outcome.data.primary.clean).toBe(false);
+    const rows = outcome.data.primary.foreignDirt;
+    expect(rows).toHaveLength(2);
+    expect(rows.find((r) => r.path === "docs/rfcs/rfc-1599-a.md")?.owningSession).toBe(
+      session.branch,
+    );
+    expect(rows.find((r) => r.path === "notes.txt")?.owningSession).toBeNull();
+  }, 20_000);
+
+  it("reports an empty foreignDirt when the primary is clean (RFC-1599 AC-4)", async () => {
+    const repo = await initRepo({ prefix: "flow-status-clean-" });
+    dirs.push(repo);
+    await writeFile(join(repo, "forge.yaml"), 'schema: "forge/workspace@1"\n');
+    await gitExec(repo, ["add", "forge.yaml"]);
+    await gitExec(repo, ["commit", "-m", "marker"]);
+    await gitExec(repo, ["branch", "develop", "HEAD"]);
+    await gitExec(repo, ["switch", "develop"]);
+
+    const outcome = await collectFlowStatus(repo, ambientIo, { now: NOW });
+    expect(outcome.data.primary.clean).toBe(true);
+    expect(outcome.data.primary.foreignDirt).toEqual([]);
   }, 15_000);
 });

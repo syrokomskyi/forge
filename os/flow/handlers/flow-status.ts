@@ -15,8 +15,6 @@ for both surfaces.</purpose>
   <item>Stray (RFC-1498): a local auto branch with no registry entry and no worktree checkout anywhere is exposed as unregisteredBranchesWithoutWorktree regardless of age — the leftover shape a failed branch -D leaves.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
-  <item>RFC-1491: step 1 — journal base/rewrites + held registry widening, W1-1 discard tip, FLOW-INT-11</item>
   <item>RFC-1498: step 1 — FLOW-07 for stray auto branches
 
 collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* branch names with no registry entry and no worktree checkout anywhere (primary or linked), the shape a failed branch -D leaves behind. flow.check emits one FLOW-07 warning per stray regardless of age: the 72 h rule in FLOW-06 only covered staleness, so a fresh leftover went unreported. The fix hint names flow.status for inspection and flow.discard for teardown, and flags that a branch with unique commits needs a human decision. Tests AC-1 (fresh stray branch reports FLOW-07, not FLOW-06) and AC-2 (a registered session with a live worktree reports none).</item>
@@ -25,7 +23,8 @@ collectFlowStatus exposes unregisteredBranchesWithoutWorktree — local auto/* b
 markerSource accepts only network-shaped origins — http/https/ssh/git schemes or the scp user-at-host form — and returns { source, rejectedOrigin }. A local path or file:// URL falls back to the repository directory basename with rejectedOrigin naming the kind (local-path or file-url), so no machine-local path is ever written into an extract repository marker; embedded credentials are still stripped from network URLs. flow.install resolves the source at plan time, stores it on the plan for the execute phase, and the markers step warns origin rejected (kind) — using the directory name, never printing the path. Tests AC-3 (local path and file:// rejected, basename used, path absent from the step detail) and AC-4 (scp URL kept verbatim, https credentials stripped). Also carries the KEY_DECISIONS compass notes for step 1's stray-branch rule.</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1537: branches[].lastRefusal + derived orphaned flag — the newest integrate-refusal journal event per branch is the discoverable escape path after a refused flow.integrate</item>
-  <history>RFC-1487</history>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <history>RFC-1487, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -58,6 +57,7 @@ import {
   type FlowJournalEvent,
   type FlowRegistryEntry,
 } from "../registry.ts";
+import { computeForeignDirt, type ForeignDirtEntry } from "../primary-dirt.ts";
 import { primaryWorktree } from "../worktree-path.ts";
 
 export interface FlowBranchStatus {
@@ -88,7 +88,16 @@ export interface FlowBranchStatus {
 }
 
 export interface FlowStatusData {
-  primary: { path: string; branch: string | null; clean: boolean };
+  primary: {
+    path: string;
+    branch: string | null;
+    clean: boolean;
+    /** RFC-1599: tracked mutations in the primary while a live session
+     * worktree exists — owningSession names the attributed registry branch
+     * or null when unattributable. Empty when the primary is clean or no
+     * live session exists. */
+    foreignDirt: ForeignDirtEntry[];
+  };
   branches: FlowBranchStatus[];
 }
 
@@ -159,7 +168,8 @@ export async function collectFlowStatus(
     else throw error;
   }
 
-  const developExists = (await git(repoRoot, io, ["rev-parse", "--verify", "-q", "refs/heads/develop"])).exitCode === 0;
+  const developExists =
+    (await git(repoRoot, io, ["rev-parse", "--verify", "-q", "refs/heads/develop"])).exitCode === 0;
   const worktreeByBranch = new Map(
     worktrees.filter((w) => w.branch !== null).map((w) => [w.branch as string, w.path]),
   );
@@ -171,7 +181,9 @@ export async function collectFlowStatus(
   const missingBranchEntries: FlowRegistryEntry[] = [];
   const missingWorktreeEntries: FlowRegistryEntry[] = [];
   const unregisteredWorktrees = worktrees
-    .filter((w) => w.branch !== null && parseFlowBranch(w.branch) !== null && !entryByName.has(w.branch))
+    .filter(
+      (w) => w.branch !== null && parseFlowBranch(w.branch) !== null && !entryByName.has(w.branch),
+    )
     .filter((w) => w.path !== primary)
     .map((w) => w.path);
 
@@ -240,9 +252,7 @@ export async function collectFlowStatus(
       port: entry?.port ?? null,
       lastRefusal: (() => {
         const r = lastRefusalByBranch.get(name);
-        return r === undefined
-          ? null
-          : { rule: r.rule ?? null, at: r.at, summary: r.detail };
+        return r === undefined ? null : { rule: r.rule ?? null, at: r.at, summary: r.detail };
       })(),
       orphaned: lastEventByBranch.get(name)?.event === "integrate-refusal",
     });
@@ -250,7 +260,16 @@ export async function collectFlowStatus(
 
   return {
     data: {
-      primary: { path: primary, branch: primaryBranch, clean: primaryDirty.length === 0 },
+      primary: {
+        path: primary,
+        branch: primaryBranch,
+        clean: primaryDirty.length === 0,
+        foreignDirt: await computeForeignDirt(
+          common,
+          primaryDirty.map((e) => e.slice(3)),
+          io,
+        ),
+      },
       branches,
     },
     diagnostics,

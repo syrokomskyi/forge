@@ -9,9 +9,6 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1573: step 2 — declare flow.cut, flow.backmerge, mission.close detachable
-
-Each runs a long gate (integrateFlowBranch / runMissionValidate); leitstand.ship stays attached (Q-1).</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -20,7 +17,8 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568</history>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573</history>
 </CHANGE_SUMMARY>
 */
 
@@ -270,7 +268,8 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "ecosystem.manifest.validate, scoped rfc.validate, " +
           "friction.validate) refuses before the rebase and the gate " +
           "(RFC-1528). Refusals: FLOW-INT-01..19 (FLOW-INT-19 duplicate " +
-          "governance ids, RFC-1600). RFC-1531 remediation " +
+          "governance ids, RFC-1600). FLOW-INT-20 warns on primary dirt " +
+          "with live-session attribution (RFC-1599). RFC-1531 remediation " +
           "flags: --reattach recreates a vanished worktree, --auto-clean " +
           "deletes closed-class disposable dirt, --autocommit sweeps the " +
           "rest into a fixed-subject commit.",
@@ -296,6 +295,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-INT-17", severity: "error" },
           { id: "FLOW-INT-18", severity: "error" },
           { id: "FLOW-INT-19", severity: "error" },
+          { id: "FLOW-INT-20", severity: "warning" },
           { id: "FLOW-07", severity: "error" },
           { id: "WT-GATE-01", severity: "error" },
         ],

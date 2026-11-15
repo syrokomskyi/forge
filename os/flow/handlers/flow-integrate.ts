@@ -20,9 +20,6 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
-
-flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
   <item>RFC-1574: close review REVIEW-CODE-2026-11-12-05 findings
 
 Step (3b) judges only paths the owner run changed, validates before staging, skips owners not runnable without an engine build, runs ecosystem.manifest.generate last; e2e log write guarded and run-stamped; Unhandled Errors rule out timeout-only; lost-run wait test; publish pre-filter comment. RFC-1574/1575/1576 record DEV-1..8.</item>
@@ -33,7 +30,8 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
-  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545</history>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574</history>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +47,7 @@ import type {
 import { resolveIo } from "../../../src/utils/io.ts";
 import {
   AUTO_CLEAN_PASS_CLASSES,
+  FOREIGN_PRIMARY_DIRT_HINT,
   SWEEP_COMMIT_SUBJECT,
   classifyDirtyPath,
   classifyDirtyTree,
@@ -171,6 +170,26 @@ export interface FlowIntegrateData {
    * decides which rows actually ran. */
   deltaSelection?: DeltaGateSelection;
   diagnostics: Diagnostic[];
+}
+
+/** RFC-1599 FLOW-INT-20: primary tracked dirt coexisting with a live
+ * session — an audit warning on the pass path and beside FLOW-INT-03
+ * refusals; never itself the refusal cause. */
+function foreignDirtWarning(
+  rows: Array<{ path: string; owningSession: string | null }>,
+): Diagnostic {
+  return {
+    ruleId: "FLOW-INT-20",
+    severity: "warning",
+    message:
+      `primary checkout carries ${rows.length} tracked mutation(s) while a live session exists: ` +
+      rows
+        .slice(0, 10)
+        .map((f) => (f.owningSession !== null ? `${f.path} (${f.owningSession})` : f.path))
+        .join(", ") +
+      (rows.length > 10 ? ` (+${rows.length - 10} more)` : ""),
+    fixHint: FOREIGN_PRIMARY_DIRT_HINT,
+  };
 }
 
 function refuse(
@@ -1149,6 +1168,9 @@ async function integrateFlowBranchAttempt(
     // RFC-1537: declared regenerable dirt tolerated on this attempt —
     // surfaced in data + journaled on integrate/refusal, never committed.
     let toleratedDirt: Array<{ path: string; class: string }> = [];
+    // RFC-1599: primary dirt rows with live-session attribution — warning
+    // surfaced in the diagnostics collector below, never a refusal.
+    let foreignDirt: Array<{ path: string; owningSession: string | null }> = [];
     // RFC-1528: bounded preflight — dirty-tree checks with lockfile
     // classification, then the four validators that used to fire only inside
     // the expensive integration gate. Non-port path only (port entries keep
@@ -1168,6 +1190,7 @@ async function integrateFlowBranchAttempt(
         onProgress: opts.onProgress,
       });
       toleratedDirt = preflight.tolerated;
+      foreignDirt = preflight.foreignDirt ?? [];
       for (const skipped of preflight.skipped) {
         opts.onProgress?.(
           skipped.reason === "no-invoke"
@@ -1179,7 +1202,7 @@ async function integrateFlowBranchAttempt(
         opts.onProgress?.(`tolerated regenerable state: ${t.path} (${t.class})`);
       }
       if (!preflight.ok && preflight.refuse) {
-        return refuse(
+        const refusal = refuse(
           preflight.refuse.ruleId,
           preflight.refuse.message,
           preflight.refuse.fixHint,
@@ -1196,6 +1219,15 @@ async function integrateFlowBranchAttempt(
           },
           preflight.refuse.data,
         );
+        // RFC-1599: the same foreignDirt rows that warn on the pass path ride
+        // a FLOW-INT-03 refusal as a warning diagnostic — attribution is
+        // audit, never the refusal's cause.
+        const refusalRows = preflight.refuse.data?.foreignDirt as
+          Array<{ path: string; owningSession: string | null }> | undefined;
+        if (refusalRows !== undefined && refusalRows.length > 0) {
+          refusal.diagnostics.push(foreignDirtWarning(refusalRows));
+        }
+        return refusal;
       }
     } else if (dirty.entries.length > 0) {
       // Port path keeps its own refusal surface but the same regenerable
@@ -1322,6 +1354,9 @@ async function integrateFlowBranchAttempt(
     const { resolveGateEngine } = await import("../gate-engine.ts");
     const engine = await resolveGateEngine(branchWorktree, primary, io);
     const warnings: Diagnostic[] = [];
+    if (foreignDirt.length > 0) {
+      warnings.push(foreignDirtWarning(foreignDirt));
+    }
     if (
       engine.source === "primary" &&
       (await io.exists(join(primary, "hooks", "integration-gate.sh")))
