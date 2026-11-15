@@ -20,9 +20,6 @@ triggerPhrases: ["plan the implementation for this RFC", "create implementation 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1097: sweep — SKILL.md headers + classification fixes
-
-Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from frontmatter description). Fix non-skill-markdown exclusion to check filename not workspace-relative path (packages/AGENTS.md escaped it). Add .coverage to ignoredDirs.</item>
   <item>RFC-1250: review wave — QUEUE-07 gates un-parked opens only, ledger binding checks, fail-closed loader
 
 REVIEW-RFC-1250-01 findings: QUEUE-07 no longer fires on parked entries
@@ -40,7 +37,12 @@ gain collect riders (ADR code-trace, NC markers, audit-verdict guard).</item>
   <item>RFC-1522: defer mid-session rule-file edits and add handoff state checkpoint
 
 fo-idea-implement + fo-idea-plan: rule-file edits collect during plan steps and apply in one pass before rfc.verification.emit (F-0002 — every save re-arms IDE rules re-resolution). fo-handoff: every handoff carries a compact state: YAML block (goal/constraints/verified/changed/validation/rejected/next); dying sessions write it to .agents/memory/daily/<date>.md.</item>
-  <history>RFC-1250</history>
+  <item>RFC-1605: close the skill contract gaps recorded by session frictions (RFC-1605)
+
+- fo-idea-create-rfc: read every overlap hit's Decision before filling the draft
+- fo-idea-plan: draft->accepted requires explicit operator acceptance
+- fo-system-dispatch: document dependsOn stays-proposed gating</item>
+  <history>RFC-1097, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -89,7 +91,7 @@ If all checks pass, proceed to step 0.3.
 
 #### 0.3. Transition draft → accepted
 
-If the RFC is `draft` or `reviewing` and has `enhancedAt` — the user's instruction to plan IS the architecture acceptance. Transition the RFC to `accepted`.
+If the RFC is `draft` or `reviewing` and has `enhancedAt` — the transition to `accepted` requires explicit operator acceptance in the conversation (a "yes, accepted" or equivalent). The planning instruction alone never implies acceptance — same-turn authorship does not count either. Without an explicit operator yes, ask before transitioning.
 
 **Collect mode exception:** inside an orchestrator-driven queue run the `draft → accepted` transition moves to the resolution phase — the answered decision window IS the acceptance act; when the window is skipped (zero `open` entries) the operator's orchestrator invocation is the acceptance act. In collect mode this skill persists the plan as a draft carrying `PENDING DECISION` markers and does NOT transition the RFC; the orchestrator's resolution phase finalizes (integrate answers, lift markers, transition + commit) after the window.
 
