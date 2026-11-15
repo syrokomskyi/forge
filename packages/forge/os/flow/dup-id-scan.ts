@@ -37,13 +37,13 @@ export interface DupIdScanResult {
 
 const GOVERNANCE_DIRS = ["docs/rfcs", "docs/adrs", "docs/frictions"];
 
-/** Canonical id for a governance path — `rfc-1600-x.md` → `RFC-1600`. */
+/** Canonical id for a governance path — `rfc-1600-x.md` → `RFC-1600`, `F-0283.yaml` → `F-0283`. */
 function fileId(relPath: string): string | null {
   const base = relPath.split("/").pop() ?? "";
-  const m = /^(rfc|adr)-(\d{4})-/.exec(base) ?? /^F-(\d{4})[.-]/.exec(base);
-  if (!m) return null;
-  if (m[1] === "rfc" || m[1] === "adr") return `${m[1].toUpperCase()}-${m[2]}`;
-  return `F-${m[3]}`;
+  const m = /^(rfc|adr)-(\d{4})-/.exec(base);
+  if (m) return `${m[1]!.toUpperCase()}-${m[2]}`;
+  const f = /^F-(\d{4})[.-]/.exec(base);
+  return f ? `F-${f[1]}` : null;
 }
 
 /** Rule literals a branch diff may add — matches the RFC-1600 taxonomy. */
@@ -130,6 +130,12 @@ export async function scanDuplicateGovernanceIds(
         continue;
       }
       if (!line.startsWith("+") || line.startsWith("+++")) continue;
+      // Only declaration-position literals allocate a rule id: an `id:`/
+      // `ruleId:` assignment (source `rules:` entries, generated manifest
+      // `- id:` rows). A prose mention ("that is FLOW-INT-01") or a
+      // regenerated catalog row declares nothing — counting it refused
+      // integrations on documentation alone (live F-0286 signature).
+      if (!/\b(?:id|ruleId)\s*[:=]/.test(line)) continue;
       for (const m of line.matchAll(RULE_LITERAL)) {
         const set = added.get(m[1]!) ?? new Set<string>();
         if (set.size === 0) added.set(m[1]!, set);
@@ -137,7 +143,15 @@ export async function scanDuplicateGovernanceIds(
       }
     }
     for (const [literal, branchFiles] of added) {
-      const carriers = await git(repo, io, ["grep", "-l", "-F", literal, base]);
+      // The develop side must also carry the literal in declaration position —
+      // a prose mention there is not an allocation either.
+      const carriers = await git(repo, io, [
+        "grep",
+        "-l",
+        "-E",
+        `(id|ruleId)[[:space:]]*[:=][[:space:]]*["']?${literal}`,
+        base,
+      ]);
       if (carriers.exitCode !== 0) continue; // absent on develop → not a dup
       for (const hit of carriers.stdout
         .split("\n")
