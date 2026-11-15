@@ -13,14 +13,14 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
-  <history>RFC-1486, RFC-1490</history>
+  <item>RFC-1603: key the artifact cache on the copied tree and end mission.close with a converging tail sync</item>
+  <history>RFC-1486, RFC-1490, RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -88,9 +88,17 @@ export async function installFakePrimaryForge(repo: string): Promise<void> {
   await chmod(script, 0o755);
   const exclude = join(repo, ".git", "info", "exclude");
   await mkdir(join(repo, ".git", "info"), { recursive: true });
-  await writeFile(exclude, "node_modules/\n.correctness-gate.json\n.correctness-gate.exit\n", {
-    flag: "a",
-  });
+  // docs/.index/ mirrors the real repo's .gitignore (line ~360): the kernel
+  // counters journal appends docs/.index/checks/counters.jsonl on every
+  // rule-evaluating command — unignored, the flow.open sweep stages it into
+  // the branch tree and the next journal append collides the integrate merge.
+  await writeFile(
+    exclude,
+    "node_modules/\n.correctness-gate.json\n.correctness-gate.exit\ndocs/.index/\n",
+    {
+      flag: "a",
+    },
+  );
 }
 
 /**
