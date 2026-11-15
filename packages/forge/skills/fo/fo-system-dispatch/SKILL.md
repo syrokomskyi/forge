@@ -15,7 +15,12 @@ triggerPhrases: ["dispatch a system task", "run the system queue", "move a task 
 <non-goals>
   <item>Do not work in a product repository — the system agent reads queues and writes briefs, never product code.</item>
 </non-goals>
-</MODULE_CONTRACT>
+<CHANGE_SUMMARY>
+  <item>RFC-1605: close the skill contract gaps recorded by session frictions (RFC-1605)
+
+- document dependsOn stays-proposed gating in the ready step</item>
+  <history>RFC-1512</history>
+</CHANGE_SUMMARY>
 -->
 
 # fo-system-dispatch
