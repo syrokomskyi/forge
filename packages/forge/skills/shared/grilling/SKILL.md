@@ -19,14 +19,12 @@ knowledge:
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1250: two modes — interview (standalone, interactive) and emit
-  (orchestrated runs: questions land in the queue decision ledger with
-  recommended answers, no interview).</item>
   <item>RFC-1455: fixed inputs bound to outcome probes — V-50/V-51 + skills</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
-  <history>RFC-1097</history>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <history>RFC-1097, RFC-1250</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -58,3 +56,5 @@ When an answer fixes an observable value — verbatim copy, a label, a name, a d
 Do not enact the plan until I confirm we have reached a shared understanding.
 
 At the end of the session, perform meta-analysis: identify recurring decision patterns from every shard under `qa-log/` in name order (L0), formulate concrete principles, present to operator for approval, and append approved principles to `learned-principles.md` (L2). Append Q&A pairs to your own session shard `qa-log/<session-id>.md` (L0) during the session — one file per session, never the shared `qa-log.md`.
+
+All knowledge writes resolve under the writing session's own checkout (RFC-1599): walk cwd upward to the nearest `.git` — a gitfile marks the session worktree — and root `.agents/` there, never at a fixed primary path a parallel session shares. When no checkout owns the cwd, write under `.agents-local/` instead.

@@ -26,6 +26,7 @@ Sweep batch 1: add Compass v2 headers to 45 SKILL.md files (purpose derived from
   <item>RFC-1468: bind authz-relevant knowledge to authoritative sources — knowledge.rebuild + knowledge.authz.probe, KAUTHZ-01..03</item>
   <item>RFC-1481: sync namespaces, rollout, and verification guidance</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
 </CHANGE_SUMMARY>
 -->
 
@@ -161,6 +162,7 @@ See `writing-great-skills` § Cumulative knowledge pattern for the three-layer r
 ## Constraints
 
 - **Operator approval on every mutation.** Never write to a knowledge file without explicit approval for each entry.
+- **Owning-checkout binding (RFC-1599).** Every knowledge write resolves under the writing session's own checkout: walk cwd upward to the nearest `.git` (a gitfile marks the session worktree) and root `.agents/` there — never at a fixed primary path a parallel session shares. When no checkout owns the cwd, write under `.agents-local/` instead.
 - **Serializer only.** Always use `serializeKnowledgeFile` from the forge knowledge module. Never string-splice markdown.
 - **No semantic logic in command handlers.** The `skill.knowledge.compact` command handles mechanical archival only. Semantic grouping and promotion live in this skill.
 - **No LLM logic in `src/knowledge/`.** Deterministic planning only; meaning work lives here.

@@ -11,7 +11,6 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
   <item>RFC-1544: attribute mission lockfile churn to owning checkout and auto-resolve foreign importer diffs (RFC-1544)</item>
   <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
@@ -20,7 +19,8 @@ flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tr
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
-  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1545, RFC-1546</history>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1049,5 +1049,72 @@ describe("FLOW-INT-19 — duplicate governance ids on the branch (RFC-1600)", ()
 
     expect(data.diagnostics.filter((d) => d.ruleId === "FLOW-INT-19")).toEqual([]);
     expect(data.integrated).toBe(true);
+  }, 30_000);
+});
+
+describe("RFC-1599 foreignDirt — primary mutations audited beside a live session", () => {
+  it("carries the attributed rows in the FLOW-INT-03 refusal data plus a FLOW-INT-20 warning", async () => {
+    const repo = await governedRepo();
+    const session = await openFlowBranch(repo, ambientIo, {
+      kind: "session",
+      slug: "dirt-owner",
+      brief: "RFC-1599 audit",
+      owner: null,
+      dryRun: false,
+      now: NOW,
+    });
+    dirs.push(session.worktree!);
+    await commitIn(session.worktree!, "a.txt", "a");
+    // Tracked primary dirt on develop — unattributed work refuses FLOW-INT-03;
+    // the audit rows attribute the token-carrying path to the session.
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await commitIn(repo, "docs/rfcs/rfc-1599-a.md", "v1\n");
+    await writeFile(join(repo, "docs/rfcs/rfc-1599-a.md"), "dirty\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      waitForeignSeconds: 0,
+    });
+
+    expect(data.integrated).toBe(false);
+    const refusal = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-03");
+    expect(refusal?.severity).toBe("error");
+    const rows = refusal?.data?.foreignDirt as
+      { path: string; owningSession: string | null }[] | undefined;
+    expect(rows).toEqual([{ path: "docs/rfcs/rfc-1599-a.md", owningSession: session.branch }]);
+    const warning = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-20");
+    expect(warning?.severity).toBe("warning");
+    expect(warning?.message).toContain("docs/rfcs/rfc-1599-a.md");
+    expect(warning?.message).toContain(session.branch!);
+  }, 30_000);
+
+  it("warns FLOW-INT-20 without refusing when all primary dirt is twin-sync tolerated", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "twindirt");
+    await commitIn(session.worktree!, "a.txt", "a");
+    // Committed twin + canonical, then the primary's twin edit byte-matches
+    // the canonical — skill-twin-sync tolerated dirt: audit warns, no refusal.
+    await mkdir(join(repo, ".agents", "skills", "fo-x"), { recursive: true });
+    await mkdir(join(repo, "packages", "forge", "skills", "fo", "fo-x"), {
+      recursive: true,
+    });
+    await commitIn(repo, ".agents/skills/fo-x/SKILL.md", "v1\n");
+    await commitIn(repo, "packages/forge/skills/fo/fo-x/SKILL.md", "v2\n");
+    await writeFile(join(repo, ".agents/skills/fo-x/SKILL.md"), "v2\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      waitForeignSeconds: 0,
+    });
+
+    expect(data.integrated).toBe(true);
+    const warning = data.diagnostics.find((d) => d.ruleId === "FLOW-INT-20");
+    expect(warning?.severity).toBe("warning");
+    expect(warning?.message).toContain(".agents/skills/fo-x/SKILL.md");
+    expect(data.diagnostics.some((d) => d.severity === "error")).toBe(false);
   }, 30_000);
 });

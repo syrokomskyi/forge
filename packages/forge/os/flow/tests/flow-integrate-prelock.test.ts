@@ -36,6 +36,7 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - build-verification policy states blocking rules are probed or retired;
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -161,6 +162,10 @@ async function installFakeGate(
   lines.push("exit 0", "");
   await mkdir(join(repo, "hooks"), { recursive: true });
   await writeFile(join(repo, "hooks", "integration-gate.sh"), lines.join("\n"));
+  // Committed so the RFC-1599 flow.open sweep leaves the gate in the primary —
+  // an uncommitted hook would legitimately move into the session worktree.
+  await gitExec(repo, ["add", "hooks/integration-gate.sh"]);
+  await gitExec(repo, ["commit", "-m", "install fake gate"]);
 }
 
 async function logLines(log: string): Promise<string[]> {
