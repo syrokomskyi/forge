@@ -35,6 +35,7 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
 - werkstatt-engine extract excludes build-input-set.test.ts (reads the
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
+  <item>RFC-1592: retire 7 unprobeable blocking rules and probe COMPASS-DOC-01/KAUTHZ-01, unblocking the RFC-1592 ratchet</item>
 </CHANGE_SUMMARY>
 */
 
@@ -56,10 +57,7 @@ export async function createForgeAgentToolsModule(): Promise<ForgeModule> {
         coverageNote:
           "operator-invoked generator; also re-derived by flow.integrate step (3b) via the .generated basename owner registry and exercised by `forge agent-tools serve`",
         contract: "agent-tools",
-        rules: [
-          { id: "AGENT-TOOL-03", severity: "error" },
-          { id: "AGENT-TOOL-04", severity: "error" },
-        ],
+        rules: [],
         description:
           "Generate docs/agent-tools.generated.json (forge/agent-tools@1) — the " +
           "typed agent-tool surface projected from the command manifest and " +

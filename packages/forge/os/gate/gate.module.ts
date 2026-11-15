@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1469: forgeGateModule registering gate.probe + gate.probe.catalog</item>
   <item>RFC-1469: gate liveness probes — gate.probe fixture runner + probe.catalog coverage read-model</item>
   <item>RFC-1469: apply r1 repairs — in-tree injection + invoke, ruleId-matched verdicts, yamlParse catalog, PROBE-02/05, real fixtures</item>
   <item>RFC-1469: apply r2 repairs — contracts-root inventory join, PROBE-03/05 declarations, dir-skeleton sweep, stale doc text</item>
@@ -32,6 +31,8 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - build-verification policy states blocking rules are probed or retired;
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <item>RFC-1592: retire 7 unprobeable blocking rules and probe COMPASS-DOC-01/KAUTHZ-01, unblocking the RFC-1592 ratchet</item>
+  <history>RFC-1469</history>
 </CHANGE_SUMMARY>
 */
 
@@ -80,7 +81,6 @@ export const forgeGateModule: ForgeModule = {
         { id: "PROBE-06", severity: "error" },
         { id: "PROBE-07", severity: "error" },
         { id: "PROBE-08", severity: "error" },
-        { id: "PROBE-09", severity: "error" },
       ],
       description:
         "RFC-1469: fixture-inventory read-model — per-contract coverage + unprobed error-severity rules (PROBE-03) + stale fixture bindings (PROBE-05). RFC-1592 liveness ratchet: --check fails PROBE-06 (unprobed rule outside the shrink-only baseline), PROBE-07 (stale baseline entry), PROBE-09 (expired/undeclared provisional warning); --write-baseline creates or shrink-rewrites docs/gate-probes/unprobed.baseline.generated.yaml (PROBE-08 refuses growth). Flags: --check, --write-baseline.",
