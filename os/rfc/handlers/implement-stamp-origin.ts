@@ -17,12 +17,14 @@ verificationTier: high RFC.
   <item>The high-tier evidence gate severity stays a module constant until the acceptance-report layer lands non-self evidence.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1333: steps 1-3 — report contract, rfc.verify.workspace export, RFC-IMP-12 gate, RFC-IMP-11 blocking</item>
   <item>RFC-1333: CX-1/CX-2 fixes — docs/** binding, waiver covers a missing report, IMP-12 for probe-less RFCs; merge-aware fail-closed binding.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1483: self-sufficient implement stamp — default repair pass, ordered remediation checklist, --no-repair</item>
   <item>RFC-1485: sweep compass headers — forge-os-rfc</item>
-  <history>RFC-1330</history>
+  <item>RFC-1601: ledger writers assign + refusals teach the violated rule (RFC-1601)
+
+FRICTION-11 flags any out-of-vocabulary friction field value at validate, naming field+value+closed set — the mechanical detector for hand-edit corruption (F-0206/F-0244). queue.decision is the new decision-ledger writer: schema-gated append stamping createdAt/answeredAt, next-free Q-id default, QUEUE-05/QUEUE-DEC-01 refusals carrying the minimal shape. ecosystem.commit --rfc/--adr normalize bare digits or refuse EC-35 with the format statement — the F-0248 silent-injection-skip class is closed, and a summary-record failure now names the id + skipped injection. RFC-IMP-10 refusal leads with the rule statement; pipeline conventions and guides point at the command write path.</item>
+  <history>RFC-1330, RFC-1333</history>
 </CHANGE_SUMMARY>
 */
 
@@ -87,7 +89,8 @@ export function evaluateOriginGates(input: OriginGateInput): OriginGateResult {
       errors.push({
         rule: "RFC-IMP-10",
         message:
-          `${input.targetId} ${describeProbe(probe, i)} declares expectationSource "${origin.declared}" but git derives it self ` +
+          `expectationSource: a probe running a command this RFC declares must be "self" — ` +
+          `${input.targetId} ${describeProbe(probe, i)} declares "${origin.declared}" but git derives it self ` +
           `(${origin.reason.join("; ")}). Correct the declaration to "self", or obtain non-self evidence — never rewrite history.`,
         fixHint: `correct the expectationSource declaration to "self", or bind genuinely non-self evidence — never rewrite history`,
       });

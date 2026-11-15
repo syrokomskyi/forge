@@ -13,14 +13,14 @@ pass (lazy creation).
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1433: review realignment — expectations remapped to the spec's
-  failure-modes table; new fixtures for signature normalization and
-  artifact-path existence.</item>
   <item>RFC-1433: r2 review — absent required fields → FRICTION-01,
   non-ENOENT read failure, and honest entries count on schema failure.</item>
   <item>RFC-1460: recurring frictions escalate to mechanical measures — FRICTION-06/07/08, registry flips, session-retro escalation</item>
   <item>RFC-1460: address review r1 findings — F-0007 obligation token, escalated-match autopsy branch, FRICTION-08 path-shape + governance-doc inference</item>
   <item>RFC-1590: store append-only shared ledgers as one file per record</item>
+  <item>RFC-1601: ledger writers assign + refusals teach the violated rule (RFC-1601)
+
+FRICTION-11 flags any out-of-vocabulary friction field value at validate, naming field+value+closed set — the mechanical detector for hand-edit corruption (F-0206/F-0244). queue.decision is the new decision-ledger writer: schema-gated append stamping createdAt/answeredAt, next-free Q-id default, QUEUE-05/QUEUE-DEC-01 refusals carrying the minimal shape. ecosystem.commit --rfc/--adr normalize bare digits or refuse EC-35 with the format statement — the F-0248 silent-injection-skip class is closed, and a summary-record failure now names the id + skipped injection. RFC-IMP-10 refusal leads with the rule statement; pipeline conventions and guides point at the command write path.</item>
   <history>RFC-1433</history>
 </CHANGE_SUMMARY>
 */
@@ -460,6 +460,46 @@ describe("friction.validate — FRICTION-08 (escalated needs an obligation token
     );
     const result = await validate();
     expect(result?.data?.violations.some((v) => v.rule === "FRICTION-03")).toBe(false);
+  });
+});
+
+// RFC-1601: FRICTION-11 — out-of-vocabulary field values error at validate,
+// naming the field, the bad value, and the closed vocabulary.
+describe("friction.validate — FRICTION-11 (vocabulary)", () => {
+  test.each([
+    ["status", "open", "escalatedaddressed", "open|addressed|escalated"],
+    ["status", "open", "resolved", "open|addressed|escalated"],
+    ["category", "tooling", "composition", "tooling|docs|process|environment|self"],
+  ])(
+    "%s: %s → %s errors FRICTION-11 naming field+value+vocabulary",
+    async (field, good, bad, vocab) => {
+      await writeRegistry(VALID_ENTRY.replace(`${field}: ${good}`, `${field}: ${bad}`));
+      const result = await validate();
+      expect(result.exitCode).toBe(1);
+      const v = result?.data?.violations.find((v) => v.rule === "FRICTION-11");
+      expect(v).toBeDefined();
+      expect(v?.severity).toBe("error");
+      expect(v?.message).toContain(`"${field}"`);
+      expect(v?.message).toContain(bad);
+      expect(v?.message).toContain(vocab);
+    },
+  );
+
+  test("out-of-vocabulary measureKind errors FRICTION-11", async () => {
+    await writeRegistry(
+      VALID_ENTRY.replace("artifacts: []", "measureKind: telepathy\n    artifacts: []"),
+    );
+    const result = await validate();
+    expect(result.exitCode).toBe(1);
+    const v = result?.data?.violations.find((v) => v.rule === "FRICTION-11");
+    expect(v?.message).toContain('"measureKind"');
+    expect(v?.message).toContain("telepathy");
+  });
+
+  test("in-vocabulary values never fire FRICTION-11", async () => {
+    await writeRegistry(VALID_ENTRY);
+    const result = await validate();
+    expect(result?.data?.violations.some((v) => v.rule === "FRICTION-11")).toBe(false);
   });
 });
 

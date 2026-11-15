@@ -139,20 +139,20 @@ Skills reference bindings by key, never by value. To resolve a binding:
 
 ### Binding keys
 
-| Key                     | Type                   | Description                            |
-| ----------------------- | ---------------------- | -------------------------------------- |
-| `commands.validateRfc`  | string \| null         | Command to validate an RFC             |
-| `commands.validateAdr`  | string \| null         | Command to validate an ADR             |
-| `commands.typecheck`    | string \| null         | Scoped typecheck command               |
-| `commands.test`         | string \| null         | Scoped test command                    |
-| `commands.scopedBuild`  | string \| null         | Scoped build command                   |
-| `commands.specValidate` | string \| null         | Spec validation command                |
+| Key | Type | Description |
+| --- | --- | --- |
+| `commands.validateRfc` | string \| null | Command to validate an RFC |
+| `commands.validateAdr` | string \| null | Command to validate an ADR |
+| `commands.typecheck` | string \| null | Scoped typecheck command |
+| `commands.test` | string \| null | Scoped test command |
+| `commands.scopedBuild` | string \| null | Scoped build command |
+| `commands.specValidate` | string \| null | Spec validation command |
 | `commands.verifyReproduction` | string \| null | Defect-reproduction check: runs a test against the pre-fix commit (`{test}`, `{sha}`) |
-| `paths.invariantsFile`  | string \| null         | Path to the project's invariants file  |
-| `paths.compassDocs`     | string[]               | Machine-readable semantic docs to sync |
-| `paths.reviewsDir`      | string \| null         | Directory for code reviews             |
-| `paths.handoffsDir`     | string \| null         | Directory for handoff documents        |
-| `terminology`           | Record<string, string> | Project-specific terminology mapping   |
+| `paths.invariantsFile` | string \| null | Path to the project's invariants file |
+| `paths.compassDocs` | string[] | Machine-readable semantic docs to sync |
+| `paths.reviewsDir` | string \| null | Directory for code reviews |
+| `paths.handoffsDir` | string \| null | Directory for handoff documents |
+| `terminology` | Record<string, string> | Project-specific terminology mapping |
 
 ### Degradation contract
 
@@ -403,6 +403,8 @@ The rendered human view is `docs/queues/<id>.briefing.md` — generated from the
 **Pending-decision markers.** Documents carry `> PENDING DECISION: Q-N — <one-line question>` blockquote markers at the point where an answer matters (RFC section, plan step). A document with open markers cannot transition to `accepted`, and an implementable document with open markers trips QUEUE-07. Markers lift during the resolution phase when the answer lands.
 
 The ledger is append-only: changing an `answered` entry is forbidden. A disputed or superseded decision gets a new entry referencing the old `Q-N` — never an in-place edit. `blocked`, `parked`, and `deferred` are report/ledger vocabulary — never persisted into RFC frontmatter or queue manifests.
+
+Writes go through `queue.decision --file docs/queues/<id>.yaml --doc <doc> --stage <stage> --question "…" --status <open|answered|auto-resolved|deferred> [--answer "…"] [--resolution-path <rung>]` (RFC-1601) — the writer stamps `createdAt`/`answeredAt`, defaults `--id` to the next free `Q-N`, and schema-gates the entry; `--entry-file` carries a full entry object with `options[]`. Never hand-edit the YAML.
 
 ## Collect and finalize contract
 
