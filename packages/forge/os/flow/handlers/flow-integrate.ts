@@ -28,6 +28,7 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
+  <item>RFC-1598: generated-conflict auto-resolve runs the owner generator inside a detached checked-out side (theirs → ours → take-theirs deferral), never the mixed mid-rebase index (RFC-1598)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1574</history>
 </CHANGE_SUMMARY>
@@ -134,6 +135,9 @@ export interface FlowIntegrateData {
   /** RFC-1538: generated-file rebase conflicts auto-resolved via their owner
    * commands — journaled, never silently merged. */
   autoResolved?: string[];
+  /** RFC-1598: autoResolved paths resolved by take-theirs on an uncheckable
+   * side — correctness defers to the post-rebase regen fold. */
+  autoResolveDeferred?: string[];
   /** RFC-1574: post-rebase regeneration of derived manifests (step 3b). */
   postRebaseRegen?: PostRebaseRegenResult;
   /** RFC-1538: which checkout's build ran the integration gate. */
@@ -522,6 +526,13 @@ interface IntegrateAttemptOpts {
    * elsewhere lands generated output in the wrong checkout. Read-only
    * preflight validators keep the bound root regardless. */
   invokeRoot?: string;
+  /** RFC-1598 (F-0243): generator port bound to a checked-out conflict side.
+   * The rebase auto-resolver materializes `theirs`/`ours` into a detached
+   * side checkout and invokes owner commands THERE — never against the
+   * mixed mid-rebase index — so a generator that resolves a module graph
+   * sees a consistent tree. Production binds `standaloneInvoke`; tests pass
+   * a stub factory bound to the side dir. */
+  sideInvoke?: (sideDir: string) => ForgeInvokeCommand;
   /** RFC-1528: command registry for preflight resolvability. */
   commandRegistry?: CommandRegistry;
   /** RFC-1531: recreate a vanished registered worktree inside the lock. */
@@ -557,6 +568,9 @@ interface IntegrateGateState {
   dirtyToleratedState: string[];
   toleratedDirt: Array<{ path: string; class: string }>;
   autoResolved: string[];
+  /** RFC-1598: subset of autoResolved resolved by take-theirs on an
+   * uncheckable side — defers correctness to the post-rebase regen fold. */
+  autoResolveDeferred?: string[];
   postRebaseRegen?: PostRebaseRegenResult;
   reattachedTo?: string;
   autoCleaned?: string[];
@@ -768,8 +782,9 @@ async function integrateFlowBranchAttempt(
     worktree: string,
     target: string,
     partial: { branch: string; developBefore: string },
-  ): Promise<FlowIntegrateData | { autoResolved: string[] }> => {
+  ): Promise<FlowIntegrateData | { autoResolved: string[]; autoResolveDeferred: string[] }> => {
     const autoResolved: string[] = [];
+    const autoResolveDeferred: string[] = [];
     let rebase = await git(worktree, io, ["rebase", target]);
     let guard = 0;
     while (rebase.exitCode !== 0 && guard++ < 8) {
@@ -780,19 +795,6 @@ async function integrateFlowBranchAttempt(
         .filter((l) => l.length > 0);
       const { classifyRebaseConflicts } = await import("../preflight.ts");
       const verdict = await classifyRebaseConflicts(worktree, io, paths);
-      // RFC-1545 AC-2: without a kernel invoke port the standalone adapter
-      // spawns the allowlisted owner commands in the worktree — the
-      // resolution contract is identical either way. RFC-1597: an invoke
-      // bound to a different root writes the regenerated files into the
-      // wrong checkout (F-0273) — retarget to the worktree spawn.
-      const invoker =
-        opts.invoke !== undefined && (opts.invokeRoot ?? repoRoot) === worktree
-          ? opts.invoke
-          : standaloneInvoke(
-              io,
-              worktree,
-              verdict.owners.map((o) => o.command),
-            );
       const resolvable =
         paths.length > 0 &&
         verdict.nonGenerated.length === 0 &&
@@ -808,44 +810,116 @@ async function integrateFlowBranchAttempt(
           verdict.owners.length > 0 ? " — mixed generated/non-generated conflict set" : "",
         );
       }
-      let failed = false;
-      for (const o of verdict.owners) {
-        // `git checkout --theirs` is blocked by the agent-session git
-        // wrapper — materialize the stage-3 (theirs) blob through the
-        // read-only `git show` + io write instead (RFC-1545).
-        const theirs = await git(worktree, io, ["show", `:3:${o.path}`]);
-        if (theirs.exitCode === 0) {
-          await io.writeFile(join(worktree, o.path), theirs.stdout);
+      // RFC-1598 (F-0243): run each owner generator inside a fully
+      // checked-out side — never against the mixed mid-rebase index, where
+      // a module-resolving generator loads a broken graph. `theirs`
+      // (REBASE_HEAD, the branch commit being replayed) is preferred
+      // because the branch's tooling produced the artifact; `ours` (the
+      // rebase target tip) is the fallback. The side checkout lands inside
+      // the worktree so `pnpm exec` resolves the worktree's install while
+      // the checked-out pnpm-workspace.yaml keeps the spawned engine bound
+      // to the side tree. A side the generator cannot run on falls through
+      // to the next; a side whose generator ran and refused fails hard.
+      const sideInvoke = (dir: string) =>
+        opts.sideInvoke?.(dir) ??
+        standaloneInvoke(
+          io,
+          dir,
+          verdict.owners.map((o) => o.command),
+        );
+      let lastGenError: string | null = null;
+      let resolved = false;
+      const sides: Array<{ name: "theirs" | "ours"; ref: string }> = [
+        { name: "theirs", ref: "REBASE_HEAD" },
+        { name: "ours", ref: target },
+      ];
+      for (const side of sides) {
+        const sha = await git(worktree, io, ["rev-parse", side.ref]);
+        if (sha.exitCode !== 0) continue;
+        const sideDir = join(worktree, `.flow-side-${side.name}-${guard}`);
+        // A crashed earlier integrate can leave the dir behind — clear it
+        // so the checkout attempt does not defer on stale residue.
+        await io.rm(sideDir, { recursive: true }).catch(() => undefined);
+        await git(worktree, io, ["worktree", "prune"]);
+        const add = await git(worktree, io, [
+          "worktree",
+          "add",
+          "--detach",
+          sideDir,
+          sha.stdout.trim(),
+        ]);
+        if (add.exitCode !== 0) continue;
+        try {
+          const invoker = sideInvoke(sideDir);
+          let sideFailed = false;
+          const staged: string[] = [];
+          for (const o of verdict.owners) {
+            const regen = await invoker(o.command, o.flags);
+            if (regen.ok === false || (regen.exitCode !== undefined && regen.exitCode !== 0)) {
+              lastGenError = `${o.path}: ${o.command} — ${regen.summary ?? `exit ${regen.exitCode}`}`;
+              sideFailed = true;
+              break;
+            }
+            let regenerated: string;
+            try {
+              regenerated = await io.readFile(join(sideDir, o.path));
+            } catch {
+              lastGenError = `${o.path}: ${o.command} produced no output on the ${side.name} side`;
+              sideFailed = true;
+              break;
+            }
+            // RFC-1545 AC-4: a successful generator that left conflict
+            // markers behind must not be committed — escalate like a
+            // failure.
+            if (/^(<{7}|={7}|>{7})/m.test(regenerated)) {
+              lastGenError = `${o.path}: ${o.command} left conflict markers in the regenerated output`;
+              sideFailed = true;
+              break;
+            }
+            await io.writeFile(join(worktree, o.path), regenerated);
+            await git(worktree, io, ["add", "--", o.path]);
+            opts.onProgress?.(
+              `conflict: ${o.path} — regenerated via ${o.command} on the ${side.name} side`,
+            );
+            staged.push(o.path);
+          }
+          if (!sideFailed) {
+            autoResolved.push(...staged);
+            resolved = true;
+            break;
+          }
+        } finally {
+          await git(worktree, io, ["worktree", "remove", "--force", sideDir]);
         }
-        const regen = await invoker(o.command, o.flags);
-        if (regen.ok === false || (regen.exitCode !== undefined && regen.exitCode !== 0)) {
-          await git(worktree, io, ["rebase", "--abort"]);
-          failed = true;
-          return refuse(
-            "FLOW-INT-02",
-            `auto-resolve of generated conflict ${o.path} failed: ${o.command} — ${regen.summary ?? `exit ${regen.exitCode}`}`,
-            "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
-            partial,
-          );
-        }
-        // RFC-1545 AC-4: a successful generator that left conflict markers
-        // behind must not be committed — escalate like a failure.
-        const regenerated = await io.readFile(join(worktree, o.path));
-        if (/^(<{7}|={7}|>{7})/m.test(regenerated)) {
-          await git(worktree, io, ["rebase", "--abort"]);
-          failed = true;
-          return refuse(
-            "FLOW-INT-02",
-            `auto-resolve of generated conflict ${o.path} failed: ${o.command} left conflict markers in the regenerated output`,
-            "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
-            partial,
-          );
-        }
-        await git(worktree, io, ["add", "--", o.path]);
-        opts.onProgress?.(`conflict: ${o.path} — regenerated via ${o.command}`);
-        autoResolved.push(o.path);
       }
-      if (failed) break;
+      if (!resolved && lastGenError === null) {
+        // Neither side could be checked out — take-theirs and defer
+        // correctness to the post-rebase regen fold (RFC-1598 AC-4).
+        for (const o of verdict.owners) {
+          // `git checkout --theirs` is blocked by the agent-session git
+          // wrapper — materialize the stage-3 (theirs) blob through the
+          // read-only `git show` + io write instead (RFC-1545).
+          const theirs = await git(worktree, io, ["show", `:3:${o.path}`]);
+          if (theirs.exitCode === 0) {
+            await io.writeFile(join(worktree, o.path), theirs.stdout);
+          }
+          await git(worktree, io, ["add", "--", o.path]);
+          autoResolved.push(o.path);
+          autoResolveDeferred.push(o.path);
+        }
+        opts.onProgress?.(
+          `conflict: ${paths.join(", ")} — no side checkable; took theirs, deferring regeneration to post-rebase fold`,
+        );
+      }
+      if (!resolved && lastGenError !== null) {
+        await git(worktree, io, ["rebase", "--abort"]);
+        return refuse(
+          "FLOW-INT-02",
+          `auto-resolve of generated conflict failed: ${lastGenError}`,
+          "resolve the rebase inside the session worktree manually, commit, and re-run flow.integrate",
+          partial,
+        );
+      }
       rebase = await git(worktree, io, ["-c", "core.editor=true", "rebase", "--continue"]);
     }
     if (rebase.exitCode !== 0) {
@@ -857,7 +931,7 @@ async function integrateFlowBranchAttempt(
       await git(worktree, io, ["rebase", "--abort"]);
       return rebaseConflictRefusal(worktree, io, rebase, paths, partial);
     }
-    return { autoResolved };
+    return { autoResolved, autoResolveDeferred };
   };
 
   const regenManifests = async (
@@ -1342,10 +1416,12 @@ async function integrateFlowBranchAttempt(
     // still refuses FLOW-INT-02 for a human.
     const rebaseBase = (await git(primary, io, ["rev-parse", "develop"])).stdout.trim();
     let autoResolved: string[] = [];
+    let autoResolveDeferred: string[] = [];
     if (entry.port === null) {
       const rebased = await rebaseOnto(branchWorktree, "develop", { branch, developBefore });
       if ("diagnostics" in rebased) return rebased;
       autoResolved = rebased.autoResolved;
+      autoResolveDeferred = rebased.autoResolveDeferred;
     }
 
     // (3b) RFC-1574: post-rebase regeneration — derived manifests depend on
@@ -1440,6 +1516,7 @@ async function integrateFlowBranchAttempt(
       dirtyToleratedState: dirty.toleratedState,
       toleratedDirt,
       autoResolved,
+      ...(autoResolveDeferred.length > 0 ? { autoResolveDeferred } : {}),
       ...(postRebaseRegen !== undefined ? { postRebaseRegen } : {}),
       ...(reattachedTo !== undefined ? { reattachedTo } : {}),
       ...(autoCleaned !== undefined ? { autoCleaned } : {}),
@@ -1478,6 +1555,7 @@ async function integrateFlowBranchAttempt(
       engine,
       warnings,
       autoResolved,
+      autoResolveDeferred,
       postRebaseRegen,
       reattachedTo,
       autoCleaned,
@@ -1570,6 +1648,9 @@ async function integrateFlowBranchAttempt(
       ...(s.dirtyToleratedState.length > 0 ? { toleratedState: s.dirtyToleratedState } : {}),
       ...(toleratedDirt.length > 0 ? { toleratedDirt } : {}),
       ...(autoResolved.length > 0 ? { autoResolved } : {}),
+      ...(autoResolveDeferred !== undefined && autoResolveDeferred.length > 0
+        ? { autoResolveDeferred }
+        : {}),
       ...(postRebaseRegen !== undefined ? { postRebaseRegen } : {}),
       ...(reattachedTo !== undefined ? { reattachedTo } : {}),
       ...(autoCleaned !== undefined && autoCleaned.length > 0 ? { autoCleaned } : {}),
@@ -1715,6 +1796,9 @@ async function integrateFlowBranchAttempt(
         });
         if ("diagnostics" in rebased) return out("locked-delta", rebased);
         s.autoResolved.push(...rebased.autoResolved);
+        if (rebased.autoResolveDeferred.length > 0) {
+          (s.autoResolveDeferred ??= []).push(...rebased.autoResolveDeferred);
+        }
         const regen = await regenManifests(s.branchWorktree, {
           branch,
           developBefore: s.developBefore,

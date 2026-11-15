@@ -11,7 +11,6 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>ADR-0128: FLOW-INT-02 names rebase stderr tail + porcelain status when no unmerged paths; cap path list at 20 (+N more) (ADR-0128 F-0188)</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
 flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
@@ -20,12 +19,13 @@ flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tr
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
-  <history>RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
+  <item>RFC-1598: refuse-before-staging index guard + checked-out-side generated-conflict resolver (RFC-1598)</item>
+  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
 </CHANGE_SUMMARY>
 */
 
-import { mkdir, rm, writeFile } from "node:fs/promises";
-import { hostname } from "node:os";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -582,15 +582,14 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       branch: session.branch!,
       dryRun: false,
       now: NOW,
-      invoke: async (name, flags) => {
+      // RFC-1598: the generator port binds to the checked-out conflict side
+      // the resolver materializes — the stub writes there, never into the
+      // mixed mid-rebase worktree (F-0243).
+      sideInvoke: (sideDir) => async (name, flags) => {
         invoked.push(`${name} ${JSON.stringify(flags ?? {})}`);
-        await writeFile(join(session.worktree!, "docs/rfcs/index.yaml"), resolved);
+        await writeFile(join(sideDir, "docs/rfcs/index.yaml"), resolved);
         return { ok: true, exitCode: 0 };
       },
-      // RFC-1597: the stub is bound to the branch worktree (kernel-invoked
-      // flow.integrate inside the session) — declare it or the write-path
-      // owner commands retarget to a standalone spawn (F-0273).
-      invokeRoot: session.worktree!,
     });
 
     expect(data.diagnostics.filter((d) => d.severity === "error")).toEqual([]);
@@ -652,12 +651,11 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       branch: session.branch!,
       dryRun: false,
       now: NOW,
-      invoke: async () => ({
+      sideInvoke: () => async () => ({
         ok: false,
         exitCode: 1,
         summary: "rfc.index.generate crashed: schema error at docs/rfcs/rfc-0001.md",
       }),
-      invokeRoot: session.worktree!,
     });
 
     expect(data.integrated).toBe(false);
@@ -686,20 +684,122 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       branch: session.branch!,
       dryRun: false,
       now: NOW,
-      invoke: async () => {
+      sideInvoke: (sideDir) => async () => {
         // A "successful" regen that writes marker-laden output must not land.
         await writeFile(
-          join(session.worktree!, "docs/rfcs/index.yaml"),
+          join(sideDir, "docs/rfcs/index.yaml"),
           "command: rfc.index.generate\n<<<<<<< HEAD\ncount: 9\n=======\ncount: 2\n>>>>>>> branch\n",
         );
         return { ok: true, exitCode: 0 };
       },
-      invokeRoot: session.worktree!,
     });
 
     expect(data.integrated).toBe(false);
     expect(data.diagnostics[0]?.ruleId).toBe("FLOW-INT-02");
     expect(data.diagnostics[0]?.message).toContain("conflict markers");
+  }, 20_000);
+
+  it("the auto-resolve generator runs inside a checked-out side, never the mixed mid-rebase index (RFC-1598 F-0243)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "sidegen");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n",
+    );
+    await commitIn(
+      repo,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n",
+    );
+
+    const sideDirs: string[] = [];
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+      // A generator whose output derives from the tree it runs in — the
+      // F-0243 class. It reads the conflicting file's bytes on the side it
+      // was invoked against and emits derived output; on the mixed
+      // mid-rebase index it would see neither coherent side.
+      sideInvoke: (sideDir) => async () => {
+        sideDirs.push(sideDir);
+        const base = await readFile(join(sideDir, "docs/rfcs/index.yaml"));
+        await writeFile(join(sideDir, "docs/rfcs/index.yaml"), `${base}resolvedOn: side\n`);
+        return { ok: true, exitCode: 0 };
+      },
+    });
+
+    expect(data.integrated).toBe(true);
+    expect(data.autoResolved).toEqual(["docs/rfcs/index.yaml"]);
+    expect(data.autoResolveDeferred).toBeUndefined();
+    // The generator ran in a checked-out side, not the mid-rebase worktree.
+    expect(sideDirs.length).toBeGreaterThan(0);
+    expect(sideDirs[0]).not.toBe(session.worktree);
+    // `theirs` is preferred — the derived output carries the session side.
+    const blob = await gitExec(repo, ["show", "develop:docs/rfcs/index.yaml"]);
+    expect(blob.stdout).toContain("count: 2");
+    expect(blob.stdout).toContain("resolvedOn: side");
+  }, 20_000);
+
+  it("when no conflict side can be checked out, auto-resolve takes theirs and defers to the post-rebase fold (RFC-1598 AC-4)", async () => {
+    const repo = await governedRepo();
+    const session = await openSession(repo, "defer");
+    await mkdir(join(session.worktree!, "docs", "rfcs"), { recursive: true });
+    await mkdir(join(repo, "docs", "rfcs"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 2\n",
+    );
+    await commitIn(
+      repo,
+      "docs/rfcs/index.yaml",
+      "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n",
+    );
+
+    // A PATH shim refuses `git worktree add` only — neither side can be
+    // checked out, so the resolver falls to take-theirs + deferral.
+    const guardDir = await mkdtemp(join(tmpdir(), "git-sideguard-"));
+    await writeFile(
+      join(guardDir, "git"),
+      [
+        "#!/bin/sh",
+        'sub1=; sub2=; prev=',
+        'for a in "$@"; do',
+        '  case "$prev" in -C|-c|--git-dir|--work-tree|--namespace) prev=; continue;; esac',
+        '  case "$a" in -C|-c|--git-dir|--work-tree|--namespace) prev="$a"; continue;; -*) continue;; *) [ -z "$sub1" ] && sub1="$a" || sub2="$a"; [ -n "$sub2" ] && break;; esac',
+        'done',
+        '[ "$sub1" = "worktree" ] && [ "$sub2" = "add" ] && { echo "worktree add refused by test shim" >&2; exit 1; }',
+        'exec /usr/bin/git "$@"',
+        "",
+      ].join("\n"),
+    );
+    await chmod(join(guardDir, "git"), 0o755);
+    const originalPath = process.env.PATH ?? "";
+    process.env.PATH = `${guardDir}:${originalPath}`;
+    let data: Awaited<ReturnType<typeof integrateFlowBranch>>;
+    try {
+      data = await integrateFlowBranch(repo, ambientIo, {
+        branch: session.branch!,
+        dryRun: false,
+        now: NOW,
+        sideInvoke: () => async () => {
+          throw new Error("sideInvoke must never run — no side was checkable");
+        },
+      });
+    } finally {
+      process.env.PATH = originalPath;
+    }
+
+    expect(data.integrated).toBe(true);
+    expect(data.autoResolved).toEqual(["docs/rfcs/index.yaml"]);
+    expect(data.autoResolveDeferred).toEqual(["docs/rfcs/index.yaml"]);
+    // take-theirs staged the stage-3 blob — develop carries the session side.
+    const blob = await gitExec(repo, ["show", "develop:docs/rfcs/index.yaml"]);
+    expect(blob.stdout).toContain("count: 2");
   }, 20_000);
 
   it("primary dirt held only by a live foreign claim waits, then refuses FLOW-INT-03 naming the holder (RFC-1543 AC-4)", async () => {
@@ -787,9 +887,8 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       branch: session.branch!,
       dryRun: false,
       now: NOW,
-      invoke: async () => ({ ok: true, exitCode: 0 }),
-      // RFC-1597: worktree-bound stub (F-0273 invokeRoot contract).
-      invokeRoot: session.worktree!,
+      // Mixed conflict set refuses before the resolver engages a side.
+      sideInvoke: () => async () => ({ ok: true, exitCode: 0 }),
     });
 
     expect(data.integrated).toBe(false);
