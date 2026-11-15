@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1528: note moved[] under-count on archiver throw (review F-10)</item>
   <item>RFC-1528: exclude non-generator commands from docs.archive owner regen (F-0126)</item>
   <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1535: docs.archive self-stages both sides of every move pair — no half-staged EC-31 pairs (F-0038)</item>
@@ -24,6 +23,7 @@ slice cap (KNOWN_TRUNCATED_SCANS is shrink-only), record-tree exclusions
 extended, two real stale claims corrected, profile templates ship empty
 markers hydrated at scaffold write time. RFC amended to implemented
 grammar/result/exclusions; command moved to commands.added.</item>
+  <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
   <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528</history>
 </CHANGE_SUMMARY>
 */
@@ -926,6 +926,9 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
       {
         name: "forge.autonomy.validate",
         mutatesState: false,
+        // RFC-1606: the FORGE-AUTONOMY-02 strip-types arm spawns tsc — the
+        // read-only IO adapter refuses exec unless the command opts in.
+        execOnReadOnly: true,
         contract: "forge",
         rules: [],
         description:
