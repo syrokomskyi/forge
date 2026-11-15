@@ -11,16 +11,14 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
-
-flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
   <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
 
 FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1598: refuse-before-staging index guard + checked-out-side generated-conflict resolver (RFC-1598)</item>
-  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546</history>
+  <item>RFC-1600: require declaration context in the integrate dup-id scan and resolve real friction ids (F-0286)</item>
+  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574</history>
 </CHANGE_SUMMARY>
 */
 
@@ -767,11 +765,11 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       join(guardDir, "git"),
       [
         "#!/bin/sh",
-        'sub1=; sub2=; prev=',
+        "sub1=; sub2=; prev=",
         'for a in "$@"; do',
         '  case "$prev" in -C|-c|--git-dir|--work-tree|--namespace) prev=; continue;; esac',
         '  case "$a" in -C|-c|--git-dir|--work-tree|--namespace) prev="$a"; continue;; -*) continue;; *) [ -z "$sub1" ] && sub1="$a" || sub2="$a"; [ -n "$sub2" ] && break;; esac',
-        'done',
+        "done",
         '[ "$sub1" = "worktree" ] && [ "$sub2" = "add" ] && { echo "worktree add refused by test shim" >&2; exit 1; }',
         'exec /usr/bin/git "$@"',
         "",
@@ -1120,9 +1118,13 @@ describe("FLOW-INT-19 — duplicate governance ids on the branch (RFC-1600)", ()
     const repo = await governedRepo();
     const session = await openSession(repo, "dup-rule-id");
     await mkdir(join(session.worktree!, "packages/y"), { recursive: true });
-    await commitIn(session.worktree!, "packages/y/b.ts", 'export const r = "FLOW-INT-25";\n');
+    await commitIn(
+      session.worktree!,
+      "packages/y/b.ts",
+      'export const r = { id: "FLOW-INT-25" };\n',
+    );
     await mkdir(join(repo, "packages/x"), { recursive: true });
-    await commitIn(repo, "packages/x/a.ts", "// FLOW-INT-25 owns the refusal here\nexport {};\n");
+    await commitIn(repo, "packages/x/a.ts", 'const rules = [{ id: "FLOW-INT-25" }];\nexport {};\n');
 
     const data = await integrateFlowBranch(repo, ambientIo, {
       branch: session.branch!,
@@ -1140,12 +1142,55 @@ describe("FLOW-INT-19 — duplicate governance ids on the branch (RFC-1600)", ()
   it("a rule literal re-landed in the file that already carries it is not a duplicate", async () => {
     const repo = await governedRepo();
     await mkdir(join(repo, "packages/x"), { recursive: true });
-    await commitIn(repo, "packages/x/a.ts", "// FLOW-INT-25 owns the refusal here\nexport {};\n");
+    await commitIn(repo, "packages/x/a.ts", 'const rules = [{ id: "FLOW-INT-25" }];\nexport {};\n');
     const session = await openSession(repo, "reland-rule-id");
     await commitIn(
       session.worktree!,
       "packages/x/a.ts",
-      "// FLOW-INT-25 owns the refusal here\n// FLOW-INT-25 re-landed same-site\nexport {};\n",
+      '// FLOW-INT-25 owns the refusal here\nconst rules = [{ id: "FLOW-INT-25" }];\nexport {};\n',
+    );
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics.filter((d) => d.ruleId === "FLOW-INT-19")).toEqual([]);
+    expect(data.integrated).toBe(true);
+  }, 30_000);
+
+  // F-0286 signatures (the scanner's own first live run): branch friction
+  // files must resolve to their real ids (F-0283, not F-undefined), and a
+  // rule literal carried by prose on either side is not an allocation.
+  it("does not collide distinct friction ids (F-0283 vs F-0282)", async () => {
+    const repo = await governedRepo();
+    await mkdir(join(repo, "docs/frictions"), { recursive: true });
+    await commitIn(repo, "docs/frictions/F-0282.yaml", "id: F-0282\nstatus: open\n");
+    const session = await openSession(repo, "new-friction-id");
+    await mkdir(join(session.worktree!, "docs/frictions"), { recursive: true });
+    await commitIn(session.worktree!, "docs/frictions/F-0283.yaml", "id: F-0283\nstatus: open\n");
+
+    const data = await integrateFlowBranch(repo, ambientIo, {
+      branch: session.branch!,
+      dryRun: false,
+      now: NOW,
+    });
+
+    expect(data.diagnostics.filter((d) => d.ruleId === "FLOW-INT-19")).toEqual([]);
+    expect(data.integrated).toBe(true);
+  }, 30_000);
+
+  it("does not flag a rule literal carried only as prose mentions", async () => {
+    const repo = await governedRepo();
+    await mkdir(join(repo, "docs/agent-guides"), { recursive: true });
+    await commitIn(repo, "docs/agent-guides/g.md", "that is FLOW-INT-01\n");
+    const session = await openSession(repo, "mention-rule-id");
+    await mkdir(join(session.worktree!, "docs/agent-guides"), { recursive: true });
+    await commitIn(
+      session.worktree!,
+      "docs/agent-guides/h.md",
+      "does not judge worktree dirt — that is FLOW-INT-01\n",
     );
 
     const data = await integrateFlowBranch(repo, ambientIo, {
