@@ -20,7 +20,6 @@ at cleanup without moving develop again.</purpose>
   <item>Task-file preservation runs inside the cleanup branch BEFORE the worktree-teardown hook and only for owner.kind task — a `git clean -fdx` teardown would destroy `.forge/task/` first, and a copy failure refuses cleanup (FLOW-INT-04) so the report is never lost with the worktree (RFC-1509 Q-16).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>ADR-0130: foreign-open-mission restore writes HEAD verbatim — whole diff classified as importer churn, a block splice would leave induced additions to be swept</item>
   <item>RFC-1574: regenerate derived manifests after the integrate rebase and commit them
 
 flow.integrate step (3b) runs GENERATED_BASENAME_OWNERS owners on the rebased tree (opts.invoke ?? standaloneInvoke), commits only owned paths with the fixed subject before the gate, refuses FLOW-INT-12 on owner failure, non-owned dirt or a still-red validate; the preflight no longer writes and refuses only without a resolvable owner.</item>
@@ -31,7 +30,10 @@ Step (3b) judges only paths the owner run changed, validates before staging, ski
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
-  <history>ADR-0128, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545</history>
+  <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
+
+FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
+  <history>ADR-0128, ADR-0130, RFC-1487, RFC-1490, RFC-1491, RFC-1504, RFC-1509, RFC-1515, RFC-1528, RFC-1531, RFC-1532, RFC-1536, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545</history>
 </CHANGE_SUMMARY>
 */
 
@@ -1262,6 +1264,27 @@ async function integrateFlowBranchAttempt(
           `port tip is not the back-merge commit — expected merge '${expectedSubject}' with second parent ${entry.port.mainSha.slice(0, 9)}`,
           "commit the resolved merge inside the port worktree with git commit --no-edit, or run flow.backmerge --redo",
           { branch, developBefore },
+        );
+      }
+    }
+
+    // (2d) RFC-1600 AC-3: duplicate-governance-id preflight — the branch's
+    // new artifacts must not collide with ids develop already carries
+    // (file families + rule literals). Refusal only, never auto-renumber;
+    // port entries keep their merge shape and skip the scan.
+    if (entry.port === null) {
+      const { scanDuplicateGovernanceIds } = await import("../dup-id-scan.ts");
+      const dups = await scanDuplicateGovernanceIds(primary, io, "develop", branch);
+      const duplicates = [...dups.fileIds, ...dups.ruleIds];
+      if (duplicates.length > 0) {
+        return refuse(
+          "FLOW-INT-19",
+          `duplicate governance id(s) on ${branch}: ${duplicates
+            .map((d) => `${d.id} (branch: ${d.onBranch}; develop: ${d.onDevelop})`)
+            .join("; ")}`,
+          "renumber the branch artifacts via the family's next-id, regenerate the index surfaces, then re-run flow.integrate — allocation races are prevented by forge/rfc-reservations.yaml",
+          { branch, developBefore },
+          { duplicates },
         );
       }
     }
