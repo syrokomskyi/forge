@@ -13,14 +13,14 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>FORGE_FLOW_OP is always set explicitly ("" for the unset cases) so a leaked outer value cannot make tests non-deterministic.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: pre-merge-commit guard mode + per-mode op vocabulary; amends the wave-1 guard RFC's backmerge escape (AC-11)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: steps 1-5 — release-prepare hook, pre-tag extract verification, ordered steps</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
-  <history>RFC-1486</history>
+  <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
+  <history>RFC-1486, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
@@ -91,6 +91,24 @@ export async function installFakePrimaryForge(repo: string): Promise<void> {
   await writeFile(exclude, "node_modules/\n.correctness-gate.json\n.correctness-gate.exit\n", {
     flag: "a",
   });
+}
+
+/**
+ * RFC-1606: point the primary's `node_modules/.bin/forge` at a real forge CLI
+ * (this checkout's own `bin/cli.ts`) — for tests that must run the genuine
+ * command rather than the passing stand-in. Overwrites the stand-in
+ * `installFakePrimaryForge` planted; `info/exclude` already covers the path.
+ * NODE_OPTIONS is scrubbed: vitest registers its ESM loader there, and a
+ * bare `node` child resolving it outside the workspace exits 1 before
+ * printing anything — the "no JSON result" flake (F-0278's env half).
+ */
+export async function installRealPrimaryForge(repo: string, cliPath: string): Promise<void> {
+  const bin = join(repo, "node_modules", ".bin", "forge");
+  await writeFile(
+    bin,
+    `#!/bin/sh\nexec env -u NODE_OPTIONS node ${JSON.stringify(cliPath)} "$@"\n`,
+  );
+  await chmod(bin, 0o755);
 }
 
 export async function initRepo(opts?: {

@@ -10,6 +10,7 @@ Type-only imports (import type) are exempt.</purpose>
   <item>Does not scan os/werkstatt/ — the adapter directory may import @warpgogol/werkstatt-engine.</item>
   <item>Does not flag @warpgogol/werkstatt-shared — shared infrastructure, not the engine.</item>
   <item>Does not flag import type statements — type-only imports are erased at compile time.</item>
+  <item>RFC-1606: the strip-types arm (FORGE-AUTONOMY-02) covers the os/ + bin/ trees — diagnostics in imported dependency sources (werkstatt-shared etc.) are reported under outOfScopeDiagnostics, not violations.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
@@ -88,9 +89,10 @@ async function scanDirectoryForImports(
 }
 
 export interface ForgeAutonomyViolation {
-  ruleId: "FORGE-AUTONOMY-01";
+  ruleId: "FORGE-AUTONOMY-01" | "FORGE-AUTONOMY-02";
   file: string;
-  specifier: string;
+  specifier?: string;
+  message?: string;
 }
 
 export interface ForgeAutonomyValidateResult {
@@ -99,6 +101,12 @@ export interface ForgeAutonomyValidateResult {
   violations: ForgeAutonomyViolation[];
   scannedFiles: number;
   modules: Record<string, { runtime: "autonomous" | "werkstatt-adapter"; violations: number }>;
+  stripTypes?: {
+    diagnosticFiles: number;
+    durationMs: number;
+    skipped?: string;
+    outOfScopeDiagnostics: number;
+  };
 }
 
 function isTypeOnlyImport(content: string, specifier: string): boolean {
@@ -158,6 +166,16 @@ export async function runForgeAutonomyValidate(
     modules[modKey]!.violations++;
   }
 
+  // ── RFC-1606 AC-3: FORGE-AUTONOMY-02 strip-types arm ──────────────────
+  // `node --experimental-strip-types` can only strip erasable syntax — any
+  // runtime TypeScript construct (parameter properties, enums, namespaces)
+  // in os/** + bin/** breaks the standalone CLI under strip-types. The arm
+  // spawns `tsc -p tsconfig.strip-types.json` and parses its diagnostics;
+  // diagnostics inside imported dependency sources (werkstatt-shared etc.)
+  // are out of scope and reported separately rather than failing the arm.
+  const stripTypes = await runStripTypesArm(workspaceRoot, io);
+  for (const v of stripTypes.violations) violations.push(v);
+
   const status = violations.length === 0 ? "pass" : "fail";
 
   return {
@@ -167,8 +185,92 @@ export async function runForgeAutonomyValidate(
       violations,
       scannedFiles,
       modules,
+      stripTypes: {
+        diagnosticFiles: stripTypes.checkedFiles,
+        durationMs: stripTypes.durationMs,
+        skipped: stripTypes.skipped,
+        outOfScopeDiagnostics: stripTypes.outOfScopeDiagnostics,
+      },
     },
     exitCode: status === "pass" ? 0 : 1,
     summary: `[forge.autonomy.validate] ${status.toUpperCase()} — ${violations.length} violation(s) across ${scannedFiles} files`,
   };
+}
+
+const armErrMessage = (err: unknown) => (err instanceof Error ? err.message : String(err));
+
+/** Diagnostic line shape: `path(line,col): error TSnnnn: message`. */
+const TSC_DIAG_LINE = /^(.+?)\((\d+),(\d+)\): error (TS\d+): (.+)$/;
+
+/**
+ * FORGE-AUTONOMY-02 — the os/ + bin/ trees must be erasable-syntax-only
+ * (F-0227, RFC-1606). Runs `tsc -p tsconfig.strip-types.json` scoped to the
+ * forge package; diagnostics outside the package's own os//bin trees are
+ * dependency-source findings — reported as outOfScopeDiagnostics, never
+ * violations. Degrades (never blocks) when io lacks exec.
+ */
+async function runStripTypesArm(
+  workspaceRoot: string,
+  ioArg: typeof ambientIo,
+): Promise<{
+  violations: ForgeAutonomyViolation[];
+  checkedFiles: number;
+  durationMs: number;
+  skipped?: string;
+  outOfScopeDiagnostics: number;
+}> {
+  const started = Date.now();
+  const empty = {
+    violations: [] as ForgeAutonomyViolation[],
+    checkedFiles: 0,
+    durationMs: 0,
+    outOfScopeDiagnostics: 0,
+  };
+  if (typeof ioArg.exec !== "function") {
+    return { ...empty, skipped: "io.exec unavailable" };
+  }
+  const forgeDir = join(workspaceRoot, "packages", "forge");
+  const tscBin = join(forgeDir, "node_modules", ".bin", "tsc");
+  // Reduced/fake workspaces carry no node_modules — degrade like a missing
+  // exec rather than refusing the scan (io.exec-lacks rule, RFC-1606).
+  if (typeof ioArg.exists === "function" && !(await ioArg.exists(tscBin))) {
+    return { ...empty, skipped: "tsc binary unavailable" };
+  }
+  // Direct binary — `pnpm exec` rewrites pnpm-lock.yaml as a side effect
+  // (F-0201), and this arm must not dirty the tree it inspects.
+  let res: { stdout?: string; stderr?: string };
+  try {
+    res = await ioArg.exec(
+      tscBin,
+      ["-p", "tsconfig.strip-types.json", "--noEmit"],
+      { cwd: forgeDir },
+    );
+  } catch (err) {
+    return { ...empty, skipped: `tsc spawn failed: ${armErrMessage(err)}` };
+  }
+  const durationMs = Date.now() - started;
+  const output = `${res.stdout ?? ""}\n${res.stderr ?? ""}`;
+  const violations: ForgeAutonomyViolation[] = [];
+  let outOfScopeDiagnostics = 0;
+  const diagnosticFiles = new Set<string>();
+  for (const line of output.split("\n")) {
+    const m = TSC_DIAG_LINE.exec(line.trim());
+    if (!m) continue;
+    const [, rawPath, lineNo, , code, message] = m;
+    const rel = rawPath!.replace(/\\/g, "/");
+    diagnosticFiles.add(rel);
+    // Scope: only diagnostics inside this package's os//bin trees fail the
+    // arm — imported dependency sources are reported, not refused (RFC-1606).
+    const inScope = !rel.includes("../") && /^(os|bin)\//.test(rel);
+    if (!inScope) {
+      outOfScopeDiagnostics++;
+      continue;
+    }
+    violations.push({
+      ruleId: "FORGE-AUTONOMY-02",
+      file: `packages/forge/${rel}`,
+      message: `${code} at line ${lineNo}: ${message}`,
+    });
+  }
+  return { violations, checkedFiles: diagnosticFiles.size, durationMs, outOfScopeDiagnostics };
 }

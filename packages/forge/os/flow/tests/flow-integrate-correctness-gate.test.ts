@@ -20,6 +20,7 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
+  <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -38,7 +39,7 @@ import {
 } from "../../correctness/gate/tests/gate-fixture.ts";
 import { integrateFlowBranch } from "../handlers/flow-integrate.ts";
 import { openFlowBranch } from "../handlers/flow-open.ts";
-import { gitExec, initRepo } from "./helpers.ts";
+import { gitExec, initRepo, installRealPrimaryForge } from "./helpers.ts";
 
 const NOW = new Date("2026-11-13T12:00:00Z");
 const FORGE_CLI = resolve(dirname(fileURLToPath(import.meta.url)), "../../../bin/cli.ts");
@@ -98,9 +99,7 @@ async function productRepo(oracle: string): Promise<string> {
 
 /** Point the primary's forge binary at the real forge CLI of this checkout. */
 async function realPrimaryForge(repo: string): Promise<void> {
-  const bin = join(repo, "node_modules", ".bin", "forge");
-  await writeFile(bin, `#!/bin/sh\nexec node ${JSON.stringify(FORGE_CLI)} "$@"\n`);
-  await chmod(bin, 0o755);
+  await installRealPrimaryForge(repo, FORGE_CLI);
 }
 
 async function sessionWithCommit(repo: string): Promise<{ branch: string; worktree: string }> {

@@ -220,6 +220,10 @@
       "types": "./os/flow/index.ts",
       "default": "./os/flow/index.ts"
     },
+    "./os/flow/test-helpers": {
+      "types": "./os/flow/tests/helpers.ts",
+      "default": "./os/flow/tests/helpers.ts"
+    },
     "./os/flow-module": {
       "types": "./os/flow/flow.module.ts",
       "default": "./os/flow/flow.module.ts"
