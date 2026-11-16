@@ -12,7 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
 
 AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
@@ -30,7 +29,20 @@ reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
 weakenings), --policy-only accept whitelists only policy paths, freezeFiles
 negation globs are malformed, and forge.upgrade heals a malformed policy:
 block (write-when-absent now reads write-when-not-well-formed).</item>
-  <history>RFC-1580</history>
+  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
+
+Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
+after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
+re-point is now visible. canon() distinguishes BigInt/non-finite numbers
+(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
+negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
+The isolation strip drops policy:/correctness unconditionally — a
+meaningless mutable membership can no longer dead-end the accept path.
+Deletions of frozen files honor the verifier trailer pair like any other
+touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
+cannot borrow a sibling's verifier commit (also closes the same hole in
+origin.ts).</item>
+  <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
@@ -90,7 +102,10 @@ export function sideFrom(
   // otherwise silently inert (RFC-1615 review CX-15/CX-19).
   let forgeYamlUnreadable = false;
   try {
-    const parsed = forgeYaml !== null ? parseYaml(forgeYaml) : {};
+    // intAsBigInt — `9007199254740993` and `9007199254740992` collapse to one
+    // double in JS; the policy diff must see them as distinct (CX-22).
+    const parsed =
+      forgeYaml !== null ? parseYaml(forgeYaml, { intAsBigInt: true }) : {};
     if (
       parsed === null ||
       typeof parsed !== "object" ||
@@ -206,7 +221,11 @@ function parsePolicySurface(raw: unknown): {
  * CX-14). A cycle sentinel prevents RangeError on recursive anchors.
  */
 export function canon(value: unknown, seen: WeakSet<object> = new WeakSet()): string {
-  if (typeof value === "number" && !Number.isFinite(value)) return `num:${value}`;
+  if (typeof value === "bigint") return `int:${value}`;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return `num:${value}`;
+    if (Object.is(value, -0)) return "num:-0"; // `-0` ≠ `0` (RFC-1615 review CX-22)
+  }
   if (value === null || typeof value !== "object")
     return JSON.stringify(value) ?? "null";
   if (seen.has(value)) return '"cycle"';
@@ -280,25 +299,32 @@ export function policyLeaves(
     }
     seen.add(value);
   }
-  if (Array.isArray(value)) {
-    value.forEach((v, i) => {
-      for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`, seen))
-        out.set(k, leaf);
-    });
-    return out;
-  }
-  if (
-    typeof value === "object" &&
-    !(value instanceof Date) &&
-    !(value instanceof Map) &&
-    !(value instanceof Set) &&
-    !ArrayBuffer.isView(value)
-  ) {
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`, seen))
-        out.set(lk, leaf);
+  try {
+    if (Array.isArray(value)) {
+      value.forEach((v, i) => {
+        for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`, seen))
+          out.set(k, leaf);
+      });
+      return out;
     }
-    return out;
+    if (
+      typeof value === "object" &&
+      !(value instanceof Date) &&
+      !(value instanceof Map) &&
+      !(value instanceof Set) &&
+      !ArrayBuffer.isView(value)
+    ) {
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`, seen))
+          out.set(lk, leaf);
+      }
+      return out;
+    }
+  } finally {
+    // Unwind — `seen` guards ancestor cycles only; a shared (aliased) node
+    // revisited from a sibling branch must leaf normally, or an anchor
+    // re-point becomes invisible (RFC-1615 review CX-21).
+    if (typeof value === "object") seen.delete(value);
   }
   out.set(prefix, value);
   return out;
@@ -623,7 +649,9 @@ export async function byteWeakenings(
     const before = await repo.blob(base, rel);
     const after = await repo.blob(head, rel);
     if (before === after) continue;
-    if (after !== null && (await repo.lastTouchIsVerifier(head, rel))) continue;
+    // The verifier trailer check applies to deletions too — a `git rm`
+    // commit can carry the pair like any other touch (RFC-1615 review CX-25).
+    if (await repo.lastTouchIsVerifier(head, rel)) continue;
     out.push({
       kind,
       subject: rel,

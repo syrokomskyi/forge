@@ -12,6 +12,19 @@ the RFC-1330 origin git port (argv exec, DNA-89).</purpose>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
+
+Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
+after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
+re-point is now visible. canon() distinguishes BigInt/non-finite numbers
+(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
+negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
+The isolation strip drops policy:/correctness unconditionally — a
+meaningless mutable membership can no longer dead-end the accept path.
+Deletions of frozen files honor the verifier trailer pair like any other
+touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
+cannot borrow a sibling's verifier commit (also closes the same hole in
+origin.ts).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -61,7 +74,17 @@ export class GateRepo {
 
   /** Body of the last commit (≤ head) touching `rel`, or null. */
   async lastCommitBody(head: string, rel: string): Promise<{ sha: string; body: string } | null> {
-    const out = await this.git.run(["log", "-1", "--format=%H%x1f%B", head, "--", rel]);
+    // `:(literal)` — a glob-metachar filename (`x[1].sh`, `*.sh`) must not
+    // match sibling paths and borrow their verifier commits (RFC-1615
+    // review CX-26).
+    const out = await this.git.run([
+      "log",
+      "-1",
+      "--format=%H%x1f%B",
+      head,
+      "--",
+      `:(literal)${rel}`,
+    ]);
     if (!out || !out.includes("\x1f")) return null;
     const [sha, body] = out.split("\x1f");
     return { sha: sha!.trim(), body: body ?? "" };
