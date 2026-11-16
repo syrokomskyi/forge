@@ -13,7 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
 
 AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
@@ -41,7 +40,8 @@ Deletions of frozen files honor the verifier trailer pair like any other
 touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
 cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
-  <history>RFC-1580</history>
+  <item>RFC-1615: round-5 — structuredClone accept-path (CX-27/28), exempt contour judges declared policy (CX-29)</item>
+  <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
@@ -170,7 +170,9 @@ async function forgeYamlOnlyFrozenKeys(
     } catch {
       return "\0unparseable";
     }
-    const copy = JSON.parse(JSON.stringify(doc)) as Record<string, unknown>;
+    // structuredClone preserves BigInt leaves (intAsBigInt parse) and anchor
+    // cycles — JSON.stringify crashes on both (RFC-1615 review CX-27/CX-28).
+    const copy = structuredClone(doc) as Record<string, unknown>;
     if (policy === null) {
       // No declared policy: keep the RFC-1580 semantics — only the frozen
       // correctness keys are stripped, everything else must match.
@@ -274,8 +276,12 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   };
   // (2) Frozen set first: `mode: exempt` ends the gate only when the base was
   // exempt too — a session cannot exempt itself (that is a CORR-GATE-02).
+  // A *declared* `policy:` is a separate opt-in (RFC-1615 review CX-29): an
+  // exempt×exempt contour still judges the policy surface, or a session could
+  // weaken it unjudged and launder the diff under the exempt umbrella.
   const frozen = await readFrozenSet(repo, base);
-  if (validation.status === "exempt" && frozen.base.mode === "exempt")
+  const exemptContour = validation.status === "exempt" && frozen.base.mode === "exempt";
+  if (exemptContour && frozen.base.policy === null && !frozen.base.policyMalformed)
     return finish("exempt", [], [], null);
   for (const v of validation.violations) {
     if (v.severity === "error" && !options.policyOnly)
@@ -330,9 +336,10 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       `the base manifest ${frozen.base.manifestPath} does not parse with this forge — the frozen set cannot be read; integrate with a forge that reads it`,
     );
   }
-  const weakenings: Weakening[] = options.policyOnly
+  const weakenings: Weakening[] = options.policyOnly || exemptContour
     ? [
-        // RFC-1615 --policy-only: the declared policy surface, nothing else.
+        // RFC-1615 --policy-only / exempt-contour: the declared policy
+        // surface, nothing else (CX-29 — policy: is its own opt-in).
         ...policyWeakenings(frozen, now),
         ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
         ...(await policyFileAdditions(repo, head, frozen)),
@@ -355,12 +362,13 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       // In --policy-only the weakening list never contains RFC-1580 kinds, so
       // the accept path must whitelist only the paths it actually reported —
       // oracle/manifest paths stay foreign here (they'd be accepted silently).
+      const policyScope = options.policyOnly || exemptContour;
       const frozenPaths = new Set([
-        ...(options.policyOnly ? [] : frozen.files),
-        ...(options.policyOnly ? [] : frozen.anchorFiles),
+        ...(policyScope ? [] : frozen.files),
+        ...(policyScope ? [] : frozen.anchorFiles),
         ...frozen.policyFiles,
         ...(forgeYamlIsolated ? ["forge.yaml"] : []),
-        ...(options.policyOnly
+        ...(policyScope
           ? []
           : [frozen.base.manifestPath, now.manifestPath]
               .filter((p): p is string => !!p)
@@ -372,7 +380,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       // frozen-set paths even though the base set cannot contain them yet
       // (RFC-1615 review CX-11).
       const frozenGlobs = [
-        ...(options.policyOnly ? [] : frozen.supportGlobs),
+        ...(policyScope ? [] : frozen.supportGlobs),
         ...frozen.policyGlobs,
       ].map((g) => picomatch(normalizeRelPath(g), { dot: true }));
       const foreign = changed.filter(
@@ -391,8 +399,10 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   }
   const weakeningRecords = weakenings.map((w) => ({ ...w, accepted: acceptedReason !== null }));
 
-  // RFC-1615: --policy-only ends after the weakening verdict — no oracle runs.
-  if (options.policyOnly) {
+  // RFC-1615: --policy-only ends after the weakening verdict — no oracle
+  // runs. Same for an exempt contour judging a declared policy surface
+  // (CX-29): the contour runs no oracles, only the policy diff.
+  if (options.policyOnly || exemptContour) {
     if (frozen.base.policy === null) {
       violations.push({
         rule: "CORR-GATE-01",
