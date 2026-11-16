@@ -16,6 +16,7 @@ textPattern against the served HTML. A probe that cannot run reports
 <CHANGE_SUMMARY>
   <item>RFC-1453: outcome session — per-target build+serve, tri-state page verdicts, process-tree teardown.</item>
   <item>RFC-1453: executed outcome probes, IMP-14 surface gate, outcome.serve + V-47/V-48</item>
+  <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
 </CHANGE_SUMMARY>
 */
 
@@ -205,10 +206,16 @@ export function createOutcomeSession(opts: {
   const { workspaceRoot, forgeRoot } = opts;
   const states = new Map<string, TargetState>();
   const serves: ServeHandle[] = [];
-  let bindings: { outcomeBuild: string | null; outcomeServe: string | null } | null = null;
+  let bindings: {
+    outcomeBuild: string | null;
+    outcomeServe: string | null;
+    outcomeBuildTimeoutMs: number | null;
+  } | null = null;
   let bindingsError: string | null = null;
 
-  function loadBindings(): { outcomeBuild: string | null; outcomeServe: string | null } | string {
+  function loadBindings():
+    | { outcomeBuild: string | null; outcomeServe: string | null; outcomeBuildTimeoutMs: number | null }
+    | string {
     if (bindingsError) return bindingsError;
     if (!bindings) {
       try {
@@ -216,6 +223,7 @@ export function createOutcomeSession(opts: {
         bindings = {
           outcomeBuild: config.bindings?.commands.outcomeBuild ?? null,
           outcomeServe: config.bindings?.commands.outcomeServe ?? null,
+          outcomeBuildTimeoutMs: config.bindings?.commands.outcomeBuildTimeoutMs ?? null,
         };
       } catch (err) {
         bindingsError = `forge.yaml could not be loaded: ${String(err)}`;
@@ -241,12 +249,13 @@ export function createOutcomeSession(opts: {
         },
       };
     } else {
-      const build = await runShell(substituteTarget(bound.outcomeBuild, target), workspaceRoot, BUILD_TIMEOUT_MS);
+      const buildTimeoutMs = bound.outcomeBuildTimeoutMs ?? BUILD_TIMEOUT_MS;
+      const build = await runShell(substituteTarget(bound.outcomeBuild, target), workspaceRoot, buildTimeoutMs);
       if (build.timedOut) {
         state = {
           outcome: {
             kind: "unverified",
-            detail: `outcomeBuild timed out after ${BUILD_TIMEOUT_MS}ms — ${tailOf(build.output)}`,
+            detail: `outcomeBuild timed out after ${buildTimeoutMs}ms — ${tailOf(build.output)}`,
           },
         };
       } else if (build.exitCode !== 0) {

@@ -11,12 +11,12 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1255: Knowledge conflicts land in .forge/knowledge-conflicts.txt (summary + path in console instead of a 60+ entry dump); exposed as knowledgeConflicts/knowledgeConflictsReport on UpgradeResult. Prettierignore plan now enumerates generated AGENTS.md paths.</item>
   <item>RFC-1481: add knowledge.conflicts.resolve next steps on same-version and regular upgrade results.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224</history>
+  <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255</history>
 </CHANGE_SUMMARY>
 */
 
@@ -611,7 +611,10 @@ function addMissingBindingDefaults(
   const added: { key: string; value: string }[] = [];
 
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
-    const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];
+    const bareKey = entry.key.replace("commands.", "") as Exclude<
+      keyof ForgeBindings["commands"],
+      "outcomeBuildTimeoutMs"
+    >;
     const currentValue = config.bindings.commands[bareKey];
 
     if (currentValue === null || currentValue === undefined) {

@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: correctness manifest, validator, promotes gate
-
-Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
   <item>RFC-1579: correctness.audit auditors and differential attribution
 
 Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
@@ -46,7 +43,8 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539</history>
+  <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578</history>
 </CHANGE_SUMMARY>
 */
 
@@ -90,6 +88,9 @@ export const forgeBindingsSchema = z.object({
       // serve ({target} → first stdout line {"url","pid"}, keep running).
       outcomeBuild: z.string().nullable().default(null),
       outcomeServe: z.string().nullable().default(null),
+      // RFC-1617: optional outcomeBuild cap in ms — sites whose bound build
+      // exceeds the 15-minute default declare the honest bound here.
+      outcomeBuildTimeoutMs: z.number().int().positive().nullable().default(null),
       // RFC-1578: runs one correctness-manifest oracle ({file} placeholder);
       // required when correctness.mode is enforce.
       checkRun: z.string().nullable().default(null),
@@ -166,6 +167,8 @@ export interface ForgeBindings {
     // RFC-1453: outcome-probe bindings ({target} placeholder).
     outcomeBuild: string | null;
     outcomeServe: string | null;
+    // RFC-1617: optional outcomeBuild cap in ms (defaults to 15 minutes).
+    outcomeBuildTimeoutMs?: number | null;
     // RFC-1578: runs one correctness-manifest oracle ({file} placeholder).
     checkRun?: string | null;
   };
@@ -563,7 +566,10 @@ export function applyCliBindingDefaults(pm: string): ForgeBindings["commands"] {
     checkRun: null,
   };
   for (const entry of FORGE_CLI_BINDING_DEFAULTS) {
-    const bareKey = entry.key.replace("commands.", "") as keyof ForgeBindings["commands"];
+    const bareKey = entry.key.replace("commands.", "") as Exclude<
+      keyof ForgeBindings["commands"],
+      "outcomeBuildTimeoutMs"
+    >;
     commands[bareKey] = `${runner} ${entry.template}`;
   }
   return commands;
