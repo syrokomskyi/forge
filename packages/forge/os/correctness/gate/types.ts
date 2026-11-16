@@ -18,6 +18,7 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
+  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -124,6 +125,9 @@ export interface CorrectnessBundle {
   entries: BundleEntry[];
   weakenings: (Weakening & { accepted: boolean })[];
   violations: GateViolation[];
+  /** Git reads that failed during the judgement — evidence behind a
+      `CORR-GATE-01` "a git read failed" (CX-59/CX-69). */
+  unreadableReads?: string[];
   limitations: string[];
 }
 

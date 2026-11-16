@@ -21,6 +21,7 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
+  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -117,7 +118,9 @@ export async function deriveOrigin(opts: {
   const content = await repo.show(head, checkFile);
   if (content === null)
     return { origin: "self", viaTrailer: false, detail: `${checkFile} is not committed at HEAD` };
-  if (await repo.lastTouchIsVerifier(head, checkFile)) {
+  // `=== "yes"`: an unreadable history must not promote to verified — the
+  // flag refuses elsewhere, but the bundle's origin claim stays honest.
+  if ((await repo.lastTouchVerifier(head, checkFile)) === "yes") {
     return {
       origin: "verified",
       viaTrailer: true,
