@@ -20,6 +20,7 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -42,15 +43,10 @@ export async function readReviewRecords(
   head: string,
   dir: string,
 ): Promise<ReviewedOracle[]> {
-  const listing = await repo.git.run([
-    "ls-tree",
-    "-r",
-    "-z",
-    "--name-only",
-    head,
-    "--",
-    normalizeRelPath(dir),
-  ]);
+  const listing = await repo.listing(
+    ["ls-tree", "-r", "-z", "--name-only", head, "--", normalizeRelPath(dir)],
+    `ls-tree ${dir}`,
+  );
   const out: ReviewedOracle[] = [];
   for (const rel of (listing ?? "").split("\0").filter((l) => /\.ya?ml$/.test(l))) {
     const text = await repo.show(head, rel);
@@ -92,15 +88,10 @@ async function rfcPath(
   rfcsDir: string,
   rfcId: string,
 ): Promise<string | null> {
-  const listing = await repo.git.run([
-    "ls-tree",
-    "-r",
-    "-z",
-    "--name-only",
-    head,
-    "--",
-    normalizeRelPath(rfcsDir),
-  ]);
+  const listing = await repo.listing(
+    ["ls-tree", "-r", "-z", "--name-only", head, "--", normalizeRelPath(rfcsDir)],
+    `ls-tree ${rfcsDir}`,
+  );
   const prefix = `${rfcId.toLowerCase()}-`;
   return (
     (listing ?? "")
@@ -149,11 +140,16 @@ export async function deriveOrigin(opts: {
       const range = await resolveImplementationRange(repo.git, rel);
       // The acceptance must predate the integration base — a session cannot
       // accept (or create) the governing RFC together with its own test.
+      // merge-base exit 1 is the "not an ancestor" verdict, not a failure —
+      // only other codes flag (same class as `git grep` exit 1, CX-67).
       const acceptedBeforeBase =
         range.base !== null &&
         opts.integrationBase !== undefined &&
-        (await repo.git.run(["merge-base", "--is-ancestor", range.base, opts.integrationBase])) !==
-          null;
+        (await repo.exitCode(
+          ["merge-base", "--is-ancestor", range.base, opts.integrationBase],
+          `merge-base --is-ancestor ${range.base.slice(0, 9)}`,
+          [0, 1],
+        )) === 0;
       if (range.base && acceptedBeforeBase) {
         const atAccept = await repo.blob(range.base, checkFile);
         const now = await repo.blob(head, checkFile);

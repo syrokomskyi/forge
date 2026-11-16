@@ -26,6 +26,7 @@ touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
 cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
+  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -58,8 +59,75 @@ export class GateRepo {
     this.git = createOriginGit(root);
   }
 
+  /**
+   * A listing read that distinguishes "empty result" from "couldn't read":
+   * `okCodes` beyond 0 are successes (git grep exits 1 on zero matches — a
+   * legitimate empty listing, not a failure). Failures record in
+   * `unreadableReads` and return null (CX-59/60/67).
+   */
+  async listing(
+    args: string[],
+    label: string,
+    okCodes: readonly number[] = [0],
+  ): Promise<string | null> {
+    const flag = (out: string): string => {
+      // A path decoding to U+FFFD cannot round-trip through UTF-8 argv
+      // pathspecs — every later literal read misses it (CX-64).
+      const bad = out.split("\0").find((l) => l.includes("�"));
+      if (bad) this.unreadableReads.push(`${label}: non-UTF-8 path ${bad.slice(0, 40)}`);
+      return out;
+    };
+    if (this.git.runExit) {
+      const res = await this.git.runExit(args);
+      if (res !== null && okCodes.includes(res.code)) return flag(res.stdout);
+      this.unreadableReads.push(label);
+      return null;
+    }
+    const out = await this.git.run(args);
+    if (out === null) {
+      this.unreadableReads.push(label);
+      return null;
+    }
+    return flag(out);
+  }
+
+  /**
+   * Exit-code read for commands whose nonzero status IS the verdict
+   * (`merge-base --is-ancestor`: 1 = not an ancestor). `okCodes` are the
+   * legitimate verdict codes; spawn failure or any other code records in
+   * `unreadableReads` and returns null.
+   */
+  async exitCode(
+    args: string[],
+    label: string,
+    okCodes: readonly number[] = [0],
+  ): Promise<number | null> {
+    let code: number | null;
+    if (this.git.runExit) {
+      code = (await this.git.runExit(args))?.code ?? null;
+    } else {
+      code = (await this.git.run(args)) !== null ? 0 : null;
+    }
+    if (code === null || !okCodes.includes(code)) {
+      this.unreadableReads.push(label);
+      return null;
+    }
+    return code;
+  }
+
+  /**
+   * File content at `rev`, or null when absent. "Absent" and "unreadable"
+   * are not the same: `git show` fails on a corrupt blob exactly as on a
+   * missing path, but `rev-parse` resolves the tree entry without reading
+   * blob bytes — an entry that exists yet cannot be shown is a corrupt
+   * object, and judging it "absent" would silently inert the surface it
+   * carries (RFC-1615 review CX-61/62/63).
+   */
   async show(rev: string, rel: string): Promise<string | null> {
-    return this.git.run(["show", `${rev}:${rel}`]);
+    const out = await this.git.run(["show", `${rev}:${rel}`]);
+    if (out === null && (await this.blob(rev, rel)) !== null)
+      this.unreadableReads.push(`show ${rev}:${rel}`);
+    return out;
   }
 
   /** Blob id of `rel` at `rev`, null when absent. */
@@ -73,21 +141,31 @@ export class GateRepo {
   }
 
   async files(rev: string): Promise<string[]> {
-    const out = await this.git.run(["ls-tree", "-r", "-z", "--name-only", rev]);
-    if (out === null) {
-      this.unreadableReads.push(`ls-tree ${rev}`);
-      return [];
-    }
-    return out.split("\0").filter((l) => l.length > 0);
+    const out = await this.listing(["ls-tree", "-r", "-z", "--name-only", rev], `ls-tree ${rev}`);
+    return (out ?? "").split("\0").filter((l) => l.length > 0);
   }
 
   async changedPaths(base: string, head: string): Promise<string[]> {
-    const out = await this.git.run(["diff", "--name-only", "-z", `${base}..${head}`]);
-    if (out === null) {
-      this.unreadableReads.push(`diff ${base}..${head}`);
-      return [];
-    }
-    return out.split("\0").filter((l) => l.length > 0);
+    // --no-renames: a rename emits delete+add — the old path must stay
+    // visible or a `git mv`d anchor carrier reads as untouched (CX-65).
+    const out = await this.listing(
+      ["diff", "--name-only", "-z", "--no-renames", `${base}..${head}`],
+      `diff ${base}..${head}`,
+    );
+    return (out ?? "").split("\0").filter((l) => l.length > 0);
+  }
+
+  /**
+   * Files containing `pattern` (fixed string) at `rev` — `git grep -l`.
+   * Exit 1 (zero matches) is a valid empty listing, not a failure (CX-67).
+   */
+  async grepList(rev: string, pattern: string): Promise<string[]> {
+    const out = await this.listing(
+      ["grep", "-l", "-z", "-F", pattern, rev, "--"],
+      `grep ${pattern} ${rev}`,
+      [0, 1],
+    );
+    return (out ?? "").split("\0").filter((l) => l.length > 0);
   }
 
   /** Body of the last commit (≤ head) touching `rel`, or null. */

@@ -13,7 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-6 — commit-derived exempt contour + HEAD-side policyMalformed before early return (CX-30/31)</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
 
@@ -50,6 +49,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 (CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
 policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
+  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -239,8 +239,19 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     violations.push({ rule, severity: "error", message, ...extra });
 
   // The gate runs oracles on the working tree but derives origin from HEAD.
-  const dirty =
-    (await repo.git.run(["status", "--porcelain", "--untracked-files=no"]))?.trim() ?? "";
+  const statusOut = await repo.git.run(["status", "--porcelain", "--untracked-files=no"]);
+  if (statusOut === null) {
+    // A failed status read is not a clean tree — the dirtiness verdict could
+    // not be verified, so the read joins the fail-closed set (CX-66).
+    repo.unreadableReads.push("git status");
+  }
+  // Hoisted out of `finish` — the unreadable-reads verdict emits before any
+  // finish() call, so a failure here must flag early to count.
+  const branchOut = await repo.git.run(["rev-parse", "--abbrev-ref", "HEAD"]);
+  // Detached HEAD legitimately resolves to "HEAD" — a null read is a real
+  // failure, not a detached checkout.
+  if (branchOut === null) repo.unreadableReads.push("rev-parse --abbrev-ref HEAD");
+  const dirty = statusOut?.trim() ?? "";
   if (dirty.length > 0) {
     violations.push({
       rule: "CORR-GATE-01",
@@ -300,9 +311,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       path.join((await repo.commonDir()) ?? path.join(root, ".git"), "forge", "gate-reports");
     mkdirSync(dir, { recursive: true });
     // RFC-1532 naming (`<branch>-<ts>…json`) so the gate-report retention pruner covers bundles.
-    const branch = (
-      (await repo.git.run(["rev-parse", "--abbrev-ref", "HEAD"]))?.trim() || "detached"
-    ).replace(/[^A-Za-z0-9._-]+/g, "-");
+    const branch = (branchOut?.trim() || "detached").replace(/[^A-Za-z0-9._-]+/g, "-");
     const runId = `${branch}-${new Date().toISOString().replace(/[-:]/g, "").replace(/\..*$/, "")}-${process.pid}`;
     const bundlePath = path.join(dir, `${runId}.correctness.json`);
     writeFileSync(bundlePath, `${JSON.stringify(bundle, null, 2)}\n`);
