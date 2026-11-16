@@ -8,9 +8,6 @@ the RFC-1330 origin git port (argv exec, DNA-89).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
 
 Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
@@ -27,6 +24,7 @@ origin.ts).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
+  <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -153,12 +151,27 @@ export class GateRepo {
     return out;
   }
 
-  /** Blob id of `rel` at `rev`, null when absent. */
+  /**
+   * Blob id of `rel` at `rev`, null when absent — or not a file. `rev-parse
+   * rev:path` resolves ANY object: a directory answers its tree sha and a
+   * byte compare would read the tree as "the file existed", fabricating a
+   * frozen-file edit on a dir→file flip (CX-74). `ls-tree` gives the entry
+   * type: only `blob` entries are files.
+   */
   async blob(rev: string, rel: string): Promise<string | null> {
     const key = `${rev}:${rel}`;
     if (this.blobCache.has(key)) return this.blobCache.get(key)!;
-    const out = await this.git.run(["rev-parse", "--verify", "--quiet", `${rev}:${rel}`]);
-    const sha = out?.trim() || null;
+    const out = await this.listing(
+      ["ls-tree", "-z", rev, "--", `:(literal)${rel}`],
+      `ls-tree ${rev}:${rel}`,
+    );
+    let sha: string | null = null;
+    for (const line of (out ?? "").split("\0")) {
+      const tab = line.indexOf("\t");
+      if (tab === -1 || line.slice(tab + 1) !== rel) continue;
+      const [, type, id] = line.slice(0, tab).split(" ");
+      if (type === "blob" && id) sha = id;
+    }
     this.blobCache.set(key, sha);
     return sha;
   }

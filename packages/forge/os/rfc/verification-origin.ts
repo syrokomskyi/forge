@@ -21,7 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1330: git-derived probe origin — range anchoring, declaration/test/run rules, verifier trailers, presence classes, attachProbeOrigins.</item>
   <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
 
@@ -32,6 +31,8 @@ sequential show loop for stubs. rfc.validate memoizes the index once
 per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
+  <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
+  <history>RFC-1330</history>
 </CHANGE_SUMMARY>
 */
 
@@ -270,8 +271,11 @@ async function pathHistory(git: OriginGit, relPath: string): Promise<Map<string,
 export async function resolveImplementationRange(
   git: OriginGit,
   rfcRelPath: string,
+  onUnreadable?: (label: string) => void,
 ): Promise<ImplementationRange> {
-  const head = (await git.run(["rev-parse", "HEAD"]))?.trim() ?? "HEAD";
+  const headOut = await git.run(["rev-parse", "HEAD"]);
+  if (headOut === null) onUnreadable?.("rev-parse HEAD");
+  const head = headOut?.trim() ?? "HEAD";
   const out = await git.run([
     "log",
     "--follow",
@@ -281,6 +285,9 @@ export async function resolveImplementationRange(
     "--",
     rfcRelPath,
   ]);
+  // A failed log is not "no acceptance recorded" — the caller judges the
+  // degraded range (CX-73).
+  if (out === null) onUnreadable?.(`log --follow -G ${rfcRelPath}`);
   const shas = (out ?? "")
     .split("\n")
     .map((l) => l.trim())

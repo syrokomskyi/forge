@@ -12,21 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
-
-settingsFromForgeDoc replicates the zod schema verdict as configError so
-a committed forge.yaml that parses but fails validation cannot mask the
-CORR-01 the worktree flavor reports (CX-35). forgeYamlOnlyFrozenKeys
-strips policy:/correctness in the null-policy branch too — a legal
-policy: adoption inside an accepted-weakening session no longer makes
-forge.yaml foreign (CX-36) — and canons non-map YAML instead of running
-delete on a String index (CX-46). anchorWeakenings judges the HEAD
-commit via git grep + repo.show — a committed reword masked by an
-uncommitted revert still reports; an uncommitted reword never fabricates
-(CX-37). The inert-policy note emits once above the exempt early return
-(CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
-Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
-(CX-39).</item>
   <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
 
 sideFrom filters compassDocs elements (CX-47 TypeError crash).
@@ -49,6 +34,7 @@ policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
+  <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -821,9 +807,15 @@ export async function anchorWeakenings(
   // tree cannot blind the judgement (CX-59). Carriers absent from `changed`
   // keep their base copies implicitly.
   const changedSet = new Set(changed);
+  // A changed file whose content cannot be read might carry a surviving
+  // copy — `anchor-removed` is a claim the failed read cannot support, so
+  // the flag carries the refusal and the claim is suppressed (CX-75).
+  const scanFailed: string[] = [];
   for (const rel of changed) {
     if (!isAnchorSourceCandidate(rel)) continue;
+    const u0 = repo.unreadableReads.length;
     const text = await repo.show(head, rel);
+    if (repo.unreadableReads.length > u0) scanFailed.push(rel);
     if (!text) continue;
     for (const a of anchorsFromSource(rel, text)) {
       if (!wanted.has(a.id)) continue;
@@ -840,7 +832,7 @@ export async function anchorWeakenings(
     // while any other carrier stays untouched (CX-68).
     const carriers = [...(frozen.anchorCarriers.get(id) ?? [])];
     const allTouched = carriers.length > 0 && carriers.every((rel) => changedSet.has(rel));
-    if (now.length === 0 && allTouched)
+    if (now.length === 0 && allTouched && scanFailed.length === 0)
       out.push({ kind: "anchor-removed", subject: id, message: `frozen anchor ${id} was removed` });
     // Every changed copy must keep a statement the id carried at base — a
     // duplicate comment carrying the old text must not mask a reworded real
