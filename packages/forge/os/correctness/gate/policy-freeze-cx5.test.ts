@@ -37,11 +37,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { policyWeakenings, sideFrom, type CorrectnessSide, type FrozenSet } from "./frozen.ts";
 import { runCorrectnessGate } from "./run.ts";
-import {
-  makeGateFixture,
-  verifierCommit,
-  type GateFixture,
-} from "./tests/gate-fixture.ts";
+import { makeGateFixture, verifierCommit, type GateFixture } from "./tests/gate-fixture.ts";
 
 // ---------------------------------------------------------------------------
 // helpers (same shape as the shipped suites)
@@ -99,6 +95,7 @@ function frozenOf(yaml: string): FrozenSet {
     supportGlobs: [],
     supportMalformed: false,
     anchorFiles: [],
+    anchorCarriers: new Map(),
     baseFiles: [],
     policyGlobs: [],
     policyFiles: [],
@@ -147,10 +144,7 @@ policy:
       threw = e;
     }
     // AC-6: touches only frozen policy paths → integration SHALL proceed.
-    expect(
-      threw,
-      `gate threw instead of producing a verdict: ${String(threw)}`,
-    ).toBeNull();
+    expect(threw, `gate threw instead of producing a verdict: ${String(threw)}`).toBeNull();
     expect(out && out.ok && out.result.status).toBe("pass");
   });
 
@@ -346,7 +340,11 @@ describe("CX-29: exempt-at-base repo — committed policy weakenings unjudged", 
     const { result } = out;
     console.log(
       "CX-29 OBS exempt→exempt:",
-      JSON.stringify({ status: result.status, weakenings: result.weakenings, violations: result.violations }),
+      JSON.stringify({
+        status: result.status,
+        weakenings: result.weakenings,
+        violations: result.violations,
+      }),
     );
     // Document observed behavior; classified in the report.
     expect(["exempt", "fail", "pass"]).toContain(result.status);

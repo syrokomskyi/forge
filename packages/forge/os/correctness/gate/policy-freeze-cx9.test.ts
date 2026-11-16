@@ -35,12 +35,7 @@ counterexample. Candidate CX numbering starts at CX-47.
 import { rmSync, writeFileSync } from "node:fs";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  policyWeakenings,
-  sideFrom,
-  type CorrectnessSide,
-  type FrozenSet,
-} from "./frozen.ts";
+import { policyWeakenings, sideFrom, type CorrectnessSide, type FrozenSet } from "./frozen.ts";
 import { runCorrectnessGate } from "./run.ts";
 import { settingsFromForgeDoc } from "../workspace.ts";
 import { parseForgeConfigDocument } from "../../../src/config/forge-config.ts";
@@ -81,6 +76,7 @@ function frozenOf(yaml: string): FrozenSet {
     supportGlobs: [],
     supportMalformed: false,
     anchorFiles: [],
+    anchorCarriers: new Map(),
     baseFiles: [],
     policyGlobs: [],
     policyFiles: [],
@@ -408,10 +404,7 @@ policy:
   freezeFiles: []
 `,
     );
-    f.write(
-      "forge.yaml",
-      f.read("forge.yaml").replace("docs/reviews-a", "docs/reviews-b"),
-    );
+    f.write("forge.yaml", f.read("forge.yaml").replace("docs/reviews-a", "docs/reviews-b"));
     f.commit("rebind oracleReviewsDir (weakening)");
     const { result } = await gate(f, {
       base: base3,
@@ -419,10 +412,9 @@ policy:
     });
     // acceptedWeakening is the discriminating signal — with the mutable-
     // membership poison the accept path dead-ends and it stays null.
-    expect(
-      result.acceptedWeakening,
-      `violations: ${JSON.stringify(result.violations)}`,
-    ).toBe("operator approved rebind");
+    expect(result.acceptedWeakening, `violations: ${JSON.stringify(result.violations)}`).toBe(
+      "operator approved rebind",
+    );
   });
 
   it("CX-51c: mutable:[bindings] + correctnessManifest rebind + accept refuses mixed", async () => {
@@ -456,7 +448,9 @@ policy:
     });
     f.write(
       "forge.yaml",
-      f.read("forge.yaml").replace("mutable: [project, forge, moves, policy]", "mutable: [project, policy]"),
+      f
+        .read("forge.yaml")
+        .replace("mutable: [project, forge, moves, policy]", "mutable: [project, policy]"),
     );
     f.commit("amend policy");
     const { result } = await gate(f, { policyOnly: true, acceptWeakening: "operator approved" });
@@ -580,7 +574,7 @@ describe("R8-E: anchorWeakenings judged at the HEAD commit", () => {
     const f = fx({});
     f.write(
       "apps/api/src/dispatch.ts",
-      'export function dispatch(): void {\n  // @ai-invariant[INV-dispatch-01]: CHANGED statement\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n',
+      "export function dispatch(): void {\n  // @ai-invariant[INV-dispatch-01]: CHANGED statement\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n",
     );
     f.commit("reword anchor");
     // Uncommitted revert — must NOT mask the committed weakening.
@@ -598,7 +592,7 @@ describe("R8-E: anchorWeakenings judged at the HEAD commit", () => {
     f.commit("no change");
     f.write(
       "apps/api/src/dispatch.ts",
-      'export function dispatch(): void {\n  // @ai-invariant[INV-dispatch-01]: CHANGED statement\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n',
+      "export function dispatch(): void {\n  // @ai-invariant[INV-dispatch-01]: CHANGED statement\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n",
     );
     const { result } = await gate(f, {});
     expect(result.weakenings.filter((w) => w.kind.startsWith("anchor-"))).toEqual([]);
@@ -606,10 +600,7 @@ describe("R8-E: anchorWeakenings judged at the HEAD commit", () => {
 
   it("E3: anchor moved to a non-source-candidate file reports anchor-removed", async () => {
     const f = fx({});
-    f.write(
-      "apps/api/src/dispatch.ts",
-      "export function dispatch(): void {}\n",
-    );
+    f.write("apps/api/src/dispatch.ts", "export function dispatch(): void {}\n");
     f.write(
       "docs/anchor-notes.md",
       "# notes\n\n@ai-invariant[INV-dispatch-01]: dispatch moves an approved candidate to queued exactly once\n",
@@ -623,7 +614,7 @@ describe("R8-E: anchorWeakenings judged at the HEAD commit", () => {
     const f = fx({});
     f.write(
       "apps/api/src/duplicate.ts",
-      'export function dup(): void {\n  // @ai-invariant[INV-dispatch-01]: DIFFERENT statement\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n',
+      "export function dup(): void {\n  // @ai-invariant[INV-dispatch-01]: DIFFERENT statement\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n",
     );
     f.commit("add reworded duplicate anchor");
     const { result } = await gate(f, {});
@@ -634,7 +625,7 @@ describe("R8-E: anchorWeakenings judged at the HEAD commit", () => {
     const f = fx({});
     f.write(
       "apps/api/src/duplicate.ts",
-      'export function dup(): void {\n  // @ai-invariant[INV-dispatch-01]: dispatch moves an approved candidate to queued exactly once\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n',
+      "export function dup(): void {\n  // @ai-invariant[INV-dispatch-01]: dispatch moves an approved candidate to queued exactly once\n  //   (checked-by: test:test/dispatch.oracle.ts)\n}\n",
     );
     f.commit("add identical duplicate anchor");
     const { result } = await gate(f, {});
@@ -684,7 +675,8 @@ describe("R8-F: inert-policy note emission", () => {
     const { result } = await gate(f, { policyOnly: true });
     expect(
       result.violations.some(
-        (v) => v.rule === "CORR-GATE-01" && v.severity === "error" && v.message.includes("malformed"),
+        (v) =>
+          v.rule === "CORR-GATE-01" && v.severity === "error" && v.message.includes("malformed"),
       ),
     ).toBe(true);
     // The note must not claim the adopted policy "binds the next integration"
@@ -715,9 +707,7 @@ describe("R8-G: non-map forge.yaml at base/head → structured CORR-GATE-01", ()
       f.commit("no change");
       const { result } = await gate(f, { base: base2 });
       expect(
-        result.violations.some(
-          (v) => v.rule === "CORR-GATE-01" && v.severity === "error",
-        ),
+        result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error"),
         `violations: ${JSON.stringify(result.violations)}`,
       ).toBe(true);
       expect(result.status).toBe("fail");
@@ -745,9 +735,9 @@ describe("R8-G: non-map forge.yaml at base/head → structured CORR-GATE-01", ()
     f.git(["add", "forge.yaml", "other.yaml"]);
     f.git(["commit", "-qm", "forge.yaml as symlink"]);
     const { result } = await gate(f, {});
-    expect(
-      result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error"),
-    ).toBe(true);
+    expect(result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error")).toBe(
+      true,
+    );
   });
 });
 
@@ -791,11 +781,9 @@ describe("R8-H: --accept-weakening with a legal policy: adoption", () => {
     f.write("forge.yaml", `${f.read("forge.yaml")}policy: 5\n`);
     f.commit("adopt malformed policy");
     const { result } = await gate(f, { acceptWeakening: "operator approved" });
-    expect(
-      result.violations.some(
-        (v) => v.rule === "CORR-GATE-01" && v.severity === "error",
-      ),
-    ).toBe(true);
+    expect(result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error")).toBe(
+      true,
+    );
     expect(result.status).toBe("fail");
   });
 });
@@ -832,9 +820,7 @@ correctness:
     } catch (err) {
       throw new Error(`gate crashed instead of structured refusal: ${(err as Error).message}`);
     }
-    expect(
-      outcome.result.violations.some((v) => v.rule === "CORR-GATE-01"),
-    ).toBe(true);
+    expect(outcome.result.violations.some((v) => v.rule === "CORR-GATE-01")).toBe(true);
   });
 
   it("CX-53: manifest support:['!x'] negation glob freezes the complement", async () => {
@@ -852,10 +838,7 @@ correctness:
     // Append (keep the anchor comment intact) — the only signal should be the
     // byte diff, so a frozen-file weakening here is purely the negation
     // complement at work.
-    f.write(
-      "apps/api/src/dispatch.ts",
-      `${f.read("apps/api/src/dispatch.ts")}// touched\n`,
-    );
+    f.write("apps/api/src/dispatch.ts", `${f.read("apps/api/src/dispatch.ts")}// touched\n`);
     f.commit("touch code");
     const { result } = await gate(f, { base: base2 });
     expect(
@@ -887,7 +870,10 @@ correctness:
   it("constructor/prototype as new top-level keys are policy-key", () => {
     for (const k of ["constructor", "prototype", "hasOwnProperty", "toString"]) {
       const w = weak(BASE_YAML, `${BASE_YAML}${k}: {x: 1}\n`);
-      expect(w.some((x) => x.kind === "policy-key"), `key ${k}`).toBe(true);
+      expect(
+        w.some((x) => x.kind === "policy-key"),
+        `key ${k}`,
+      ).toBe(true);
     }
   });
 

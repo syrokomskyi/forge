@@ -30,18 +30,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
-import {
-  policyWeakenings,
-  sideFrom,
-  type CorrectnessSide,
-  type FrozenSet,
-} from "./frozen.ts";
+import { policyWeakenings, sideFrom, type CorrectnessSide, type FrozenSet } from "./frozen.ts";
 import { runCorrectnessGate } from "./run.ts";
-import {
-  makeGateFixture,
-  verifierCommit,
-  type GateFixture,
-} from "./tests/gate-fixture.ts";
+import { makeGateFixture, verifierCommit, type GateFixture } from "./tests/gate-fixture.ts";
 import type { Weakening } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -79,6 +70,7 @@ function frozenOf(yaml: string): FrozenSet {
     supportGlobs: [],
     supportMalformed: false,
     anchorFiles: [],
+    anchorCarriers: new Map(),
     baseFiles: [],
     policyGlobs: [],
     policyFiles: [],
@@ -342,7 +334,7 @@ describe("CX-22: scalar precision collisions under frozen keys (AC-1)", () => {
     expect(w.some((x) => x.kind === "policy-key")).toBe(true);
   });
 
-  it("-0 → 0 collapses via JSON.stringify(-0) === \"0\"", () => {
+  it('-0 → 0 collapses via JSON.stringify(-0) === "0"', () => {
     // Verifier's expectation adjusted: `-0` and `0` are the *same* YAML value
     // (YAML 1.2 has no negative zero) — flagging lexical variants of equal
     // values would violate the structural-compare contract (key reorder and
@@ -386,9 +378,8 @@ describe("CX-23: `!`-freezeFiles — malformed at the gate, never healed by upgr
   it("forge.upgrade heals it (non-conforming → DEFAULT_FORGE_POLICY)", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "forge-upgrade-neg-"));
     tmpdirs.push(root);
-    const PKG_VERSION = JSON.parse(
-      readFileSync(path.join(FORGE_ROOT, "package.json"), "utf8"),
-    ).version as string;
+    const PKG_VERSION = JSON.parse(readFileSync(path.join(FORGE_ROOT, "package.json"), "utf8"))
+      .version as string;
     writeFileSync(
       path.join(root, "forge.yaml"),
       `schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "${PKG_VERSION}"\npolicy:\n  mutable: [project]\n  freezeFiles: ["!hooks/**"]\n`,
@@ -406,15 +397,11 @@ describe("CX-23: `!`-freezeFiles — malformed at the gate, never healed by upgr
       },
     );
     const policy = (
-      parseYaml(readFileSync(path.join(root, "forge.yaml"), "utf8")) as Record<
-        string,
-        unknown
-      >
+      parseYaml(readFileSync(path.join(root, "forge.yaml"), "utf8")) as Record<string, unknown>
     )["policy"];
-    expect(
-      policy,
-      "a gate-malformed policy: must be healed by upgrade (CX-20 contract)",
-    ).toEqual(DEFAULT_FORGE_POLICY);
+    expect(policy, "a gate-malformed policy: must be healed by upgrade (CX-20 contract)").toEqual(
+      DEFAULT_FORGE_POLICY,
+    );
   }, 120_000);
 });
 
@@ -631,9 +618,9 @@ describe("consistency: filesystem edges inside freezeFiles", () => {
     symlinkSync("target.sh", `${f.root}/hooks/link.sh`);
     f.commit("add symlink inside frozen glob");
     let { result } = await gate(f, { policyOnly: true });
-    expect(result.weakenings.some((w) => w.kind === "policy-file" && w.subject === "hooks/link.sh")).toBe(
-      true,
-    );
+    expect(
+      result.weakenings.some((w) => w.kind === "policy-file" && w.subject === "hooks/link.sh"),
+    ).toBe(true);
     // retarget the link
     rmSync(`${f.root}/hooks/link.sh`);
     symlinkSync("other.sh", `${f.root}/hooks/link.sh`);
@@ -647,7 +634,9 @@ describe("consistency: filesystem edges inside freezeFiles", () => {
     f.git(["mv", "hooks/integration-gate.sh", "hooks/Integration-Gate.sh"]);
     f.commit("rename case");
     const { result } = await gate(f, { policyOnly: true });
-    expect(result.weakenings.filter((w) => w.kind === "policy-file").length).toBeGreaterThanOrEqual(1);
+    expect(result.weakenings.filter((w) => w.kind === "policy-file").length).toBeGreaterThanOrEqual(
+      1,
+    );
     expect(result.status).toBe("fail");
   });
 
@@ -669,10 +658,9 @@ describe("consistency: comment/BOM/whitespace-only forge.yaml diffs are not weak
     const f = fx({ forgeYamlAppend: POLICY_APPEND, extraFiles: POLICY_FILES });
     const y = f.read("forge.yaml");
     // prepend a comment + swap two top-level key order
-    const reordered = y.replace("paths: {}\nbindings:", "bindings:").replace(
-      "agentTools:",
-      "paths: {}\nagentTools:",
-    );
+    const reordered = y
+      .replace("paths: {}\nbindings:", "bindings:")
+      .replace("agentTools:", "paths: {}\nagentTools:");
     f.write("forge.yaml", `# benign comment\n${reordered}`);
     f.commit("comment + reorder only");
     const { result } = await gate(f, { policyOnly: true });
@@ -712,8 +700,14 @@ policy:
   });
 
   it("OBS: policy: !!omap/!!timestamp is 'well-formed empty' (deny-all), not malformed", () => {
-    const omap = sideFrom(`${BASE_YAML.replace(/policy:[\s\S]*$/, "")}policy: !!omap []\n`, () => null);
-    const date = sideFrom(`${BASE_YAML.replace(/policy:[\s\S]*$/, "")}policy: !!timestamp 2020-01-01\n`, () => null);
+    const omap = sideFrom(
+      `${BASE_YAML.replace(/policy:[\s\S]*$/, "")}policy: !!omap []\n`,
+      () => null,
+    );
+    const date = sideFrom(
+      `${BASE_YAML.replace(/policy:[\s\S]*$/, "")}policy: !!timestamp 2020-01-01\n`,
+      () => null,
+    );
     console.log(
       "OBS tagged-policy:",
       JSON.stringify({
