@@ -16,6 +16,7 @@ invariants file), and RFC acceptance-criterion / fixed-input refs
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
+  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
 </CHANGE_SUMMARY>
 */
 
@@ -31,7 +32,7 @@ import {
 const DOCUMENT_ID_RE = /<document-id>\s*([^<\s]+)\s*<\/document-id>/;
 const REQUIREMENT_ID_RE = /<requirement\b[^>]*?\bid\s*=\s*"([^"]+)"/g;
 const DNA_HEADING_RE = /^##\s+DNA-(\d+)\b/gm;
-const RFC_REF_RE = /^(RFC-\d{4})\/(AC|FI)-(\d+)$/;
+export const RFC_REF_RE = /^(RFC-\d{4})\/(AC|FI)-(\d+)$/;
 
 export interface RequirementsDocument {
   /** Workspace-relative path, or null when no compass doc is the requirements document. */
@@ -47,6 +48,24 @@ function readText(absPath: string): string | null {
   }
 }
 
+/**
+ * Content half of `readRequirementsDocument` — shared with the gate's
+ * base-anchored resolution, which reads compass docs through git instead of
+ * the worktree so a session edit cannot mint requirement provenance
+ * (RFC-1615 review CX-83).
+ */
+export function requirementsDocumentFromContent(
+  text: string,
+): { isRequirements: boolean; ids: string[] } {
+  const docId = DOCUMENT_ID_RE.exec(text)?.[1];
+  if (docId !== "requirements") return { isRequirements: false, ids: [] };
+  const ids: string[] = [];
+  for (const m of text.matchAll(REQUIREMENT_ID_RE)) {
+    if (!ids.includes(m[1]!)) ids.push(m[1]!);
+  }
+  return { isRequirements: true, ids };
+}
+
 /** Find the compass requirements document among the bound compass docs and list its ids. */
 export function readRequirementsDocument(
   workspaceRoot: string,
@@ -55,15 +74,21 @@ export function readRequirementsDocument(
   for (const rel of compassDocs) {
     const text = readText(path.join(workspaceRoot, rel));
     if (text === null) continue;
-    const docId = DOCUMENT_ID_RE.exec(text)?.[1];
-    if (docId !== "requirements") continue;
-    const ids: string[] = [];
-    for (const m of text.matchAll(REQUIREMENT_ID_RE)) {
-      if (!ids.includes(m[1]!)) ids.push(m[1]!);
-    }
-    return { path: rel, ids };
+    const parsed = requirementsDocumentFromContent(text);
+    if (!parsed.isRequirements) continue;
+    return { path: rel, ids: parsed.ids };
   }
   return { path: null, ids: [] };
+}
+
+/** Content half of `readDnaIds` — shared with the gate's base-anchored resolution (CX-83). */
+export function dnaIdsFromContent(text: string): string[] {
+  const ids: string[] = [];
+  for (const m of text.matchAll(DNA_HEADING_RE)) {
+    const id = `DNA-${m[1]}`;
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
 }
 
 /** DNA ids declared as `## DNA-N` headings in the invariants file (empty when unbound/absent). */
@@ -71,12 +96,7 @@ export function readDnaIds(workspaceRoot: string, invariantsFile: string | null)
   if (!invariantsFile) return [];
   const text = readText(path.join(workspaceRoot, invariantsFile));
   if (text === null) return [];
-  const ids: string[] = [];
-  for (const m of text.matchAll(DNA_HEADING_RE)) {
-    const id = `DNA-${m[1]}`;
-    if (!ids.includes(id)) ids.push(id);
-  }
-  return ids;
+  return dnaIdsFromContent(text);
 }
 
 function findRfcFile(dir: string, rfcId: string): string | null {
@@ -117,6 +137,37 @@ export type RfcRefResolution = { ok: true; rfcFile: string } | { ok: false; reas
  * Resolve `RFC-NNNN/AC-N` or `RFC-NNNN/FI-N` against the RFC file under
  * `rfcsDir` (or `rfcsDir/archive/**`). `kind` restricts the accepted shape.
  */
+/**
+ * Content half of `resolveRfcRef` — shared with the gate's base-anchored
+ * resolver, which reads the RFC file through git at the integration base so
+ * a session-planted RFC cannot satisfy CORR-03 (RFC-1615 review CX-82).
+ */
+export function resolveRfcRefContent(
+  content: string | null,
+  ref: string,
+  kind: "AC" | "FI",
+  rfcsDirLabel: string,
+): RfcRefResolution {
+  const m = RFC_REF_RE.exec(ref);
+  if (!m || m[2] !== kind) {
+    return { ok: false, reason: `ref "${ref}" is not of the form RFC-NNNN/${kind}-N` };
+  }
+  const rfcId = m[1]!;
+  const itemId = `${kind}-${m[3]}`;
+  if (content === null) {
+    return { ok: false, reason: `${rfcId} not found in ${rfcsDirLabel} or ${rfcsDirLabel}/archive` };
+  }
+  const body = stripFencedCodeBlocks(content);
+  const ids =
+    kind === "AC"
+      ? evaluateAcceptanceCriteria(body).criterionIds
+      : parseFixedInputs(body).rows.map((r) => r.id);
+  if (!ids.includes(itemId)) {
+    return { ok: false, reason: `${rfcId} declares no ${itemId}` };
+  }
+  return { ok: true, rfcFile: `${rfcsDirLabel} (at the integration base)` };
+}
+
 export function resolveRfcRef(
   workspaceRoot: string,
   rfcsDir: string,
@@ -127,17 +178,9 @@ export function resolveRfcRef(
   if (!m || m[2] !== kind) {
     return { ok: false, reason: `ref "${ref}" is not of the form RFC-NNNN/${kind}-N` };
   }
-  const rfcId = m[1]!;
-  const itemId = `${kind}-${m[3]}`;
-  const file = findRfcFile(path.join(workspaceRoot, rfcsDir), rfcId);
-  if (!file) return { ok: false, reason: `${rfcId} not found in ${rfcsDir} or ${rfcsDir}/archive` };
-  const body = stripFencedCodeBlocks(readText(file) ?? "");
-  const ids =
-    kind === "AC"
-      ? evaluateAcceptanceCriteria(body).criterionIds
-      : parseFixedInputs(body).rows.map((r) => r.id);
-  if (!ids.includes(itemId)) {
-    return { ok: false, reason: `${rfcId} declares no ${itemId}` };
-  }
-  return { ok: true, rfcFile: path.relative(workspaceRoot, file).replace(/\\/g, "/") };
+  const file = findRfcFile(path.join(workspaceRoot, rfcsDir), m[1]!);
+  if (!file) return { ok: false, reason: `${m[1]} not found in ${rfcsDir} or ${rfcsDir}/archive` };
+  const res = resolveRfcRefContent(readText(file), ref, kind, rfcsDir);
+  if (res.ok) return { ok: true, rfcFile: path.relative(workspaceRoot, file).replace(/\\/g, "/") };
+  return res;
 }

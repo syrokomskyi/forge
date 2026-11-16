@@ -19,7 +19,6 @@ no rule.</purpose>
   <item>The clock is injectable so CORR-07 is testable without sleeping.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: initial validator, rules CORR-01..09.</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
@@ -28,6 +27,8 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
+  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
+  <history>RFC-1578</history>
 </CHANGE_SUMMARY>
 */
 
@@ -59,7 +60,13 @@ import {
   type CoverageCounts,
   type Substrate,
 } from "../manifest-schema.ts";
-import { readDnaIds, readRequirementsDocument, resolveRfcRef } from "../references.ts";
+import {
+  readDnaIds,
+  readRequirementsDocument,
+  resolveRfcRef,
+  type RequirementsDocument,
+  type RfcRefResolution,
+} from "../references.ts";
 import {
   listWorkspaceFiles,
   normalizeCheckRef,
@@ -92,6 +99,22 @@ export interface ValidateOptions {
    * records a CORR-01 violation so the widened set can never mint coverage.
    */
   onGitFailure?: (label: string) => void;
+  /**
+   * RFC-1615 (CX-82/CX-83): base-anchored reference resolution. When set,
+   * CORR-03 resolves refs against the INTEGRATION BASE through git instead
+   * of the HEAD worktree — a session cannot mint its own governing RFC,
+   * requirement, or DNA provenance by planting or editing files. Each
+   * provider mirrors its worktree reader (`readRequirementsDocument`,
+   * `readDnaIds`, `resolveRfcRef`); the standalone command stays
+   * worktree-flavored by omitting them.
+   */
+  requirementDoc?: () => RequirementsDocument | Promise<RequirementsDocument>;
+  dnaIds?: () => string[] | Promise<string[]>;
+  rfcRefResolver?: (
+    rfcsDir: string,
+    ref: string,
+    kind: "AC" | "FI",
+  ) => RfcRefResolution | Promise<RfcRefResolution>;
 }
 
 export interface CaptureStatus {
@@ -285,8 +308,12 @@ export async function validateCorrectnessManifest(
   }
 
   // ── Reference roots ─────────────────────────────────────────────────────
-  const reqDoc = readRequirementsDocument(workspaceRoot, settings.compassDocs);
-  const dnaIds = readDnaIds(workspaceRoot, settings.invariantsFile);
+  const reqDoc = options.requirementDoc
+    ? await options.requirementDoc()
+    : readRequirementsDocument(workspaceRoot, settings.compassDocs);
+  const dnaIds = options.dnaIds
+    ? await options.dnaIds()
+    : readDnaIds(workspaceRoot, settings.invariantsFile);
   const reqIds = new Set(reqDoc.ids);
   const dnaSet = new Set(dnaIds);
 
@@ -355,12 +382,10 @@ export async function validateCorrectnessManifest(
             { ...e, ref },
           );
         } else if (entry.source === "rfc-ac" || entry.source === "fixed-input") {
-          const res = resolveRfcRef(
-            workspaceRoot,
-            settings.rfcsDir,
-            ref,
-            entry.source === "rfc-ac" ? "AC" : "FI",
-          );
+          const kind = entry.source === "rfc-ac" ? "AC" : "FI";
+          const res = options.rfcRefResolver
+            ? await options.rfcRefResolver(settings.rfcsDir, ref, kind)
+            : resolveRfcRef(workspaceRoot, settings.rfcsDir, ref, kind);
           if (!res.ok) add("CORR-03", "error", `${entry.id}: ${res.reason}`, { ...e, ref });
         }
       }

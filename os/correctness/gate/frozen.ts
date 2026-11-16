@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
+  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -138,10 +138,13 @@ export function sideFrom(
         ? (bindings.paths["oracleReviewsDir"] as string)
         : null,
     // The RFC namespace is frozen too — a session rebind makes planted
-    // `status: accepted` files resolve as governing RFCs (CX-78).
+    // `status: accepted` files resolve as governing RFCs (CX-78). The LIVE
+    // key is the top-level `paths:` object (forge-config schema); a
+    // `bindings.paths.rfcsDir` key is stripped by the loader and read by no
+    // consumer — judging it would be a dead check (CX-82).
     rfcsDir:
-      typeof bindings.paths?.["rfcsDir"] === "string"
-        ? (bindings.paths["rfcsDir"] as string)
+      typeof (doc["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"] === "string"
+        ? ((doc["paths"] as Record<string, unknown>)["rfcsDir"] as string)
         : null,
     mode: typeof section["mode"] === "string" ? (section["mode"] as string) : "warn",
     tier: typeof section["tier"] === "string" ? (section["tier"] as string) : "standard",
@@ -511,7 +514,7 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
     ["bindings.paths.correctnessManifest", base.manifestPath, now.manifestPath],
     ["bindings.commands.checkRun", base.checkRun, now.checkRun],
     ["bindings.paths.oracleReviewsDir", base.reviewsDir, now.reviewsDir],
-    ["bindings.paths.rfcsDir", base.rfcsDir, now.rfcsDir],
+    ["paths.rfcsDir", base.rfcsDir, now.rfcsDir],
   ] as const) {
     if (before !== null && before !== after)
       add(
@@ -530,6 +533,16 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
         `${key} added ${JSON.stringify(after)} where the base contour bound none`,
       );
   }
+  // The requirements-document binding is list-valued: any add, drop, or
+  // reorder under a declared contour redirects CORR-03's requirement
+  // resolution — a session-planted compass doc must not mint requirement
+  // provenance unjudged (CX-83).
+  if (base.manifestPath !== null && canon(base.compassDocs) !== canon(now.compassDocs))
+    add(
+      "binding",
+      "bindings.paths.compassDocs",
+      `bindings.paths.compassDocs changed from ${JSON.stringify(base.compassDocs)} to ${JSON.stringify(now.compassDocs)}`,
+    );
   if (base.mode === "enforce" && now.mode !== "enforce")
     add("mode", "correctness.mode", `correctness.mode changed from enforce to ${now.mode}`);
   // A session must not exempt itself (it would also drop CORR-AUDIT-04, RFC-1579).

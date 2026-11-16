@@ -13,29 +13,11 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
-
-sideFrom filters compassDocs elements (CX-47 TypeError crash).
-schemaProbe passes non-plain YAML types through and unwinds seen per
-branch — tagged scalars no longer mask configError and DAG aliases no
-longer fabricate it; a cyclic alias flags cyclic like the loader's
-overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
-[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
-~1ms fabricated kill, and a sub-ms value can never bound a run
-(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
-in the declared-policy branch too — mutable:[bindings] no longer
-dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
-policyFiles and judged by the key strip alone — a freezeFiles glob
-matching it neither voids mutable nor whitelists a non-isolated diff
-(CX-52). A !-negation in manifest support: is malformed like a
-freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
-— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
-(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
-policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
+  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -66,6 +48,14 @@ import { closeSchemas, discoverSchemas } from "../audit/schema-db.ts";
 import { loadSnapshot } from "../audit/snapshot.ts";
 import { declaredWriters } from "../audit/state-transitions-coverage.ts";
 import { evaluateCapture, validateCorrectnessManifest } from "../handlers/validate.ts";
+import {
+  dnaIdsFromContent,
+  requirementsDocumentFromContent,
+  resolveRfcRefContent,
+  RFC_REF_RE,
+  type RequirementsDocument,
+  type RfcRefResolution,
+} from "../references.ts";
 import { SEAM_MINIMUM, substrateRank, type Substrate } from "../manifest-schema.ts";
 import { normalizeRelPath, settingsFromForgeDoc } from "../workspace.ts";
 import {
@@ -80,7 +70,7 @@ import {
   sideFrom,
   supportAdditions,
 } from "./frozen.ts";
-import { deriveOrigin, readReviewRecords } from "./origin.ts";
+import { deriveOrigin, rfcPath, readReviewRecords } from "./origin.ts";
 import { checkTarget, GateRepo, sha256 } from "./repo.ts";
 import { runOracle } from "./runner.ts";
 import {
@@ -267,17 +257,6 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     : null;
   const now = sideFrom(headForgeYaml, () => headManifestText);
 
-  // (2) Validate at HEAD — committed flavor: mode/tier/binding checks and
-  // every injected violation judge the committed forge.yaml, so an
-  // uncommitted `mode:`/`tier:`/`oracleTimeoutMs` flip can neither mask a
-  // committed weakening nor fabricate a failure. Manifest CONTENT is still
-  // read from the worktree — the same deliberate flavor as the oracle runs
-  // (disclosed by the dirty warning above).
-  const committedSettings = settingsFromForgeDoc(now.forgeDoc, now.forgeYamlUnreadable);
-  const validation = await validateCorrectnessManifest(root, {
-    settings: committedSettings,
-    onGitFailure: (label) => repo.unreadableReads.push(`git ${label}`),
-  });
   // The RFC namespace resolves at the integration base under the BASE-side
   // binding — a HEAD rebind must not redirect `rfc-ac` refs at a planted dir
   // (CX-78). The rebind itself is judged as a binding weakening.
@@ -285,6 +264,52 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     frozen.base.forgeDoc,
     frozen.base.forgeYamlUnreadable,
   ).rfcsDir;
+  // CORR-03 resolves governing references at the INTEGRATION BASE through
+  // git — a session cannot mint its own RFC/requirement/DNA provenance by
+  // planting or editing files at HEAD (CX-82/CX-83). Read failures flag
+  // through the ledger like every other git read.
+  const requirementDocAtBase = async (): Promise<RequirementsDocument> => {
+    for (const rel of frozen.base.compassDocs) {
+      const text = await repo.show(base, normalizeRelPath(rel));
+      if (text === null) continue;
+      const parsed = requirementsDocumentFromContent(text);
+      if (parsed.isRequirements) return { path: rel, ids: parsed.ids };
+    }
+    return { path: null, ids: [] };
+  };
+  const dnaIdsAtBase = async (): Promise<string[]> => {
+    if (!frozen.base.invariantsFile) return [];
+    const text = await repo.show(base, normalizeRelPath(frozen.base.invariantsFile));
+    return text === null ? [] : dnaIdsFromContent(text);
+  };
+  const rfcRefAtBase = async (
+    _rfcsDir: string,
+    ref: string,
+    kind: "AC" | "FI",
+  ): Promise<RfcRefResolution> => {
+    const m = RFC_REF_RE.exec(ref);
+    if (!m || m[2] !== kind)
+      return { ok: false, reason: `ref "${ref}" is not of the form RFC-NNNN/${kind}-N` };
+    const rel = await rfcPath(repo, base, baseRfcsDir, m[1]!);
+    const text = rel === null ? null : await repo.show(base, rel);
+    return resolveRfcRefContent(text, ref, kind, baseRfcsDir);
+  };
+
+  // (2) Validate at HEAD — committed flavor: mode/tier/binding checks and
+  // every injected violation judge the committed forge.yaml, so an
+  // uncommitted `mode:`/`tier:`/`oracleTimeoutMs` flip can neither mask a
+  // committed weakening nor fabricate a failure. Manifest CONTENT is still
+  // read from the worktree — the same deliberate flavor as the oracle runs
+  // (disclosed by the dirty warning above) — but the governing REFERENCES
+  // resolve at the base (the providers above).
+  const committedSettings = settingsFromForgeDoc(now.forgeDoc, now.forgeYamlUnreadable);
+  const validation = await validateCorrectnessManifest(root, {
+    settings: committedSettings,
+    onGitFailure: (label) => repo.unreadableReads.push(`git ${label}`),
+    requirementDoc: requirementDocAtBase,
+    dnaIds: dnaIdsAtBase,
+    rfcRefResolver: rfcRefAtBase,
+  });
   const mode = validation.mode;
   const projectName = (now.forgeDoc["project"] as { name?: unknown } | undefined)?.name;
   const bundleBase = {
