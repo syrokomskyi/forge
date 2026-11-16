@@ -11,11 +11,20 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
+  <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
+
+Operator-granted third fix round. Proto-named top-level keys now visible
+(Object.hasOwn presence), canon()/policyLeaves() distinguish tagged YAML
+scalars and non-finite numbers with a cycle guard, a non-map forge.yaml is a
+structured CORR-GATE-01 never a TypeError or silent inert, the judged side
+reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
+weakenings), --policy-only accept whitelists only policy paths, freezeFiles
+negation globs are malformed, and forge.upgrade heals a malformed policy:
+block (write-when-absent now reads write-when-not-well-formed).</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481</history>
 </CHANGE_SUMMARY>
@@ -657,11 +666,14 @@ async function updateSyncedVersion(
       path: ["bindings", ...b.key.split(".")],
       value: b.value,
     })),
-    // RFC-1615 (Q-3): scaffold the policy block only when absent — a
-    // consumer-tuned policy: is never rewritten by upgrade.
-    ...(config.policy === undefined
-      ? [{ path: ["policy"], value: DEFAULT_FORGE_POLICY }]
-      : []),
+    // RFC-1615 (Q-3): scaffold the policy block when absent — and heal a
+    // declared-but-malformed one (CX-20): a non-conforming `policy:` is not a
+    // tuned block, and without healing every gate run refuses CORR-GATE-01
+    // with no in-repo forward path. A well-formed tuned block is never
+    // rewritten.
+    ...(isPolicyWellFormed(config.policy)
+      ? []
+      : [{ path: ["policy"], value: DEFAULT_FORGE_POLICY }]),
   ];
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
   const raw = await io.readFile(forgeYamlPath).catch(() => null);
@@ -683,6 +695,23 @@ async function updateSyncedVersion(
  * adoption of the trust boundary can't wait for the next forge release.
  * Write-when-absent; a consumer-tuned block is never rewritten.
  */
+/**
+ * RFC-1615 (CX-20): mirrors the gate's malformed rule — a `policy:` that is
+ * not a `{mutable?, additive?, freezeFiles?}` map of string lists is not a
+ * tuned block and may be healed by upgrade.
+ */
+function isPolicyWellFormed(policy: unknown): boolean {
+  if (policy === null || typeof policy !== "object" || Array.isArray(policy))
+    return false;
+  const obj = policy as Record<string, unknown>;
+  return ["mutable", "additive", "freezeFiles"].every(
+    (k) =>
+      obj[k] === undefined ||
+      (Array.isArray(obj[k]) &&
+        (obj[k] as unknown[]).every((m) => typeof m === "string")),
+  );
+}
+
 async function applyPolicyScaffold(
   workspaceRoot: string,
   config: ForgeConfig,
@@ -690,7 +719,7 @@ async function applyPolicyScaffold(
   io: WorkspaceIO,
   warn: (msg: string) => void,
 ): Promise<boolean> {
-  if (dryRun || config.policy !== undefined) return false;
+  if (dryRun || isPolicyWellFormed(config.policy)) return false;
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
   const raw = await io.readFile(forgeYamlPath).catch(() => null);
   if (raw === null) return false;

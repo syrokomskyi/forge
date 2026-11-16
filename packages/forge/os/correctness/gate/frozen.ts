@@ -12,9 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
-
-N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
 
@@ -23,6 +20,16 @@ AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --p
 
 Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
+  <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
+
+Operator-granted third fix round. Proto-named top-level keys now visible
+(Object.hasOwn presence), canon()/policyLeaves() distinguish tagged YAML
+scalars and non-finite numbers with a cycle guard, a non-map forge.yaml is a
+structured CORR-GATE-01 never a TypeError or silent inert, the judged side
+reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
+weakenings), --policy-only accept whitelists only policy paths, freezeFiles
+negation globs are malformed, and forge.upgrade heals a malformed policy:
+block (write-when-absent now reads write-when-not-well-formed).</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -66,6 +73,8 @@ export interface CorrectnessSide {
   policy: PolicySurface | null;
   /** RFC-1615: `policy:` is present but not a `{mutable?, additive?, freezeFiles?}` string-list map. */
   policyMalformed: boolean;
+  /** RFC-1615: forge.yaml exists but does not parse to a YAML map — fail closed. */
+  forgeYamlUnreadable: boolean;
   /** Parsed top-level forge.yaml keys, for the policy-key diff. */
   forgeDoc: Record<string, unknown>;
 }
@@ -76,10 +85,23 @@ export function sideFrom(
   readManifest: (rel: string) => string | null,
 ): CorrectnessSide {
   let doc: Record<string, unknown> = {};
+  // A forge.yaml that exists but parses to a non-map (or not at all) is
+  // *unreadable*, never "no surface declared" — the whole frozen set would
+  // otherwise silently inert (RFC-1615 review CX-15/CX-19).
+  let forgeYamlUnreadable = false;
   try {
-    doc = (forgeYaml ? parseYaml(forgeYaml) : {}) ?? {};
+    const parsed = forgeYaml !== null ? parseYaml(forgeYaml) : {};
+    if (
+      parsed === null ||
+      typeof parsed !== "object" ||
+      Array.isArray(parsed)
+    ) {
+      forgeYamlUnreadable = forgeYaml !== null;
+    } else {
+      doc = parsed as Record<string, unknown>;
+    }
   } catch {
-    doc = {};
+    forgeYamlUnreadable = forgeYaml !== null;
   }
   const bindings = (doc["bindings"] ?? {}) as {
     commands?: Record<string, unknown>;
@@ -131,6 +153,7 @@ export function sideFrom(
         : null,
     policy: parsePolicySurface(doc["policy"]).surface,
     policyMalformed: parsePolicySurface(doc["policy"]).malformed,
+    forgeYamlUnreadable,
     forgeDoc: doc,
   };
 }
@@ -161,7 +184,10 @@ function parsePolicySurface(raw: unknown): {
           // silently dropping non-string members would fail open on a declared
           // freeze (freezeFiles: [1] binds zero globs) — malformed instead
           (obj[k] as unknown[]).some((m) => typeof m !== "string")),
-    );
+    ) ||
+    // a `!`-prefixed freezeFiles glob is a picomatch negation — it would
+    // freeze the *complement* (the whole repo): refuse the declaration.
+    list(obj["freezeFiles"]).some((g) => g.startsWith("!"));
   return {
     surface: {
       mutable: list(obj["mutable"]),
@@ -172,16 +198,46 @@ function parsePolicySurface(raw: unknown): {
   };
 }
 
-/** Stable serialization: object keys sorted recursively so key order never diffs. */
-function canon(value: unknown): string {
-  if (Array.isArray(value)) return `[${value.map(canon).join(",")}]`;
-  if (value !== null && typeof value === "object") {
+/**
+ * Stable serialization: object keys sorted recursively so key order never
+ * diffs. Tagged YAML scalars stay distinguishable — `!!timestamp`/Date, Map,
+ * Set, binary views carry constructor tags, and non-finite numbers keep their
+ * value (`JSON.stringify(NaN)` collides with YAML null — RFC-1615 review
+ * CX-14). A cycle sentinel prevents RangeError on recursive anchors.
+ */
+export function canon(value: unknown, seen: WeakSet<object> = new WeakSet()): string {
+  if (typeof value === "number" && !Number.isFinite(value)) return `num:${value}`;
+  if (value === null || typeof value !== "object")
+    return JSON.stringify(value) ?? "null";
+  if (seen.has(value)) return '"cycle"';
+  seen.add(value);
+  try {
+    if (value instanceof Date) return `date:${value.getTime()}`;
+    if (value instanceof Map) {
+      const entries = [...value.entries()].map(
+        ([k, v]) => [canon(k, seen), canon(v, seen)] as const,
+      );
+      entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
+      return `map:{${entries.map(([k, v]) => `${k}:${v}`).join(",")}}`;
+    }
+    if (value instanceof Set) {
+      return `set:{${[...value].map((v) => canon(v, seen)).sort().join(",")}}`;
+    }
+    if (ArrayBuffer.isView(value)) {
+      return `bin:${Array.from(value as Uint8Array).join(",")}`;
+    }
+    if (Array.isArray(value))
+      return `[${value.map((v) => canon(v, seen)).join(",")}]`;
     return `{${Object.keys(value as Record<string, unknown>)
       .sort()
-      .map((k) => `${JSON.stringify(k)}:${canon((value as Record<string, unknown>)[k])}`)
+      .map(
+        (k) =>
+          `${JSON.stringify(k)}:${canon((value as Record<string, unknown>)[k], seen)}`,
+      )
       .join(",")}}`;
+  } finally {
+    seen.delete(value);
   }
-  return JSON.stringify(value) ?? "null";
 }
 
 /**
@@ -206,21 +262,41 @@ function displayLeaf(root: string, leafPath: string): string {
  * to `{}`/`[]` under an `additive` key is a pure addition, not a removal
  * (RFC-1615 review CX-2).
  */
-export function policyLeaves(value: unknown, prefix = ""): Map<string, unknown> {
+export function policyLeaves(
+  value: unknown,
+  prefix = "",
+  seen: WeakSet<object> = new WeakSet(),
+): Map<string, unknown> {
   const out = new Map<string, unknown>();
   // `null`/`undefined` carry no leaves — `key:` (YAML null) is an empty
   // container for additive purposes, and an absent key leaves nothing
-  // (RFC-1615 review CX-6/CX-7).
+  // (RFC-1615 review CX-6/CX-7). Tagged scalars (Date/Map/Set/binary views)
+  // are leaves — only plain objects and arrays walk deeper (CX-14).
   if (value === null || value === undefined) return out;
+  if (typeof value === "object") {
+    if (seen.has(value)) {
+      out.set(prefix, "<cycle>");
+      return out;
+    }
+    seen.add(value);
+  }
   if (Array.isArray(value)) {
     value.forEach((v, i) => {
-      for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`)) out.set(k, leaf);
+      for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`, seen))
+        out.set(k, leaf);
     });
     return out;
   }
-  if (value !== null && typeof value === "object") {
+  if (
+    typeof value === "object" &&
+    !(value instanceof Date) &&
+    !(value instanceof Map) &&
+    !(value instanceof Set) &&
+    !ArrayBuffer.isView(value)
+  ) {
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`)) out.set(lk, leaf);
+      for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`, seen))
+        out.set(lk, leaf);
     }
     return out;
   }
@@ -487,11 +563,13 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
   keys.delete("policy");
   for (const key of [...keys].sort()) {
     // Presence is judged independently of value — `key:` (null) at base and
-    // the key absent are not the same thing (RFC-1615 review CX-7).
-    const had = key in baseDoc;
-    const has = key in nowDoc;
-    const before = baseDoc[key];
-    const after = nowDoc[key];
+    // the key absent are not the same thing (RFC-1615 review CX-7). And `in`
+    // consults the prototype chain — `hasOwnProperty:`/`constructor:`/
+    // `__proto__:` must not read as always-present (RFC-1615 review CX-13).
+    const had = Object.hasOwn(baseDoc, key);
+    const has = Object.hasOwn(nowDoc, key);
+    const before = had ? baseDoc[key] : undefined;
+    const after = has ? nowDoc[key] : undefined;
     if (had === has && canon(before) === canon(after)) continue;
     if (mutable.has(key)) continue;
     if (additive.has(key)) {

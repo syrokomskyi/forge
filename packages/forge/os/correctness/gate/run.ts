@@ -13,9 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
-
-F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
@@ -24,6 +21,16 @@ N1 bootstrap degrade only while the base has not adopted the contour (a forge do
 
 AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
+  <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
+
+Operator-granted third fix round. Proto-named top-level keys now visible
+(Object.hasOwn presence), canon()/policyLeaves() distinguish tagged YAML
+scalars and non-finite numbers with a cycle guard, a non-map forge.yaml is a
+structured CORR-GATE-01 never a TypeError or silent inert, the judged side
+reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
+weakenings), --policy-only accept whitelists only policy paths, freezeFiles
+negation globs are malformed, and forge.upgrade heals a malformed policy:
+block (write-when-absent now reads write-when-not-well-formed).</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -51,11 +58,12 @@ import { listWorkspaceFiles, normalizeRelPath, readCorrectnessSettings } from ".
 import {
   anchorWeakenings,
   byteWeakenings,
+  canon,
   diffWeakenings,
   policyFileAdditions,
   policyWeakenings,
   readFrozenSet,
-  readHeadSide,
+  sideFrom,
   supportAdditions,
 } from "./frozen.ts";
 import { deriveOrigin, readReviewRecords } from "./origin.ts";
@@ -170,7 +178,7 @@ async function forgeYamlOnlyFrozenKeys(
         if (!policy.mutable.includes(key)) delete copy[key];
       }
     }
-    return JSON.stringify(copy);
+    return canon(copy);
   };
   return strip(await repo.show(base, "forge.yaml")) === strip(await repo.show(head, "forge.yaml"));
 }
@@ -271,8 +279,25 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       return null;
     }
   };
-  const now = readHeadSide(root, readWorking);
+  // The judged side is the HEAD commit, not the worktree — an uncommitted
+  // revert must not mask a committed weakening, and an uncommitted rebind
+  // must not fabricate one (RFC-1615 review CX-16/CX-17). `readWorking`
+  // stays for the live anchor-statement check below.
+  const headForgeYaml = await repo.show(head, "forge.yaml");
+  const headManifestPath = sideFrom(headForgeYaml, () => null).manifestPath;
+  const headManifestText = headManifestPath
+    ? await repo.show(head, normalizeRelPath(headManifestPath))
+    : null;
+  const now = sideFrom(headForgeYaml, () => headManifestText);
   const files = await listWorkspaceFiles(root);
+  // RFC-1615: a forge.yaml that exists but is not a readable YAML map cannot
+  // be judged — refuse structured, never crash or silently inert (CX-15/CX-19).
+  if (frozen.base.forgeYamlUnreadable || now.forgeYamlUnreadable) {
+    add(
+      "CORR-GATE-01",
+      `forge.yaml ${frozen.base.forgeYamlUnreadable ? "at --base" : "at HEAD"} does not parse to a YAML map — the policy surface cannot be read (fail closed)`,
+    );
+  }
   // RFC-1615: a malformed policy: declaration cannot be honoured — refuse as
   // CORR-GATE-01 (invalid configuration at HEAD), in both modes.
   if (now.policyMalformed || frozen.base.policyMalformed) {
@@ -309,23 +334,29 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     const reason = options.acceptWeakening?.trim();
     if (reason) {
       const forgeYamlIsolated = await forgeYamlOnlyFrozenKeys(repo, base, head, frozen.base.policy);
+      // In --policy-only the weakening list never contains RFC-1580 kinds, so
+      // the accept path must whitelist only the paths it actually reported —
+      // oracle/manifest paths stay foreign here (they'd be accepted silently).
       const frozenPaths = new Set([
-        ...frozen.files,
-        ...frozen.anchorFiles,
+        ...(options.policyOnly ? [] : frozen.files),
+        ...(options.policyOnly ? [] : frozen.anchorFiles),
         ...frozen.policyFiles,
         ...(forgeYamlIsolated ? ["forge.yaml"] : []),
-        ...[frozen.base.manifestPath, now.manifestPath]
-          .filter((p): p is string => !!p)
-          .map(normalizeRelPath),
+        ...(options.policyOnly
+          ? []
+          : [frozen.base.manifestPath, now.manifestPath]
+              .filter((p): p is string => !!p)
+              .map(normalizeRelPath)),
       ]);
       const changed = await repo.changedPaths(base, head);
       // Additions inside a frozen glob (support glob or policy.freezeFiles)
       // are themselves the reported weakenings being accepted — they count as
       // frozen-set paths even though the base set cannot contain them yet
       // (RFC-1615 review CX-11).
-      const frozenGlobs = [...frozen.supportGlobs, ...frozen.policyGlobs].map((g) =>
-        picomatch(normalizeRelPath(g), { dot: true }),
-      );
+      const frozenGlobs = [
+        ...(options.policyOnly ? [] : frozen.supportGlobs),
+        ...frozen.policyGlobs,
+      ].map((g) => picomatch(normalizeRelPath(g), { dot: true }));
       const foreign = changed.filter(
         (p) => !frozenPaths.has(p) && !frozenGlobs.some((m) => m(p)),
       );
