@@ -27,6 +27,7 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
+  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,6 +85,13 @@ export interface ValidateOptions {
    * oracle runs, disclosed by the dirty-worktree bundle warning.
    */
   settings?: CorrectnessSettings;
+  /**
+   * RFC-1615 (CX-81): notified when `git ls-files` fails and the workspace
+   * listing falls back to a filesystem walk (which includes IGNORED files).
+   * The gate feeds this into its unreadable-reads ledger; the validator also
+   * records a CORR-01 violation so the widened set can never mint coverage.
+   */
+  onGitFailure?: (label: string) => void;
 }
 
 export interface CaptureStatus {
@@ -286,7 +294,14 @@ export async function validateCorrectnessManifest(
   const exemptions = manifest?.exemptions ?? [];
 
   if (manifest) {
-    const files = await listWorkspaceFiles(workspaceRoot);
+    const files = await listWorkspaceFiles(workspaceRoot, (label) => {
+      options.onGitFailure?.(label);
+      add(
+        "CORR-01",
+        "error",
+        `git ${label} failed — the workspace listing fell back to a filesystem walk that includes ignored files; anchor and support coverage cannot be trusted (fail closed)`,
+      );
+    });
     const anchorIndex =
       entries.length > 0
         ? buildAnchorIndex(

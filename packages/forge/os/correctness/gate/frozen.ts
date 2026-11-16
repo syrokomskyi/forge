@@ -12,29 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
-
-sideFrom filters compassDocs elements (CX-47 TypeError crash).
-schemaProbe passes non-plain YAML types through and unwinds seen per
-branch — tagged scalars no longer mask configError and DAG aliases no
-longer fabricate it; a cyclic alias flags cyclic like the loader's
-overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
-[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
-~1ms fabricated kill, and a sub-ms value can never bound a run
-(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
-in the declared-policy branch too — mutable:[bindings] no longer
-dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
-policyFiles and judged by the key strip alone — a freezeFiles glob
-matching it neither voids mutable nor whitelists a non-isolated diff
-(CX-52). A !-negation in manifest support: is malformed like a
-freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
-— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
-(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
-policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
+  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -64,6 +46,7 @@ export interface CorrectnessSide {
   manifestPath: string | null;
   checkRun: string | null;
   reviewsDir: string | null;
+  rfcsDir: string | null;
   mode: string;
   tier: string;
   allow: { check: string; subject: string }[];
@@ -153,6 +136,12 @@ export function sideFrom(
     reviewsDir:
       typeof bindings.paths?.["oracleReviewsDir"] === "string"
         ? (bindings.paths["oracleReviewsDir"] as string)
+        : null,
+    // The RFC namespace is frozen too — a session rebind makes planted
+    // `status: accepted` files resolve as governing RFCs (CX-78).
+    rfcsDir:
+      typeof bindings.paths?.["rfcsDir"] === "string"
+        ? (bindings.paths["rfcsDir"] as string)
         : null,
     mode: typeof section["mode"] === "string" ? (section["mode"] as string) : "warn",
     tier: typeof section["tier"] === "string" ? (section["tier"] as string) : "standard",
@@ -376,6 +365,12 @@ export interface FrozenSet {
   anchorCarriers: Map<string, Set<string>>;
   /** Every file path at base. */
   baseFiles: string[];
+  /**
+   * True when the base `ls-tree -r` enumeration completed — when it failed
+   * `baseFiles` is partial and "not in the base set" is not evidence of an
+   * addition, so glob additions re-check membership per path (CX-76).
+   */
+  baseFilesComplete: boolean;
   /** RFC-1615: base `policy.freezeFiles` globs. */
   policyGlobs: string[];
   /** RFC-1615: base files matching `policy.freezeFiles` (byte-frozen). */
@@ -396,7 +391,9 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     (manifests.get(baseManifestPath) ?? null) !== null &&
     side.manifest === null;
   const files = new Set<string>();
+  const u0Files = repo.unreadableReads.length;
   const baseFiles = await repo.files(base);
+  const baseFilesComplete = repo.unreadableReads.length === u0Files;
   // CX-53: a `!`-prefixed support glob is a picomatch negation — silently
   // freezing the complement fabricates frozen-file weakenings on every
   // unrelated change. Refuse like a malformed `policy.freezeFiles` glob.
@@ -465,7 +462,11 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   // happens to match it (forge.yaml, *.yaml, x/../forge.yaml) must neither
   // turn every edit into `policy-file` nor whitelist the path in the accept
   // check (RFC-1615 review CX-52).
-  const policyGlobs = side.policy?.freezeFiles ?? [];
+  // A malformed `policy:` (including a `!`-negation freezeFiles glob, which
+  // parsePolicySurface already flags) resolves to NOTHING — the complement
+  // match must not fabricate policy-file claims nor whitelist foreign paths
+  // in the accept check (CX-80, mirror of the CX-53 support-glob rule).
+  const policyGlobs = side.policyMalformed ? [] : (side.policy?.freezeFiles ?? []);
   const policyFiles = new Set<string>();
   for (const glob of policyGlobs) {
     const match = picomatch(normalizeRelPath(glob), { dot: true });
@@ -484,6 +485,7 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     anchorFiles: [...anchorFiles].sort(),
     anchorCarriers,
     baseFiles,
+    baseFilesComplete,
     policyGlobs,
     policyFiles: [...policyFiles].sort(),
   };
@@ -509,12 +511,23 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
     ["bindings.paths.correctnessManifest", base.manifestPath, now.manifestPath],
     ["bindings.commands.checkRun", base.checkRun, now.checkRun],
     ["bindings.paths.oracleReviewsDir", base.reviewsDir, now.reviewsDir],
+    ["bindings.paths.rfcsDir", base.rfcsDir, now.rfcsDir],
   ] as const) {
     if (before !== null && before !== after)
       add(
         "binding",
         key,
         `${key} changed from ${JSON.stringify(before)} to ${JSON.stringify(after)}`,
+      );
+    // ADDING a binding under a declared contour is a substrate change too —
+    // a session-bound checkRun runs its own runner, a planted reviewsDir
+    // reads its own records, a rebound rfcsDir resolves planted RFCs
+    // (CX-77/CX-78). A base with no contour is adopting, not weakening.
+    else if (before === null && after !== null && base.manifestPath !== null)
+      add(
+        "binding",
+        key,
+        `${key} added ${JSON.stringify(after)} where the base contour bound none`,
       );
   }
   if (base.mode === "enforce" && now.mode !== "enforce")
@@ -719,6 +732,7 @@ export async function supportAdditions(
     base,
     head,
     frozen.baseFiles,
+    frozen.baseFilesComplete,
     frozen.supportGlobs,
     "frozen-file",
     "a frozen support glob",
@@ -743,6 +757,7 @@ export async function policyFileAdditions(
     base,
     head,
     frozen.baseFiles,
+    frozen.baseFilesComplete,
     frozen.policyGlobs,
     "policy-file",
     "a policy.freezeFiles glob",
@@ -755,6 +770,7 @@ async function globAdditions(
   base: string,
   head: string,
   baseFiles: string[],
+  baseComplete: boolean,
   globs: string[],
   kind: string,
   globLabel: string,
@@ -774,10 +790,19 @@ async function globAdditions(
   const candidates = enumerated ? headFiles : changed;
   for (const rel of candidates) {
     if (before.has(rel) || !matchers.some((m) => m(rel))) continue;
-    // On the fallback, membership at base is judged per-path — a changed
-    // path that existed at base is an edit (byteWeakenings' domain), not an
-    // addition.
-    if (!enumerated && (await repo.blob(base, rel)) !== null) continue;
+    // Membership at base is judged per-path whenever ANY enumeration is
+    // incomplete — the HEAD-fallback because `before` is the only source,
+    // the base-failure because a partial `baseFiles` is not evidence of an
+    // addition (a changed path that existed at base is an edit —
+    // byteWeakenings' domain — never a fabricated "new file", CX-76).
+    if (!enumerated || !baseComplete) {
+      const u0b = repo.unreadableReads.length;
+      const atBase = await repo.blob(base, rel);
+      if (atBase !== null) continue;
+      // The path-scoped read failed too — "new file" is a claim the failed
+      // read cannot support; the flag carries the refusal (same class CX-75).
+      if (repo.unreadableReads.length > u0b) continue;
+    }
     if (await repo.lastTouchIsVerifier(head, rel)) continue;
     out.push({
       kind,

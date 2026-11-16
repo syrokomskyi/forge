@@ -10,9 +10,6 @@ fallback), and path normalization shared by every reference comparison.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
-
-F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
 
@@ -49,6 +46,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 (CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
 policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
+  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <history>RFC-1578</history>
 </CHANGE_SUMMARY>
 */
@@ -274,8 +272,17 @@ function walk(root: string, rel: string, out: string[]): void {
   }
 }
 
-/** Every workspace file (tracked + untracked-non-ignored), POSIX-relative, sorted. */
-export async function listWorkspaceFiles(workspaceRoot: string): Promise<string[]> {
+/**
+ * Every workspace file (tracked + untracked-non-ignored), POSIX-relative,
+ * sorted. The fs walk ignores .gitignore — a failed `git ls-files` WIDENS the
+ * set with ignored files, and a caller judging coverage over it would read
+ * fabricated anchors (CX-81): the fallback is disclosed via `onGitFailure`
+ * so the gate can flag it like every other failed git read.
+ */
+export async function listWorkspaceFiles(
+  workspaceRoot: string,
+  onGitFailure?: (label: string) => void,
+): Promise<string[]> {
   if (existsSync(path.join(workspaceRoot, ".git"))) {
     try {
       const { stdout } = await execFileAsync(
@@ -288,6 +295,7 @@ export async function listWorkspaceFiles(workspaceRoot: string): Promise<string[
         .sort();
       return files;
     } catch {
+      onGitFailure?.("ls-files --cached --others --exclude-standard");
       // fall through to the fs walk
     }
   }

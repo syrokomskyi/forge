@@ -13,21 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
-
-settingsFromForgeDoc replicates the zod schema verdict as configError so
-a committed forge.yaml that parses but fails validation cannot mask the
-CORR-01 the worktree flavor reports (CX-35). forgeYamlOnlyFrozenKeys
-strips policy:/correctness in the null-policy branch too — a legal
-policy: adoption inside an accepted-weakening session no longer makes
-forge.yaml foreign (CX-36) — and canons non-map YAML instead of running
-delete on a String index (CX-46). anchorWeakenings judges the HEAD
-commit via git grep + repo.show — a committed reword masked by an
-uncommitted revert still reports; an uncommitted reword never fabricates
-(CX-37). The inert-policy note emits once above the exempt early return
-(CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
-Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
-(CX-39).</item>
   <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
 
 sideFrom filters compassDocs elements (CX-47 TypeError crash).
@@ -50,6 +35,7 @@ policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
+  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -290,8 +276,15 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   const committedSettings = settingsFromForgeDoc(now.forgeDoc, now.forgeYamlUnreadable);
   const validation = await validateCorrectnessManifest(root, {
     settings: committedSettings,
+    onGitFailure: (label) => repo.unreadableReads.push(`git ${label}`),
   });
-  const committedRfcsDir = committedSettings.rfcsDir;
+  // The RFC namespace resolves at the integration base under the BASE-side
+  // binding — a HEAD rebind must not redirect `rfc-ac` refs at a planted dir
+  // (CX-78). The rebind itself is judged as a binding weakening.
+  const baseRfcsDir = settingsFromForgeDoc(
+    frozen.base.forgeDoc,
+    frozen.base.forgeYamlUnreadable,
+  ).rfcsDir;
   const mode = validation.mode;
   const projectName = (now.forgeDoc["project"] as { name?: unknown } | undefined)?.name;
   const bundleBase = {
@@ -639,7 +632,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
           check: oracle.check,
           source: entry.source,
           ref: entry.ref ?? null,
-          rfcsDir: committedRfcsDir,
+          rfcsDir: baseRfcsDir,
           reviews,
           checkFile: file,
           integrationBase: base,
