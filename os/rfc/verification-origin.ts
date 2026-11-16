@@ -31,6 +31,7 @@ framing failure). collectCommittedReviews prefers it and keeps the
 sequential show loop for stubs. rfc.validate memoizes the index once
 per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
+  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -55,9 +56,12 @@ export interface OriginGit {
    * when the process could not run at all (spawn failure, timeout, buffer).
    * Commands with meaningful non-zero exits (git grep: 1 = zero matches — a
    * legitimate empty result, not a read failure) must go through this or
-   * they misjudge "empty" as "unreadable" (RFC-1615 review CX-67).
+   * they misjudge "empty" as "unreadable" (RFC-1615 review CX-67). `bytes`
+   * carries the undecoded stdout when available — path listings need it to
+   * tell genuinely invalid UTF-8 names from legal U+FFFD codepoints
+   * (CX-72).
    */
-  runExit?(args: string[]): Promise<{ code: number; stdout: string } | null>;
+  runExit?(args: string[]): Promise<{ code: number; stdout: string; bytes?: Buffer } | null>;
   /**
    * RFC-1513: optional batched object read. One `git cat-file --batch` process
    * answers every spec — entry `i` answers `specs[i]` (`null` marks a missing
@@ -132,13 +136,24 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         execFile(
           "git",
           args,
-          { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024, env: gitEnvForCwd() },
+          {
+            cwd: workspaceRoot,
+            timeout: 15000,
+            maxBuffer: 32 * 1024 * 1024,
+            env: gitEnvForCwd(),
+            // Raw bytes — path listings must validate UTF-8 at byte level;
+            // the default utf8 decode erases the distinction (CX-72).
+            encoding: "buffer",
+          },
           (err, stdout) => {
-            if (err === null) return resolve({ code: 0, stdout: String(stdout) });
+            const bytes = Buffer.isBuffer(stdout) ? stdout : undefined;
+            if (err === null) return resolve({ code: 0, stdout: String(stdout), bytes });
             // A numeric exit code means the process ran and answered;
             // spawn/timeout/kill failures carry no code — unreadable.
             resolve(
-              typeof err.code === "number" ? { code: err.code, stdout: String(stdout) } : null,
+              typeof err.code === "number"
+                ? { code: err.code, stdout: String(stdout), bytes }
+                : null,
             );
           },
         );

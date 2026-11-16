@@ -12,19 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
-
-Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
-after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
-re-point is now visible. canon() distinguishes BigInt/non-finite numbers
-(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
-negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
-The isolation strip drops policy:/correctness unconditionally — a
-meaningless mutable membership can no longer dead-end the accept path.
-Deletions of frozen files honor the verifier trailer pair like any other
-touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
-cannot borrow a sibling's verifier commit (also closes the same hole in
-origin.ts).</item>
   <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
 
 settingsFromForgeDoc replicates the zod schema verdict as configError so
@@ -61,6 +48,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
+  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -376,8 +364,13 @@ export interface FrozenSet {
   base: CorrectnessSide;
   /** Frozen file paths (oracles, captures, sidecars, support matches) at base. */
   files: string[];
-  /** Anchor id → normalized statement sha at base (anchors bound by base entries). */
-  anchors: Map<string, string>;
+  /**
+   * Anchor id → normalized statement shas at base (anchors bound by base
+   * entries). One id can legitimately carry divergent statement copies — the
+   * frozen set keeps every sha seen at base, not a first-found winner
+   * (CX-70).
+   */
+  anchors: Map<string, Set<string>>;
   /** Requirement, DNA, and manifest-entry refs that existed at base (deferred exemptions for them are weakenings). */
   baseRefs: Set<string>;
   /** True when the base binds a manifest file that exists but does not parse. */
@@ -441,7 +434,7 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   }
   // Anchor statements at base, for ids bound by base entries.
   const wanted = new Set((side.manifest?.entries ?? []).flatMap((e) => e.anchors));
-  const anchors = new Map<string, string>();
+  const anchors = new Map<string, Set<string>>();
   const anchorFiles = new Set<string>();
   const anchorCarriers = new Map<string, Set<string>>();
   if (wanted.size > 0) {
@@ -460,7 +453,9 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
         const carriers = anchorCarriers.get(a.id) ?? new Set<string>();
         carriers.add(rel);
         anchorCarriers.set(a.id, carriers);
-        if (!anchors.has(a.id)) anchors.set(a.id, invariantStatementSha(a.statement));
+        const shas = anchors.get(a.id) ?? new Set<string>();
+        shas.add(invariantStatementSha(a.statement));
+        anchors.set(a.id, shas);
       }
     }
   }
@@ -838,19 +833,19 @@ export async function anchorWeakenings(
     }
   }
   const out: Weakening[] = [];
-  for (const [id, sha] of frozen.anchors) {
+  for (const [id, shas] of frozen.anchors) {
     const now = copies.get(id) ?? [];
-    const carriersTouched = [...(frozen.anchorCarriers.get(id) ?? [])].some((rel) =>
-      changedSet.has(rel),
-    );
-    if (now.length === 0 && carriersTouched)
+    // Carriers absent from `changed` keep their base copies implicitly — a
+    // marker dropped from one of several carriers is not an anchor removal
+    // while any other carrier stays untouched (CX-68).
+    const carriers = [...(frozen.anchorCarriers.get(id) ?? [])];
+    const allTouched = carriers.length > 0 && carriers.every((rel) => changedSet.has(rel));
+    if (now.length === 0 && allTouched)
       out.push({ kind: "anchor-removed", subject: id, message: `frozen anchor ${id} was removed` });
-    // Every copy must keep the frozen statement — a duplicate comment carrying
-    // the old text must not mask a reworded real anchor.
-    else if (
-      now.length > 0 &&
-      !now.every((statement) => invariantStatementSha(statement) === sha)
-    ) {
+    // Every changed copy must keep a statement the id carried at base — a
+    // duplicate comment carrying the old text must not mask a reworded real
+    // anchor, and a divergent base copy is frozen by its own sha (CX-70).
+    else if (now.length > 0 && !now.every((s) => shas.has(invariantStatementSha(s)))) {
       out.push({
         kind: "anchor-reworded",
         subject: id,

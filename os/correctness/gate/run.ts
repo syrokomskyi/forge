@@ -13,7 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
 
 settingsFromForgeDoc replicates the zod schema verdict as configError so
@@ -50,11 +49,20 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
+  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import os from "node:os";
 import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
@@ -305,10 +313,42 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     weakenings: (Weakening & { accepted: boolean })[],
     accepted: string | null,
   ): Promise<GateOutcome> => {
-    const bundle: CorrectnessBundle = { ...bundleBase, entries, weakenings, violations };
+    // commonDir's own read can flag — resolve it before the late check so the
+    // flag counts (CX-69).
+    const gitCommon = await repo.commonDir();
+    // Reads still flag after the early CORR-GATE-01 emit — oracle origin
+    // derivation, review-record listings, commonDir — a late failure is
+    // surfaced and re-judges the verdict here (CX-69).
+    if (repo.unreadableReads.length > 0) {
+      if (!violations.some((v) => v.message.includes("a git read failed"))) {
+        violations.push({
+          rule: "CORR-GATE-01",
+          severity: "error",
+          message: `a git read failed (${repo.unreadableReads.slice(0, 3).join(", ")}${repo.unreadableReads.length > 3 ? " …" : ""}) — the weakening judgement is incomplete; refusing (fail closed)`,
+        });
+      }
+      if (status !== "fail") status = "fail";
+    }
+    const bundle: CorrectnessBundle = {
+      ...bundleBase,
+      entries,
+      weakenings,
+      violations,
+      ...(repo.unreadableReads.length > 0 ? { unreadableReads: [...repo.unreadableReads] } : {}),
+    };
+    // A linked worktree's `.git` is a FILE — never mkdir under it (ENOTDIR);
+    // when the common dir is unreadable the bundle lands in tmp instead.
+    const dotGit = path.join(root, ".git");
     const dir =
       options.bundleDir ??
-      path.join((await repo.commonDir()) ?? path.join(root, ".git"), "forge", "gate-reports");
+      path.join(
+        gitCommon ??
+          (existsSync(dotGit) && statSync(dotGit).isDirectory()
+            ? dotGit
+            : mkdtempSync(path.join(os.tmpdir(), "forge-gate-"))),
+        "forge",
+        "gate-reports",
+      );
     mkdirSync(dir, { recursive: true });
     // RFC-1532 naming (`<branch>-<ts>…json`) so the gate-report retention pruner covers bundles.
     const branch = (branchOut?.trim() || "detached").replace(/[^A-Za-z0-9._-]+/g, "-");

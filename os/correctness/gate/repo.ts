@@ -8,7 +8,6 @@ the RFC-1330 origin git port (argv exec, DNA-89).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: initial git reads.</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -27,6 +26,8 @@ cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
+  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
+  <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
@@ -70,16 +71,38 @@ export class GateRepo {
     label: string,
     okCodes: readonly number[] = [0],
   ): Promise<string | null> {
-    const flag = (out: string): string => {
-      // A path decoding to U+FFFD cannot round-trip through UTF-8 argv
-      // pathspecs — every later literal read misses it (CX-64).
+    // Byte-level UTF-8 validity: a valid U+FFFD codepoint (EF BF BD — a legal
+    // filename character) decodes fine, while bytes git emitted raw that are
+    // NOT valid UTF-8 can never round-trip through argv pathspecs — every
+    // later `:(literal)` read misses them (CX-64/CX-72). The decoded-string
+    // fallback (run-only ports) keeps the U+FFFD heuristic.
+    const flag = (out: string, bytes?: Buffer): string => {
+      if (bytes !== undefined) {
+        const decoder = new TextDecoder("utf-8", { fatal: true });
+        let off = 0;
+        while (off < bytes.length) {
+          const nl = bytes.indexOf(0x00, off);
+          const seg = bytes.subarray(off, nl === -1 ? bytes.length : nl);
+          try {
+            decoder.decode(seg);
+          } catch {
+            this.unreadableReads.push(
+              `${label}: non-UTF-8 path ${seg.toString("utf8").slice(0, 40)}`,
+            );
+            break;
+          }
+          if (nl === -1) break;
+          off = nl + 1;
+        }
+        return out;
+      }
       const bad = out.split("\0").find((l) => l.includes("�"));
       if (bad) this.unreadableReads.push(`${label}: non-UTF-8 path ${bad.slice(0, 40)}`);
       return out;
     };
     if (this.git.runExit) {
       const res = await this.git.runExit(args);
-      if (res !== null && okCodes.includes(res.code)) return flag(res.stdout);
+      if (res !== null && okCodes.includes(res.code)) return flag(res.stdout, res.bytes);
       this.unreadableReads.push(label);
       return null;
     }
@@ -181,15 +204,40 @@ export class GateRepo {
       "--",
       `:(literal)${rel}`,
     ]);
-    if (!out || !out.includes("\x1f")) return null;
+    if (out === null) {
+      // A failed log is not "path never touched" — a corrupt mid-range
+      // object makes `git log` exit 128, and reading it as an empty history
+      // silently denies the verifier-trailer exemption (CX-71).
+      this.unreadableReads.push(`log ${rel}`);
+      return null;
+    }
+    if (!out.includes("\x1f")) return null;
     const [sha, body] = out.split("\x1f");
     return { sha: sha!.trim(), body: body ?? "" };
   }
 
-  /** True when the last commit touching `rel` carries the RFC-1333 verifier trailer pair. */
-  async lastTouchIsVerifier(head: string, rel: string): Promise<boolean> {
+  /**
+   * Whether the last commit touching `rel` carries the RFC-1333 verifier
+   * trailer pair. `"unreadable"` distinguishes a failed `git log` (flagged in
+   * `unreadableReads`) from "no verifier commit" — callers that PROMOTE on a
+   * yes must not read the failure as proof (CX-71).
+   */
+  async lastTouchVerifier(head: string, rel: string): Promise<"yes" | "no" | "unreadable"> {
+    const before = this.unreadableReads.length;
     const last = await this.lastCommitBody(head, rel);
-    return last !== null && hasVerifierTrailers(last.body);
+    if (last === null && this.unreadableReads.length > before) return "unreadable";
+    return last !== null && hasVerifierTrailers(last.body) ? "yes" : "no";
+  }
+
+  /**
+   * Exemption check for weakening reports: an unreadable history answers
+   * true — the recorded flag already refuses (CORR-GATE-01), and emitting
+   * "changed without the verifier trailer pair" would fabricate a claim the
+   * failed read cannot support (CX-71). Promotion paths (deriveOrigin) must
+   * use `lastTouchVerifier === "yes"` instead.
+   */
+  async lastTouchIsVerifier(head: string, rel: string): Promise<boolean> {
+    return (await this.lastTouchVerifier(head, rel)) !== "no";
   }
 
   async revParse(ref: string): Promise<string | null> {
@@ -200,6 +248,7 @@ export class GateRepo {
 
   async commonDir(): Promise<string | null> {
     const out = await this.git.run(["rev-parse", "--path-format=absolute", "--git-common-dir"]);
+    if (out === null) this.unreadableReads.push("rev-parse --git-common-dir");
     return out?.trim() || null;
   }
 }
