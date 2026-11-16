@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1579: correctness.audit auditors and differential attribution
-
-Add os/correctness/audit: tree snapshots (working tree, index, base via one cat-file batch with git-grep prefilter), literal scanner + SQL classifier, wrangler D1 schema builder on node:sqlite, the four auditors (sql.schema.conform, ledger.orphans, state.transitions.coverage, bindings.verify.substance), subject-keyed differential attribution with allow-list, survival ledger, the correctness.audit handler and registration, and bindings.paths.correctnessLedger.</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -44,8 +41,11 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
+
+Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578</history>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579</history>
 </CHANGE_SUMMARY>
 */
 
@@ -359,15 +359,11 @@ export interface FormalToolEntry {
  * frozen. `freezeFiles` are repo-root globs whose matching files are
  * byte-frozen at the integration base.
  */
-export const forgePolicySchema = z
-  .object({
-    mutable: z.array(z.string().min(1)).default([]),
-    additive: z.array(z.string().min(1)).default([]),
-    freezeFiles: z.array(z.string().min(1)).default([]),
-  })
-  .strict();
-
-export type ForgePolicy = z.infer<typeof forgePolicySchema>;
+export interface ForgePolicy {
+  mutable: string[];
+  additive: string[];
+  freezeFiles: string[];
+}
 
 // Schema (forge/config@1)
 // ---------------------------------------------------------------------------
@@ -462,8 +458,11 @@ export const forgeConfigSchema = z
      * change (`mutable`, `additive`) and which repo files are byte-frozen
      * (`freezeFiles`). The section is self-frozen: `correctness.gate` judges
      * any change to it between --base and HEAD as a `policy-decl` weakening.
+     * Loosely typed on purpose — a malformed `policy:` must not brick every
+     * forge command (it would take `forge upgrade`, the healer, down with it);
+     * the gate refuses it as CORR-GATE-01 instead.
      */
-    policy: forgePolicySchema.optional(),
+    policy: z.unknown().optional(),
     // RFC-1224: consumer-owned top-level sections (e.g. `plugins:`) stay in the
     // parsed config so full-serialization writes do not silently drop them.
   })

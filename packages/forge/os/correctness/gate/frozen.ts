@@ -12,9 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
@@ -25,6 +22,9 @@ N1 bootstrap degrade only while the base has not adopted the contour (a forge do
   <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
 
 AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
+  <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
+
+Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -176,9 +176,26 @@ function canon(value: unknown): string {
 }
 
 /**
- * Leaf map of a value: object keys compose `a.b.c`, array elements address by
- * index. Appending to an array adds leaves; every other change to an existing
- * leaf is visible as a changed or missing entry.
+ * Quoted path segment: every object key becomes `["key"]` so a literal dotted
+ * key (`{"a.b": 1}`) can never conflate with a nested path (`{a: {b: 1}}` →
+ * `["a"]["b"]`) — RFC-1615 review CX-1.
+ */
+const seg = (key: string): string => `["${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"]`;
+
+/** Display form of a leaf path: `["a"]["b"][0]` → `root.a.b[0]`. */
+function displayLeaf(root: string, leafPath: string): string {
+  const shown = leafPath.replace(
+    /\["((?:[^"\\]|\\.)*)"\]/g,
+    (_m, k: string) => `.${k.replace(/\\"/g, '"').replace(/\\\\/g, "\\")}`,
+  );
+  return `${root}${shown}`;
+}
+
+/**
+ * Leaf map of a value: object keys address by quoted segment, array elements
+ * by index. Empty containers contribute no leaves — the first element added
+ * to `{}`/`[]` under an `additive` key is a pure addition, not a removal
+ * (RFC-1615 review CX-2).
  */
 export function policyLeaves(value: unknown, prefix = ""): Map<string, unknown> {
   const out = new Map<string, unknown>();
@@ -186,19 +203,26 @@ export function policyLeaves(value: unknown, prefix = ""): Map<string, unknown> 
     value.forEach((v, i) => {
       for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`)) out.set(k, leaf);
     });
-    if (value.length === 0) out.set(prefix, []);
     return out;
   }
   if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>);
-    for (const [k, v] of entries) {
-      for (const [lk, leaf] of policyLeaves(v, prefix ? `${prefix}.${k}` : k)) out.set(lk, leaf);
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`)) out.set(lk, leaf);
     }
-    if (entries.length === 0) out.set(prefix, {});
     return out;
   }
   out.set(prefix, value);
   return out;
+}
+
+/** The first leaf path (sorted) whose scalar differs between two values, or null. */
+function firstLeafDiff(before: unknown, after: unknown): string | null {
+  const b = policyLeaves(before);
+  const a = policyLeaves(after);
+  for (const path of [...new Set([...b.keys(), ...a.keys()])].sort()) {
+    if (!a.has(path) || !b.has(path) || canon(a.get(path)) !== canon(b.get(path))) return path;
+  }
+  return null;
 }
 
 const TIER_RANK: Record<string, number> = { standard: 0, high: 1, formal: 2 };
@@ -460,25 +484,30 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
         ([p, v]) => !nowLeaves.has(p) || canon(nowLeaves.get(p)) !== canon(v),
       );
       if (broken.length === 0) continue;
+      const shown = broken.map(([p]) => displayLeaf(key, p));
       out.push({
         kind: "policy-key",
-        subject: key,
-        message: `${key} is additive — existing leaves changed or were removed (${broken
+        subject: shown[0]!,
+        message: `${key} is additive — existing leaves changed or were removed (${shown
           .slice(0, 3)
-          .map(([p]) => p)
-          .join(", ")}${broken.length > 3 ? " …" : ""})`,
+          .join(", ")}${shown.length > 3 ? " …" : ""})`,
       });
       continue;
     }
+    const leaf = firstLeafDiff(before, after);
+    // The subject names the nearest keyed ancestor — a deny: [] change is
+    // `agentTools.deny`, not `agentTools.deny[0]` (RFC-1615 review CX-5).
+    const subject =
+      leaf === null || leaf === "" ? key : displayLeaf(key, leaf).replace(/(\[\d+\])+$/, "");
     out.push({
       kind: "policy-key",
-      subject: key,
+      subject,
       message:
         before === undefined
           ? `new top-level key ${key} is not declared in policy.mutable or policy.additive`
           : after === undefined
             ? `frozen top-level key ${key} was removed`
-            : `frozen top-level key ${key} changed — declare it under policy.mutable or policy.additive to permit this`,
+            : `frozen key ${subject} changed — declare ${key} under policy.mutable or policy.additive to permit this`,
     });
   }
   return out;
