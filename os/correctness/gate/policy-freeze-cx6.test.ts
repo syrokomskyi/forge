@@ -28,11 +28,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { policyWeakenings, sideFrom, type FrozenSet } from "./frozen.ts";
 import { runCorrectnessGate } from "./run.ts";
-import {
-  makeGateFixture,
-  verifierCommit,
-  type GateFixture,
-} from "./tests/gate-fixture.ts";
+import { makeGateFixture, verifierCommit, type GateFixture } from "./tests/gate-fixture.ts";
 
 // ---------------------------------------------------------------------------
 // Fixtures
@@ -89,7 +85,10 @@ interface MiniRepo {
 }
 
 /** Bare git repo for exempt-contour probes (makeGateFixture always binds a manifest). */
-function makeMiniRepo(forgeYaml: string, extraFiles: Record<string, string> = {}): MiniRepo & { base: string } {
+function makeMiniRepo(
+  forgeYaml: string,
+  extraFiles: Record<string, string> = {},
+): MiniRepo & { base: string } {
   const root = mkdtempSync(path.join(os.tmpdir(), "forge-gate-exempt-"));
   tmpdirs.push(root);
   const write = (rel: string, body: string) => {
@@ -263,10 +262,7 @@ policy:
 
   it("cycle content changed inside the cyclic key → policy-key, not a crash", async () => {
     const f = fx({ forgeYamlAppend: CYCLE_APPEND, extraFiles: POLICY_FILES });
-    f.write(
-      "forge.yaml",
-      f.read("forge.yaml").replace("  tag: same", "  tag: different"),
-    );
+    f.write("forge.yaml", f.read("forge.yaml").replace("  tag: same", "  tag: different"));
     f.commit("mutate cycle leaf");
     const { result } = await gate(f, { policyOnly: true });
     expect(result.weakenings.some((w) => w.kind === "policy-key")).toBe(true);
@@ -485,7 +481,10 @@ describe("CX-30?: malformed policy adopted at HEAD on an exempt no-policy repo",
 
   it("control: WELL-FORMED policy adopted at HEAD on exempt → pass (opt-in adoption, judged)", async () => {
     const r = makeMiniRepo(EXEMPT_YAML);
-    r.write("forge.yaml", `${r.read("forge.yaml")}policy:\n  mutable: [project]\n  additive: []\n  freezeFiles: []\n`);
+    r.write(
+      "forge.yaml",
+      `${r.read("forge.yaml")}policy:\n  mutable: [project]\n  additive: []\n  freezeFiles: []\n`,
+    );
     r.commit("adopt policy");
     const out = await miniGate(r, r.base);
     // Adoption is opt-in — nothing was frozen at this base, so the judged
@@ -586,8 +585,7 @@ correctness:
     // The committed session weakened bindings.commands.checkRun (frozen at
     // base: "node {file}" → "true") — the gate must NOT report exempt.
     expect(
-      out.result.status !== "exempt" &&
-        out.result.weakenings.some((w) => w.kind === "binding"),
+      out.result.status !== "exempt" && out.result.weakenings.some((w) => w.kind === "binding"),
       `status=${out.result.status} weakenings=${JSON.stringify(out.result.weakenings)}`,
     ).toBe(true);
   });
@@ -621,10 +619,7 @@ correctness:
     );
     r.commit("weaken frozen key");
     // Uncommitted: still exempt but harmless edit.
-    r.write(
-      "forge.yaml",
-      (r.read("forge.yaml") as string).replace("name: probe", "name: probe2"),
-    );
+    r.write("forge.yaml", (r.read("forge.yaml") as string).replace("name: probe", "name: probe2"));
     const out = await miniGate(r, r.base);
     expect(out.result.weakenings.some((w) => w.kind === "policy-key")).toBe(true);
     expect(out.result.status).toBe("fail");
@@ -718,6 +713,7 @@ policy:
       supportGlobs: [],
       supportMalformed: false,
       anchorFiles: [],
+      anchorCarriers: new Map(),
       baseFiles: [],
       policyGlobs: [],
       policyFiles: [],
@@ -919,10 +915,7 @@ describe("non-exempt contour regression probes", () => {
     const f = fx({
       forgeYamlAppend: `policy:\n  mutable: [project, forge, moves, correctness]\n  additive: []\n  freezeFiles: []\n`,
     });
-    f.write(
-      "forge.yaml",
-      f.read("forge.yaml").replace("mode: enforce", "mode: exempt"),
-    );
+    f.write("forge.yaml", f.read("forge.yaml").replace("mode: enforce", "mode: exempt"));
     f.commit("exempt myself under mutable correctness");
     const { result } = await gate(f, { policyOnly: true });
     console.log(
@@ -939,10 +932,7 @@ describe("non-exempt contour regression probes", () => {
     const f = fx({
       forgeYamlAppend: `agentTools:\n  deny: [danger.cmd]\npolicy:\n  mutable: [project, forge]\n  additive: []\n  freezeFiles: ["forge.yaml"]\n`,
     });
-    f.write(
-      "forge.yaml",
-      f.read("forge.yaml").replace("name: gate-fixture", "name: renamed"),
-    );
+    f.write("forge.yaml", f.read("forge.yaml").replace("name: gate-fixture", "name: renamed"));
     f.commit("mutable-only edit with forge.yaml frozen");
     const { result } = await gate(f, { policyOnly: true });
     console.log(

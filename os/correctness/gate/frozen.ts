@@ -12,7 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
 
 Operator-granted third fix round. Proto-named top-level keys now visible
@@ -70,6 +69,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 — a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
 (CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
 policy binds the next integration (CX-55).</item>
+  <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -120,6 +120,18 @@ export interface CorrectnessSide {
 }
 
 /** Correctness settings + manifest as recorded in one forge.yaml/manifest text pair. */
+/**
+ * True for a plain YAML mapping — `typeof "object"` alone is too loose:
+ * `!!set`/`!!omap`/`!!timestamp`/`!!binary` produce Set/Map/Date/Buffer
+ * roots that carry no readable keys and would silently inert the surface
+ * (RFC-1615 review CX-56/CX-57).
+ */
+function isPlainMap(v: unknown): v is Record<string, unknown> {
+  if (v === null || typeof v !== "object" || Array.isArray(v)) return false;
+  const proto = Object.getPrototypeOf(v);
+  return proto === Object.prototype || proto === null;
+}
+
 export function sideFrom(
   forgeYaml: string | null,
   readManifest: (rel: string) => string | null,
@@ -132,13 +144,12 @@ export function sideFrom(
   try {
     // intAsBigInt — `9007199254740993` and `9007199254740992` collapse to one
     // double in JS; the policy diff must see them as distinct (CX-22).
-    const parsed =
-      forgeYaml !== null ? parseYaml(forgeYaml, { intAsBigInt: true }) : {};
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
+    const parsed = forgeYaml !== null ? parseYaml(forgeYaml, { intAsBigInt: true }) : {};
+    // A root that is not a PLAIN map — scalar, array, or a tagged type like
+    // `!!set`/`!!omap`/`!!timestamp`/`!!binary` (Set/Map/Date/Buffer pass
+    // `typeof "object"` but carry no readable keys) — is unreadable, never
+    // "no surface declared" (RFC-1615 review CX-56).
+    if (parsed === null || !isPlainMap(parsed)) {
       forgeYamlUnreadable = forgeYaml !== null;
     } else {
       doc = parsed as Record<string, unknown>;
@@ -217,7 +228,7 @@ function parsePolicySurface(raw: unknown): {
   // `policy:` absent vs `policy: null` — only the absent form is undeclared;
   // a declared-but-empty (null) section is malformed (RFC-1615 review CX-8).
   if (raw === undefined) return { surface: null, malformed: false };
-  const isMap = typeof raw === "object" && raw !== null && !Array.isArray(raw);
+  const isMap = isPlainMap(raw);
   const obj = (isMap ? raw : {}) as Record<string, unknown>;
   const list = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
@@ -258,8 +269,7 @@ export function canon(value: unknown, seen: WeakSet<object> = new WeakSet()): st
     if (!Number.isFinite(value)) return `num:${value}`;
     if (Object.is(value, -0)) return "num:-0"; // `-0` ≠ `0` (RFC-1615 review CX-22)
   }
-  if (value === null || typeof value !== "object")
-    return JSON.stringify(value) ?? "null";
+  if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
   if (seen.has(value)) return '"cycle"';
   seen.add(value);
   try {
@@ -272,19 +282,18 @@ export function canon(value: unknown, seen: WeakSet<object> = new WeakSet()): st
       return `map:{${entries.map(([k, v]) => `${k}:${v}`).join(",")}}`;
     }
     if (value instanceof Set) {
-      return `set:{${[...value].map((v) => canon(v, seen)).sort().join(",")}}`;
+      return `set:{${[...value]
+        .map((v) => canon(v, seen))
+        .sort()
+        .join(",")}}`;
     }
     if (ArrayBuffer.isView(value)) {
       return `bin:${Array.from(value as Uint8Array).join(",")}`;
     }
-    if (Array.isArray(value))
-      return `[${value.map((v) => canon(v, seen)).join(",")}]`;
+    if (Array.isArray(value)) return `[${value.map((v) => canon(v, seen)).join(",")}]`;
     return `{${Object.keys(value as Record<string, unknown>)
       .sort()
-      .map(
-        (k) =>
-          `${JSON.stringify(k)}:${canon((value as Record<string, unknown>)[k], seen)}`,
-      )
+      .map((k) => `${JSON.stringify(k)}:${canon((value as Record<string, unknown>)[k], seen)}`)
       .join(",")}}`;
   } finally {
     seen.delete(value);
@@ -334,8 +343,7 @@ export function policyLeaves(
   try {
     if (Array.isArray(value)) {
       value.forEach((v, i) => {
-        for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`, seen))
-          out.set(k, leaf);
+        for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`, seen)) out.set(k, leaf);
       });
       return out;
     }
@@ -347,8 +355,7 @@ export function policyLeaves(
       !ArrayBuffer.isView(value)
     ) {
       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-        for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`, seen))
-          out.set(lk, leaf);
+        for (const [lk, leaf] of policyLeaves(v, `${prefix}${seg(k)}`, seen)) out.set(lk, leaf);
       }
       return out;
     }
@@ -395,6 +402,8 @@ export interface FrozenSet {
   supportMalformed: boolean;
   /** Files at base that declare a frozen anchor (an isolated anchor change touches them). */
   anchorFiles: string[];
+  /** Per-id carrier files at base — an anchor in an unchanged file cannot reword (CX-59). */
+  anchorCarriers: Map<string, Set<string>>;
   /** Every file path at base. */
   baseFiles: string[];
   /** RFC-1615: base `policy.freezeFiles` globs. */
@@ -443,8 +452,10 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   const wanted = new Set((side.manifest?.entries ?? []).flatMap((e) => e.anchors));
   const anchors = new Map<string, string>();
   const anchorFiles = new Set<string>();
+  const anchorCarriers = new Map<string, Set<string>>();
   if (wanted.size > 0) {
     const grep = await repo.git.run(["grep", "-l", "-z", "-F", "@ai-invariant[", base, "--"]);
+    if (grep === null) repo.unreadableReads.push(`grep @ai-invariant ${base}`);
     const hits = (grep ?? "")
       .split("\0")
       .filter((l) => l.length > 0)
@@ -454,9 +465,12 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
       const text = await repo.show(base, rel);
       if (!text) continue;
       for (const a of anchorsFromSource(rel, text)) {
-        if (wanted.has(a.id)) anchorFiles.add(rel);
-        if (wanted.has(a.id) && !anchors.has(a.id))
-          anchors.set(a.id, invariantStatementSha(a.statement));
+        if (!wanted.has(a.id)) continue;
+        anchorFiles.add(rel);
+        const carriers = anchorCarriers.get(a.id) ?? new Set<string>();
+        carriers.add(rel);
+        anchorCarriers.set(a.id, carriers);
+        if (!anchors.has(a.id)) anchors.set(a.id, invariantStatementSha(a.statement));
       }
     }
   }
@@ -497,6 +511,7 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     supportGlobs: supportMalformed ? [] : supportGlobs,
     supportMalformed,
     anchorFiles: [...anchorFiles].sort(),
+    anchorCarriers,
     baseFiles,
     policyGlobs,
     policyFiles: [...policyFiles].sort(),
@@ -677,12 +692,11 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
     out.push({
       kind: "policy-key",
       subject,
-      message:
-        !had
-          ? `new top-level key ${key} is not declared in policy.mutable or policy.additive`
-          : !has
-            ? `frozen top-level key ${key} was removed`
-            : `frozen key ${subject} changed — declare ${key} under policy.mutable or policy.additive to permit this`,
+      message: !had
+        ? `new top-level key ${key} is not declared in policy.mutable or policy.additive`
+        : !has
+          ? `frozen top-level key ${key} was removed`
+          : `frozen key ${subject} changed — declare ${key} under policy.mutable or policy.additive to permit this`,
     });
   }
   return out;
@@ -727,15 +741,17 @@ export async function supportAdditions(
   base: string,
   head: string,
   frozen: FrozenSet,
+  changed: string[],
 ): Promise<Weakening[]> {
-  void base;
   return globAdditions(
     repo,
+    base,
     head,
     frozen.baseFiles,
     frozen.supportGlobs,
     "frozen-file",
     "a frozen support glob",
+    changed,
   );
 }
 
@@ -746,33 +762,51 @@ export async function supportAdditions(
  */
 export async function policyFileAdditions(
   repo: GateRepo,
+  base: string,
   head: string,
   frozen: FrozenSet,
+  changed: string[],
 ): Promise<Weakening[]> {
   return globAdditions(
     repo,
+    base,
     head,
     frozen.baseFiles,
     frozen.policyGlobs,
     "policy-file",
     "a policy.freezeFiles glob",
+    changed,
   );
 }
 
 async function globAdditions(
   repo: GateRepo,
+  base: string,
   head: string,
   baseFiles: string[],
   globs: string[],
   kind: string,
   globLabel: string,
+  changed: string[],
 ): Promise<Weakening[]> {
   if (globs.length === 0) return [];
   const before = new Set(baseFiles);
   const matchers = globs.map((g) => picomatch(normalizeRelPath(g), { dot: true }));
   const out: Weakening[] = [];
-  for (const rel of await repo.files(head)) {
+  // Enumeration is the primary source; when `ls-tree` fails the diff still
+  // names every touched path — git skips identical subtrees, so a corrupt
+  // off-path object cannot hide an addition (CX-59). `files()` flagged the
+  // failure in repo.unreadableReads already.
+  const u0 = repo.unreadableReads.length;
+  const headFiles = await repo.files(head);
+  const enumerated = repo.unreadableReads.length === u0;
+  const candidates = enumerated ? headFiles : changed;
+  for (const rel of candidates) {
     if (before.has(rel) || !matchers.some((m) => m(rel))) continue;
+    // On the fallback, membership at base is judged per-path — a changed
+    // path that existed at base is an edit (byteWeakenings' domain), not an
+    // addition.
+    if (!enumerated && (await repo.blob(base, rel)) !== null) continue;
     if (await repo.lastTouchIsVerifier(head, rel)) continue;
     out.push({
       kind,
@@ -792,17 +826,18 @@ export async function anchorWeakenings(
   repo: GateRepo,
   head: string,
   frozen: FrozenSet,
+  changed: string[],
 ): Promise<Weakening[]> {
   if (frozen.anchors.size === 0) return [];
   const wanted = new Set(frozen.anchors.keys());
   const copies = new Map<string, string[]>();
-  const grep = await repo.git.run(["grep", "-l", "-z", "-F", "@ai-invariant[", head, "--"]);
-  const hits = (grep ?? "")
-    .split("\0")
-    .filter((l) => l.length > 0)
-    .map((l) => (l.startsWith(`${head}:`) ? l.slice(head.length + 1) : l))
-    .filter(isAnchorSourceCandidate);
-  for (const rel of hits) {
+  // No full-tree grep — an anchor can only change inside a CHANGED file, so
+  // the head scan is the changed anchor-source files: a corrupt off-path
+  // tree cannot blind the judgement (CX-59). Carriers absent from `changed`
+  // keep their base copies implicitly.
+  const changedSet = new Set(changed);
+  for (const rel of changed) {
+    if (!isAnchorSourceCandidate(rel)) continue;
     const text = await repo.show(head, rel);
     if (!text) continue;
     for (const a of anchorsFromSource(rel, text)) {
@@ -815,11 +850,17 @@ export async function anchorWeakenings(
   const out: Weakening[] = [];
   for (const [id, sha] of frozen.anchors) {
     const now = copies.get(id) ?? [];
-    if (now.length === 0)
+    const carriersTouched = [...(frozen.anchorCarriers.get(id) ?? [])].some((rel) =>
+      changedSet.has(rel),
+    );
+    if (now.length === 0 && carriersTouched)
       out.push({ kind: "anchor-removed", subject: id, message: `frozen anchor ${id} was removed` });
     // Every copy must keep the frozen statement — a duplicate comment carrying
     // the old text must not mask a reworded real anchor.
-    else if (!now.every((statement) => invariantStatementSha(statement) === sha)) {
+    else if (
+      now.length > 0 &&
+      !now.every((statement) => invariantStatementSha(statement) === sha)
+    ) {
       out.push({
         kind: "anchor-reworded",
         subject: id,
@@ -847,15 +888,31 @@ export async function modeWeakenings(
   if (files.length === 0) return [];
   const wanted = new Set(files);
   const entries = async (rev: string): Promise<Map<string, { mode: string; sha: string }>> => {
-    const out = await repo.git.run(["ls-tree", "-r", "-z", rev]);
     const map = new Map<string, { mode: string; sha: string }>();
-    for (const line of (out ?? "").split("\0")) {
-      const tab = line.indexOf("\t");
-      if (tab === -1) continue;
-      const rel = line.slice(tab + 1);
-      if (!wanted.has(rel)) continue;
-      const [mode, , sha] = line.slice(0, tab).split(" ");
-      if (mode && sha) map.set(rel, { mode, sha });
+    // Path-scoped reads — `ls-tree -r` enumerates every tree and loses the
+    // whole judgement to a corrupt off-path object, while `rev -- path`
+    // resolves only the trees along each wanted file (CX-59). `:(literal)`
+    // so glob-metachar filenames cannot match siblings (CX-26).
+    for (let i = 0; i < files.length; i += 200) {
+      const out = await repo.git.run([
+        "ls-tree",
+        "-z",
+        rev,
+        "--",
+        ...files.slice(i, i + 200).map((p) => `:(literal)${p}`),
+      ]);
+      if (out === null) {
+        repo.unreadableReads.push(`ls-tree ${rev}`);
+        return map;
+      }
+      for (const line of out.split("\0")) {
+        const tab = line.indexOf("\t");
+        if (tab === -1) continue;
+        const rel = line.slice(tab + 1);
+        if (!wanted.has(rel)) continue;
+        const [mode, , sha] = line.slice(0, tab).split(" ");
+        if (mode && sha) map.set(rel, { mode, sha });
+      }
     }
     return map;
   };

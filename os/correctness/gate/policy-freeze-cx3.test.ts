@@ -17,17 +17,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
-import {
-  policyWeakenings,
-  sideFrom,
-  type CorrectnessSide,
-  type FrozenSet,
-} from "./frozen.ts";
+import { policyWeakenings, sideFrom, type CorrectnessSide, type FrozenSet } from "./frozen.ts";
 import { runCorrectnessGate } from "./run.ts";
-import {
-  makeGateFixture,
-  type GateFixture,
-} from "./tests/gate-fixture.ts";
+import { makeGateFixture, type GateFixture } from "./tests/gate-fixture.ts";
 import type { Weakening } from "./types.ts";
 
 // ---------------------------------------------------------------------------
@@ -65,6 +57,7 @@ function frozenOf(yaml: string): FrozenSet {
     supportGlobs: [],
     supportMalformed: false,
     anchorFiles: [],
+    anchorCarriers: new Map(),
     baseFiles: [],
     policyGlobs: [],
     policyFiles: [],
@@ -177,9 +170,7 @@ describe("proto-named top-level keys (AC-5)", () => {
     const f = fx({ forgeYamlAppend: POLICY_APPEND, extraFiles: POLICY_FILES });
     f.write(
       "forge.yaml",
-      f
-        .read("forge.yaml")
-        .replace("mutable: [project, forge, moves]", "mutable: [project]") +
+      f.read("forge.yaml").replace("mutable: [project, forge, moves]", "mutable: [project]") +
         "hasOwnProperty:\n",
     );
     f.commit("shrink mutable plus invisible key");
@@ -190,8 +181,7 @@ describe("proto-named top-level keys (AC-5)", () => {
     // The smuggled key is either a reported weakening or makes forge.yaml
     // foreign — silently accepting means the invisible diff slipped through.
     const smuggled =
-      result.weakenings.length === 0 ||
-      result.weakenings.every((w) => w.kind === "policy-decl");
+      result.weakenings.length === 0 || result.weakenings.every((w) => w.kind === "policy-decl");
     expect(smuggled && result.status === "pass").toBe(false);
   });
 });
@@ -374,7 +364,10 @@ describe("phantom worktree weakening whitelists a foreign file (AC-6)", () => {
     f.commit("add evil-manifest.yaml");
     f.write(
       "forge.yaml",
-      baseYaml.replace("correctnessManifest: docs/correctness.yaml", "correctnessManifest: docs/evil-manifest.yaml"),
+      baseYaml.replace(
+        "correctnessManifest: docs/correctness.yaml",
+        "correctnessManifest: docs/evil-manifest.yaml",
+      ),
     );
     const { result } = await gate(f, {
       policyOnly: true,
@@ -509,9 +502,7 @@ describe("unreadable base forge.yaml (fail-closed contract)", () => {
       if (!out.ok) throw new Error(out.usageError);
       expect(out.result.status).toBe("fail");
       expect(
-        out.result.violations.some(
-          (v) => v.rule === "CORR-GATE-01" && v.severity === "error",
-        ),
+        out.result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error"),
       ).toBe(true);
     });
   }
@@ -531,9 +522,8 @@ describe("AC-8: forge upgrade heals a malformed policy:", () => {
     error() {},
     success() {},
   };
-  const PKG_VERSION = JSON.parse(
-    readFileSync(path.join(FORGE_ROOT, "package.json"), "utf8"),
-  ).version as string;
+  const PKG_VERSION = JSON.parse(readFileSync(path.join(FORGE_ROOT, "package.json"), "utf8"))
+    .version as string;
   const workspace = (yaml: string) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "forge-upgrade-"));
     tmpdirs.push(root);
@@ -556,12 +546,9 @@ describe("AC-8: forge upgrade heals a malformed policy:", () => {
     return { res, DEFAULT_FORGE_POLICY };
   };
   const policyOf = (root: string) =>
-    (
-      parseYaml(readFileSync(path.join(root, "forge.yaml"), "utf8")) as Record<
-        string,
-        unknown
-      >
-    )["policy"];
+    (parseYaml(readFileSync(path.join(root, "forge.yaml"), "utf8")) as Record<string, unknown>)[
+      "policy"
+    ];
 
   for (const malformed of [
     "policy:\n",
@@ -569,17 +556,13 @@ describe("AC-8: forge upgrade heals a malformed policy:", () => {
     "policy: [a]\n",
     "policy:\n  mutable: [1]\n",
   ]) {
-    it(
-      `heals ${JSON.stringify(malformed)}`,
-      async () => {
-        const root = workspace(
-          `schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "${PKG_VERSION}"\n${malformed}`,
-        );
-        const { res, DEFAULT_FORGE_POLICY } = await upgrade(root);
-        expect(res.data?.status).toBe("noop");
-        expect(policyOf(root)).toEqual(DEFAULT_FORGE_POLICY);
-      },
-      120_000,
-    );
+    it(`heals ${JSON.stringify(malformed)}`, async () => {
+      const root = workspace(
+        `schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "${PKG_VERSION}"\n${malformed}`,
+      );
+      const { res, DEFAULT_FORGE_POLICY } = await upgrade(root);
+      expect(res.data?.status).toBe("noop");
+      expect(policyOf(root)).toEqual(DEFAULT_FORGE_POLICY);
+    }, 120_000);
   }
 });

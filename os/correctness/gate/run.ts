@@ -13,7 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-5 — structuredClone accept-path (CX-27/28), exempt contour judges declared policy (CX-29)</item>
   <item>RFC-1615: round-6 — commit-derived exempt contour + HEAD-side policyMalformed before early return (CX-30/31)</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
@@ -50,6 +49,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 — a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
 (CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
 policy binds the next integration (CX-55).</item>
+  <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -193,8 +193,7 @@ async function forgeYamlOnlyFrozenKeys(
       delete copy["policy"];
       delete copy["correctness"];
       const b = copy["bindings"] as
-        | { commands?: Record<string, unknown>; paths?: Record<string, unknown> }
-        | undefined;
+        { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
       if (b?.commands) delete b.commands["checkRun"];
       if (b?.paths) {
         delete b.paths["correctnessManifest"];
@@ -217,8 +216,7 @@ async function forgeYamlOnlyFrozenKeys(
       // strip them or every checkRun/manifest rebind dead-ends as
       // `mixed-weakening` (RFC-1615 review CX-51).
       const b = copy["bindings"] as
-        | { commands?: Record<string, unknown>; paths?: Record<string, unknown> }
-        | undefined;
+        { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
       if (b?.commands) delete b.commands["checkRun"];
       if (b?.paths) {
         delete b.paths["correctnessManifest"];
@@ -409,27 +407,59 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       `the base manifest ${frozen.base.manifestPath} does not parse with this forge — the frozen set cannot be read; integrate with a forge that reads it`,
     );
   }
-  const weakenings: Weakening[] = options.policyOnly || exemptContour
-    ? [
-        // RFC-1615 --policy-only / exempt-contour: the declared policy
-        // surface, nothing else (CX-29 — policy: is its own opt-in).
-        ...policyWeakenings(frozen, now),
-        ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
-        ...(await modeWeakenings(repo, base, head, frozen.policyFiles)),
-        ...(await policyFileAdditions(repo, head, frozen)),
-      ]
-    : [
-        ...diffWeakenings(frozen, now),
-        ...(await byteWeakenings(repo, base, head, frozen.files)),
-        ...(await modeWeakenings(repo, base, head, frozen.files)),
-        ...(await supportAdditions(repo, base, head, frozen)),
-        ...(await anchorWeakenings(repo, head, frozen)),
-        // RFC-1615: the declared policy surface is judged in the same gate run.
-        ...policyWeakenings(frozen, now),
-        ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
-        ...(await modeWeakenings(repo, base, head, frozen.policyFiles)),
-        ...(await policyFileAdditions(repo, head, frozen)),
-      ];
+  // The changed-paths diff is computed once — git skips identical subtrees,
+  // so a corrupt off-path tree object does not blind it the way `ls-tree -r`
+  // enumeration is blinded (CX-59). Glob-frozen members lost to a failed
+  // enumeration are recovered from it below.
+  const changed = await repo.changedPaths(base, head);
+  // CX-59: a changed path matching a frozen glob that existed at base is an
+  // edit of a glob-frozen file — judgeable via path-scoped blob reads even
+  // when the full-tree enumeration failed.
+  const globExtraChanged = async (
+    globs: string[],
+    listed: readonly string[],
+  ): Promise<string[]> => {
+    if (globs.length === 0) return [];
+    const known = new Set(listed);
+    const matchers = globs.map((g) => picomatch(normalizeRelPath(g), { dot: true }));
+    const out: string[] = [];
+    for (const rel of changed) {
+      if (known.has(rel) || !matchers.some((m) => m(rel))) continue;
+      if ((await repo.blob(base, rel)) !== null) out.push(rel);
+    }
+    return out;
+  };
+  const supportExtra = await globExtraChanged(frozen.supportGlobs, frozen.files);
+  // forge.yaml is never a byte-frozen POLICY file — the same exclusion the
+  // enumerated path applies (CX-52), or `*.yaml`/`x/../forge.yaml` globs
+  // would smuggle it into policy-file reporting through the diff fallback.
+  const policyExtra = (await globExtraChanged(frozen.policyGlobs, frozen.policyFiles)).filter(
+    (rel) => rel !== "forge.yaml",
+  );
+  const frozenFiles = [...frozen.files, ...supportExtra];
+  const frozenPolicyFiles = [...frozen.policyFiles, ...policyExtra];
+  const weakenings: Weakening[] =
+    options.policyOnly || exemptContour
+      ? [
+          // RFC-1615 --policy-only / exempt-contour: the declared policy
+          // surface, nothing else (CX-29 — policy: is its own opt-in).
+          ...policyWeakenings(frozen, now),
+          ...(await byteWeakenings(repo, base, head, frozenPolicyFiles, "policy-file")),
+          ...(await modeWeakenings(repo, base, head, frozenPolicyFiles)),
+          ...(await policyFileAdditions(repo, base, head, frozen, changed)),
+        ]
+      : [
+          ...diffWeakenings(frozen, now),
+          ...(await byteWeakenings(repo, base, head, frozenFiles)),
+          ...(await modeWeakenings(repo, base, head, frozenFiles)),
+          ...(await supportAdditions(repo, base, head, frozen, changed)),
+          ...(await anchorWeakenings(repo, head, frozen, changed)),
+          // RFC-1615: the declared policy surface is judged in the same gate run.
+          ...policyWeakenings(frozen, now),
+          ...(await byteWeakenings(repo, base, head, frozenPolicyFiles, "policy-file")),
+          ...(await modeWeakenings(repo, base, head, frozenPolicyFiles)),
+          ...(await policyFileAdditions(repo, base, head, frozen, changed)),
+        ];
   let acceptedReason: string | null = null;
   if (weakenings.length > 0) {
     const reason = options.acceptWeakening?.trim();
@@ -450,15 +480,13 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
               .filter((p): p is string => !!p)
               .map(normalizeRelPath)),
       ]);
-      const changed = await repo.changedPaths(base, head);
       // Additions inside a frozen glob (support glob or policy.freezeFiles)
       // are themselves the reported weakenings being accepted — they count as
       // frozen-set paths even though the base set cannot contain them yet
       // (RFC-1615 review CX-11).
-      const frozenGlobs = [
-        ...(policyScope ? [] : frozen.supportGlobs),
-        ...frozen.policyGlobs,
-      ].map((g) => picomatch(normalizeRelPath(g), { dot: true }));
+      const frozenGlobs = [...(policyScope ? [] : frozen.supportGlobs), ...frozen.policyGlobs].map(
+        (g) => picomatch(normalizeRelPath(g), { dot: true }),
+      );
       const foreign = changed.filter((p) =>
         // forge.yaml's isolation is judged by the key-strip alone — a
         // `freezeFiles` glob that happens to match it (*.yaml) must not
@@ -467,16 +495,32 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
           ? !forgeYamlIsolated
           : !frozenPaths.has(p) && !frozenGlobs.some((m) => m(p)),
       );
-      if (foreign.length === 0) acceptedReason = reason;
-      else {
+      // An accept granted on an unreadable diff would launder foreign files
+      // (CX-60) — a failed listing read means the isolation verdict cannot be
+      // proven, which is refused with the same mixed-weakening class.
+      if (foreign.length === 0 && repo.unreadableReads.length === 0) {
+        acceptedReason = reason;
+      } else {
         add(
           "CORR-GATE-02",
-          `mixed-weakening: --accept-weakening needs a session whose diff touches frozen-set paths only; also changed: ${foreign.slice(0, 5).join(", ")}${foreign.length > 5 ? " …" : ""}`,
+          repo.unreadableReads.length > 0
+            ? `mixed-weakening: a git read failed (${repo.unreadableReads.slice(0, 3).join(", ")}${repo.unreadableReads.length > 3 ? " …" : ""}) — --accept-weakening cannot prove the diff is isolated`
+            : `mixed-weakening: --accept-weakening needs a session whose diff touches frozen-set paths only; also changed: ${foreign.slice(0, 5).join(", ")}${foreign.length > 5 ? " …" : ""}`,
         );
       }
     }
     if (acceptedReason === null)
       for (const w of weakenings) add("CORR-GATE-02", `weakening (${w.kind}): ${w.message}`);
+  }
+  // A failed git listing read (corrupt object, spawn failure, timeout,
+  // maxBuffer) mapped to an empty result silently empties the frozen set or
+  // the changed-paths isolation — the verdict above was computed on an
+  // incomplete picture, so fail closed (RFC-1615 review CX-59/CX-60).
+  if (repo.unreadableReads.length > 0) {
+    add(
+      "CORR-GATE-01",
+      `a git read failed (${repo.unreadableReads.slice(0, 3).join(", ")}${repo.unreadableReads.length > 3 ? " …" : ""}) — the weakening judgement is incomplete; refusing (fail closed)`,
+    );
   }
   const weakeningRecords = weakenings.map((w) => ({ ...w, accepted: acceptedReason !== null }));
 

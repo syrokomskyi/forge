@@ -11,18 +11,9 @@ import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
-import {
-  policyWeakenings,
-  sideFrom,
-  type CorrectnessSide,
-  type FrozenSet,
-} from "./frozen.ts";
+import { policyWeakenings, sideFrom, type CorrectnessSide, type FrozenSet } from "./frozen.ts";
 import { runCorrectnessGate } from "./run.ts";
-import {
-  makeGateFixture,
-  verifierCommit,
-  type GateFixture,
-} from "./tests/gate-fixture.ts";
+import { makeGateFixture, verifierCommit, type GateFixture } from "./tests/gate-fixture.ts";
 import type { Weakening } from "./types.ts";
 import {
   applyForgeYamlPatches,
@@ -66,6 +57,7 @@ function frozenOf(yaml: string): FrozenSet {
     supportGlobs: [],
     supportMalformed: false,
     anchorFiles: [],
+    anchorCarriers: new Map(),
     baseFiles: [],
     policyGlobs: [],
     policyFiles: [],
@@ -311,9 +303,9 @@ describe("malformed policy: surface classification (parsePolicySurface)", () => 
     expect(sideFrom(`${NO_POLICY}policy: "scalar"\n`, () => null).policyMalformed).toBe(true);
   });
   it("policy: {mutable: scalar} is malformed", () => {
-    expect(
-      sideFrom(`${NO_POLICY}policy:\n  mutable: nope\n`, () => null).policyMalformed,
-    ).toBe(true);
+    expect(sideFrom(`${NO_POLICY}policy:\n  mutable: nope\n`, () => null).policyMalformed).toBe(
+      true,
+    );
   });
   it("a declared-but-null policy: is not silently treated as undeclared", () => {
     // `policy:` with an empty value parses to null — a non-map, i.e. malformed
@@ -382,9 +374,9 @@ describe("CX-4 fix (AC-7): malformed policy: is CORR-GATE-01 in both modes", () 
   it("malformed policy: is CORR-GATE-01 in a full (non-policyOnly) run", async () => {
     const f = fx({ mode: "warn", forgeYamlAppend: 'policy: "broken"\n' });
     const { result } = await gate(f);
-    expect(
-      result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error"),
-    ).toBe(true);
+    expect(result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error")).toBe(
+      true,
+    );
   });
 
   it("a declared-but-null policy: at base fails closed, not silently inert", async () => {
@@ -392,9 +384,9 @@ describe("CX-4 fix (AC-7): malformed policy: is CORR-GATE-01 in both modes", () 
     const { result } = await gate(f, { policyOnly: true });
     // Must be the malformed ERROR, not the 'no policy surface declared' note
     // (which also carries the CORR-GATE-01 rule id at warning severity).
-    expect(
-      result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error"),
-    ).toBe(true);
+    expect(result.violations.some((v) => v.rule === "CORR-GATE-01" && v.severity === "error")).toBe(
+      true,
+    );
     expect(result.status).toBe("fail");
   });
 });
@@ -644,9 +636,8 @@ describe("AC-8: default policy block scaffolding", () => {
 describe("AC-8 e2e: forge upgrade scaffolds policy:", () => {
   const FORGE_ROOT = path.resolve(new URL("../../..", import.meta.url).pathname);
   const LOGGER = { section() {}, info() {}, warn() {}, error() {}, success() {} };
-  const PKG_VERSION = JSON.parse(
-    readFileSync(path.join(FORGE_ROOT, "package.json"), "utf8"),
-  ).version as string;
+  const PKG_VERSION = JSON.parse(readFileSync(path.join(FORGE_ROOT, "package.json"), "utf8"))
+    .version as string;
 
   const workspace = (yaml: string) => {
     const root = mkdtempSync(path.join(os.tmpdir(), "forge-upgrade-"));
@@ -672,40 +663,28 @@ describe("AC-8 e2e: forge upgrade scaffolds policy:", () => {
       "policy"
     ];
 
-  it(
-    "a version-bumped upgrade writes the default policy block",
-    async () => {
-      const root = workspace(
-        'schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "0.0.0-old"\n',
-      );
-      await upgrade(root);
-      expect(policyOf(root)).toEqual(DEFAULT_FORGE_POLICY);
-    },
-    120_000,
-  );
+  it("a version-bumped upgrade writes the default policy block", async () => {
+    const root = workspace(
+      'schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "0.0.0-old"\n',
+    );
+    await upgrade(root);
+    expect(policyOf(root)).toEqual(DEFAULT_FORGE_POLICY);
+  }, 120_000);
 
-  it(
-    "AC-8: a noop upgrade on a policy-less repo still leaves the policy block",
-    async () => {
-      const root = workspace(
-        `schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "${PKG_VERSION}"\n`,
-      );
-      const res = await upgrade(root);
-      expect(res.data?.status).toBe("noop");
-      expect(policyOf(root)).toEqual(DEFAULT_FORGE_POLICY);
-    },
-    120_000,
-  );
+  it("AC-8: a noop upgrade on a policy-less repo still leaves the policy block", async () => {
+    const root = workspace(
+      `schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "${PKG_VERSION}"\n`,
+    );
+    const res = await upgrade(root);
+    expect(res.data?.status).toBe("noop");
+    expect(policyOf(root)).toEqual(DEFAULT_FORGE_POLICY);
+  }, 120_000);
 
-  it(
-    "an operator-tuned policy: is never rewritten by upgrade",
-    async () => {
-      const root = workspace(
-        'schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "0.0.0-old"\npolicy:\n  mutable: [zzz]\n  additive: []\n  freezeFiles: []\n',
-      );
-      await upgrade(root);
-      expect(policyOf(root)).toEqual({ mutable: ["zzz"], additive: [], freezeFiles: [] });
-    },
-    120_000,
-  );
+  it("an operator-tuned policy: is never rewritten by upgrade", async () => {
+    const root = workspace(
+      'schema: forge/config@1\nproject:\n  name: up\npaths: {}\nforge:\n  syncedVersion: "0.0.0-old"\npolicy:\n  mutable: [zzz]\n  additive: []\n  freezeFiles: []\n',
+    );
+    await upgrade(root);
+    expect(policyOf(root)).toEqual({ mutable: ["zzz"], additive: [], freezeFiles: [] });
+  }, 120_000);
 });

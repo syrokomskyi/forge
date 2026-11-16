@@ -25,6 +25,7 @@ Deletions of frozen files honor the verifier trailer pair like any other
 touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
 cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
+  <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -39,6 +40,15 @@ import {
 export class GateRepo {
   readonly git: OriginGit;
   private readonly blobCache = new Map<string, string | null>();
+
+  /**
+   * Listing reads that returned null (spawn failure, timeout, corrupt object).
+   * A failed `ls-tree`/`diff`/`grep` is NOT an empty result — mapping it to
+   * `[]` silently empties the frozen set or launders foreign files through
+   * `--accept-weakening`; the gate must fail closed instead
+   * (RFC-1615 review CX-59/CX-60).
+   */
+  readonly unreadableReads: string[] = [];
 
   readonly root: string;
 
@@ -64,12 +74,20 @@ export class GateRepo {
 
   async files(rev: string): Promise<string[]> {
     const out = await this.git.run(["ls-tree", "-r", "-z", "--name-only", rev]);
-    return (out ?? "").split("\0").filter((l) => l.length > 0);
+    if (out === null) {
+      this.unreadableReads.push(`ls-tree ${rev}`);
+      return [];
+    }
+    return out.split("\0").filter((l) => l.length > 0);
   }
 
   async changedPaths(base: string, head: string): Promise<string[]> {
     const out = await this.git.run(["diff", "--name-only", "-z", `${base}..${head}`]);
-    return (out ?? "").split("\0").filter((l) => l.length > 0);
+    if (out === null) {
+      this.unreadableReads.push(`diff ${base}..${head}`);
+      return [];
+    }
+    return out.split("\0").filter((l) => l.length > 0);
   }
 
   /** Body of the last commit (≤ head) touching `rel`, or null. */

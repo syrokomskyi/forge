@@ -10,9 +10,6 @@ fallback), and path normalization shared by every reference comparison.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: correctness manifest, validator, promotes gate
-
-Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
@@ -51,6 +48,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 — a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
 (CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
 policy binds the next integration (CX-55).</item>
+  <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <history>RFC-1578</history>
 </CHANGE_SUMMARY>
 */
@@ -167,11 +165,8 @@ export function settingsFromForgeDoc(
     : null;
   if (configError === null) {
     try {
-      const state = { cyclic: false };
-      const probe = forgeConfigSchema.safeParse(schemaProbe(doc, new WeakSet(), state));
-      // A cyclic alias stack-overflows the loader's safeParse — refuse like
-      // it would (CX-49/50 parity: identical verdict, never a crash).
-      if (!probe.success || state.cyclic) configError = "forge.yaml failed schema validation";
+      const probe = forgeConfigSchema.safeParse(schemaProbe(doc));
+      if (!probe.success) configError = "forge.yaml failed schema validation";
     } catch {
       configError = "forge.yaml failed schema validation";
     }
@@ -195,42 +190,31 @@ export function settingsFromForgeDoc(
 }
 
 /**
- * Deep-clone for the schema probe: BigInt leaves become Number (zod `.number()`
- * rejects them and would fabricate a schema failure on a valid config).
+ * Structural clone for the schema probe: BigInt leaves become Number (zod
+ * `.number()` rejects them — the plain parse produces a JS number there).
  * Non-plain objects (Date/Map/Set from `!!timestamp`/`!!omap`) pass through
- * unchanged — zod must judge the same type the loader's plain parse produces;
- * flattening them to `{}` masked a real configError (CX-49). `seen` unwinds
- * per-branch like `canon`/`policyLeaves` — a shared alias revisited from a
- * sibling leafs normally (CX-50), a true back-edge flags `cyclic` because
- * `loadForgeConfig`'s safeParse stack-overflows on it (fail closed).
+ * unchanged, and the clone preserves alias structure — DAG shares AND true
+ * cycles — via the `clones` map, so `safeParse` judges the same shape the
+ * loader's plain parse produces (CX-49/CX-50/CX-58). A cyclic field zod
+ * actually descends into stack-overflows exactly like the loader — the
+ * catch maps it to configError either way.
  */
-function schemaProbe(
-  value: unknown,
-  seen: WeakSet<object> = new WeakSet(),
-  state: { cyclic: boolean } = { cyclic: false },
-): unknown {
+function schemaProbe(value: unknown, clones: Map<object, unknown> = new Map()): unknown {
   if (typeof value === "bigint") return Number(value);
   if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) {
-    state.cyclic = true;
-    return null;
-  }
-  seen.add(value);
-  let out: unknown;
+  if (clones.has(value)) return clones.get(value);
   if (Array.isArray(value)) {
-    out = value.map((v) => schemaProbe(v, seen, state));
-  } else {
-    const proto = Object.getPrototypeOf(value);
-    if (proto === Object.prototype || proto === null) {
-      const rec: Record<string, unknown> = {};
-      for (const [k, v] of Object.entries(value)) rec[k] = schemaProbe(v, seen, state);
-      out = rec;
-    } else {
-      out = value;
-    }
+    const arr: unknown[] = [];
+    clones.set(value, arr);
+    for (const v of value) arr.push(schemaProbe(v, clones));
+    return arr;
   }
-  seen.delete(value);
-  return out;
+  const proto = Object.getPrototypeOf(value);
+  if (proto !== Object.prototype && proto !== null) return value;
+  const rec: Record<string, unknown> = {};
+  clones.set(value, rec);
+  for (const [k, v] of Object.entries(value)) rec[k] = schemaProbe(v, clones);
+  return rec;
 }
 
 /** Workspace-relative POSIX form of a path (`./a\\b` → `a/b`). */
