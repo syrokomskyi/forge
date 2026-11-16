@@ -180,6 +180,22 @@ correctness:
 
 `exempt` declares a repository without a product runtime (the verbund hub): the manifest rules do not apply, and a manifest binding beside it is a CORR-02 error. See [correctness-manifest.md](correctness-manifest.md).
 
+## policy
+
+Optional (RFC-1615). The declared policy surface: which forge.yaml keys and repo files a session may change — `correctness.gate` freezes everything else at the integration `--base`. The section freezes itself.
+
+```yaml
+policy:
+  mutable: [project, forge, moves]          # top-level keys sessions may change freely
+  additive: [bindings, paths, loopMetrics]  # new leaves allowed; existing leaves frozen
+  freezeFiles:                              # repo-root globs — byte-frozen
+    - "hooks/**"
+    - ".github/workflows/**"
+    - ".forge/pinned.yaml"
+```
+
+Scaffolded by `forge init`; `forge upgrade` adds it only when absent. Judge semantics and `--policy-only`: [correctness-gate.md](correctness-gate.md#declared-policy-surface-policy-rfc-1615).
+
 ## Extension points
 
 Packs can declare custom Compass contract blocks:

@@ -43,6 +43,7 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578</history>
 </CHANGE_SUMMARY>
@@ -351,6 +352,23 @@ export interface FormalToolEntry {
 }
 
 // ---------------------------------------------------------------------------
+/**
+ * RFC-1615: the `policy:` section — the declared surface a session may change.
+ * `mutable` top-level keys may change freely; `additive` keys may gain new
+ * leaves but never lose/change existing ones; every other top-level key is
+ * frozen. `freezeFiles` are repo-root globs whose matching files are
+ * byte-frozen at the integration base.
+ */
+export const forgePolicySchema = z
+  .object({
+    mutable: z.array(z.string().min(1)).default([]),
+    additive: z.array(z.string().min(1)).default([]),
+    freezeFiles: z.array(z.string().min(1)).default([]),
+  })
+  .strict();
+
+export type ForgePolicy = z.infer<typeof forgePolicySchema>;
+
 // Schema (forge/config@1)
 // ---------------------------------------------------------------------------
 
@@ -439,6 +457,13 @@ export const forgeConfigSchema = z
      * as CORR-02 instead of every forge command failing to load forge.yaml.
      */
     correctness: z.record(z.string(), z.unknown()).optional(),
+    /**
+     * RFC-1615: declared policy surface — which forge.yaml keys a session may
+     * change (`mutable`, `additive`) and which repo files are byte-frozen
+     * (`freezeFiles`). The section is self-frozen: `correctness.gate` judges
+     * any change to it between --base and HEAD as a `policy-decl` weakening.
+     */
+    policy: forgePolicySchema.optional(),
     // RFC-1224: consumer-owned top-level sections (e.g. `plugins:`) stay in the
     // parsed config so full-serialization writes do not silently drop them.
   })
@@ -492,6 +517,8 @@ export interface ForgeConfig {
   loopMetrics: { id: string; description?: string; source?: string }[];
   /** RFC-1578: raw `correctness:` section — validated by correctness.manifest.validate (CORR-02). */
   correctness?: Record<string, unknown>;
+  /** RFC-1615: the declared policy surface — judged frozen by correctness.gate. */
+  policy?: ForgePolicy;
 }
 
 // ---------------------------------------------------------------------------
@@ -587,6 +614,17 @@ export function resolvePackageManager(pm: string): ForgePackageManager {
   return VALID_PACKAGE_MANAGERS.includes(pm) ? (pm as ForgePackageManager) : "pnpm";
 }
 
+/**
+ * RFC-1615: the policy block `forge init`/`forge upgrade` scaffold —
+ * deny-by-default with the few regions sessions legitimately edit opened up.
+ * Operators tune the lists afterwards; the block then freezes itself.
+ */
+export const DEFAULT_FORGE_POLICY: ForgePolicy = {
+  mutable: ["project", "forge", "moves"],
+  additive: ["bindings", "paths", "loopMetrics"],
+  freezeFiles: ["hooks/**", ".github/workflows/**", ".forge/pinned.yaml"],
+};
+
 export function defaultForgeConfig(projectName: string, packageManager?: string): ForgeConfig {
   const pm = resolvePackageManager(packageManager ?? "pnpm");
   return {
@@ -622,6 +660,7 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
     forge: { syncedVersion: null },
     outcomeSurfaces: [],
     loopMetrics: [],
+    policy: { ...DEFAULT_FORGE_POLICY },
   };
 }
 

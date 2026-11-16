@@ -8,9 +8,6 @@ with the forge registry — RFC-1578 `correctness.manifest.validate`, RFC-1579
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: correctness manifest, validator, promotes gate
-
-Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
@@ -25,6 +22,7 @@ Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <history>RFC-1578</history>
 </CHANGE_SUMMARY>
 */
@@ -172,6 +170,11 @@ export async function createForgeCorrectnessModule(): Promise<ForgeModule> {
             kind: "string",
             description:
               "Operator decision: accept the weakening of an isolated session whose diff touches frozen-set paths only.",
+          },
+          "policy-only": {
+            kind: "boolean",
+            description:
+              "RFC-1615: judge only the declared policy surface (policy-key/policy-decl/policy-file weakenings) — the cheap mode CI runs on forge.yaml and policy.freezeFiles diffs.",
           },
         },
         execute: runCorrectnessGateCommand,

@@ -4,6 +4,7 @@
 
 ```sh
 pnpm exec forge correctness.gate --base <sha> [--json]
+pnpm exec forge correctness.gate --base <sha> --policy-only   # CI: policy surface only
 pnpm exec forge flow.integrate                         # spawns the primary install's correctness.gate
 pnpm exec forge flow.integrate --accept-weakening "<reason>"   # operator decision only
 pnpm exec forge rfc.verify.workspace --manifest --candidate <sha>
@@ -17,7 +18,32 @@ pnpm exec forge rfc.verify.workspace --manifest --candidate <sha>
 - `bindings.commands.checkRun`, `bindings.paths.correctnessManifest`, `bindings.paths.oracleReviewsDir`;
 - `forge.yaml` `correctness.*` — `mode` (leaving `enforce`, or switching to `exempt`), `tier` (lowering), `audit.allow[]` (adding);
 - every oracle check file of a base entry, every capture and its `.capture.yaml` sidecar, every file the base `support` globs match;
-- the statements of the `@ai-invariant[…]` anchors base entries bind (RFC-1390 normalized-statement hash).
+- the statements of the `@ai-invariant[…]` anchors base entries bind (RFC-1390 normalized-statement hash);
+- **the declared policy surface (RFC-1615)** — when forge.yaml at `--base` carries a `policy:` section, the gate additionally freezes: every file matching `policy.freezeFiles` globs, every top-level forge.yaml key not listed in `policy.mutable`, and the `policy:` section itself.
+
+## Declared policy surface (`policy:`, RFC-1615)
+
+The `policy:` section declares which parts of forge.yaml and which repo files a session may change — everything else is judged against its state at `--base`:
+
+```yaml
+policy:
+  mutable: [project, forge, moves]      # top-level keys a session may change freely
+  additive: [bindings, paths, loopMetrics]  # may gain new leaves; existing leaves are frozen
+  freezeFiles:                           # repo-root globs — byte-frozen at --base
+    - "hooks/**"
+    - ".github/workflows/**"
+    - ".forge/pinned.yaml"
+```
+
+- `mutable` — any change to the listed top-level keys is permitted.
+- `additive` — new leaves under the listed keys are permitted; changing or removing an existing leaf is a `policy-key` weakening. The RFC-1580 frozen bindings (`checkRun`, `correctnessManifest`, `oracleReviewsDir`) keep their dedicated rules even when `bindings` is listed — frozen wins over additive.
+- Everything not listed is frozen: `agentTools.deny`, `guardRules`, `correctness.*`, `instructions.budget`, and every key not yet invented. A new top-level key outside `mutable`/`additive` is a `policy-key` weakening.
+- `policy:` is **self-frozen** — amending it in-session is a `policy-decl` weakening; a session cannot expand its own permissions.
+- `freezeFiles` matches are byte-frozen like oracle files: change, delete, or a _new_ file matching the glob is a `policy-file` weakening unless the last commit touching it carries the verifier trailer pair.
+- No `policy:` at `--base` → the policy checks are inert (adoption is opt-in). A malformed declaration parses to empty lists — deny-by-default, never fail-open.
+- `forge init` scaffolds the block; `forge upgrade` adds it only when absent — an operator-tuned `policy:` is never rewritten.
+
+`--policy-only` runs just the policy judgements (`policy-key`/`policy-decl`/`policy-file`) — the cheap mode CI runs on every forge.yaml or frozen-file diff without loading the manifest or running oracles. Weakening kinds land in the same `CORR-GATE-02` verdict and the same isolated `--accept-weakening` path (forge.yaml counts as a frozen-set path when its diff is confined to frozen correctness/policy keys).
 
 ## Pipeline
 

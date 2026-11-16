@@ -15,6 +15,7 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255</history>
 </CHANGE_SUMMARY>
@@ -28,6 +29,7 @@ import path from "node:path";
 import { stringify as stringifyYaml, parse as parseYaml } from "yaml";
 import {
   FORGE_CLI_BINDING_DEFAULTS,
+  DEFAULT_FORGE_POLICY,
   resolveForgeRoot,
   loadForgeConfig,
   serializeForgeConfig,
@@ -653,6 +655,11 @@ async function updateSyncedVersion(
       path: ["bindings", ...b.key.split(".")],
       value: b.value,
     })),
+    // RFC-1615 (Q-3): scaffold the policy block only when absent — a
+    // consumer-tuned policy: is never rewritten by upgrade.
+    ...(config.policy === undefined
+      ? [{ path: ["policy"], value: DEFAULT_FORGE_POLICY }]
+      : []),
   ];
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
   const raw = await io.readFile(forgeYamlPath).catch(() => null);

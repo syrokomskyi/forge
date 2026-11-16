@@ -13,6 +13,7 @@ bundle file under the git common dir.</purpose>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -53,6 +54,7 @@ export async function runCorrectnessGateCommand(
   const outcome = await runCorrectnessGate(context.workspaceRoot, {
     base,
     acceptWeakening: accept,
+    policyOnly: input.flags["policy-only"] === true,
     forgeVersion: forgeVersion(),
     forgePath: process.argv[1],
   });

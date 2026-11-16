@@ -22,6 +22,7 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -40,6 +41,12 @@ import { normalizeCheckRef, normalizeRelPath } from "../workspace.ts";
 import { checkTarget, type GateRepo } from "./repo.ts";
 import type { Weakening } from "./types.ts";
 
+export interface PolicySurface {
+  mutable: string[];
+  additive: string[];
+  freezeFiles: string[];
+}
+
 export interface CorrectnessSide {
   manifestPath: string | null;
   checkRun: string | null;
@@ -50,6 +57,14 @@ export interface CorrectnessSide {
   manifest: CorrectnessManifest | null;
   compassDocs: string[];
   invariantsFile: string | null;
+  /**
+   * RFC-1615: the declared policy surface (`policy:`), or null when the base
+   * declares none — an undeclared policy leaves the policy checks inert.
+   * A malformed section parses to empty lists (deny-by-default).
+   */
+  policy: PolicySurface | null;
+  /** Parsed top-level forge.yaml keys, for the policy-key diff. */
+  forgeDoc: Record<string, unknown>;
 }
 
 /** Correctness settings + manifest as recorded in one forge.yaml/manifest text pair. */
@@ -111,7 +126,63 @@ export function sideFrom(
       typeof bindings.paths?.["invariantsFile"] === "string"
         ? (bindings.paths["invariantsFile"] as string)
         : null,
+    policy: parsePolicySurface(doc["policy"]),
+    forgeDoc: doc,
   };
+}
+
+/**
+ * Loose parse of `policy:` — the section must exist to arm the policy checks;
+ * a malformed value degrades to empty lists (deny-by-default), never fails open.
+ */
+function parsePolicySurface(raw: unknown): PolicySurface | null {
+  if (raw === undefined || raw === null) return null;
+  const obj = (typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const list = (v: unknown): string[] =>
+    Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  return {
+    mutable: list(obj["mutable"]),
+    additive: list(obj["additive"]),
+    freezeFiles: list(obj["freezeFiles"]),
+  };
+}
+
+/** Stable serialization: object keys sorted recursively so key order never diffs. */
+function canon(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canon).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    return `{${Object.keys(value as Record<string, unknown>)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${canon((value as Record<string, unknown>)[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * Leaf map of a value: object keys compose `a.b.c`, array elements address by
+ * index. Appending to an array adds leaves; every other change to an existing
+ * leaf is visible as a changed or missing entry.
+ */
+export function policyLeaves(value: unknown, prefix = ""): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  if (Array.isArray(value)) {
+    value.forEach((v, i) => {
+      for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`)) out.set(k, leaf);
+    });
+    if (value.length === 0) out.set(prefix, []);
+    return out;
+  }
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>);
+    for (const [k, v] of entries) {
+      for (const [lk, leaf] of policyLeaves(v, prefix ? `${prefix}.${k}` : k)) out.set(lk, leaf);
+    }
+    if (entries.length === 0) out.set(prefix, {});
+    return out;
+  }
+  out.set(prefix, value);
+  return out;
 }
 
 const TIER_RANK: Record<string, number> = { standard: 0, high: 1, formal: 2 };
@@ -132,6 +203,10 @@ export interface FrozenSet {
   anchorFiles: string[];
   /** Every file path at base. */
   baseFiles: string[];
+  /** RFC-1615: base `policy.freezeFiles` globs. */
+  policyGlobs: string[];
+  /** RFC-1615: base files matching `policy.freezeFiles` (byte-frozen). */
+  policyFiles: string[];
 }
 
 export async function readFrozenSet(repo: GateRepo, base: string): Promise<FrozenSet> {
@@ -200,6 +275,13 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     for (const m of (text ?? "").matchAll(/^##\s+DNA-(\d+)\b/gm)) baseRefs.add(`DNA-${m[1]}`);
   }
   for (const e of side.manifest?.entries ?? []) if (e.ref) baseRefs.add(e.ref);
+  // RFC-1615: `policy.freezeFiles` globs freeze their base matches byte-wise.
+  const policyGlobs = side.policy?.freezeFiles ?? [];
+  const policyFiles = new Set<string>();
+  for (const glob of policyGlobs) {
+    const match = picomatch(normalizeRelPath(glob), { dot: true });
+    for (const f of baseFiles) if (match(f)) policyFiles.add(f);
+  }
   return {
     base: side,
     files: [...files].sort(),
@@ -209,6 +291,8 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     supportGlobs: side.manifest?.support ?? [],
     anchorFiles: [...anchorFiles].sort(),
     baseFiles,
+    policyGlobs,
+    policyFiles: [...policyFiles].sort(),
   };
 }
 
@@ -323,12 +407,74 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
   return out;
 }
 
+/**
+ * RFC-1615 policy weakenings, armed only when the base declares `policy:`:
+ * `policy-decl` — the declaration itself changed (self-frozen); `policy-key` —
+ * a top-level key outside `mutable` changed, an `additive` key lost or changed
+ * an existing leaf, or a new top-level key appeared undeclared.
+ */
+export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakening[] {
+  const policy = frozen.base.policy;
+  if (!policy) return [];
+  const out: Weakening[] = [];
+  const baseDoc = frozen.base.forgeDoc;
+  const nowDoc = now.forgeDoc;
+
+  if (canon(baseDoc["policy"]) !== canon(nowDoc["policy"])) {
+    out.push({
+      kind: "policy-decl",
+      subject: "policy",
+      message: "the policy: declaration changed — a session cannot amend its own policy surface",
+    });
+  }
+
+  const mutable = new Set(policy.mutable);
+  const additive = new Set(policy.additive);
+  const keys = new Set([...Object.keys(baseDoc), ...Object.keys(nowDoc)]);
+  keys.delete("policy");
+  for (const key of [...keys].sort()) {
+    const before = baseDoc[key];
+    const after = nowDoc[key];
+    if (canon(before) === canon(after)) continue;
+    if (mutable.has(key)) continue;
+    if (additive.has(key)) {
+      if (before === undefined) continue; // every leaf is new
+      const nowLeaves = policyLeaves(after);
+      const broken = [...policyLeaves(before)].filter(
+        ([p, v]) => !nowLeaves.has(p) || canon(nowLeaves.get(p)) !== canon(v),
+      );
+      if (broken.length === 0) continue;
+      out.push({
+        kind: "policy-key",
+        subject: key,
+        message: `${key} is additive — existing leaves changed or were removed (${broken
+          .slice(0, 3)
+          .map(([p]) => p)
+          .join(", ")}${broken.length > 3 ? " …" : ""})`,
+      });
+      continue;
+    }
+    out.push({
+      kind: "policy-key",
+      subject: key,
+      message:
+        before === undefined
+          ? `new top-level key ${key} is not declared in policy.mutable or policy.additive`
+          : after === undefined
+            ? `frozen top-level key ${key} was removed`
+            : `frozen top-level key ${key} changed — declare it under policy.mutable or policy.additive to permit this`,
+    });
+  }
+  return out;
+}
+
 /** Byte-change weakenings: a frozen file whose blob differs at HEAD, unless a verifier commit made the last change. */
 export async function byteWeakenings(
   repo: GateRepo,
   base: string,
   head: string,
   files: string[],
+  kind = "frozen-file",
 ): Promise<Weakening[]> {
   const out: Weakening[] = [];
   for (const rel of files) {
@@ -337,7 +483,7 @@ export async function byteWeakenings(
     if (before === after) continue;
     if (after !== null && (await repo.lastTouchIsVerifier(head, rel))) continue;
     out.push({
-      kind: "frozen-file",
+      kind,
       subject: rel,
       message:
         after === null
@@ -361,17 +507,55 @@ export async function supportAdditions(
   frozen: FrozenSet,
 ): Promise<Weakening[]> {
   void base;
-  if (frozen.supportGlobs.length === 0) return [];
-  const before = new Set(frozen.baseFiles);
-  const matchers = frozen.supportGlobs.map((g) => picomatch(normalizeRelPath(g), { dot: true }));
+  return globAdditions(
+    repo,
+    head,
+    frozen.baseFiles,
+    frozen.supportGlobs,
+    "frozen-file",
+    "a frozen support glob",
+  );
+}
+
+/**
+ * RFC-1615: files new at HEAD matching a base `policy.freezeFiles` glob —
+ * an agent must not extend a frozen surface (new hook, new workflow) without
+ * a verifier commit.
+ */
+export async function policyFileAdditions(
+  repo: GateRepo,
+  head: string,
+  frozen: FrozenSet,
+): Promise<Weakening[]> {
+  return globAdditions(
+    repo,
+    head,
+    frozen.baseFiles,
+    frozen.policyGlobs,
+    "policy-file",
+    "a policy.freezeFiles glob",
+  );
+}
+
+async function globAdditions(
+  repo: GateRepo,
+  head: string,
+  baseFiles: string[],
+  globs: string[],
+  kind: string,
+  globLabel: string,
+): Promise<Weakening[]> {
+  if (globs.length === 0) return [];
+  const before = new Set(baseFiles);
+  const matchers = globs.map((g) => picomatch(normalizeRelPath(g), { dot: true }));
   const out: Weakening[] = [];
   for (const rel of await repo.files(head)) {
     if (before.has(rel) || !matchers.some((m) => m(rel))) continue;
     if (await repo.lastTouchIsVerifier(head, rel)) continue;
     out.push({
-      kind: "frozen-file",
+      kind,
       subject: rel,
-      message: `new file ${rel} matches a frozen support glob and was not added by a verifier commit`,
+      message: `new file ${rel} matches ${globLabel} and was not added by a verifier commit`,
     });
   }
   return out;

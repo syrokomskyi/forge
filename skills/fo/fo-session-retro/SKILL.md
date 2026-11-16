@@ -70,6 +70,7 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
 - werkstatt-engine extract excludes build-input-set.test.ts (reads the
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>ADR-0133: forbid --detach on session-end flow.integrate (F-0301)</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <item>RFC-1617: drop platform ADR id from fo-session-retro instruction text (SKILL-17)</item>
