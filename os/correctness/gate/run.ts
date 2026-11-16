@@ -13,9 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
-
-AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
 
@@ -41,6 +38,7 @@ touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
 cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
   <item>RFC-1615: round-5 — structuredClone accept-path (CX-27/28), exempt contour judges declared policy (CX-29)</item>
+  <item>RFC-1615: round-6 — commit-derived exempt contour + HEAD-side policyMalformed before early return (CX-30/31)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -279,9 +277,27 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   // A *declared* `policy:` is a separate opt-in (RFC-1615 review CX-29): an
   // exempt×exempt contour still judges the policy surface, or a session could
   // weaken it unjudged and launder the diff under the exempt umbrella.
+  //
+  // Both contour legs are judged from COMMITS (CX-30/CX-31): the HEAD side is
+  // hoisted here so a HEAD-adopted malformed `policy:` refuses CORR-GATE-01
+  // on any contour, and an uncommitted worktree `mode:` flip can neither mask
+  // a committed weakening nor fabricate a failure — `validation` is the
+  // working-tree flavor used for oracle runs, not for the contour decision.
   const frozen = await readFrozenSet(repo, base);
-  const exemptContour = validation.status === "exempt" && frozen.base.mode === "exempt";
-  if (exemptContour && frozen.base.policy === null && !frozen.base.policyMalformed)
+  const headForgeYaml = await repo.show(head, "forge.yaml");
+  const headManifestPath = sideFrom(headForgeYaml, () => null).manifestPath;
+  const headManifestText = headManifestPath
+    ? await repo.show(head, normalizeRelPath(headManifestPath))
+    : null;
+  const now = sideFrom(headForgeYaml, () => headManifestText);
+  const exemptContour = frozen.base.mode === "exempt" && now.mode === "exempt";
+  if (
+    exemptContour &&
+    frozen.base.policy === null &&
+    !frozen.base.policyMalformed &&
+    now.policy === null &&
+    !now.policyMalformed
+  )
     return finish("exempt", [], [], null);
   for (const v of validation.violations) {
     if (v.severity === "error" && !options.policyOnly)
@@ -305,14 +321,9 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   };
   // The judged side is the HEAD commit, not the worktree — an uncommitted
   // revert must not mask a committed weakening, and an uncommitted rebind
-  // must not fabricate one (RFC-1615 review CX-16/CX-17). `readWorking`
-  // stays for the live anchor-statement check below.
-  const headForgeYaml = await repo.show(head, "forge.yaml");
-  const headManifestPath = sideFrom(headForgeYaml, () => null).manifestPath;
-  const headManifestText = headManifestPath
-    ? await repo.show(head, normalizeRelPath(headManifestPath))
-    : null;
-  const now = sideFrom(headForgeYaml, () => headManifestText);
+  // must not fabricate one (RFC-1615 review CX-16/CX-17). `now` is computed
+  // above, before the exempt early-return (CX-30/CX-31); `readWorking` stays
+  // for the live anchor-statement check below.
   const files = await listWorkspaceFiles(root);
   // RFC-1615: a forge.yaml that exists but is not a readable YAML map cannot
   // be judged — refuse structured, never crash or silently inert (CX-15/CX-19).
