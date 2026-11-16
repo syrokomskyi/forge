@@ -11,13 +11,13 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1481: add knowledge.conflicts.resolve next steps on same-version and regular upgrade results.</item>
   <item>RFC-1481: collapse compass summaries and add missing contract blocks</item>
   <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255</history>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481</history>
 </CHANGE_SUMMARY>
 */
 
@@ -94,6 +94,8 @@ export interface UpgradeResult {
     state: "adopted" | "not-adopted" | "exempt" | "guard-drift";
     nextSteps: string[];
   };
+  /** RFC-1615: the `policy:` block was scaffolded by this run. */
+  policyScaffolded?: boolean;
 }
 
 /**
@@ -676,6 +678,39 @@ async function updateSyncedVersion(
   await io.writeFile(forgeYamlPath, stringifyYaml(serializeForgeConfig(config)));
 }
 
+/**
+ * RFC-1615 (CX-12): a version-noop upgrade must still scaffold `policy:` —
+ * adoption of the trust boundary can't wait for the next forge release.
+ * Write-when-absent; a consumer-tuned block is never rewritten.
+ */
+async function applyPolicyScaffold(
+  workspaceRoot: string,
+  config: ForgeConfig,
+  dryRun: boolean,
+  io: WorkspaceIO,
+  warn: (msg: string) => void,
+): Promise<boolean> {
+  if (dryRun || config.policy !== undefined) return false;
+  const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
+  const raw = await io.readFile(forgeYamlPath).catch(() => null);
+  if (raw === null) return false;
+  const patched = applyForgeYamlPatches(raw, [
+    { path: ["policy"], value: DEFAULT_FORGE_POLICY },
+  ]);
+  if (patched === null) {
+    warn("forge.upgrade: policy scaffold patch failed — policy: block not added");
+    return false;
+  }
+  if (patched === raw) return false;
+  await io.writeFile(forgeYamlPath, patched);
+  config.policy = {
+    mutable: [...DEFAULT_FORGE_POLICY.mutable],
+    additive: [...DEFAULT_FORGE_POLICY.additive],
+    freezeFiles: [...DEFAULT_FORGE_POLICY.freezeFiles],
+  };
+  return true;
+}
+
 export async function runUpgrade(
   input: ForgeCommandInput,
   context: ForgeRuntimeContext,
@@ -842,6 +877,14 @@ export async function runUpgrade(
     for (const warn of reconcile.warnings) {
       context.logger.warn(`forge.upgrade: ${warn}`);
     }
+    // RFC-1615 (CX-12): scaffold `policy:` even though the version is a noop.
+    const policyScaffolded = await applyPolicyScaffold(
+      workspaceRoot,
+      config,
+      isDryRun,
+      fio,
+      (m) => context.logger.warn(m),
+    );
     const noopConflictsReport = await reportKnowledgeConflicts(
       workspaceRoot,
       reconcile.knowledgeConflicts,
@@ -874,6 +917,7 @@ export async function runUpgrade(
         knowledgeConflicts: reconcile.knowledgeConflicts,
         knowledgeConflictsReport: noopConflictsReport,
         flow,
+        policyScaffolded,
       },
       nextSteps: [
         ...(npmCheck.warning ? [{ action: npmCheck.warning, kind: "optional" as const }] : []),

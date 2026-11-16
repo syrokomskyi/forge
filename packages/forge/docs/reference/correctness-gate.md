@@ -36,7 +36,7 @@ policy:
 ```
 
 - `mutable` — any change to the listed top-level keys is permitted.
-- `additive` — new leaves under the listed keys are permitted; changing or removing an existing leaf is a `policy-key` weakening. The RFC-1580 frozen bindings (`checkRun`, `correctnessManifest`, `oracleReviewsDir`) keep their dedicated rules even when `bindings` is listed — frozen wins over additive.
+- `additive` — new leaves under the listed keys are permitted; changing or removing an existing leaf is a `policy-key` weakening. The RFC-1580 frozen bindings (`checkRun`, `correctnessManifest`, `oracleReviewsDir`) keep their dedicated rules even when `bindings` is listed — frozen wins over `additive`, and the dedicated `binding`/`correctness-key` checks also win over a hand-tuned `mutable` declaration (they judge the contour's own substrate, not a permission policy). Under `--policy-only` a `mutable: [bindings]` declaration does release the binding check — the dedicated rules belong to the full gate contour.
 - Everything not listed is frozen: `agentTools.deny`, `guardRules`, `correctness.*`, `instructions.budget`, and every key not yet invented. A new top-level key outside `mutable`/`additive` is a `policy-key` weakening.
 - `policy:` is **self-frozen** — amending it in-session is a `policy-decl` weakening; a session cannot expand its own permissions.
 - `freezeFiles` matches are byte-frozen like oracle files: change, delete, or a _new_ file matching the glob is a `policy-file` weakening unless the last commit touching it carries the verifier trailer pair.

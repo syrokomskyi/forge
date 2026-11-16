@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1591: typed agent tool surface generated from the command manifest
 
 command.tools.generate projects docs/command-manifest.generated.yaml plus
@@ -44,8 +41,9 @@ loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule 
   <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
 
 Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
+  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579</history>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
@@ -659,7 +657,13 @@ export function defaultForgeConfig(projectName: string, packageManager?: string)
     forge: { syncedVersion: null },
     outcomeSurfaces: [],
     loopMetrics: [],
-    policy: { ...DEFAULT_FORGE_POLICY },
+    // Deep-copy — a caller mutating config.policy.* must not corrupt the
+    // module-level default (RFC-1615 review observation).
+    policy: {
+      mutable: [...DEFAULT_FORGE_POLICY.mutable],
+      additive: [...DEFAULT_FORGE_POLICY.additive],
+      freezeFiles: [...DEFAULT_FORGE_POLICY.freezeFiles],
+    },
   };
 }
 

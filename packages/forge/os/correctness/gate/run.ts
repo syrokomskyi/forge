@@ -13,9 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
@@ -26,12 +23,14 @@ N1 bootstrap degrade only while the base has not adopted the contour (a forge do
   <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
 
 AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
+  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
+import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
 import path from "node:path";
 
@@ -143,7 +142,6 @@ async function forgeYamlOnlyFrozenKeys(
   head: string,
   policy: { mutable: string[]; additive: string[] } | null,
 ): Promise<boolean> {
-  const permitted = new Set([...(policy?.mutable ?? []), ...(policy?.additive ?? [])]);
   const strip = (text: string | null): string => {
     let doc: Record<string, unknown> = {};
     try {
@@ -156,17 +154,21 @@ async function forgeYamlOnlyFrozenKeys(
       // No declared policy: keep the RFC-1580 semantics — only the frozen
       // correctness keys are stripped, everything else must match.
       delete copy["correctness"];
-    } else {
-      for (const key of Object.keys(copy)) {
-        if (!permitted.has(key)) delete copy[key];
+      const b = copy["bindings"] as
+        | { commands?: Record<string, unknown>; paths?: Record<string, unknown> }
+        | undefined;
+      if (b?.commands) delete b.commands["checkRun"];
+      if (b?.paths) {
+        delete b.paths["correctnessManifest"];
+        delete b.paths["oracleReviewsDir"];
       }
-    }
-    const b = copy["bindings"] as
-      { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
-    if (b?.commands) delete b.commands["checkRun"];
-    if (b?.paths) {
-      delete b.paths["correctnessManifest"];
-      delete b.paths["oracleReviewsDir"];
+    } else {
+      // RFC-1615 (CX-10): only `mutable` keys participate — everything else is
+      // either frozen (diff = the weakening being accepted) or additive (any
+      // weakening inside it is reported and covered by the same accept).
+      for (const key of Object.keys(copy)) {
+        if (!policy.mutable.includes(key)) delete copy[key];
+      }
     }
     return JSON.stringify(copy);
   };
@@ -317,7 +319,16 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
           .map(normalizeRelPath),
       ]);
       const changed = await repo.changedPaths(base, head);
-      const foreign = changed.filter((p) => !frozenPaths.has(p));
+      // Additions inside a frozen glob (support glob or policy.freezeFiles)
+      // are themselves the reported weakenings being accepted — they count as
+      // frozen-set paths even though the base set cannot contain them yet
+      // (RFC-1615 review CX-11).
+      const frozenGlobs = [...frozen.supportGlobs, ...frozen.policyGlobs].map((g) =>
+        picomatch(normalizeRelPath(g), { dot: true }),
+      );
+      const foreign = changed.filter(
+        (p) => !frozenPaths.has(p) && !frozenGlobs.some((m) => m(p)),
+      );
       if (foreign.length === 0) acceptedReason = reason;
       else {
         add(
