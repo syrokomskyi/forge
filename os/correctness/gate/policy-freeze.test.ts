@@ -11,11 +11,19 @@ accept path, inert without a base declaration, and --policy-only.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1615: initial suite.</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
+
+AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
 </CHANGE_SUMMARY>
 */
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import {
+  applyForgeYamlPatches,
+  DEFAULT_FORGE_POLICY,
+  defaultForgeConfig,
+} from "../../../src/config/forge-config.ts";
 import { runCorrectnessGate } from "./run.ts";
 import { makeGateFixture, type GateFixture } from "./tests/gate-fixture.ts";
 
@@ -159,7 +167,7 @@ describe("policy freeze (RFC-1615)", () => {
     expect(mixed.status).toBe("fail");
   });
 
-  it("AC-7: an absent policy: leaves the policy checks inert; a malformed one denies", async () => {
+  it("AC-7: --policy-only notes an absent policy surface; a malformed one is CORR-GATE-01", async () => {
     const noPolicy = makeGateFixture({
       extraFiles: { "hooks/pre-commit.sh": "#!/bin/sh\nexit 0\n" },
       forgeYamlAppend: "agentTools:\n  deny: [deploy]\n",
@@ -167,24 +175,57 @@ describe("policy freeze (RFC-1615)", () => {
     fixtures.push(noPolicy);
     forgeYamlEdit(noPolicy, "deny: [deploy]", "deny: []");
     noPolicy.commit("change an undeclared key");
-    const inert = await gate(noPolicy);
-    expect(kinds(inert), "no policy at base — no policy judgement").not.toContain("policy-key");
-    expect(kinds(inert)).not.toContain("policy-decl");
+    const inert = await gate(noPolicy, { policyOnly: true });
+    expect(inert.status).toBe("pass");
+    expect(
+      inert.violations.some((v) => /no policy surface declared/.test(v.message)),
+      "the bundle notes the absent policy surface",
+    ).toBe(true);
+    const inertFull = await gate(noPolicy);
+    expect(kinds(inertFull), "no policy at base — no policy judgement").not.toContain("policy-key");
+    expect(kinds(inertFull)).not.toContain("policy-decl");
 
     const malformed = makeGateFixture({
       forgeYamlAppend: 'policy: "not-a-map"\nagentTools:\n  deny: [deploy]\n',
     });
     fixtures.push(malformed);
-    forgeYamlEdit(malformed, "deny: [deploy]", "deny: []");
-    malformed.commit("change a key under a malformed policy");
-    const denied = await gate(malformed);
+    malformed.commit("no forge.yaml change needed");
+    const denied = await gate(malformed, { policyOnly: true });
     expect(
-      kinds(denied),
-      "a malformed policy declares nothing — everything stays frozen",
-    ).toContain("policy-key");
+      denied.violations.some(
+        (v) => v.rule === "CORR-GATE-01" && v.severity === "error" && /policy/.test(v.message),
+      ),
+      "a malformed policy declaration is CORR-GATE-01",
+    ).toBe(true);
+    expect(denied.status).toBe("fail");
   });
 
-  it("AC-8: --policy-only judges only the policy surface", async () => {
+  it("AC-8: forge init/upgrade scaffold the default policy block (upgrade only when absent)", () => {
+    // init: the default config carries the block verbatim.
+    expect(defaultForgeConfig("proj").policy).toEqual(DEFAULT_FORGE_POLICY);
+    expect(DEFAULT_FORGE_POLICY.mutable.length).toBeGreaterThan(0);
+    expect(DEFAULT_FORGE_POLICY.additive.length).toBeGreaterThan(0);
+    expect(DEFAULT_FORGE_POLICY.freezeFiles.length).toBeGreaterThan(0);
+
+    // upgrade: the patch adds policy: only to a document that lacks it.
+    const bare = "schema: forge/config@1\nproject:\n  name: proj\n";
+    const patched = applyForgeYamlPatches(bare, [
+      { path: ["policy"], value: DEFAULT_FORGE_POLICY },
+    ]);
+    expect(patched, "policy: lands in the patched document").toMatch(/^policy:/m);
+    expect(patched).toContain("hooks/**");
+
+    const tuned = `${bare}policy:\n  mutable: [mine]\n`;
+    const kept = applyForgeYamlPatches(tuned, [
+      { path: ["forge", "syncedVersion"], value: "1.0.0" },
+    ]);
+    expect(kept, "an operator-tuned policy: is never rewritten").toMatch(
+      /mutable:\s*\[\s*mine\s*\]/,
+    );
+    expect(kept).not.toContain("hooks/**");
+  });
+
+  it("--policy-only judges only the policy surface", async () => {
     const f = fx();
     forgeYamlEdit(f, "deny: [deploy]", "deny: []");
     // A manifest weakening the full gate would catch — policy-only must ignore it.
