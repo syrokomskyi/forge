@@ -716,6 +716,7 @@ policy:
       baseRefs: new Set(),
       baseManifestUnreadable: false,
       supportGlobs: [],
+      supportMalformed: false,
       anchorFiles: [],
       baseFiles: [],
       policyGlobs: [],

@@ -12,9 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
-
-Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
 
@@ -54,6 +51,25 @@ uncommitted revert still reports; an uncommitted reword never fabricates
 (CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
 Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
 (CX-39).</item>
+  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
+
+sideFrom filters compassDocs elements (CX-47 TypeError crash).
+schemaProbe passes non-plain YAML types through and unwinds seen per
+branch — tagged scalars no longer mask configError and DAG aliases no
+longer fabricate it; a cyclic alias flags cyclic like the loader's
+overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
+[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
+~1ms fabricated kill, and a sub-ms value can never bound a run
+(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
+in the declared-policy branch too — mutable:[bindings] no longer
+dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
+policyFiles and judged by the key strip alone — a freezeFiles glob
+matching it neither voids mutable nor whitelists a non-isolated diff
+(CX-52). A !-negation in manifest support: is malformed like a
+freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
+— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
+(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
+policy binds the next integration (CX-55).</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -172,7 +188,11 @@ export function sideFrom(
       : [],
     manifest,
     compassDocs: Array.isArray(bindings.paths?.["compassDocs"])
-      ? (bindings.paths["compassDocs"] as string[])
+      ? (bindings.paths["compassDocs"] as unknown[]).filter(
+          // element check — `compassDocs: [1]` must not throw `p.replace`
+          // downstream where the strings are normalized (CX-47).
+          (x): x is string => typeof x === "string",
+        )
       : [],
     invariantsFile:
       typeof bindings.paths?.["invariantsFile"] === "string"
@@ -364,8 +384,15 @@ export interface FrozenSet {
   baseRefs: Set<string>;
   /** True when the base binds a manifest file that exists but does not parse. */
   baseManifestUnreadable: boolean;
-  /** Base `support` globs (new files matching them are frozen-set additions). */
+  /**
+   * Base `support` globs (new files matching them are frozen-set additions).
+   * A `!`-prefixed glob is a picomatch negation — it would freeze the
+   * *complement* of the intended set (same refusal as `policy.freezeFiles`,
+   * RFC-1615 review CX-53).
+   */
   supportGlobs: string[];
+  /** True when a base `support` glob carries a `!` negation. */
+  supportMalformed: boolean;
   /** Files at base that declare a frozen anchor (an isolated anchor change touches them). */
   anchorFiles: string[];
   /** Every file path at base. */
@@ -391,6 +418,11 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     side.manifest === null;
   const files = new Set<string>();
   const baseFiles = await repo.files(base);
+  // CX-53: a `!`-prefixed support glob is a picomatch negation — silently
+  // freezing the complement fabricates frozen-file weakenings on every
+  // unrelated change. Refuse like a malformed `policy.freezeFiles` glob.
+  const supportGlobs = side.manifest?.support ?? [];
+  const supportMalformed = supportGlobs.some((g) => g.startsWith("!"));
   if (side.manifest) {
     for (const entry of side.manifest.entries) {
       for (const oracle of entry.oracles) {
@@ -402,7 +434,7 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
         }
       }
     }
-    for (const glob of side.manifest.support) {
+    for (const glob of supportMalformed ? [] : supportGlobs) {
       const match = picomatch(normalizeRelPath(glob), { dot: true });
       for (const f of baseFiles) if (match(f)) files.add(f);
     }
@@ -443,11 +475,16 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   }
   for (const e of side.manifest?.entries ?? []) if (e.ref) baseRefs.add(e.ref);
   // RFC-1615: `policy.freezeFiles` globs freeze their base matches byte-wise.
+  // `forge.yaml` itself is never a byte-frozen policy file — its surface is
+  // judged by policyWeakenings/the isolation strip; a `freezeFiles` glob that
+  // happens to match it (forge.yaml, *.yaml, x/../forge.yaml) must neither
+  // turn every edit into `policy-file` nor whitelist the path in the accept
+  // check (RFC-1615 review CX-52).
   const policyGlobs = side.policy?.freezeFiles ?? [];
   const policyFiles = new Set<string>();
   for (const glob of policyGlobs) {
     const match = picomatch(normalizeRelPath(glob), { dot: true });
-    for (const f of baseFiles) if (match(f)) policyFiles.add(f);
+    for (const f of baseFiles) if (f !== "forge.yaml" && match(f)) policyFiles.add(f);
   }
   return {
     base: side,
@@ -455,7 +492,10 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
     anchors,
     baseRefs,
     baseManifestUnreadable,
-    supportGlobs: side.manifest?.support ?? [],
+    // A malformed support glob resolves to NOTHING — the complement match
+    // must not fabricate frozen-file weakenings/additions downstream.
+    supportGlobs: supportMalformed ? [] : supportGlobs,
+    supportMalformed,
     anchorFiles: [...anchorFiles].sort(),
     baseFiles,
     policyGlobs,
@@ -786,6 +826,51 @@ export async function anchorWeakenings(
         message: `frozen anchor ${id} statement changed`,
       });
     }
+  }
+  return out;
+}
+
+/**
+ * Mode weakenings (RFC-1615 review CX-54): `git update-index --chmod` (or a
+ * plain `chmod` + commit) flips a frozen file's git mode while the blob stays
+ * byte-equal — invisible to the byte comparison. A `100755 → 100644` flip on
+ * a frozen `hooks/**` script removes its executability: a real weakening of
+ * the surface the freeze protects. Only blob-equal flips report — a content
+ * change is already the byte weakening.
+ */
+export async function modeWeakenings(
+  repo: GateRepo,
+  base: string,
+  head: string,
+  files: string[],
+): Promise<Weakening[]> {
+  if (files.length === 0) return [];
+  const wanted = new Set(files);
+  const entries = async (rev: string): Promise<Map<string, { mode: string; sha: string }>> => {
+    const out = await repo.git.run(["ls-tree", "-r", "-z", rev]);
+    const map = new Map<string, { mode: string; sha: string }>();
+    for (const line of (out ?? "").split("\0")) {
+      const tab = line.indexOf("\t");
+      if (tab === -1) continue;
+      const rel = line.slice(tab + 1);
+      if (!wanted.has(rel)) continue;
+      const [mode, , sha] = line.slice(0, tab).split(" ");
+      if (mode && sha) map.set(rel, { mode, sha });
+    }
+    return map;
+  };
+  const [before, after] = await Promise.all([entries(base), entries(head)]);
+  const out: Weakening[] = [];
+  for (const rel of files) {
+    const b = before.get(rel);
+    const a = after.get(rel);
+    if (!b || !a || b.mode === a.mode || b.sha !== a.sha) continue;
+    if (await repo.lastTouchIsVerifier(head, rel)) continue;
+    out.push({
+      kind: "frozen-file",
+      subject: rel,
+      message: `frozen file ${rel} mode changed ${b.mode} → ${a.mode} (blob byte-equal) without a verifier commit`,
+    });
   }
   return out;
 }

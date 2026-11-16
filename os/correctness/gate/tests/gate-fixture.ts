@@ -18,6 +18,25 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
+
+sideFrom filters compassDocs elements (CX-47 TypeError crash).
+schemaProbe passes non-plain YAML types through and unwinds seen per
+branch — tagged scalars no longer mask configError and DAG aliases no
+longer fabricate it; a cyclic alias flags cyclic like the loader's
+overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
+[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
+~1ms fabricated kill, and a sub-ms value can never bound a run
+(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
+in the declared-policy branch too — mutable:[bindings] no longer
+dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
+policyFiles and judged by the key strip alone — a freezeFiles glob
+matching it neither voids mutable nor whitelists a non-isolated diff
+(CX-52). A !-negation in manifest support: is malformed like a
+freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
+— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
+(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
+policy binds the next integration (CX-55).</item>
 </CHANGE_SUMMARY>
 */
 // test-adjacency: exempt — no test reason: test support module, exercised by every gate test
@@ -69,7 +88,7 @@ verifyAnchorEvents([line], db);
 `;
 
 export interface GateFixtureOptions {
-  mode?: "warn" | "enforce";
+  mode?: "warn" | "enforce" | "exempt";
   tier?: "standard" | "high";
   seam?: "data" | "lifecycle";
   substrate?: "L1" | "L2";

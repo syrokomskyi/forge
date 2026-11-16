@@ -10,7 +10,6 @@ fallback), and path normalization shared by every reference comparison.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1578: initial workspace helpers for correctness.manifest.validate.</item>
   <item>RFC-1578: correctness manifest, validator, promotes gate
 
 Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate CORR-01..09), bindings.paths.correctnessManifest, bindings.commands.checkRun and the correctness section, promotes with V-55 and RFC-IMP-16, the typescript profile skeleton, reference pages, and the promotes marking in fo-idea-create-rfc/fo-idea-audit. Repoint the RFC-1391 AC-8 registry test at src/command-modules.ts (stale since RFC-1573) and close the types.ts header comment without a glob-shaped terminator (EC-33).</item>
@@ -33,6 +32,26 @@ uncommitted revert still reports; an uncommitted reword never fabricates
 (CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
 Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
 (CX-39).</item>
+  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
+
+sideFrom filters compassDocs elements (CX-47 TypeError crash).
+schemaProbe passes non-plain YAML types through and unwinds seen per
+branch — tagged scalars no longer mask configError and DAG aliases no
+longer fabricate it; a cyclic alias flags cyclic like the loader's
+overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
+[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
+~1ms fabricated kill, and a sub-ms value can never bound a run
+(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
+in the declared-policy branch too — mutable:[bindings] no longer
+dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
+policyFiles and judged by the key strip alone — a freezeFiles glob
+matching it neither voids mutable nor whitelists a non-isolated diff
+(CX-52). A !-negation in manifest support: is malformed like a
+freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
+— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
+(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
+policy binds the next integration (CX-55).</item>
+  <history>RFC-1578</history>
 </CHANGE_SUMMARY>
 */
 
@@ -148,8 +167,11 @@ export function settingsFromForgeDoc(
     : null;
   if (configError === null) {
     try {
-      const probe = forgeConfigSchema.safeParse(schemaProbe(doc));
-      if (!probe.success) configError = "forge.yaml failed schema validation";
+      const state = { cyclic: false };
+      const probe = forgeConfigSchema.safeParse(schemaProbe(doc, new WeakSet(), state));
+      // A cyclic alias stack-overflows the loader's safeParse — refuse like
+      // it would (CX-49/50 parity: identical verdict, never a crash).
+      if (!probe.success || state.cyclic) configError = "forge.yaml failed schema validation";
     } catch {
       configError = "forge.yaml failed schema validation";
     }
@@ -174,17 +196,40 @@ export function settingsFromForgeDoc(
 
 /**
  * Deep-clone for the schema probe: BigInt leaves become Number (zod `.number()`
- * rejects them and would fabricate a schema failure on a valid config), cyclic
- * aliases collapse to a sentinel so safeParse never loops.
+ * rejects them and would fabricate a schema failure on a valid config).
+ * Non-plain objects (Date/Map/Set from `!!timestamp`/`!!omap`) pass through
+ * unchanged — zod must judge the same type the loader's plain parse produces;
+ * flattening them to `{}` masked a real configError (CX-49). `seen` unwinds
+ * per-branch like `canon`/`policyLeaves` — a shared alias revisited from a
+ * sibling leafs normally (CX-50), a true back-edge flags `cyclic` because
+ * `loadForgeConfig`'s safeParse stack-overflows on it (fail closed).
  */
-function schemaProbe(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+function schemaProbe(
+  value: unknown,
+  seen: WeakSet<object> = new WeakSet(),
+  state: { cyclic: boolean } = { cyclic: false },
+): unknown {
   if (typeof value === "bigint") return Number(value);
   if (value === null || typeof value !== "object") return value;
-  if (seen.has(value)) return null;
+  if (seen.has(value)) {
+    state.cyclic = true;
+    return null;
+  }
   seen.add(value);
-  if (Array.isArray(value)) return value.map((v) => schemaProbe(v, seen));
-  const out: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(value)) out[k] = schemaProbe(v, seen);
+  let out: unknown;
+  if (Array.isArray(value)) {
+    out = value.map((v) => schemaProbe(v, seen, state));
+  } else {
+    const proto = Object.getPrototypeOf(value);
+    if (proto === Object.prototype || proto === null) {
+      const rec: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value)) rec[k] = schemaProbe(v, seen, state);
+      out = rec;
+    } else {
+      out = value;
+    }
+  }
+  seen.delete(value);
   return out;
 }
 

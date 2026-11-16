@@ -13,19 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
-
-Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
-after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
-re-point is now visible. canon() distinguishes BigInt/non-finite numbers
-(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
-negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
-The isolation strip drops policy:/correctness unconditionally — a
-meaningless mutable membership can no longer dead-end the accept path.
-Deletions of frozen files honor the verifier trailer pair like any other
-touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
-cannot borrow a sibling's verifier commit (also closes the same hole in
-origin.ts).</item>
   <item>RFC-1615: round-5 — structuredClone accept-path (CX-27/28), exempt contour judges declared policy (CX-29)</item>
   <item>RFC-1615: round-6 — commit-derived exempt contour + HEAD-side policyMalformed before early return (CX-30/31)</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
@@ -44,6 +31,25 @@ uncommitted revert still reports; an uncommitted reword never fabricates
 (CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
 Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
 (CX-39).</item>
+  <item>RFC-1615: close RFC-1615 round-9 counterexamples (CX-47..55)
+
+sideFrom filters compassDocs elements (CX-47 TypeError crash).
+schemaProbe passes non-plain YAML types through and unwinds seen per
+branch — tagged scalars no longer mask configError and DAG aliases no
+longer fabricate it; a cyclic alias flags cyclic like the loader's
+overflow would (CX-49/CX-50). oracleTimeoutMs must be finite within
+[1, 2^31-1] — setTimeout clamps both Infinity and int32 overflow into a
+~1ms fabricated kill, and a sub-ms value can never bound a run
+(CX-48). The isolation strip drops the RFC-1580 frozen binding subkeys
+in the declared-policy branch too — mutable:[bindings] no longer
+dead-ends every checkRun rebind (CX-51). forge.yaml is excluded from
+policyFiles and judged by the key strip alone — a freezeFiles glob
+matching it neither voids mutable nor whitelists a non-isolated diff
+(CX-52). A !-negation in manifest support: is malformed like a
+freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
+— a blob-equal 100755->100644 chmod on a frozen file reports frozen-file
+(CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
+policy binds the next integration (CX-55).</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -73,6 +79,7 @@ import {
   byteWeakenings,
   canon,
   diffWeakenings,
+  modeWeakenings,
   policyFileAdditions,
   policyWeakenings,
   readFrozenSet,
@@ -205,6 +212,18 @@ async function forgeYamlOnlyFrozenKeys(
       }
       delete copy["policy"];
       delete copy["correctness"];
+      // The RFC-1580 frozen binding subkeys stay frozen even when `bindings`
+      // itself is declared mutable — their diff is a real weakening kind, so
+      // strip them or every checkRun/manifest rebind dead-ends as
+      // `mixed-weakening` (RFC-1615 review CX-51).
+      const b = copy["bindings"] as
+        | { commands?: Record<string, unknown>; paths?: Record<string, unknown> }
+        | undefined;
+      if (b?.commands) delete b.commands["checkRun"];
+      if (b?.paths) {
+        delete b.paths["correctnessManifest"];
+        delete b.paths["oracleReviewsDir"];
+      }
     }
     return canon(copy);
   };
@@ -324,7 +343,9 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       message:
         now.policy === null && !now.policyMalformed
           ? "no policy surface declared — policy checks inert (adopt policy: to arm them)"
-          : "no policy surface declared at --base — policy checks inert for this diff; the HEAD-adopted policy: binds the next integration",
+          : now.policyMalformed
+            ? "no policy surface declared at --base — policy checks inert for this diff; the HEAD-adopted policy: is malformed and refuses CORR-GATE-01"
+            : "no policy surface declared at --base — policy checks inert for this diff; the HEAD-adopted policy: binds the next integration",
     });
   }
   if (
@@ -374,6 +395,14 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       `the policy: declaration ${frozen.base.policyMalformed ? "at --base" : "at HEAD"} is malformed — expected { mutable?: string[], additive?: string[], freezeFiles?: string[] }`,
     );
   }
+  // A `!`-negation in base manifest `support:` would silently freeze the
+  // complement — same refusal class as a malformed `policy:` (CX-53).
+  if (frozen.supportMalformed) {
+    add(
+      "CORR-GATE-01",
+      `the base manifest ${frozen.base.manifestPath} support: glob uses a \`!\` negation — negation silently freezes the complement; rename the glob to what it must cover`,
+    );
+  }
   if (frozen.baseManifestUnreadable && !options.policyOnly) {
     add(
       "CORR-GATE-02",
@@ -386,16 +415,19 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
         // surface, nothing else (CX-29 — policy: is its own opt-in).
         ...policyWeakenings(frozen, now),
         ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
+        ...(await modeWeakenings(repo, base, head, frozen.policyFiles)),
         ...(await policyFileAdditions(repo, head, frozen)),
       ]
     : [
         ...diffWeakenings(frozen, now),
         ...(await byteWeakenings(repo, base, head, frozen.files)),
+        ...(await modeWeakenings(repo, base, head, frozen.files)),
         ...(await supportAdditions(repo, base, head, frozen)),
         ...(await anchorWeakenings(repo, head, frozen)),
         // RFC-1615: the declared policy surface is judged in the same gate run.
         ...policyWeakenings(frozen, now),
         ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
+        ...(await modeWeakenings(repo, base, head, frozen.policyFiles)),
         ...(await policyFileAdditions(repo, head, frozen)),
       ];
   let acceptedReason: string | null = null;
@@ -427,8 +459,13 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
         ...(policyScope ? [] : frozen.supportGlobs),
         ...frozen.policyGlobs,
       ].map((g) => picomatch(normalizeRelPath(g), { dot: true }));
-      const foreign = changed.filter(
-        (p) => !frozenPaths.has(p) && !frozenGlobs.some((m) => m(p)),
+      const foreign = changed.filter((p) =>
+        // forge.yaml's isolation is judged by the key-strip alone — a
+        // `freezeFiles` glob that happens to match it (*.yaml) must not
+        // whitelist a non-isolated diff (RFC-1615 review CX-52).
+        p === "forge.yaml"
+          ? !forgeYamlIsolated
+          : !frozenPaths.has(p) && !frozenGlobs.some((m) => m(p)),
       );
       if (foreign.length === 0) acceptedReason = reason;
       else {
@@ -466,10 +503,14 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   const rawTimeout = section["oracleTimeoutMs"];
   // intAsBigInt parses every YAML int as BigInt — coerce before the >0 check.
   const parsedTimeout = typeof rawTimeout === "bigint" ? Number(rawTimeout) : rawTimeout;
-  // CX-39: Infinity (`oracleTimeoutMs: .inf` / `1e999` / huge BigInt→Number)
-  // overflows Node's setTimeout into a ~1ms fire — fabricated CORR-GATE-07.
+  // CX-39/CX-48: Infinity or > 2³¹−1 overflows Node's setTimeout into a
+  // ~1ms fire — fabricated CORR-GATE-07. A sub-millisecond value (0.5) is
+  // the same class — it can never bound an oracle run; fall to default.
   const timeoutMs =
-    typeof parsedTimeout === "number" && Number.isFinite(parsedTimeout) && parsedTimeout > 0
+    typeof parsedTimeout === "number" &&
+    Number.isFinite(parsedTimeout) &&
+    parsedTimeout >= 1 &&
+    parsedTimeout <= 0x7fffffff
       ? parsedTimeout
       : DEFAULT_ORACLE_TIMEOUT_MS;
   const runRoot = mkdtempSync(path.join(os.tmpdir(), "forge-correctness-run-"));
