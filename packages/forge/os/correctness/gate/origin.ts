@@ -13,13 +13,11 @@ oracle never covers an entry.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
-
-F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
+  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -82,7 +80,7 @@ export interface OriginResult {
 }
 
 /** Find the RFC file for `RFC-NNNN` in rfcsDir or its archive subtree at `head`. */
-async function rfcPath(
+export async function rfcPath(
   repo: GateRepo,
   head: string,
   rfcsDir: string,
