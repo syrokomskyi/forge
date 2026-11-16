@@ -12,16 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
-
-Operator-granted third fix round. Proto-named top-level keys now visible
-(Object.hasOwn presence), canon()/policyLeaves() distinguish tagged YAML
-scalars and non-finite numbers with a cycle guard, a non-map forge.yaml is a
-structured CORR-GATE-01 never a TypeError or silent inert, the judged side
-reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
-weakenings), --policy-only accept whitelists only policy paths, freezeFiles
-negation globs are malformed, and forge.upgrade heals a malformed policy:
-block (write-when-absent now reads write-when-not-well-formed).</item>
   <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
 
 Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
@@ -70,6 +60,7 @@ freezeFiles negation (CX-53). modeWeakenings compares git ls-tree modes
 (CX-54). The inert-policy note no longer claims a malformed HEAD-adopted
 policy binds the next integration (CX-55).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
+  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -454,11 +445,10 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   const anchorFiles = new Set<string>();
   const anchorCarriers = new Map<string, Set<string>>();
   if (wanted.size > 0) {
-    const grep = await repo.git.run(["grep", "-l", "-z", "-F", "@ai-invariant[", base, "--"]);
-    if (grep === null) repo.unreadableReads.push(`grep @ai-invariant ${base}`);
-    const hits = (grep ?? "")
-      .split("\0")
-      .filter((l) => l.length > 0)
+    // `git grep` exit 1 (zero matches) is a valid empty listing — grepList
+    // passes it through; only a real failure flags (CX-67).
+    const grep = await repo.grepList(base, "@ai-invariant[");
+    const hits = grep
       .map((l) => (l.startsWith(`${base}:`) ? l.slice(base.length + 1) : l))
       .filter(isAnchorSourceCandidate);
     for (const rel of hits) {
@@ -894,17 +884,11 @@ export async function modeWeakenings(
     // resolves only the trees along each wanted file (CX-59). `:(literal)`
     // so glob-metachar filenames cannot match siblings (CX-26).
     for (let i = 0; i < files.length; i += 200) {
-      const out = await repo.git.run([
-        "ls-tree",
-        "-z",
-        rev,
-        "--",
-        ...files.slice(i, i + 200).map((p) => `:(literal)${p}`),
-      ]);
-      if (out === null) {
-        repo.unreadableReads.push(`ls-tree ${rev}`);
-        return map;
-      }
+      const out = await repo.listing(
+        ["ls-tree", "-z", rev, "--", ...files.slice(i, i + 200).map((p) => `:(literal)${p}`)],
+        `ls-tree ${rev}`,
+      );
+      if (out === null) return map;
       for (const line of out.split("\0")) {
         const tab = line.indexOf("\t");
         if (tab === -1) continue;

@@ -30,6 +30,7 @@ process (per-spec null on missing objects, wholesale null on spawn or
 framing failure). collectCommittedReviews prefers it and keeps the
 sequential show loop for stubs. rfc.validate memoizes the index once
 per run and V-49 consumes it — identical diagnostics, one batched read.</item>
+  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +50,14 @@ import type {
 /** Git port — returns stdout, or null when the command failed. */
 export interface OriginGit {
   run(args: string[]): Promise<string | null>;
+  /**
+   * Exit-code-aware run: `{code, stdout}` for any completed spawn, null only
+   * when the process could not run at all (spawn failure, timeout, buffer).
+   * Commands with meaningful non-zero exits (git grep: 1 = zero matches — a
+   * legitimate empty result, not a read failure) must go through this or
+   * they misjudge "empty" as "unreadable" (RFC-1615 review CX-67).
+   */
+  runExit?(args: string[]): Promise<{ code: number; stdout: string } | null>;
   /**
    * RFC-1513: optional batched object read. One `git cat-file --batch` process
    * answers every spec — entry `i` answers `specs[i]` (`null` marks a missing
@@ -116,6 +125,22 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
           args,
           { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024, env: gitEnvForCwd() },
           (err, stdout) => resolve(err ? null : String(stdout)),
+        );
+      }),
+    runExit: (args) =>
+      new Promise((resolve) => {
+        execFile(
+          "git",
+          args,
+          { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024, env: gitEnvForCwd() },
+          (err, stdout) => {
+            if (err === null) return resolve({ code: 0, stdout: String(stdout) });
+            // A numeric exit code means the process ran and answered;
+            // spawn/timeout/kill failures carry no code — unreadable.
+            resolve(
+              typeof err.code === "number" ? { code: err.code, stdout: String(stdout) } : null,
+            );
+          },
         );
       }),
     showMany: (specs) =>
