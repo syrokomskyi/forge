@@ -12,7 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: initial frozen set and weakening diff.</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -23,6 +22,10 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
+
+AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
+  <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
@@ -63,6 +66,8 @@ export interface CorrectnessSide {
    * A malformed section parses to empty lists (deny-by-default).
    */
   policy: PolicySurface | null;
+  /** RFC-1615: `policy:` is present but not a `{mutable?, additive?, freezeFiles?}` string-list map. */
+  policyMalformed: boolean;
   /** Parsed top-level forge.yaml keys, for the policy-key diff. */
   forgeDoc: Record<string, unknown>;
 }
@@ -126,24 +131,35 @@ export function sideFrom(
       typeof bindings.paths?.["invariantsFile"] === "string"
         ? (bindings.paths["invariantsFile"] as string)
         : null,
-    policy: parsePolicySurface(doc["policy"]),
+    policy: parsePolicySurface(doc["policy"]).surface,
+    policyMalformed: parsePolicySurface(doc["policy"]).malformed,
     forgeDoc: doc,
   };
 }
 
 /**
  * Loose parse of `policy:` — the section must exist to arm the policy checks;
- * a malformed value degrades to empty lists (deny-by-default), never fails open.
+ * a malformed value degrades to empty lists (deny-by-default), never fails
+ * open, and is reported via `malformed` so the gate can refuse as CORR-GATE-01.
  */
-function parsePolicySurface(raw: unknown): PolicySurface | null {
-  if (raw === undefined || raw === null) return null;
-  const obj = (typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+function parsePolicySurface(raw: unknown): {
+  surface: PolicySurface | null;
+  malformed: boolean;
+} {
+  if (raw === undefined || raw === null) return { surface: null, malformed: false };
+  const isMap = typeof raw === "object" && !Array.isArray(raw);
+  const obj = (isMap ? raw : {}) as Record<string, unknown>;
   const list = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+  const declared = ["mutable", "additive", "freezeFiles"] as const;
+  const malformed = !isMap || declared.some((k) => obj[k] !== undefined && !Array.isArray(obj[k]));
   return {
-    mutable: list(obj["mutable"]),
-    additive: list(obj["additive"]),
-    freezeFiles: list(obj["freezeFiles"]),
+    surface: {
+      mutable: list(obj["mutable"]),
+      additive: list(obj["additive"]),
+      freezeFiles: list(obj["freezeFiles"]),
+    },
+    malformed,
   };
 }
 

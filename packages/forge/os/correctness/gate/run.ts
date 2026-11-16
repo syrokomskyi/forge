@@ -13,7 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: initial gate pipeline.</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -24,6 +23,10 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
+
+AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
+  <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
@@ -268,6 +271,14 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   };
   const now = readHeadSide(root, readWorking);
   const files = await listWorkspaceFiles(root);
+  // RFC-1615: a malformed policy: declaration cannot be honoured — refuse as
+  // CORR-GATE-01 (invalid configuration at HEAD), in both modes.
+  if (now.policyMalformed || frozen.base.policyMalformed) {
+    add(
+      "CORR-GATE-01",
+      `the policy: declaration ${frozen.base.policyMalformed ? "at --base" : "at HEAD"} is malformed — expected { mutable?: string[], additive?: string[], freezeFiles?: string[] }`,
+    );
+  }
   if (frozen.baseManifestUnreadable && !options.policyOnly) {
     add(
       "CORR-GATE-02",
@@ -322,6 +333,13 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
 
   // RFC-1615: --policy-only ends after the weakening verdict — no oracle runs.
   if (options.policyOnly) {
+    if (frozen.base.policy === null) {
+      violations.push({
+        rule: "CORR-GATE-01",
+        severity: "warning",
+        message: "no policy surface declared — policy checks inert (adopt policy: to arm them)",
+      });
+    }
     if (mode === "warn") {
       for (const v of violations) if (DOWNGRADE_IN_WARN.has(v.rule)) v.severity = "warning";
     }
