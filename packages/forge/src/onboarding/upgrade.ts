@@ -11,7 +11,6 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1500: step 3 — forge.upgrade reports flow state</item>
   <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
@@ -25,8 +24,21 @@ reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
 weakenings), --policy-only accept whitelists only policy paths, freezeFiles
 negation globs are malformed, and forge.upgrade heals a malformed policy:
 block (write-when-absent now reads write-when-not-well-formed).</item>
+  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
+
+Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
+after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
+re-point is now visible. canon() distinguishes BigInt/non-finite numbers
+(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
+negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
+The isolation strip drops policy:/correctness unconditionally — a
+meaningless mutable membership can no longer dead-end the accept path.
+Deletions of frozen files honor the verifier trailer pair like any other
+touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
+cannot borrow a sibling's verifier commit (also closes the same hole in
+origin.ts).</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481</history>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481, RFC-1500</history>
 </CHANGE_SUMMARY>
 */
 
@@ -704,11 +716,21 @@ function isPolicyWellFormed(policy: unknown): boolean {
   if (policy === null || typeof policy !== "object" || Array.isArray(policy))
     return false;
   const obj = policy as Record<string, unknown>;
-  return ["mutable", "additive", "freezeFiles"].every(
-    (k) =>
-      obj[k] === undefined ||
-      (Array.isArray(obj[k]) &&
-        (obj[k] as unknown[]).every((m) => typeof m === "string")),
+  return (
+    ["mutable", "additive", "freezeFiles"].every(
+      (k) =>
+        obj[k] === undefined ||
+        (Array.isArray(obj[k]) &&
+          (obj[k] as unknown[]).every((m) => typeof m === "string")),
+    ) &&
+    // mirror the gate: a `!`-prefixed freezeFiles glob is a picomatch
+    // negation — malformed, and healable by upgrade (RFC-1615 review CX-23)
+    !(
+      Array.isArray(obj["freezeFiles"]) &&
+      (obj["freezeFiles"] as unknown[]).some(
+        (g) => typeof g === "string" && g.startsWith("!"),
+      )
+    )
   );
 }
 

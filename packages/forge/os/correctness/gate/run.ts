@@ -13,9 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
-
-N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
 
@@ -31,6 +28,19 @@ reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
 weakenings), --policy-only accept whitelists only policy paths, freezeFiles
 negation globs are malformed, and forge.upgrade heals a malformed policy:
 block (write-when-absent now reads write-when-not-well-formed).</item>
+  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
+
+Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
+after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
+re-point is now visible. canon() distinguishes BigInt/non-finite numbers
+(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
+negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
+The isolation strip drops policy:/correctness unconditionally — a
+meaningless mutable membership can no longer dead-end the accept path.
+Deletions of frozen files honor the verifier trailer pair like any other
+touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
+cannot borrow a sibling's verifier commit (also closes the same hole in
+origin.ts).</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -153,7 +163,10 @@ async function forgeYamlOnlyFrozenKeys(
   const strip = (text: string | null): string => {
     let doc: Record<string, unknown> = {};
     try {
-      doc = ((text ? parseYaml(text) : {}) ?? {}) as Record<string, unknown>;
+      doc = ((text ? parseYaml(text, { intAsBigInt: true }) : {}) ?? {}) as Record<
+        string,
+        unknown
+      >;
     } catch {
       return "\0unparseable";
     }
@@ -174,9 +187,14 @@ async function forgeYamlOnlyFrozenKeys(
       // RFC-1615 (CX-10): only `mutable` keys participate — everything else is
       // either frozen (diff = the weakening being accepted) or additive (any
       // weakening inside it is reported and covered by the same accept).
+      // `policy:`/`correctness` are self-frozen regardless of a meaningless
+      // `mutable` membership — their diffs are their own weakening kinds and
+      // must never make the file foreign (RFC-1615 review CX-24).
       for (const key of Object.keys(copy)) {
         if (!policy.mutable.includes(key)) delete copy[key];
       }
+      delete copy["policy"];
+      delete copy["correctness"];
     }
     return canon(copy);
   };
