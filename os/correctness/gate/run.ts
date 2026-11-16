@@ -13,7 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
 
 Operator-granted third fix round. Proto-named top-level keys now visible
@@ -39,6 +38,7 @@ cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
   <item>RFC-1615: round-5 — structuredClone accept-path (CX-27/28), exempt contour judges declared policy (CX-29)</item>
   <item>RFC-1615: round-6 — commit-derived exempt contour + HEAD-side policyMalformed before early return (CX-30/31)</item>
+  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -62,7 +62,11 @@ import { loadSnapshot } from "../audit/snapshot.ts";
 import { declaredWriters } from "../audit/state-transitions-coverage.ts";
 import { evaluateCapture, validateCorrectnessManifest } from "../handlers/validate.ts";
 import { SEAM_MINIMUM, substrateRank, type Substrate } from "../manifest-schema.ts";
-import { listWorkspaceFiles, normalizeRelPath, readCorrectnessSettings } from "../workspace.ts";
+import {
+  listWorkspaceFiles,
+  normalizeRelPath,
+  settingsFromForgeDoc,
+} from "../workspace.ts";
 import {
   anchorWeakenings,
   byteWeakenings,
@@ -207,7 +211,6 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   if (!base)
     return { ok: false, usageError: `--base ${options.base} does not resolve to a commit` };
   const head = (await repo.revParse("HEAD")) ?? "HEAD";
-  const settings = readCorrectnessSettings(root);
   const violations: GateViolation[] = [];
   const add = (rule: GateRuleId, message: string, extra: { entry?: string; check?: string } = {}) =>
     violations.push({ rule, severity: "error", message, ...extra });
@@ -224,12 +227,34 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     });
   }
 
-  // (1) Validate at HEAD.
-  const validation = await validateCorrectnessManifest(root);
+  // (1) Frozen set + judged HEAD side FIRST — every verdict input derives
+  // from commits (CX-16/17/30..33): the worktree is the oracle-run surface
+  // only. `now` must precede validation so the manifest validator can be
+  // handed the committed config snapshot instead of the worktree's.
+  const frozen = await readFrozenSet(repo, base);
+  const headForgeYaml = await repo.show(head, "forge.yaml");
+  const headManifestPath = sideFrom(headForgeYaml, () => null).manifestPath;
+  const headManifestText = headManifestPath
+    ? await repo.show(head, normalizeRelPath(headManifestPath))
+    : null;
+  const now = sideFrom(headForgeYaml, () => headManifestText);
+
+  // (2) Validate at HEAD — committed flavor: mode/tier/binding checks and
+  // every injected violation judge the committed forge.yaml, so an
+  // uncommitted `mode:`/`tier:`/`oracleTimeoutMs` flip can neither mask a
+  // committed weakening nor fabricate a failure. Manifest CONTENT is still
+  // read from the worktree — the same deliberate flavor as the oracle runs
+  // (disclosed by the dirty warning above).
+  const committedSettings = settingsFromForgeDoc(now.forgeDoc, now.forgeYamlUnreadable);
+  const validation = await validateCorrectnessManifest(root, {
+    settings: committedSettings,
+  });
+  const committedRfcsDir = committedSettings.rfcsDir;
   const mode = validation.mode;
+  const projectName = (now.forgeDoc["project"] as { name?: unknown } | undefined)?.name;
   const bundleBase = {
     schema: CORRECTNESS_BUNDLE_SCHEMA,
-    repository: settings.config?.project?.name ?? path.basename(root),
+    repository: typeof projectName === "string" ? projectName : path.basename(root),
     base,
     head,
     mode,
@@ -279,17 +304,9 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   // weaken it unjudged and launder the diff under the exempt umbrella.
   //
   // Both contour legs are judged from COMMITS (CX-30/CX-31): the HEAD side is
-  // hoisted here so a HEAD-adopted malformed `policy:` refuses CORR-GATE-01
+  // computed above so a HEAD-adopted malformed `policy:` refuses CORR-GATE-01
   // on any contour, and an uncommitted worktree `mode:` flip can neither mask
-  // a committed weakening nor fabricate a failure — `validation` is the
-  // working-tree flavor used for oracle runs, not for the contour decision.
-  const frozen = await readFrozenSet(repo, base);
-  const headForgeYaml = await repo.show(head, "forge.yaml");
-  const headManifestPath = sideFrom(headForgeYaml, () => null).manifestPath;
-  const headManifestText = headManifestPath
-    ? await repo.show(head, normalizeRelPath(headManifestPath))
-    : null;
-  const now = sideFrom(headForgeYaml, () => headManifestText);
+  // a committed weakening nor fabricate a failure.
   const exemptContour = frozen.base.mode === "exempt" && now.mode === "exempt";
   if (
     exemptContour &&
@@ -299,15 +316,32 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     !now.policyMalformed
   )
     return finish("exempt", [], [], null);
+  // Manifest-validation violations judge committed-mode semantics — they
+  // stay silent on --policy-only and on the exempt contour, which reports
+  // the policy surface only (CX-29/CX-33).
   for (const v of validation.violations) {
-    if (v.severity === "error" && !options.policyOnly)
+    if (v.severity === "error" && !options.policyOnly && !exemptContour)
       add("CORR-GATE-01", `${v.rule}${v.entry ? ` ${v.entry}` : ""}: ${v.message}`);
   }
-  if (!settings.manifestPath && !options.policyOnly) {
+  if (!now.manifestPath && !options.policyOnly) {
     violations.push({
       rule: "CORR-GATE-01",
       severity: "warning",
       message: "no correctness manifest bound — the gate checks only weakenings",
+    });
+  }
+
+  // RFC-1615 (CX-34): the inert-policy note rides every contour, not only
+  // --policy-only — a no-policy repo's bundle should disclose that the
+  // policy checks never armed.
+  if (frozen.base.policy === null && !frozen.base.policyMalformed) {
+    violations.push({
+      rule: "CORR-GATE-01",
+      severity: "warning",
+      message:
+        now.policy === null && !now.policyMalformed
+          ? "no policy surface declared — policy checks inert (adopt policy: to arm them)"
+          : "no policy surface declared at --base — policy checks inert for this diff; the HEAD-adopted policy: binds the next integration",
     });
   }
 
@@ -319,11 +353,6 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       return null;
     }
   };
-  // The judged side is the HEAD commit, not the worktree — an uncommitted
-  // revert must not mask a committed weakening, and an uncommitted rebind
-  // must not fabricate one (RFC-1615 review CX-16/CX-17). `now` is computed
-  // above, before the exempt early-return (CX-30/CX-31); `readWorking` stays
-  // for the live anchor-statement check below.
   const files = await listWorkspaceFiles(root);
   // RFC-1615: a forge.yaml that exists but is not a readable YAML map cannot
   // be judged — refuse structured, never crash or silently inert (CX-15/CX-19).
@@ -433,10 +462,16 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   const manifest = now.manifest;
   const reviews = await readReviewRecords(repo, head, now.reviewsDir ?? DEFAULT_ORACLE_REVIEWS_DIR);
   const checkRun = frozen.base.checkRun ?? now.checkRun;
-  const section = (settings.config?.correctness ?? {}) as Record<string, unknown>;
+  // Committed-side knobs only (CX-33): a worktree oracleTimeoutMs/manifest
+  // flip must not change the verdict — same commit-derived surface as the
+  // manifest entries above.
+  const section = (now.forgeDoc["correctness"] ?? {}) as Record<string, unknown>;
+  const rawTimeout = section["oracleTimeoutMs"];
+  // intAsBigInt parses every YAML int as BigInt — coerce before the >0 check.
+  const parsedTimeout = typeof rawTimeout === "bigint" ? Number(rawTimeout) : rawTimeout;
   const timeoutMs =
-    typeof section["oracleTimeoutMs"] === "number" && (section["oracleTimeoutMs"] as number) > 0
-      ? (section["oracleTimeoutMs"] as number)
+    typeof parsedTimeout === "number" && parsedTimeout > 0
+      ? parsedTimeout
       : DEFAULT_ORACLE_TIMEOUT_MS;
   const runRoot = mkdtempSync(path.join(os.tmpdir(), "forge-correctness-run-"));
   let expectedHashes: Set<string> | null = null;
@@ -471,7 +506,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
           check: oracle.check,
           source: entry.source,
           ref: entry.ref ?? null,
-          rfcsDir: settings.rfcsDir,
+          rfcsDir: committedRfcsDir,
           reviews,
           checkFile: file,
           integrationBase: base,

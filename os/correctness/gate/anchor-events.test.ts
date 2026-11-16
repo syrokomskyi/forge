@@ -10,6 +10,7 @@
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
+  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -63,7 +64,10 @@ describe("anchor events", () => {
     const r = await gate(
       fx({ seam: "lifecycle", substrate: "L2", oracle: lifecycleOracle("queued") }),
     );
-    expect(r.violations, JSON.stringify(r.violations)).toEqual([]);
+    expect(
+      r.violations.filter((v) => v.severity === "error"),
+      JSON.stringify(r.violations),
+    ).toEqual([]);
   });
 
   it("an L2 run without any anchor event is CORR-GATE-05", async () => {
