@@ -72,6 +72,7 @@ function frozenOf(yaml: string): FrozenSet {
     anchorFiles: [],
     anchorCarriers: new Map(),
     baseFiles: [],
+    baseFilesComplete: true,
     policyGlobs: [],
     policyFiles: [],
   };

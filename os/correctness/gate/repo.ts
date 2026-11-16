@@ -8,24 +8,12 @@ the RFC-1330 origin git port (argv exec, DNA-89).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
-
-Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
-after each walk so aliased (anchor-shared) nodes leaf normally — an anchor
-re-point is now visible. canon() distinguishes BigInt/non-finite numbers
-(intAsBigInt parse, num:/int: tags). isPolicyWellFormed mirrors the
-negation-glob malformed rule so forge.upgrade heals !-prefixed freezeFiles.
-The isolation strip drops policy:/correctness unconditionally — a
-meaningless mutable membership can no longer dead-end the accept path.
-Deletions of frozen files honor the verifier trailer pair like any other
-touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
-cannot borrow a sibling's verifier commit (also closes the same hole in
-origin.ts).</item>
   <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
-  <history>RFC-1580</history>
+  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
+  <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
@@ -227,6 +215,16 @@ export class GateRepo {
     if (!out.includes("\x1f")) return null;
     const [sha, body] = out.split("\x1f");
     return { sha: sha!.trim(), body: body ?? "" };
+  }
+
+  /** Body of an exact commit — a failed read flags (never "no trailers"). */
+  async commitBody(sha: string): Promise<string | null> {
+    const out = await this.git.run(["log", "-1", "--format=%B", sha]);
+    if (out === null) {
+      this.unreadableReads.push(`log -1 ${sha}`);
+      return null;
+    }
+    return out;
   }
 
   /**

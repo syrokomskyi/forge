@@ -532,7 +532,8 @@ exemptions: []
           "status: accepted",
         ),
       );
-      git(["commit", "-qam", "c2 accept rfc"]);
+      // CX-79: governed provenance on the acceptance transition.
+      git(["commit", "-qam", "c2 accept rfc\n\nX-RFC: RFC-0001"]);
       write("docs/rfcs/rfc-0002-tmp.md", "tmp\n");
       git(["add", "-A"]);
       git(["commit", "-qm", "c3 add rfc-0002 (unique docs/rfcs tree)"]);

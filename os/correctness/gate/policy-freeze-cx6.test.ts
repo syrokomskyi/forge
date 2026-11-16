@@ -715,6 +715,7 @@ policy:
       anchorFiles: [],
       anchorCarriers: new Map(),
       baseFiles: [],
+      baseFilesComplete: true,
       policyGlobs: [],
       policyFiles: [],
     };

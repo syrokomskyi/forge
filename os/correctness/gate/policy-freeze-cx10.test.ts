@@ -783,7 +783,11 @@ describe("review record robustness", () => {
 });
 
 describe("misc structural edges", () => {
-  it("checkRun adoption (base null) is not a binding weakening — documented adoption", async () => {
+  it("checkRun adoption under a DECLARED contour is a binding weakening — CX-77", async () => {
+    // Pre-CX-77 this was documented adoption — the verifier proved it
+    // fail-open: a session-bound checkRun runs its own runner and attests
+    // without executing the oracle. Adoption under a declared contour now
+    // lands only through --accept-weakening.
     const f = fx();
     f.write("forge.yaml", f.read("forge.yaml").replace('    checkRun: "node {file}"\n', ""));
     const base = f.commit("drop checkRun at base");
@@ -793,7 +797,7 @@ describe("misc structural edges", () => {
     );
     f.commit("adopt checkRun");
     const r = await gate(f, { base });
-    expect(wk(r).every((k) => !/binding/.test(k))).toBe(true);
+    expect(wk(r).some((k) => /binding/.test(k))).toBe(true);
     f.cleanup();
   });
   it("a mode flip on an anchor-source file (not in frozen files) is unjudged — documented", async () => {

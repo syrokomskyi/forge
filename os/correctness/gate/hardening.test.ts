@@ -14,6 +14,7 @@ predates the base, and an oracle timeout is CORR-GATE-07.</purpose>
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
 </CHANGE_SUMMARY>
 */
 
@@ -128,7 +129,9 @@ describe("gate hardening", () => {
     early.write("test/req.oracle.ts", L1_ORACLE);
     early.write("docs/rfcs/rfc-0005-dispatch.md", rfc("accepted"));
     early.git(["add", "-A"]);
-    early.git(["commit", "-qm", "accept with oracle"]);
+    // CX-79: the acceptance transition must come from a governed commit —
+    // `X-RFC: <id>` or the verifier trailer pair.
+    early.git(["commit", "-qm", "accept with oracle\n\nX-RFC: RFC-0005"]);
     const base = early.git(["rev-parse", "HEAD"]);
     anchorWith(early);
     early.write("docs/correctness.yaml", manifestYaml({}, entry));
