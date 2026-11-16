@@ -18,6 +18,21 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
+  <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
+
+settingsFromForgeDoc replicates the zod schema verdict as configError so
+a committed forge.yaml that parses but fails validation cannot mask the
+CORR-01 the worktree flavor reports (CX-35). forgeYamlOnlyFrozenKeys
+strips policy:/correctness in the null-policy branch too — a legal
+policy: adoption inside an accepted-weakening session no longer makes
+forge.yaml foreign (CX-36) — and canons non-map YAML instead of running
+delete on a String index (CX-46). anchorWeakenings judges the HEAD
+commit via git grep + repo.show — a committed reword masked by an
+uncommitted revert still reports; an uncommitted reword never fabricates
+(CX-37). The inert-policy note emits once above the exempt early return
+(CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
+Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
+(CX-39).</item>
 </CHANGE_SUMMARY>
 */
 
@@ -26,7 +41,11 @@ import { existsSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 import { promisify } from "node:util";
 
-import { loadForgeConfig, type ForgeConfig } from "../../src/config/forge-config.ts";
+import {
+  forgeConfigSchema,
+  loadForgeConfig,
+  type ForgeConfig,
+} from "../../src/config/forge-config.ts";
 import {
   CORRECTNESS_MODES,
   CORRECTNESS_TIERS,
@@ -120,9 +139,24 @@ export function settingsFromForgeDoc(
     else invalid.push({ key: "tier", value: rawTier });
   }
   const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+  // CX-35: replicate `loadForgeConfig`'s schema verdict — a committed
+  // forge.yaml that parses but fails the zod schema must surface the same
+  // configError CORR-01 keys on (BigInt leaves normalize to Number for the
+  // schema probe only; cyclic aliases are tolerated).
+  let configError: string | null = forgeYamlUnreadable
+    ? "forge.yaml does not parse to a YAML map"
+    : null;
+  if (configError === null) {
+    try {
+      const probe = forgeConfigSchema.safeParse(schemaProbe(doc));
+      if (!probe.success) configError = "forge.yaml failed schema validation";
+    } catch {
+      configError = "forge.yaml failed schema validation";
+    }
+  }
   return {
     config: null,
-    configError: forgeYamlUnreadable ? "forge.yaml does not parse to a YAML map" : null,
+    configError,
     mode,
     tier,
     invalid,
@@ -136,6 +170,22 @@ export function settingsFromForgeDoc(
       : [],
     rfcsDir: str(topPaths["rfcsDir"]) ?? "docs/rfcs",
   };
+}
+
+/**
+ * Deep-clone for the schema probe: BigInt leaves become Number (zod `.number()`
+ * rejects them and would fabricate a schema failure on a valid config), cyclic
+ * aliases collapse to a sentinel so safeParse never loops.
+ */
+function schemaProbe(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
+  if (typeof value === "bigint") return Number(value);
+  if (value === null || typeof value !== "object") return value;
+  if (seen.has(value)) return null;
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((v) => schemaProbe(v, seen));
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) out[k] = schemaProbe(v, seen);
+  return out;
 }
 
 /** Workspace-relative POSIX form of a path (`./a\\b` → `a/b`). */

@@ -13,16 +13,6 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
-
-Operator-granted third fix round. Proto-named top-level keys now visible
-(Object.hasOwn presence), canon()/policyLeaves() distinguish tagged YAML
-scalars and non-finite numbers with a cycle guard, a non-map forge.yaml is a
-structured CORR-GATE-01 never a TypeError or silent inert, the judged side
-reads the HEAD commit (uncommitted reverts/rebinds neither mask nor fabricate
-weakenings), --policy-only accept whitelists only policy paths, freezeFiles
-negation globs are malformed, and forge.upgrade heals a malformed policy:
-block (write-when-absent now reads write-when-not-well-formed).</item>
   <item>RFC-1615: round-4 acceptance counterexamples CX-21..CX-26
 
 Operator-granted fourth fix round. policyLeaves unwinds the cycle guard
@@ -39,6 +29,21 @@ origin.ts).</item>
   <item>RFC-1615: round-5 — structuredClone accept-path (CX-27/28), exempt contour judges declared policy (CX-29)</item>
   <item>RFC-1615: round-6 — commit-derived exempt contour + HEAD-side policyMalformed before early return (CX-30/31)</item>
   <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
+  <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
+
+settingsFromForgeDoc replicates the zod schema verdict as configError so
+a committed forge.yaml that parses but fails validation cannot mask the
+CORR-01 the worktree flavor reports (CX-35). forgeYamlOnlyFrozenKeys
+strips policy:/correctness in the null-policy branch too — a legal
+policy: adoption inside an accepted-weakening session no longer makes
+forge.yaml foreign (CX-36) — and canons non-map YAML instead of running
+delete on a String index (CX-46). anchorWeakenings judges the HEAD
+commit via git grep + repo.show — a committed reword masked by an
+uncommitted revert still reports; an uncommitted reword never fabricates
+(CX-37). The inert-policy note emits once above the exempt early return
+(CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
+Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
+(CX-39).</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -62,11 +67,7 @@ import { loadSnapshot } from "../audit/snapshot.ts";
 import { declaredWriters } from "../audit/state-transitions-coverage.ts";
 import { evaluateCapture, validateCorrectnessManifest } from "../handlers/validate.ts";
 import { SEAM_MINIMUM, substrateRank, type Substrate } from "../manifest-schema.ts";
-import {
-  listWorkspaceFiles,
-  normalizeRelPath,
-  settingsFromForgeDoc,
-} from "../workspace.ts";
+import { normalizeRelPath, settingsFromForgeDoc } from "../workspace.ts";
 import {
   anchorWeakenings,
   byteWeakenings,
@@ -163,21 +164,26 @@ async function forgeYamlOnlyFrozenKeys(
   policy: { mutable: string[]; additive: string[] } | null,
 ): Promise<boolean> {
   const strip = (text: string | null): string => {
-    let doc: Record<string, unknown> = {};
+    let parsed: unknown;
     try {
-      doc = ((text ? parseYaml(text, { intAsBigInt: true }) : {}) ?? {}) as Record<
-        string,
-        unknown
-      >;
+      parsed = text === null ? {} : parseYaml(text, { intAsBigInt: true });
     } catch {
       return "\0unparseable";
     }
+    // A scalar/array forge.yaml carries no keys to strip — canon the value
+    // as-is. The unreadable-side check already refused it (CX-46: `delete`
+    // on a String index throws TypeError — never reach the key loop).
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed))
+      return canon(parsed);
     // structuredClone preserves BigInt leaves (intAsBigInt parse) and anchor
     // cycles — JSON.stringify crashes on both (RFC-1615 review CX-27/CX-28).
-    const copy = structuredClone(doc) as Record<string, unknown>;
+    const copy = structuredClone(parsed) as Record<string, unknown>;
     if (policy === null) {
       // No declared policy: keep the RFC-1580 semantics — only the frozen
-      // correctness keys are stripped, everything else must match.
+      // correctness keys are stripped, everything else must match. `policy:`
+      // drops too — adopting a policy surface is the opt-in the diff itself
+      // declares, not a foreign-path change (RFC-1615 review CX-36).
+      delete copy["policy"];
       delete copy["correctness"];
       const b = copy["bindings"] as
         | { commands?: Record<string, unknown>; paths?: Record<string, unknown> }
@@ -308,6 +314,19 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   // on any contour, and an uncommitted worktree `mode:` flip can neither mask
   // a committed weakening nor fabricate a failure.
   const exemptContour = frozen.base.mode === "exempt" && now.mode === "exempt";
+  // RFC-1615 (CX-34/CX-41): the inert-policy note rides EVERY contour —
+  // including the pure-exempt early return — a no-policy repo's bundle must
+  // disclose that the policy checks never armed.
+  if (frozen.base.policy === null && !frozen.base.policyMalformed) {
+    violations.push({
+      rule: "CORR-GATE-01",
+      severity: "warning",
+      message:
+        now.policy === null && !now.policyMalformed
+          ? "no policy surface declared — policy checks inert (adopt policy: to arm them)"
+          : "no policy surface declared at --base — policy checks inert for this diff; the HEAD-adopted policy: binds the next integration",
+    });
+  }
   if (
     exemptContour &&
     frozen.base.policy === null &&
@@ -331,20 +350,6 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
     });
   }
 
-  // RFC-1615 (CX-34): the inert-policy note rides every contour, not only
-  // --policy-only — a no-policy repo's bundle should disclose that the
-  // policy checks never armed.
-  if (frozen.base.policy === null && !frozen.base.policyMalformed) {
-    violations.push({
-      rule: "CORR-GATE-01",
-      severity: "warning",
-      message:
-        now.policy === null && !now.policyMalformed
-          ? "no policy surface declared — policy checks inert (adopt policy: to arm them)"
-          : "no policy surface declared at --base — policy checks inert for this diff; the HEAD-adopted policy: binds the next integration",
-    });
-  }
-
   // Weakening diff against the frozen set.
   const readWorking = (rel: string): string | null => {
     try {
@@ -353,7 +358,6 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       return null;
     }
   };
-  const files = await listWorkspaceFiles(root);
   // RFC-1615: a forge.yaml that exists but is not a readable YAML map cannot
   // be judged — refuse structured, never crash or silently inert (CX-15/CX-19).
   if (frozen.base.forgeYamlUnreadable || now.forgeYamlUnreadable) {
@@ -388,7 +392,7 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
         ...diffWeakenings(frozen, now),
         ...(await byteWeakenings(repo, base, head, frozen.files)),
         ...(await supportAdditions(repo, base, head, frozen)),
-        ...anchorWeakenings(root, files, frozen),
+        ...(await anchorWeakenings(repo, head, frozen)),
         // RFC-1615: the declared policy surface is judged in the same gate run.
         ...policyWeakenings(frozen, now),
         ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
@@ -443,13 +447,6 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   // runs. Same for an exempt contour judging a declared policy surface
   // (CX-29): the contour runs no oracles, only the policy diff.
   if (options.policyOnly || exemptContour) {
-    if (frozen.base.policy === null) {
-      violations.push({
-        rule: "CORR-GATE-01",
-        severity: "warning",
-        message: "no policy surface declared — policy checks inert (adopt policy: to arm them)",
-      });
-    }
     if (mode === "warn") {
       for (const v of violations) if (DOWNGRADE_IN_WARN.has(v.rule)) v.severity = "warning";
     }
@@ -469,8 +466,10 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   const rawTimeout = section["oracleTimeoutMs"];
   // intAsBigInt parses every YAML int as BigInt — coerce before the >0 check.
   const parsedTimeout = typeof rawTimeout === "bigint" ? Number(rawTimeout) : rawTimeout;
+  // CX-39: Infinity (`oracleTimeoutMs: .inf` / `1e999` / huge BigInt→Number)
+  // overflows Node's setTimeout into a ~1ms fire — fabricated CORR-GATE-07.
   const timeoutMs =
-    typeof parsedTimeout === "number" && parsedTimeout > 0
+    typeof parsedTimeout === "number" && Number.isFinite(parsedTimeout) && parsedTimeout > 0
       ? parsedTimeout
       : DEFAULT_ORACLE_TIMEOUT_MS;
   const runRoot = mkdtempSync(path.join(os.tmpdir(), "forge-correctness-run-"));

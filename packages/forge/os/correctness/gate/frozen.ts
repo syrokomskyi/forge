@@ -12,9 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: malformed-policy CORR-GATE-01, absent-policy note, scaffold tests
-
-AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --policy-only on an undeclared policy reports 'no policy surface declared'. AC-8: defaultForgeConfig carries the block; upgrade patches it only when absent.</item>
   <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
 
 Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
@@ -42,6 +39,21 @@ Deletions of frozen files honor the verifier trailer pair like any other
 touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
 cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
+  <item>RFC-1615: close RFC-1615 round-8 counterexamples (CX-35/36/37/38/39/41/46)
+
+settingsFromForgeDoc replicates the zod schema verdict as configError so
+a committed forge.yaml that parses but fails validation cannot mask the
+CORR-01 the worktree flavor reports (CX-35). forgeYamlOnlyFrozenKeys
+strips policy:/correctness in the null-policy branch too — a legal
+policy: adoption inside an accepted-weakening session no longer makes
+forge.yaml foreign (CX-36) — and canons non-map YAML instead of running
+delete on a String index (CX-46). anchorWeakenings judges the HEAD
+commit via git grep + repo.show — a committed reword masked by an
+uncommitted revert still reports; an uncommitted reword never fabricates
+(CX-37). The inert-policy note emits once above the exempt early return
+(CX-38/CX-41). Non-finite oracleTimeoutMs falls back to the default —
+Infinity overflowed setTimeout into a ~1ms fabricated CORR-GATE-07
+(CX-39).</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -50,7 +62,7 @@ import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
 
 import { invariantStatementSha } from "../../../src/compass/invariant-parser.ts";
-import { anchorsFromSource, buildAnchorIndex, isAnchorSourceCandidate } from "../anchors.ts";
+import { anchorsFromSource, isAnchorSourceCandidate } from "../anchors.ts";
 import {
   CAPTURE_SIDECAR_SUFFIX,
   correctnessManifestSchema,
@@ -731,17 +743,43 @@ async function globAdditions(
   return out;
 }
 
-export function anchorWeakenings(root: string, files: string[], frozen: FrozenSet): Weakening[] {
+/**
+ * Anchor weakenings judged at the HEAD COMMIT (RFC-1615 review CX-37): the
+ * anchor text comes from `git show`, never the worktree — an uncommitted
+ * reword can neither mask a committed weakening nor fabricate one.
+ */
+export async function anchorWeakenings(
+  repo: GateRepo,
+  head: string,
+  frozen: FrozenSet,
+): Promise<Weakening[]> {
   if (frozen.anchors.size === 0) return [];
-  const index = buildAnchorIndex(root, files, [...frozen.anchors.keys()]);
+  const wanted = new Set(frozen.anchors.keys());
+  const copies = new Map<string, string[]>();
+  const grep = await repo.git.run(["grep", "-l", "-z", "-F", "@ai-invariant[", head, "--"]);
+  const hits = (grep ?? "")
+    .split("\0")
+    .filter((l) => l.length > 0)
+    .map((l) => (l.startsWith(`${head}:`) ? l.slice(head.length + 1) : l))
+    .filter(isAnchorSourceCandidate);
+  for (const rel of hits) {
+    const text = await repo.show(head, rel);
+    if (!text) continue;
+    for (const a of anchorsFromSource(rel, text)) {
+      if (!wanted.has(a.id)) continue;
+      const list = copies.get(a.id) ?? [];
+      list.push(a.statement);
+      copies.set(a.id, list);
+    }
+  }
   const out: Weakening[] = [];
   for (const [id, sha] of frozen.anchors) {
-    const now = index.anchors.get(id) ?? [];
+    const now = copies.get(id) ?? [];
     if (now.length === 0)
       out.push({ kind: "anchor-removed", subject: id, message: `frozen anchor ${id} was removed` });
     // Every copy must keep the frozen statement — a duplicate comment carrying
     // the old text must not mask a reworded real anchor.
-    else if (!now.every((a) => invariantStatementSha(a.statement) === sha)) {
+    else if (!now.every((statement) => invariantStatementSha(statement) === sha)) {
       out.push({
         kind: "anchor-reworded",
         subject: id,
