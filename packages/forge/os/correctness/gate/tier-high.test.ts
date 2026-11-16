@@ -13,6 +13,7 @@ Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
+  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -69,7 +70,10 @@ describe("tier high", () => {
       "test: verifier oracle\n\nX-Expectation-Origin: independent-verifier\nX-Verifier-Report: docs/correctness/reviews/r.yaml",
     ]);
     const r = await gate(f);
-    expect(r.violations, JSON.stringify(r.violations)).toEqual([]);
+    expect(
+      r.violations.filter((v) => v.severity === "error"),
+      JSON.stringify(r.violations),
+    ).toEqual([]);
   });
 
   it("tier formal without a non-self proof: oracle is CORR-GATE-06 and never runs a proof through checkRun", async () => {

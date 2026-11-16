@@ -17,6 +17,7 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
+  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,6 +85,56 @@ export function readCorrectnessSettings(workspaceRoot: string): CorrectnessSetti
     invariantsFile: config?.bindings?.paths?.invariantsFile ?? null,
     compassDocs: config?.bindings?.paths?.compassDocs ?? [],
     rfcsDir: config?.paths?.rfcsDir ?? "docs/rfcs",
+  };
+}
+
+/**
+ * The same settings resolved from an already-parsed forge.yaml document —
+ * the commit-side flavor used when the judged revision is `git show`, not
+ * the worktree (RFC-1615 review CX-32/CX-33: an uncommitted `mode:`/`tier:`/
+ * `oracleTimeoutMs` flip must neither mask a committed weakening nor
+ * fabricate a failure). `config` is null — consumers needing the parsed
+ * config read `forgeDoc` themselves.
+ */
+export function settingsFromForgeDoc(
+  doc: Record<string, unknown>,
+  forgeYamlUnreadable: boolean,
+): CorrectnessSettings {
+  const section = (doc["correctness"] ?? {}) as Record<string, unknown>;
+  const bindings = (doc["bindings"] ?? {}) as {
+    commands?: Record<string, unknown>;
+    paths?: Record<string, unknown>;
+  };
+  const topPaths = (doc["paths"] ?? {}) as Record<string, unknown>;
+  const invalid: CorrectnessSettings["invalid"] = [];
+  const rawMode = section["mode"];
+  const rawTier = section["tier"];
+  let mode: CorrectnessMode = "warn";
+  let tier: CorrectnessTier = "standard";
+  if (rawMode !== undefined) {
+    if (CORRECTNESS_MODES.includes(rawMode as CorrectnessMode)) mode = rawMode as CorrectnessMode;
+    else invalid.push({ key: "mode", value: rawMode });
+  }
+  if (rawTier !== undefined) {
+    if (CORRECTNESS_TIERS.includes(rawTier as CorrectnessTier)) tier = rawTier as CorrectnessTier;
+    else invalid.push({ key: "tier", value: rawTier });
+  }
+  const str = (v: unknown): string | null => (typeof v === "string" ? v : null);
+  return {
+    config: null,
+    configError: forgeYamlUnreadable ? "forge.yaml does not parse to a YAML map" : null,
+    mode,
+    tier,
+    invalid,
+    manifestPath: str(bindings.paths?.["correctnessManifest"]),
+    checkRun: str(bindings.commands?.["checkRun"]),
+    invariantsFile: str(bindings.paths?.["invariantsFile"]),
+    compassDocs: Array.isArray(bindings.paths?.["compassDocs"])
+      ? (bindings.paths["compassDocs"] as unknown[]).filter(
+          (x): x is string => typeof x === "string",
+        )
+      : [],
+    rfcsDir: str(topPaths["rfcsDir"]) ?? "docs/rfcs",
   };
 }
 

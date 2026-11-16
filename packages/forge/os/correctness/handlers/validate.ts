@@ -26,6 +26,7 @@ Add os/correctness (forge/correctness-manifest@1, correctness.manifest.validate 
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-08 findings
 
 F1 code-only anchor scan (markdown fences never declare anchors); F2 generated index as a re-verified hint, scan on any miss; F3 RFC-IMP-16 asserted through rfc.implement.stamp; F4 forge create patches only absent/null keys; F5 type: refs normalized; F6/F10/F11 capture existence via existsSync, future recordedAt and workspace-escaping paths are CORR-07; F7 V-55 reuses criteriaEval; F8 validator inventory regenerated; F9 binding-driven reads; F12 git listing, index hint, create patch tests; DEV-1 single sidecar spelling; DEV-2 output field dropped.</item>
+  <item>RFC-1615: round-7 — committed-side verdict inputs (CX-32/33) + every-contour inert-policy note (CX-34)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -63,6 +64,7 @@ import {
   normalizeCheckRef,
   normalizeRelPath,
   readCorrectnessSettings,
+  type CorrectnessSettings,
 } from "../workspace.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -73,6 +75,15 @@ const FUTURE_SKEW_MS = DAY_MS;
 export interface ValidateOptions {
   /** Wall clock for CORR-07 (defaults to Date.now()). */
   now?: number;
+  /**
+   * RFC-1615 (CX-32/33): pre-resolved settings for the judged revision —
+   * the gate passes a commit-derived snapshot (`settingsFromForgeDoc` over
+   * the HEAD forge.yaml) so the mode/tier flavor of every violation is the
+   * committed one, not whatever the worktree currently claims. Manifest
+   * content itself is still read from the worktree — same flavor as the
+   * oracle runs, disclosed by the dirty-worktree bundle warning.
+   */
+  settings?: CorrectnessSettings;
 }
 
 export interface CaptureStatus {
@@ -167,7 +178,7 @@ export async function validateCorrectnessManifest(
   options: ValidateOptions = {},
 ): Promise<CorrectnessValidateResult> {
   const now = options.now ?? Date.now();
-  const settings = readCorrectnessSettings(workspaceRoot);
+  const settings = options.settings ?? readCorrectnessSettings(workspaceRoot);
   const violations: CorrectnessViolation[] = [];
   const add = (
     rule: CorrectnessRuleId,
