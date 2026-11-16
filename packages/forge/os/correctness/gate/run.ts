@@ -23,6 +23,7 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
+  <item>RFC-1615: declare and freeze the policy surface at integration</item>
 </CHANGE_SUMMARY>
 */
 
@@ -49,6 +50,8 @@ import {
   anchorWeakenings,
   byteWeakenings,
   diffWeakenings,
+  policyFileAdditions,
+  policyWeakenings,
   readFrozenSet,
   readHeadSide,
   supportAdditions,
@@ -80,6 +83,12 @@ export interface GateOptions {
   /** Forge version recorded in the bundle. */
   forgeVersion?: string;
   forgePath?: string;
+  /**
+   * RFC-1615: judge only the declared policy surface (policy-key/policy-decl/
+   * policy-file weakenings) — the cheap mode CI runs on forge.yaml and frozen
+   * file diffs without loading the manifest or running oracles.
+   */
+  policyOnly?: boolean;
 }
 
 export type GateOutcome =
@@ -118,12 +127,20 @@ async function defaultProve(root: string, specRel: string): Promise<string> {
   return verdict ?? "error";
 }
 
-/** True when forge.yaml differs between base and head only in the frozen correctness keys. */
+/**
+ * True when forge.yaml differs between base and head only in the frozen
+ * correctness/policy keys. RFC-1615: the comparison keeps only the declared
+ * `mutable`/`additive` top-level keys (minus the individually frozen binding
+ * subkeys) — every other top-level key is frozen by the policy surface, so a
+ * diff there is exactly what an isolated weakening session looks like.
+ */
 async function forgeYamlOnlyFrozenKeys(
   repo: GateRepo,
   base: string,
   head: string,
+  policy: { mutable: string[]; additive: string[] } | null,
 ): Promise<boolean> {
+  const permitted = new Set([...(policy?.mutable ?? []), ...(policy?.additive ?? [])]);
   const strip = (text: string | null): string => {
     let doc: Record<string, unknown> = {};
     try {
@@ -132,7 +149,15 @@ async function forgeYamlOnlyFrozenKeys(
       return "\0unparseable";
     }
     const copy = JSON.parse(JSON.stringify(doc)) as Record<string, unknown>;
-    delete copy["correctness"];
+    if (policy === null) {
+      // No declared policy: keep the RFC-1580 semantics — only the frozen
+      // correctness keys are stripped, everything else must match.
+      delete copy["correctness"];
+    } else {
+      for (const key of Object.keys(copy)) {
+        if (!permitted.has(key)) delete copy[key];
+      }
+    }
     const b = copy["bindings"] as
       { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
     if (b?.commands) delete b.commands["checkRun"];
@@ -222,10 +247,10 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   if (validation.status === "exempt" && frozen.base.mode === "exempt")
     return finish("exempt", [], [], null);
   for (const v of validation.violations) {
-    if (v.severity === "error")
+    if (v.severity === "error" && !options.policyOnly)
       add("CORR-GATE-01", `${v.rule}${v.entry ? ` ${v.entry}` : ""}: ${v.message}`);
   }
-  if (!settings.manifestPath) {
+  if (!settings.manifestPath && !options.policyOnly) {
     violations.push({
       rule: "CORR-GATE-01",
       severity: "warning",
@@ -243,26 +268,38 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
   };
   const now = readHeadSide(root, readWorking);
   const files = await listWorkspaceFiles(root);
-  if (frozen.baseManifestUnreadable) {
+  if (frozen.baseManifestUnreadable && !options.policyOnly) {
     add(
       "CORR-GATE-02",
       `the base manifest ${frozen.base.manifestPath} does not parse with this forge — the frozen set cannot be read; integrate with a forge that reads it`,
     );
   }
-  const weakenings: Weakening[] = [
-    ...diffWeakenings(frozen, now),
-    ...(await byteWeakenings(repo, base, head, frozen.files)),
-    ...(await supportAdditions(repo, base, head, frozen)),
-    ...anchorWeakenings(root, files, frozen),
-  ];
+  const weakenings: Weakening[] = options.policyOnly
+    ? [
+        // RFC-1615 --policy-only: the declared policy surface, nothing else.
+        ...policyWeakenings(frozen, now),
+        ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
+        ...(await policyFileAdditions(repo, head, frozen)),
+      ]
+    : [
+        ...diffWeakenings(frozen, now),
+        ...(await byteWeakenings(repo, base, head, frozen.files)),
+        ...(await supportAdditions(repo, base, head, frozen)),
+        ...anchorWeakenings(root, files, frozen),
+        // RFC-1615: the declared policy surface is judged in the same gate run.
+        ...policyWeakenings(frozen, now),
+        ...(await byteWeakenings(repo, base, head, frozen.policyFiles, "policy-file")),
+        ...(await policyFileAdditions(repo, head, frozen)),
+      ];
   let acceptedReason: string | null = null;
   if (weakenings.length > 0) {
     const reason = options.acceptWeakening?.trim();
     if (reason) {
-      const forgeYamlIsolated = await forgeYamlOnlyFrozenKeys(repo, base, head);
+      const forgeYamlIsolated = await forgeYamlOnlyFrozenKeys(repo, base, head, frozen.base.policy);
       const frozenPaths = new Set([
         ...frozen.files,
         ...frozen.anchorFiles,
+        ...frozen.policyFiles,
         ...(forgeYamlIsolated ? ["forge.yaml"] : []),
         ...[frozen.base.manifestPath, now.manifestPath]
           .filter((p): p is string => !!p)
@@ -282,6 +319,15 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       for (const w of weakenings) add("CORR-GATE-02", `weakening (${w.kind}): ${w.message}`);
   }
   const weakeningRecords = weakenings.map((w) => ({ ...w, accepted: acceptedReason !== null }));
+
+  // RFC-1615: --policy-only ends after the weakening verdict — no oracle runs.
+  if (options.policyOnly) {
+    if (mode === "warn") {
+      for (const v of violations) if (DOWNGRADE_IN_WARN.has(v.rule)) v.severity = "warning";
+    }
+    const status = violations.some((v) => v.severity === "error") ? "fail" : "pass";
+    return finish(status, [], weakeningRecords, acceptedReason);
+  }
 
   // (3)–(8) per entry.
   const entries: BundleEntry[] = [];
