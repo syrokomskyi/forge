@@ -12,9 +12,6 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
-
-F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
@@ -25,6 +22,7 @@ AC-7 conformance: a malformed policy: refuses as CORR-GATE-01 in both modes; --p
   <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
 
 Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
+  <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -146,13 +144,24 @@ function parsePolicySurface(raw: unknown): {
   surface: PolicySurface | null;
   malformed: boolean;
 } {
-  if (raw === undefined || raw === null) return { surface: null, malformed: false };
-  const isMap = typeof raw === "object" && !Array.isArray(raw);
+  // `policy:` absent vs `policy: null` — only the absent form is undeclared;
+  // a declared-but-empty (null) section is malformed (RFC-1615 review CX-8).
+  if (raw === undefined) return { surface: null, malformed: false };
+  const isMap = typeof raw === "object" && raw !== null && !Array.isArray(raw);
   const obj = (isMap ? raw : {}) as Record<string, unknown>;
   const list = (v: unknown): string[] =>
     Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
   const declared = ["mutable", "additive", "freezeFiles"] as const;
-  const malformed = !isMap || declared.some((k) => obj[k] !== undefined && !Array.isArray(obj[k]));
+  const malformed =
+    !isMap ||
+    declared.some(
+      (k) =>
+        obj[k] !== undefined &&
+        (!Array.isArray(obj[k]) ||
+          // silently dropping non-string members would fail open on a declared
+          // freeze (freezeFiles: [1] binds zero globs) — malformed instead
+          (obj[k] as unknown[]).some((m) => typeof m !== "string")),
+    );
   return {
     surface: {
       mutable: list(obj["mutable"]),
@@ -199,6 +208,10 @@ function displayLeaf(root: string, leafPath: string): string {
  */
 export function policyLeaves(value: unknown, prefix = ""): Map<string, unknown> {
   const out = new Map<string, unknown>();
+  // `null`/`undefined` carry no leaves — `key:` (YAML null) is an empty
+  // container for additive purposes, and an absent key leaves nothing
+  // (RFC-1615 review CX-6/CX-7).
+  if (value === null || value === undefined) return out;
   if (Array.isArray(value)) {
     value.forEach((v, i) => {
       for (const [k, leaf] of policyLeaves(v, `${prefix}[${i}]`)) out.set(k, leaf);
@@ -473,12 +486,16 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
   const keys = new Set([...Object.keys(baseDoc), ...Object.keys(nowDoc)]);
   keys.delete("policy");
   for (const key of [...keys].sort()) {
+    // Presence is judged independently of value — `key:` (null) at base and
+    // the key absent are not the same thing (RFC-1615 review CX-7).
+    const had = key in baseDoc;
+    const has = key in nowDoc;
     const before = baseDoc[key];
     const after = nowDoc[key];
-    if (canon(before) === canon(after)) continue;
+    if (had === has && canon(before) === canon(after)) continue;
     if (mutable.has(key)) continue;
     if (additive.has(key)) {
-      if (before === undefined) continue; // every leaf is new
+      if (!had || before === null || before === undefined) continue; // every leaf is new
       const nowLeaves = policyLeaves(after);
       const broken = [...policyLeaves(before)].filter(
         ([p, v]) => !nowLeaves.has(p) || canon(nowLeaves.get(p)) !== canon(v),
@@ -494,7 +511,9 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
       });
       continue;
     }
-    const leaf = firstLeafDiff(before, after);
+    // New/removed keys are reported by their own name — a leaf path only
+    // applies when both sides carry the key (RFC-1615 review CX-7 follow-up).
+    const leaf = had && has ? firstLeafDiff(before, after) : null;
     // The subject names the nearest keyed ancestor — a deny: [] change is
     // `agentTools.deny`, not `agentTools.deny[0]` (RFC-1615 review CX-5).
     const subject =
@@ -503,9 +522,9 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
       kind: "policy-key",
       subject,
       message:
-        before === undefined
+        !had
           ? `new top-level key ${key} is not declared in policy.mutable or policy.additive`
-          : after === undefined
+          : !has
             ? `frozen top-level key ${key} was removed`
             : `frozen key ${subject} changed — declare ${key} under policy.mutable or policy.additive to permit this`,
     });
