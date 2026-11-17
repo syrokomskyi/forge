@@ -20,6 +20,7 @@ attestation metadata a CODEOWNERS rule can own. policy.digest --write emits it;
 
 forge/policy-bundle@1 zod contract, canonicalJson + canonicalPolicyDigest (stable-key sha256 over parsed doc + file contents), forge/adversarial-scenario@1 fixture schema and result types.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -65,6 +66,9 @@ export interface PolicySurface {
  * digest identically.
  */
 export function canonicalJson(value: unknown): string {
+  // intAsBigInt parses every YAML int as BigInt — serialize the tagged form
+  // so 9007199254740993 and 9007199254740992 stay distinct (CX-43).
+  if (typeof value === "bigint") return JSON.stringify(`int:${value.toString()}`);
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (value instanceof Date) return JSON.stringify(value.toISOString());
   if (value instanceof Map) {

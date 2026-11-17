@@ -18,11 +18,6 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: digest segments develop by first-parent chain; hold of the topmost item skips the empty replay
-
-Steering-session verification of wave 2 found two outbound defects:
-- flow.digest attributed items by index spans over the date-ordered tail; after a fix release and its back-merge, the fix cut record (whose range lives on main) claimed the develop integration that shared its base, so the operator saw 'feat: dev work' labelled as the fix release. Segments now follow develop's first-parent chain and item commit counts come from the base..tip range.
-- flow.hold on the item at the tip of develop ran cherry-pick on an empty range and refused FLOW-HOLD-07. An empty tail now resets develop to the item's base.</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
 flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
@@ -31,6 +26,7 @@ flow.digest now reads .github/workflows on the primary checkout and reports tagT
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -179,25 +175,35 @@ async function readPathConfig(
   }
 }
 
-/** RFC-1580: weakening and verifier trailers among the given commits (oldest first). */
+/**
+ * RFC-1580: weakening and verifier trailers among the given commits (oldest
+ * first). Delimiter-free per-commit reads — a \x1e/\x1f byte inside a commit
+ * message cannot split a record and hide the trailer tail (CX-33).
+ */
 async function correctnessTrailOf(
   repoRoot: string,
   io: WorkspaceIO,
   shas: string[],
 ): Promise<FlowDigestData["correctnessTrail"]> {
   const trail: FlowDigestData["correctnessTrail"] = { weakenings: [], verifierCommits: [] };
-  if (shas.length === 0) return trail;
-  const result = await git(repoRoot, io, ["show", "-s", "--format=%H%x1f%s%x1f%B%x1e", ...shas]);
-  if (result.exitCode !== 0) return trail;
-  for (const chunk of result.stdout.split("\x1e")) {
-    const [sha, subject, body] = chunk.replace(/^\s+/, "").split("\x1f");
-    if (!sha || body === undefined) continue;
+  for (const sha of shas) {
+    const result = await git(repoRoot, io, ["log", "-1", "--format=%B", sha]);
+    if (result.exitCode !== 0) continue;
+    const body = result.stdout;
+    const subject = body.split("\n", 1)[0] ?? "";
     const weak = /^X-Correctness-Weakening:\s*(.+)$/m.exec(body);
     if (weak)
       trail.weakenings.push({ sha: sha.trim(), subject: subject ?? "", reason: weak[1]!.trim() });
-    if (/^X-Expectation-Origin:\s*independent-verifier\s*$/m.test(body)) {
+    // Any verifier-evidence trailer claims provenance the session cannot
+    // self-certify — a lone X-Verifier-Report must list too, not only the
+    // full expectation-origin pair (CX-33).
+    if (
+      /^X-Expectation-Origin:\s*\S/m.test(body) ||
+      /^X-Verifier-Report:\s*\S/m.test(body) ||
+      /^X-Policy-Digest:\s*\S/m.test(body)
+    ) {
       const report = /^X-Verifier-Report:\s*(\S+)\s*$/m.exec(body)?.[1] ?? null;
-      trail.verifierCommits.push({ sha: sha.trim(), subject: subject ?? "", report });
+      trail.verifierCommits.push({ sha, subject, report });
     }
   }
   return trail;

@@ -27,12 +27,16 @@ src/scaffold/github/ (shipped in package files[]) so the AC-7/AC-8
 file-contains probes verify the real artifacts; rename the push-trailer
 suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { sanitizeOwnerHandle } from "../config/forge-config.ts";
+
+export { sanitizeOwnerHandle };
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -57,7 +61,10 @@ export const FORGE_POLICY_WORKFLOW = fs.readFileSync(
 
 /** AC-8: CODEOWNERS covering the policy-surface paths. */
 export function codeownersTemplate(owner: string | undefined): string {
-  const who = owner?.trim() || "@OWNER";
+  // sanitizeOwnerHandle never returns control characters — a newline-bearing
+  // owner cannot inject an extra ownership rule (CX-40); an unparseable one
+  // keeps the documented placeholder rather than expanding to a weaker owner.
+  const who = sanitizeOwnerHandle(owner) ?? "@OWNER";
   return fs
     .readFileSync(path.join(SCAFFOLD_DIR, "CODEOWNERS.template"), "utf8")
     .replaceAll("@OWNER", who);
@@ -79,6 +86,29 @@ const REQUIRED_MARKERS: Record<string, string[]> = {
   ],
   ".github/CODEOWNERS": ["forge.yaml", ".github/CODEOWNERS"],
 };
+
+/**
+ * A marker counts only on an EFFECTIVE line — both CODEOWNERS and YAML treat
+ * `#` as a comment opener, so a file that merely names the marker strings in
+ * comments enforces nothing and must not count as adopted (CX-39).
+ */
+function hasMarker(body: string, marker: string): boolean {
+  for (const line of body.split("\n")) {
+    const at = line.indexOf(marker);
+    if (at < 0) continue;
+    const hash = line.indexOf("#");
+    if (hash === -1 || at < hash) return true;
+  }
+  return false;
+}
+
+/**
+ * `sanitizeOwnerHandle` — a GitHub handle (`@user`/`@org/team`) extracted
+ * from a raw owner string, or undefined when nothing handle-shaped leads it —
+ * lives in forge-config.ts so `loadForgeConfig` and the scaffold sanitize the
+ * same trust anchor (CX-40: a newline-bearing owner must never inject
+ * ownership rules into CODEOWNERS).
+ */
 
 /**
  * Write the trust-boundary files when absent. An existing file CARRYING the
@@ -109,7 +139,7 @@ export function scaffoldTrustBoundary(
       } catch {
         /* unreadable existing file — replace it like a marker-missing one */
       }
-      const missing = (REQUIRED_MARKERS[rel] ?? []).filter((m) => !body.includes(m));
+      const missing = (REQUIRED_MARKERS[rel] ?? []).filter((m) => !hasMarker(body, m));
       if (missing.length === 0) {
         skipped.push(`${rel} (already exists)`);
         continue;
@@ -120,9 +150,12 @@ export function scaffoldTrustBoundary(
           .map((l) => l.trimEnd())
           .filter((l) => l && !content.split("\n").some((c) => c.trimEnd() === l))
           .join("\n");
+        // GitHub CODEOWNERS is last-match-wins — the boundary block MUST land
+        // after every kept line or a planted `* @session` rule shadows the
+        // trust-anchor ownership it was planted to defeat (CX-38).
         fs.writeFileSync(
           dest,
-          `${content}\n# --- pre-existing entries (kept verbatim) ---\n${kept}\n`,
+          `${kept}${kept ? "\n" : ""}# --- forge trust boundary (added by scaffold) ---\n${content}`,
           "utf8",
         );
       } else {

@@ -17,7 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
 
 READ_ONLY_GIT_QUERIES / isReadOnlyGitQuery replace the recording adapter's
@@ -34,6 +33,7 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -48,8 +48,8 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
+import { parse as parseYaml } from "yaml";
 import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
-import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { git, requireGit, topLevel } from "../git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
@@ -106,24 +106,28 @@ function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData
  */
 /**
  * RFC-1616 (AC-6): list commits in `range` whose message carries a verifier /
- * audit trailer. `git log` failure surfaces as an empty scan only when the
- * range itself is empty — an unreadable log refuses upstream via FLOW-PUSH-02.
+ * audit trailer. Reads are delimiter-free: commit SHAs enumerate via
+ * `rev-list` (hex-only output) and each body arrives through its own
+ * `git log -1 --format=%B` — a \x1e byte inside a message can no longer split
+ * a record and hide the trailer tail (CX-33).
  */
 async function scanVerifierTrailers(
   repoRoot: string,
   io: WorkspaceIO,
   range: string,
 ): Promise<Array<{ sha: string; trailers: string[] }>> {
-  const log = await git(repoRoot, io, ["log", "--format=%H%x1f%B%x1e", range]);
-  if (log.exitCode !== 0) return [];
+  const list = await git(repoRoot, io, ["rev-list", range]);
+  if (list.exitCode !== 0) return [];
   const hits: Array<{ sha: string; trailers: string[] }> = [];
-  for (const rec of log.stdout.split("\x1e")) {
-    const idx = rec.indexOf("\x1f");
-    if (idx < 0) continue;
-    const sha = rec.slice(0, idx).trim();
-    const body = rec.slice(idx + 1);
-    if (!sha) continue;
-    const trailers = VERIFIER_TRAILERS.filter((t) => new RegExp(`^${t}:\\s*\\S`, "m").test(body));
+  for (const sha of list.stdout
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean)) {
+    const body = await git(repoRoot, io, ["log", "-1", "--format=%B", sha]);
+    if (body.exitCode !== 0) continue;
+    const trailers = VERIFIER_TRAILERS.filter((t) =>
+      new RegExp(`^${t}:\\s*\\S`, "m").test(body.stdout),
+    );
     if (trailers.length > 0) hits.push({ sha, trailers: [...trailers] });
   }
   return hits;
@@ -160,12 +164,18 @@ export async function pushFlow(
   // range. A commit carrying a verifier/audit trailer claims provenance the
   // session cannot self-certify — the operator must see those commits before
   // they leave the machine. `push.requireVerifierReview` defaults to true;
-  // an explicit `false` opts the repository out (itself a frozen key).
-  // Unreadable/missing forge.yaml must not silently disable the scan —
-  // an unresolvable declaration defaults to required (fail closed).
+  // an explicit `false` opts the repository out (itself a judged key).
+  // The declaration is read from the COMMITTED forge.yaml (HEAD) — a dirty
+  // worktree opt-out must not take effect unjudged (CX-34); an unreadable or
+  // missing committed config defaults to required (fail closed).
   let declared: boolean | undefined;
   try {
-    declared = loadForgeConfig(repoRoot).push?.requireVerifierReview;
+    const show = await git(repoRoot, io, ["show", "HEAD:forge.yaml"]);
+    if (show.exitCode === 0) {
+      const doc = parseYaml(show.stdout) as Record<string, unknown> | null;
+      const v = (doc?.["push"] as Record<string, unknown> | undefined)?.["requireVerifierReview"];
+      declared = typeof v === "boolean" ? v : undefined;
+    }
   } catch {
     declared = undefined;
   }
