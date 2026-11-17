@@ -20,70 +20,46 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: scaffold templates as shipped files + AC-6 probe name alignment
+
+Extract forge-policy.template.yml and CODEOWNERS.template into
+src/scaffold/github/ (shipped in package files[]) so the AC-7/AC-8
+file-contains probes verify the real artifacts; rename the push-trailer
+suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+/** Ascend from this module to the directory holding `package.json` (src or dist layout). */
+function packageRoot(from: string = MODULE_DIR): string {
+  let dir = from;
+  for (;;) {
+    if (fs.existsSync(path.join(dir, "package.json"))) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return from;
+    dir = parent;
+  }
+}
+
+const SCAFFOLD_DIR = path.join(packageRoot(), "src", "scaffold", "github");
 
 /** AC-7: the protected-CI workflow — policy surface judged on every push/PR. */
-export const FORGE_POLICY_WORKFLOW = `name: forge-policy
-
-# RFC-1616 — the external half of the trust boundary. Every push and pull
-# request re-judges the declared policy surface in the repository's own CI,
-# outside the session's write access: the frozen forge.yaml keys, the
-# pinned-file set, and the recorded policy digest. A session that weakens a
-# gate locally cannot make this job go green — only an accepted, isolated
-# weakening (or an operator change to this workflow, which CODEOWNERS
-# review-gates) can.
-
-on:
-  push:
-    branches: [develop, main]
-  pull_request:
-
-jobs:
-  policy-surface:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          lfs: true
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      # The frozen policy surface: forge.yaml policy keys, freezeFiles, the
-      # manifest set — judged policy-only so the job does not need the full
-      # oracle substrate.
-      - name: Correctness gate (policy-only)
-        run: pnpm exec forge correctness.gate --policy-only --base \${{ github.event.before || 'HEAD~1' }}
-      # The pinned file set must resolve and validate in CI mode.
-      - name: Pinned validation
-        run: pnpm exec forge pinned.validate --mode ci
-      # The recorded digest must match the policy surface as committed.
-      - name: Policy digest
-        run: pnpm exec forge policy.digest --verify
-`;
+export const FORGE_POLICY_WORKFLOW = fs.readFileSync(
+  path.join(SCAFFOLD_DIR, "forge-policy.template.yml"),
+  "utf8",
+);
 
 /** AC-8: CODEOWNERS covering the policy-surface paths. */
 export function codeownersTemplate(owner: string | undefined): string {
   const who = owner?.trim() || "@OWNER";
-  return `# CODEOWNERS — RFC-1616 trust boundary
-#
-# The policy surface is owned by the operator, not by sessions: a pull
-# request touching any of these paths requires the owner's review before it
-# can merge (with GitHub "require review from Code Owners" branch protection
-# enabled — see packages/forge/docs/reference/trust-boundary.md).
-${owner?.trim() ? "" : "# Set project.owner in forge.yaml to your @user or @org/team handle and\n# re-run forge upgrade, or replace @OWNER here by hand.\n"}
-forge.yaml              ${who}
-.forge/                 ${who}
-hooks/                  ${who}
-.github/workflows/      ${who}
-`;
+  return fs
+    .readFileSync(path.join(SCAFFOLD_DIR, "CODEOWNERS.template"), "utf8")
+    .replaceAll("@OWNER", who);
 }
 
 export interface TrustBoundaryScaffold {

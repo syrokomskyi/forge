@@ -1,0 +1,40 @@
+name: forge-policy
+
+# RFC-1616 — the external half of the trust boundary. Every push and pull
+# request re-judges the declared policy surface in the repository's own CI,
+# outside the session's write access: the frozen forge.yaml keys, the
+# pinned-file set, and the recorded policy digest. A session that weakens a
+# gate locally cannot make this job go green — only an accepted, isolated
+# weakening (or an operator change to this workflow, which CODEOWNERS
+# review-gates) can.
+
+on:
+  push:
+    branches: [develop, main]
+  pull_request:
+
+jobs:
+  policy-surface:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The frozen policy surface: forge.yaml policy keys, freezeFiles, the
+      # manifest set — judged policy-only so the job does not need the full
+      # oracle substrate.
+      - name: Correctness gate (policy-only)
+        run: pnpm exec forge correctness.gate --policy-only --base ${{ github.event.before || 'HEAD~1' }}
+      # The pinned file set must resolve and validate in CI mode.
+      - name: Pinned validation
+        run: pnpm exec forge pinned.validate --mode ci
+      # The recorded digest must match the policy surface as committed.
+      - name: Policy digest
+        run: pnpm exec forge policy.digest --verify

@@ -19,6 +19,12 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: scaffold templates as shipped files + AC-6 probe name alignment
+
+Extract forge-policy.template.yml and CODEOWNERS.template into
+src/scaffold/github/ (shipped in package files[]) so the AC-7/AC-8
+file-contains probes verify the real artifacts; rename the push-trailer
+suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
 </CHANGE_SUMMARY>
 */
 

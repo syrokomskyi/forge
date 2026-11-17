@@ -1,0 +1,13 @@
+# CODEOWNERS — RFC-1616 trust boundary
+#
+# The policy surface is owned by the operator, not by sessions: a pull
+# request touching any of these paths requires the owner's review before it
+# can merge (with GitHub "require review from Code Owners" branch protection
+# enabled — see packages/forge/docs/reference/trust-boundary.md).
+# Set project.owner in forge.yaml to your @user or @org/team handle and
+# re-run forge upgrade, or replace @OWNER here by hand.
+
+forge.yaml              @OWNER
+.forge/                 @OWNER
+hooks/                  @OWNER
+.github/workflows/      @OWNER
