@@ -21,7 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1391: make the formal verification tier checker-bound (RFC-1391)</item>
   <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
 
 OriginGit gains optional showMany backed by one git cat-file --batch
@@ -32,7 +31,8 @@ per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
-  <history>RFC-1330</history>
+  <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
+  <history>RFC-1330, RFC-1391</history>
 </CHANGE_SUMMARY>
 */
 
@@ -246,7 +246,9 @@ async function pathHistory(git: OriginGit, relPath: string): Promise<Map<string,
     "--name-only",
     "--format=COMMIT %H",
     "--",
-    relPath,
+    // `:(literal)` — a path carrying glob metachars must not match sibling
+    // files and borrow their history (CX-117).
+    `:(literal)${relPath}`,
   ]);
   const map = new Map<string, string>();
   if (!out) return map;
@@ -283,7 +285,9 @@ export async function resolveImplementationRange(
     "-G",
     "^status:[[:space:]]*[\"']?accepted[\"']?[[:space:]]*$",
     "--",
-    rfcRelPath,
+    // `:(literal)` — glob metachars in the path would match sibling files and
+    // borrow their acceptance history (CX-117).
+    `:(literal)${rfcRelPath}`,
   ]);
   // A failed log is not "no acceptance recorded" — the caller judges the
   // degraded range (CX-73).
@@ -313,7 +317,7 @@ async function commitsTouching(
     "--format=%H%x1f%B%x1e",
     `${range.base}..${range.head}`,
     "--",
-    relPath,
+    `:(literal)${relPath}`,
   ]);
   if (!out) return [];
   return out

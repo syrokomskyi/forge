@@ -13,11 +13,11 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
+  <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -158,8 +158,14 @@ async function forgeYamlOnlyFrozenKeys(
   // add/remove of a whole `paths:`/`bindings:` parent around only frozen
   // subkeys dead-ends `--accept-weakening` as mixed-weakening (CX-112).
   const pruneEmpties = (copy: Record<string, unknown>) => {
+    // Only PLAIN objects count as emptied — a tagged !!set/!!omap/!!timestamp
+    // container (Set/Map/Date) reports zero own-keys but is real content a
+    // strip must never launder away (CX-119).
     const empty = (v: unknown) =>
-      v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
+      v !== null &&
+      typeof v === "object" &&
+      (Object.getPrototypeOf(v) === Object.prototype || Object.getPrototypeOf(v) === null) &&
+      Object.keys(v).length === 0;
     const b = copy["bindings"] as
       { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
     if (empty(b?.paths)) delete b!.paths;

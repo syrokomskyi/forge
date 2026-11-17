@@ -13,11 +13,11 @@ oracle never covers an entry.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
   <item>RFC-1615: close CX-115 — substitute dot pathspec when a dir binding normalizes to the repo root</item>
+  <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -110,11 +110,22 @@ export async function rfcPath(
     const inScope = !inner.includes("/") || inner.startsWith("archive/");
     return inScope && l.split("/").pop()!.startsWith(prefix);
   });
-  return (
-    matches.find((l) => !l.slice(root.length).includes("/")) ??
-    matches.find((l) => l.slice(root.length).startsWith("archive/")) ??
-    null
-  );
+  // Exact findRfcFile traversal parity (CX-116): files at a level beat dirs,
+  // files sort lexically, sibling dirs descend in REVERSE lexical order —
+  // the worktree walker pushes dirs onto a stack and pops the last first.
+  const rank = (a: string, b: string): number => {
+    const as = a.slice(root.length).split("/");
+    const bs = b.slice(root.length).split("/");
+    for (let i = 0; ; i++) {
+      if (i >= as.length && i >= bs.length) return 0;
+      const aLast = i === as.length - 1;
+      const bLast = i === bs.length - 1;
+      if (aLast !== bLast) return aLast ? -1 : 1;
+      if (as[i] !== bs[i])
+        return aLast ? as[i]!.localeCompare(bs[i]!) : bs[i]!.localeCompare(as[i]!);
+    }
+  };
+  return matches.sort(rank)[0] ?? null;
 }
 
 export async function deriveOrigin(opts: {
