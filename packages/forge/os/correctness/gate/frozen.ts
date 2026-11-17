@@ -12,14 +12,16 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
+  <item>RFC-1615: close round-19 counterexamples — code-unit rank order, posix-normalize binding compare without backslash or whitespace folding</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
+
+import path from "node:path";
 
 import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
@@ -110,11 +112,10 @@ export function sideFrom(
     paths?: Record<string, unknown>;
   };
   const section = (doc["correctness"] ?? {}) as Record<string, unknown>;
-  // Binding values are compared and resolved normalized: a `./`-respelled
-  // path or a whitespace-respelled checkRun argv names the SAME target —
-  // judging it a weakening fabricates a violation (CX-118).
-  const rel = (v: unknown): string | null => (typeof v === "string" ? normalizeRelPath(v) : null);
-  const manifestPath = rel(bindings.paths?.["correctnessManifest"]);
+  const manifestPath =
+    typeof bindings.paths?.["correctnessManifest"] === "string"
+      ? (bindings.paths["correctnessManifest"] as string)
+      : null;
   let manifest: CorrectnessManifest | null = null;
   if (manifestPath) {
     const raw = readManifest(manifestPath);
@@ -134,13 +135,19 @@ export function sideFrom(
       typeof bindings.commands?.["checkRun"] === "string"
         ? (bindings.commands["checkRun"] as string).replace(/\s+/g, " ").trim()
         : null,
-    reviewsDir: rel(bindings.paths?.["oracleReviewsDir"]),
+    reviewsDir:
+      typeof bindings.paths?.["oracleReviewsDir"] === "string"
+        ? (bindings.paths["oracleReviewsDir"] as string)
+        : null,
     // The RFC namespace is frozen too — a session rebind makes planted
     // `status: accepted` files resolve as governing RFCs (CX-78). The LIVE
     // key is the top-level `paths:` object (forge-config schema); a
     // `bindings.paths.rfcsDir` key is stripped by the loader and read by no
     // consumer — judging it would be a dead check (CX-82).
-    rfcsDir: rel((doc["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"]),
+    rfcsDir:
+      typeof (doc["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"] === "string"
+        ? ((doc["paths"] as Record<string, unknown>)["rfcsDir"] as string)
+        : null,
     mode: typeof section["mode"] === "string" ? (section["mode"] as string) : "warn",
     tier: typeof section["tier"] === "string" ? (section["tier"] as string) : "standard",
     allow: Array.isArray(allowRaw)
@@ -151,15 +158,16 @@ export function sideFrom(
       : [],
     manifest,
     compassDocs: Array.isArray(bindings.paths?.["compassDocs"])
-      ? (bindings.paths["compassDocs"] as unknown[])
-          .filter(
-            // element check — `compassDocs: [1]` must not throw `p.replace`
-            // downstream where the strings are normalized (CX-47).
-            (x): x is string => typeof x === "string",
-          )
-          .map(normalizeRelPath)
+      ? (bindings.paths["compassDocs"] as unknown[]).filter(
+          // element check — `compassDocs: [1]` must not throw `p.replace`
+          // downstream where the strings are normalized (CX-47).
+          (x): x is string => typeof x === "string",
+        )
       : [],
-    invariantsFile: rel(bindings.paths?.["invariantsFile"]),
+    invariantsFile:
+      typeof bindings.paths?.["invariantsFile"] === "string"
+        ? (bindings.paths["invariantsFile"] as string)
+        : null,
     policy: parsePolicySurface(doc["policy"]).surface,
     policyMalformed: parsePolicySurface(doc["policy"]).malformed,
     forgeYamlUnreadable,
@@ -495,6 +503,13 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
   const add = (kind: string, subject: string, message: string) =>
     out.push({ kind, subject, message });
 
+  // Path bindings compare resolution-equivalent spellings as the SAME
+  // target: `path.posix.normalize` folds `./`, `//`, `..`, trailing `/`
+  // (CX-118) but preserves backslashes and whitespace — literal POSIX
+  // filename chars that resolve to a DIFFERENT file under `path.join` and
+  // git (CX-120/CX-122). checkRun already compares argv-normalized.
+  const sameTarget = (a: string | null, b: string | null): boolean =>
+    a === b || (a !== null && b !== null && path.posix.normalize(a) === path.posix.normalize(b));
   // Bindings and the correctness section.
   for (const [key, before, after] of [
     ["bindings.paths.correctnessManifest", base.manifestPath, now.manifestPath],
@@ -503,7 +518,7 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
     ["paths.rfcsDir", base.rfcsDir, now.rfcsDir],
     ["bindings.paths.invariantsFile", base.invariantsFile, now.invariantsFile],
   ] as const) {
-    if (before !== null && before !== after)
+    if (before !== null && !sameTarget(before, after))
       add(
         "binding",
         key,
@@ -524,7 +539,11 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
   // reorder under a declared contour redirects CORR-03's requirement
   // resolution — a session-planted compass doc must not mint requirement
   // provenance unjudged (CX-83).
-  if (base.manifestPath !== null && canon(base.compassDocs) !== canon(now.compassDocs))
+  if (
+    base.manifestPath !== null &&
+    canon(base.compassDocs.map(path.posix.normalize)) !==
+      canon(now.compassDocs.map(path.posix.normalize))
+  )
     add(
       "binding",
       "bindings.paths.compassDocs",
