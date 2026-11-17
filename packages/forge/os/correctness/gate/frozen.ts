@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-19 counterexamples — code-unit rank order, posix-normalize binding compare without backslash or whitespace folding</item>
   <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -683,7 +683,25 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
     const before = had ? baseDoc[key] : undefined;
     const after = has ? nowDoc[key] : undefined;
     if (had === has && canon(before) === canon(after)) continue;
-    if (mutable.has(key)) continue;
+    if (mutable.has(key)) {
+      // RFC-1616 (CX-32): `project.owner` is never a free leaf — under the
+      // default `mutable: [project]` grant a session could rebind the
+      // CODEOWNERS handle to itself unjudged. The owner stays judged.
+      if (key === "project") {
+        const ownerOf = (v: unknown) =>
+          v && typeof v === "object" ? (v as Record<string, unknown>)["owner"] : undefined;
+        if (canon(ownerOf(before)) !== canon(ownerOf(after))) {
+          out.push({
+            kind: "policy-key",
+            subject: "project.owner",
+            message:
+              "project.owner changed — the CODEOWNERS handle is a trust anchor " +
+              "carved out of the mutable [project] grant (RFC-1616)",
+          });
+        }
+      }
+      continue;
+    }
     if (additive.has(key)) {
       if (!had || before === null || before === undefined) continue; // every leaf is new
       const nowLeaves = policyLeaves(after);

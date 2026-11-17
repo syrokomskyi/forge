@@ -27,10 +27,11 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
 </CHANGE_SUMMARY>
 */
 
-import { existsSync } from "node:fs";
+import { existsSync, lstatSync } from "node:fs";
 import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
@@ -71,12 +72,33 @@ function parsePolicyDecl(doc: unknown): PolicyDecl | null {
   };
 }
 
-/** forge.yaml reduced to the policy-judged surface: every key except mutable. */
+/**
+ * Top-level keys the digest always attests even when a declaration marks them
+ * mutable — `policy` governs the freeze itself (a `mutable:["policy"]` grant
+ * must not self-exclude the meta-policy from attestation, CX-11) and `push`
+ * binds the external review switch.
+ */
+const ALWAYS_JUDGED = new Set(["policy", "push"]);
+
+/**
+ * forge.yaml reduced to the policy-judged surface: every key except mutable —
+ * except ALWAYS_JUDGED keys and `project.owner`, which stays digested even
+ * under the default `mutable:["project"]` grant so an owner rebind always
+ * advances the attestation (CX-32).
+ */
 function judgedDoc(doc: Record<string, unknown>, policy: PolicyDecl): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(doc)) {
-    if (policy.mutable.includes(k)) continue;
-    out[k] = doc[k];
+    if (ALWAYS_JUDGED.has(k) || !policy.mutable.includes(k)) out[k] = doc[k];
+  }
+  const project = doc["project"];
+  if (
+    policy.mutable.includes("project") &&
+    project &&
+    typeof project === "object" &&
+    "owner" in (project as Record<string, unknown>)
+  ) {
+    out["project"] = { owner: (project as Record<string, unknown>)["owner"] };
   }
   return out;
 }
@@ -102,7 +124,18 @@ async function listFilesRecursive(root: string, rel: string): Promise<string[]> 
   return out;
 }
 
-const FIXED_DIRS = [".forge/pinned.yaml", "hooks", ".github/workflows"];
+const FIXED_DIRS = [".forge/pinned.yaml", "hooks", ".github/workflows", ".github/CODEOWNERS"];
+
+/** git-style mode for a worktree file: symlink 120000, executable 100755, else 100644. */
+function fileMode(abs: string): string {
+  try {
+    const st = lstatSync(abs);
+    if (st.isSymbolicLink()) return "120000";
+    return st.mode & 0o111 ? "100755" : "100644";
+  } catch {
+    return "";
+  }
+}
 
 async function gatherWorktreeSurface(
   root: string,
@@ -124,7 +157,8 @@ async function gatherWorktreeSurface(
   const files = [];
   for (const rel of [...relSet].sort()) {
     try {
-      files.push({ path: rel, content: await readFile(path.join(root, rel), "utf8") });
+      const abs = path.join(root, rel);
+      files.push({ path: rel, content: await readFile(abs, "utf8"), mode: fileMode(abs) });
     } catch {
       /* unreadable file contributes absence — git-side diffing catches it */
     }
@@ -150,19 +184,32 @@ async function gatherBaseSurface(
   const doc = parseYaml(raw) as Record<string, unknown>;
   const policy = parsePolicyDecl(doc);
   if (!policy) return null;
-  const tree = (await git(root, ["ls-tree", "-r", "--name-only", base])) ?? "";
-  const names = tree.split("\n").filter(Boolean);
+  const tree = (await git(root, ["ls-tree", "-r", base])) ?? "";
+  const entries = tree
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => {
+      const m = /^(\d+) \S+ [0-9a-f]+\t(.+)$/.exec(line);
+      return m ? { mode: m[1]!, name: m[2]! } : null;
+    })
+    .filter((e): e is { mode: string; name: string } => e !== null);
   const relSet = new Set<string>();
-  for (const n of names) {
-    if (n === ".forge/pinned.yaml" || n.startsWith("hooks/") || n.startsWith(".github/workflows/"))
-      relSet.add(n);
+  for (const e of entries) {
+    if (
+      e.name === ".forge/pinned.yaml" ||
+      e.name === ".github/CODEOWNERS" ||
+      e.name.startsWith("hooks/") ||
+      e.name.startsWith(".github/workflows/")
+    )
+      relSet.add(e.name);
   }
   const matchers = policy.freezeFiles.map((g) => picomatch(g, { dot: true }));
-  for (const n of names) if (matchers.some((m) => m(n))) relSet.add(n);
+  for (const e of entries) if (matchers.some((m) => m(e.name))) relSet.add(e.name);
+  const modeOf = new Map(entries.map((e) => [e.name, e.mode]));
   const files = [];
   for (const rel of [...relSet].sort()) {
     const content = await git(root, ["show", `${base}:${rel}`]);
-    if (content !== null) files.push({ path: rel, content });
+    if (content !== null) files.push({ path: rel, content, mode: modeOf.get(rel) ?? "" });
   }
   return { surface: { forgeDoc: judgedDoc(doc, policy), files }, policy };
 }
