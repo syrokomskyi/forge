@@ -20,6 +20,7 @@ substituted object, a redirected repository, or a shim binary's output
 <CHANGE_SUMMARY>
   <item>RFC-1616: initial verifier-git primitives — env scrub, execFile wrapper, trusted git resolution.</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -99,12 +100,18 @@ export function verifierPath(): string {
 }
 
 /**
- * Environment for git subprocesses on the trust boundary. Everything git
- * would inherit from the session — repository redirection (`GIT_DIR`,
- * `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`, alternates),
- * config injection (`GIT_CONFIG_*` url rewrites), transport and exec-path
- * overrides (`GIT_SSH*`, `GIT_EXEC_PATH`), namespaces, ceilings — is dropped
- * wholesale by prefix; `refs/replace` substitution is disabled so committed
+ * Environment for git subprocesses on the trust boundary. Built on the
+ * spawned-child ALLOWLIST (verifierSpawnEnv) rather than a strip list —
+ * every variable not explicitly kept is dropped: repository redirection
+ * (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY`,
+ * alternates), config injection (`GIT_CONFIG_*` url rewrites), transport
+ * and exec-path overrides (`GIT_SSH*`, `GIT_EXEC_PATH`), namespaces,
+ * ceilings, AND the generic preload/redirect levers a session owns —
+ * `LD_PRELOAD`/`LD_*`/`DYLD_*`, `BASH_ENV`/`ENV`/`CDPATH`/`IFS`,
+ * `NODE_OPTIONS`/`NODE_PATH`, `PYTHONPATH`/`PYTHONSTARTUP`, `RUBYLIB`,
+ * `PERL5LIB`/`PERL5OPT`, `GCONV_PATH`, `LOCALDOMAIN`, and anything not yet
+ * invented (CX-71: a compiled LD_PRELOAD .so answered a trusted evidence
+ * read verbatim). `refs/replace` substitution is disabled so committed
  * reads see the object's real tree/message (CX-46..CX-51); the
  * global/system config files are `/dev/null` so session-writable
  * `~/.gitconfig` `url.insteadOf`/`alias`/`filter` entries cannot rewrite
@@ -112,16 +119,60 @@ export function verifierPath(): string {
  * a session shim cannot substitute executable resolution.
  */
 export function verifierGitEnv(): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {};
-  for (const [k, v] of Object.entries(process.env)) {
-    if (v === undefined || k.startsWith("GIT_")) continue;
-    env[k] = v;
-  }
+  const env = verifierSpawnEnv();
   env["GIT_NO_REPLACE_OBJECTS"] = "1";
   env["GIT_CONFIG_GLOBAL"] = process.platform === "win32" ? "NUL" : "/dev/null";
   env["GIT_CONFIG_SYSTEM"] = process.platform === "win32" ? "NUL" : "/dev/null";
-  env["PATH"] = verifierPath();
   return env;
+}
+
+/**
+ * `-c` pins forced into every evidence-channel spawn — repo config is
+ * session-writable, so any setting that reshapes what a read resolves or
+ * parses must be held to the documented baseline. `core.commentChar` and
+ * `trailer.separators` decide whether `%(trailers)` sees a verifier claim
+ * at all (CX-64/CX-65: the scan went blind while the `%B` parser still
+ * exempted); `log.showSignature`, `i18n.logOutputEncoding`, and
+ * `core.quotepath` reshape bytes the parsers match; `core.fsmonitor`,
+ * `core.sshCommand`, and `credential.helper` can EXECUTE a repo-config
+ * binary on a read or fetch; `http.proxy`/`http.sslVerify` are MITM levers
+ * on the remote reads; `diff.external` runs a caller-picked program. An
+ * empty value clears the config's list the way git documents.
+ */
+const EVIDENCE_CONFIG_PINS = [
+  "core.commentChar=#",
+  "trailer.separators=:",
+  "log.showSignature=false",
+  "i18n.logOutputEncoding=UTF-8",
+  "core.quotepath=false",
+  "core.fsmonitor=false",
+  "core.sshCommand=",
+  "credential.helper=",
+  "http.proxy=",
+  "http.sslVerify=true",
+  "diff.external=",
+] as const;
+
+/**
+ * `-c` argv fragment shared by both evidence spawns — added inside the
+ * trusted body, never by the callsite, so the static argv judgment sees
+ * only the query itself.
+ */
+export const EVIDENCE_CONFIG_ARGS: readonly string[] = EVIDENCE_CONFIG_PINS.flatMap((kv) => [
+  "-c",
+  kv,
+]);
+
+/**
+ * Caller-owned additions to an evidence env are filtered before merge —
+ * an `extraEnv` built from session state must not hand a `GIT_*` or
+ * preload/redirect lever back into the trusted subprocess (CX-71 class;
+ * `verifierSpawn`'s env is deliberately operator-shaped instead).
+ */
+export function filterEvidenceExtraEnv(
+  extra: Record<string, string> | undefined,
+): Record<string, string> {
+  return Object.fromEntries(Object.entries(extra ?? {}).filter(([k]) => !ORACLE_DROP_RE.test(k)));
 }
 
 export interface VerifierGitResult {
@@ -183,7 +234,7 @@ export function verifierSpawnEnv(extra?: Record<string, string>): NodeJS.Process
  * trust boundary — its exit verdict must not be preloaded.
  */
 const ORACLE_DROP_RE =
-  /^(?:GIT_|NODE_OPTIONS$|NODE_PATH$|BASH_ENV$|ENV$|CDPATH$|IFS$|LD_|DYLD_|PYTHONPATH$|PYTHONSTARTUP$|RUBYLIB$|PERL5LIB$|PERL5OPT$)/;
+  /^(?:GIT_|NODE_OPTIONS$|NODE_PATH$|BASH_ENV$|ENV$|CDPATH$|IFS$|LD_|DYLD_|PYTHONPATH$|PYTHONSTARTUP$|RUBYLIB$|PERL5LIB$|PERL5OPT$|GCONV_PATH$|LOCALDOMAIN$)/;
 
 export function verifierSubprocessEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {};
@@ -253,10 +304,10 @@ export async function verifierGit(
     try {
       execFile(
         resolveGitBin(),
-        args,
+        [...EVIDENCE_CONFIG_ARGS, ...args],
         {
           cwd,
-          env: { ...verifierGitEnv(), ...opts?.extraEnv },
+          env: { ...verifierGitEnv(), ...filterEvidenceExtraEnv(opts?.extraEnv) },
           timeout: opts?.timeoutMs ?? 60_000,
           maxBuffer: opts?.maxBuffer ?? 64 * 1024 * 1024,
         },

@@ -19,6 +19,7 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1531: worktreeAdd for --reattach; isForgeStatePath exported for the shared dirty classifier</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <history>RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
@@ -26,9 +27,125 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
 import { execFile } from "node:child_process";
-import { resolveGitBin, verifierGitEnv } from "../../src/utils/verifier-git.ts";
+import {
+  resolveGitBin,
+  verifierGitEnv,
+  filterEvidenceExtraEnv,
+  EVIDENCE_CONFIG_ARGS,
+} from "../../src/utils/verifier-git.ts";
 
 export const MIN_GIT_VERSION = "2.33";
+
+/**
+ * One argv-shaped allowlist entry — mirrors the ReadOnlyGitQuery shape in
+ * @warpgogol/werkstatt-shared kernel/workspace-io.ts. Forge's `src/` is
+ * autonomous (no runtime imports from werkstatt-shared), so the evidence
+ * channel keeps its own mirror; the parity test asserts this table never
+ * admits an argv the shared read-only table (plus the one pinned fetch
+ * form) would not.
+ */
+interface EvidenceGitQuery {
+  prefix: readonly string[];
+  forbid?: readonly string[];
+  maxPositionals?: number;
+}
+
+const BRANCH_WRITE_FLAGS = [
+  "-d",
+  "-D",
+  "--delete",
+  "-m",
+  "-M",
+  "--move",
+  "-c",
+  "-C",
+  "--copy",
+  "-f",
+  "--force",
+  "-u",
+  "--set-upstream-to",
+  "--unset-upstream",
+  "--edit-description",
+] as const;
+
+/**
+ * The argv space `gitEvidence` may spawn — a mirror of the shared
+ * READ_ONLY_GIT_QUERIES table plus `fetch`, the one mutating op the
+ * channel legitimately runs (it refreshes remote-tracking refs; the
+ * `--upload-pack`/`--exec` levers that exec a repo-config program on the
+ * remote side stay forbidden). `config` is admitted only in its
+ * `config --get*` forms — a bare `config` argv could write repo state on
+ * the trusted channel.
+ */
+const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
+  { prefix: ["--version"], maxPositionals: 0 },
+  { prefix: ["rev-parse"] },
+  { prefix: ["worktree", "list"] },
+  { prefix: ["ls-files"] },
+  { prefix: ["ls-tree"] },
+  { prefix: ["cat-file"] },
+  { prefix: ["rev-list"], forbid: ["--output"] },
+  { prefix: ["merge-base"] },
+  { prefix: ["for-each-ref"] },
+  { prefix: ["show-ref"] },
+  { prefix: ["describe"] },
+  { prefix: ["status"] },
+  { prefix: ["log"], forbid: ["--output", "--ext-diff"] },
+  { prefix: ["diff"], forbid: ["--output", "--ext-diff"] },
+  { prefix: ["show"], forbid: ["--output", "--ext-diff"] },
+  { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
+  { prefix: ["config", "--get"] },
+  { prefix: ["config", "--get-all"] },
+  { prefix: ["config", "--get-regexp"] },
+  { prefix: ["remote", "get-url"] },
+  { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u"] },
+  { prefix: ["branch", "--show-current"], maxPositionals: 0 },
+  { prefix: ["branch", "--list"], forbid: BRANCH_WRITE_FLAGS },
+  { prefix: ["fetch"], forbid: ["--upload-pack", "--exec", "-u"] },
+];
+
+/**
+ * Same forbidden-argument judgment as the shared table: a long flag
+ * exactly, with `=value`, or abbreviated; a short flag alone or inside a
+ * cluster. Over-matching a harmless arg only refuses a read — safe.
+ */
+function isForbiddenEvidenceArg(arg: string, forbid: readonly string[]): boolean {
+  if (arg.startsWith("--")) {
+    const name = arg.slice(2).split("=")[0];
+    if (name.length === 0) return false;
+    return forbid.some((f) => f.startsWith("--") && f.slice(2).startsWith(name));
+  }
+  if (arg.startsWith("-") && arg.length > 1) {
+    const cluster = arg.slice(1);
+    return forbid.some((f) => /^-[^-]$/.test(f) && cluster.includes(f[1]));
+  }
+  return false;
+}
+
+/**
+ * Runtime argv judgment for the evidence channel — the predicate the
+ * static scan assumes exists behind `gitEvidence` the way
+ * isReadOnlyGitQuery sits behind `git()` on io.exec (CX-70: a dynamic
+ * argv tail like `["log", ...flags]` was static-exempt and ran unjudged,
+ * so `--ext-diff`/`--output` could reach the trusted subprocess). The
+ * body-owned `-C`/`-c` pins are added after this check and are not part
+ * of the judged argv.
+ */
+export function isEvidenceGitQuery(args: readonly string[]): boolean {
+  if (args.length === 0) return false;
+  return EVIDENCE_GIT_QUERIES.some((query) => {
+    if (!query.prefix.every((part, i) => args[i] === part)) return false;
+    const tail = args.slice(query.prefix.length);
+    if (query.forbid !== undefined && tail.some((a) => isForbiddenEvidenceArg(a, query.forbid!))) {
+      return false;
+    }
+    if (query.maxPositionals !== undefined) {
+      const positionals = tail.filter((arg) => !arg.startsWith("-")).length;
+      if (positionals > query.maxPositionals) return false;
+    }
+    return true;
+  });
+}
 
 export interface FlowWorktree {
   path: string;
@@ -70,14 +187,24 @@ export async function gitEvidence(
   args: string[],
   opts?: { timeoutMs?: number; extraEnv?: Record<string, string> },
 ): Promise<ExecResult> {
+  // Runtime argv judgment — the evidence channel spawns a trusted git, so
+  // nothing beyond the read-only + pinned-fetch table may reach it, even
+  // through a dynamic tail the static scan cannot see (CX-70).
+  if (!isEvidenceGitQuery(args)) {
+    return {
+      exitCode: -1,
+      stdout: "",
+      stderr: `gitEvidence refused argv outside the evidence allowlist: git ${args.join(" ")}`,
+    };
+  }
   return new Promise((resolve) => {
     try {
       execFile(
         resolveGitBin(),
-        ["-C", repoRoot, ...args],
+        ["-C", repoRoot, ...EVIDENCE_CONFIG_ARGS, ...args],
         {
           cwd: repoRoot,
-          env: { ...verifierGitEnv(), ...opts?.extraEnv },
+          env: { ...verifierGitEnv(), ...filterEvidenceExtraEnv(opts?.extraEnv) },
           // Network-shaped ops are routed to git(); boundary reads are local
           // and still fast — the generous default mirrors io.exec callers.
           timeout: opts?.timeoutMs ?? 600_000,

@@ -17,7 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1616: external verification trust boundary
 
@@ -28,7 +27,8 @@ forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
-  <history>RFC-1491, RFC-1501</history>
+  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
+  <history>RFC-1491, RFC-1501, RFC-1503</history>
 </CHANGE_SUMMARY>
 */
 
@@ -168,6 +168,23 @@ export async function pushFlow(
   );
   if (noOrigin !== undefined) {
     return refuse("FLOW-PUSH-01", noOrigin.message, "add an 'origin' remote first");
+  }
+  // Any other error-severity digest diagnostic blocks the push too — a
+  // remote identity that cannot be proven (FLOW-PUSH-09: url.insteadOf
+  // rewrite, pushurl/pushInsteadOf split) means the scanned remote is not
+  // the pushed remote, and a failed fetch/ls-remote means the judged tips
+  // are stale or planted (CX-62/CX-63).
+  const blocking = digest.diagnostics.filter((d) => d.severity === "error");
+  if (blocking.length > 0) {
+    const first = blocking[0]!;
+    return refuse("FLOW-PUSH-10", first.message, first.fixHint);
+  }
+  if (!opts.dryRun && digest.fetched === false) {
+    return refuse(
+      "FLOW-PUSH-11",
+      "the remote state could not be verified — fetch/ls-remote failed, so the judged tips may be stale or planted. A push must not ship on unverifiable remote state (CX-63)",
+      "restore connectivity to origin, re-run flow.digest, then push with the fresh digestId",
+    );
   }
   if (digest.digestId !== opts.digest) {
     return refuse(
@@ -358,7 +375,7 @@ export async function pushFlow(
       retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
       verifierTrailerCommits: trailerHits,
       verifierTrailersAccepted: opts.acceptVerifierTrailers,
-      diagnostics: [],
+      diagnostics: [...digest.diagnostics],
     };
   }
 
@@ -446,11 +463,17 @@ export async function pushFlow(
 
   const publications: PublicationRow[] = [...baselineSkipped];
   const supersededOut: Array<{ tag: string; by: string }> = [];
-  const diagnostics: Diagnostic[] = journalWarnings.map((message): Diagnostic => ({
-    ruleId: "FLOW-07",
-    severity: "warning",
-    message,
-  }));
+  // Digest-level warnings (a stale-ref fetch notice, remote oddities) must
+  // surface in the push output — a warning that never left collectDigest
+  // was the invisible half of CX-63.
+  const diagnostics: Diagnostic[] = [
+    ...digest.diagnostics,
+    ...journalWarnings.map((message): Diagnostic => ({
+      ruleId: "FLOW-07",
+      severity: "warning",
+      message,
+    })),
+  ];
 
   const recordSuperseded = async (tag: string, by: string): Promise<void> => {
     try {
