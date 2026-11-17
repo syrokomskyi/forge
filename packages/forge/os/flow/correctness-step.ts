@@ -14,7 +14,6 @@ the result into a FLOW-INT-18 refusal or warning.</purpose>
   <item>Refuse on missing binary/spawn/parse/gate failure; "Unknown command" degrades — refusal would deadlock the installing upgrade.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: initial correctness step.</item>
   <item>RFC-1580: correctness.gate and the flow.integrate step
 
 Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
@@ -25,6 +24,8 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
   <item>RFC-1615: close round-21 counterexamples — YAML-loader adoption check, absent-vs-unreadable base reads</item>
+  <item>RFC-1615: close round-22 counterexamples — adoption means any armed contour element</item>
+  <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
@@ -92,13 +93,33 @@ async function baseAdoptedGate(
       // An unparseable base forge.yaml cannot prove the contour absent.
       return "adopted";
     }
-    if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return "adopted";
+    // Prototype parity with sideFrom's isPlainMap: anything that is not a
+    // plain map (scalars, arrays, and tagged roots — !!set/!!omap/!!timestamp/
+    // !!binary parse to Set/Map/Date/Uint8Array, all `typeof "object"`)
+    // makes the base forge.yaml unreadable to the gate itself, so the
+    // contour is armed, never "not adopted" (CX-132).
+    const proto = doc === null || typeof doc !== "object" ? null : Object.getPrototypeOf(doc);
+    if (doc === null || typeof doc !== "object" || (proto !== Object.prototype && proto !== null))
+      return "adopted";
     const rec = doc as Record<string, unknown>;
-    const paths = (rec["bindings"] as Record<string, unknown> | undefined)?.["paths"] as
-      Record<string, unknown> | undefined;
-    const bound = paths?.["correctnessManifest"] != null;
-    const section = rec["correctness"] !== undefined;
-    return bound || section ? "adopted" : "not-adopted";
+    const bindings = rec["bindings"] as Record<string, unknown> | undefined;
+    const bPaths = bindings?.["paths"] as Record<string, unknown> | undefined;
+    const bCommands = bindings?.["commands"] as Record<string, unknown> | undefined;
+    // Every judged binding row arms CORR-GATE-02 even without a manifest
+    // contour — removing a bound checkRun/reviewsDir/rfcsDir/invariantsFile
+    // is a weakening the gate refuses (CX-134).
+    const bound =
+      bPaths?.["correctnessManifest"] != null ||
+      bPaths?.["oracleReviewsDir"] != null ||
+      bPaths?.["invariantsFile"] != null ||
+      bPaths?.["compassDocs"] != null ||
+      bCommands?.["checkRun"] != null ||
+      (rec["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"] != null;
+    // A declared `correctness:` or `policy:` section is a contour the gate
+    // arms — `policy:` alone freezes hooks/workflows/pinned files, and a
+    // malformed declaration refuses deny-by-default (CX-133).
+    const declared = rec["correctness"] !== undefined || rec["policy"] !== undefined;
+    return bound || declared ? "adopted" : "not-adopted";
   } catch {
     // An io.exec throw (spawn failure) is an unreadable read, not a verdict.
     return "unreadable";
