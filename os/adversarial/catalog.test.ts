@@ -17,6 +17,7 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: fail closed on a missing or empty adversarial catalog</item>
 </CHANGE_SUMMARY>
 */
 
@@ -57,6 +58,19 @@ describe("adversarial catalog (RFC-1616)", () => {
     expect(catalog.length, "the RFC seeds 12 attacks").toBe(12);
     for (const e of catalog) {
       expect(e.error, `scenario ${e.name} must parse`).toBeUndefined();
+    }
+  });
+
+  it("a missing or empty catalog dir is an error entry, never a vacuous pass (O-11)", () => {
+    for (const dir of [
+      "/nonexistent-catalog-dir",
+      mkdtempSync(path.join(os.tmpdir(), "adv-empty-")),
+    ]) {
+      dirs.push(dir);
+      const catalog = loadCatalog(dir);
+      expect(catalog.length).toBe(1);
+      expect(catalog[0]!.scenario).toBeUndefined();
+      expect(catalog[0]!.error).toBeTruthy();
     }
   });
 

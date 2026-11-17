@@ -18,6 +18,7 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: fail closed on a missing or empty adversarial catalog</item>
 </CHANGE_SUMMARY>
 */
 
@@ -52,7 +53,9 @@ export interface CatalogEntry {
 }
 
 export function loadCatalog(dir: string = CATALOG_DIR): CatalogEntry[] {
-  if (!existsSync(dir)) return [];
+  // O-11: a missing or empty catalog is a packaging slip, never a vacuous
+  // pass — surface it as an error entry so list and run both fail closed.
+  if (!existsSync(dir)) return [{ name: "<catalog>", error: `catalog dir missing: ${dir}` }];
   const out: CatalogEntry[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) =>
     a.name < b.name ? -1 : 1,
@@ -71,5 +74,6 @@ export function loadCatalog(dir: string = CATALOG_DIR): CatalogEntry[] {
       out.push({ name: entry.name, error: e instanceof Error ? e.message : String(e) });
     }
   }
+  if (out.length === 0) out.push({ name: "<catalog>", error: `no scenarios under ${dir}` });
   return out;
 }
