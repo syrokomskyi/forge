@@ -38,6 +38,8 @@ import { GateRepo } from "./repo.ts";
 import { readReviewRecords, rfcPath } from "./origin.ts";
 import { runCorrectnessStep } from "../../flow/correctness-step.ts";
 import { createOriginGit } from "../../rfc/verification-origin.ts";
+import { ambientIo } from "../../../src/utils/io.ts";
+import { setVerifierGitBinForTests } from "../../../src/utils/verifier-git.ts";
 import {
   L1_ORACLE,
   MIGRATION,
@@ -900,25 +902,29 @@ describe("G: remaining structural surface", () => {
 /* ════════════════════ H · flow-side bootstrap degrade (baseAdoptedGate) ══ */
 
 describe("H: baseAdoptedGate — a downgrade must not degrade on an adopted base", () => {
-  type IO = Parameters<typeof runCorrectnessStep>[0];
-  const fakeIo = (
-    forgeYamlAtBase: string | null,
-    showStderr = "fatal: path 'forge.yaml' does not exist",
-  ): IO =>
-    ({
-      exists: async () => true,
-      exec: async (cmd: string, args: string[]) => {
-        if (cmd === "git") {
-          if (forgeYamlAtBase === null) return { exitCode: 128, stdout: "", stderr: showStderr };
-          return { exitCode: 0, stdout: forgeYamlAtBase, stderr: "" };
-        }
-        void args;
-        return { exitCode: 1, stdout: "", stderr: "Unknown command: correctness.gate" };
-      },
-    }) as unknown as IO;
+  // The hardened boundary channel (gitEvidence/verifierSpawn) deliberately
+  // bypasses io.exec and session PATH — stub injection lands on the resolved
+  // binary seam or on real repo fixtures instead (CX-46..52).
+  const UNKNOWN_BIN = "#!/bin/sh\necho '  ✖ Unknown command: correctness.gate' >&2\nexit 1\n";
 
-  const step = (fy: string | null, stderr?: string) =>
-    runCorrectnessStep(fakeIo(fy, stderr), { primary: "/p", worktree: "/w", base: "deadbeef" });
+  /** Real repo + real unknown-command forge; forge.yaml (or none) committed at HEAD. */
+  async function stepAt(fy: string | null, base = "HEAD") {
+    const repo = mkdtempSync(path.join(os.tmpdir(), "cx22-step-"));
+    minis.push({ cleanup: () => rmSync(repo, { recursive: true, force: true }) });
+    const git = (args: string[]) =>
+      execFileSync("git", args, { cwd: repo, encoding: "utf8" }).toString().trim();
+    git(["init", "-q", "-b", "main"]);
+    git(["config", "user.email", "t@t.t"]);
+    git(["config", "user.name", "t"]);
+    if (fy !== null) writeFileSync(path.join(repo, "forge.yaml"), fy);
+    mkdirSync(path.join(repo, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(path.join(repo, "node_modules", ".bin", "forge"), UNKNOWN_BIN);
+    chmodSync(path.join(repo, "node_modules", ".bin", "forge"), 0o755);
+    writeFileSync(path.join(repo, "seed.txt"), "s\n");
+    git(["add", "-A"]);
+    git(["commit", "-qm", "fixture"]);
+    return runCorrectnessStep(ambientIo, { primary: repo, worktree: repo, base });
+  }
 
   it("canonical adopted spellings refuse a forge downgrade; a non-adopted base degrades", async () => {
     for (const fy of [
@@ -926,11 +932,11 @@ describe("H: baseAdoptedGate — a downgrade must not degrade on an adopted base
       "correctness:\n  mode: enforce\n",
       "correctness:\n",
     ]) {
-      const r = await step(fy);
+      const r = await stepAt(fy);
       expect(r.refusal, fy).toBeDefined();
       expect(r.status).toBe("not-run");
     }
-    const r = await step("bindings:\n  paths:\n    correctnessManifest: null\nother: 1\n");
+    const r = await stepAt("bindings:\n  paths:\n    correctnessManifest: null\nother: 1\n");
     expect(r.refusal).toBeUndefined();
     expect(r.warning?.ruleId).toBe("FLOW-INT-18");
   });
@@ -945,26 +951,28 @@ describe("H: baseAdoptedGate — a downgrade must not degrade on an adopted base
     ["indented section", " correctness:\n  mode: enforce\n"],
   ] as const) {
     it(`CX-130 (${label}): baseAdoptedGate must see the adopted contour, not degrade`, async () => {
-      const r = await step(fy);
+      const r = await stepAt(fy);
       expect(r.refusal).toBeDefined();
     });
   }
 
   it("CX-131: a failed `git show base:forge.yaml` is unknown adoption, not 'not adopted'", async () => {
-    const r = await step(null, "fatal: bad object refs/heads");
+    // A base that exists as an object but is not a commit — `ls-tree` exits
+    // 128 on the real binary, the same failure the io.exec stub used to fake.
+    const r = await stepAt("x: 1\n", "0000000000000000000000000000000000000000");
     expect(r.refusal, "a failed base read must fail closed, not degrade").toBeDefined();
   });
 
-  it("a throwing io.exec inside baseAdoptedGate is an unreadable read — structured refusal, never degrades", async () => {
-    const io = {
-      exists: async () => true,
-      exec: async (cmd: string) => {
-        if (cmd === "git") throw new Error("spawn ENOENT");
-        return { exitCode: 1, stdout: "", stderr: "Unknown command: correctness.gate" };
-      },
-    } as unknown as IO;
-    const r = await runCorrectnessStep(io, { primary: "/p", worktree: "/w", base: "deadbeef" });
-    expect(r.refusal, "a throwing exec is unreadable, not 'not adopted'").toBeDefined();
-    expect(r.warning).toBeUndefined();
+  it("a failed git spawn inside baseAdoptedGate is an unreadable read — structured refusal, never degrades", async () => {
+    // The resolved-binary seam is the in-process injection point; a spawn
+    // ENOENT reports exitCode -1 → unreadable → refusal.
+    setVerifierGitBinForTests(path.join(os.tmpdir(), "cx22-no-such-git"));
+    try {
+      const r = await stepAt("x: 1\n");
+      expect(r.refusal, "a failed spawn is unreadable, not 'not adopted'").toBeDefined();
+      expect(r.warning).toBeUndefined();
+    } finally {
+      setVerifierGitBinForTests(undefined);
+    }
   });
 });

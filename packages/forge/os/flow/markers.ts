@@ -18,6 +18,7 @@ that repository from the flow guard.</purpose>
   <item>RFC-1491: step 2 — extract markers (flow.install step, FLOW-10, FLOW-PUSH-06 input)</item>
   <item>RFC-1491: step 2 — pre-push guard mode, install steps pre-push + markers, FLOW-10</item>
   <item>RFC-1498: step 2 — network-only marker source + rejectedOrigin reporting</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,7 +28,7 @@ import { parse as yamlParse } from "yaml";
 
 import type { WorkspaceIO } from "../../src/types.ts";
 
-import { git } from "./git.ts";
+import { gitEvidence } from "./git.ts";
 import { discoverReleaseLines, type ReleaseLine } from "./release-lines.ts";
 
 export const MARKER_FILE = "forge.generated.yaml";
@@ -73,9 +74,9 @@ export function isNetworkOriginUrl(url: string): boolean {
  */
 export async function markerSource(
   repoRoot: string,
-  io: WorkspaceIO,
+  _io: WorkspaceIO,
 ): Promise<{ source: string; rejectedOrigin: RejectedOriginKind | null }> {
-  const url = await git(repoRoot, io, ["remote", "get-url", "origin"]);
+  const url = await gitEvidence(repoRoot, ["remote", "get-url", "origin"]);
   const raw = url.exitCode === 0 ? url.stdout.trim() : "";
   if (raw.length === 0) {
     return { source: basename(repoRoot), rejectedOrigin: null };

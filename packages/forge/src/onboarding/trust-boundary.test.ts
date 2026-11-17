@@ -17,6 +17,7 @@ clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -59,20 +60,77 @@ describe("trust-boundary scaffold (RFC-1616)", () => {
     expect(co).toContain("project.owner");
   });
 
-  it("write-when-absent: existing files are never overwritten", () => {
+  it("write-when-absent: files adopted for the configured owner are never overwritten", () => {
     const r = root();
     writeFileSync(path.join(r, "dummy"), "");
     const first = scaffoldTrustBoundary(r, "@a");
     expect(first.created.sort()).toEqual(
       [".github/CODEOWNERS", ".github/workflows/forge-policy.yml"].sort(),
     );
-    const tuned = "# operator tuned CODEOWNERS\nforge.yaml @team\n.github/CODEOWNERS @team\n";
-    writeFileSync(path.join(r, ".github/CODEOWNERS"), tuned);
-    const second = scaffoldTrustBoundary(r, "@b");
+    const second = scaffoldTrustBoundary(r, "@a");
     expect(second.created).toEqual([]);
     expect(second.replaced).toEqual([]);
     expect(second.skipped.join(" ")).toContain("already exists");
-    expect(readFileSync(path.join(r, ".github/CODEOWNERS"), "utf8")).toBe(tuned);
+  });
+
+  it("CX-56: a CODEOWNERS tuned to a different anchor gains the boundary block, keeping its lines", () => {
+    const r = root();
+    mkdirSync(path.join(r, ".github"), { recursive: true });
+    const tuned = "# operator tuned CODEOWNERS\nforge.yaml @team\n.github/CODEOWNERS @team\n";
+    writeFileSync(path.join(r, ".github/CODEOWNERS"), tuned);
+    const result = scaffoldTrustBoundary(r, "@b");
+    expect(result.skipped).toEqual([]);
+    expect(result.replaced).toEqual([".github/CODEOWNERS"]);
+    const body = readFileSync(path.join(r, ".github/CODEOWNERS"), "utf8");
+    expect(body).toContain("forge.yaml @team");
+    expect(body).toMatch(/forge\.yaml\s+@b\b/);
+  });
+
+  it("CX-56: session-owned anchors never count as operator-adopted", () => {
+    const r = root();
+    mkdirSync(path.join(r, ".github"), { recursive: true });
+    writeFileSync(
+      path.join(r, ".github/CODEOWNERS"),
+      "forge.yaml @session-agent\n.github/CODEOWNERS @session-agent\n",
+    );
+    const result = scaffoldTrustBoundary(r, "@operator");
+    expect(result.skipped).toEqual([]);
+    expect(result.replaced).toEqual([".github/CODEOWNERS"]);
+  });
+
+  it("CX-56: suffix-spoofed and doc-named lines own nothing", () => {
+    const r = root();
+    mkdirSync(path.join(r, ".github"), { recursive: true });
+    writeFileSync(
+      path.join(r, ".github/CODEOWNERS"),
+      "forge.yaml.bak @x\n.github/CODEOWNERS.bak @x\ndocs/forge.yaml-owners.md @x\n.github/CODEOWNERS.md @x\n",
+    );
+    const result = scaffoldTrustBoundary(r, "@operator");
+    expect(result.skipped).toEqual([]);
+    expect(result.replaced).toEqual([".github/CODEOWNERS"]);
+  });
+
+  it("CX-57: a dispatch-only echo workflow is not the enforcement artifact", () => {
+    const r = root();
+    mkdirSync(path.join(r, ".github/workflows"), { recursive: true });
+    writeFileSync(
+      path.join(r, ".github/workflows/forge-policy.yml"),
+      `name: forge-policy
+on: [workflow_dispatch]
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "correctness.gate policy.digest pinned.validate"
+`,
+    );
+    const result = scaffoldTrustBoundary(r, "@operator");
+    expect(result.skipped).toEqual([]);
+    expect(result.replaced).toEqual([".github/workflows/forge-policy.yml"]);
+    // the foreign file is preserved before the template lands
+    expect(readFileSync(path.join(r, ".github/workflows/forge-policy.yml.pre-scaffold"), "utf8")).toContain(
+      "workflow_dispatch",
+    );
   });
 
   it("CX-28: an inert pre-planted file is rewritten, keeping its lines verbatim", () => {

@@ -12,7 +12,6 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: initial scaffold — workflow + CODEOWNERS write-when-absent.</item>
   <item>RFC-1616: external verification trust boundary
 
 policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
@@ -28,12 +27,16 @@ file-contains probes verify the real artifacts; rename the push-trailer
 suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import picomatch from "picomatch";
+import { parse as parseYaml } from "yaml";
 import { sanitizeOwnerHandle } from "../config/forge-config.ts";
 
 export { sanitizeOwnerHandle };
@@ -77,29 +80,117 @@ export interface TrustBoundaryScaffold {
   replaced: string[];
 }
 
-/** What a file must contain to count as the trust-boundary artifact. */
-const REQUIRED_MARKERS: Record<string, string[]> = {
-  ".github/workflows/forge-policy.yml": [
-    "correctness.gate",
-    "policy.digest",
-    "pinned.validate",
-  ],
-  ".github/CODEOWNERS": ["forge.yaml", ".github/CODEOWNERS"],
+/**
+ * The trust-anchor paths CODEOWNERS must own for the scaffold to count as
+ * adopted — checked as EFFECTIVE rules, never substring presence (CX-56):
+ * `forge.yaml.bak` / `docs/forge.yaml-owners.md` own nothing, and a session-
+ * owned anchor is not the operator's boundary. Directory entries probe a
+ * representative path inside the dir.
+ */
+const REQUIRED_OWNED: Record<string, string> = {
+  "forge.yaml": "forge.yaml",
+  ".forge/": ".forge/pinned.yaml",
+  "hooks/": "hooks/integration-gate.sh",
+  ".github/workflows/": ".github/workflows/forge-policy.yml",
+  ".github/CODEOWNERS": ".github/CODEOWNERS",
 };
 
 /**
- * A marker counts only on an EFFECTIVE line — both CODEOWNERS and YAML treat
- * `#` as a comment opener, so a file that merely names the marker strings in
- * comments enforces nothing and must not count as adopted (CX-39).
+ * CODEOWNERS last-match-wins ownership: the owner list of the LAST rule whose
+ * pattern matches `relPath`, or null when no effective rule covers it.
+ * Gitignore-style mapping — bare names match the basename anywhere, a
+ * slash-bearing pattern anchors at the repo root, a trailing `/` covers the
+ * directory's contents. `!`/char-class escapes are not CODEOWNERS syntax.
  */
-function hasMarker(body: string, marker: string): boolean {
-  for (const line of body.split("\n")) {
-    const at = line.indexOf(marker);
-    if (at < 0) continue;
-    const hash = line.indexOf("#");
-    if (hash === -1 || at < hash) return true;
+function effectiveOwners(body: string, relPath: string): string[] | null {
+  let owners: string[] | null = null;
+  for (const raw of body.split("\n")) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) continue;
+    const parts = line.split(/\s+/);
+    if (parts.length < 2) continue;
+    let pattern = parts[0]!;
+    if (pattern.endsWith("/")) pattern = `${pattern}**`;
+    pattern = pattern.startsWith("/") ? pattern.slice(1) : pattern;
+    const glob = pattern.includes("/") ? pattern : `**/${pattern}`;
+    if (picomatch(glob, { dot: true })(relPath)) owners = parts.slice(1);
   }
-  return false;
+  return owners;
+}
+
+/**
+ * CX-56: adopted only when EVERY boundary path resolves to an effective rule
+ * whose owner list includes the configured anchor handle — a session-owned or
+ * suffix-spoofed or doc-named line never counts.
+ */
+function codeownersAdopted(body: string, who: string): boolean {
+  return Object.values(REQUIRED_OWNED).every((rel) =>
+    (effectiveOwners(body, rel) ?? []).includes(who),
+  );
+}
+
+/**
+ * CX-57: the workflow counts only when it both TRIGGERS on `push` or
+ * `pull_request` (a `workflow_dispatch`-only no-op enforces nothing) and
+ * invokes each policy-surface command on a `run:` line led by a real runner
+ * (`forge`/`werkstatt`/`pnpm exec forge`/… — an `echo` of the names is not an
+ * invocation). `policy.digest` additionally needs `--verify` — a bare print
+ * attests nothing.
+ */
+function workflowAdopted(body: string): boolean {
+  let doc: unknown;
+  try {
+    doc = parseYaml(body);
+  } catch {
+    return false;
+  }
+  if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return false;
+  const on = (doc as Record<string, unknown>)["on"];
+  const triggers = new Set<string>();
+  if (typeof on === "string") {
+    triggers.add(on);
+  } else if (Array.isArray(on)) {
+    for (const t of on) if (typeof t === "string") triggers.add(t);
+  } else if (on !== null && typeof on === "object") {
+    // braces mandatory — a bare `for` here would rebind the whole else-if
+    // chain inside the array branch's inner `if` (dangling else).
+    for (const k of Object.keys(on as Record<string, unknown>)) triggers.add(k);
+  }
+  if (!triggers.has("push") && !triggers.has("pull_request")) return false;
+  const jobs = (doc as Record<string, unknown>)["jobs"];
+  const runs: string[] = [];
+  if (jobs !== null && typeof jobs === "object" && !Array.isArray(jobs)) {
+    for (const job of Object.values(jobs as Record<string, unknown>)) {
+      const steps = (job as { steps?: unknown } | null)?.steps;
+      if (!Array.isArray(steps)) continue;
+      for (const step of steps) {
+        const run = (step as { run?: unknown } | null)?.run;
+        if (typeof run === "string") runs.push(run);
+      }
+    }
+  }
+  const invokes = (cmd: string, extra?: RegExp): boolean =>
+    runs.some((run) =>
+      run
+        .split("\n")
+        .some(
+          (line) =>
+            new RegExp(
+              `^\\s*(?:pnpm\\s+exec\\s+|npx\\s+|yarn\\s+exec\\s+|bunx?\\s+)?(?:forge|werkstatt)\\s+(?:run\\s+)?${cmd}\\b`,
+            ).test(line) && (extra === undefined || extra.test(line)),
+        ),
+    );
+  return (
+    invokes("correctness\\.gate") &&
+    invokes("policy\\.digest", /--verify\b/) &&
+    invokes("pinned\\.validate")
+  );
+}
+
+/** Per-file adoption verdict — structural, never substring (CX-56/CX-57). */
+function isAdopted(rel: string, body: string, who: string): boolean {
+  if (rel.endsWith("CODEOWNERS")) return codeownersAdopted(body, who);
+  return workflowAdopted(body);
 }
 
 /**
@@ -126,6 +217,7 @@ export function scaffoldTrustBoundary(
   const created: string[] = [];
   const skipped: string[] = [];
   const replaced: string[] = [];
+  const who = sanitizeOwnerHandle(owner) ?? "@OWNER";
   const files: Array<{ rel: string; content: string }> = [
     { rel: ".github/workflows/forge-policy.yml", content: FORGE_POLICY_WORKFLOW },
     { rel: ".github/CODEOWNERS", content: codeownersTemplate(owner) },
@@ -137,10 +229,9 @@ export function scaffoldTrustBoundary(
       try {
         body = fs.readFileSync(dest, "utf8");
       } catch {
-        /* unreadable existing file — replace it like a marker-missing one */
+        /* unreadable existing file — replace it like an unadopted one */
       }
-      const missing = (REQUIRED_MARKERS[rel] ?? []).filter((m) => !hasMarker(body, m));
-      if (missing.length === 0) {
+      if (isAdopted(rel, body, who)) {
         skipped.push(`${rel} (already exists)`);
         continue;
       }

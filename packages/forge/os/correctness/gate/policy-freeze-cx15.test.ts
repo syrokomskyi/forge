@@ -3,8 +3,11 @@
 <purpose>RFC-1615 round-14 adversarial acceptance verification (independent,
 commit ac5892fec): re-verify CX-76..81 under attack and hunt new
 counterexample classes (CX-82+). Every probe is hermetic — tmp git repos,
-no network; git-failure injection via a PATH shim that refuses exact argv
-prefixes and forwards everything else to the real git binary.</purpose>
+no network; git-failure injection via a resolved-binary shim
+(`setVerifierGitBinForTests`) that refuses exact argv prefixes and forwards
+everything else to the real git binary — the hardened verifier channel
+ignores session PATH by design (CX-52), so injection lands on the resolver
+itself.</purpose>
 <non-goals>
   <item>Not a contract source of truth — gate/run.ts owns behaviour.</item>
   <item>Never modifies gate source; probe-only file.</item>
@@ -13,6 +16,7 @@ prefixes and forwards everything else to the real git binary.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1615: round-14 adversarial verification probes (CX-76..CX-85)</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -22,6 +26,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setVerifierGitBinForTests } from "../../../src/utils/verifier-git.ts";
 import { deriveOrigin, type OriginResult } from "./origin.ts";
 import { sideFrom } from "./frozen.ts";
 import { GateRepo } from "./repo.ts";
@@ -86,7 +91,13 @@ status: accepted
 - [x] AC-1: the oracle passes (evidence: probe)
 `;
 
-/** PATH shim: refuses exact argv prefixes with exit 121, forwards the rest to the real git binary. */
+/**
+ * Bin shim: refuses exact argv prefixes with exit 121, forwards the rest to
+ * the real git binary. Arms BOTH channels — the resolved-binary seam for
+ * hardened evidence reads (`setVerifierGitBinForTests`; session-PATH
+ * injection is the attack CX-52 closed, so the module seam is the in-process
+ * equivalent) and PATH for ordinary io.exec worktree reads like `ls-files`.
+ */
 function makeGitShim(matchers: string[][]): { arm(): void; disarm(): void; dispose(): void } {
   const dir = mkdtempSync(path.join(os.tmpdir(), "rfc1615-git-shim-"));
   // The real BINARY, not the PATH-resolved `git` — on this workspace that is the
@@ -114,9 +125,11 @@ process.exit(r.status === null ? 1 : r.status);
   return {
     arm: () => {
       process.env.PATH = `${dir}:${prev}`;
+      setVerifierGitBinForTests(shim);
     },
     disarm: () => {
       process.env.PATH = prev;
+      setVerifierGitBinForTests(undefined);
     },
     dispose: () => rmSync(dir, { recursive: true, force: true }),
   };

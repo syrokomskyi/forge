@@ -19,6 +19,7 @@ reclaimed by the next reader, never trusted.</purpose>
 <CHANGE_SUMMARY>
   <item>RFC-1543: op-claim registry — claim/release/liveClaims, pid+bootId+heartbeat liveness, lazy dead-record sweep</item>
   <item>RFC-1543: attribute shared-checkout dirt to live ops and expose peers (RFC-1543)</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,7 +28,7 @@ import { join } from "node:path";
 import { parse as yamlParse, stringify as yamlStringify } from "yaml";
 import type { WorkspaceIO } from "../../src/types.ts";
 import { currentBootId, holderIsDead } from "../core/lock-holder.ts";
-import { git } from "./git.ts";
+import { gitEvidence } from "./git.ts";
 
 export const OP_CLAIM_SCHEMA = "forge/op-claim@1";
 /** Expected heartbeat write cadence — a claim goes stale at 5× this age. */
@@ -48,10 +49,10 @@ export interface OpClaim {
 }
 
 /** `<git-common-dir>/forge/ops` — shared across linked worktrees. */
-async function opsDir(repo: string, io: WorkspaceIO): Promise<string | null> {
+async function opsDir(repo: string, _io: WorkspaceIO): Promise<string | null> {
   let r;
   try {
-    r = await git(repo, io, ["rev-parse", "--git-common-dir"]);
+    r = await gitEvidence(repo, ["rev-parse", "--git-common-dir"]);
   } catch {
     return null;
   }

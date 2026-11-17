@@ -11,12 +11,12 @@ and a held integration lock is waited out.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1598: refuse-before-staging index guard + checked-out-side generated-conflict resolver (RFC-1598)</item>
   <item>RFC-1600: require declaration context in the integrate dup-id scan and resolve real friction ids (F-0286)</item>
   <item>RFC-1600: ignore generated projections in the FLOW-INT-19 duplicate-id scan</item>
   <item>RFC-1600: keep FLOW-INT-19 fixture ids outside the live rule range (RFC-1600)</item>
-  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1599, RFC-1600</history>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>ADR-0128, RFC-1487, RFC-1515, RFC-1528, RFC-1537, RFC-1538, RFC-1543, RFC-1544, RFC-1545, RFC-1546, RFC-1574, RFC-1597, RFC-1599, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -756,8 +756,11 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       "command: rfc.index.generate\ngeneratedAt: 2026-11-08\ncount: 9\n",
     );
 
-    // A PATH shim refuses `git worktree add` only — neither side can be
-    // checked out, so the resolver falls to take-theirs + deferral.
+    // A session-PATH shim refuses `git worktree add` only — neither side
+    // can be checked out, so the resolver falls to take-theirs + deferral.
+    // `worktree add` is a write and rides the io.exec channel (session env:
+    // credentials/hooks) — the injected failure must live on PATH, not the
+    // resolved verifier binary.
     const guardDir = await mkdtemp(join(tmpdir(), "git-sideguard-"));
     await writeFile(
       join(guardDir, "git"),
@@ -774,8 +777,8 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
       ].join("\n"),
     );
     await chmod(join(guardDir, "git"), 0o755);
-    const originalPath = process.env.PATH ?? "";
-    process.env.PATH = `${guardDir}:${originalPath}`;
+    const savedPath = process.env["PATH"];
+    process.env["PATH"] = `${guardDir}:${savedPath ?? ""}`;
     let data: Awaited<ReturnType<typeof integrateFlowBranch>>;
     try {
       data = await integrateFlowBranch(repo, ambientIo, {
@@ -787,7 +790,8 @@ describe("flow.integrate — RFC-1538 post-lock revalidation, session engine, au
         },
       });
     } finally {
-      process.env.PATH = originalPath;
+      if (savedPath === undefined) delete process.env["PATH"];
+      else process.env["PATH"] = savedPath;
     }
 
     expect(data.integrated).toBe(true);

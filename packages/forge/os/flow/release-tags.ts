@@ -18,19 +18,19 @@ Lightweight tags are invisible to release lines by design.</purpose>
   <item>RELEASE_TAG_SCHEMA_LINE is exported — the annotation contract lives in one place for os/system consumers.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1490: independent-review pass — lock-held planning, fix-branch verification, spec-shaped data, coverage</item>
   <item>RFC-1498: step 3 — legacy-tags report in flow.install
 
 listLegacyTags scans refs/tags in a single for-each-ref pass carrying objecttype and NUL-delimited contents: a tag whose name matches a line grammar (tagPrefix + strict semver) is pre-program when it is lightweight, or annotated but its body lacks the schema forge/release-tag@1 line. flow.install gains an informational legacy-tags plan step listing every such tag as name (kind) — never a refusal, nothing is deleted or rewritten; execution simply marks the step done. Tests AC-5 (a lightweight v1.2.2 and a schema-less annotated lib at 0.1.0 appear with their kinds) and AC-6 (installation proceeds and both tags remain). Compass metadata updated.</item>
   <item>RFC-1511: accept recorded products map in verified gate, guard folders lookup and exec edges (RFC-1511 review r1)</item>
   <item>RFC-1511: record KEY_DECISIONS for exported tag-schema regex and exec edge handling (RFC-1511 review r1)</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <history>RFC-1488, RFC-1490</history>
 </CHANGE_SUMMARY>
 */
 
 import type { WorkspaceIO } from "../../src/types.ts";
-import { git } from "./git.ts";
+import { git, gitEvidence } from "./git.ts";
 import type { ReleaseLine } from "./release-lines.ts";
 import { compareVersions, parseVersion, type SemVer } from "./semver.ts";
 
@@ -62,13 +62,13 @@ async function listAnnotated(
   io: WorkspaceIO,
   ref: string,
 ): Promise<TagRow[]> {
-  const head = await git(repoRoot, io, ["rev-parse", "--verify", "-q", ref]);
+  const head = await gitEvidence(repoRoot, ["rev-parse", "--verify", "-q", ref]);
   if (head.exitCode !== 0) return []; // unborn branch — nothing reachable
   const sep = "\x1f";
   // %(refname) (full form) — %(refname:short) would hide a tag sharing its
   // name with a branch (shortening is ambiguous by design).
   const format = `%(refname)${sep}%(objecttype)${sep}%(*objectname)${sep}%(creatordate:iso-strict)`;
-  const result = await git(repoRoot, io, [
+  const result = await gitEvidence(repoRoot, [
     "for-each-ref",
     `refs/tags/${line.tagPrefix}*`,
     `--format=${format}`,
@@ -141,11 +141,11 @@ export const RELEASE_TAG_SCHEMA_LINE = /^schema:\s*forge\/release-tag@1\s*$/m;
 export async function listLegacyTags(
   repoRoot: string,
   lines: ReleaseLine[],
-  io: WorkspaceIO,
+  _io: WorkspaceIO,
 ): Promise<LegacyTag[]> {
   const sep = "\x1f";
   const format = `%(refname)${sep}%(objecttype)${sep}%(contents)%00`;
-  const result = await git(repoRoot, io, ["for-each-ref", "refs/tags", `--format=${format}`]);
+  const result = await gitEvidence(repoRoot, ["for-each-ref", "refs/tags", `--format=${format}`]);
   if (result.exitCode !== 0) return [];
   const legacy: LegacyTag[] = [];
   for (const rec of result.stdout.split("\x00")) {

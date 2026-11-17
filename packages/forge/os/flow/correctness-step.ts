@@ -14,9 +14,6 @@ the result into a FLOW-INT-18 refusal or warning.</purpose>
   <item>Refuse on missing binary/spawn/parse/gate failure; "Unknown command" degrades — refusal would deadlock the installing upgrade.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-04 findings
 
 F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; F2 review records count only from a verifier-trailer commit naming them; F3 any frozen substrate change or dropped capture is a weakening, declared L3 needs loaded captures; F4 requirement origin needs acceptance before --base; F5 anchor events only for L2+ runs; F6 proof oracles via proof.check only, non-self; F7 bundle naming; F8/F9 limitations; F10 every anchor copy; F11 base entry refs; F12 unreadable base manifest refuses; F13 dirty worktree warning; F14 source/statement diffs; F15 process-group kill; F16 run root cleanup; F20 review dir stripped, blob hashes. Regression tests for spoofing, plain-commit review, L3, requirement origin, rewording, timeout, formal tier, rebind, real-gate pass, accept-weakening. DEV-1..DEV-6 recorded in the RFC.</item>
@@ -25,6 +22,7 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
   <item>RFC-1615: close round-21 counterexamples — YAML-loader adoption check, absent-vs-unreadable base reads</item>
   <item>RFC-1615: close round-22 counterexamples — adoption means any armed contour element</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <history>RFC-1580</history>
 </CHANGE_SUMMARY>
 */
@@ -34,6 +32,8 @@ import { join } from "node:path";
 import { parse as parseYaml } from "yaml";
 
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
+import { verifierSpawn } from "../../src/utils/verifier-git.ts";
+import { gitEvidence } from "./git.ts";
 
 export interface CorrectnessStepResult {
   status: "pass" | "fail" | "exempt" | "not-run";
@@ -81,10 +81,12 @@ async function baseAdoptedGate(
   try {
     // Existence first: `ls-tree` answers 0/empty for a missing file on a
     // valid rev but non-zero on a bad rev / corrupt tree / spawn failure.
-    const ls = await io.exec("git", ["ls-tree", base, "--", "forge.yaml"], { cwd: worktree });
+    // Boundary reads — session GIT_* / refs/replace must not redirect or
+    // substitute the base document (CX-46..51).
+    const ls = await gitEvidence(worktree, ["ls-tree", base, "--", "forge.yaml"]);
     if (ls.exitCode !== 0) return "unreadable";
     if (!ls.stdout.trim()) return "not-adopted";
-    const shown = await io.exec("git", ["show", `${base}:forge.yaml`], { cwd: worktree });
+    const shown = await gitEvidence(worktree, ["show", `${base}:forge.yaml`]);
     if (shown.exitCode !== 0) return "unreadable";
     let doc: unknown;
     try {
@@ -147,7 +149,17 @@ export async function runCorrectnessStep(
   if (opts.acceptWeakening) args.push("--accept-weakening", opts.acceptWeakening);
   let result: { exitCode: number | null; stdout: string; stderr: string };
   try {
-    result = await io.exec(bin, args, { cwd: opts.worktree });
+    // The gate child runs on the allowlisted verifier env — io.exec merges
+    // over process.env and could never remove a session NODE_OPTIONS/--require
+    // preload or a PATH dir carrying a `git` shim that would fabricate the
+    // gate's evidence reads (CX-52).
+    result = await verifierSpawn(bin, args, { cwd: opts.worktree });
+    if (result.exitCode === -1) {
+      return notRun(
+        `could not start ${bin}: ${result.stderr.trim() || "spawn failed"}`,
+        "repair the primary install, then re-run",
+      );
+    }
   } catch (err) {
     return notRun(
       `could not start ${bin}: ${(err as Error).message}`,

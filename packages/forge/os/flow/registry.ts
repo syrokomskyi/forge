@@ -17,12 +17,12 @@ forge/journal.jsonl.</purpose>
   <item>`held` is typed null now — the wave-2 outbound RFC widens it to { heldAt, riskCategory, reason }.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1537: integrate-refusal journal event + rule/toleratedDirt fields — every flow.integrate refusal journals {branch, rule, summary, at} for flow.status lastRefusal; appendJournal now serializes toleratedState (was silently dropped)</item>
   <item>RFC-1532: FlowJournalEvent.gateReport — the repo-relative path links integrate/backmerge and integrate-refusal events to the attempt's persisted gate report</item>
   <item>RFC-1538: revalidate integration preconditions post-lock and reuse the session engine</item>
   <item>RFC-1531: add flow.integrate remediation flags on the shared dirty classifier</item>
   <item>RFC-1589: run the integration gate outside the integration lock</item>
-  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1503, RFC-1515</history>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1487, RFC-1490, RFC-1491, RFC-1503, RFC-1515, RFC-1537</history>
 </CHANGE_SUMMARY>
 */
 
@@ -34,7 +34,7 @@ import { z } from "zod";
 
 import type { WorkspaceIO } from "../../src/types.ts";
 
-import { git } from "./git.ts";
+import { gitEvidence } from "./git.ts";
 import { withFlowLock } from "./locks.ts";
 
 export const STALE_AFTER_HOURS = 72;
@@ -194,7 +194,9 @@ export function registryPath(commonGitDir: string): string {
  * worktrees. `git rev-parse --git-common-dir` may answer relative to cwd.
  */
 export async function commonGitDir(io: WorkspaceIO, cwd: string): Promise<string> {
-  const result = await git(cwd, io, ["rev-parse", "--git-common-dir"]);
+  // The common dir anchors the journal/registry the boundary trusts — a
+  // session GIT_DIR must not redirect it to a planted state dir (CX-51).
+  const result = await gitEvidence(cwd, ["rev-parse", "--git-common-dir"]);
   if (result.exitCode !== 0) {
     throw new Error(
       `git rev-parse --git-common-dir failed (exit ${result.exitCode}): ${result.stderr.trim()}`,

@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-19 counterexamples — code-unit rank order, posix-normalize binding compare without backslash or whitespace folding</item>
   <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -27,6 +27,11 @@ import picomatch from "picomatch";
 import { parse as parseYaml } from "yaml";
 
 import { invariantStatementSha } from "../../../src/compass/invariant-parser.ts";
+import {
+  CARVED_POLICY_PATHS,
+  hasPath,
+  valueAtPath,
+} from "../../../src/correctness/policy-bundle.ts";
 import { anchorsFromSource, isAnchorSourceCandidate } from "../anchors.ts";
 import {
   CAPTURE_SIDECAR_SUFFIX,
@@ -661,11 +666,16 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
 const CONTOUR_KEYS: ReadonlySet<string> = new Set(["push", "correctness"]);
 
 /**
- * RFC-1616 (CX-32/37): `[key, leaf]` pairs carved out of every grant —
- * `project.owner` binds the CODEOWNERS handle a session must never rebind,
- * even when `project` sits under `mutable` or `additive`.
+ * RFC-1616 (CX-32/37/CX-58): leaf paths carved out of every grant — the
+ * trust-surface pointers (`project.owner`, `paths.skillsDir`,
+ * `bindings.paths.correctnessLedger`, the non-checkRun oracle-runner
+ * templates, …) a session must never rebind, even when their containing
+ * top-level key sits under `mutable` or `additive`. The exact list is shared
+ * with `policy.digest`'s judgedDoc — the two arbiters must judge identically
+ * (CARVED_POLICY_PATHS in policy-bundle.ts). Leaves the RFC-1580 binding
+ * checks already judge keep their documented mutable-release semantics.
  */
-const CARVED_PATHS: ReadonlyArray<readonly [string, string]> = [["project", "owner"]];
+const CARVED_PATHS = CARVED_POLICY_PATHS;
 
 /**
  * RFC-1615 policy weakenings, armed only when the base declares `policy:`:
@@ -718,21 +728,26 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
       });
       continue;
     }
-    // RFC-1616 (CX-32/37): leaf paths carved out of ANY grant — a mutable
-    // OR additive parent must not free them. `project.owner` binds the
-    // CODEOWNERS handle; carving by path (not whole-key) leaves the rest of
-    // the granted subtree mutable.
-    const carvedDiffs = CARVED_PATHS.filter(([k]) => k === key).filter(([, leaf]) => {
-      const leafOf = (v: unknown) =>
-        v && typeof v === "object" ? (v as Record<string, unknown>)[leaf] : undefined;
-      return canon(leafOf(before)) !== canon(leafOf(after));
+    // RFC-1616 (CX-32/37/CX-58): leaf paths carved out of ANY grant — a
+    // mutable OR additive parent must not free them. Carving by leaf path
+    // (not whole-key) leaves the rest of the granted subtree mutable; a
+    // carved leaf planted as a pure ADDITION is caught too (the pointer was
+    // not there at base). Presence is judged by own-key walk — `leaf:` (null)
+    // present vs absent is a rebind, not a no-op.
+    const carvedDiffs = CARVED_PATHS.filter((p) => p[0] === key).filter((p) => {
+      const sub = p.slice(1);
+      return (
+        hasPath(before, sub) !== hasPath(after, sub) ||
+        canon(valueAtPath(before, sub)) !== canon(valueAtPath(after, sub))
+      );
     });
-    for (const [, leaf] of carvedDiffs) {
+    for (const p of carvedDiffs) {
+      const shown = p.join(".");
       out.push({
         kind: "policy-key",
-        subject: `${key}.${leaf}`,
+        subject: shown,
         message:
-          `${key}.${leaf} changed — a trust-anchor leaf carved out of every ` +
+          `${shown} changed — a trust-anchor leaf carved out of every ` +
           "mutable/additive grant (RFC-1616)",
       });
     }

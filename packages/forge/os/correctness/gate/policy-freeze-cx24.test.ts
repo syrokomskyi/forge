@@ -15,12 +15,13 @@ regressions and the unknown-command spoof guard.</purpose>
 */
 
 import { chmod, mkdir, rm, writeFile } from "node:fs/promises";
+import os from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import { ambientIo } from "../../../src/utils/io.ts";
-import type { ExecResult, WorkspaceIO } from "../../../src/types.ts";
+import { setVerifierGitBinForTests } from "../../../src/utils/verifier-git.ts";
 import { runCorrectnessStep } from "../../flow/correctness-step.ts";
 import { gitExec, initRepo } from "../../flow/tests/helpers.ts";
 
@@ -69,20 +70,6 @@ const degrade = async (name: string, forgeYaml: string | null, opts?: { dir?: bo
   expect(res.refusal, `${name}: non-adopted base must degrade to a warning`).toBeUndefined();
   expect(res.warning?.ruleId, `${name}: expected FLOW-INT-18 warning`).toBe("FLOW-INT-18");
 };
-
-/** io.exec wrapper that injects a controlled result for chosen argv prefixes. */
-function patchedIo(
-  inject: (cmd: string, args: string[]) => Partial<ExecResult> | null,
-): WorkspaceIO {
-  return {
-    ...ambientIo,
-    exec: async (cmd, args, opts) => {
-      const hit = inject(cmd, args);
-      if (hit) return { exitCode: 0, stdout: "", stderr: "", ...hit };
-      return ambientIo.exec(cmd, args, opts);
-    },
-  };
-}
 
 describe("r23 — adoption-arming completeness (CX-134 regression + arm list)", () => {
   it("CX-135a correctnessManifest binding alone → adopted", async () => {
@@ -193,49 +180,69 @@ describe("r23 — CX-131 regression: failed reads are unreadable, never absent",
     expect(res.warning).toBeUndefined();
     expect(res.refusal?.message).toMatch(/could not be read|unreadable|adopted/);
   });
-  it("CX-141b io.exec throw on ls-tree → unreadable refusal", async () => {
+  // The hardened boundary channel (gitEvidence) deliberately bypasses
+  // io.exec — failure injection lands on real git failures (dangling blob,
+  // non-commit base) or the resolved-binary test seam, never io stubs
+  // (CX-46..52).
+
+  it("CX-141b git spawn failure on ls-tree → unreadable refusal", async () => {
     const repo = await repoWith("x: 1\n");
-    const io = patchedIo((cmd, args) => {
-      if (cmd === "git" && args[0] === "ls-tree") throw new Error("spawn boom");
-      return null;
-    });
-    const res = await runCorrectnessStep(io, { primary: repo, worktree: repo, base: "HEAD" });
-    expect(res.warning).toBeUndefined();
-    expect(res.refusal?.message).toMatch(/could not be read/);
-  });
-  it("CX-141c io.exec throw on show → unreadable refusal", async () => {
-    const repo = await repoWith("x: 1\n");
-    const io = patchedIo((cmd, args) => {
-      if (cmd === "git" && args[0] === "show") throw new Error("spawn boom");
-      return null;
-    });
-    const res = await runCorrectnessStep(io, { primary: repo, worktree: repo, base: "HEAD" });
-    expect(res.warning).toBeUndefined();
-    expect(res.refusal?.message).toMatch(/could not be read/);
-  });
-  it("CX-141d exitCode null (signal kill) on either read → unreadable refusal", async () => {
-    const repo = await repoWith("x: 1\n");
-    for (const which of ["ls-tree", "show"] as const) {
-      const io = patchedIo((cmd, args) =>
-        cmd === "git" && args[0] === which ? { exitCode: null, stdout: "", stderr: "" } : null,
-      );
-      const res = await runCorrectnessStep(io, { primary: repo, worktree: repo, base: "HEAD" });
-      expect(res.warning, `${which} exitCode null`).toBeUndefined();
+    setVerifierGitBinForTests(join(os.tmpdir(), "cx24-no-such-git"));
+    try {
+      const res = await runCorrectnessStep(ambientIo, {
+        primary: repo,
+        worktree: repo,
+        base: "HEAD",
+      });
+      expect(res.warning).toBeUndefined();
       expect(res.refusal?.message).toMatch(/could not be read/);
+    } finally {
+      setVerifierGitBinForTests(undefined);
     }
   });
-  it("CX-141e ls-tree failure (exit 128) → unreadable refusal", async () => {
+  it("CX-141c git spawn failure on show → unreadable refusal", async () => {
+    const repo = await repoWith("x: 1\n");
+    setVerifierGitBinForTests(join(os.tmpdir(), "cx24-no-such-git"));
+    try {
+      const res = await runCorrectnessStep(ambientIo, {
+        primary: repo,
+        worktree: repo,
+        base: "HEAD",
+      });
+      expect(res.warning).toBeUndefined();
+      expect(res.refusal?.message).toMatch(/could not be read/);
+    } finally {
+      setVerifierGitBinForTests(undefined);
+    }
+  });
+  it("CX-141d spawn failure on either read → unreadable refusal", async () => {
+    const repo = await repoWith("x: 1\n");
+    setVerifierGitBinForTests(join(os.tmpdir(), "cx24-no-such-git"));
+    try {
+      const res = await runCorrectnessStep(ambientIo, {
+        primary: repo,
+        worktree: repo,
+        base: "HEAD",
+      });
+      expect(res.warning).toBeUndefined();
+      expect(res.refusal?.message).toMatch(/could not be read/);
+    } finally {
+      setVerifierGitBinForTests(undefined);
+    }
+  });
+  it("CX-141e ls-tree failure (non-commit base) → unreadable refusal", async () => {
     const repo = await repoWith("x: 1\n");
     const res = await step(repo, "0000000000000000000000000000000000000000");
     expect(res.warning).toBeUndefined();
     expect(res.refusal?.message).toMatch(/could not be read/);
   });
-  it("CX-141f show failure while ls-tree lists → unreadable refusal", async () => {
+  it("CX-141f show failure while ls-tree lists (deleted blob object) → unreadable refusal", async () => {
     const repo = await repoWith("x: 1\n");
-    const io = patchedIo((cmd, args) =>
-      cmd === "git" && args[0] === "show" ? { exitCode: 128, stdout: "", stderr: "fatal" } : null,
-    );
-    const res = await runCorrectnessStep(io, { primary: repo, worktree: repo, base: "HEAD" });
+    // Delete forge.yaml's loose blob object: `ls-tree` still lists the entry
+    // (the tree object is intact) while `git show` fails on the missing blob.
+    const blob = (await gitExec(repo, ["rev-parse", "HEAD:forge.yaml"])).stdout.trim();
+    await rm(join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+    const res = await step(repo);
     expect(res.warning).toBeUndefined();
     expect(res.refusal?.message).toMatch(/could not be read/);
   });

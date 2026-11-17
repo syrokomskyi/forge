@@ -17,13 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
-
-READ_ONLY_GIT_QUERIES / isReadOnlyGitQuery replace the recording adapter's
-first-argument allowlist; the read-only adapter and the static scan use the same
-table. The kernel forwards --dry-run into commands that declare a dry-run flag,
-and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
-back to werkstatt run flow.install --dry-run.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1616: external verification trust boundary
@@ -34,7 +27,8 @@ clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
-  <history>RFC-1491</history>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1491, RFC-1501</history>
 </CHANGE_SUMMARY>
 */
 
@@ -50,7 +44,7 @@ import type {
 import { resolveIo } from "../../../src/utils/io.ts";
 import { parse as parseYaml } from "yaml";
 import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
-import { git, requireGit, topLevel } from "../git.ts";
+import { git, gitEvidence, parseGitTrailers, requireGit, verifierTopLevel } from "../git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
 import { planPublications, type PublicationPlanEntry } from "../publication-order.ts";
@@ -107,28 +101,51 @@ function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData
 /**
  * RFC-1616 (AC-6): list commits in `range` whose message carries a verifier /
  * audit trailer. Reads are delimiter-free: commit SHAs enumerate via
- * `rev-list` (hex-only output) and each body arrives through its own
- * `git log -1 --format=%B` — a \x1e byte inside a message can no longer split
- * a record and hide the trailer tail (CX-33).
+ * `rev-list` (hex-only output) and each commit's trailers arrive through
+ * git's OWN `%(trailers:only)` parser — \x1e framing cannot hide a record
+ * (CX-33), and `x-verifier-report:`/`X-Verifier-Report :` spellings count
+ * exactly as `git interpret-trailers` counts them (CX-60). The channel is
+ * `gitEvidence`: session GIT_* variables and refs/replace cannot redirect
+ * or substitute what the scan sees (CX-48).
  */
 async function scanVerifierTrailers(
   repoRoot: string,
   io: WorkspaceIO,
   range: string,
 ): Promise<Array<{ sha: string; trailers: string[] }>> {
-  const list = await git(repoRoot, io, ["rev-list", range]);
+  const list = await gitEvidence(repoRoot, ["rev-list", range]);
   if (list.exitCode !== 0) return [];
+  const wanted = new Set(VERIFIER_TRAILERS.map((t) => t.toLowerCase()));
+  const canonical = new Map(VERIFIER_TRAILERS.map((t) => [t.toLowerCase(), t]));
   const hits: Array<{ sha: string; trailers: string[] }> = [];
   for (const sha of list.stdout
     .split("\n")
     .map((s) => s.trim())
     .filter(Boolean)) {
-    const body = await git(repoRoot, io, ["log", "-1", "--format=%B", sha]);
-    if (body.exitCode !== 0) continue;
-    const trailers = VERIFIER_TRAILERS.filter((t) =>
-      new RegExp(`^${t}:\\s*\\S`, "m").test(body.stdout),
-    );
-    if (trailers.length > 0) hits.push({ sha, trailers: [...trailers] });
+    const parsed = await gitEvidence(repoRoot, [
+      "log",
+      "-1",
+      "--format=%(trailers:only,separator=%x00)",
+      sha,
+    ]);
+    if (parsed.exitCode !== 0) continue;
+    const found = new Set<string>();
+    for (const t of parseGitTrailers(parsed.stdout.replaceAll("\x00", "\n"))) {
+      const c = canonical.get(t.key);
+      if (wanted.has(t.key) && c && t.value.length > 0) found.add(c);
+    }
+    // A trailer-shaped SUBJECT is not a git trailer on every version — but it
+    // looks exactly like provenance text, so flag it anyway (stricter is
+    // safe, CX-23). `%s` is one line — no delimiter to smuggle.
+    const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
+    if (subj.exitCode === 0) {
+      const m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(subj.stdout.trim());
+      if (m) {
+        const c = canonical.get(m[1]!.trim().toLowerCase());
+        if (c && m[2]!.trim().length > 0) found.add(c);
+      }
+    }
+    if (found.size > 0) hits.push({ sha, trailers: [...found].sort() });
   }
   return hits;
 }
@@ -170,7 +187,7 @@ export async function pushFlow(
   // missing committed config defaults to required (fail closed).
   let declared: boolean | undefined;
   try {
-    const show = await git(repoRoot, io, ["show", "HEAD:forge.yaml"]);
+    const show = await gitEvidence(repoRoot, ["show", "HEAD:forge.yaml"]);
     if (show.exitCode === 0) {
       const doc = parseYaml(show.stdout) as Record<string, unknown> | null;
       const v = (doc?.["push"] as Record<string, unknown> | undefined)?.["requireVerifierReview"];
@@ -229,7 +246,7 @@ export async function pushFlow(
     ["main", digest.main.remote],
   ] as const) {
     if (remote === null) continue;
-    const ancestor = await git(repoRoot, io, ["merge-base", "--is-ancestor", remote, branch]);
+    const ancestor = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", remote, branch]);
     if (ancestor.exitCode !== 0) {
       return refuse(
         "FLOW-PUSH-03",
@@ -350,6 +367,8 @@ export async function pushFlow(
   const journalWarnings: string[] = [];
   let pushed = false;
   if (hasRefs) {
+    // Push rides the session channel — credential helpers and url.insteadOf
+    // live in user config the scrubbed evidence env intentionally drops.
     const push = await git(repoRoot, io, ["push", "--atomic", "origin", ...refspecs], {
       env: { FORGE_FLOW_OP: "push" },
     });
@@ -523,7 +542,9 @@ export async function runFlowPush(
   const io: WorkspaceIO = resolveIo(context.io);
   await requireGit(io);
 
-  const repoRoot = await topLevel(workspaceRoot, io);
+  // Boundary root resolution: a session `GIT_DIR`/`GIT_WORK_TREE` must not
+  // point the whole push surface at a planted repository (CX-51 class).
+  const repoRoot = await verifierTopLevel(workspaceRoot);
   if (repoRoot === null) {
     throw new Error("flow.push must run inside a git repository");
   }

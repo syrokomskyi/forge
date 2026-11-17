@@ -13,11 +13,11 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -172,6 +172,7 @@ async function forgeYamlOnlyFrozenKeys(
     if (empty(b?.commands)) delete b!.commands;
     if (empty(b)) delete copy["bindings"];
     if (empty(copy["paths"])) delete copy["paths"];
+    if (empty(copy["project"])) delete copy["project"];
   };
   const strip = (text: string | null): string => {
     let parsed: unknown;
@@ -221,17 +222,35 @@ async function forgeYamlOnlyFrozenKeys(
       // The RFC-1580 frozen binding subkeys stay frozen even when `bindings`
       // itself is declared mutable — their diff is a real weakening kind, so
       // strip them or every checkRun/manifest rebind dead-ends as
-      // `mixed-weakening` (RFC-1615 review CX-51).
+      // `mixed-weakening` (RFC-1615 review CX-51). The RFC-1616 carved leaves
+      // (CARVED_POLICY_PATHS — `project.owner`, `paths.skillsDir`/
+      // `specsDir`/`auditsDir`, `bindings.paths.correctnessLedger`, the
+      // non-checkRun oracle-runner templates) are the same class: judged
+      // under every grant, so their diff is a weakening the accept covers —
+      // strip them or a carved rebind dead-ends as `mixed-weakening` (CX-58).
       const b = copy["bindings"] as
         { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
-      if (b?.commands) delete b.commands["checkRun"];
+      if (b?.commands) {
+        delete b.commands["checkRun"];
+        delete b.commands["verifyReproduction"];
+        delete b.commands["outcomeBuild"];
+        delete b.commands["outcomeServe"];
+      }
       if (b?.paths) {
         delete b.paths["correctnessManifest"];
         delete b.paths["oracleReviewsDir"];
         delete b.paths["compassDocs"];
         delete b.paths["invariantsFile"];
+        delete b.paths["correctnessLedger"];
       }
-      delete (copy["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"];
+      delete (copy["project"] as Record<string, unknown> | undefined)?.["owner"];
+      const tp = copy["paths"] as Record<string, unknown> | undefined;
+      if (tp) {
+        delete tp["rfcsDir"];
+        delete tp["skillsDir"];
+        delete tp["specsDir"];
+        delete tp["auditsDir"];
+      }
       pruneEmpties(copy);
     }
     return canon(copy);

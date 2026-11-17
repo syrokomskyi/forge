@@ -21,13 +21,14 @@ reachable, else the version-file value.</purpose>
 
 commitWerkstattSideEffects skips git add+commit when classifyBranch() yields non-flow (protected/nonconforming), reports written outputPaths; status-hook and deploy/leitstand results propagate onboardingStatus metadata; leitstand.promote surfaces an optional session-worktree integration nextStep. Flow-branch commit behavior unchanged; mission-open fixture rebased to conforming auto/task-YYMMDD-NN branch. AC-1..AC-3 checked.</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
   <history>RFC-1493, RFC-1494, RFC-1495</history>
 </CHANGE_SUMMARY>
 */
 
 import type { WorkspaceIO } from "../../src/types.ts";
-import { branchExists, git, worktreeList } from "./git.ts";
+import { branchExists, gitEvidence, worktreeList } from "./git.ts";
 import { hasManagedBlock, PRECOMMIT_FILE } from "./guard-files.ts";
 import { deriveLineVersion } from "./line-version.ts";
 import { detectRepoKind } from "./repo-kind.ts";
@@ -103,7 +104,7 @@ export async function isFlowAdopted(repoRoot: string, io: WorkspaceIO): Promise<
   const detection = await detectRepoKind(repoRoot, io);
   if (!detection.ok || detection.repoKind.kind !== "governed") return false;
   if (!(await branchExists(repoRoot, io, "develop"))) return false;
-  const committed = await git(repoRoot, io, ["show", `develop:${PRECOMMIT_FILE}`]);
+  const committed = await gitEvidence(repoRoot, ["show", `develop:${PRECOMMIT_FILE}`]);
   if (committed.exitCode !== 0) return false;
   return hasManagedBlock(committed.stdout);
 }
