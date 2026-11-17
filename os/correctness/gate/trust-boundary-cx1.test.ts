@@ -21,6 +21,10 @@ Port the clean-context verifier's 35-probe suite verbatim as
 trust-boundary-cx1.test.ts and persist its acceptance report
 (verdict: refuted, isolation: subagent) - 9 counterexamples landed and
 were closed in e9add1cd5/8c9e1688a.</item>
+  <item>RFC-1616: scope CX-4 scratch-cleanup assertion to its own prefix
+
+A concurrent adversarial run (verifier rounds, catalog replay) creates
+forge-adv-* dirs in the same tmpdir — compare only the cx-control prefix.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -322,7 +326,9 @@ agentTools:
     "CX-4: control — a benign attack on the seeded contour must observe 'none' (proves the contour base is green and the harness detects non-refusal)",
     { timeout: 120_000 },
     async () => {
-      const before = readdirSync(os.tmpdir()).filter((d) => d.startsWith("forge-adv-"));
+      // compare only this scenario's own scratch prefix — a concurrent
+      // adversarial run (verifier, catalog replay) owns its own prefixes.
+      const before = readdirSync(os.tmpdir()).filter((d) => d.startsWith("forge-adv-cx-control-"));
       const r = await runScenario(
         scenario({ name: "cx-control", expect: { status: "refused", rule: "CORR-GATE-02" } }),
         { repoRoot: fixtureRepo(), forgeArgv: FORGE_ARGV },
@@ -330,7 +336,7 @@ agentTools:
       expect(r.observed).toBe("none");
       expect(r.ok).toBe(false);
       // scratch cleanup: the mkdtemp scratch is removed in finally.
-      const after = readdirSync(os.tmpdir()).filter((d) => d.startsWith("forge-adv-"));
+      const after = readdirSync(os.tmpdir()).filter((d) => d.startsWith("forge-adv-cx-control-"));
       expect(after).toEqual(before);
     },
   );
