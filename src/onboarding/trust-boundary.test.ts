@@ -18,6 +18,7 @@ forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: keep an unconfigured scaffold owner from rewriting real CODEOWNERS ownership</item>
 </CHANGE_SUMMARY>
 */
 
@@ -84,6 +85,27 @@ describe("trust-boundary scaffold (RFC-1616)", () => {
     const body = readFileSync(path.join(r, ".github/CODEOWNERS"), "utf8");
     expect(body).toContain("forge.yaml @team");
     expect(body).toMatch(/forge\.yaml\s+@b\b/);
+  });
+
+  it("an unconfigured owner keeps an operator-owned CODEOWNERS verbatim", () => {
+    const r = root();
+    mkdirSync(path.join(r, ".github"), { recursive: true });
+    const body = [
+      "forge.yaml              @syrokomskyi",
+      ".forge/                 @syrokomskyi",
+      "hooks/                  @syrokomskyi",
+      ".github/workflows/     @syrokomskyi",
+      ".github/CODEOWNERS     @syrokomskyi",
+      "",
+    ].join("\n");
+    writeFileSync(path.join(r, ".github/CODEOWNERS"), body);
+    const result = scaffoldTrustBoundary(r, undefined);
+    // Any effective coverage counts under the @OWNER placeholder — a
+    // placeholder write can never claim the boundary and must never
+    // downgrade a real owner's file.
+    expect(result.replaced).toEqual([]);
+    expect(result.skipped.join(" ")).toContain(".github/CODEOWNERS");
+    expect(readFileSync(path.join(r, ".github/CODEOWNERS"), "utf8")).toBe(body);
   });
 
   it("CX-56: session-owned anchors never count as operator-adopted", () => {

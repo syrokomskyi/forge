@@ -12,13 +12,6 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: external verification trust boundary
-
-policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
-with a 12-scenario catalog replayed through the real gate in a scratch
-clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
-forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
-scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: scaffold templates as shipped files + AC-6 probe name alignment
 
 Extract forge-policy.template.yml and CODEOWNERS.template into
@@ -28,6 +21,7 @@ suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: keep an unconfigured scaffold owner from rewriting real CODEOWNERS ownership</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -121,12 +115,19 @@ function effectiveOwners(body: string, relPath: string): string[] | null {
 /**
  * CX-56: adopted only when EVERY boundary path resolves to an effective rule
  * whose owner list includes the configured anchor handle — a session-owned or
- * suffix-spoofed or doc-named line never counts.
+ * suffix-spoofed or doc-named line never counts. An unconfigured owner
+ * renders the `@OWNER` placeholder, and a write under it can never claim
+ * the boundary — overwriting a real owner's rules with the placeholder
+ * would regress ownership, and skipping a planted file loses nothing the
+ * placeholder could have fixed, so any effective coverage already standing
+ * counts as adopted until `project.owner` is set.
  */
 function codeownersAdopted(body: string, who: string): boolean {
-  return Object.values(REQUIRED_OWNED).every((rel) =>
-    (effectiveOwners(body, rel) ?? []).includes(who),
-  );
+  const unconfigured = who === "@OWNER";
+  return Object.values(REQUIRED_OWNED).every((rel) => {
+    const owners = effectiveOwners(body, rel) ?? [];
+    return unconfigured ? owners.length > 0 : owners.includes(who);
+  });
 }
 
 /**
