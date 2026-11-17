@@ -5,12 +5,12 @@
   <item>TODO(compass): record the boundary this file must not take on.</item>
 </non-goals>
 <CHANGE_SUMMARY>
-  <item>RFC-1592: liveness ratchet — PROBE-06/07/08/09, shrink-only unprobed baseline, provisionalUntil scan</item>
   <item>F-0287: union the committed check-counters projection into emittedIds — journals are worktree-local, so fresh session checkouts could never reproduce primary's firing evidence and the ratchet refused on inherited develop debt</item>
   <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
   <item>F-0287 r2: union shared flow-journal refusal ids into emittedIds — integrate refusals journal {rule} to &lt;commonGitDir&gt;/forge/journal.jsonl, the only firing evidence that outlives session worktrees for rebase-class rules (FLOW-INT-02) no file fixture can seed</item>
   <item>RFC-1592: union shared flow-journal refusal ids into probe-catalog emittedIds — FLOW-INT-02 and rebase-class rules keep firing evidence after the session worktree's counters journal dies with it (F-0287 r2)</item>
-  <history>RFC-1469, RFC-1485</history>
+  <item>RFC-1592: use synthetic FLOW-INT-99 in the shared-journal liveness test — a real rule id literal in the diff trips FLOW-INT-19's duplicate governance scan (F-0287 r2 follow-up)</item>
+  <history>RFC-1469, RFC-1485, RFC-1592</history>
 </CHANGE_SUMMARY>
 */
 
@@ -194,8 +194,8 @@ async function committedDiagnosticRuleIds(
  * flow journal (<commonGitDir>/forge/journal.jsonl). Refusal diagnostics land
  * there before the session worktree — and its counters journal — is torn
  * down, so the shared journal is the only firing evidence that outlives
- * checkouts for rebase-class rules like FLOW-INT-02 that cannot be seeded by
- * a file fixture. Missing git dir, missing exec, or an absent journal
+ * checkouts for rebase-class rules (flow/FLOW-INT-*) that cannot be seeded
+ * by a file fixture. Missing git dir, missing exec, or an absent journal
  * degrades to the empty set like the committed artifact.
  */
 async function sharedFlowRefusalRuleIds(
