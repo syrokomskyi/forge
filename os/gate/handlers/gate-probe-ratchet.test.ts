@@ -5,7 +5,6 @@
   <item>TODO(compass): record the boundary this file must not take on.</item>
 </non-goals>
 <CHANGE_SUMMARY>
-  <item>RFC-1592: ratchet tests — baseline creation/subset rewrite/refusal, liveness-aware stale detection, warnOnly/provisionalUntil scan</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
 
 Every error-severity check rule now needs liveness evidence — a bound
@@ -31,6 +30,8 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
   <item>F-0287: committed-counters union + scope:app domain exclusion tests — evidence reproducibility across worktrees</item>
   <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
   <item>RFC-1592: union shared flow-journal refusal ids into probe-catalog emittedIds — FLOW-INT-02 and rebase-class rules keep firing evidence after the session worktree's counters journal dies with it (F-0287 r2)</item>
+  <item>RFC-1592: use synthetic FLOW-INT-99 in the shared-journal liveness test — a real rule id literal in the diff trips FLOW-INT-19's duplicate governance scan (F-0287 r2 follow-up)</item>
+  <history>RFC-1592</history>
 </CHANGE_SUMMARY>
 */
 
@@ -301,7 +302,7 @@ describe("gate.probe.catalog ratchet (RFC-1592)", () => {
     await mkdir(join(root, "docs"), { recursive: true });
     await writeFile(
       join(root, "docs", "validator-inventory.generated.yaml"),
-      `contracts:\n  - contract: flow\n    validators:\n      - command: flow.integrate\n        rules:\n          - id: FLOW-INT-02\n            severity: error\n  - contract: ws\n    validators:\n      - command: ws.check\n        rules:\n          - id: WS-ONLY-01\n            severity: error\n`,
+      `contracts:\n  - contract: flow\n    validators:\n      - command: flow.integrate\n        rules:\n          - id: FLOW-INT-99\n            severity: error\n  - contract: ws\n    validators:\n      - command: ws.check\n        rules:\n          - id: WS-ONLY-01\n            severity: error\n`,
     );
     execFileSync("git", ["init", "-q"], { cwd: root });
     await mkdir(join(root, ".git", "forge"), { recursive: true });
@@ -312,7 +313,7 @@ describe("gate.probe.catalog ratchet (RFC-1592)", () => {
         branch: "auto/session-test",
         sha: "0".repeat(40),
         detail: "rebase onto develop conflicts in: docs/ecosystem.generated.yaml",
-        rule: "FLOW-INT-02",
+        rule: "FLOW-INT-99",
         at: "2026-11-14T00:00:00.000Z",
       }) + "\n",
     );
@@ -322,6 +323,6 @@ describe("gate.probe.catalog ratchet (RFC-1592)", () => {
     const p6 = res.data?.diagnostics?.filter((d) => d.ruleId === "PROBE-06") ?? [];
     const msg = p6.map((d) => d.message).join("\n");
     expect(msg).toContain("WS-ONLY-01");
-    expect(msg).not.toContain("FLOW-INT-02");
+    expect(msg).not.toContain("FLOW-INT-99");
   });
 });
