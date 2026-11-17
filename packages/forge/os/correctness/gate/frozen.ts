@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-19 counterexamples — code-unit rank order, posix-normalize binding compare without backslash or whitespace folding</item>
+  <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -222,6 +222,16 @@ function parsePolicySurface(raw: unknown): {
  * value (`JSON.stringify(NaN)` collides with YAML null — RFC-1615 review
  * CX-14). A cycle sentinel prevents RangeError on recursive anchors.
  */
+/**
+ * Unforgeable cycle marker — `canon`/`policyLeaves` emit `<cycle>` only for
+ * this reference or a WeakSet hit. No YAML-decoded value can `===` it, so a
+ * literal `"<cycle>"`/`"cycle"` string leaf can never collide with the
+ * sentinel (CX-128). The emitted form is unquoted — `JSON.stringify` of any
+ * string is quoted, and every other branch prefixes its output — so no
+ * canon of a real value reaches `<cycle>`.
+ */
+const CYCLE: object = {};
+
 export function canon(value: unknown, seen: WeakSet<object> = new WeakSet()): string {
   if (typeof value === "bigint") return `int:${value}`;
   if (typeof value === "number") {
@@ -229,7 +239,7 @@ export function canon(value: unknown, seen: WeakSet<object> = new WeakSet()): st
     if (Object.is(value, -0)) return "num:-0"; // `-0` ≠ `0` (RFC-1615 review CX-22)
   }
   if (value === null || typeof value !== "object") return JSON.stringify(value) ?? "null";
-  if (seen.has(value)) return '"cycle"';
+  if (value === CYCLE || seen.has(value)) return "<cycle>";
   seen.add(value);
   try {
     if (value instanceof Date) return `date:${value.getTime()}`;
@@ -294,7 +304,7 @@ export function policyLeaves(
   if (value === null || value === undefined) return out;
   if (typeof value === "object") {
     if (seen.has(value)) {
-      out.set(prefix, "<cycle>");
+      out.set(prefix, CYCLE);
       return out;
     }
     seen.add(value);
@@ -507,18 +517,24 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
   // target: `path.posix.normalize` folds `./`, `//`, `..`, trailing `/`
   // (CX-118) but preserves backslashes and whitespace — literal POSIX
   // filename chars that resolve to a DIFFERENT file under `path.join` and
-  // git (CX-120/CX-122). checkRun already compares argv-normalized.
+  // git (CX-120/CX-122).
   const sameTarget = (a: string | null, b: string | null): boolean =>
     a === b || (a !== null && b !== null && path.posix.normalize(a) === path.posix.normalize(b));
+  // checkRun is a whitespace-tokenized command template, NOT a path —
+  // posix.normalize would fold `./node`→`node` and `a/../node`→`node` while
+  // spawn resolves argv[0] relative to cwd vs PATH and `..` pops
+  // token-boundary-spanning segments (CX-126/CX-127). sideFrom already
+  // collapses whitespace, so exact equality is argv-exact.
+  const sameCheckRun = (a: string | null, b: string | null): boolean => a === b;
   // Bindings and the correctness section.
-  for (const [key, before, after] of [
-    ["bindings.paths.correctnessManifest", base.manifestPath, now.manifestPath],
-    ["bindings.commands.checkRun", base.checkRun, now.checkRun],
-    ["bindings.paths.oracleReviewsDir", base.reviewsDir, now.reviewsDir],
-    ["paths.rfcsDir", base.rfcsDir, now.rfcsDir],
-    ["bindings.paths.invariantsFile", base.invariantsFile, now.invariantsFile],
+  for (const [key, before, after, same] of [
+    ["bindings.paths.correctnessManifest", base.manifestPath, now.manifestPath, sameTarget],
+    ["bindings.commands.checkRun", base.checkRun, now.checkRun, sameCheckRun],
+    ["bindings.paths.oracleReviewsDir", base.reviewsDir, now.reviewsDir, sameTarget],
+    ["paths.rfcsDir", base.rfcsDir, now.rfcsDir, sameTarget],
+    ["bindings.paths.invariantsFile", base.invariantsFile, now.invariantsFile, sameTarget],
   ] as const) {
-    if (before !== null && !sameTarget(before, after))
+    if (before !== null && !same(before, after))
       add(
         "binding",
         key,
