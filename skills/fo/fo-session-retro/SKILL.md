@@ -20,8 +20,6 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1573: parallelize session-end housekeeping and detach flow.integrate</item>
-  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
 
 Every error-severity check rule now needs liveness evidence — a bound
@@ -74,7 +72,8 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   the 'recurrences' wording the addressed-match routing test pins</item>
   <item>ADR-0133: forbid --detach on session-end flow.integrate (F-0301)</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>ADR-0119, ADR-0121, ADR-0126, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534</history>
+  <item>RFC-1617: drop platform ADR id from fo-session-retro instruction text (SKILL-17)</item>
+  <history>ADR-0119, ADR-0121, ADR-0126, RFC-1097, RFC-1247, RFC-1433, RFC-1460, RFC-1487, RFC-1491, RFC-1528, RFC-1531, RFC-1534, RFC-1573, RFC-1590</history>
 </CHANGE_SUMMARY>
 -->
 
@@ -252,7 +251,7 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 
 - This step applies only when the session's cwd is a flow worktree — its branch is a registered `auto/session-*` entry (check `flow.status`; repositories not on the fixed branch model have no registered branches → skip silently). When the worktree-first preamble opened a retro worktree, run the integration from that worktree — the whole session's writes ride it.
 - Before integrating, stop processes that hold files inside the session worktree — dev servers (`astro dev`, `vite dev`, `node --watch`, …) started during the session keep `node_modules`/build-output handles open and make `git worktree remove` fail with FLOW-INT-04 ("Directory not empty"): the branch still integrates, but an orphaned directory shell plus a stale server stay behind. Detect holders via `/proc` cwd links — `for d in /proc/[0-9]*/cwd; do readlink "$d"; done | grep -F "<worktree path>"` (or `lsof +D <worktree>`) — terminate them, then integrate.
-- **The session does not end without a recorded integrate verdict (ADR-0133 — NON-NEGOTIABLE).** After the clean-tree commit, run `flow.integrate` from the session worktree and wait for its terminal verdict before emitting the Step 7 report — the blocking form is the only form: `--detach` is FORBIDDEN at session end. A reported gate-run id reads as "in flight" to the operator while a refusal may already have landed, so the operator cannot tell an ended session from a dead one (F-0301). Long gate latency is awaited, never detached — when housekeeping must run in parallel, background the shell command itself and poll it to exit; the verdict is still mandatory before Step 7. A closing block that says "integrated" without the verdict is a contract violation: report `verdict: integrated (<sha>)` or `verdict: refused (<FLOW-INT-xx>) — <reason> — <named next action>`, never an unverdicted run id alone.
+- **The session does not end without a recorded integrate verdict — NON-NEGOTIABLE.** After the clean-tree commit, run `flow.integrate` from the session worktree and wait for its terminal verdict before emitting the Step 7 report — the blocking form is the only form: `--detach` is FORBIDDEN at session end. A reported gate-run id reads as "in flight" to the operator while a refusal may already have landed, so the operator cannot tell an ended session from a dead one (F-0301). Long gate latency is awaited, never detached — when housekeeping must run in parallel, background the shell command itself and poll it to exit; the verdict is still mandatory before Step 7. A closing block that says "integrated" without the verdict is a contract violation: report `verdict: integrated (<sha>)` or `verdict: refused (<FLOW-INT-xx>) — <reason> — <named next action>`, never an unverdicted run id alone.
 - On a FLOW-INT-02 (rebase conflict) or FLOW-INT-05 (gate refusal) diagnostic, report the refusal and leave the branch for the next session — do not force-resolve inside session end.
 - A FLOW-INT-04 (worktree removal failed) means the branch already integrated — only teardown failed: stop the file-holding process, confirm the worktree is unregistered (`git worktree list`), then remove the leftover directory.
 - A FLOW-INT-01 dirty refusal is different: `data.entries` carries each path's class (`disposable`/`work`/…) — remediate via the flow.integrate remediation flags (`--auto-clean` when every entry is disposable, `--autocommit` to sweep the rest into the fixed-subject commit) or leave the branch for the next session with the classification reported.
