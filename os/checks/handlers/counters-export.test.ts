@@ -10,6 +10,7 @@ journal `at` (never wall-clock), --check staleness gate (COUNT-03).</purpose>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
   <item>RFC-1485: sweep compass headers — forge-os-checks</item>
+  <item>RFC-1474: union-merge counters export over the committed artifact (F-0290)</item>
 </CHANGE_SUMMARY>
 */
 
@@ -65,7 +66,12 @@ describe("checks.counters.export", () => {
     await seedJournal([
       rec({ outcome: "pass" }),
       rec({ outcome: "diagnostic", runId: "run-b", at: "2026-10-31T21:00:00.000Z" }),
-      rec({ ruleId: "gate/GATE-CMP-02", outcome: "skipped", runId: "run-b", at: "2026-10-31T21:00:00.000Z" }),
+      rec({
+        ruleId: "gate/GATE-CMP-02",
+        outcome: "skipped",
+        runId: "run-b",
+        at: "2026-10-31T21:00:00.000Z",
+      }),
     ]);
     const result = await runCountersExport(flags(), ctx());
     expect(result.exitCode).toBe(0);
@@ -87,11 +93,20 @@ describe("checks.counters.export", () => {
   async function readFileSync() {
     const { parse } = await import("yaml");
     const { readFile } = await import("node:fs/promises");
-    const src = await readFile(join(root, "docs", "metrics", "check-counters.generated.yaml"), "utf8");
+    const src = await readFile(
+      join(root, "docs", "metrics", "check-counters.generated.yaml"),
+      "utf8",
+    );
     return parse(src) as {
       generatedAt: string;
       runCount: number;
-      rules: { ruleId: string; evaluated: number; diagnostic: number; lastRunId: string; lastAt: string }[];
+      rules: {
+        ruleId: string;
+        evaluated: number;
+        diagnostic: number;
+        lastRunId: string;
+        lastAt: string;
+      }[];
     };
   }
 
@@ -132,7 +147,10 @@ describe("checks.counters.export", () => {
   test("COUNT-03: --check exits 1 when the committed artifact is stale", async () => {
     await seedJournal([rec()]);
     await mkdir(join(root, "docs", "metrics"), { recursive: true });
-    await writeFile(join(root, "docs", "metrics", "check-counters.generated.yaml"), "stale: true\n");
+    await writeFile(
+      join(root, "docs", "metrics", "check-counters.generated.yaml"),
+      "stale: true\n",
+    );
     const result = await runCountersExport(flags({ check: true }), ctx());
     expect(result.exitCode).toBe(1);
     expect(result.data!.diagnostics?.some((d) => d.ruleId === "COUNT-03")).toBe(true);
@@ -152,7 +170,14 @@ describe("checks.counters.export", () => {
     // unreachable by the committed artifact, so the check stays green.
     await appendFile(
       join(root, COUNTERS_JOURNAL_PATH),
-      JSON.stringify(rec({ ruleId: "checks/COUNT-03", contract: "checks", runId: "checks.counters.export-999-zz", at: "2026-10-31T22:00:00.000Z" })) + "\n",
+      JSON.stringify(
+        rec({
+          ruleId: "checks/COUNT-03",
+          contract: "checks",
+          runId: "checks.counters.export-999-zz",
+          at: "2026-10-31T22:00:00.000Z",
+        }),
+      ) + "\n",
     );
     const result = await runCountersExport(flags({ check: true }), ctx());
     expect(result.exitCode).toBe(0);
@@ -163,7 +188,13 @@ describe("checks.counters.export", () => {
     await runCountersExport(flags(), ctx());
     await appendFile(
       join(root, COUNTERS_JOURNAL_PATH),
-      JSON.stringify(rec({ ruleId: "gate/GATE-CMP-02", runId: "other.validator-1-x", at: "2026-10-31T22:00:00.000Z" })) + "\n",
+      JSON.stringify(
+        rec({
+          ruleId: "gate/GATE-CMP-02",
+          runId: "other.validator-1-x",
+          at: "2026-10-31T22:00:00.000Z",
+        }),
+      ) + "\n",
     );
     const result = await runCountersExport(flags({ check: true }), ctx());
     expect(result.exitCode).toBe(1);
@@ -172,10 +203,150 @@ describe("checks.counters.export", () => {
 
   test("--out overrides the artifact path", async () => {
     await seedJournal([rec()]);
-    const result = await runCountersExport(flags({ out: "docs/metrics/custom-counters.yaml" }), ctx());
+    const result = await runCountersExport(
+      flags({ out: "docs/metrics/custom-counters.yaml" }),
+      ctx(),
+    );
     expect(result.exitCode).toBe(0);
     const { readFile } = await import("node:fs/promises");
     const src = await readFile(join(root, "docs", "metrics", "custom-counters.yaml"), "utf8");
     expect(src).toContain("forge/check-counters@1");
+  });
+
+  async function seedCommitted(artifact: {
+    generatedAt?: string;
+    runCount?: number;
+    rules: {
+      ruleId: string;
+      evaluated: number;
+      diagnostic: number;
+      lastRunId: string;
+      lastAt: string;
+    }[];
+  }) {
+    const { stringify } = await import("yaml");
+    await mkdir(join(root, "docs", "metrics"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "metrics", "check-counters.generated.yaml"),
+      stringify({
+        schema: "forge/check-counters@1",
+        generatedAt: artifact.generatedAt ?? "2026-10-31T20:00:00.000Z",
+        runCount: artifact.runCount ?? 0,
+        rules: artifact.rules,
+      }) + "\n",
+    );
+  }
+
+  test("F-0290: a thin journal cannot shrink committed diagnostic evidence", async () => {
+    await seedCommitted({
+      rules: [
+        {
+          ruleId: "flow/FLOW-INT-08",
+          evaluated: 38,
+          diagnostic: 1,
+          lastRunId: "flow.integrate-1-x",
+          lastAt: "2026-10-31T20:00:00.000Z",
+        },
+      ],
+    });
+    await seedJournal([rec({ ruleId: "gate/GATE-CMP-02", contract: "gate", outcome: "pass" })]);
+    const result = await runCountersExport(flags(), ctx());
+    expect(result.exitCode).toBe(0);
+    const artifact = await readFileSync();
+    const fired = artifact.rules.find((r) => r.ruleId === "flow/FLOW-INT-08");
+    expect(fired).toMatchObject({ evaluated: 38, diagnostic: 1, lastRunId: "flow.integrate-1-x" });
+    expect(artifact.rules.find((r) => r.ruleId === "gate/GATE-CMP-02")).toMatchObject({
+      evaluated: 1,
+    });
+  });
+
+  test("F-0290: re-export over the same journal is idempotent (no double-count)", async () => {
+    await seedJournal([
+      rec(),
+      rec({ outcome: "diagnostic", runId: "run-b", at: "2026-10-31T21:00:00.000Z" }),
+    ]);
+    await runCountersExport(flags(), ctx());
+    const first = await readFileSync();
+    await runCountersExport(flags(), ctx());
+    const second = await readFileSync();
+    expect(second.rules).toEqual(first.rules);
+    expect(second.runCount).toBe(first.runCount);
+    expect(second.generatedAt).toBe(first.generatedAt);
+  });
+
+  test("F-0290: local totals win where the journal ran further than the committed artifact", async () => {
+    await seedCommitted({
+      rules: [
+        {
+          ruleId: "gate/GATE-CMP-01",
+          evaluated: 2,
+          diagnostic: 0,
+          lastRunId: "old-run",
+          lastAt: "2026-10-30T10:00:00.000Z",
+        },
+      ],
+    });
+    await seedJournal([
+      rec(),
+      rec({ outcome: "diagnostic", runId: "run-new", at: "2026-10-31T22:00:00.000Z" }),
+      rec({ outcome: "pass", runId: "run-new", at: "2026-10-31T22:05:00.000Z" }),
+    ]);
+    const result = await runCountersExport(flags(), ctx());
+    expect(result.exitCode).toBe(0);
+    const artifact = await readFileSync();
+    expect(artifact.rules.find((r) => r.ruleId === "gate/GATE-CMP-01")).toMatchObject({
+      evaluated: 3,
+      diagnostic: 1,
+      lastRunId: "run-new",
+      lastAt: "2026-10-31T22:05:00.000Z",
+    });
+  });
+
+  test("F-0290: --check stays green on a merged superset artifact", async () => {
+    // Committed carries evidence for a rule the local journal never saw —
+    // covered-projection ⊊ committed, merge(committed, covered) === committed.
+    await seedCommitted({
+      rules: [
+        {
+          ruleId: "flow/FLOW-INT-08",
+          evaluated: 38,
+          diagnostic: 1,
+          lastRunId: "flow.integrate-1-x",
+          lastAt: "2026-10-31T20:00:00.000Z",
+        },
+        {
+          ruleId: "gate/GATE-CMP-01",
+          evaluated: 1,
+          diagnostic: 0,
+          lastRunId: "run-a",
+          lastAt: "2026-10-31T20:00:00.000Z",
+        },
+      ],
+      runCount: 10,
+    });
+    await seedJournal([rec()]);
+    const result = await runCountersExport(flags({ check: true }), ctx());
+    expect(result.exitCode).toBe(0);
+  });
+
+  test("F-0290: --check still flags committed entries that under-report the journal", async () => {
+    await seedCommitted({
+      rules: [
+        {
+          ruleId: "gate/GATE-CMP-01",
+          evaluated: 1,
+          diagnostic: 0,
+          lastRunId: "run-a",
+          lastAt: "2026-10-31T20:00:00.000Z",
+        },
+      ],
+    });
+    await seedJournal([
+      rec(),
+      rec({ outcome: "diagnostic", runId: "run-b", at: "2026-10-31T21:00:00.000Z" }),
+    ]);
+    const result = await runCountersExport(flags({ check: true }), ctx());
+    expect(result.exitCode).toBe(1);
+    expect(result.data!.diagnostics!.some((d) => d.ruleId === "COUNT-03")).toBe(true);
   });
 });
