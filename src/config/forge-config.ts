@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
 
 Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
@@ -19,8 +18,9 @@ clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596</history>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
@@ -343,6 +343,20 @@ export interface ForgePolicy {
 // Schema (forge/config@1)
 // ---------------------------------------------------------------------------
 
+/**
+ * RFC-1616 (CX-40): a GitHub handle (`@user`/`@org/team`) extracted from a
+ * raw `project.owner` string, or undefined when nothing handle-shaped leads
+ * it. `project.owner` is a trust anchor rendered into CODEOWNERS — a
+ * newline-bearing value must never inject an extra ownership rule, so the
+ * loaded config keeps only the leading handle token (or nothing).
+ */
+export function sanitizeOwnerHandle(owner: string | undefined): string | undefined {
+  if (owner === undefined) return undefined;
+  const m = /^@?[A-Za-z0-9][A-Za-z0-9_-]*(\/[A-Za-z0-9_-]+)?/.exec(owner);
+  if (!m) return undefined;
+  return m[0].startsWith("@") ? m[0] : `@${m[0]}`;
+}
+
 export const forgeConfigSchema = z
   .object({
     schema: z.literal("forge/config@1"),
@@ -359,8 +373,12 @@ export const forgeConfigSchema = z
        * `.github/CODEOWNERS` (a GitHub `@user`/`@org/team` handle). Absent
        * means the scaffold keeps the documented placeholder for the operator
        * to fill — an unresolved placeholder never expands to a weaker owner.
+       * Sanitized at load: only the leading handle token survives (CX-40).
        */
-      owner: z.string().optional(),
+      owner: z
+        .string()
+        .optional()
+        .transform((v) => sanitizeOwnerHandle(v)),
     }),
     paths: z.object({
       rfcsDir: z.string().default("docs/rfcs"),

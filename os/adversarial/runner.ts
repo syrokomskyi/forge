@@ -25,6 +25,7 @@ clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -117,8 +118,10 @@ interface ContourOpts {
 async function seedContour(scratch: string, c: ContourOpts): Promise<void> {
   const g = (args: string[]) => git(scratch, args);
   const write = (rel: string, body: string) => {
-    mkdirSync(path.dirname(path.join(scratch, rel)), { recursive: true });
-    writeFileSync(path.join(scratch, rel), interpolate(body));
+    const dest = insideRoot(scratch, rel);
+    if (dest === null) throw new Error(`contour path escapes scratch: ${rel}`);
+    mkdirSync(path.dirname(dest), { recursive: true });
+    writeFileSync(dest, interpolate(body));
   };
   const yamlList = (xs: string[] | undefined, dflt: string[]) =>
     `[${(xs ?? dflt).map((x) => JSON.stringify(x)).join(", ")}]`;
@@ -219,10 +222,11 @@ function tokenize(template: string, vars: Record<string, string>): string[] {
 }
 
 /**
- * Extract the refusal signal from gate output — STRUCTURED positions only. A
- * rule token in attacker-controlled message text (a manifest `id`, a commit
- * message) must never count as a refusal (CX-2): only violations[]-style
- * `rule` fields and `"rule": "X-Y-NN"`-shaped JSON keys qualify. And only
+ * Extract the refusal signal from gate output — verdict-shaped JSON only. A
+ * rule token in attacker-controlled text (a manifest `id`, a commit message,
+ * a forge.yaml key naming `{"rule": "X"}`) must never count as a refusal:
+ * only parsed documents carrying an envelope key (`status`/`violations`/
+ * `refusal`/`ruleId`/`verdict`) contribute (CX-2, CX-42), and only
  * error-severity violations cause a refusal — a warn-mode run prints the
  * expected rule as `severity: "warning"` while the refusal (if any) comes
  * from a different rule (CX-3).
@@ -234,6 +238,7 @@ function observedVerdict(
 ): { rule: string; fail: boolean } {
   const rules: string[] = [];
   let fail = false;
+  const RULE = /^[A-Z]+-[A-Z]+-\d+$/;
   const collect = (value: unknown): void => {
     if (!value || typeof value !== "object") return;
     if (Array.isArray(value)) {
@@ -241,24 +246,35 @@ function observedVerdict(
       return;
     }
     const rec = value as Record<string, unknown>;
-    const rule = rec["rule"];
+    for (const k of ["rule", "refusal", "ruleId"] as const) {
+      const token = rec[k];
+      if (typeof token === "string" && RULE.test(token) && rec["severity"] !== "warning")
+        rules.push(token);
+    }
     if (
-      typeof rule === "string" &&
-      /^[A-Z]+-[A-Z]+-\d+$/.test(rule) &&
-      rec["severity"] !== "warning"
+      rec["status"] === "fail" ||
+      rec["status"] === "refused" ||
+      rec["verdict"] === "fail" ||
+      typeof rec["refusal"] === "string" ||
+      typeof rec["ruleId"] === "string"
     )
-      rules.push(rule);
-    if (rec["status"] === "fail" || rec["status"] === "refused" || rec["verdict"] === "fail")
       fail = true;
     for (const v of Object.values(rec)) {
       if (v && typeof v === "object") collect(v);
     }
   };
+  /** A doc only counts when it carries a verdict envelope — a bare
+   * `{"rule": "X"}` object is attacker text, not a gate verdict (CX-42). */
+  const verdictLike = (d: unknown): d is Record<string, unknown> =>
+    !!d &&
+    typeof d === "object" &&
+    !Array.isArray(d) &&
+    ["status", "violations", "refusal", "ruleId", "verdict"].some(
+      (k) => k in (d as Record<string, unknown>),
+    );
   // Parse whole documents FIRST — `--json` output is one pretty-printed
-  // object, so a per-line regex would see `"rule": "CORR-GATE-03",` without
-  // the `"severity": "warning"` on the next line and count a warning as a
-  // refusal (CX-3). The bare-token fallback applies only to output with no
-  // parseable JSON at all.
+  // object; the first-{-to-last-} slice exists only for a doc wrapped in log
+  // noise and is still gated by verdictLike.
   const docs: unknown[] = [];
   for (const blob of [`${stdout}\n${stderr}`.trim(), stdout.trim(), stderr.trim()]) {
     if (!blob) continue;
@@ -287,14 +303,7 @@ function observedVerdict(
       }
     }
   }
-  for (const d of docs) collect(d);
-  if (docs.length === 0) {
-    for (const line of `${stdout}\n${stderr}`.split("\n").filter(Boolean)) {
-      for (const m of line.matchAll(/"(?:rule|refusal)"\s*:\s*"([A-Z]+-[A-Z]+-\d+)"/g)) {
-        rules.push(m[1]!);
-      }
-    }
-  }
+  for (const d of docs.filter(verdictLike)) collect(d);
   return { rule: rules.includes(expected) ? expected : (rules[0] ?? "none"), fail };
 }
 
@@ -331,6 +340,55 @@ export interface RunScenarioOptions {
   timeoutMs?: number;
 }
 
+/**
+ * Env the spawned forge binary receives — an allowlist, not the session's
+ * whole environment: `NODE_OPTIONS=--require` (and NODE_PATH / LD_* /
+ * GIT_* / shell-startup vectors) would preload attacker code into the gate
+ * process and fabricate a refusal verdict (CX-41).
+ */
+const SPAWN_ENV_ALLOWLIST = [
+  "PATH",
+  "HOME",
+  "TMPDIR",
+  "TMP",
+  "TEMP",
+  "LANG",
+  "LC_ALL",
+  "LC_CTYPE",
+  "TZ",
+  "CI",
+  "USER",
+  "LOGNAME",
+  "SHELL",
+  "SystemRoot",
+  "SystemDrive",
+  "WINDIR",
+  "COMSPEC",
+  "PATHEXT",
+  "PROGRAMFILES",
+  "ProgramFiles",
+  "USERPROFILE",
+  "APPDATA",
+  "LOCALAPPDATA",
+] as const;
+
+function spawnEnv(scratch: string): Record<string, string> {
+  const env: Record<string, string> = { FORGE_PRIMARY: scratch };
+  for (const k of SPAWN_ENV_ALLOWLIST) {
+    const v = process.env[k];
+    if (v !== undefined) env[k] = v;
+  }
+  return env;
+}
+
+/** Reject `rel` paths that would escape `root` — `../` and absolute paths
+ * must never write outside the scratch clone (CX-44). Returns the resolved
+ * in-root destination or null. */
+function insideRoot(root: string, rel: string): string | null {
+  const dest = path.resolve(root, rel);
+  return dest.startsWith(root + path.sep) ? dest : null;
+}
+
 export async function runScenario(
   scenario: AdversarialScenario,
   opts: RunScenarioOptions,
@@ -348,8 +406,10 @@ export async function runScenario(
       }
       if (typeof step !== "string") {
         for (const [rel, content] of Object.entries(step.files ?? {})) {
-          mkdirSync(path.dirname(path.join(scratch, rel)), { recursive: true });
-          writeFileSync(path.join(scratch, rel), interpolate(content));
+          const dest = insideRoot(scratch, rel);
+          if (dest === null) throw new Error(`setup path escapes scratch: ${rel}`);
+          mkdirSync(path.dirname(dest), { recursive: true });
+          writeFileSync(dest, interpolate(content));
         }
       }
       await g(["add", "-A"]);
@@ -357,8 +417,19 @@ export async function runScenario(
     }
     const base = (await g(["rev-parse", "HEAD"])).trim();
     for (const [rel, content] of Object.entries(scenario.attack.files)) {
-      mkdirSync(path.dirname(path.join(scratch, rel)), { recursive: true });
-      writeFileSync(path.join(scratch, rel), interpolate(content));
+      const dest = insideRoot(scratch, rel);
+      if (dest === null) {
+        // a scenario whose attack escapes the scratch clone is malformed —
+        // refuse the run, never write outside it (CX-44).
+        return {
+          name: scenario.name,
+          expected: scenario.expect.rule,
+          observed: `error:path-escape:${rel}`,
+          ok: false,
+        };
+      }
+      mkdirSync(path.dirname(dest), { recursive: true });
+      writeFileSync(dest, interpolate(content));
     }
     await g(["add", "-A"]);
     await g(["commit", "-qm", scenario.attack.commitMessage]);
@@ -380,7 +451,7 @@ export async function runScenario(
     const spawned = await new Promise<{ code: number | null; out: string; err: string }>((done) => {
       const child = spawn(argv[0]!, argv.slice(1), {
         cwd: scratch,
-        env: { ...process.env, FORGE_PRIMARY: scratch },
+        env: spawnEnv(scratch),
       });
       let out = "";
       let err = "";

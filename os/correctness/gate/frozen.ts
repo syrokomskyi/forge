@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-19 counterexamples — code-unit rank order, posix-normalize binding compare without backslash or whitespace folding</item>
   <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -649,10 +649,30 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
 }
 
 /**
+ * RFC-1616 (CX-35/36/45): top-level keys that configure the judging surface
+ * itself — `push` binds the external verifier-review switch, `correctness`
+ * the gate mode/tier/oracle budget. No `mutable`/`additive` grant may free
+ * them; `policy` is judged separately as `policy-decl`. `bindings`/`paths`
+ * stay grant-eligible by design (RFC-1615 documented semantics: additive
+ * leaves under bindings are a real feature, and a `mutable:[bindings]` grant
+ * knowingly releases the binding check — the grant itself is policy-decl
+ * judged).
+ */
+const CONTOUR_KEYS: ReadonlySet<string> = new Set(["push", "correctness"]);
+
+/**
+ * RFC-1616 (CX-32/37): `[key, leaf]` pairs carved out of every grant —
+ * `project.owner` binds the CODEOWNERS handle a session must never rebind,
+ * even when `project` sits under `mutable` or `additive`.
+ */
+const CARVED_PATHS: ReadonlyArray<readonly [string, string]> = [["project", "owner"]];
+
+/**
  * RFC-1615 policy weakenings, armed only when the base declares `policy:`:
  * `policy-decl` — the declaration itself changed (self-frozen); `policy-key` —
  * a top-level key outside `mutable` changed, an `additive` key lost or changed
- * an existing leaf, or a new top-level key appeared undeclared.
+ * an existing leaf, a contour/carved key moved, or a new top-level key
+ * appeared undeclared.
  */
 export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakening[] {
   const policy = frozen.base.policy;
@@ -683,25 +703,40 @@ export function policyWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weake
     const before = had ? baseDoc[key] : undefined;
     const after = has ? nowDoc[key] : undefined;
     if (had === has && canon(before) === canon(after)) continue;
-    if (mutable.has(key)) {
-      // RFC-1616 (CX-32): `project.owner` is never a free leaf — under the
-      // default `mutable: [project]` grant a session could rebind the
-      // CODEOWNERS handle to itself unjudged. The owner stays judged.
-      if (key === "project") {
-        const ownerOf = (v: unknown) =>
-          v && typeof v === "object" ? (v as Record<string, unknown>)["owner"] : undefined;
-        if (canon(ownerOf(before)) !== canon(ownerOf(after))) {
-          out.push({
-            kind: "policy-key",
-            subject: "project.owner",
-            message:
-              "project.owner changed — the CODEOWNERS handle is a trust anchor " +
-              "carved out of the mutable [project] grant (RFC-1616)",
-          });
-        }
-      }
+    // RFC-1616 (CX-35/36/45): keys that configure the judging surface itself
+    // are never free — a `mutable`/`additive` grant naming `push`,
+    // `correctness`, `bindings`, or `paths` must not let a session disable
+    // the verifier review switch, downgrade the gate mode/budget, or repoint
+    // the manifest + oracle runner it is judged by.
+    if (CONTOUR_KEYS.has(key)) {
+      out.push({
+        kind: "policy-key",
+        subject: key,
+        message:
+          `contour key ${key} changed — keys that configure the judging surface ` +
+          "are never a free leaf, regardless of policy.mutable/additive (RFC-1616)",
+      });
       continue;
     }
+    // RFC-1616 (CX-32/37): leaf paths carved out of ANY grant — a mutable
+    // OR additive parent must not free them. `project.owner` binds the
+    // CODEOWNERS handle; carving by path (not whole-key) leaves the rest of
+    // the granted subtree mutable.
+    const carvedDiffs = CARVED_PATHS.filter(([k]) => k === key).filter(([, leaf]) => {
+      const leafOf = (v: unknown) =>
+        v && typeof v === "object" ? (v as Record<string, unknown>)[leaf] : undefined;
+      return canon(leafOf(before)) !== canon(leafOf(after));
+    });
+    for (const [, leaf] of carvedDiffs) {
+      out.push({
+        kind: "policy-key",
+        subject: `${key}.${leaf}`,
+        message:
+          `${key}.${leaf} changed — a trust-anchor leaf carved out of every ` +
+          "mutable/additive grant (RFC-1616)",
+      });
+    }
+    if (mutable.has(key) || carvedDiffs.length > 0) continue;
     if (additive.has(key)) {
       if (!had || before === null || before === undefined) continue; // every leaf is new
       const nowLeaves = policyLeaves(after);

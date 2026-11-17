@@ -28,6 +28,7 @@ clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
+  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -73,12 +74,16 @@ function parsePolicyDecl(doc: unknown): PolicyDecl | null {
 }
 
 /**
- * Top-level keys the digest always attests even when a declaration marks them
- * mutable — `policy` governs the freeze itself (a `mutable:["policy"]` grant
- * must not self-exclude the meta-policy from attestation, CX-11) and `push`
- * binds the external review switch.
+ * Top-level keys the digest always attests even when a declaration grants
+ * them — `policy` governs the freeze itself (a `mutable:["policy"]` grant
+ * must not self-exclude the meta-policy from attestation, CX-11) and
+ * `push`/`correctness` configure the judging surface (review switch, gate
+ * mode/budget). The gate keeps the same set never-free in `policyWeakenings`
+ * (CX-35/36/45) — the attestation and the gate must judge identically or the
+ * digest attests a surface the gate cannot enforce. `bindings`/`paths` stay
+ * grant-eligible, matching the gate's documented grant semantics.
  */
-const ALWAYS_JUDGED = new Set(["policy", "push"]);
+const ALWAYS_JUDGED = new Set(["policy", "push", "correctness"]);
 
 /**
  * forge.yaml reduced to the policy-judged surface: every key except mutable —
@@ -181,7 +186,10 @@ async function gatherBaseSurface(
 ): Promise<{ surface: PolicySurface; policy: PolicyDecl } | null> {
   const raw = await git(root, ["show", `${base}:forge.yaml`]);
   if (raw === null) return null;
-  const doc = parseYaml(raw) as Record<string, unknown>;
+  // intAsBigInt — the gate's canon parses with it; a digest that rounds
+  // 9007199254740993 → 9007199254740992 attests a change the gate refuses
+  // (CX-43). The two arbiters must see the same parsed doc.
+  const doc = parseYaml(raw, { intAsBigInt: true }) as Record<string, unknown>;
   const policy = parsePolicyDecl(doc);
   if (!policy) return null;
   const tree = (await git(root, ["ls-tree", "-r", base])) ?? "";
@@ -245,7 +253,9 @@ export async function runPolicyDigest(
 
   const forgeYamlPath = path.join(workspaceRoot, "forge.yaml");
   if (!existsSync(forgeYamlPath)) return fail("no forge.yaml — nothing to attest");
-  const doc = parseYaml(await readFile(forgeYamlPath, "utf8")) as Record<string, unknown>;
+  const doc = parseYaml(await readFile(forgeYamlPath, "utf8"), {
+    intAsBigInt: true,
+  }) as Record<string, unknown>;
   const policy = parsePolicyDecl(doc);
   if (!policy) return fail("no policy surface declared — policy: section absent or malformed");
 
