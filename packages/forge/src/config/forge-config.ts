@@ -6,34 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1591: typed agent tool surface generated from the command manifest
-
-command.tools.generate projects docs/command-manifest.generated.yaml plus
-forge.yaml agentTools.{front,deny} into docs/agent-tools.generated.json
-(forge/agent-tools@1); forge agent-tools serve (forge-tools in .mcp.json)
-serves it over stdio MCP — three meta tools (command_search /
-command_describe / command_run) plus one typed tool per front entry.
-Agents now call kernel commands as schema-validated tools instead of
-shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
-
-- flag→JSON-Schema mapping (string/boolean/string[]/enum; flagsOpen keeps
-  additionalProperties); required list mirrors the manifest's required
-  flags; annotations derive from mutatesState
-- command_run refuses AGENT-TOOL-01 on undeclared args (RFC-1514
-  nearest-flag suggestion inlined for autonomy), AGENT-TOOL-02 on the
-  deny list, AGENT-TOOL-05 on unknown names; detachable commands spawn
-  with --detach and return the gate-run id; runner is pnpm exec
-  werkstatt run where the bin resolves, pnpm exec forge otherwise
-- generator refusals: AGENT-TOOL-03 (>40 front), AGENT-TOOL-04 (front
-  name absent from the manifest); --check fails on byte drift
-- serve regenerates the file in memory on manifestHash drift and warns;
-  agent-tools.generated.json joins the flow.integrate step-(3b) owner
-  registry
-- forge.yaml seeds 20 front + 7 deny entries; agent-operations guide
-  prefers typed tools, shell strings stay the no-server fallback
-- werkstatt-engine extract excludes build-input-set.test.ts (reads the
-  werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
-  the 'recurrences' wording the addressed-match routing test pins</item>
   <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
 
 loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
@@ -42,8 +14,15 @@ loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule 
 
 Quoted leaf-path segments kill the dotted-key conflation bypass; empty containers contribute no leaves (first element into a scaffolded list/map is a pure addition); weakening subjects name the differing leaf; malformed policy: no longer bricks loadForgeConfig (the gate refuses it as CORR-GATE-01). Persists the round-0 verifier report.</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
+  <item>RFC-1616: external verification trust boundary
+
+policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
+with a 12-scenario catalog replayed through the real gate in a scratch
+clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
+forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
+scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580</history>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591</history>
 </CHANGE_SUMMARY>
 */
 
@@ -377,6 +356,13 @@ export const forgeConfigSchema = z
       domain: z.string().optional(),
       /** RFC-1240: local consumer identity — absent means no consumer-aware spec filtering. */
       consumer: z.string().optional(),
+      /**
+       * RFC-1616 (Q-4): the CODEOWNERS identity rendered into the scaffolded
+       * `.github/CODEOWNERS` (a GitHub `@user`/`@org/team` handle). Absent
+       * means the scaffold keeps the documented placeholder for the operator
+       * to fill — an unresolved placeholder never expands to a weaker owner.
+       */
+      owner: z.string().optional(),
     }),
     paths: z.object({
       rfcsDir: z.string().default("docs/rfcs"),
@@ -452,6 +438,21 @@ export const forgeConfigSchema = z
      */
     correctness: z.record(z.string(), z.unknown()).optional(),
     /**
+     * RFC-1616 (Q-5): push-time trust-boundary controls.
+     * `requireVerifierReview` — when true (the unconditional default),
+     * `flow.push` scans the unpushed range for verifier/audit trailers
+     * (`X-Expectation-Origin`, `X-Verifier-Report`, `X-Correctness-Weakening`,
+     * `X-Policy-Digest`) and refuses with FLOW-PUSH-08 unless the operator
+     * passes `--accept-verifier-trailers "<reason>"`. A repository may opt
+     * out explicitly with `false` — that declaration is itself a frozen
+     * forge.yaml key, so weakening it is judged at integration.
+     */
+    push: z
+      .object({
+        requireVerifierReview: z.boolean().optional(),
+      })
+      .optional(),
+    /**
      * RFC-1615: declared policy surface — which forge.yaml keys a session may
      * change (`mutable`, `additive`) and which repo files are byte-frozen
      * (`freezeFiles`). The section is self-frozen: `correctness.gate` judges
@@ -476,6 +477,8 @@ export interface ForgeConfig {
     domain?: string;
     /** RFC-1240: local consumer identity — absent means no consumer-aware spec filtering */
     consumer?: string;
+    /** RFC-1616 (Q-4): CODEOWNERS identity rendered by the `.github/CODEOWNERS` scaffold. */
+    owner?: string;
   };
   paths: {
     rfcsDir: string;
@@ -514,6 +517,8 @@ export interface ForgeConfig {
   loopMetrics: { id: string; description?: string; source?: string }[];
   /** RFC-1578: raw `correctness:` section — validated by correctness.manifest.validate (CORR-02). */
   correctness?: Record<string, unknown>;
+  /** RFC-1616 (Q-5): push-time trust-boundary controls — `requireVerifierReview` defaults to true. */
+  push?: { requireVerifierReview?: boolean };
   /** RFC-1615: the declared policy surface — judged frozen by correctness.gate. */
   policy?: ForgePolicy;
 }

@@ -1,0 +1,24 @@
+schema: forge/adversarial-scenario@1
+name: edit-frozen-file
+requires:
+  - RFC-1580
+  - RFC-1615
+setup:
+  - contour:
+      extraFiles:
+        hooks/integration-gate.sh: |
+          #!/bin/sh
+          exit 0
+        .forge/pinned.yaml: |
+          pinned: []
+attack:
+  files:
+    hooks/integration-gate.sh: |
+      #!/bin/sh
+      echo gate skipped
+      exit 0
+  commitMessage: edit the frozen integration gate hook
+invoke: correctness.gate --base {base} --json
+expect:
+  status: refused
+  rule: CORR-GATE-02

@@ -1,0 +1,25 @@
+schema: forge/adversarial-scenario@1
+name: drop-manifest-entry
+requires:
+  - RFC-1580
+  - RFC-1615
+setup:
+  - contour:
+      extraFiles:
+        hooks/integration-gate.sh: |
+          #!/bin/sh
+          exit 0
+        .forge/pinned.yaml: |
+          pinned: []
+attack:
+  files:
+    docs/correctness.yaml: |
+      schema: forge/correctness-manifest@1
+      entries: []
+      support: []
+      exemptions: []
+  commitMessage: drop the manifest entries
+invoke: correctness.gate --base {base} --json
+expect:
+  status: refused
+  rule: CORR-GATE-02
