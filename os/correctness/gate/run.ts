@@ -13,11 +13,11 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
+  <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -154,6 +154,19 @@ async function forgeYamlOnlyFrozenKeys(
   head: string,
   policy: { mutable: string[]; additive: string[] } | null,
 ): Promise<boolean> {
+  // After the subkey deletes, drop containers left empty — otherwise an
+  // add/remove of a whole `paths:`/`bindings:` parent around only frozen
+  // subkeys dead-ends `--accept-weakening` as mixed-weakening (CX-112).
+  const pruneEmpties = (copy: Record<string, unknown>) => {
+    const empty = (v: unknown) =>
+      v !== null && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length === 0;
+    const b = copy["bindings"] as
+      { commands?: Record<string, unknown>; paths?: Record<string, unknown> } | undefined;
+    if (empty(b?.paths)) delete b!.paths;
+    if (empty(b?.commands)) delete b!.commands;
+    if (empty(b)) delete copy["bindings"];
+    if (empty(copy["paths"])) delete copy["paths"];
+  };
   const strip = (text: string | null): string => {
     let parsed: unknown;
     try {
@@ -186,6 +199,7 @@ async function forgeYamlOnlyFrozenKeys(
         delete b.paths["invariantsFile"];
       }
       delete (copy["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"];
+      pruneEmpties(copy);
     } else {
       // RFC-1615 (CX-10): only `mutable` keys participate — everything else is
       // either frozen (diff = the weakening being accepted) or additive (any
@@ -212,6 +226,7 @@ async function forgeYamlOnlyFrozenKeys(
         delete b.paths["invariantsFile"];
       }
       delete (copy["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"];
+      pruneEmpties(copy);
     }
     return canon(copy);
   };

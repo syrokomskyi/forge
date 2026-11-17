@@ -13,11 +13,11 @@ oracle never covers an entry.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
+  <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -94,14 +94,21 @@ export async function rfcPath(
   // Parity with the worktree `findRfcFile` (references.ts): the RFC lives
   // directly under rfcsDir or somewhere inside its `archive/` subtree —
   // never in an arbitrary sibling subdirectory (RFC-1615 review O-3).
-  const root = `${normalizeRelPath(rfcsDir)}/`;
+  // `.` as rfcsDir means the repo root itself — `ls-tree` paths carry no
+  // leading "./" (CX-114). A root-level match wins over an archive duplicate
+  // (CX-113): ls-tree lists subtrees first, findRfcFile checks the root first.
+  const dirNorm = normalizeRelPath(rfcsDir);
+  const root = dirNorm === "." || dirNorm === "" ? "" : `${dirNorm}/`;
+  const matches = (listing ?? "").split("\0").filter((l) => {
+    if (!l.endsWith(".md") || (root !== "" && !l.startsWith(root))) return false;
+    const inner = l.slice(root.length);
+    const inScope = !inner.includes("/") || inner.startsWith("archive/");
+    return inScope && l.split("/").pop()!.startsWith(prefix);
+  });
   return (
-    (listing ?? "").split("\0").find((l) => {
-      if (!l.endsWith(".md") || !l.startsWith(root)) return false;
-      const inner = l.slice(root.length);
-      const inScope = !inner.includes("/") || inner.startsWith("archive/");
-      return inScope && l.split("/").pop()!.startsWith(prefix);
-    }) ?? null
+    matches.find((l) => !l.slice(root.length).includes("/")) ??
+    matches.find((l) => l.slice(root.length).startsWith("archive/")) ??
+    null
   );
 }
 
