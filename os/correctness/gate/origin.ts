@@ -13,11 +13,11 @@ oracle never covers an entry.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
   <item>RFC-1615: close CX-115 — substitute dot pathspec when a dir binding normalizes to the repo root</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
+  <item>RFC-1615: close round-19 counterexamples — code-unit rank order, posix-normalize binding compare without backslash or whitespace folding</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -116,13 +116,15 @@ export async function rfcPath(
   const rank = (a: string, b: string): number => {
     const as = a.slice(root.length).split("/");
     const bs = b.slice(root.length).split("/");
+    // Code-unit order — `findRfcFile` uses `names.sort()`, and locale
+    // collation (`a` < `Z`, `é` > `z`) picks a different file (CX-121/123).
+    const cu = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
     for (let i = 0; ; i++) {
       if (i >= as.length && i >= bs.length) return 0;
       const aLast = i === as.length - 1;
       const bLast = i === bs.length - 1;
       if (aLast !== bLast) return aLast ? -1 : 1;
-      if (as[i] !== bs[i])
-        return aLast ? as[i]!.localeCompare(bs[i]!) : bs[i]!.localeCompare(as[i]!);
+      if (as[i] !== bs[i]) return aLast ? cu(as[i]!, bs[i]!) : cu(bs[i]!, as[i]!);
     }
   };
   return matches.sort(rank)[0] ?? null;
