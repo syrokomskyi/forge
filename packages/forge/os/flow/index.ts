@@ -15,14 +15,14 @@ reachable, else the version-file value.</purpose>
   <item>Untagged is not an error — it resolves to the version-file value; only a missing or unparsable version file throws.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1495: step 1 - forge state roots</item>
   <item>RFC-1495: steps 2-3 - workshop paths resolver and call-site migration</item>
   <item>RFC-1519: add advisory gate-verdict store for scoped pass reuse across reruns and the commit-integrate boundary</item>
   <item>RFC-1549: route generated onboarding-status commits through session flow on fixed branches
 
 commitWerkstattSideEffects skips git add+commit when classifyBranch() yields non-flow (protected/nonconforming), reports written outputPaths; status-hook and deploy/leitstand results propagate onboardingStatus metadata; leitstand.promote surfaces an optional session-worktree integration nextStep. Flow-branch commit behavior unchanged; mission-open fixture rebased to conforming auto/task-YYMMDD-NN branch. AC-1..AC-3 checked.</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
-  <history>RFC-1493, RFC-1494</history>
+  <item>RFC-1619: bind the integration-gate manifests step to post-rebase regen provenance (RFC-1619)</item>
+  <history>RFC-1493, RFC-1494, RFC-1495</history>
 </CHANGE_SUMMARY>
 */
 
@@ -45,6 +45,9 @@ export { classifyBranch } from "./branch-name.ts";
 export type { BranchClass } from "./branch-name.ts";
 // RFC-1568: gate-run hosts share the common-git-dir resolution.
 export { commonGitDir } from "./registry.ts";
+// RFC-1619: the manifests gate step consumes the regen provenance record.
+export { REGEN_RECORD_DIR, REGEN_RECORD_SCHEMA, regenRecordFileName } from "./post-rebase-regen.ts";
+export type { PostRebaseRegenRecord } from "./post-rebase-regen.ts";
 
 export interface RepositoryLineVersion {
   /** "6.451.0+12.ab12cd34e" for a tagged line, "6.451.0" from the version file otherwise. */

@@ -5,15 +5,24 @@
   worktree and commit exactly the owned generated files that changed, with a
   fixed subject, before the integration gate runs. Replaces RFC-1546's
   pre-rebase in-place regeneration, which wrote the file but never committed
-  it (the rebase then refused FLOW-INT-02 on the dirty worktree, F-0168).</purpose>
+  it (the rebase then refused FLOW-INT-02 on the dirty worktree, F-0168).
+  RFC-1619: a successful regen also writes a forge/post-rebase-regen@1
+  provenance record under &lt;commonGitDir&gt;/forge/regen-records/ — the
+  gate's manifests step binds to it (file == this flow's own regen output)
+  instead of re-rendering with a pre-merge engine.</purpose>
 <non-goals>
   <item>No conflict resolution — RFC-1538/1545 own generated rebase conflicts.</item>
   <item>No port entries — flow.backmerge never rebases.</item>
   <item>Never stages a non-owned path; any other dirt refuses.</item>
+  <item>The record is advisory — a write failure degrades to the gate's
+    in-process validator fallback, never a refusal.</item>
 </non-goals>
+<CHANGE_SUMMARY>
+  <item>RFC-1619: forge/post-rebase-regen@1 provenance record — blob-sha output map + advisory write on every successful regen</item>
+</CHANGE_SUMMARY>
 </MODULE_CONTRACT>
 */
-import { join } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
 
 import type { ForgeFlagValue, ForgeInvokeCommand, WorkspaceIO } from "../../src/types.ts";
 import { REGEN_FLAGS } from "../core/archive-regen.ts";
@@ -24,6 +33,79 @@ export const POST_REBASE_REGEN_SUBJECT = "chore(flow): regenerate derived manife
 
 /** Generated manifests live under docs/ by convention (RFC-1538 owner map). */
 const GENERATED_DIR = "docs";
+
+/** RFC-1619: provenance-record schema the integration gate's manifests step binds to. */
+export const REGEN_RECORD_SCHEMA = "forge/post-rebase-regen@1";
+/** Record directory below `<commonGitDir>/forge/` — sibling of gate-runs and the verdict store. */
+export const REGEN_RECORD_DIR = "regen-records";
+
+/** forge/post-rebase-regen@1 — what step (3b) produced, keyed by blob sha. */
+export interface PostRebaseRegenRecord {
+  schema: typeof REGEN_RECORD_SCHEMA;
+  at: string;
+  /** develop sha the branch rebased onto — must equal the gate's --base. */
+  baseSha: string;
+  /** branch HEAD after the regen commit (if any) — must equal the gated tip. */
+  branchTip: string;
+  /** repo-relative generated path → `git hash-object` of the regen output. */
+  outputs: Record<string, string>;
+}
+
+/** Record filename for a branch — the same flattening rule gate reports use. */
+export function regenRecordFileName(branch: string): string {
+  return `${branch.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "unknown"}.json`;
+}
+
+/**
+ * RFC-1619: persist `<commonGitDir>/forge/regen-records/<branch>.json` naming
+ * every owned generated path's post-regen blob sha. Advisory — a write
+ * failure only costs the gate its binding fast path, never the verdict.
+ */
+async function writePostRebaseRegenRecord(
+  branchWorktree: string,
+  io: WorkspaceIO,
+  input: {
+    baseSha: string;
+    ownedPaths: ReadonlyArray<string>;
+    onProgress?: (line: string) => void;
+  },
+): Promise<void> {
+  try {
+    const [commonDir, branchRes, tip] = await Promise.all([
+      git(branchWorktree, io, ["rev-parse", "--git-common-dir"]),
+      git(branchWorktree, io, ["branch", "--show-current"]),
+      git(branchWorktree, io, ["rev-parse", "HEAD"]),
+    ]);
+    if (commonDir.exitCode !== 0 || tip.exitCode !== 0) return;
+    const common = commonDir.stdout.trim();
+    const gitCommon = isAbsolute(common) ? common : resolve(branchWorktree, common);
+    const branch = branchRes.exitCode === 0 ? branchRes.stdout.trim() : "";
+    const outputs: Record<string, string> = {};
+    for (const p of input.ownedPaths) {
+      if (!(await io.exists(join(branchWorktree, p)))) continue;
+      const h = await git(branchWorktree, io, ["hash-object", "--", p]);
+      if (h.exitCode === 0) outputs[p] = h.stdout.trim();
+    }
+    const record: PostRebaseRegenRecord = {
+      schema: REGEN_RECORD_SCHEMA,
+      at: new Date().toISOString(),
+      baseSha: input.baseSha,
+      branchTip: tip.stdout.trim(),
+      outputs,
+    };
+    const dir = join(gitCommon, "forge", REGEN_RECORD_DIR);
+    await io.mkdir(dir);
+    await io.writeFile(
+      join(dir, regenRecordFileName(branch)),
+      `${JSON.stringify(record, null, 2)}\n`,
+    );
+    input.onProgress?.("post-rebase regen record written (RFC-1619)");
+  } catch (error) {
+    input.onProgress?.(
+      `post-rebase regen record skipped: ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+}
 
 export interface PostRebaseRegenResult {
   /** owner commands invoked — GENERATED_BASENAME_OWNERS order with ecosystem.manifest.generate last (archive-regen ordering) */
@@ -93,6 +175,9 @@ export async function regenerateAfterRebase(input: {
   owners: ReadonlyArray<PostRebaseOwner>;
   /** Extra owned paths beyond owners[].path — deferred owners own a path set (RFC-1602). */
   extraOwnedPaths?: ReadonlyArray<string>;
+  /** RFC-1619: develop sha the branch rebased onto — presence enables the
+   * provenance-record write the gate's manifests step binds to. */
+  baseSha?: string;
   onProgress?: (line: string) => void;
   /** Owner commands the invoker cannot run here — skipped with a progress line. */
   notRunnable?: ReadonlySet<string>;
@@ -136,6 +221,13 @@ export async function regenerateAfterRebase(input: {
   const committed = changed.filter((p) => owned.has(p));
   if (committed.length === 0) {
     input.onProgress?.("post-rebase regeneration: no drift");
+    if (input.baseSha !== undefined) {
+      await writePostRebaseRegenRecord(branchWorktree, io, {
+        baseSha: input.baseSha,
+        ownedPaths: [...owned],
+        onProgress: input.onProgress,
+      });
+    }
     return { ran, committed };
   }
 
@@ -175,5 +267,12 @@ export async function regenerateAfterRebase(input: {
   input.onProgress?.(
     `post-rebase regeneration: committed ${committed.join(", ")} (${sha.slice(0, 9)})`,
   );
+  if (input.baseSha !== undefined) {
+    await writePostRebaseRegenRecord(branchWorktree, io, {
+      baseSha: input.baseSha,
+      ownedPaths: [...owned],
+      onProgress: input.onProgress,
+    });
+  }
   return { ran, committed, sha };
 }
