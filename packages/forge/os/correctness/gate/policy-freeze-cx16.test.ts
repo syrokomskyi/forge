@@ -517,10 +517,10 @@ describe("RFC-1615 round-15: base-anchored governing references (CX-86..)", () =
   });
 
   // CX-106 — severity: unjudged-but-inert check. Mechanism: the session rebinds
-  // bindings.paths.invariantsFile to a planted file declaring DNA-99 — the rebind
-  // is NOT judged as a binding weakening (documented gap), but it is inert for
-  // the verdict: dnaIdsAtBase reads the BASE file, so CORR-03 still refuses.
-  it("CX-106: invariantsFile rebind is unjudged but inert — CORR-03 still refuses", async () => {
+  // bindings.paths.invariantsFile to a planted file declaring DNA-99 — the
+  // rebind is judged as a binding weakening (O-1 hardening) and inert for the
+  // verdict: dnaIdsAtBase reads the BASE file, so CORR-03 still refuses.
+  it("CX-106: invariantsFile rebind is judged AND inert — binding weakening + CORR-03", async () => {
     const f = fx({
       extraFiles: {
         "forge.yaml": forgeYaml({
@@ -548,16 +548,16 @@ describe("RFC-1615 round-15: base-anchored governing references (CX-86..)", () =
     expect(r.status).toBe("fail");
     expect(
       r.weakenings.some((w) => w.kind === "binding" && w.message.includes("invariantsFile")),
-      "documented: the invariantsFile rebind itself is not a judged binding",
-    ).toBe(false);
+      "the invariantsFile rebind is a judged binding weakening (O-1)",
+    ).toBe(true);
     expect(r.messages.join("\n")).toContain("DNA-99 is not declared");
   });
 
-  // CX-107 — severity: documented divergence (permissive, base-committed).
-  // Mechanism: the gate's base resolver is `ls-tree -r` (any subdir) while the
-  // worktree resolver only descends into archive/ — a base RFC in a non-archive
-  // subdir resolves in the gate. Base-committed, so no session minting vector.
-  it("CX-107: base RFC in a non-archive subdir resolves in the gate (documented divergence)", async () => {
+  // CX-107 — hardened (O-3): the gate's base resolver now mirrors the
+  // worktree `findRfcFile` scope — the RFC lives directly under rfcsDir or in
+  // its archive/ subtree, never in an arbitrary sibling subdir. A base RFC at
+  // `docs/rfcs/notes/` does not resolve, so the entry stays uncovered.
+  it("CX-107: base RFC in a non-archive subdir does not resolve (parity with findRfcFile)", async () => {
     const f = fx({
       review: false,
       extraFiles: {
@@ -568,8 +568,8 @@ describe("RFC-1615 round-15: base-anchored governing references (CX-86..)", () =
     f.write("docs/rfcs/notes/rfc-0100-title.md", RFC_BODY);
     const accept = f.commit("accept: RFC-0100\n\nX-RFC: RFC-0100");
     const r = await gate(f, { base: accept });
-    expect(r.status).toBe("pass");
-    expect(r.messages.join("\n")).not.toContain("CORR-03");
+    expect(r.status).toBe("fail");
+    expect(r.messages.join("\n")).toContain("CORR-03");
   });
 
   // CX-108 — severity: positive control. Mechanism: a HEAD-planted exact COPY of

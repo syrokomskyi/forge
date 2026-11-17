@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
+  <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -494,14 +494,6 @@ export async function readFrozenSet(repo: GateRepo, base: string): Promise<Froze
   };
 }
 
-/** The judged side, read from the working tree of the session worktree. */
-export function readHeadSide(
-  root: string,
-  readFile: (rel: string) => string | null,
-): CorrectnessSide {
-  return sideFrom(readFile("forge.yaml"), (rel) => readFile(normalizeRelPath(rel)));
-}
-
 /** Structural weakenings: bindings, correctness section, entries, oracles, exemptions. */
 export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakening[] {
   const base = frozen.base;
@@ -515,6 +507,7 @@ export function diffWeakenings(frozen: FrozenSet, now: CorrectnessSide): Weakeni
     ["bindings.commands.checkRun", base.checkRun, now.checkRun],
     ["bindings.paths.oracleReviewsDir", base.reviewsDir, now.reviewsDir],
     ["paths.rfcsDir", base.rfcsDir, now.rfcsDir],
+    ["bindings.paths.invariantsFile", base.invariantsFile, now.invariantsFile],
   ] as const) {
     if (before !== null && before !== after)
       add(

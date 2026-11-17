@@ -13,11 +13,11 @@ weakening session is accepted.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-10 counterexamples (CX-56..60)</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
+  <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -182,7 +182,10 @@ async function forgeYamlOnlyFrozenKeys(
       if (b?.paths) {
         delete b.paths["correctnessManifest"];
         delete b.paths["oracleReviewsDir"];
+        delete b.paths["compassDocs"];
+        delete b.paths["invariantsFile"];
       }
+      delete (copy["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"];
     } else {
       // RFC-1615 (CX-10): only `mutable` keys participate — everything else is
       // either frozen (diff = the weakening being accepted) or additive (any
@@ -205,7 +208,10 @@ async function forgeYamlOnlyFrozenKeys(
       if (b?.paths) {
         delete b.paths["correctnessManifest"];
         delete b.paths["oracleReviewsDir"];
+        delete b.paths["compassDocs"];
+        delete b.paths["invariantsFile"];
       }
+      delete (copy["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"];
     }
     return canon(copy);
   };
@@ -292,7 +298,9 @@ export async function runCorrectnessGate(root: string, options: GateOptions): Pr
       return { ok: false, reason: `ref "${ref}" is not of the form RFC-NNNN/${kind}-N` };
     const rel = await rfcPath(repo, base, baseRfcsDir, m[1]!);
     const text = rel === null ? null : await repo.show(base, rel);
-    return resolveRfcRefContent(text, ref, kind, baseRfcsDir);
+    const res = resolveRfcRefContent(text, ref, kind, baseRfcsDir);
+    // Name the real base-relative path like the worktree resolver does.
+    return res.ok && rel !== null ? { ok: true, rfcFile: rel } : res;
   };
 
   // (2) Validate at HEAD — committed flavor: mode/tier/binding checks and

@@ -13,12 +13,12 @@ oracle never covers an entry.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
-  <history>RFC-1580</history>
+  <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
+  <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
@@ -91,10 +91,17 @@ export async function rfcPath(
     `ls-tree ${rfcsDir}`,
   );
   const prefix = `${rfcId.toLowerCase()}-`;
+  // Parity with the worktree `findRfcFile` (references.ts): the RFC lives
+  // directly under rfcsDir or somewhere inside its `archive/` subtree —
+  // never in an arbitrary sibling subdirectory (RFC-1615 review O-3).
+  const root = `${normalizeRelPath(rfcsDir)}/`;
   return (
-    (listing ?? "")
-      .split("\0")
-      .find((l) => l.endsWith(".md") && l.split("/").pop()!.startsWith(prefix)) ?? null
+    (listing ?? "").split("\0").find((l) => {
+      if (!l.endsWith(".md") || !l.startsWith(root)) return false;
+      const inner = l.slice(root.length);
+      const inScope = !inner.includes("/") || inner.startsWith("archive/");
+      return inScope && l.split("/").pop()!.startsWith(prefix);
+    }) ?? null
   );
 }
 
