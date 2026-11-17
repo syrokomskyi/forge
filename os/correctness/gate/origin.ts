@@ -13,11 +13,11 @@ oracle never covers an entry.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
   <item>RFC-1615: close round-16 counterexamples — root-first rfc parity, rfcsDir dot, prune emptied strip containers</item>
+  <item>RFC-1615: close CX-115 — substitute dot pathspec when a dir binding normalizes to the repo root</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -41,8 +41,11 @@ export async function readReviewRecords(
   head: string,
   dir: string,
 ): Promise<ReviewedOracle[]> {
+  // "." keeps the pathspec valid when the dir normalizes to the repo root —
+  // an empty argv element is a fatal pathspec (CX-115).
+  const spec = normalizeRelPath(dir) || ".";
   const listing = await repo.listing(
-    ["ls-tree", "-r", "-z", "--name-only", head, "--", normalizeRelPath(dir)],
+    ["ls-tree", "-r", "-z", "--name-only", head, "--", spec],
     `ls-tree ${dir}`,
   );
   const out: ReviewedOracle[] = [];
@@ -86,8 +89,11 @@ export async function rfcPath(
   rfcsDir: string,
   rfcId: string,
 ): Promise<string | null> {
+  const dirNorm = normalizeRelPath(rfcsDir);
+  // "." keeps the pathspec valid when rfcsDir is the repo root — an empty
+  // argv element is a fatal pathspec, not an empty listing (CX-115).
   const listing = await repo.listing(
-    ["ls-tree", "-r", "-z", "--name-only", head, "--", normalizeRelPath(rfcsDir)],
+    ["ls-tree", "-r", "-z", "--name-only", head, "--", dirNorm || "."],
     `ls-tree ${rfcsDir}`,
   );
   const prefix = `${rfcId.toLowerCase()}-`;
@@ -97,7 +103,6 @@ export async function rfcPath(
   // `.` as rfcsDir means the repo root itself — `ls-tree` paths carry no
   // leading "./" (CX-114). A root-level match wins over an archive duplicate
   // (CX-113): ls-tree lists subtrees first, findRfcFile checks the root first.
-  const dirNorm = normalizeRelPath(rfcsDir);
   const root = dirNorm === "." || dirNorm === "" ? "" : `${dirNorm}/`;
   const matches = (listing ?? "").split("\0").filter((l) => {
     if (!l.endsWith(".md") || (root !== "" && !l.startsWith(root))) return false;
