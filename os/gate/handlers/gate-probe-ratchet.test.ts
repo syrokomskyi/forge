@@ -30,10 +30,12 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
   <item>F-0287: committed-counters union + scope:app domain exclusion tests — evidence reproducibility across worktrees</item>
   <item>RFC-1592: make probe-catalog liveness worktree-reproducible and exclude app-scope rules (F-0287)</item>
+  <item>RFC-1592: union shared flow-journal refusal ids into probe-catalog emittedIds — FLOW-INT-02 and rebase-class rules keep firing evidence after the session worktree's counters journal dies with it (F-0287 r2)</item>
 </CHANGE_SUMMARY>
 */
 
 import { test, expect, describe, beforeEach, afterEach } from "vitest";
+import { execFileSync } from "node:child_process";
 import { appendFile, mkdtemp, rm, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -293,5 +295,33 @@ describe("gate.probe.catalog ratchet (RFC-1592)", () => {
     expect(msg).not.toContain("APP-BASE-01");
     expect(msg).not.toContain("WS-BASE-01");
     expect(msg).toContain("DELETED-99");
+  });
+
+  test("F-0287 r2: shared flow-journal refusal ids count as firing evidence", async () => {
+    await mkdir(join(root, "docs"), { recursive: true });
+    await writeFile(
+      join(root, "docs", "validator-inventory.generated.yaml"),
+      `contracts:\n  - contract: flow\n    validators:\n      - command: flow.integrate\n        rules:\n          - id: FLOW-INT-02\n            severity: error\n  - contract: ws\n    validators:\n      - command: ws.check\n        rules:\n          - id: WS-ONLY-01\n            severity: error\n`,
+    );
+    execFileSync("git", ["init", "-q"], { cwd: root });
+    await mkdir(join(root, ".git", "forge"), { recursive: true });
+    await appendFile(
+      join(root, ".git", "forge", "journal.jsonl"),
+      JSON.stringify({
+        event: "integrate-refusal",
+        branch: "auto/session-test",
+        sha: "0".repeat(40),
+        detail: "rebase onto develop conflicts in: docs/ecosystem.generated.yaml",
+        rule: "FLOW-INT-02",
+        at: "2026-11-14T00:00:00.000Z",
+      }) + "\n",
+    );
+    const res = await runGateProbeCatalog(flags({ check: true }), ctx());
+    expect(res.exitCode).toBe(1);
+    expect(res.data?.ratchet?.newUnprobed).toEqual(["WS-ONLY-01"]);
+    const p6 = res.data?.diagnostics?.filter((d) => d.ruleId === "PROBE-06") ?? [];
+    const msg = p6.map((d) => d.message).join("\n");
+    expect(msg).toContain("WS-ONLY-01");
+    expect(msg).not.toContain("FLOW-INT-02");
   });
 });
