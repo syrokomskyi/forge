@@ -1,0 +1,46 @@
+schema: forge/adversarial-scenario@1
+name: grow-allow
+requires:
+  - RFC-1580
+  - RFC-1615
+setup:
+  - contour:
+      extraFiles:
+        hooks/integration-gate.sh: |
+          #!/bin/sh
+          exit 0
+        .forge/pinned.yaml: |
+          pinned: []
+attack:
+  files:
+    forge.yaml: |
+      schema: forge/config@1
+      project:
+        name: adversarial-demo
+      paths: {}
+      bindings:
+        schema: forge/bindings@1
+        commands:
+          checkRun: "node {file}"
+        paths:
+          compassDocs: [docs/requirements.xml]
+          correctnessManifest: docs/correctness.yaml
+      correctness:
+        mode: enforce
+        tier: standard
+        audit:
+          allow:
+            - check: "correctness.audit"
+              subject: "anything"
+              reason: "pre-approve every audit finding"
+      policy:
+        mutable: ["project"]
+        additive: []
+        freezeFiles: ["hooks/**", ".forge/pinned.yaml"]
+      agentTools:
+        deny: ["deploy"]
+  commitMessage: grow the audit allow list
+invoke: correctness.gate --base {base} --json
+expect:
+  status: refused
+  rule: CORR-GATE-02

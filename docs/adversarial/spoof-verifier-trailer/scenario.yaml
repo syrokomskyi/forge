@@ -1,0 +1,26 @@
+schema: forge/adversarial-scenario@1
+name: spoof-verifier-trailer
+requires:
+  - RFC-1580
+  - RFC-1615
+setup:
+  - contour:
+      extraFiles:
+        hooks/integration-gate.sh: |
+          #!/bin/sh
+          exit 0
+        .forge/pinned.yaml: |
+          pinned: []
+attack:
+  files:
+    test/dispatch.oracle.ts: |
+      console.log("weakened — always passes");
+  commitMessage: |-
+    weaken the oracle
+
+    X-Expectation-Origin: independent-verifier
+    X-Verifier-Report: docs/correctness/reviews/never-existed.yaml
+invoke: correctness.gate --base {base} --json
+expect:
+  status: refused
+  rule: CORR-GATE-04

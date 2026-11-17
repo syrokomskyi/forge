@@ -17,7 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1501: one argv-shaped read-only git allowlist for the recording and read-only adapters (RFC-1501)
 
@@ -28,6 +27,13 @@ and flow.push / flow.hold dry-runs no longer fetch. The switch-over runbook goes
 back to werkstatt run flow.install --dry-run.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
+  <item>RFC-1616: external verification trust boundary
+
+policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
+with a 12-scenario catalog replayed through the real gate in a scratch
+clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
+forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
+scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -43,6 +49,7 @@ import type {
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
 import { collectDigest, lineForTag, versionOfTag } from "../digest.ts";
+import { loadForgeConfig } from "../../../src/config/forge-config.ts";
 import { git, requireGit, topLevel } from "../git.ts";
 import { markerIsValid } from "../markers.ts";
 import { publishTag, tagAnnotationLevel, type PublicationRow } from "../publish.ts";
@@ -63,7 +70,23 @@ export interface FlowPushData {
   diagnostics: Diagnostic[];
   /** RFC-1501: whether the preflight digest fetched origin; absent on early refusals. */
   fetched?: boolean;
+  /**
+   * RFC-1616 (AC-6): unpushed commits whose bodies carry a verifier/audit
+   * trailer — `{ sha, trailers }`. Populated whenever the scan ran (also on
+   * the accepted path, so the operator sees what the flag covered).
+   */
+  verifierTrailerCommits?: Array<{ sha: string; trailers: string[] }>;
+  /** RFC-1616: the operator reason passed to --accept-verifier-trailers, when accepted. */
+  verifierTrailersAccepted?: string;
 }
+
+/** RFC-1616: the commit trailers the push-time verifier-review scan flags. */
+const VERIFIER_TRAILERS = [
+  "X-Expectation-Origin",
+  "X-Verifier-Report",
+  "X-Correctness-Weakening",
+  "X-Policy-Digest",
+] as const;
 
 function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData {
   return {
@@ -81,10 +104,35 @@ function refuse(ruleId: string, message: string, fixHint?: string): FlowPushData
  * Core of flow.push — callable in tests. Every refusal is a diagnostic in
  * the returned data; nothing leaves the machine unless pushed: true.
  */
+/**
+ * RFC-1616 (AC-6): list commits in `range` whose message carries a verifier /
+ * audit trailer. `git log` failure surfaces as an empty scan only when the
+ * range itself is empty — an unreadable log refuses upstream via FLOW-PUSH-02.
+ */
+async function scanVerifierTrailers(
+  repoRoot: string,
+  io: WorkspaceIO,
+  range: string,
+): Promise<Array<{ sha: string; trailers: string[] }>> {
+  const log = await git(repoRoot, io, ["log", "--format=%H%x1f%B%x1e", range]);
+  if (log.exitCode !== 0) return [];
+  const hits: Array<{ sha: string; trailers: string[] }> = [];
+  for (const rec of log.stdout.split("\x1e")) {
+    const idx = rec.indexOf("\x1f");
+    if (idx < 0) continue;
+    const sha = rec.slice(0, idx).trim();
+    const body = rec.slice(idx + 1);
+    if (!sha) continue;
+    const trailers = VERIFIER_TRAILERS.filter((t) => new RegExp(`^${t}:\\s*\\S`, "m").test(body));
+    if (trailers.length > 0) hits.push({ sha, trailers: [...trailers] });
+  }
+  return hits;
+}
+
 export async function pushFlow(
   repoRoot: string,
   io: WorkspaceIO,
-  opts: { digest: string; dryRun: boolean; now?: Date },
+  opts: { digest: string; dryRun: boolean; now?: Date; acceptVerifierTrailers?: string },
 ): Promise<FlowPushData> {
   const common = await commonGitDir(io, repoRoot);
   const primary = await primaryWorktree(io, repoRoot);
@@ -106,6 +154,64 @@ export async function pushFlow(
       `the digest is stale — the current digestId is ${digest.digestId}, not ${opts.digest}`,
       `run flow.digest, review the new state and re-run flow.push --digest ${digest.digestId}`,
     );
+  }
+
+  // RFC-1616 (AC-6): verifier-trailer scan over the unpushed develop+main
+  // range. A commit carrying a verifier/audit trailer claims provenance the
+  // session cannot self-certify — the operator must see those commits before
+  // they leave the machine. `push.requireVerifierReview` defaults to true;
+  // an explicit `false` opts the repository out (itself a frozen key).
+  // Unreadable/missing forge.yaml must not silently disable the scan —
+  // an unresolvable declaration defaults to required (fail closed).
+  let declared: boolean | undefined;
+  try {
+    declared = loadForgeConfig(repoRoot).push?.requireVerifierReview;
+  } catch {
+    declared = undefined;
+  }
+  const requireVerifierReview = declared !== false;
+  const scannedRanges: string[] = [];
+  const verifierTrailerCommits = new Map<string, { sha: string; trailers: string[] }>();
+  for (const [local, remote] of [
+    [digest.develop.local, digest.develop.remote],
+    [digest.main.local, digest.main.remote],
+  ] as const) {
+    const range = remote === null ? local : `${remote}..${local}`;
+    if (scannedRanges.includes(range)) continue;
+    scannedRanges.push(range);
+    for (const hit of await scanVerifierTrailers(repoRoot, io, range)) {
+      verifierTrailerCommits.set(hit.sha, hit);
+    }
+  }
+  const trailerHits = [...verifierTrailerCommits.values()].sort((a, b) =>
+    a.sha.localeCompare(b.sha),
+  );
+  if (trailerHits.length > 0 && requireVerifierReview) {
+    if (!opts.acceptVerifierTrailers) {
+      return {
+        digestId: digest.digestId,
+        pushed: false,
+        refs: [],
+        publications: [],
+        superseded: [],
+        retired: [],
+        verifierTrailerCommits: trailerHits,
+        diagnostics: [
+          {
+            ruleId: "FLOW-PUSH-08",
+            severity: "error",
+            message:
+              `${trailerHits.length} unpushed commit(s) carry a verifier/audit trailer ` +
+              `(${trailerHits.map((h) => `${h.sha.slice(0, 9)}[${h.trailers.join(",")}]`).join("; ")}) — ` +
+              `verifier evidence must be reviewed before it leaves the machine`,
+            fixHint:
+              "review the commits, then re-run with " +
+              '--accept-verifier-trailers "<reason>" — or opt the repository out ' +
+              "with push.requireVerifierReview: false in forge.yaml",
+          },
+        ],
+      };
+    }
   }
 
   for (const [branch, remote] of [
@@ -223,6 +329,8 @@ export async function pushFlow(
         by: s.by ?? plan.attempt.find((a) => a.line === s.line)?.tag ?? "",
       })),
       retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
+      verifierTrailerCommits: trailerHits,
+      verifierTrailersAccepted: opts.acceptVerifierTrailers,
       diagnostics: [],
     };
   }
@@ -244,6 +352,8 @@ export async function pushFlow(
         publications: [],
         superseded: [],
         retired: [...retiredTags].sort((a, b) => a.localeCompare(b)),
+        verifierTrailerCommits: trailerHits,
+        verifierTrailersAccepted: opts.acceptVerifierTrailers,
         diagnostics: [
           {
             ruleId: "FLOW-PUSH-04",
@@ -389,6 +499,8 @@ export async function pushFlow(
     publications,
     superseded: supersededOut,
     retired: [...freshRetired].sort((a, b) => a.localeCompare(b)),
+    verifierTrailerCommits: trailerHits,
+    verifierTrailersAccepted: opts.acceptVerifierTrailers,
     diagnostics,
   };
 }
@@ -418,11 +530,30 @@ export async function runFlowPush(
     };
   }
 
+  const acceptVerifierTrailers =
+    typeof input.flags["accept-verifier-trailers"] === "string"
+      ? input.flags["accept-verifier-trailers"].trim()
+      : "";
+  if (
+    input.flags["accept-verifier-trailers"] !== undefined &&
+    acceptVerifierTrailers.length === 0
+  ) {
+    return {
+      data: refuse(
+        "FLOW-PUSH-08",
+        "--accept-verifier-trailers requires a non-empty reason — the operator must state why the trailers are trusted",
+      ),
+      exitCode: 1,
+      summary: "[flow.push] empty --accept-verifier-trailers reason",
+    };
+  }
+
   let data: FlowPushData;
   try {
     data = await pushFlow(repoRoot, io, {
       digest: digestFlag,
       dryRun: input.flags["dry-run"] === true,
+      acceptVerifierTrailers: acceptVerifierTrailers || undefined,
     });
   } catch (error) {
     if (error instanceof FlowRegistrySchemaError) {

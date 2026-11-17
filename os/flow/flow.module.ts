@@ -15,6 +15,13 @@ FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RF
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
+  <item>RFC-1616: external verification trust boundary
+
+policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
+with a 12-scenario catalog replayed through the real gate in a scratch
+clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
+forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
+scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1626: make gate-isolation sweeps durable and refuse foreign uncommitted work</item>
   <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589</history>
 </CHANGE_SUMMARY>
@@ -797,6 +804,7 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           { id: "FLOW-PUSH-05", severity: "error" },
           { id: "FLOW-PUSH-06", severity: "error" },
           { id: "FLOW-PUSH-07", severity: "error" },
+          { id: "FLOW-PUSH-08", severity: "error" },
           { id: "FLOW-PUB-01", severity: "error" },
           { id: "PKG-HEALTH-10", severity: "error" },
           { id: "FLOW-07", severity: "error" },
@@ -829,6 +837,16 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
             kind: "boolean",
             required: false,
             description: "Evaluate preflight only — nothing leaves the machine.",
+          },
+          "accept-verifier-trailers": {
+            kind: "string",
+            required: false,
+            description:
+              "Operator reason for pushing commits that carry verifier/audit " +
+              "trailers (X-Expectation-Origin / X-Verifier-Report / " +
+              "X-Correctness-Weakening / X-Policy-Digest). Required when the " +
+              "unpushed range contains any (FLOW-PUSH-08), unless the repo " +
+              "opts out with push.requireVerifierReview: false (RFC-1616).",
           },
         },
         execute: runFlowPush,

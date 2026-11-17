@@ -167,7 +167,7 @@ describe("AC-4 — legacy path literal containment", () => {
       for (const e of await fs.readdir(dir, { withFileTypes: true })) {
         const abs = path.join(dir, e.name);
         if (e.isDirectory()) {
-          if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+          if (e.name === "node_modules" || e.name === "dist" || e.name.startsWith(".")) continue;
           await walk(abs);
           continue;
         }

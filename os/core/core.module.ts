@@ -6,7 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1536: owning-checkout routing, FLOW-OPEN-01 dirty-primary warning, shared governance-id allocation (RFC+ADR)</item>
   <item>RFC-1535: docs.archive self-stages both sides of every move pair — no half-staged EC-31 pairs (F-0038)</item>
   <item>RFC-1585: review wave — write-path corruptions, --check flag, scaffold hydration
 
@@ -34,7 +33,14 @@ git add, the lockfile restore gained its index-side counterpart, and a
 post-staging sweep surfaces MM residue with the git show : remediation.
 
 RFC-1602</item>
-  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528</history>
+  <item>RFC-1616: external verification trust boundary
+
+policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
+with a 12-scenario catalog replayed through the real gate in a scratch
+clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
+forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
+scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <history>ADR-0021, RFC-0374, RFC-0521, RFC-0539, RFC-0542, RFC-0543, RFC-0544, RFC-0546, RFC-0640, RFC-0662, RFC-0674, RFC-0678, RFC-0679, RFC-0680, RFC-0711, RFC-0733, RFC-0877, RFC-0940, RFC-1080, RFC-1088, RFC-1089, RFC-1097, RFC-1173, RFC-1230, RFC-1231, RFC-1235, RFC-1248, RFC-1251, RFC-1254, RFC-1255, RFC-1351, RFC-1354, RFC-1360, RFC-1366, RFC-1461, RFC-1500, RFC-1505, RFC-1508, RFC-1517, RFC-1518, RFC-1522, RFC-1528, RFC-1536</history>
 </CHANGE_SUMMARY>
 */
 
@@ -74,6 +80,7 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
   const { runBuild } = await import("./handlers/build.ts");
   const { runValidate } = await import("./handlers/validate.ts");
   const { runPinnedValidate } = await import("./handlers/pinned-validate.ts");
+  const { runPolicyDigest } = await import("./handlers/policy-digest.ts");
   const { runPinnedInit } = await import("./handlers/pinned-init.ts");
   const { runAssetsList } = await import("./handlers/assets-list.ts");
   const { runAssetsCheck } = await import("./handlers/assets-check.ts");
@@ -873,6 +880,54 @@ export async function createForgeCoreModule(): Promise<ForgeModule> {
           },
         },
         execute: runPinnedValidate,
+      },
+      {
+        envInputs: [
+          { name: "USER", required: false },
+          { name: "USERNAME", required: false },
+        ],
+        name: "policy.digest",
+        coverage: "operator" as const,
+        coverageNote: "policy-surface attestation (RFC-1616 trust boundary)",
+        mutatesState: true,
+        description:
+          "Attest the declared policy surface: compute a canonical sha256 over " +
+          "the policy:-judged forge.yaml keys, freezeFiles contents, " +
+          ".forge/pinned.yaml, hooks/, and .github/workflows/. " +
+          "Bare prints the digest; --write commits it to .forge/policy.digest " +
+          "(forge/policy-bundle@1); --verify recomputes and compares (exit 1 " +
+          "on mismatch); --verify --base <sha> additionally requires a commit " +
+          "in base..HEAD carrying X-Policy-Digest: <sha256> when the surface advanced.",
+        scope: "workspace",
+        reads: ["forge.yaml", ".forge/policy.digest", ".forge/pinned.yaml", "hooks/**", ".github/workflows/**"],
+        writes: [".forge/policy.digest"],
+        generates: [],
+        cacheable: false,
+        flags: {
+          write: {
+            kind: "boolean",
+            description: "Recompute and write .forge/policy.digest.",
+          },
+          verify: {
+            kind: "boolean",
+            description: "Recompute and compare against .forge/policy.digest; exit 1 on mismatch.",
+          },
+          base: {
+            kind: "string",
+            description:
+              "With --verify: also require an X-Policy-Digest trailer commit when the surface advanced since <sha>.",
+          },
+          "attested-by": {
+            kind: "string",
+            description:
+              "Attestor identity recorded in the bundle (default operator:<user>). The file is the anchor; the field is informational.",
+          },
+          json: {
+            kind: "boolean",
+            description: "Output structured JSON result.",
+          },
+        },
+        execute: runPolicyDigest,
       },
       {
         name: "pinned.init",

@@ -14,6 +14,13 @@ the attack edit, the gate invocation, and the expected refusal rule.</purpose>
   <item>RFC-1616: step 1 — policy-bundle schema + adversarial types
 
 forge/policy-bundle@1 zod contract, canonicalJson + canonicalPolicyDigest (stable-key sha256 over parsed doc + file contents), forge/adversarial-scenario@1 fixture schema and result types.</item>
+  <item>RFC-1616: external verification trust boundary
+
+policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
+with a 12-scenario catalog replayed through the real gate in a scratch
+clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
+forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
+scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -25,8 +32,44 @@ export const adversarialScenarioSchema = z.object({
   name: z.string().min(1),
   /** RFC ids / features the scenario targets — informational for --list coverage */
   requires: z.array(z.string()).optional(),
-  /** commit descriptions applied to the scratch clone before the attack */
-  setup: z.array(z.string()).default([]),
+  /**
+   * Commits applied to the scratch clone before the attack. A bare string is a
+   * description-only empty commit; `{message, files}` writes files and commits;
+   * `{contour}` seeds the canonical clean gate fixture — forge.yaml (with the
+   * given policy block), compass doc, invariant anchor, L1 oracle, manifest,
+   * and a verifier-committed forge/oracle-review@1 record — so the base passes
+   * the gate and only the attack edit can trip the expected rule.
+   * File contents interpolate `{{FORGE_HELPERS}}` to the installed package's
+   * correctness test-side helpers.
+   */
+  setup: z
+    .array(
+      z.union([
+        z.string(),
+        z.object({
+          message: z.string().min(1),
+          files: z.record(z.string(), z.string()).optional(),
+        }),
+        z.object({
+          contour: z
+            .object({
+              message: z.string().optional(),
+              /** forge.yaml policy: block — defaults to the scaffolded mainline. */
+              mutable: z.array(z.string()).optional(),
+              additive: z.array(z.string()).optional(),
+              freezeFiles: z.array(z.string()).optional(),
+              /** agentTools.deny entries — defaults to [deploy]. */
+              agentToolsDeny: z.array(z.string()).optional(),
+              /** extra files committed with the contour (hooks, pinned, …). */
+              extraFiles: z.record(z.string(), z.string()).optional(),
+              /** extra manifest entries/support appended to docs/correctness.yaml. */
+              manifestExtra: z.string().optional(),
+            })
+            .strict(),
+        }),
+      ]),
+    )
+    .default([]),
   attack: z.object({
     /** repo-relative path → full file content written by the attack */
     files: z.record(z.string(), z.string()),

@@ -1,0 +1,22 @@
+schema: forge/adversarial-scenario@1
+name: downgrade-forge
+requires:
+  - RFC-1580
+  - RFC-1615
+setup:
+  - contour:
+      extraFiles:
+        hooks/integration-gate.sh: |
+          #!/bin/sh
+          exit 0
+        .forge/pinned.yaml: |
+          pinned: []
+attack:
+  files:
+    src/anything.ts: |
+      export const x = 1;
+  commitMessage: session diff on an adopted base with a downgraded primary
+invoke: internal:downgrade-forge
+expect:
+  status: refused
+  rule: FLOW-INT-18

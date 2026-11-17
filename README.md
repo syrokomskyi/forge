@@ -201,6 +201,18 @@ Forge works with any AI agent — Devin, Windsurf, Cursor, Claude Code, Codex CL
 
 ---
 
+## Trust boundary
+
+What stops the agent from weakening its own tests, gates, or `forge.yaml` policy on the way to VERIFIED? Forge layers three controls:
+
+- **Frozen policy surface** — `correctness.gate` judges `forge.yaml` keys, `freezeFiles` globs, oracle files, and manifest entries against the integration base (`policy:` section, RFC-1615).
+- **Attestation + push-time review** — `forge policy.digest` records a canonical SHA-256 of the policy surface (`--verify` re-checks, `--verify --base` requires an `X-Policy-Digest` commit when it advances); `forge adversarial.run` replays 12 seeded attacks in a scratch clone against the real gate; `flow.push` refuses `FLOW-PUSH-08` on unpushed verifier-trailer commits until the operator passes `--accept-verifier-trailers "<reason>"`.
+- **External enforcement** — `forge init`/`forge upgrade` scaffold `.github/workflows/forge-policy.yml` (policy-only gate + pinned validation + digest verify in CI) and `.github/CODEOWNERS` (`forge.yaml`, `.forge/`, `hooks/`, `.github/workflows/` owned by `project.owner`).
+
+**VERIFIED guarantees** the declared surface was not silently weakened under those controls — not that the code is correct. Digests and trailers are attestation and provenance hints, not proof: they hold because CODEOWNERS review and the `forge-policy` status check run outside the agent's write access. See `docs/reference/trust-boundary.md`.
+
+---
+
 ## forge.yaml
 
 The single source of truth for project configuration:

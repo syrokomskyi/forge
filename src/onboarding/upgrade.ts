@@ -11,7 +11,6 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1515: harden forge flow worktree lifecycle against vanished paths, forge-local state, dead-holder locks and generated drift</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
@@ -37,8 +36,15 @@ Deletions of frozen files honor the verifier trailer pair like any other
 touch. lastCommitBody uses :(literal) pathspecs so glob-metachar filenames
 cannot borrow a sibling's verifier commit (also closes the same hole in
 origin.ts).</item>
+  <item>RFC-1616: external verification trust boundary
+
+policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
+with a 12-scenario catalog replayed through the real gate in a scratch
+clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
+forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
+scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481, RFC-1500</history>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481, RFC-1500, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 
@@ -78,6 +84,7 @@ import {
 import { generateNestedAgentsMd } from "./nested-agents-generate.ts";
 import { resolveWorkspaceTypes } from "./workspace-discovery.ts";
 import { scaffoldMemoryLayer } from "./memory-scaffold.ts";
+import { scaffoldTrustBoundary } from "./trust-boundary.ts";
 import type { SkippedSkill } from "./init.ts";
 import type { ForgeCommandInput, ForgeCommandResult, ForgeNextStep, ForgeRuntimeContext } from "../types.ts";
 
@@ -117,6 +124,8 @@ export interface UpgradeResult {
   };
   /** RFC-1615: the `policy:` block was scaffolded by this run. */
   policyScaffolded?: boolean;
+  /** RFC-1616: trust-boundary files scaffolded by this run (write-when-absent). */
+  trustBoundaryScaffolded?: string[];
 }
 
 /**
@@ -936,6 +945,11 @@ export async function runUpgrade(
       fio,
       (m) => context.logger.warn(m),
     );
+    // RFC-1616 (O-3): same boundary, same rule — adoption can't wait for a
+    // version bump; operator files are never overwritten.
+    const noopTrust = isDryRun
+      ? { created: [] as string[], skipped: [] as string[] }
+      : scaffoldTrustBoundary(workspaceRoot, config.project.owner);
     const noopConflictsReport = await reportKnowledgeConflicts(
       workspaceRoot,
       reconcile.knowledgeConflicts,
@@ -969,6 +983,7 @@ export async function runUpgrade(
         knowledgeConflictsReport: noopConflictsReport,
         flow,
         policyScaffolded,
+        trustBoundaryScaffolded: noopTrust.created,
       },
       nextSteps: [
         ...(npmCheck.warning ? [{ action: npmCheck.warning, kind: "optional" as const }] : []),
@@ -1032,6 +1047,12 @@ export async function runUpgrade(
       (msg) => context.logger.warn(msg),
     );
   }
+
+  // Step 5a: RFC-1616 (O-3) — scaffold the external trust boundary files
+  // (write-when-absent; an operator-tuned workflow/CODEOWNERS is never touched).
+  const trustBoundary = isDryRun
+    ? { created: [] as string[], skipped: [] as string[] }
+    : scaffoldTrustBoundary(workspaceRoot, config.project.owner);
 
   // Step 5b: Generate nested AGENTS.md (RFC-0611). RFC-1153: the write path
   // merges at the forge:custom boundary, and --dry-run previews which guides
@@ -1132,6 +1153,7 @@ export async function runUpgrade(
       knowledgeConflicts,
       knowledgeConflictsReport,
       flow,
+      trustBoundaryScaffolded: trustBoundary.created,
     },
     nextSteps,
     exitCode: 0,
