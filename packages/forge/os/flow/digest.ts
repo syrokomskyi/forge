@@ -18,14 +18,14 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
-  <history>RFC-1491, RFC-1498</history>
+  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
+  <history>RFC-1491, RFC-1498, RFC-1503</history>
 </CHANGE_SUMMARY>
 */
 
@@ -36,7 +36,7 @@ import { parse as parseYaml } from "yaml";
 
 import { listRfcFiles, readRfcFrontmatter, rfcFileMatchesId } from "../rfc/frontmatter-io.ts";
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
-import { gitEvidence, parseGitTrailers } from "./git.ts";
+import { git, gitEvidence, parseGitTrailers } from "./git.ts";
 import {
   commonGitDir,
   readJournal,
@@ -122,25 +122,50 @@ async function revParse(repoRoot: string, io: WorkspaceIO, ref: string): Promise
   return result.exitCode === 0 ? result.stdout.trim() || null : null;
 }
 
-/** Oldest→newest commits of `branch` not reachable from any origin/* ref (or from `remoteTip` when given). */
+/**
+ * Oldest→newest commits of `branch` not reachable from `remoteTip` — or not
+ * reachable from `verifiedExcludes` (remote heads ls-remote actually
+ * answered) when no verified tip exists for the branch. `verifiedExcludes`
+ * `null` selects the legacy `--not --remotes=origin` exclusion (the
+ * `--no-fetch` preview path, where tracking refs are all there is); a
+ * non-null set is required on the fetched path because
+ * `refs/remotes/origin/*` is session-mutable — a planted ref under `--not
+ * --remotes=origin` would hide commits the same way a planted branch tip
+ * does (CX-61). A failed range read widens to the whole branch rather
+ * than returning an empty tail: `[]` would skip the verifier scan, so the
+ * only safe failure is scanning more, never less.
+ */
 async function unpushedCommits(
   repoRoot: string,
   io: WorkspaceIO,
   branch: string,
   remoteTip: string | null,
   firstParent = false,
+  verifiedExcludes: string[] | null = null,
 ): Promise<string[]> {
   const order = firstParent ? ["--reverse", "--first-parent"] : ["--reverse"];
+  const lines = (stdout: string) =>
+    stdout
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
+  if (remoteTip !== null) {
+    const ranged = await gitEvidence(repoRoot, ["rev-list", ...order, `${remoteTip}..${branch}`]);
+    if (ranged.exitCode === 0) return lines(ranged.stdout);
+    // The verified tip could not serve as the range base — widen to the
+    // whole branch. Excluding nothing is the strictest honest answer.
+    const widened = await gitEvidence(repoRoot, ["rev-list", ...order, branch]);
+    return widened.exitCode === 0 ? lines(widened.stdout) : [];
+  }
   const args =
-    remoteTip !== null
-      ? ["rev-list", ...order, `${remoteTip}..${branch}`]
+    verifiedExcludes !== null
+      ? verifiedExcludes.length > 0
+        ? ["rev-list", ...order, branch, "--not", ...verifiedExcludes]
+        : ["rev-list", ...order, branch]
       : ["rev-list", ...order, branch, "--not", "--remotes=origin"];
   const result = await gitEvidence(repoRoot, args);
   if (result.exitCode !== 0) return [];
-  return result.stdout
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
+  return lines(result.stdout);
 }
 
 /** forge.yaml `paths.specsDir` and `bindings.paths.invariantsFile` with the RFC-1491 defaults. */
@@ -679,33 +704,132 @@ export async function collectDigest(
     });
   }
 
+  // --- remote-identity parity ------------------------------------------------
+  // Repo config is session-writable: `url.<x>.insteadOf` rewrites the fetch
+  // target, `url.<x>.pushInsteadOf`/`remote.origin.pushurl` split the push
+  // target away from it — then the judged remote is not the pushed remote
+  // (CX-62/CX-63). `git config --get` reads the raw configured URL;
+  // `remote get-url` resolves it through insteadOf the way a fetch does;
+  // the session channel's `remote get-url --push` resolves what
+  // `git push origin` will actually hit — including pushurl and rewrite
+  // rules the scrubbed env cannot see. Any disagreement is an error — the
+  // remote identity is unprovable, so the push must refuse.
+  if (hasOrigin) {
+    const configured = await gitEvidence(repoRoot, ["config", "--get", "remote.origin.url"]);
+    const fetchUrl = await gitEvidence(repoRoot, ["remote", "get-url", "origin"]);
+    const pushUrl = await git(repoRoot, io, ["remote", "get-url", "--push", "origin"]);
+    if (
+      configured.exitCode === 0 &&
+      fetchUrl.exitCode === 0 &&
+      fetchUrl.stdout.trim() !== configured.stdout.trim()
+    ) {
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-09",
+        severity: "error",
+        message: `the fetch URL for 'origin' is rewritten — 'remote.origin.url' is '${configured.stdout.trim()}' but a fetch would contact '${fetchUrl.stdout.trim()}' (a url.insteadOf rule in session-writable config is steering the evidence channel)`,
+        fixHint:
+          "remove the url.<base>.insteadOf rewrite from this repository's config and re-run flow.digest",
+      });
+    }
+    if (
+      fetchUrl.exitCode === 0 &&
+      pushUrl.exitCode === 0 &&
+      pushUrl.stdout.trim() !== fetchUrl.stdout.trim()
+    ) {
+      diagnostics.push({
+        ruleId: "FLOW-PUSH-09",
+        severity: "error",
+        message: `the push resolves to a different remote than the judged fetch — a push would contact '${pushUrl.stdout.trim()}' while the digest's evidence came from '${fetchUrl.stdout.trim()}'`,
+        fixHint:
+          "reconcile remote.origin.pushurl and the url.*.(push)insteadOf rules so push and fetch resolve to the same remote",
+      });
+    }
+  }
+
   let fetched = false;
+  // Remote tips the digest and the push scan judge. When the remote was
+  // contacted they come from `ls-remote` — a live answer from the remote
+  // itself, immune to whatever the session planted into
+  // `refs/remotes/origin/*` (CX-61). Under `--no-fetch` they fall back to
+  // the tracking refs as a display-only preview; a real push always
+  // re-derives through the fetched path.
+  let remoteTips: { develop: string | null; main: string | null } | null = null;
   if (hasOrigin && opts.fetch) {
     // The fetched objects become the remote-tracking refs the push scan
     // judges — a session url.insteadOf rewrite must not steer where they
-    // come from (CX-50). Auth-required https remotes lose credential
-    // helpers here and fail closed into the stale-ref diagnostic below,
-    // never a poisoned view.
-    const fetch = await gitEvidence(repoRoot, ["fetch", "origin", "--prune"]);
-    fetched = fetch.exitCode === 0;
+    // come from (CX-50). The explicit refspec overrides a rewritten
+    // remote.origin.fetch (CX-61) and --prune removes planted tracking
+    // refs that do not exist on the remote. Auth-required https remotes
+    // lose credential helpers here and fail closed into the stale-ref
+    // diagnostic below, never a poisoned view.
+    const lsRemote = await gitEvidence(repoRoot, [
+      "ls-remote",
+      "origin",
+      "refs/heads/develop",
+      "refs/heads/main",
+    ]);
+    const fetch = await gitEvidence(repoRoot, [
+      "fetch",
+      "--prune",
+      "origin",
+      "+refs/heads/*:refs/remotes/origin/*",
+    ]);
+    fetched = fetch.exitCode === 0 && lsRemote.exitCode === 0;
+    if (lsRemote.exitCode === 0) {
+      remoteTips = { develop: null, main: null };
+      for (const line of lsRemote.stdout.split("\n")) {
+        const m = /^([0-9a-f]{40})\trefs\/heads\/(develop|main)$/.exec(line.trim());
+        if (m) remoteTips[m[2] as "develop" | "main"] = m[1]!;
+      }
+    }
     if (!fetched) {
+      const why =
+        fetch.exitCode !== 0 ? fetch.stderr : lsRemote.stderr || "ls-remote returned no answer";
       diagnostics.push({
         ruleId: "FLOW-DIGEST-01",
         severity: "warning",
-        message: `git fetch origin --prune failed — the digest is computed on stale remote-tracking refs: ${fetch.stderr.trim().split("\n").slice(-1)[0] ?? "unknown error"}`,
+        message: `git fetch/ls-remote origin failed — the digest is computed on stale remote-tracking refs: ${why.trim().split("\n").slice(-1)[0] ?? "unknown error"}`,
       });
     }
   }
 
   const developLocal = await revParse(repoRoot, io, "develop");
   const mainLocal = await revParse(repoRoot, io, "main");
-  const developRemote = await revParse(repoRoot, io, "refs/remotes/origin/develop");
-  const mainRemote = await revParse(repoRoot, io, "refs/remotes/origin/main");
-
+  const developRemote =
+    remoteTips !== null
+      ? remoteTips.develop
+      : await revParse(repoRoot, io, "refs/remotes/origin/develop");
+  const mainRemote =
+    remoteTips !== null
+      ? remoteTips.main
+      : await revParse(repoRoot, io, "refs/remotes/origin/main");
+  // The exclusion set for a branch the remote does not carry. On the
+  // fetched path only the other branch's ls-remote-verified tip may
+  // subtract from the tail — tracking refs are session-mutable and a
+  // planted one would hide commits from the scan exactly like a planted
+  // remote tip (CX-61).
   const developTail =
-    developLocal === null ? [] : await unpushedCommits(repoRoot, io, "develop", developRemote);
+    developLocal === null
+      ? []
+      : await unpushedCommits(
+          repoRoot,
+          io,
+          "develop",
+          developRemote,
+          false,
+          remoteTips === null ? null : remoteTips.main === null ? [] : [remoteTips.main],
+        );
   const mainTail =
-    mainLocal === null ? [] : await unpushedCommits(repoRoot, io, "main", mainRemote);
+    mainLocal === null
+      ? []
+      : await unpushedCommits(
+          repoRoot,
+          io,
+          "main",
+          mainRemote,
+          false,
+          remoteTips === null ? null : remoteTips.develop === null ? [] : [remoteTips.develop],
+        );
 
   // --- items: journal-attributed segments of the develop tail ---------------
   // Segments follow develop's first-parent chain: a back-merge brings main's
@@ -714,7 +838,14 @@ export async function collectDigest(
   const developChain =
     developLocal === null
       ? []
-      : await unpushedCommits(repoRoot, io, "develop", developRemote, true);
+      : await unpushedCommits(
+          repoRoot,
+          io,
+          "develop",
+          developRemote,
+          true,
+          remoteTips === null ? null : remoteTips.main === null ? [] : [remoteTips.main],
+        );
   const common = await commonGitDir(io, repoRoot);
   const journal = await readJournal(io, common);
   const tailIndex = new Map(developChain.map((sha, i) => [sha, i]));

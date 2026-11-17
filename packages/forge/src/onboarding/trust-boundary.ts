@@ -12,16 +12,11 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: scaffold templates as shipped files + AC-6 probe name alignment
-
-Extract forge-policy.template.yml and CODEOWNERS.template into
-src/scaffold/github/ (shipped in package files[]) so the AC-7/AC-8
-file-contains probes verify the real artifacts; rename the push-trailer
-suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: keep an unconfigured scaffold owner from rewriting real CODEOWNERS ownership</item>
+  <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -106,6 +101,13 @@ function effectiveOwners(body: string, relPath: string): string[] | null {
     let pattern = parts[0]!;
     if (pattern.endsWith("/")) pattern = `${pattern}**`;
     pattern = pattern.startsWith("/") ? pattern.slice(1) : pattern;
+    // GitHub CODEOWNERS is narrower than a glob: `?`, `[…]`, `!`, `{}`,
+    // `()` and `\` are LITERAL text there (no negation, no char classes,
+    // no escaping) while picomatch reads them as pattern syntax — a
+    // `?orge.yaml` line would match for us and own nothing on GitHub
+    // (CX-69). Escape every glob metacharacter except `*`/`**`/`/` so the
+    // matcher applies GitHub's literal semantics exactly.
+    pattern = pattern.replace(/[\\?[\](){}!+@^|]/g, "\\$&");
     const glob = pattern.includes("/") ? pattern : `**/${pattern}`;
     if (picomatch(glob, { dot: true })(relPath)) owners = parts.slice(1);
   }
@@ -131,12 +133,88 @@ function codeownersAdopted(body: string, who: string): boolean {
 }
 
 /**
- * CX-57: the workflow counts only when it both TRIGGERS on `push` or
- * `pull_request` (a `workflow_dispatch`-only no-op enforces nothing) and
- * invokes each policy-surface command on a `run:` line led by a real runner
- * (`forge`/`werkstatt`/`pnpm exec forge`/… — an `echo` of the names is not an
- * invocation). `policy.digest` additionally needs `--verify` — a bare print
- * attests nothing.
+ * True when an `if:` condition is provably satisfied — the trigger/step
+ * actually executes. Absent/empty counts as true; literal `false` (or an
+ * expression that reduces to it) never runs; `success()`/`always()`/
+ * `!cancelled()` are the status checks that cannot statically veto. Any
+ * other expression — `github.*`, `vars.*`, comparisons — is unprovable, so
+ * the guarded line does not count (CX-68: a gate behind `if: false` still
+ * enforced nothing).
+ */
+function conditionRuns(v: unknown): boolean {
+  if (v === undefined || v === null || v === true) return true;
+  if (v === false) return false;
+  if (typeof v !== "string") return false;
+  const s = v
+    .trim()
+    .replace(/^\$\{\{/, "")
+    .replace(/\}\}\s*$/, "")
+    .trim();
+  return /^(?:success|always|!cancelled)\(\)$|^true$/i.test(s);
+}
+
+/**
+ * True when a workflow event's filters still let it fire for the
+ * integration branches — `branches:`/`tags:`/`paths:` filters can scope a
+ * `push` trigger down to nothing while the key's presence still counts
+ * (CX-67). `push`/`pull_request` bare or as a list entry carry no filter;
+ * a map must include BOTH integration branches after its `branches`/
+ * `branches-ignore` patterns, may not be tags- or paths-scoped (a push
+ * that changes only files outside `paths:` never triggers), and may not
+ * coexist filters GitHub would reject.
+ */
+function eventFiresOnIntegration(cfg: unknown): boolean {
+  if (cfg === undefined || cfg === null) return true; // bare `push:` / `pull_request:`
+  if (typeof cfg !== "object" || Array.isArray(cfg)) return false; // malformed — cannot run
+  const m = cfg as Record<string, unknown>;
+  const includes = m["branches"];
+  const ignores = m["branches-ignore"];
+  if (includes !== undefined && ignores !== undefined) return false; // GitHub rejects the pair
+  if (m["paths"] !== undefined || m["paths-ignore"] !== undefined) return false;
+  if (
+    includes === undefined &&
+    ignores === undefined &&
+    (m["tags"] !== undefined || m["tags-ignore"] !== undefined)
+  ) {
+    return false; // tags-only: branch pushes never fire
+  }
+  const branchMatches = (pats: unknown, branch: string): boolean => {
+    if (!Array.isArray(pats)) return false;
+    let matched = false;
+    for (const p of pats) {
+      if (typeof p !== "string") continue;
+      const neg = p.startsWith("!");
+      const glob = neg ? p.slice(1) : p;
+      try {
+        if (picomatch(glob, { dot: true })(branch)) matched = !neg;
+      } catch {
+        /* an unparseable pattern matches nothing on GitHub either */
+      }
+    }
+    return matched;
+  };
+  if (includes !== undefined) {
+    return ["develop", "main"].every((b) => branchMatches(includes, b));
+  }
+  if (ignores !== undefined) {
+    return !["develop", "main"].some((b) => branchMatches(ignores, b));
+  }
+  return true;
+}
+
+/**
+ * CX-57: the workflow counts only when it TRIGGERS on `push` in a way
+ * that actually fires for the integration branches — the boundary's job
+ * is re-judging what lands on them, and a `pull_request`-only or
+ * `branches: [never]` workflow enforces nothing on the push path
+ * (CX-67). It must also invoke each policy-surface command on a
+ * `run:` line led by a real runner (`forge`/`werkstatt`/`pnpm exec
+ * forge`/… — an `echo` of the names is not an invocation). `policy.digest`
+ * additionally needs `--verify` — a bare print attests nothing. Steps and
+ * jobs gated by an unprovable `if:` or wearing `continue-on-error: true`
+ * contribute nothing (CX-68), and a `run:` line carrying a `||` tail is an
+ * OR-list — under `bash -e` the fallback still swallows the gate's failure
+ * (CX-66).
  */
 function workflowAdopted(body: string): boolean {
   let doc: unknown;
@@ -147,25 +225,33 @@ function workflowAdopted(body: string): boolean {
   }
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return false;
   const on = (doc as Record<string, unknown>)["on"];
-  const triggers = new Set<string>();
+  // Enforcement must cover the PUSH path — commits land on the
+  // integration branches by pushing, and a `pull_request`-only workflow
+  // never fires on a direct push (CX-67).
+  let pushOk = false;
   if (typeof on === "string") {
-    triggers.add(on);
+    pushOk = on === "push";
   } else if (Array.isArray(on)) {
-    for (const t of on) if (typeof t === "string") triggers.add(t);
+    for (const t of on) if (t === "push") pushOk = true;
   } else if (on !== null && typeof on === "object") {
     // braces mandatory — a bare `for` here would rebind the whole else-if
     // chain inside the array branch's inner `if` (dangling else).
-    for (const k of Object.keys(on as Record<string, unknown>)) triggers.add(k);
+    const m = on as Record<string, unknown>;
+    if ("push" in m) pushOk = eventFiresOnIntegration(m["push"]);
   }
-  if (!triggers.has("push") && !triggers.has("pull_request")) return false;
+  if (!pushOk) return false;
   const jobs = (doc as Record<string, unknown>)["jobs"];
   const runs: string[] = [];
   if (jobs !== null && typeof jobs === "object" && !Array.isArray(jobs)) {
     for (const job of Object.values(jobs as Record<string, unknown>)) {
-      const steps = (job as { steps?: unknown } | null)?.steps;
+      const j = job as Record<string, unknown> | null;
+      if (j === null || !conditionRuns(j["if"]) || j["continue-on-error"] === true) continue;
+      const steps = j.steps;
       if (!Array.isArray(steps)) continue;
       for (const step of steps) {
-        const run = (step as { run?: unknown } | null)?.run;
+        const s = step as Record<string, unknown> | null;
+        if (s === null || !conditionRuns(s["if"]) || s["continue-on-error"] === true) continue;
+        const run = s.run;
         if (typeof run === "string") runs.push(run);
       }
     }
@@ -178,7 +264,12 @@ function workflowAdopted(body: string): boolean {
           (line) =>
             new RegExp(
               `^\\s*(?:pnpm\\s+exec\\s+|npx\\s+|yarn\\s+exec\\s+|bunx?\\s+)?(?:forge|werkstatt)\\s+(?:run\\s+)?${cmd}\\b`,
-            ).test(line) && (extra === undefined || extra.test(line)),
+            ).test(line) &&
+            // `||` inside a ${{ }} GitHub expression is evaluated by the
+            // runner, not the shell — strip the expression spans before
+            // looking for a shell-level OR tail (CX-66).
+            !/\|\|/.test(line.replace(/\$\{\{[^}]*\}\}/g, "")) &&
+            (extra === undefined || extra.test(line)),
         ),
     );
   return (
