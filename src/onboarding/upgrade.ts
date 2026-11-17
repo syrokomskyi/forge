@@ -11,7 +11,6 @@ With --update-npm, also updates @warpgogol/forge from npm before syncing (skippe
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: round-1 acceptance counterexamples CX-6..CX-12</item>
   <item>RFC-1615: round-3 acceptance counterexamples CX-13..CX-20
 
@@ -43,8 +42,9 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481, RFC-1500, RFC-1515</history>
+  <history>RFC-0543, RFC-0611, RFC-0663, RFC-0664, RFC-1097, RFC-1154, RFC-1224, RFC-1255, RFC-1481, RFC-1500, RFC-1515, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
@@ -948,7 +948,7 @@ export async function runUpgrade(
     // RFC-1616 (O-3): same boundary, same rule — adoption can't wait for a
     // version bump; operator files are never overwritten.
     const noopTrust = isDryRun
-      ? { created: [] as string[], skipped: [] as string[] }
+      ? { created: [] as string[], skipped: [] as string[], replaced: [] as string[] }
       : scaffoldTrustBoundary(workspaceRoot, config.project.owner);
     const noopConflictsReport = await reportKnowledgeConflicts(
       workspaceRoot,
@@ -969,7 +969,7 @@ export async function runUpgrade(
         nestedAgentsGenerated: [],
         nestedAgentsPlanned: [],
         nestedAgentsPreserved: [],
-        nestedAgentsSkipped: [],
+        nestedAgentsSkipped: noopTrust.replaced,
         memoryScaffold: { created: [], gitignoreUpdated: false, skipped: [] },
         npmUpdated: npmUpdated,
         npmUpdateSkipped: npmUpdateSkipped,
@@ -1051,7 +1051,7 @@ export async function runUpgrade(
   // Step 5a: RFC-1616 (O-3) — scaffold the external trust boundary files
   // (write-when-absent; an operator-tuned workflow/CODEOWNERS is never touched).
   const trustBoundary = isDryRun
-    ? { created: [] as string[], skipped: [] as string[] }
+    ? { created: [] as string[], skipped: [] as string[], replaced: [] as string[] }
     : scaffoldTrustBoundary(workspaceRoot, config.project.owner);
 
   // Step 5b: Generate nested AGENTS.md (RFC-0611). RFC-1153: the write path
@@ -1140,7 +1140,7 @@ export async function runUpgrade(
       nestedAgentsGenerated,
       nestedAgentsPlanned,
       nestedAgentsPreserved,
-      nestedAgentsSkipped,
+      nestedAgentsSkipped: [...nestedAgentsSkipped, ...trustBoundary.replaced],
       memoryScaffold,
       npmUpdated,
       npmUpdateSkipped,

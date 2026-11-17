@@ -19,6 +19,7 @@ attestation metadata a CODEOWNERS rule can own. policy.digest --write emits it;
   <item>RFC-1616: step 1 — policy-bundle schema + adversarial types
 
 forge/policy-bundle@1 zod contract, canonicalJson + canonicalPolicyDigest (stable-key sha256 over parsed doc + file contents), forge/adversarial-scenario@1 fixture schema and result types.</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
 </CHANGE_SUMMARY>
 */
 
@@ -41,10 +42,12 @@ export type PolicyBundle = z.infer<typeof policyBundleSchema>;
 
 export const POLICY_DIGEST_PATH = ".forge/policy.digest";
 
-/** One digested file: repo-root-relative path + LF-normalized content. */
+/** One digested file: repo-root-relative path + git-style mode + LF-normalized content. */
 export interface PolicySurfaceFile {
   path: string;
   content: string;
+  /** git file mode ("100644"/"100755"/"120000") — mode changes advance the surface (CX-13) */
+  mode?: string;
 }
 
 /** The normalized policy surface the digest covers. */
@@ -83,6 +86,8 @@ export function canonicalPolicyDigest(surface: PolicySurface): string {
   for (const f of [...surface.files].sort((a, b) => (a.path < b.path ? -1 : 1))) {
     h.update("\0");
     h.update(f.path);
+    h.update("\0");
+    h.update(f.mode ?? "");
     h.update("\0");
     h.update(f.content.replace(/\r\n/g, "\n"));
   }

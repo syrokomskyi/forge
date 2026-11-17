@@ -16,10 +16,11 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
 </CHANGE_SUMMARY>
 */
 
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -65,12 +66,26 @@ describe("trust-boundary scaffold (RFC-1616)", () => {
     expect(first.created.sort()).toEqual(
       [".github/CODEOWNERS", ".github/workflows/forge-policy.yml"].sort(),
     );
-    const tuned = "# operator tuned CODEOWNERS\n* @team\n";
+    const tuned = "# operator tuned CODEOWNERS\nforge.yaml @team\n.github/CODEOWNERS @team\n";
     writeFileSync(path.join(r, ".github/CODEOWNERS"), tuned);
     const second = scaffoldTrustBoundary(r, "@b");
     expect(second.created).toEqual([]);
+    expect(second.replaced).toEqual([]);
     expect(second.skipped.join(" ")).toContain("already exists");
     expect(readFileSync(path.join(r, ".github/CODEOWNERS"), "utf8")).toBe(tuned);
+  });
+
+  it("CX-28: an inert pre-planted file is rewritten, keeping its lines verbatim", () => {
+    const r = root();
+    const inert = path.join(r, ".github", "CODEOWNERS");
+    mkdirSync(path.dirname(inert), { recursive: true });
+    writeFileSync(inert, "# agent's own file\ndocs/ @agent\n");
+    const result = scaffoldTrustBoundary(r, "@a");
+    expect(result.created).toContain(".github/CODEOWNERS");
+    expect(result.replaced).toEqual([".github/CODEOWNERS"]);
+    const body = readFileSync(inert, "utf8");
+    expect(body).toContain("forge.yaml");
+    expect(body).toContain("docs/ @agent");
   });
 
   it("config schema accepts project.owner and push.requireVerifierReview", () => {

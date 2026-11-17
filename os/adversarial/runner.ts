@@ -24,6 +24,7 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
 </CHANGE_SUMMARY>
 */
 
@@ -51,11 +52,16 @@ const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = packageRoot(MODULE_DIR);
 const OWN_BIN = path.join(PKG_ROOT, "bin", "cli.js");
 
-/** argv prefix that invokes this install's forge binary. */
+/**
+ * argv prefix that invokes this install's forge binary. `FORGE_ADVERSARIAL_BIN`
+ * is a test-only override — honored under vitest, ignored by the shipped CLI:
+ * a session-controlled env var must never redirect the demonstration away from
+ * the real gate (CX-1).
+ */
 export function resolveForgeArgv(explicit?: string[]): string[] {
   if (explicit && explicit.length > 0) return explicit;
   const env = process.env["FORGE_ADVERSARIAL_BIN"];
-  if (env) return env.split(/\s+/).filter(Boolean);
+  if (env && process.env["VITEST"] === "true") return env.split(/\s+/).filter(Boolean);
   const argv1 = process.argv[1] ?? "";
   if (/(cli\.(js|ts)|forge)$/.test(argv1)) return [process.execPath, argv1];
   return [process.execPath, OWN_BIN];
@@ -213,32 +219,83 @@ function tokenize(template: string, vars: Record<string, string>): string[] {
 }
 
 /**
- * Extract the refusal rule from gate output. The expected rule wins when it
- * appears anywhere in the verdict (a refusal may name several rules);
- * otherwise the first rule token, else "none".
+ * Extract the refusal signal from gate output — STRUCTURED positions only. A
+ * rule token in attacker-controlled message text (a manifest `id`, a commit
+ * message) must never count as a refusal (CX-2): only violations[]-style
+ * `rule` fields and `"rule": "X-Y-NN"`-shaped JSON keys qualify. And only
+ * error-severity violations cause a refusal — a warn-mode run prints the
+ * expected rule as `severity: "warning"` while the refusal (if any) comes
+ * from a different rule (CX-3).
  */
-function observedRule(stdout: string, stderr: string, expected: string): string {
-  const text = `${stdout}\n${stderr}`;
-  const all = [...text.matchAll(/\b([A-Z]+-[A-Z]+-\d+)\b/g)].map((m) => m[1]!);
-  if (all.includes(expected)) return expected;
-  try {
-    for (const line of stdout.split("\n").filter(Boolean)) {
-      const j = JSON.parse(line) as Record<string, unknown>;
-      const data = (j["data"] ?? j) as Record<string, unknown>;
-      const violations = data?.["violations"];
-      if (Array.isArray(violations)) {
-        const rule = violations
-          .map((v) =>
-            v && typeof v === "object" ? String((v as Record<string, unknown>)["rule"] ?? "") : "",
-          )
-          .find((r) => /^[A-Z]+-[A-Z]+-\d+/.test(r));
-        if (rule) return rule;
+function observedVerdict(
+  stdout: string,
+  stderr: string,
+  expected: string,
+): { rule: string; fail: boolean } {
+  const rules: string[] = [];
+  let fail = false;
+  const collect = (value: unknown): void => {
+    if (!value || typeof value !== "object") return;
+    if (Array.isArray(value)) {
+      for (const v of value) collect(v);
+      return;
+    }
+    const rec = value as Record<string, unknown>;
+    const rule = rec["rule"];
+    if (
+      typeof rule === "string" &&
+      /^[A-Z]+-[A-Z]+-\d+$/.test(rule) &&
+      rec["severity"] !== "warning"
+    )
+      rules.push(rule);
+    if (rec["status"] === "fail" || rec["status"] === "refused" || rec["verdict"] === "fail")
+      fail = true;
+    for (const v of Object.values(rec)) {
+      if (v && typeof v === "object") collect(v);
+    }
+  };
+  // Parse whole documents FIRST — `--json` output is one pretty-printed
+  // object, so a per-line regex would see `"rule": "CORR-GATE-03",` without
+  // the `"severity": "warning"` on the next line and count a warning as a
+  // refusal (CX-3). The bare-token fallback applies only to output with no
+  // parseable JSON at all.
+  const docs: unknown[] = [];
+  for (const blob of [`${stdout}\n${stderr}`.trim(), stdout.trim(), stderr.trim()]) {
+    if (!blob) continue;
+    try {
+      docs.push(JSON.parse(blob));
+      continue;
+    } catch {
+      /* not one JSON document — try the largest top-level object */
+    }
+    const start = blob.indexOf("{");
+    const end = blob.lastIndexOf("}");
+    if (start >= 0 && end > start) {
+      try {
+        docs.push(JSON.parse(blob.slice(start, end + 1)));
+      } catch {
+        /* unbalanced — fall through */
       }
     }
-  } catch {
-    /* not JSON — fall through */
   }
-  return all[0] ?? "none";
+  if (docs.length === 0) {
+    for (const line of `${stdout}\n${stderr}`.split("\n")) {
+      try {
+        docs.push(JSON.parse(line));
+      } catch {
+        /* non-JSON line */
+      }
+    }
+  }
+  for (const d of docs) collect(d);
+  if (docs.length === 0) {
+    for (const line of `${stdout}\n${stderr}`.split("\n").filter(Boolean)) {
+      for (const m of line.matchAll(/"(?:rule|refusal)"\s*:\s*"([A-Z]+-[A-Z]+-\d+)"/g)) {
+        rules.push(m[1]!);
+      }
+    }
+  }
+  return { rule: rules.includes(expected) ? expected : (rules[0] ?? "none"), fail };
 }
 
 /**
@@ -339,15 +396,19 @@ export async function runScenario(
         done({ code, out, err });
       });
     });
-    const observed =
+    const verdict =
       spawned.code === -1
-        ? `error:${argv[0]}`
-        : observedRule(spawned.out, spawned.err, scenario.expect.rule);
+        ? { rule: `error:${argv[0]}`, fail: false }
+        : observedVerdict(spawned.out, spawned.err, scenario.expect.rule);
+    // A refusal costs a non-zero exit — warn-mode still prints `status: fail`
+    // with the violation tokens while exiting 0, so the process status is the
+    // only honest signal (CX-3).
+    const refused = spawned.code !== 0;
     return {
       name: scenario.name,
       expected: scenario.expect.rule,
-      observed,
-      ok: observed === scenario.expect.rule,
+      observed: verdict.rule,
+      ok: refused && verdict.rule === scenario.expect.rule,
     };
   } finally {
     if (!opts.keepScratch) rmSync(scratch, { recursive: true, force: true });

@@ -6,9 +6,6 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1596: V-56 moves declaration on workshop-tooling RFCs
-
-loopMetrics vocabulary in forge.yaml (7 site-loop metrics), V-56 validator rule (subject = loopMetrics declared + createdAt >= adoption + tooling kind + no app/outcome-surface impact; missing moves / undeclared id / none-without-reason / missing baseline+target all error; terminal-status immunity for removed ids), moves.metric copied into rfc.index.generate entries, commented moves block in the RFC template, moves on RFC-1596 itself, and skill guidance in fo-idea-create-rfc (baseline read from the metric's source) + fo-idea-audit (flag a target restating the deliverable).</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
   <item>RFC-1615: close acceptance-verification counterexamples CX-1..CX-5
 
@@ -21,8 +18,9 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
-  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591</history>
+  <history>RFC-0391, RFC-0393, RFC-0537, RFC-0538, RFC-0539, RFC-0540, RFC-0543, RFC-0546, RFC-0639, RFC-0640, RFC-0643, RFC-0661, RFC-0662, RFC-0704, RFC-1097, RFC-1224, RFC-1332, RFC-1365, RFC-1391, RFC-1453, RFC-1481, RFC-1493, RFC-1539, RFC-1578, RFC-1579, RFC-1580, RFC-1591, RFC-1596</history>
 </CHANGE_SUMMARY>
 */
 
@@ -624,7 +622,7 @@ export function resolvePackageManager(pm: string): ForgePackageManager {
 export const DEFAULT_FORGE_POLICY: ForgePolicy = {
   mutable: ["project", "forge", "moves"],
   additive: ["bindings", "paths", "loopMetrics"],
-  freezeFiles: ["hooks/**", ".github/workflows/**", ".forge/pinned.yaml"],
+  freezeFiles: ["hooks/**", ".github/workflows/**", ".github/CODEOWNERS", ".forge/pinned.yaml"],
 };
 
 export function defaultForgeConfig(projectName: string, packageManager?: string): ForgeConfig {
