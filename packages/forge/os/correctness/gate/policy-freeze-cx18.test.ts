@@ -140,16 +140,14 @@ describe("rfcPath — scope and ordering (CX-113/CX-114)", () => {
     expect(await rfcPath(repo, r.base, "docs/rfcs", "RFC-0100")).toBe("docs/rfcs/rfc-0100-root.md");
   });
 
-  it("without a root file the first archive-subtree match wins (ls order)", async () => {
+  it("without a root file the direct archive child beats a nested subtree (CX-116)", async () => {
     const { "docs/rfcs/rfc-0100-root.md": _d, ...files } = RFC_FILES;
     const r = mkRepo(FORGE("paths:\n  rfcsDir: docs/rfcs\n"), files);
     const repo = new GateRepo(r.root);
-    // ls-tree order inside docs/rfcs/archive: `deep/` sorts before the file —
-    // the gate picks archive/deep/rfc-0100-deep.md.
+    // findRfcFile checks same-level files before descending — the gate now
+    // ranks identically: archive/rfc-0100-arch.md beats archive/deep/…
     const rel = await rfcPath(repo, r.base, "docs/rfcs", "RFC-0100");
-    expect(rel).toBe("docs/rfcs/archive/deep/rfc-0100-deep.md");
-    // …but the worktree findRfcFile checks same-level files before descending —
-    // it picks archive/rfc-0100-arch.md. DIVERGENCE (see report O-8).
+    expect(rel).toBe("docs/rfcs/archive/rfc-0100-arch.md");
     const wt = await resolveRfcRef(r.root, "docs/rfcs", "RFC-0100/AC-2", "AC");
     expect(wt.ok ? wt.rfcFile : wt).toBe("docs/rfcs/archive/rfc-0100-arch.md");
   });
@@ -231,16 +229,17 @@ describe("rfcPath — scope and ordering (CX-113/CX-114)", () => {
     );
   });
 
-  it("multi archive subdirs: gate picks ls-first (a/), worktree picks LIFO (b/)", async () => {
+  it("multi archive subdirs: gate mirrors the worktree LIFO order (b/ beats a/)", async () => {
     const r = mkRepo(FORGE("paths:\n  rfcsDir: docs/rfcs\n"), {
       "docs/rfcs/archive/a/rfc-0100-a.md": RFC(["AC-1"]),
       "docs/rfcs/archive/b/rfc-0100-b.md": RFC(["AC-2"]),
     });
     const repo = new GateRepo(r.root);
+    // findRfcFile pushes [a,b] onto a stack → b pops first; the gate's rank
+    // mirrors the reverse-lexical dir descent (CX-116).
     expect(await rfcPath(repo, r.base, "docs/rfcs", "RFC-0100")).toBe(
-      "docs/rfcs/archive/a/rfc-0100-a.md",
+      "docs/rfcs/archive/b/rfc-0100-b.md",
     );
-    // findRfcFile pushes [a,b] onto a stack → b pops first → DIVERGENCE (O-8).
     const wt = await resolveRfcRef(r.root, "docs/rfcs", "RFC-0100/AC-2", "AC");
     expect(wt.ok ? wt.rfcFile : wt).toBe("docs/rfcs/archive/b/rfc-0100-b.md");
   });
@@ -341,8 +340,9 @@ describe("CORR-03 end-to-end through the gate (rfc-ac refs at base)", () => {
     expect(corr03(res).some((m) => m.includes("not found"))).toBe(true);
   });
 
-  it("archive ordering divergence: AC the worktree-first file lacks can still resolve", async () => {
-    // archive/a/ sorts before archive/rfc-0100-z.md → gate judges a/'s copy.
+  it("archive ordering parity: AC the worktree-first file lacks is refused in the gate too (CX-116)", async () => {
+    // archive/rfc-0100-z.md is the direct child — it beats archive/a/ now,
+    // exactly like findRfcFile's files-before-descent order.
     const r = mkRepo(
       FORGE("paths:\n  rfcsDir: docs/rfcs\n"),
       baseFiles("RFC-0100/AC-9", {
@@ -352,11 +352,9 @@ describe("CORR-03 end-to-end through the gate (rfc-ac refs at base)", () => {
     );
     r.commit("noop head");
     const res = await gate(r);
-    // gate resolved AC-9 against archive/a/ — the standalone worktree resolver
-    // would have judged archive/rfc-0100-z.md (files before descent) and failed.
-    expect(corr03(res).some((m) => m.includes("AC-9"))).toBe(false);
+    expect(corr03(res).some((m) => m.includes("AC-9"))).toBe(true);
     const wt = await resolveRfcRef(r.root, "docs/rfcs", "RFC-0100/AC-9", "AC");
-    expect(wt.ok).toBe(false); // worktree picks z → refuses
+    expect(wt.ok).toBe(false); // worktree picks z → refuses — gate agrees
   });
 });
 
@@ -476,15 +474,15 @@ describe("forgeYamlOnlyFrozenKeys — strip + pruneEmpties (CX-112 fix and laund
     expect(a.mixed.length).toBeGreaterThan(0);
   });
 
-  it("paths retyped map → !!timestamp prunes away (zero-key tagged object)", async () => {
+  it("paths retyped map → !!timestamp stays foreign (tagged objects never prune, CX-119)", async () => {
     const r = mkRepo(FORGE("paths:\n  rfcsDir: docs/rfcs\n"));
     r.write("forge.yaml", FORGE("paths: !!timestamp 2024-01-01\n"));
     r.commit("paths to date");
     const a = await accept(r);
-    // The rfcsDir loss is the reported weakening; the Date-typed container
-    // carries zero enumerable keys and prunes — accept succeeds (observation).
-    expect(a.mixed).toEqual([]);
-    expect(a.accepted).toBe("operator decision");
+    // A Date-typed container carries zero own-keys but is real content — only
+    // plain objects prune; the tagged retype stays foreign → mixed-weakening.
+    expect(a.mixed.length).toBeGreaterThan(0);
+    expect(a.accepted).toBeNull();
   });
 
   it("bindings emptied around ONLY frozen subkeys isolates", async () => {

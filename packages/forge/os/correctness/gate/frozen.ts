@@ -12,11 +12,11 @@ capture and sidecar named by a base entry, every file matched by the base
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1615: harden round-15 observations — judge invariantsFile, parity rfc scope, strip binding keys, drop dead readHeadSide</item>
+  <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <history>RFC-1580, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
@@ -110,10 +110,11 @@ export function sideFrom(
     paths?: Record<string, unknown>;
   };
   const section = (doc["correctness"] ?? {}) as Record<string, unknown>;
-  const manifestPath =
-    typeof bindings.paths?.["correctnessManifest"] === "string"
-      ? (bindings.paths["correctnessManifest"] as string)
-      : null;
+  // Binding values are compared and resolved normalized: a `./`-respelled
+  // path or a whitespace-respelled checkRun argv names the SAME target —
+  // judging it a weakening fabricates a violation (CX-118).
+  const rel = (v: unknown): string | null => (typeof v === "string" ? normalizeRelPath(v) : null);
+  const manifestPath = rel(bindings.paths?.["correctnessManifest"]);
   let manifest: CorrectnessManifest | null = null;
   if (manifestPath) {
     const raw = readManifest(manifestPath);
@@ -131,21 +132,15 @@ export function sideFrom(
     manifestPath,
     checkRun:
       typeof bindings.commands?.["checkRun"] === "string"
-        ? (bindings.commands["checkRun"] as string)
+        ? (bindings.commands["checkRun"] as string).replace(/\s+/g, " ").trim()
         : null,
-    reviewsDir:
-      typeof bindings.paths?.["oracleReviewsDir"] === "string"
-        ? (bindings.paths["oracleReviewsDir"] as string)
-        : null,
+    reviewsDir: rel(bindings.paths?.["oracleReviewsDir"]),
     // The RFC namespace is frozen too — a session rebind makes planted
     // `status: accepted` files resolve as governing RFCs (CX-78). The LIVE
     // key is the top-level `paths:` object (forge-config schema); a
     // `bindings.paths.rfcsDir` key is stripped by the loader and read by no
     // consumer — judging it would be a dead check (CX-82).
-    rfcsDir:
-      typeof (doc["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"] === "string"
-        ? ((doc["paths"] as Record<string, unknown>)["rfcsDir"] as string)
-        : null,
+    rfcsDir: rel((doc["paths"] as Record<string, unknown> | undefined)?.["rfcsDir"]),
     mode: typeof section["mode"] === "string" ? (section["mode"] as string) : "warn",
     tier: typeof section["tier"] === "string" ? (section["tier"] as string) : "standard",
     allow: Array.isArray(allowRaw)
@@ -156,16 +151,15 @@ export function sideFrom(
       : [],
     manifest,
     compassDocs: Array.isArray(bindings.paths?.["compassDocs"])
-      ? (bindings.paths["compassDocs"] as unknown[]).filter(
-          // element check — `compassDocs: [1]` must not throw `p.replace`
-          // downstream where the strings are normalized (CX-47).
-          (x): x is string => typeof x === "string",
-        )
+      ? (bindings.paths["compassDocs"] as unknown[])
+          .filter(
+            // element check — `compassDocs: [1]` must not throw `p.replace`
+            // downstream where the strings are normalized (CX-47).
+            (x): x is string => typeof x === "string",
+          )
+          .map(normalizeRelPath)
       : [],
-    invariantsFile:
-      typeof bindings.paths?.["invariantsFile"] === "string"
-        ? (bindings.paths["invariantsFile"] as string)
-        : null,
+    invariantsFile: rel(bindings.paths?.["invariantsFile"]),
     policy: parsePolicySurface(doc["policy"]).surface,
     policyMalformed: parsePolicySurface(doc["policy"]).malformed,
     forgeYamlUnreadable,
