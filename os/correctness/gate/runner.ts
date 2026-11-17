@@ -19,6 +19,7 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
+  <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
 </CHANGE_SUMMARY>
 */
 
@@ -66,15 +67,46 @@ export function runOracle(opts: {
       });
       return;
     }
+    // The oracle runner must resolve via PATH — an argv[0] with a path
+    // separator resolves a file inside (or relative to) the session
+    // worktree, which the session controls: `./node` would spawn a
+    // repo-committed binary as the runner (CX-126 e2e). Repo helpers are
+    // invoked through a PATH binary (`node scripts/x.mjs`), never as argv[0].
+    if (/[/\\]/.test(argv[0]!)) {
+      resolve({
+        command,
+        exitCode: null,
+        timedOut: false,
+        durationMs: Date.now() - started,
+        failureClass: "spawn",
+        outputTail: `checkRun argv[0] must be a PATH executable, not a path: ${argv[0]}`,
+      });
+      return;
+    }
     let tail = "";
     let settled = false;
     // Own process group so a timeout kills the whole tree (pnpm → vitest workers).
-    const child = spawn(argv[0]!, argv.slice(1), {
-      cwd: opts.cwd,
-      env: { ...gitEnvForCwd(), FORGE_CORRECTNESS_DIR: opts.runDir },
-      stdio: ["ignore", "pipe", "pipe"],
-      detached: process.platform !== "win32",
-    });
+    let child: ReturnType<typeof spawn>;
+    try {
+      child = spawn(argv[0]!, argv.slice(1), {
+        cwd: opts.cwd,
+        env: { ...gitEnvForCwd(), FORGE_CORRECTNESS_DIR: opts.runDir },
+        stdio: ["ignore", "pipe", "pipe"],
+        detached: process.platform !== "win32",
+      });
+    } catch (err) {
+      // A NUL byte in a session-writable checkRun token throws synchronously
+      // (CX-129) — report a spawn failure, never reject the gate promise.
+      resolve({
+        command,
+        exitCode: null,
+        timedOut: false,
+        durationMs: Date.now() - started,
+        failureClass: "spawn",
+        outputTail: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
     const keep = (chunk: Buffer) => {
       tail = (tail + chunk.toString("utf8")).slice(-4000);
     };

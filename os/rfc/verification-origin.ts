@@ -21,18 +21,12 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1513: steps 2-4 — batched committed-review reads + run-scoped index
-
-OriginGit gains optional showMany backed by one git cat-file --batch
-process (per-spec null on missing objects, wholesale null on spawn or
-framing failure). collectCommittedReviews prefers it and keeps the
-sequential show loop for stubs. rfc.validate memoizes the index once
-per run and V-49 consumes it — identical diagnostics, one batched read.</item>
   <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
-  <history>RFC-1330, RFC-1391</history>
+  <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
+  <history>RFC-1330, RFC-1391, RFC-1513</history>
 </CHANGE_SUMMARY>
 */
 
@@ -122,58 +116,79 @@ function parseCatFileBatch(specs: string[], out: Buffer): (string | null)[] | nu
 }
 
 export function createOriginGit(workspaceRoot: string): OriginGit {
+  // Session-writable YAML (path bindings, refs) reaches these args — a NUL
+  // byte makes `execFile` throw synchronously (TypeError). Every throw
+  // degrades to a read failure → `unreadableReads` → CORR-GATE-01, never an
+  // unhandled gate crash (CX-129).
   return {
     run: (args) =>
       new Promise((resolve) => {
-        execFile(
-          "git",
-          args,
-          { cwd: workspaceRoot, timeout: 15000, maxBuffer: 32 * 1024 * 1024, env: gitEnvForCwd() },
-          (err, stdout) => resolve(err ? null : String(stdout)),
-        );
+        try {
+          execFile(
+            "git",
+            args,
+            {
+              cwd: workspaceRoot,
+              timeout: 15000,
+              maxBuffer: 32 * 1024 * 1024,
+              env: gitEnvForCwd(),
+            },
+            (err, stdout) => resolve(err ? null : String(stdout)),
+          );
+        } catch {
+          resolve(null);
+        }
       }),
     runExit: (args) =>
       new Promise((resolve) => {
-        execFile(
-          "git",
-          args,
-          {
-            cwd: workspaceRoot,
-            timeout: 15000,
-            maxBuffer: 32 * 1024 * 1024,
-            env: gitEnvForCwd(),
-            // Raw bytes — path listings must validate UTF-8 at byte level;
-            // the default utf8 decode erases the distinction (CX-72).
-            encoding: "buffer",
-          },
-          (err, stdout) => {
-            const bytes = Buffer.isBuffer(stdout) ? stdout : undefined;
-            if (err === null) return resolve({ code: 0, stdout: String(stdout), bytes });
-            // A numeric exit code means the process ran and answered;
-            // spawn/timeout/kill failures carry no code — unreadable.
-            resolve(
-              typeof err.code === "number"
-                ? { code: err.code, stdout: String(stdout), bytes }
-                : null,
-            );
-          },
-        );
+        try {
+          execFile(
+            "git",
+            args,
+            {
+              cwd: workspaceRoot,
+              timeout: 15000,
+              maxBuffer: 32 * 1024 * 1024,
+              env: gitEnvForCwd(),
+              // Raw bytes — path listings must validate UTF-8 at byte level;
+              // the default utf8 decode erases the distinction (CX-72).
+              encoding: "buffer",
+            },
+            (err, stdout) => {
+              const bytes = Buffer.isBuffer(stdout) ? stdout : undefined;
+              if (err === null) return resolve({ code: 0, stdout: String(stdout), bytes });
+              // A numeric exit code means the process ran and answered;
+              // spawn/timeout/kill failures carry no code — unreadable.
+              resolve(
+                typeof err.code === "number"
+                  ? { code: err.code, stdout: String(stdout), bytes }
+                  : null,
+              );
+            },
+          );
+        } catch {
+          resolve(null);
+        }
       }),
     showMany: (specs) =>
       new Promise((resolve) => {
-        const child = execFile(
-          "git",
-          ["cat-file", "--batch"],
-          {
-            cwd: workspaceRoot,
-            timeout: 60000,
-            maxBuffer: 64 * 1024 * 1024,
-            env: gitEnvForCwd(),
-            encoding: "buffer",
-          },
-          (err, stdout) => resolve(err ? null : parseCatFileBatch(specs, stdout)),
-        );
-        child.stdin?.end(`${specs.join("\n")}\n`);
+        try {
+          const child = execFile(
+            "git",
+            ["cat-file", "--batch"],
+            {
+              cwd: workspaceRoot,
+              timeout: 60000,
+              maxBuffer: 64 * 1024 * 1024,
+              env: gitEnvForCwd(),
+              encoding: "buffer",
+            },
+            (err, stdout) => resolve(err ? null : parseCatFileBatch(specs, stdout)),
+          );
+          child.stdin?.end(`${specs.join("\n")}\n`);
+        } catch {
+          resolve(null);
+        }
       }),
   };
 }
