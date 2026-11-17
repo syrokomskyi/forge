@@ -17,6 +17,7 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: declare VITEST env input on adversarial.run</item>
 </CHANGE_SUMMARY>
 */
 
@@ -125,7 +126,10 @@ export function createForgeAdversarialModule(): ForgeModule {
         writes: [],
         generates: [],
         cacheable: false,
-        envInputs: [{ name: "FORGE_ADVERSARIAL_BIN", required: false }],
+        envInputs: [
+          { name: "FORGE_ADVERSARIAL_BIN", required: false },
+          { name: "VITEST", required: false },
+        ],
         flags: {
           list: { kind: "boolean", description: "List catalog scenarios without running." },
           scenario: { kind: "string", description: "Run only the named scenario." },
