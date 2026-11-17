@@ -17,6 +17,7 @@ Generated repositories are never blocked by the guard or by flow.check.</purpose
   <item>RFC-1486: step 1 — branch grammar, marker detection, git helpers</item>
   <item>RFC-1486: review r1 — committed-state adoption gate, uncommitted-hook committedness, step-failure trail, idempotency declaration, lazy asset resolution</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -27,7 +28,7 @@ import { z } from "zod";
 
 import type { WorkspaceIO } from "../../src/types.ts";
 
-import { isBare } from "./git.ts";
+import { gitEvidence, isBare } from "./git.ts";
 
 export const GENERATED_MARKER_FILE = "forge.generated.yaml";
 export const FORGE_CONFIG_FILE = "forge.yaml";
@@ -106,8 +107,10 @@ export async function readRepoRootFile(
   if (bare) {
     // Adoption state lives on develop in the fixed branch model — HEAD on a
     // bare repository may point at main, which carries no markers/hooks.
+    // Committed-evidence read — the scrubbed channel, or session GIT_*
+    // redirection substitutes what adoption state the file reports (CX-46).
     for (const ref of ["refs/heads/develop", "HEAD"]) {
-      const result = await io.exec("git", ["-C", repoRoot, "show", `${ref}:${name}`]);
+      const result = await gitEvidence(repoRoot, ["show", `${ref}:${name}`]);
       if (result.exitCode === 0) return result.stdout;
     }
     return null;

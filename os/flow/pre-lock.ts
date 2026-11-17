@@ -42,6 +42,7 @@ shrink-only unprobed baseline, enforced by gate.probe.catalog --check
 - build-verification policy states blocking rules are probed or retired;
   fo-session-retro preserves probe/retire evidence for escape frictions
 - baseline adopted at 1678 entries (forge/unprobed-baseline@1)</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -52,7 +53,7 @@ import { parse as yamlParse } from "yaml";
 
 import type { WorkspaceIO } from "../../src/types.ts";
 
-import { git } from "./git.ts";
+import { gitEvidence } from "./git.ts";
 
 /** Where flow.integrate's pre-lock verdict records land — a sibling of the
  * RFC-1519 advisory gate-verdicts.json store (that file is machine-owned by
@@ -141,7 +142,7 @@ export async function deltaChangedPaths(
   b0: string,
   b1: string,
 ): Promise<string[]> {
-  const diff = await git(primary, io, ["diff", "--name-only", `${b0}..${b1}`]);
+  const diff = await gitEvidence(primary, ["diff", "--name-only", `${b0}..${b1}`]);
   if (diff.exitCode !== 0) return [];
   return diff.stdout
     .split("\n")

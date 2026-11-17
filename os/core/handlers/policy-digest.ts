@@ -29,14 +29,13 @@ forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
 import { existsSync, lstatSync } from "node:fs";
 import { readFile, readdir, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { execFile } from "node:child_process";
-import { promisify } from "node:util";
 import picomatch from "picomatch";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type {
@@ -45,14 +44,16 @@ import type {
   ForgeRuntimeContext,
 } from "../../../src/types.ts";
 import {
+  CARVED_POLICY_PATHS,
   POLICY_DIGEST_PATH,
   canonicalPolicyDigest,
   coversOf,
+  hasPath,
   policyBundleSchema,
+  valueAtPath,
   type PolicySurface,
 } from "../../../src/correctness/policy-bundle.ts";
-
-const execFileAsync = promisify(execFile);
+import { verifierGit } from "../../../src/utils/verifier-git.ts";
 
 interface PolicyDecl {
   mutable: string[];
@@ -87,23 +88,28 @@ const ALWAYS_JUDGED = new Set(["policy", "push", "correctness"]);
 
 /**
  * forge.yaml reduced to the policy-judged surface: every key except mutable —
- * except ALWAYS_JUDGED keys and `project.owner`, which stays digested even
- * under the default `mutable:["project"]` grant so an owner rebind always
- * advances the attestation (CX-32).
+ * except ALWAYS_JUDGED keys and the CARVED_POLICY_PATHS leaves, which stay
+ * digested even under a `mutable` container grant so a trust-anchor rebind
+ * always advances the attestation (CX-32/CX-58). The gate's `policyWeakenings`
+ * carves the same leaf list — the two arbiters must judge identically.
  */
 function judgedDoc(doc: Record<string, unknown>, policy: PolicyDecl): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const k of Object.keys(doc)) {
     if (ALWAYS_JUDGED.has(k) || !policy.mutable.includes(k)) out[k] = doc[k];
   }
-  const project = doc["project"];
-  if (
-    policy.mutable.includes("project") &&
-    project &&
-    typeof project === "object" &&
-    "owner" in (project as Record<string, unknown>)
-  ) {
-    out["project"] = { owner: (project as Record<string, unknown>)["owner"] };
+  for (const p of CARVED_POLICY_PATHS) {
+    const top = p[0]!;
+    const sub = p.slice(1);
+    // Only merge under a mutable container — a non-mutable top-level key is
+    // digested whole already, and re-copying the leaf would be a no-op.
+    if (!policy.mutable.includes(top) || !hasPath(doc[top], sub)) continue;
+    // The leaf's presence is itself judged — a planted pointer attests too.
+    let node = (out[top] ??= {}) as Record<string, unknown>;
+    for (const seg of sub.slice(0, -1)) {
+      node = (node[seg] ??= {}) as Record<string, unknown>;
+    }
+    node[sub[sub.length - 1]!] = valueAtPath(doc[top], sub);
   }
   return out;
 }
@@ -172,12 +178,10 @@ async function gatherWorktreeSurface(
 }
 
 async function git(root: string, args: string[]): Promise<string | null> {
-  try {
-    const { stdout } = await execFileAsync("git", args, { cwd: root, maxBuffer: 64 * 1024 * 1024 });
-    return stdout;
-  } catch {
-    return null;
-  }
+  // Boundary evidence channel — session GIT_* variables and refs/replace must
+  // not redirect or substitute what the attestation reads (CX-46..CX-50).
+  const result = await verifierGit(root, ["-C", root, ...args]);
+  return result.exitCode === 0 ? result.stdout : null;
 }
 
 async function gatherBaseSurface(
@@ -315,10 +319,24 @@ export async function runPolicyDigest(
       return fail(`base ${base} unreadable or lacks a policy: section`, { sha256, covers });
     }
     if (baseDigest !== sha256) {
-      const log = await git(workspaceRoot, ["log", "--format=%B%x00", `${base}..HEAD`]);
-      const attested = (log ?? "")
-        .split("\0")
-        .some((body) => new RegExp(`^X-Policy-Digest:\\s*${sha256}\\s*$`, "m").test(body));
+      // Attestation trailers come through git's OWN `%(trailers:)` parser —
+      // per-commit reads carry no record separator a message byte can forge,
+      // and `x-policy-digest:`/`X-Policy-Digest :` spellings count exactly as
+      // `git interpret-trailers` counts them (CX-33/CX-60 parity).
+      const list = await git(workspaceRoot, ["rev-list", `${base}..HEAD`]);
+      let attested = false;
+      for (const sha of (list ?? "").split("\n").filter(Boolean)) {
+        const values = await git(workspaceRoot, [
+          "log",
+          "-1",
+          "--format=%(trailers:key=X-Policy-Digest,valueonly,separator=%x00)",
+          sha,
+        ]);
+        if ((values ?? "").split("\0").some((v) => v.trim() === sha256)) {
+          attested = true;
+          break;
+        }
+      }
       if (!attested) {
         violations.push(
           `policy surface advanced since ${base} (${baseDigest?.slice(0, 12)}… → ${sha256.slice(0, 12)}…) without a commit carrying X-Policy-Digest: ${sha256}`,

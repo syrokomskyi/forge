@@ -23,6 +23,7 @@ Measured on werkstatt (rollout step 3): 7 wrangler D1 configs, ~10 s per run, 3 
   <item>RFC-1579: close review REVIEW-CODE-2026-11-13-01 findings
 
 F1 INSERT 'has no column named' is a finding; F2 severity/kind escalation since base is introduced; F3 unparseable machine tables are errors; F4 comma joins, string literals and comments in table extraction; F5 only migration INSERT/REPLACE seed writes; F6 SET-clause-only coverage; F7 method-call writers; F8 regex literals in the scanner; F9 alias resolution; F10 EC-34 judges the payload only; F11 EC-34 before the scoped gates with a dry-run line; F12/F13 config and YAML errors named; F14 config-only check skips snapshots; F15 git grep failures fail closed; F16 portable prefilter; F17 shell no-ops; F18 shared D1 schemas; in-code DDL scoped per package; ledger tests. DEV-1..DEV-4 recorded in the RFC Deviations section.</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -32,6 +33,7 @@ import path from "node:path";
 import { execFile } from "node:child_process";
 
 import { createOriginGit, gitEnvForCwd } from "../../rfc/verification-origin.ts";
+import { resolveGitBin } from "../../../src/utils/verifier-git.ts";
 import { listWorkspaceFiles } from "../workspace.ts";
 
 export interface TreeSnapshot {
@@ -178,7 +180,7 @@ export async function loadSnapshot(
 function gitGrep(cwd: string, args: string[]): Promise<{ code: number | null; stdout: string }> {
   return new Promise((resolve) => {
     execFile(
-      "git",
+      resolveGitBin(),
       args,
       { cwd, timeout: 120_000, maxBuffer: 64 * 1024 * 1024, env: gitEnvForCwd() },
       (err, stdout) => {

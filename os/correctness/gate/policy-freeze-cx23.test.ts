@@ -17,8 +17,8 @@ import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { ExecResult, WorkspaceIO } from "../../../src/types.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
+import { setVerifierGitBinForTests } from "../../../src/utils/verifier-git.ts";
 import { runCorrectnessStep } from "../../flow/correctness-step.ts";
 import { gitExec, initRepo } from "../../flow/tests/helpers.ts";
 import { sideFrom } from "./frozen.ts";
@@ -222,53 +222,41 @@ describe("regression: CX-130 adoption spellings still refuse", () => {
 });
 
 describe("regression: CX-131 unreadable reads refuse", () => {
-  const unknownExec = (gitResult: () => Promise<ExecResult> | ExecResult): WorkspaceIO => ({
-    ...ambientIo,
-    exists: async () => true,
-    exec: async (cmd: string, _args: string[]) => {
-      if (cmd === "git") return gitResult();
-      return {
-        exitCode: 1,
-        stdout: "",
-        stderr: "  ✖ Unknown command: correctness.gate",
-      };
-    },
-  });
+  // The hardened boundary channel (gitEvidence/verifierSpawn) deliberately
+  // bypasses io.exec and session PATH — failure injection lands on real git
+  // failures or the resolved-binary test seam, never io stubs (CX-46..52).
 
   it("a failing ls-tree (exit 128) ⇒ unreadable ⇒ refusal", async () => {
-    const io = unknownExec(() => ({ exitCode: 128, stdout: "", stderr: "fatal: bad rev" }));
-    const res = await runCorrectnessStep(io, { primary: "/p", worktree: "/w", base: "x" });
+    const { repo } = await repoWithBaseYaml("x: 1\n");
+    const res = await step(repo, "0000000000000000000000000000000000000000");
     expect(res.warning).toBeUndefined();
     expect(res.refusal?.message).toMatch(/could not be read/);
   });
 
   it("a failing git show after a matching ls-tree ⇒ unreadable ⇒ refusal", async () => {
-    let calls = 0;
-    const io = unknownExec(() => {
-      calls += 1;
-      return calls === 1
-        ? { exitCode: 0, stdout: "100644 blob abc\tforge.yaml\n", stderr: "" }
-        : { exitCode: 128, stdout: "", stderr: "fatal: corrupt" };
-    });
-    const res = await runCorrectnessStep(io, { primary: "/p", worktree: "/w", base: "x" });
+    const { repo, base } = await repoWithBaseYaml("x: 1\n");
+    // Delete forge.yaml's loose blob object: `ls-tree` still lists the entry
+    // (the tree object is intact) while `git show` fails on the missing
+    // blob — the same two-stage failure the io.exec stub used to fake.
+    const blob = (await gitExec(repo, ["rev-parse", `${base}:forge.yaml`])).stdout.trim();
+    await rm(join(repo, ".git", "objects", blob.slice(0, 2), blob.slice(2)));
+    const res = await step(repo, base);
     expect(res.warning).toBeUndefined();
     expect(res.refusal?.message).toMatch(/could not be read/);
   });
 
-  it("exitCode null (killed read) ⇒ unreadable ⇒ refusal", async () => {
-    const io = unknownExec(() => ({ exitCode: null, stdout: "", stderr: "" }));
-    const res = await runCorrectnessStep(io, { primary: "/p", worktree: "/w", base: "x" });
-    expect(res.warning).toBeUndefined();
-    expect(res.refusal?.message).toMatch(/could not be read/);
-  });
-
-  it("an io.exec throw ⇒ unreadable ⇒ refusal (no crash, no degrade)", async () => {
-    const io = unknownExec(() => {
-      throw new Error("spawn git ENOENT");
-    });
-    const res = await runCorrectnessStep(io, { primary: "/p", worktree: "/w", base: "x" });
-    expect(res.warning).toBeUndefined();
-    expect(res.refusal?.message).toMatch(/could not be read/);
+  it("a failed git spawn (ENOENT bin) ⇒ unreadable ⇒ refusal", async () => {
+    const { repo, base } = await repoWithBaseYaml("x: 1\n");
+    // The resolved-binary seam is the in-process injection point: a spawn
+    // failure reports exitCode -1 → unreadable, never "not adopted".
+    setVerifierGitBinForTests(join(os.tmpdir(), "cx23-no-such-git"));
+    try {
+      const res = await step(repo, base);
+      expect(res.warning).toBeUndefined();
+      expect(res.refusal?.message).toMatch(/could not be read/);
+    } finally {
+      setVerifierGitBinForTests(undefined);
+    }
   });
 
   it("a real gitlink forge.yaml (git show fails) ⇒ unreadable ⇒ refusal", async () => {

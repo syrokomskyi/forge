@@ -25,6 +25,7 @@ were closed in e9add1cd5/8c9e1688a.</item>
 
 A concurrent adversarial run (verifier rounds, catalog replay) creates
 forge-adv-* dirs in the same tmpdir — compare only the cx-control prefix.</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -771,29 +772,29 @@ describe("RFC-1616 flow.push trailer scan", () => {
   );
 
   it(
-    "CX-24: case-variant trailers — lowercase/uppercase X- trailers grant nothing at the gate either; document scan parity (they push unflagged)",
+    "CX-24: case-variant trailers — lowercase/uppercase X- trailers are git-recognized verifier claims and push-flagged (CX-60 parity)",
     { timeout: 60_000 },
     async () => {
-      // lowercase — git trailer semantics are case-insensitive but the gate's
-      // VERIFIER_*_REs are case-sensitive too, so a lowercase trailer is not a
-      // verifier claim anywhere in the system: parity, not a hole (O).
-      const { repo: repoLower, origin } = await initRepoWithOrigin(dirs, {
-        prefix: "cx1-push-",
-      });
-      const sha = await trailerCommit(repoLower, "low.txt", "x-verifier-report: r.yaml");
+      // git trailer keys are case-insensitive — `x-verifier-report:` IS the
+      // verifier trailer to `git interpret-trailers` and to the normalized
+      // gate check, so the push scan must flag it like the canonical
+      // spelling: parity, not a hole (CX-60).
+      const { repo: repoLower } = await initRepoWithOrigin(dirs, { prefix: "cx1-push-" });
+      await trailerCommit(repoLower, "low.txt", "x-verifier-report: r.yaml");
       let digest = await collectDigest(repoLower, ambientIo, { fetch: false });
       let data = await pushFlow(repoLower, ambientIo, {
         digest: digest.digestId,
         dryRun: false,
       });
-      expect(data.pushed).toBe(true);
-      expect((await gitExec(origin, ["rev-parse", "refs/heads/develop"])).stdout.trim()).toBe(sha);
-      // all-caps — same parity argument.
+      expect(data.pushed).toBe(false);
+      expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-08");
+      // all-caps — same git-recognized claim, same refusal.
       const { repo: repoUpper } = await initRepoWithOrigin(dirs, { prefix: "cx1-push-" });
       await trailerCommit(repoUpper, "up.txt", "X-VERIFIER-REPORT: r.yaml");
       digest = await collectDigest(repoUpper, ambientIo, { fetch: false });
       data = await pushFlow(repoUpper, ambientIo, { digest: digest.digestId, dryRun: false });
-      expect(data.pushed).toBe(true);
+      expect(data.pushed).toBe(false);
+      expect(data.diagnostics[0]?.ruleId).toBe("FLOW-PUSH-08");
     },
   );
 

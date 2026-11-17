@@ -18,16 +18,14 @@ flow.push must quote.</purpose>
   <item>tagTriggers feeds digestId — a workflow change between digest and push invalidates the quoted id; unparseable patterns warn never block.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
-
-flow.digest now reads .github/workflows on the primary checkout and reports tagTriggers: for every digest tag the workflows whose on.push.tags filter matches its name. Matching evaluates the GitHub glob subset — star inside a segment, double-star across, question for one char; character classes and leading negations report FLOW-11 as pattern not understood and match nothing. A workflow that cannot be parsed reports FLOW-11 and contributes nothing, never blocking the digest. tagTriggers feeds digestId so a workflow change invalidates a quoted id, the pretty output prints one line per triggered tag, and flow.module declares FLOW-11 warning plus the workflows read glob. Tests AC-7 (a v1.0.1 tag maps to the v-star workflow only) and AC-8 (broken YAML and a bracket pattern warn while the digest still returns). Compass metadata updated.</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
-  <history>RFC-1491</history>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1491, RFC-1498</history>
 </CHANGE_SUMMARY>
 */
 
@@ -38,7 +36,7 @@ import { parse as parseYaml } from "yaml";
 
 import { listRfcFiles, readRfcFrontmatter, rfcFileMatchesId } from "../rfc/frontmatter-io.ts";
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
-import { git } from "./git.ts";
+import { gitEvidence, parseGitTrailers } from "./git.ts";
 import {
   commonGitDir,
   readJournal,
@@ -120,7 +118,7 @@ const DEFAULT_SPECS_DIR = "docs/specs";
 const DEFAULT_INVARIANTS_FILE = "docs/architecture-dna.md";
 
 async function revParse(repoRoot: string, io: WorkspaceIO, ref: string): Promise<string | null> {
-  const result = await git(repoRoot, io, ["rev-parse", "--verify", "--quiet", ref]);
+  const result = await gitEvidence(repoRoot, ["rev-parse", "--verify", "--quiet", ref]);
   return result.exitCode === 0 ? result.stdout.trim() || null : null;
 }
 
@@ -137,7 +135,7 @@ async function unpushedCommits(
     remoteTip !== null
       ? ["rev-list", ...order, `${remoteTip}..${branch}`]
       : ["rev-list", ...order, branch, "--not", "--remotes=origin"];
-  const result = await git(repoRoot, io, args);
+  const result = await gitEvidence(repoRoot, args);
   if (result.exitCode !== 0) return [];
   return result.stdout
     .split("\n")
@@ -178,7 +176,10 @@ async function readPathConfig(
 /**
  * RFC-1580: weakening and verifier trailers among the given commits (oldest
  * first). Delimiter-free per-commit reads — a \x1e/\x1f byte inside a commit
- * message cannot split a record and hide the trailer tail (CX-33).
+ * message cannot split a record and hide the trailer tail (CX-33) — and the
+ * trailer keys come from git's own `%(trailers)` parser, so `key :` and
+ * lowercase spellings cannot evade the scan while `git interpret-trailers`
+ * still counts them (CX-60).
  */
 async function correctnessTrailOf(
   repoRoot: string,
@@ -187,22 +188,41 @@ async function correctnessTrailOf(
 ): Promise<FlowDigestData["correctnessTrail"]> {
   const trail: FlowDigestData["correctnessTrail"] = { weakenings: [], verifierCommits: [] };
   for (const sha of shas) {
-    const result = await git(repoRoot, io, ["log", "-1", "--format=%B", sha]);
-    if (result.exitCode !== 0) continue;
-    const body = result.stdout;
-    const subject = body.split("\n", 1)[0] ?? "";
-    const weak = /^X-Correctness-Weakening:\s*(.+)$/m.exec(body);
-    if (weak)
-      trail.weakenings.push({ sha: sha.trim(), subject: subject ?? "", reason: weak[1]!.trim() });
-    // Any verifier-evidence trailer claims provenance the session cannot
-    // self-certify — a lone X-Verifier-Report must list too, not only the
-    // full expectation-origin pair (CX-33).
+    // Two reads per commit — any delimiter byte shared between subject and
+    // the trailer blob could smuggle a record boundary (CX-33 class).
+    const subj = await gitEvidence(repoRoot, ["log", "-1", "--format=%s", sha]);
+    if (subj.exitCode !== 0) continue;
+    const trailers = await gitEvidence(repoRoot, [
+      "log",
+      "-1",
+      "--format=%(trailers:only,separator=%x00)",
+      sha,
+    ]);
+    if (trailers.exitCode !== 0) continue;
+    const subject = subj.stdout.trim();
+    const entries = parseGitTrailers(trailers.stdout.replaceAll("\x00", "\n"));
+    const byKey = new Map<string, string>();
+    for (const t of entries) if (!byKey.has(t.key)) byKey.set(t.key, t.value);
+    const weak = byKey.get("x-correctness-weakening");
+    if (weak !== undefined) trail.weakenings.push({ sha, subject, reason: weak });
+    // A trailer-shaped subject is not a git trailer on every version but is
+    // provenance text — count it like the push scan does (CX-23 parity).
+    const subjTrailer = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(subject);
+    const subjKey = subjTrailer?.[1]?.trim().toLowerCase();
     if (
-      /^X-Expectation-Origin:\s*\S/m.test(body) ||
-      /^X-Verifier-Report:\s*\S/m.test(body) ||
-      /^X-Policy-Digest:\s*\S/m.test(body)
+      byKey.has("x-expectation-origin") ||
+      byKey.has("x-verifier-report") ||
+      byKey.has("x-policy-digest") ||
+      subjKey === "x-expectation-origin" ||
+      subjKey === "x-verifier-report" ||
+      subjKey === "x-policy-digest"
     ) {
-      const report = /^X-Verifier-Report:\s*(\S+)\s*$/m.exec(body)?.[1] ?? null;
+      // Any verifier-evidence trailer claims provenance the session cannot
+      // self-certify — a lone X-Verifier-Report must list too, not only the
+      // full expectation-origin pair (CX-33).
+      const report =
+        byKey.get("x-verifier-report") ??
+        (subjKey === "x-verifier-report" ? subjTrailer![2]!.trim() : null);
       trail.verifierCommits.push({ sha, subject, report });
     }
   }
@@ -216,7 +236,7 @@ async function commitMeta(
   base: string,
   tip: string,
 ): Promise<{ subjects: string[]; rfcs: string[] }> {
-  const result = await git(repoRoot, io, [
+  const result = await gitEvidence(repoRoot, [
     "log",
     "--reverse",
     "--format=%s%x00%(trailers:key=X-RFC,valueonly,separator=%x20)",
@@ -280,7 +300,7 @@ async function jsonAtRef(
   ref: string,
   path: string,
 ): Promise<Record<string, unknown> | null> {
-  const result = await git(repoRoot, io, ["show", `${ref}:${path}`]);
+  const result = await gitEvidence(repoRoot, ["show", `${ref}:${path}`]);
   if (result.exitCode !== 0) return null;
   try {
     const parsed = JSON.parse(result.stdout) as unknown;
@@ -356,7 +376,7 @@ async function classifyItem(
 ): Promise<{ category: RiskCategory; flags: RiskCategory[] }> {
   const flags = new Set<RiskCategory>();
 
-  const names = await git(repoRoot, io, ["diff", "--name-only", base, tip]);
+  const names = await gitEvidence(repoRoot, ["diff", "--name-only", base, tip]);
   const files =
     names.exitCode === 0
       ? names.stdout
@@ -383,8 +403,19 @@ async function classifyItem(
     if (fact.commandsRemoved) flags.add("capability-removal");
   }
 
-  // @ai-invariant lines in the added/removed set — zero-context diff keeps the scan tight.
-  const diff = await git(repoRoot, io, ["diff", "--unified=0", "--no-color", base, tip]);
+  // @ai-invariant lines in the added/removed set — zero-context diff keeps
+  // the scan tight. --no-textconv/--no-ext-diff: a repo-config filter must
+  // not rewrite what the diff reports (CX-50 class — config channels are
+  // scrubbed, this closes the repo-config half too).
+  const diff = await gitEvidence(repoRoot, [
+    "diff",
+    "--unified=0",
+    "--no-color",
+    "--no-textconv",
+    "--no-ext-diff",
+    base,
+    tip,
+  ]);
   if (diff.exitCode === 0) {
     for (const line of diff.stdout.split("\n")) {
       if ((line.startsWith("+") || line.startsWith("-")) && line.includes("@ai-invariant")) {
@@ -452,8 +483,12 @@ function attributedRecords(journal: FlowJournalEvent[]): AttributedRecord[] {
 }
 
 /** Remote tag names via ls-remote; null when the remote cannot be queried. */
-async function remoteTagNames(repoRoot: string, io: WorkspaceIO): Promise<Set<string> | null> {
-  const result = await git(repoRoot, io, ["ls-remote", "--tags", "origin"]);
+async function remoteTagNames(repoRoot: string, _io: WorkspaceIO): Promise<Set<string> | null> {
+  // The tag listing feeds the digest the verifier judges — it must read the
+  // literal remote, not a session url.insteadOf rewrite (CX-50). The cost is
+  // credential-helper-less failure on auth-required remotes: honest null,
+  // never a silently rewritten view.
+  const result = await gitEvidence(repoRoot, ["ls-remote", "--tags", "origin"]);
   if (result.exitCode !== 0) return null;
   const names = new Set<string>();
   for (const line of result.stdout.split("\n")) {
@@ -469,7 +504,7 @@ async function tagReachableFromRemote(
   io: WorkspaceIO,
   tag: string,
 ): Promise<boolean> {
-  const tips = await git(repoRoot, io, [
+  const tips = await gitEvidence(repoRoot, [
     "for-each-ref",
     "--format=%(refname)",
     "refs/remotes/origin",
@@ -479,7 +514,7 @@ async function tagReachableFromRemote(
     .split("\n")
     .map((l) => l.trim())
     .filter((l) => l.length > 0)) {
-    const ancestor = await git(repoRoot, io, ["merge-base", "--is-ancestor", tag, tip]);
+    const ancestor = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", tag, tip]);
     if (ancestor.exitCode === 0) return true;
   }
   return false;
@@ -635,7 +670,7 @@ export async function collectDigest(
 ): Promise<FlowDigestData> {
   const diagnostics: Diagnostic[] = [];
 
-  const hasOrigin = (await git(repoRoot, io, ["remote", "get-url", "origin"])).exitCode === 0;
+  const hasOrigin = (await gitEvidence(repoRoot, ["remote", "get-url", "origin"])).exitCode === 0;
   if (!hasOrigin) {
     diagnostics.push({
       ruleId: "FLOW-PUSH-01",
@@ -646,7 +681,12 @@ export async function collectDigest(
 
   let fetched = false;
   if (hasOrigin && opts.fetch) {
-    const fetch = await git(repoRoot, io, ["fetch", "origin", "--prune"]);
+    // The fetched objects become the remote-tracking refs the push scan
+    // judges — a session url.insteadOf rewrite must not steer where they
+    // come from (CX-50). Auth-required https remotes lose credential
+    // helpers here and fail closed into the stale-ref diagnostic below,
+    // never a poisoned view.
+    const fetch = await gitEvidence(repoRoot, ["fetch", "origin", "--prune"]);
     fetched = fetch.exitCode === 0;
     if (!fetched) {
       diagnostics.push({

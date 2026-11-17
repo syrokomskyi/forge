@@ -18,12 +18,15 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1515: record rfc-1515 review r1 fixes, key decisions and corrected probe path</item>
   <item>ADR-0124: enable git rerere in flow-managed repositories</item>
   <item>RFC-1531: worktreeAdd for --reattach; isForgeStatePath exported for the shared dirty classifier</item>
-  <history>RFC-1486, RFC-1487, RFC-1490, RFC-1491</history>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
+import { execFile } from "node:child_process";
+import { resolveGitBin, verifierGitEnv } from "../../src/utils/verifier-git.ts";
 
 export const MIN_GIT_VERSION = "2.33";
 
@@ -41,7 +44,76 @@ export async function git(
   args: string[],
   opts?: { env?: Record<string, string> },
 ): Promise<ExecResult> {
+  // Writes and session-config ops (commit identity, credential helpers,
+  // url.insteadOf, hooks) need the session environment — the scrubbed
+  // evidence channel drops global config, which would break authenticated
+  // push and configured commit identity for every consumer.
   return io.exec("git", ["-C", repoRoot, ...args], { env: opts?.env });
+}
+
+/**
+ * RFC-1616: git on the trust boundary — same `-C <root>` call shape as
+ * `git()`, but spawned on the resolved real binary with a scrubbed env:
+ * session `GIT_*` variables are stripped wholesale (repo redirection,
+ * config/URL rewrites, transport and exec-path overrides), `refs/replace`
+ * substitution is off, global/system config reads `/dev/null`, and the
+ * executable cannot be a session PATH shim — committed evidence the
+ * verifier judges must be the object's real bytes (CX-46..CX-52). The
+ * execFile call stays inside this argv-shaped body so the read-only scan's
+ * git-allowlist model judges every callsite's argv the same way it judges
+ * `git()` routes; `io.exec` merges env over `process.env` and could never
+ * delete a hostile variable, which is why evidence reads do not go through
+ * the io adapter. The ExecResult shape stays identical.
+ */
+export async function gitEvidence(
+  repoRoot: string,
+  args: string[],
+  opts?: { timeoutMs?: number; extraEnv?: Record<string, string> },
+): Promise<ExecResult> {
+  return new Promise((resolve) => {
+    try {
+      execFile(
+        resolveGitBin(),
+        ["-C", repoRoot, ...args],
+        {
+          cwd: repoRoot,
+          env: { ...verifierGitEnv(), ...opts?.extraEnv },
+          // Network-shaped ops are routed to git(); boundary reads are local
+          // and still fast — the generous default mirrors io.exec callers.
+          timeout: opts?.timeoutMs ?? 600_000,
+          maxBuffer: 64 * 1024 * 1024,
+        },
+        (err, stdout, stderr) => {
+          const code = err === null ? 0 : typeof err.code === "number" ? err.code : -1;
+          resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
+        },
+      );
+    } catch (e) {
+      resolve({ exitCode: -1, stdout: "", stderr: String(e) });
+    }
+  });
+}
+
+/** `topLevel` over the scrubbed boundary channel — same canonicalization. */
+export async function verifierTopLevel(cwd: string): Promise<string | null> {
+  const result = await gitEvidence(cwd, ["rev-parse", "--show-toplevel"]);
+  return result.exitCode === 0 ? canonicalRepoDir(result.stdout.trim()) : null;
+}
+
+/**
+ * Normalize one `%(trailers:only)` output into `{key, value}` entries —
+ * git's own parser decides what is a trailer, so `x-verifier-report:` and
+ * `X-Verifier-Report :` spellings both appear here (case-insensitive key,
+ * whitespace folded); a hand-rolled body regex cannot match this
+ * normalization and misses Git-recognized trailer forms (CX-60).
+ */
+export function parseGitTrailers(stdout: string): Array<{ key: string; value: string }> {
+  const out: Array<{ key: string; value: string }> = [];
+  for (const line of stdout.split("\n")) {
+    const m = /^([^:\s][^:]*?)\s*:\s*(.*)$/.exec(line);
+    if (m) out.push({ key: m[1]!.trim().toLowerCase(), value: m[2]!.trim() });
+  }
+  return out;
 }
 
 /**
@@ -69,16 +141,11 @@ function throwOnFailure(result: ExecResult, what: string): ExecResult {
   return result;
 }
 
-/** Require git >= 2.30 — failure goes through the standard command error path. */
+/** Require git >= 2.30 — the resolved real binary answers, not whatever a
+ * session PATH shim reports for `git` (CX-52). */
 export async function requireGit(io: WorkspaceIO): Promise<void> {
-  let result: ExecResult;
-  try {
-    result = await io.exec("git", ["--version"]);
-  } catch (error) {
-    throw new Error(
-      `git is required for flow commands but could not be executed: ${error instanceof Error ? error.message : String(error)}`,
-    );
-  }
+  void io;
+  const result = await gitEvidence(process.cwd(), ["--version"]);
   if (result.exitCode !== 0) {
     throw new Error("git is required for flow commands but `git --version` failed");
   }
@@ -94,8 +161,8 @@ export async function requireGit(io: WorkspaceIO): Promise<void> {
 }
 
 /** Absolute path of the repository top level; null when cwd is not a repo. */
-export async function topLevel(cwd: string, io: WorkspaceIO): Promise<string | null> {
-  const result = await git(cwd, io, ["rev-parse", "--show-toplevel"]);
+export async function topLevel(cwd: string, _io: WorkspaceIO): Promise<string | null> {
+  const result = await gitEvidence(cwd, ["rev-parse", "--show-toplevel"]);
   // Canonicalize to the native real path — git reports forward slashes and
   // the on-disk long name, while callers hold whatever spelling the user
   // passed (possibly an 8.3 alias on Windows); the canonical form is what
@@ -103,26 +170,26 @@ export async function topLevel(cwd: string, io: WorkspaceIO): Promise<string | n
   return result.exitCode === 0 ? canonicalRepoDir(result.stdout.trim()) : null;
 }
 
-export async function isBare(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
-  const result = await git(repoRoot, io, ["rev-parse", "--is-bare-repository"]);
+export async function isBare(repoRoot: string, _io: WorkspaceIO): Promise<boolean> {
+  const result = await gitEvidence(repoRoot, ["rev-parse", "--is-bare-repository"]);
   return result.exitCode === 0 && result.stdout.trim() === "true";
 }
 
 /** Current branch short name; null on detached HEAD (symbolic-ref fails). */
-export async function currentBranch(repoRoot: string, io: WorkspaceIO): Promise<string | null> {
-  const result = await git(repoRoot, io, ["symbolic-ref", "--short", "-q", "HEAD"]);
+export async function currentBranch(repoRoot: string, _io: WorkspaceIO): Promise<string | null> {
+  const result = await gitEvidence(repoRoot, ["symbolic-ref", "--short", "-q", "HEAD"]);
   return result.exitCode === 0 ? result.stdout.trim() : null;
 }
 
 /** True when HEAD has no commit yet (unborn branch). */
-export async function isUnborn(repoRoot: string, io: WorkspaceIO): Promise<boolean> {
-  const result = await git(repoRoot, io, ["rev-parse", "--verify", "-q", "HEAD"]);
+export async function isUnborn(repoRoot: string, _io: WorkspaceIO): Promise<boolean> {
+  const result = await gitEvidence(repoRoot, ["rev-parse", "--verify", "-q", "HEAD"]);
   return result.exitCode !== 0;
 }
 
-export async function listLocalBranches(repoRoot: string, io: WorkspaceIO): Promise<string[]> {
+export async function listLocalBranches(repoRoot: string, _io: WorkspaceIO): Promise<string[]> {
   const result = throwOnFailure(
-    await git(repoRoot, io, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]),
+    await gitEvidence(repoRoot, ["for-each-ref", "--format=%(refname:short)", "refs/heads"]),
     "git for-each-ref",
   );
   return result.stdout
@@ -132,9 +199,9 @@ export async function listLocalBranches(repoRoot: string, io: WorkspaceIO): Prom
 }
 
 /** Remote-tracking refs under `refs/remotes` as `<remote>/<branch>` shorts. */
-export async function listRemoteBranches(repoRoot: string, io: WorkspaceIO): Promise<string[]> {
+export async function listRemoteBranches(repoRoot: string, _io: WorkspaceIO): Promise<string[]> {
   const result = throwOnFailure(
-    await git(repoRoot, io, ["for-each-ref", "--format=%(refname:short)", "refs/remotes"]),
+    await gitEvidence(repoRoot, ["for-each-ref", "--format=%(refname:short)", "refs/remotes"]),
     "git for-each-ref refs/remotes",
   );
   return result.stdout
@@ -146,11 +213,11 @@ export async function listRemoteBranches(repoRoot: string, io: WorkspaceIO): Pro
 /** True when `ancestor` is an ancestor of `descendant` (merge-base --is-ancestor). */
 export async function isAncestor(
   repoRoot: string,
-  io: WorkspaceIO,
+  _io: WorkspaceIO,
   ancestor: string,
   descendant: string,
 ): Promise<boolean> {
-  const result = await git(repoRoot, io, ["merge-base", "--is-ancestor", ancestor, descendant]);
+  const result = await gitEvidence(repoRoot, ["merge-base", "--is-ancestor", ancestor, descendant]);
   if (result.exitCode === 0) return true;
   if (result.exitCode === 1) return false;
   throw new Error(
@@ -164,7 +231,7 @@ export async function lastCommitAt(
   io: WorkspaceIO,
   ref: string,
 ): Promise<string | null> {
-  const result = await git(repoRoot, io, ["log", "-1", "--format=%cI", ref]);
+  const result = await gitEvidence(repoRoot, ["log", "-1", "--format=%cI", ref]);
   return result.exitCode === 0 && result.stdout.trim().length > 0 ? result.stdout.trim() : null;
 }
 
@@ -173,7 +240,7 @@ export async function branchExists(
   io: WorkspaceIO,
   name: string,
 ): Promise<boolean> {
-  const result = await git(repoRoot, io, ["rev-parse", "--verify", "-q", `refs/heads/${name}`]);
+  const result = await gitEvidence(repoRoot, ["rev-parse", "--verify", "-q", `refs/heads/${name}`]);
   return result.exitCode === 0;
 }
 
@@ -184,7 +251,7 @@ export async function revListCount(
   range: string,
 ): Promise<number> {
   const result = throwOnFailure(
-    await git(repoRoot, io, ["rev-list", "--count", range]),
+    await gitEvidence(repoRoot, ["rev-list", "--count", range]),
     `git rev-list --count ${range}`,
   );
   return Number(result.stdout.trim());
@@ -201,7 +268,7 @@ export async function revListHasSubject(
   ref: string,
   grep: string,
 ): Promise<boolean> {
-  const result = await git(repoRoot, io, ["rev-list", "-1", `--grep=${grep}`, ref]);
+  const result = await gitEvidence(repoRoot, ["rev-list", "-1", `--grep=${grep}`, ref]);
   if (result.exitCode !== 0) return false;
   return result.stdout.trim().length > 0;
 }
@@ -217,7 +284,7 @@ export async function fileInTree(
   ref: string,
   path: string,
 ): Promise<boolean> {
-  const result = await git(repoRoot, io, ["cat-file", "-e", `${ref}:${path}`]);
+  const result = await gitEvidence(repoRoot, ["cat-file", "-e", `${ref}:${path}`]);
   return result.exitCode === 0;
 }
 
@@ -247,9 +314,11 @@ function unquotePorcelain(value: string): string {
 }
 
 /** Parse `git worktree list --porcelain`; first entry is always the primary. */
-export async function worktreeList(repoRoot: string, io: WorkspaceIO): Promise<FlowWorktree[]> {
+export async function worktreeList(repoRoot: string, _io: WorkspaceIO): Promise<FlowWorktree[]> {
+  // Worktree topology feeds primary-checkout resolution on the boundary —
+  // scrubbed channel so a session GIT_* cannot redirect it (CX-51 class).
   const result = throwOnFailure(
-    await git(repoRoot, io, ["worktree", "list", "--porcelain"]),
+    await gitEvidence(repoRoot, ["worktree", "list", "--porcelain"]),
     "git worktree list",
   );
   const worktrees: FlowWorktree[] = [];
@@ -309,7 +378,7 @@ export async function configGet(
   io: WorkspaceIO,
   key: string,
 ): Promise<string | null> {
-  const result = await git(repoRoot, io, ["config", "--get", key]);
+  const result = await gitEvidence(repoRoot, ["config", "--get", key]);
   if (result.exitCode === 0) return result.stdout.trim();
   if (result.exitCode === 1) return null;
   throw new Error(
@@ -387,7 +456,7 @@ export async function statusTracked(worktree: string, io: WorkspaceIO): Promise<
     return { entries: [], toleratedState: [], vanished: true };
   }
   const result = throwOnFailure(
-    await git(worktree, io, ["status", "--porcelain", "--untracked-files=no"]),
+    await gitEvidence(worktree, ["status", "--porcelain", "--untracked-files=no"]),
     "git status --porcelain",
   );
   return { entries: porcelainLines(result.stdout), toleratedState: [], vanished: false };
@@ -409,7 +478,7 @@ export async function statusDirty(worktree: string, io: WorkspaceIO): Promise<Di
     return { entries: [], toleratedState: [], vanished: true };
   }
   const result = throwOnFailure(
-    await git(worktree, io, ["status", "--porcelain", "-uall"]),
+    await gitEvidence(worktree, ["status", "--porcelain", "-uall"]),
     "git status --porcelain",
   );
   const entries: string[] = [];

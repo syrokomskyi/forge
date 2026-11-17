@@ -15,17 +15,19 @@ the branch worktree and the declared FLOW_* environment.</purpose>
   <item>stderrTail is the last 40 lines — enough for the report without flooding it (DNA-106).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1532: parse the integration-gate's `gate-report:` stdout marker into FlowScriptResult.reportPath</item>
   <item>RFC-1487: step 2 — primary-side hook-script runner</item>
   <item>RFC-1490: step 4 — ordinary flow.cut (release branch, verified versions, gate, main swap, tags, resume)</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1502: step 2 — release-prepare hook name</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1532</history>
 </CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";
 
 import type { WorkspaceIO } from "../../src/types.ts";
+import { verifierSpawn } from "../../src/utils/verifier-git.ts";
 
 export type FlowScriptName =
   | "worktree-setup"
@@ -64,7 +66,15 @@ export async function runFlowScript(
   if (!(await io.exists(scriptPath))) {
     return { status: "skipped", exitCode: null, stderrTail: "", stdout: "" };
   }
-  const result = await io.exec("sh", [scriptPath], { cwd: opts.cwd, env: opts.env });
+  // The gate hook is a trust-boundary subprocess: session env (NODE_OPTIONS,
+  // BASH_ENV, a shim PATH dir) must not reach the hook or the forge it spawns
+  // (CX-41 class). verifierSpawn replaces the env wholesale — `opts.env`
+  // carries caller-owned FLOW_* context only.
+  const result = await verifierSpawn("sh", [scriptPath], {
+    cwd: opts.cwd,
+    timeoutMs: 600_000,
+    extraEnv: opts.env,
+  });
   // A failing hook may report only on stdout (forge commands do); an empty tail
   // would leave the refusal without a reason.
   const tailOf = (text: string): string =>

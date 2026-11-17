@@ -26,29 +26,30 @@ forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
-import { execFile, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   chmodSync,
   existsSync as existsSyncForBin,
   mkdtempSync,
   mkdirSync,
+  realpathSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { promisify } from "node:util";
 import type {
   AdversarialScenario,
   AdversarialScenarioResult,
 } from "../../src/adversarial/types.ts";
+import { resolveGitBin, verifierGit, verifierSpawnEnv } from "../../src/utils/verifier-git.ts";
 import { packageRoot } from "./catalog.ts";
 
-const execFileAsync = promisify(execFile);
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 const PKG_ROOT = packageRoot(MODULE_DIR);
 const OWN_BIN = path.join(PKG_ROOT, "bin", "cli.js");
@@ -68,8 +69,19 @@ export function resolveForgeArgv(explicit?: string[]): string[] {
   return [process.execPath, OWN_BIN];
 }
 
-const git = (root: string, args: string[]) =>
-  execFileAsync("git", args, { cwd: root, maxBuffer: 16 * 1024 * 1024 }).then((r) => r.stdout);
+/**
+ * The runner's own git — the scrubbed boundary channel, not the session env:
+ * `GIT_CONFIG_*` url rewrites could redirect the scratch clone, and
+ * `refs/replace` substitution could hide what the attack commits actually
+ * change (CX-50/51). Throws on non-zero like promisified execFile did.
+ */
+const git = async (root: string, args: string[]): Promise<string> => {
+  const r = await verifierGit(root, args);
+  if (r.exitCode !== 0) {
+    throw new Error(`git ${args[0]} failed in ${root} (exit ${r.exitCode}): ${r.stderr.trim()}`);
+  }
+  return r.stdout;
+};
 
 /** `src/correctness/index.ts` (source layout) or `dist/src/correctness/index.js`. */
 const CORRECTNESS_HELPERS = (() => {
@@ -222,89 +234,61 @@ function tokenize(template: string, vars: Record<string, string>): string[] {
 }
 
 /**
- * Extract the refusal signal from gate output — verdict-shaped JSON only. A
- * rule token in attacker-controlled text (a manifest `id`, a commit message,
- * a forge.yaml key naming `{"rule": "X"}`) must never count as a refusal:
- * only parsed documents carrying an envelope key (`status`/`violations`/
- * `refusal`/`ruleId`/`verdict`) contribute (CX-2, CX-42), and only
- * error-severity violations cause a refusal — a warn-mode run prints the
- * expected rule as `severity: "warning"` while the refusal (if any) comes
- * from a different rule (CX-3).
+ * Extract the refusal signal from gate output — the real gate envelope
+ * only. Attacker-controlled text can reach stdout verbatim in pretty mode
+ * (a forge.yaml key, a manifest `id`, a commit subject), and any
+ * substring/line/slice salvage hands the attacker a channel for a fabricated
+ * verdict document: only ONE document counts — `stdout` parsed as a whole
+ * (CX-42, CX-55). It must name the spawned command (`command` matches the
+ * invoke's first token), and rule tokens are collected only from structured
+ * violation/diagnostic array entries — never from arbitrary nested objects
+ * an attacker could shape through parsed config values.
  */
 function observedVerdict(
   stdout: string,
-  stderr: string,
-  expected: string,
+  expectedCommand: string,
+  expectedRule: string,
 ): { rule: string; fail: boolean } {
   const rules: string[] = [];
   let fail = false;
   const RULE = /^[A-Z]+-[A-Z]+-\d+$/;
-  const collect = (value: unknown): void => {
-    if (!value || typeof value !== "object") return;
-    if (Array.isArray(value)) {
-      for (const v of value) collect(v);
-      return;
-    }
-    const rec = value as Record<string, unknown>;
-    for (const k of ["rule", "refusal", "ruleId"] as const) {
-      const token = rec[k];
-      if (typeof token === "string" && RULE.test(token) && rec["severity"] !== "warning")
-        rules.push(token);
-    }
-    if (
-      rec["status"] === "fail" ||
-      rec["status"] === "refused" ||
-      rec["verdict"] === "fail" ||
-      typeof rec["refusal"] === "string" ||
-      typeof rec["ruleId"] === "string"
-    )
-      fail = true;
-    for (const v of Object.values(rec)) {
-      if (v && typeof v === "object") collect(v);
-    }
-  };
-  /** A doc only counts when it carries a verdict envelope — a bare
-   * `{"rule": "X"}` object is attacker text, not a gate verdict (CX-42). */
-  const verdictLike = (d: unknown): d is Record<string, unknown> =>
-    !!d &&
-    typeof d === "object" &&
-    !Array.isArray(d) &&
-    ["status", "violations", "refusal", "ruleId", "verdict"].some(
-      (k) => k in (d as Record<string, unknown>),
-    );
-  // Parse whole documents FIRST — `--json` output is one pretty-printed
-  // object; the first-{-to-last-} slice exists only for a doc wrapped in log
-  // noise and is still gated by verdictLike.
-  const docs: unknown[] = [];
-  for (const blob of [`${stdout}\n${stderr}`.trim(), stdout.trim(), stderr.trim()]) {
-    if (!blob) continue;
-    try {
-      docs.push(JSON.parse(blob));
-      continue;
-    } catch {
-      /* not one JSON document — try the largest top-level object */
-    }
-    const start = blob.indexOf("{");
-    const end = blob.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      try {
-        docs.push(JSON.parse(blob.slice(start, end + 1)));
-      } catch {
-        /* unbalanced — fall through */
+  const blob = stdout.trim();
+  if (!blob) return { rule: "none", fail: false };
+  let doc: unknown;
+  try {
+    doc = JSON.parse(blob);
+  } catch {
+    // Pretty-mode or log-wrapped output never yields a verdict doc — a
+    // fabricated envelope planted in attacker text must not parse (CX-55).
+    return { rule: "none", fail: false };
+  }
+  if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+    return { rule: "none", fail: false };
+  }
+  // One `data` unwrap — command envelopes nest the payload under it.
+  const rec = doc as Record<string, unknown>;
+  const payload =
+    rec["data"] && typeof rec["data"] === "object" && !Array.isArray(rec["data"])
+      ? (rec["data"] as Record<string, unknown>)
+      : rec;
+  if (payload["command"] !== expectedCommand) return { rule: "none", fail: false };
+  if (payload["status"] === "fail" || payload["status"] === "refused") fail = true;
+  if (payload["verdict"] === "fail") fail = true;
+  for (const field of ["violations", "weakenings", "diagnostics"] as const) {
+    const entries = payload[field];
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      const e = entry as Record<string, unknown>;
+      if (e["severity"] === "warning") continue;
+      for (const k of ["rule", "ruleId"] as const) {
+        const token = e[k];
+        if (typeof token === "string" && RULE.test(token)) rules.push(token);
       }
+      if (typeof e["refusal"] === "string") fail = true;
     }
   }
-  if (docs.length === 0) {
-    for (const line of `${stdout}\n${stderr}`.split("\n")) {
-      try {
-        docs.push(JSON.parse(line));
-      } catch {
-        /* non-JSON line */
-      }
-    }
-  }
-  for (const d of docs.filter(verdictLike)) collect(d);
-  return { rule: rules.includes(expected) ? expected : (rules[0] ?? "none"), fail };
+  return { rule: rules.includes(expectedRule) ? expectedRule : (rules[0] ?? "none"), fail };
 }
 
 /**
@@ -341,61 +325,81 @@ export interface RunScenarioOptions {
 }
 
 /**
- * Env the spawned forge binary receives — an allowlist, not the session's
- * whole environment: `NODE_OPTIONS=--require` (and NODE_PATH / LD_* /
- * GIT_* / shell-startup vectors) would preload attacker code into the gate
- * process and fabricate a refusal verdict (CX-41).
+ * Env the spawned forge binary receives — the shared verifier allowlist,
+ * not the session's environment: `NODE_OPTIONS=--require` (and NODE_PATH /
+ * LD_* / GIT_* / shell-startup vectors) would preload attacker code into the
+ * gate process, and a session PATH dir earlier in order substitutes the
+ * `git` the gate resolves (CX-41, CX-52). `verifierSpawnEnv` rebuilds PATH
+ * around the resolved real git + node + system dirs.
  */
-const SPAWN_ENV_ALLOWLIST = [
-  "PATH",
-  "HOME",
-  "TMPDIR",
-  "TMP",
-  "TEMP",
-  "LANG",
-  "LC_ALL",
-  "LC_CTYPE",
-  "TZ",
-  "CI",
-  "USER",
-  "LOGNAME",
-  "SHELL",
-  "SystemRoot",
-  "SystemDrive",
-  "WINDIR",
-  "COMSPEC",
-  "PATHEXT",
-  "PROGRAMFILES",
-  "ProgramFiles",
-  "USERPROFILE",
-  "APPDATA",
-  "LOCALAPPDATA",
-] as const;
-
-function spawnEnv(scratch: string): Record<string, string> {
-  const env: Record<string, string> = { FORGE_PRIMARY: scratch };
-  for (const k of SPAWN_ENV_ALLOWLIST) {
-    const v = process.env[k];
-    if (v !== undefined) env[k] = v;
-  }
-  return env;
+function spawnEnv(scratch: string): NodeJS.ProcessEnv {
+  return verifierSpawnEnv({ FORGE_PRIMARY: scratch });
 }
 
-/** Reject `rel` paths that would escape `root` — `../` and absolute paths
- * must never write outside the scratch clone (CX-44). Returns the resolved
- * in-root destination or null. */
+/**
+ * Reject `rel` paths that would escape `root` — `../` and absolute paths
+ * must never write outside the scratch clone (CX-44), and a symlink planted
+ * inside the clone (a committed `links` entry pointing out) must not carry
+ * the write out either: every existing ancestor is resolved with
+ * `realpathSync` against the real root, so a textual in-root path cannot
+ * mask a filesystem-level escape (CX-54). Returns the resolved in-root
+ * destination or null.
+ */
 function insideRoot(root: string, rel: string): string | null {
   const dest = path.resolve(root, rel);
-  return dest.startsWith(root + path.sep) ? dest : null;
+  if (!dest.startsWith(root + path.sep)) return null;
+  let realRoot: string;
+  try {
+    realRoot = realpathSync(root);
+  } catch {
+    return null;
+  }
+  const parts = dest.slice(root.length).split(path.sep).filter(Boolean);
+  let probe = realRoot;
+  for (const part of parts.slice(0, -1)) {
+    const next = path.join(probe, part);
+    if (!existsSyncForBin(next)) break; // non-existent tail — still inside
+    let real: string;
+    try {
+      real = realpathSync(next);
+    } catch {
+      return null;
+    }
+    if (real !== realRoot && !real.startsWith(realRoot + path.sep)) return null;
+    probe = real;
+  }
+  // The final segment may itself be a symlink whose target escapes.
+  if (existsSyncForBin(dest)) {
+    try {
+      const real = realpathSync(dest);
+      if (real !== realRoot && !real.startsWith(realRoot + path.sep)) return null;
+    } catch {
+      return null;
+    }
+  }
+  return dest;
 }
 
 export async function runScenario(
   scenario: AdversarialScenario,
   opts: RunScenarioOptions,
 ): Promise<AdversarialScenarioResult> {
-  const scratch = mkdtempSync(path.join(os.tmpdir(), `forge-adv-${scenario.name}-`));
+  // `scenario.name` is catalog-controlled text — it must stay a plain prefix:
+  // a `..`-bearing name would place the scratch clone outside os.tmpdir()
+  // (CX-53).
+  const safeName = scenario.name.replace(/[^A-Za-z0-9._-]/g, "_");
+  const scratch = mkdtempSync(path.join(os.tmpdir(), `forge-adv-${safeName}-`));
   try {
-    await execFileAsync("git", ["clone", "-q", "--no-hardlinks", opts.repoRoot, scratch]);
+    const clone = await verifierGit(scratch, [
+      "clone",
+      "-q",
+      "--no-hardlinks",
+      opts.repoRoot,
+      scratch,
+    ]);
+    if (clone.exitCode !== 0) {
+      throw new Error(`git clone failed (exit ${clone.exitCode}): ${clone.stderr.trim()}`);
+    }
     const g = (args: string[]) => git(scratch, args);
     await g(["config", "user.email", "adversarial@forge"]);
     await g(["config", "user.name", "adversarial"]);
@@ -448,7 +452,13 @@ export async function runScenario(
       ...resolveForgeArgv(opts.forgeArgv),
       ...tokenize(scenario.invoke, { base, scratch }),
     ];
+    // The verdict command — the first invoke token; the observed document
+    // must name it (CX-55).
+    const expectedCommand = scenario.invoke.split(/\s+/)[0] ?? "correctness.gate";
     const spawned = await new Promise<{ code: number | null; out: string; err: string }>((done) => {
+      // resolveGitBin() pins the gate's own `git` resolution above any PATH
+      // shim the session placed first (CX-52).
+      void resolveGitBin();
       const child = spawn(argv[0]!, argv.slice(1), {
         cwd: scratch,
         env: spawnEnv(scratch),
@@ -470,7 +480,7 @@ export async function runScenario(
     const verdict =
       spawned.code === -1
         ? { rule: `error:${argv[0]}`, fail: false }
-        : observedVerdict(spawned.out, spawned.err, scenario.expect.rule);
+        : observedVerdict(spawned.out, expectedCommand, scenario.expect.rule);
     // A refusal costs a non-zero exit — warn-mode still prints `status: fail`
     // with the violation tokens while exiting 0, so the process status is the
     // only honest signal (CX-3).

@@ -21,18 +21,19 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-11 counterexamples (CX-61..67)</item>
   <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
-  <history>RFC-1330, RFC-1391, RFC-1513</history>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { execFile, readFileSync } from "../../src/utils/sync-fs.ts";
+import { resolveGitBin, verifierGitEnv } from "../../src/utils/verifier-git.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
 import { RFC_ORIGIN_CUTOFF } from "./types.ts";
 import type {
@@ -70,21 +71,15 @@ export interface OriginGit {
 /**
  * Env for git subprocesses that pass an explicit cwd: repository-locating
  * variables inherited from a hook or outer git command (GIT_DIR, GIT_INDEX_FILE,
- * …) would otherwise redirect every call to the outer repository.
+ * …) would otherwise redirect every call to the outer repository. Delegates to
+ * `verifierGitEnv` — RFC-1616 widened the scrub from a named list to the whole
+ * `GIT_*` prefix plus `GIT_NO_REPLACE_OBJECTS`, because config injection
+ * (`GIT_CONFIG_*`), transport overrides (`GIT_SSH*`), and refs/replace
+ * substitution can redirect or rewrite evidence reads just as effectively as a
+ * relocated repository (CX-46..CX-51).
  */
 export function gitEnvForCwd(): NodeJS.ProcessEnv {
-  const env = { ...process.env };
-  for (const key of [
-    "GIT_DIR",
-    "GIT_WORK_TREE",
-    "GIT_INDEX_FILE",
-    "GIT_PREFIX",
-    "GIT_COMMON_DIR",
-    "GIT_OBJECT_DIRECTORY",
-  ]) {
-    delete env[key];
-  }
-  return env;
+  return verifierGitEnv();
 }
 
 /**
@@ -119,13 +114,16 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
   // Session-writable YAML (path bindings, refs) reaches these args — a NUL
   // byte makes `execFile` throw synchronously (TypeError). Every throw
   // degrades to a read failure → `unreadableReads` → CORR-GATE-01, never an
-  // unhandled gate crash (CX-129).
+  // unhandled gate crash (CX-129). The binary is the resolved absolute git —
+  // `env.PATH` is already the rebuilt verifier path, but the absolute path
+  // removes resolution from the channel entirely (CX-52).
+  const bin = resolveGitBin();
   return {
     run: (args) =>
       new Promise((resolve) => {
         try {
           execFile(
-            "git",
+            bin,
             args,
             {
               cwd: workspaceRoot,
@@ -143,7 +141,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       new Promise((resolve) => {
         try {
           execFile(
-            "git",
+            bin,
             args,
             {
               cwd: workspaceRoot,
@@ -174,7 +172,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       new Promise((resolve) => {
         try {
           const child = execFile(
-            "git",
+            bin,
             ["cat-file", "--batch"],
             {
               cwd: workspaceRoot,
@@ -194,16 +192,76 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
 }
 
 export const VERIFIER_ORIGIN_TRAILER = "X-Expectation-Origin: independent-verifier";
-const VERIFIER_ORIGIN_RE = /^X-Expectation-Origin:\s*independent-verifier\s*$/m;
-const VERIFIER_REPORT_RE = /^X-Verifier-Report:\s*(\S+)\s*$/m;
 
-/** True when a commit body carries the sanctioned verifier trailer pair. */
+/**
+ * True when a commit body carries the sanctioned verifier trailer pair —
+ * judged the way `git interpret-trailers` judges: only the LAST paragraph is
+ * a trailer block, every non-blank line of it must be trailer-shaped
+ * (`key:`/`key :`/`key  folded`), keys are case-insensitive, and whitespace
+ * before the colon folds (CX-60). A pair planted mid-body or behind a text
+ * tail is NOT a git trailer — honoring it would exempt a weakening the
+ * push-time `%(trailers)` scan cannot see (arbiter asymmetry). A lone
+ * trailer-shaped subject counts — git versions disagree on whether a
+ * subject-only message is a trailer block, so both arbiters treat it as one
+ * (stricter is safe, CX-23 parity).
+ */
 export function hasVerifierTrailers(body: string): boolean {
-  return VERIFIER_ORIGIN_RE.test(body) && VERIFIER_REPORT_RE.test(body);
+  const block = trailerBlockPairs(body);
+  if (block === null) return false;
+  let origin = false;
+  let report = false;
+  for (const [i, t] of block.entries()) {
+    if (!t) continue; // a folded continuation line contributes to the previous value
+    if (t.k === "x-expectation-origin" && /^independent-verifier$/i.test(t.v)) origin = true;
+    if (t.k === "x-verifier-report" && (t.v.length > 0 || block[i + 1] === null)) report = true;
+  }
+  return origin && report;
+}
+
+interface TrailerEntry {
+  k: string;
+  v: string;
+  /** The raw line — for folded values the continuation text lives in later `null` slots. */
+  raw: string;
+}
+
+/**
+ * The key/value pairs of the commit message's LAST paragraph when every
+ * non-blank line of it is trailer-shaped — `null` when the last paragraph
+ * mixes prose and trailers (then git counts none of it as trailers). A
+ * continuation line yields `null` at its index (its value belongs to the
+ * previous key).
+ */
+function trailerBlockPairs(body: string): Array<TrailerEntry | null> | null {
+  const trailerLine = (l: string) => /^[^:\s][^:\n]*?\s*:\s*.*$/.test(l);
+  const paras = body
+    .replace(/\r\n/g, "\n")
+    .split(/\n\s*\n/)
+    .map((p) => p.split("\n").filter((l) => l.trim() !== ""))
+    .filter((lines) => lines.length > 0);
+  const lines = paras.at(-1) ?? [];
+  if (!lines.every((l) => trailerLine(l) || /^\s+\S/.test(l))) return null;
+  return lines.map((l) => {
+    const m = /^([^:\s][^:\n]*?)\s*:\s*(.*)$/.exec(l);
+    return m ? { k: m[1]!.trim().toLowerCase(), v: m[2]!.trim(), raw: l } : null;
+  });
 }
 
 function verifierReportOf(body: string): string | null {
-  return VERIFIER_REPORT_RE.exec(body)?.[1] ?? null;
+  const block = trailerBlockPairs(body);
+  if (block === null) return null;
+  const lines = body.replace(/\r\n/g, "\n").split("\n");
+  for (const [i, t] of block.entries()) {
+    if (!t || t.k !== "x-verifier-report") continue;
+    if (t.v.length > 0) return t.v;
+    // folded value lives on the continuation line(s) right after this key
+    if (block[i + 1] === null) {
+      const keyIdx = lines.lastIndexOf(t.raw);
+      const cont = lines[keyIdx + 1];
+      if (cont !== undefined && /^\s+\S/.test(cont)) return cont.trim();
+    }
+  }
+  return null;
 }
 
 const DOC_EXTENSIONS = [".md", ".mdx", ".txt", ".xml"];

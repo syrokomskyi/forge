@@ -11,6 +11,7 @@ anchor-removed) fixes, and record round-13 counterexamples CX-76..CX-81.</purpos
 <CHANGE_SUMMARY>
   <item>RFC-1615: round-13 probes (verifier-side).</item>
   <item>RFC-1615: close RFC-1615 round-14 counterexamples — binding adds, base-side rfc namespace, governed acceptance provenance, unreadable listings</item>
+  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -20,6 +21,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
+import { setVerifierGitBinForTests } from "../../../src/utils/verifier-git.ts";
 import { runCorrectnessGate } from "./run.ts";
 import {
   HELPERS,
@@ -157,7 +159,14 @@ db.exec(readFileSync("apps/api/migrations/0001_init.sql", "utf8"));
 attestSubstrate(db, { level: "L1", engine: "node:sqlite" });
 `;
 
-/** A PATH shim that exits 128 for git invocations matching `match` — deterministic read-failure injection. */
+/**
+ * A resolved-binary shim that exits 128 for git invocations matching `match`
+ * — deterministic read-failure injection. Arms BOTH git channels: the
+ * resolved-binary seam for hardened evidence reads (gitEvidence/origin-git —
+ * session-PATH injection is the attack CX-52 closed, so the module seam is
+ * the in-process equivalent) and PATH for ordinary io.exec worktree reads
+ * (`git ls-files` and friends keep the recording adapter).
+ */
 async function withFailingGit(match: string, fn: () => Promise<void>): Promise<void> {
   const dir = mkdtempSync(path.join(os.tmpdir(), "git-shim-"));
   roots.push(dir);
@@ -166,10 +175,12 @@ async function withFailingGit(match: string, fn: () => Promise<void>): Promise<v
   });
   const prev = process.env["PATH"];
   process.env["PATH"] = `${dir}:${prev}`;
+  setVerifierGitBinForTests(path.join(dir, "git"));
   try {
     await fn();
   } finally {
     process.env["PATH"] = prev;
+    setVerifierGitBinForTests(undefined);
   }
 }
 
