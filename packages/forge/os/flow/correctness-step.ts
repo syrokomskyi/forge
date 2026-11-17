@@ -24,10 +24,13 @@ F1 bootstrap degrade only on an exact unknown-command stderr line with no JSON; 
   <item>RFC-1580: close review REVIEW-CODE-2026-11-13-05 findings
 
 N1 bootstrap degrade only while the base has not adopted the contour (a forge downgrade refuses); N2 L3 on data/lifecycle counts at its attested level; N3 anchor events bound to the attested handle; N4 new support-glob files are frozen additions; N5/N6 isolated sessions may touch anchor files and only frozen forge.yaml keys; N7 RFC body amended; N8 regression tests; N9 run root in finally and grandchildren reaped; N10 every declared capture loaded. DEV-7 recorded; DEV-5 narrowed pending operator confirmation.</item>
+  <item>RFC-1615: close round-21 counterexamples — YAML-loader adoption check, absent-vs-unreadable base reads</item>
 </CHANGE_SUMMARY>
 */
 
 import { join } from "node:path";
+
+import { parse as parseYaml } from "yaml";
 
 import type { Diagnostic, WorkspaceIO } from "../../src/types.ts";
 
@@ -58,17 +61,48 @@ function parseJson(stdout: string): GateJson | null {
 }
 
 /**
- * True when forge.yaml at the integration base binds a correctness manifest or
- * declares a correctness section — the repository has adopted the gate, so a
- * primary forge that lacks it is a downgrade, not a bootstrap.
+ * Whether forge.yaml at the integration base adopted the correctness
+ * contour. Three verdicts, never a boolean collapse:
+ * - "adopted" — a manifest binding or a `correctness:` section parses (the
+ *   gate itself binds through the full YAML loader in `sideFrom`, so a line
+ *   regex misses quoted keys, flow style, and space-before-colon spellings
+ *   the loader accepts — CX-130);
+ * - "not-adopted" — forge.yaml is absent at base or parses without either
+ *   declaration (legit bootstrap degrade);
+ * - "unreadable" — the file exists but a git read or exec failed; absent ≠
+ *   unreadable, a failure must never launder as "not adopted" (CX-131).
  */
-async function baseAdoptedGate(io: WorkspaceIO, worktree: string, base: string): Promise<boolean> {
-  const shown = await io.exec("git", ["show", `${base}:forge.yaml`], { cwd: worktree });
-  if (shown.exitCode !== 0) return false;
-  const text = shown.stdout;
-  const bound = /^\s*correctnessManifest:\s*(?!null\b|~|$)\S+/m.test(text);
-  const section = /^correctness:\s*$/m.test(text);
-  return bound || section;
+async function baseAdoptedGate(
+  io: WorkspaceIO,
+  worktree: string,
+  base: string,
+): Promise<"adopted" | "not-adopted" | "unreadable"> {
+  try {
+    // Existence first: `ls-tree` answers 0/empty for a missing file on a
+    // valid rev but non-zero on a bad rev / corrupt tree / spawn failure.
+    const ls = await io.exec("git", ["ls-tree", base, "--", "forge.yaml"], { cwd: worktree });
+    if (ls.exitCode !== 0) return "unreadable";
+    if (!ls.stdout.trim()) return "not-adopted";
+    const shown = await io.exec("git", ["show", `${base}:forge.yaml`], { cwd: worktree });
+    if (shown.exitCode !== 0) return "unreadable";
+    let doc: unknown;
+    try {
+      doc = parseYaml(shown.stdout);
+    } catch {
+      // An unparseable base forge.yaml cannot prove the contour absent.
+      return "adopted";
+    }
+    if (doc === null || typeof doc !== "object" || Array.isArray(doc)) return "adopted";
+    const rec = doc as Record<string, unknown>;
+    const paths = (rec["bindings"] as Record<string, unknown> | undefined)?.["paths"] as
+      Record<string, unknown> | undefined;
+    const bound = paths?.["correctnessManifest"] != null;
+    const section = rec["correctness"] !== undefined;
+    return bound || section ? "adopted" : "not-adopted";
+  } catch {
+    // An io.exec throw (spawn failure) is an unreadable read, not a verdict.
+    return "unreadable";
+  }
 }
 
 export async function runCorrectnessStep(
@@ -112,10 +146,17 @@ export async function runCorrectnessStep(
     result.stderr
       .split("\n")
       .some((line) => /^\s*(?:✖\s*)?Unknown command: correctness\.gate\s*$/.test(line));
-  if (unknownCommand && (await baseAdoptedGate(io, opts.worktree, opts.base))) {
+  const adopted = unknownCommand ? await baseAdoptedGate(io, opts.worktree, opts.base) : null;
+  if (adopted === "adopted") {
     return notRun(
       "the primary install's forge does not know correctness.gate, but the base revision already adopted the correctness contour — a forge downgrade must not drop the gate",
       `restore an @warpgogol/forge with correctness.gate in ${opts.primary} (pnpm install), then re-run`,
+    );
+  }
+  if (adopted === "unreadable") {
+    return notRun(
+      "the primary install's forge does not know correctness.gate and forge.yaml at the integration base could not be read — the contour's adoption cannot be proven absent, so the gate must not degrade",
+      `fix the git read of ${opts.base}:forge.yaml (or restore an @warpgogol/forge with correctness.gate in ${opts.primary}), then re-run`,
     );
   }
   if (unknownCommand) {
