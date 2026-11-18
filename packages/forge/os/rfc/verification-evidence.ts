@@ -12,7 +12,6 @@ a JSON evidence envelope to docs/rfcs/verification/<slug>.generated.yaml.
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1458: emit requirement-mapped verdict events from deploy.smoke.run</item>
   <item>RFC-1489: batch test probes through one instrumented Vitest run + frontmatter corpus reads
 
 runProbeSet is the single shared execution point: barrier-free segments of test probes sharing one effective bound run in one vitest --reporter=json --outputFile process with per-(file,testName) attribution; missing files/reports yield unverified. run/page/proof and all non-test kinds are barriers. --no-batch escapes to the legacy path on acceptance.run, verification.emit and verification.refresh. rfc.validate reads non-target corpus files frontmatter-only via readRfcFrontmatter (64 KiB bound, full-parse fallback); emit/refresh/acceptance corpus scans use the same accessor. Corpus map slimmed to RfcCorpusEntry {fileName, frontmatter}.</item>
@@ -54,12 +53,13 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
-  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453</history>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
+  <history>RFC-0330, RFC-0999, RFC-1237, RFC-1249, RFC-1271, RFC-1320, RFC-1330, RFC-1334, RFC-1372, RFC-1391, RFC-1453, RFC-1458</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo, resolveIo } from "../../src/utils/io.ts";
-import { verifierGit } from "../../src/utils/verifier-git.ts";
+import { sessionIgnoreRulePaths, verifierGit } from "../../src/utils/verifier-git.ts";
 
 import { join, relative } from "node:path";
 import { byteHash } from "../../src/utils/hash.ts";
@@ -300,9 +300,26 @@ export async function captureGitContext(
     verifierGit(workspaceRoot, ["rev-parse", "HEAD"]),
     verifierGit(workspaceRoot, ["status", "--porcelain"]),
   ]);
+  // `!!` entries are committed-rule ignores the injected `--ignored`
+  // only makes visible — never dirt (CX-142). A session-authored
+  // `.gitignore` can hide itself from status entirely, so the fs walk +
+  // tracked-set check is what keeps a planted `*` rule from forging a
+  // clean verdict.
+  const sessionRules =
+    status.exitCode === 0
+      ? await sessionIgnoreRulePaths(workspaceRoot, async (paths) => {
+          const t = await verifierGit(workspaceRoot, ["ls-files", "-z", "--", ...paths]);
+          return t.exitCode === 0
+            ? new Set(t.stdout.split("\0").filter((p) => p.length > 0))
+            : null;
+        })
+      : [];
   return {
     commit: commit.exitCode === 0 ? commit.stdout.trim() : "unknown",
-    workingTreeDirty: status.exitCode === 0 && status.stdout.trim().length > 0,
+    workingTreeDirty:
+      status.exitCode === 0 &&
+      (status.stdout.split("\n").some((line) => line.length > 0 && !line.startsWith("!! ")) ||
+        sessionRules.length > 0),
   };
 }
 

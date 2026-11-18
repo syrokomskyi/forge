@@ -16,6 +16,7 @@ F1 code-only anchor scan (markdown fences never declare anchors); F2 generated i
   <item>RFC-1578: close review REVIEW-CODE-2026-11-12-09 findings
 
 N1 index-hint rows count only for files in the workspace listing; N2 forge create leaves exempt repositories unbound; N3 listing test stages a file. Record DEV-3/DEV-4 amendments (CORR-07 future/escaping captures, index as re-verified hint) in the RFC Deviations section.</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -217,7 +218,7 @@ describe("anchor index hint", () => {
 });
 
 describe("workspace file listing", () => {
-  it("lists tracked and untracked files and honours .gitignore in a git repository", async () => {
+  it("lists tracked and untracked files; .gitignore cannot hide files (CX-142)", async () => {
     const w = makeWorkspace({});
     cleanups.push(w.cleanup);
     execFileSync("git", ["init", "-q"], { cwd: w.root });
@@ -227,6 +228,9 @@ describe("workspace file listing", () => {
     const files = await listWorkspaceFiles(w.root);
     expect(files).toContain("src/dispatch.ts"); // tracked (--cached)
     expect(files).toContain("src/dispatch.schema.test.ts"); // untracked (--others)
-    expect(files).not.toContain("ignored.ts");
+    // CX-142: the trusted enumeration answers every worktree file — a
+    // session-authored `.gitignore` must never hide evidence, so
+    // ignored-but-present files enumerate too.
+    expect(files).toContain("ignored.ts");
   });
 });

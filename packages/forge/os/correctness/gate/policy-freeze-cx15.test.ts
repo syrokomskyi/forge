@@ -17,6 +17,7 @@ itself.</purpose>
   <item>RFC-1615: round-14 adversarial verification probes (CX-76..CX-85)</item>
   <item>RFC-1615: close RFC-1615 round-15 counterexamples — live rfcsDir key, base-anchored governing-reference resolution, judged compassDocs</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -675,7 +676,11 @@ describe("round-14 re-verification: CX-81 (listWorkspaceFiles / onGitFailure)", 
       "schema: forge/correctness-manifest@1\nentries: []\nsupport: []\nexemptions: []\n",
     );
     f.commit("session drops the frozen entry");
-    const shim = makeGitShim([["ls-files", "-z", "--cached", "--others", "--exclude-standard"]]);
+    // The shim matches SPAWN argv — `evidenceSpawnArgs` strips
+    // `--exclude-standard` from `ls-files` bodies (CX-142), so the
+    // trusted enumeration reaches git as `ls-files -z --cached
+    // --others`; refuse that shape.
+    const shim = makeGitShim([["ls-files", "-z", "--cached", "--others"]]);
     shim.arm();
     try {
       const plain = await gate(f);

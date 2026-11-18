@@ -11,7 +11,6 @@ plus getFileRevisionFromHistory and the porcelain dirty-path helpers
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-0352: initial implementation of getRevisionByPath helper.</item>
   <item>RFC-0556: moved from @warpgogol/site-kernel-integrity to @warpgogol/forge for autonomous mode.</item>
   <item>RFC-1318: add compass.header.scaffold codemod for mechanical header sweeps</item>
   <item>RFC-1318</item>
@@ -51,12 +50,14 @@ evidence channel — this commit closes all root causes.
 
 The independent r9 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r14 trust-boundary counterexamples</item>
+  <history>RFC-0352</history>
 </CHANGE_SUMMARY>
 */
 
 import { ambientIo } from "../../../src/utils/io.ts";
 import { canonicalRepoDir } from "../../../src/utils/repo-path.ts";
-import { verifierGit } from "../../../src/utils/verifier-git.ts";
+import { sessionIgnoreRulePaths, verifierGit } from "../../../src/utils/verifier-git.ts";
 import { createHash } from "node:crypto";
 
 import { resolve, join } from "node:path";
@@ -106,23 +107,32 @@ export async function listDirtyPaths(repoRoot: string): Promise<DirtyPathResult>
       reason: isRepo ? r.stderr.trim() : undefined,
     };
   }
-  return {
-    paths: r.stdout
-      .split("\n")
-      .filter((line) => line.length >= 3)
-      .map((line) => {
-        // Porcelain is `XY <path>` — slice the raw line so leading-space
-        // status pairs (e.g. " M") keep their offsets. A stray \r survives
-        // the split when git output is CRLF-terminated — never part of a path.
-        let path = line.slice(3).replace(/\r$/, "");
-        // Rename entries read `old -> new`; the live path is the target.
-        const arrow = path.indexOf(" -> ");
-        if (arrow >= 0) path = path.slice(arrow + 4);
-        return path.replace(/^"|"$/g, "");
-      })
-      .filter(Boolean),
-    refused: false,
-  };
+  const base = r.stdout
+    .split("\n")
+    // `!!` entries are committed-rule ignores — not dirty (the injected
+    // `--ignored` only makes them VISIBLE, CX-142).
+    .filter((line) => line.length >= 3 && !line.startsWith("!! "))
+    .map((line) => {
+      // Porcelain is `XY <path>` — slice the raw line so leading-space
+      // status pairs (e.g. " M") keep their offsets. A stray \r survives
+      // the split when git output is CRLF-terminated — never part of a path.
+      let path = line.slice(3).replace(/\r$/, "");
+      // Rename entries read `old -> new`; the live path is the target.
+      const arrow = path.indexOf(" -> ");
+      if (arrow >= 0) path = path.slice(arrow + 4);
+      return path.replace(/^"|"$/g, "");
+    })
+    .filter(Boolean);
+  // Session-authored ignore rules: an untracked `.gitignore` hides
+  // itself and every covered path from status entirely — only an fs
+  // walk + tracked-set check can prove a rule session-authored, and it
+  // always counts as dirt (CX-142). A failed tracked read counts every
+  // found rule — fail closed.
+  const sessionRules = await sessionIgnoreRulePaths(repoRoot, async (paths) => {
+    const t = await verifierGit(repoRoot, ["ls-files", "-z", "--", ...paths]);
+    return t.exitCode === 0 ? new Set(t.stdout.split("\0").filter((p) => p.length > 0)) : null;
+  });
+  return { paths: [...new Set([...base, ...sessionRules])], refused: false };
 }
 
 /**
