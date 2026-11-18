@@ -12,11 +12,55 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: keep an unconfigured scaffold owner from rewriting real CODEOWNERS ownership</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
+
+Independent clean-context verification (round 7, candidate d2f270ad6)
+returned REFUTED with eleven live counterexamples against the
+r6-hardened evidence channel — this commit closes all nine root causes.
+
+- remote.<name>.fetch is value-judged: only the clone-default
+  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
+  UNIONs configured refspecs with the pinned fetch argv and a session
+  spec writes arbitrary local refs inside the trusted fetch (CX-94).
+  remote.<name>.tagopt|promirror|followremotehead|prunetags|
+  skipfetchall|mirror move to REFUSE for the same reason.
+- Alternates/shape comment lexing is col-0 `#` only — git's parser does
+  not treat whitespace-led `#` as a comment, so `   # forged` is a real
+  alternates path the shape check must count (CX-95).
+- config reads forbid the alternate-source selectors --file/-f, --blob,
+  --worktree (reaches config.worktree even under the disabled-extension
+  pin), --system/--global, --default and --includes, plus the
+  write-action spellings, on both the evidence and shared read-only
+  tables (CX-96).
+- verifierGit judges fabrication argv on the runner/policy channel:
+  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
+  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
+  can no longer verify an unattested advance (CX-97).
+- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
+  both tables — the flag opts the trusted walk into the session-
+  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
+- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
+  on both tables — they block on input the no-stdin spawn never
+  supplies (CX-101).
+- The workflow-adoption heredoc lexer is bash-faithful: openers are
+  scanned on the raw line before the # comment strip (quoted-#
+  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
+  the terminator match is strict — << wants the delimiter alone, <<-/
+  <<~ skip leading tabs only (CX-100).
+- Trailer scans read %e beside %(trailers): a commit declaring a
+  non-UTF-8 encoding header recodes every trusted message read, so the
+  digest trail and the push-time scan flag it as unverifiable and the
+  policy attestation scan skips it (CX-102).
+
+Probe premise updates for the tightened contract: CX-61's decoy
+remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
+EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
+decoy-namespace guard it replaces. The independent r7 probe file and
+acceptance report land in the follow-up port commit.</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -323,25 +367,35 @@ function workflowAdopted(body: string): boolean {
   // `<<EOF … EOF` never execute, but a line-wise scan counts them as
   // invocations and adopts dead CI (CX-90: `cat <<'EOF'\nforge gate…\nEOF`
   // matched every check while feeding cat). Delimiters queue in order:
-  // `cmd <<A; cmd <<B` feeds the A body then the B body.
-  const HEREDOC_OPEN = /<<[-~]?\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_][\w-]*))/g;
+  // `cmd <<A; cmd <<B` feeds the A body then the B body. The open scan
+  // runs on the RAW line — a `#` inside a quoted delimiter is not a
+  // comment and the strip would eat it (CX-99a), and a digit-leading
+  // bare delimiter is legal too (CX-99b).
+  const HEREDOC_OPEN = /<<([-~]?)\s*(?:'([^']+)'|"([^"]+)"|\\?([\w.-]+))/g;
   const runInvokes = (run: string, cmd: RegExp, extra?: RegExp): boolean => {
     let dead = false;
     let depth = 0;
     let pipefail = false;
-    const heredocs: string[] = [];
+    const heredocs: { delim: string; tabStrip: boolean }[] = [];
     for (const raw of run.split("\n")) {
       if (dead) continue;
+      if (heredocs.length > 0) {
+        // Inside a heredoc body — nothing runs. The terminator match is
+        // bash-strict: plain `<<` wants the delimiter alone on the line,
+        // `<<-`/`<<~` additionally skip leading TABS only — a
+        // space-indented terminator never ends the body (CX-100).
+        const hd = heredocs[0];
+        const esc = hd.delim.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const ends = hd.tabStrip
+          ? new RegExp(`^\\t*${esc}$`).test(raw)
+          : new RegExp(`^${esc}$`).test(raw);
+        if (ends) heredocs.shift();
+        continue;
+      }
       const line = raw
         .replace(/\$\{\{[^}]*\}\}/g, "") // ${{ }} exprs run runner-side (CX-66)
         .replace(/#.*$/, "")
         .trim();
-      if (heredocs.length > 0) {
-        // Inside a heredoc body — nothing runs. The delimiter line itself
-        // (trimmed, so <<- tab-indentation is covered) ends the body.
-        if (line === heredocs[0]) heredocs.shift();
-        continue;
-      }
       if (line.length === 0) continue;
       if (BLOCK_DEAD_RE.test(line)) {
         dead = true;
@@ -349,9 +403,9 @@ function workflowAdopted(body: string): boolean {
       }
       // Heredoc openers on THIS line arm the body skip below — including
       // on masked/compound lines, since the consumer still reads stdin.
-      for (const m of line.matchAll(HEREDOC_OPEN)) {
-        const delim = m[1] ?? m[2] ?? m[3];
-        if (delim !== undefined) heredocs.push(delim);
+      for (const m of raw.matchAll(HEREDOC_OPEN)) {
+        const delim = m[2] ?? m[3] ?? m[4];
+        if (delim !== undefined) heredocs.push({ delim, tabStrip: m[1] !== "" });
       }
       if (/^set\s+-o\s+pipefail\b/.test(line)) {
         pipefail = true;

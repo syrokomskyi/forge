@@ -38,6 +38,51 @@ contract - and persist its acceptance report (verdict: refuted,
 isolation: subagent). All 11 live counterexamples were closed in
 233457a77. Also adds evidence-allowlist-parity.test.ts covering the
 gitEvidence runtime allowlist's parity with READ_ONLY_GIT_QUERIES.</item>
+  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
+
+Independent clean-context verification (round 7, candidate d2f270ad6)
+returned REFUTED with eleven live counterexamples against the
+r6-hardened evidence channel — this commit closes all nine root causes.
+
+- remote.<name>.fetch is value-judged: only the clone-default
+  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
+  UNIONs configured refspecs with the pinned fetch argv and a session
+  spec writes arbitrary local refs inside the trusted fetch (CX-94).
+  remote.<name>.tagopt|promirror|followremotehead|prunetags|
+  skipfetchall|mirror move to REFUSE for the same reason.
+- Alternates/shape comment lexing is col-0 `#` only — git's parser does
+  not treat whitespace-led `#` as a comment, so `   # forged` is a real
+  alternates path the shape check must count (CX-95).
+- config reads forbid the alternate-source selectors --file/-f, --blob,
+  --worktree (reaches config.worktree even under the disabled-extension
+  pin), --system/--global, --default and --includes, plus the
+  write-action spellings, on both the evidence and shared read-only
+  tables (CX-96).
+- verifierGit judges fabrication argv on the runner/policy channel:
+  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
+  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
+  can no longer verify an unattested advance (CX-97).
+- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
+  both tables — the flag opts the trusted walk into the session-
+  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
+- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
+  on both tables — they block on input the no-stdin spawn never
+  supplies (CX-101).
+- The workflow-adoption heredoc lexer is bash-faithful: openers are
+  scanned on the raw line before the # comment strip (quoted-#
+  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
+  the terminator match is strict — << wants the delimiter alone, <<-/
+  <<~ skip leading tabs only (CX-100).
+- Trailer scans read %e beside %(trailers): a commit declaring a
+  non-UTF-8 encoding header recodes every trusted message read, so the
+  digest trail and the push-time scan flag it as unverifiable and the
+  policy attestation scan skips it (CX-102).
+
+Probe premise updates for the tightened contract: CX-61's decoy
+remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
+EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
+decoy-namespace guard it replaces. The independent r7 probe file and
+acceptance report land in the follow-up port commit.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -122,16 +167,17 @@ describe("RFC-1616 r4 — remote-tracking ref trust (fetch-side levers)", () => 
         "+refs/heads/*:refs/remotes/origin/decoy/*",
       ]);
       const digest = await collectDigest(repo, ambientIo, { fetch: true });
-      expect(digest.fetched).toBe(true); // no fetch-failure warning fires
-      // the judged remote tip comes from the remote itself (ls-remote) —
-      // the fabricated tracking ref cannot pose as the remote's answer:
-      const realTip = gitIn(origin, ["rev-parse", "develop"]).trim();
-      expect(digest.develop.remote).toBe(realTip);
-      expect(digest.develop.remote).not.toBe(tSha);
+      // CX-94 (r7) tightened this: a `remote.origin.fetch` value outside
+      // the clone-default heads→own-tracking shape refuses the whole
+      // evidence channel — the decoy never even gets to union with the
+      // pinned fetch. The fabricated tracking ref below is moot.
+      expect(digest.fetched).toBe(false);
+      expect(digest.digestId.startsWith("refused-")).toBe(true);
       const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
+      expect(data.pushed).toBe(false);
       expect(
-        pushed08(data),
-        `pushFlow shipped a verifier-trailer commit judged on a fabricated remote-tracking ref ` +
+        data.diagnostics.some((d) => d.ruleId === "FLOW-PUSH-13"),
+        `pushFlow did not refuse on the refused evidence channel ` +
           `(pushed=${data.pushed}, diagnostics=${JSON.stringify(data.diagnostics.map((d) => d.ruleId))})`,
       ).toBe(true);
       // corroboration — the trailer commit must never reach the real origin:

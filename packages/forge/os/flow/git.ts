@@ -22,7 +22,52 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
-  <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515</history>
+  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
+
+Independent clean-context verification (round 7, candidate d2f270ad6)
+returned REFUTED with eleven live counterexamples against the
+r6-hardened evidence channel — this commit closes all nine root causes.
+
+- remote.<name>.fetch is value-judged: only the clone-default
+  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
+  UNIONs configured refspecs with the pinned fetch argv and a session
+  spec writes arbitrary local refs inside the trusted fetch (CX-94).
+  remote.<name>.tagopt|promirror|followremotehead|prunetags|
+  skipfetchall|mirror move to REFUSE for the same reason.
+- Alternates/shape comment lexing is col-0 `#` only — git's parser does
+  not treat whitespace-led `#` as a comment, so `   # forged` is a real
+  alternates path the shape check must count (CX-95).
+- config reads forbid the alternate-source selectors --file/-f, --blob,
+  --worktree (reaches config.worktree even under the disabled-extension
+  pin), --system/--global, --default and --includes, plus the
+  write-action spellings, on both the evidence and shared read-only
+  tables (CX-96).
+- verifierGit judges fabrication argv on the runner/policy channel:
+  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
+  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
+  can no longer verify an unattested advance (CX-97).
+- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
+  both tables — the flag opts the trusted walk into the session-
+  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
+- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
+  on both tables — they block on input the no-stdin spawn never
+  supplies (CX-101).
+- The workflow-adoption heredoc lexer is bash-faithful: openers are
+  scanned on the raw line before the # comment strip (quoted-#
+  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
+  the terminator match is strict — << wants the delimiter alone, <<-/
+  <<~ skip leading tabs only (CX-100).
+- Trailer scans read %e beside %(trailers): a commit declaring a
+  non-UTF-8 encoding header recodes every trusted message read, so the
+  digest trail and the push-time scan flag it as unverifiable and the
+  policy attestation scan skips it (CX-102).
+
+Probe premise updates for the tightened contract: CX-61's decoy
+remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
+EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
+decoy-namespace guard it replaces. The independent r7 probe file and
+acceptance report land in the follow-up port commit.</item>
+  <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531</history>
 </CHANGE_SUMMARY>
 */
 
@@ -73,6 +118,28 @@ const BRANCH_WRITE_FLAGS = [
   "--set-upstream-to",
   "--unset-upstream",
   "--edit-description",
+] as const;
+
+/**
+ * Flags on `config` reads that name a config source other than
+ * `.git/config` or fabricate an answer (CX-96) — plus the write-action
+ * spellings a read channel has no use for. `-f` covers `--file`'s
+ * short form inside clusters.
+ */
+const CONFIG_SOURCE_FLAGS = [
+  "--file",
+  "-f",
+  "--blob",
+  "--worktree",
+  "--system",
+  "--global",
+  "--default",
+  "--includes",
+  "--add",
+  "--unset",
+  "--unset-all",
+  "--rename-section",
+  "--remove-section",
 ] as const;
 
 /** Flags on `cat-file` that reach a repo-config program or bytes outside the object store. */
@@ -159,28 +226,52 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   // `-g`/`--reflog` serve REFLOG data — fabricated by ordinary session
   // update-ref churn and anchored to nothing verifiable (CX-92). Long
   // and short spellings both stay out.
-  { prefix: ["rev-list"], forbid: ["--output", "--walk-reflogs", "-g", "--reflog"] },
+  // `--use-bitmap-index`/`--test-bitmap` opt into the session-writable
+  // pack bitmap cache — the same fabricated-topology class the
+  // commitGraph/MIDX pins closed (CX-98).
+  {
+    prefix: ["rev-list"],
+    forbid: ["--output", "--walk-reflogs", "-g", "--reflog", "--use-bitmap-index", "--test-bitmap"],
+  },
   { prefix: ["merge-base"], forbid: ["--fork-point"] },
-  { prefix: ["for-each-ref"] },
-  { prefix: ["show-ref"] },
+  // `--stdin`/`--exclude-existing` block on input the no-stdin evidence
+  // spawn never supplies — the channel hangs to timeout (CX-101).
+  { prefix: ["for-each-ref"], forbid: ["--stdin"] },
+  { prefix: ["show-ref"], forbid: ["--stdin", "--exclude-existing"] },
   { prefix: ["describe"] },
   { prefix: ["status"] },
   {
     prefix: ["log"],
-    forbid: ["--output", "--ext-diff", "--textconv", "--walk-reflogs", "-g", "--reflog"],
+    forbid: [
+      "--output",
+      "--ext-diff",
+      "--textconv",
+      "--walk-reflogs",
+      "-g",
+      "--reflog",
+      "--use-bitmap-index",
+      "--test-bitmap",
+    ],
   },
   { prefix: ["diff"], forbid: ["--output", "--ext-diff", "--textconv", "--no-index"] },
   { prefix: ["show"], forbid: ["--output", "--ext-diff", "--textconv", "-g", "--reflog"] },
   { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
-  { prefix: ["config", "--get"] },
-  { prefix: ["config", "--get-all"] },
-  { prefix: ["config", "--get-regexp"] },
+  // Config reads answer from .git/config only — the `--file`/`--blob`/
+  // `--worktree` source flags name an alternate config store (a
+  // session-named file, a committed blob, config.worktree read even
+  // under the disabled-extension pin) and return fabricated values into
+  // evidence (CX-96). `--default` fabricates the answer when the key is
+  // absent, and write-action flags stay out even though git rejects
+  // them combined with reads.
+  { prefix: ["config", "--get"], forbid: CONFIG_SOURCE_FLAGS },
+  { prefix: ["config", "--get-all"], forbid: CONFIG_SOURCE_FLAGS },
+  { prefix: ["config", "--get-regexp"], forbid: CONFIG_SOURCE_FLAGS },
   // The preflight's own enumeration of the local config — a list is a
   // read; --no-includes keeps the dump to .git/config so include.path
   // keys surface as refusable levers instead of silently expanding.
-  { prefix: ["config", "--local", "--no-includes", "--list"] },
+  { prefix: ["config", "--local", "--no-includes", "--list"], forbid: CONFIG_SOURCE_FLAGS },
   { prefix: ["remote", "get-url"] },
-  { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u"] },
+  { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u", "--stdin"] },
   { prefix: ["branch", "--show-current"], maxPositionals: 0 },
   { prefix: ["branch", "--list"], forbid: BRANCH_WRITE_FLAGS },
 ];

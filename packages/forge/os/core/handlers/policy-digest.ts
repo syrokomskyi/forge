@@ -19,7 +19,6 @@ advanced.</purpose>
   <item>absent policy: section → exit 1 "no policy surface declared" — the digest anchors the declared surface, nothing declared means nothing to attest.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: initial policy.digest — print/--write/--verify/--verify --base surface attestation.</item>
   <item>RFC-1616: external verification trust boundary
 
 policy.digest (canonical SHA-256 over the frozen surface), adversarial.run
@@ -30,6 +29,52 @@ scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
   <item>RFC-1616: close verifier r1 counterexamples for the RFC-1616 trust boundary</item>
   <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
+
+Independent clean-context verification (round 7, candidate d2f270ad6)
+returned REFUTED with eleven live counterexamples against the
+r6-hardened evidence channel — this commit closes all nine root causes.
+
+- remote.<name>.fetch is value-judged: only the clone-default
+  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
+  UNIONs configured refspecs with the pinned fetch argv and a session
+  spec writes arbitrary local refs inside the trusted fetch (CX-94).
+  remote.<name>.tagopt|promirror|followremotehead|prunetags|
+  skipfetchall|mirror move to REFUSE for the same reason.
+- Alternates/shape comment lexing is col-0 `#` only — git's parser does
+  not treat whitespace-led `#` as a comment, so `   # forged` is a real
+  alternates path the shape check must count (CX-95).
+- config reads forbid the alternate-source selectors --file/-f, --blob,
+  --worktree (reaches config.worktree even under the disabled-extension
+  pin), --system/--global, --default and --includes, plus the
+  write-action spellings, on both the evidence and shared read-only
+  tables (CX-96).
+- verifierGit judges fabrication argv on the runner/policy channel:
+  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
+  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
+  can no longer verify an unattested advance (CX-97).
+- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
+  both tables — the flag opts the trusted walk into the session-
+  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
+- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
+  on both tables — they block on input the no-stdin spawn never
+  supplies (CX-101).
+- The workflow-adoption heredoc lexer is bash-faithful: openers are
+  scanned on the raw line before the # comment strip (quoted-#
+  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
+  the terminator match is strict — << wants the delimiter alone, <<-/
+  <<~ skip leading tabs only (CX-100).
+- Trailer scans read %e beside %(trailers): a commit declaring a
+  non-UTF-8 encoding header recodes every trusted message read, so the
+  digest trail and the push-time scan flag it as unverifiable and the
+  policy attestation scan skips it (CX-102).
+
+Probe premise updates for the tightened contract: CX-61's decoy
+remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
+EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
+decoy-namespace guard it replaces. The independent r7 probe file and
+acceptance report land in the follow-up port commit.</item>
+  <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -326,13 +371,20 @@ export async function runPolicyDigest(
       const list = await git(workspaceRoot, ["rev-list", `${base}..HEAD`]);
       let attested = false;
       for (const sha of (list ?? "").split("\n").filter(Boolean)) {
+        // `%e` rides along: a declared non-UTF-8 `encoding:` header
+        // recodes %(trailers) output — stored bytes can decode into a
+        // forged trailer line no -c pin can strip (CX-102). An encoded
+        // commit's trailers cannot attest.
         const values = await git(workspaceRoot, [
           "log",
           "-1",
-          "--format=%(trailers:key=X-Policy-Digest,valueonly,separator=%x00)",
+          "--format=%(trailers:key=X-Policy-Digest,valueonly,separator=%x00)%x00%e",
           sha,
         ]);
-        if ((values ?? "").split("\0").some((v) => v.trim() === sha256)) {
+        const parts = (values ?? "").split("\x00");
+        const declaredEncoding = (parts.pop() ?? "").trim();
+        if (declaredEncoding.length > 0 && !/^utf-?8$/i.test(declaredEncoding)) continue;
+        if (parts.some((v) => v.trim() === sha256)) {
           attested = true;
           break;
         }
