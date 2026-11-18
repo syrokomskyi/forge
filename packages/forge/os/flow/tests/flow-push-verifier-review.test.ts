@@ -26,6 +26,43 @@ src/scaffold/github/ (shipped in package files[]) so the AC-7/AC-8
 file-contains probes verify the real artifacts; rename the push-trailer
 suite to the RFC-bound flow-push-verifier-review.test.ts.</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
 </CHANGE_SUMMARY>
 */
 
@@ -104,10 +141,12 @@ describe("flow.push verifier-trailer scan (RFC-1616)", () => {
   }, 60_000);
 
   it("push.requireVerifierReview: false opts the repository out", async () => {
-    const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "flow-push-vt-" });
+    const { repo, origin, originUrl } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-push-vt-",
+    });
     await writeFile(
       join(repo, "forge.yaml"),
-      `schema: forge/config@1\nproject:\n  name: opt-out\npaths: {}\npush:\n  requireVerifierReview: false\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+      `schema: forge/config@1\nproject:\n  name: opt-out\npaths: {}\npush:\n  requireVerifierReview: false\n  expectedRemote: ${JSON.stringify(originUrl)}\n`,
     );
     await gitExec(repo, ["add", "forge.yaml"]);
     await gitExec(repo, ["commit", "-qm", "opt out"]);
@@ -120,10 +159,12 @@ describe("flow.push verifier-trailer scan (RFC-1616)", () => {
   }, 60_000);
 
   it("push.requireVerifierReview: true (explicit) still requires the flag", async () => {
-    const { repo, origin } = await initRepoWithOrigin(dirs, { prefix: "flow-push-vt-" });
+    const { repo, originUrl } = await initRepoWithOrigin(dirs, {
+      prefix: "flow-push-vt-",
+    });
     await writeFile(
       join(repo, "forge.yaml"),
-      `schema: forge/config@1\nproject:\n  name: opted-in\npaths: {}\npush:\n  requireVerifierReview: true\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+      `schema: forge/config@1\nproject:\n  name: opted-in\npaths: {}\npush:\n  requireVerifierReview: true\n  expectedRemote: ${JSON.stringify(originUrl)}\n`,
     );
     await gitExec(repo, ["add", "forge.yaml"]);
     await gitExec(repo, ["commit", "-qm", "declare"]);

@@ -382,12 +382,10 @@ describe("RFC-1616 r5 — repo-config program exec on the evidence channel", () 
       expect.soft(fetch.exitCode, "fixture: the pinned fetch argv failed").toBe(0);
       if (existsSync(hookMarker)) fired.push("core.hooksPath reference-transaction");
       // (b) diff.*.textconv — a repo-config program rewriting patch bytes the
-      // parser judges. `git diff` itself is dead on this channel: the
-      // `diff.external=` pin makes git exec an empty program (exit 128 on any
-      // real change — an unpinned side effect, see the r5 report). But the
-      // allowlisted `log -p`/`show` plumbing always uses the INTERNAL diff —
-      // it runs textconv before any external-driver check, so the session's
-      // program fires and its forged bytes land in evidence stdout.
+      // parser judges. `.git/info/attributes` is itself a shape violation
+      // (CX-125): built-in `working-tree-encoding`/`text`/`ident` conversions
+      // rewrite what `status`/`diff` hash, and no env or `-c` key disables
+      // that file — the channel refuses before any diff runs.
       const tconvMarker = path.join(parent, "tconv.marker");
       const tconv = path.join(parent, "tconv.sh");
       writeFileSync(
@@ -399,7 +397,16 @@ describe("RFC-1616 r5 — repo-config program exec on the evidence channel", () 
       mkdirSync(path.join(repo, ".git", "info"), { recursive: true });
       writeFileSync(path.join(repo, ".git", "info", "attributes"), "*.txt diff=pwn\n");
       const logp = await gitEvidence(repo, ["log", "-p", "-1", "--", "seed.txt"]);
-      expect.soft(logp.exitCode, "fixture: log -p failed").toBe(0);
+      expect
+        .soft(
+          logp.exitCode === 0 || logp.stderr.startsWith("EVIDENCE-REFUSED"),
+          `fixture: log -p neither answered nor refused (exit=${logp.exitCode})`,
+        )
+        .toBe(true);
+      expect(
+        logp.stdout,
+        "the textconv program's output reached the trusted channel",
+      ).not.toContain("FORGED-PATCH-BYTES");
       if (existsSync(tconvMarker) || logp.stdout.includes("FORGED-PATCH-BYTES"))
         fired.push("diff.pwn.textconv");
       // (c) filter.*.smudge — admitted `cat-file --filters` runs it and

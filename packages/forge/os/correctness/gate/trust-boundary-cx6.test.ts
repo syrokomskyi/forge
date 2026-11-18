@@ -70,7 +70,12 @@ import { setVerifierGitBinForTests } from "../../../src/utils/verifier-git.ts";
 import { collectDigest } from "../../flow/digest.ts";
 import { evidencePreflight, gitEvidence, isEvidenceGitQuery } from "../../flow/git.ts";
 import { pushFlow } from "../../flow/handlers/flow-push.ts";
-import { gitExec, initRepoWithOrigin, installFakePrimaryForge } from "../../flow/tests/helpers.ts";
+import {
+  gitExec,
+  initRepoWithOrigin,
+  installFakePrimaryForge,
+  remoteAddGitDaemon,
+} from "../../flow/tests/helpers.ts";
 
 const dirs: string[] = [];
 /** Byte-exact backup of the user's real ssh config when a probe must plant a
@@ -334,17 +339,20 @@ describe("RFC-1616 r6 — session-writable history topology, second front", () =
       await gitExec(repo, ["config", "user.email", "flow-test@example.invalid"]);
       await gitExec(repo, ["config", "user.name", "flow-test"]);
       await gitExec(repo, ["config", "commit.gpgsign", "false"]);
+      gitIn(parent, ["init", "--bare", "-b", "main", "origin.git"]);
+      // The digest's trusted fetch denies path remotes (CX-131) — serve
+      // the fixture origin over loopback git://; the committed anchor
+      // declares the real URL.
+      const originUrl = await remoteAddGitDaemon(repo, origin);
       writeFileSync(
         path.join(repo, "forge.yaml"),
-        `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+        `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(originUrl)}\n`,
       );
       writeFileSync(path.join(repo, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
       writeFileSync(path.join(repo, "seed.txt"), "seed\n");
       await gitExec(repo, ["add", "-A"]);
       await gitExec(repo, ["commit", "-qm", "seed"]);
       await gitExec(repo, ["branch", "develop", "HEAD"]);
-      gitIn(parent, ["init", "--bare", "-b", "main", "origin.git"]);
-      await gitExec(repo, ["remote", "add", "origin", origin]);
       await gitExec(repo, ["switch", "develop"]);
       // origin advertises ONLY main — develop's remote tip stays null, so the
       // push scan walks `rev-list develop` (the single-tip, graph-trusting form).

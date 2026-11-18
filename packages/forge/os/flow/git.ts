@@ -163,13 +163,49 @@ r9-remediated channel — this commit closes both root causes.
 
 The independent r10 probe file and acceptance report land in the
 follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
 import type { ExecResult, WorkspaceIO } from "../../src/types.ts";
 import { canonicalRepoDir } from "../../src/utils/repo-path.ts";
-import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { isAbsolute, resolve } from "node:path";
 import {
@@ -177,14 +213,18 @@ import {
   verifierGitEnv,
   filterEvidenceExtraEnv,
   evidencePinEnv,
+  evidenceIndexForSpawn,
+  closeEvidenceIndex,
+  closeSpawnIndexFd,
   judgeEvidenceRepoSurface,
   scanPackObjects,
   prepareEvidenceIndex,
+  spawnCaptured,
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
   EVIDENCE_SHAPE_QUERY_PATHS,
   isEvidenceGitQuery,
-  isUnprovenIndexRead,
+  isIndexConsultingRead,
 } from "../../src/utils/verifier-git.ts";
 
 /**
@@ -257,69 +297,64 @@ export async function gitEvidence(
   // breaks the recursion), so every subprocess on the evidence path stays
   // inside this argv-judged body.
   const preflight = opts?.preflight === false ? null : await evidencePreflight(repoRoot);
-  if (preflight === null && opts?.preflight !== false) {
-    return {
-      exitCode: -1,
-      stdout: "",
-      stderr: `${EVIDENCE_REFUSED_PREFIX}: repo config could not be enumerated — evidence would be unverifiable`,
-    };
-  }
-  if (
-    preflight !== null &&
-    (preflight.refusedKeys.length > 0 || preflight.shapeViolations.length > 0)
-  ) {
-    return {
-      exitCode: -1,
-      stdout: "",
-      stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
-    };
-  }
-  // An unproven claims rebuild (CX-124) leaves no GIT_INDEX_FILE redirect —
-  // an index-consulting op would answer from the session-writable ambient
-  // index, the exact CX-121 forgery surface. Non-index ops never consult
-  // the index and proceed (a corrupt-index fixture degrades per-read, not
-  // channel-wide).
-  if (isUnprovenIndexRead(args, preflight)) {
-    return {
-      exitCode: -1,
-      stdout: "",
-      stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven}): git ${args.join(" ")}`,
-    };
-  }
-  return new Promise((resolve) => {
-    try {
-      execFile(
-        resolveGitBin(),
-        ["-C", repoRoot, ...args],
-        {
-          cwd: repoRoot,
-          env: {
-            ...verifierGitEnv(),
-            // Pins ride the env (GIT_CONFIG_*), not argv — the spawned
-            // argv is the judged query verbatim (CX-115 r9 regression:
-            // argv pins shifted $1/$2 positional matching in
-            // failure-injection seams).
-            ...evidencePinEnv(args, preflight),
-            // The preflight's HEAD-anchored throwaway index — the
-            // session's `.git/index` is never consulted for a trusted
-            // verdict (CX-121).
-            ...(preflight?.indexEnv ?? {}),
-            ...filterEvidenceExtraEnv(opts?.extraEnv),
-          },
-          // Network-shaped ops are routed to git(); boundary reads are local
-          // and still fast — the generous default mirrors io.exec callers.
-          timeout: opts?.timeoutMs ?? 600_000,
-          maxBuffer: 64 * 1024 * 1024,
-        },
-        (err, stdout, stderr) => {
-          const code = err === null ? 0 : typeof err.code === "number" ? err.code : -1;
-          resolve({ exitCode: code, stdout: String(stdout), stderr: String(stderr) });
-        },
-      );
-    } catch (e) {
-      resolve({ exitCode: -1, stdout: "", stderr: String(e) });
+  try {
+    if (preflight === null && opts?.preflight !== false) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: repo config could not be enumerated — evidence would be unverifiable`,
+      };
     }
-  });
+    if (
+      preflight !== null &&
+      (preflight.refusedKeys.length > 0 || preflight.shapeViolations.length > 0)
+    ) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
+      };
+    }
+    // The verifier index is resolved per spawn — the fd form carries no
+    // path at all (CX-129); the path form re-proves its on-disk bytes
+    // before the redirect is trusted. An unproven index (rebuild failed,
+    // CX-124, or a rewrite caught just now) refuses index-consulting
+    // ops; non-index ops never consult it and proceed.
+    const idx = evidenceIndexForSpawn(preflight);
+    if (idx.unproven && isIndexConsultingRead(args)) {
+      closeSpawnIndexFd(idx);
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
+      };
+    }
+    const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...args], {
+      cwd: repoRoot,
+      env: {
+        ...verifierGitEnv(),
+        // Pins ride the env (GIT_CONFIG_*), not argv — the spawned
+        // argv is the judged query verbatim (CX-115 r9 regression:
+        // argv pins shifted $1/$2 positional matching in
+        // failure-injection seams).
+        ...evidencePinEnv(args, preflight),
+        // The verifier-owned claims index — the session's `.git/index`
+        // is never consulted for a trusted verdict (CX-121/CX-129).
+        ...idx.env,
+        ...filterEvidenceExtraEnv(opts?.extraEnv),
+      },
+      // Network-shaped ops are routed to git(); boundary reads are local
+      // and still fast — the generous default mirrors io.exec callers.
+      timeoutMs: opts?.timeoutMs ?? 600_000,
+      maxBuffer: 64 * 1024 * 1024,
+      indexFd: idx.indexFd,
+    });
+    return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+  } finally {
+    // The per-call preflight owns its index fd — cached preflights
+    // (OriginGit) keep it for the instance's lifetime instead.
+    closeEvidenceIndex(preflight);
+  }
 }
 
 /**
@@ -394,11 +429,12 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
   }
   // `.git/index` is session-writable — a forged stat tuple answers
   // status/diff clean on dirty bytes (CX-121). Every index-consulting
-  // spawn below redirects to this verifier-owned zero-stat claims rebuild.
-  // A failed rebuild marks the index unproven (CX-124): index-consulting
-  // reads refuse, non-index reads stay trustworthy.
+  // spawn below resolves this verifier-owned zero-stat claims index as
+  // an inherited fd — no same-uid-rewritable path ever holds it
+  // (CX-129). A failed rebuild marks the index unproven (CX-124):
+  // index-consulting reads refuse, non-index reads stay trustworthy.
   const prepared = await prepareEvidenceIndex(repoRoot);
-  preflight.indexEnv = prepared.env;
+  preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
   return preflight;
 }

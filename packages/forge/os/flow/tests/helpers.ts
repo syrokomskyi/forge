@@ -14,20 +14,58 @@ flow.install does it (committed hooks dir + core.hooksPath).</purpose>
   <item>Fixtures exclude docs/.index/ via info/exclude like .gitignore — unignored it would ride the flow.open sweep and collide merges.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1580: correctness.gate and the flow.integrate step
-
-Add os/correctness/gate (frozen set at --base, weakening diff incl. byte changes without verifier trailers and frozen exempt mode, git-derived oracle origin with forge/oracle-review@1 records, argv oracle runner with timeout, schema-hash substrate attestation, anchor events, tier high/formal, forge/correctness-bundle@1), the correctness.gate command, test-side helpers @warpgogol/forge/correctness, bindings.paths.oracleReviewsDir, and flow.integrate spawning the primary install's gate after hooks/integration-gate.sh (FLOW-INT-18, --accept-weakening with an X-Correctness-Weakening trailer commit). Flow and system test primaries get a stand-in forge binary; integration warnings now survive the cleanup report.</item>
   <item>RFC-1606: deterministic flow and gate test foundations (RFC-1606)</item>
   <item>RFC-1603: key the artifact cache on the copied tree and end mission.close with a converging tail sync</item>
   <item>RFC-1603: record the sweep/journal collision friction and the fixture-ignore decision</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
-  <history>RFC-1486, RFC-1490, RFC-1491, RFC-1502</history>
+  <item>RFC-1616: close RFC-1616 r11 trust-boundary counterexamples
+
+Independent clean-context verification (round 11, candidate 029219ca9)
+returned REFUTED with seven live counterexamples against the
+r10-remediated channel — this commit closes all of them.
+
+- `.git/info/attributes` joins the shape-violation paths (CX-125): the
+  r6 reasoning covered only program reach, but working-tree-encoding /
+  text / eol / ident are built-in clean-side conversions that rewrite
+  what the zero-stat index content-hash sees with no external program.
+- Index-consulting classification is argv-exact (CX-126/127/128):
+  isIndexConsultingRead replaces the token-counting isUnprovenIndexRead —
+  ambiguous diff forms (a nonrev second positional is a pathspec, not a
+  rev) refuse under an unproven index, describe --dirty/--broken are
+  index-consuming, and grep is parsed option-aware so a worktree grep
+  with no rev token refuses while `-e`/`-f` + rev tree greps proceed.
+- The verifier claims index has no discoverable path (CX-129): a
+  self-serialized DIRC v2 image lives in an anonymous O_TMPFILE inode
+  opened on os.tmpdir(), handed to git as GIT_INDEX_FILE=/dev/fd/<n>
+  through a freshly opened independent file description per spawn;
+  the named flat-file fallback re-proves its bytes against the expected
+  image before every spawn, and child descriptors close on every return
+  path.
+- `cat-file --batch` specs are sanitized (CX-130): runBatchBytes rejects
+  empty specs and any spec containing \n/\r/\0 (and `:`-leading index
+  specs under an unproven index), answering positional nulls so the
+  record stream can never desynchronize spec attribution.
+- Trusted transports refuse file-class targets and URL rewrites
+  (CX-131): url.*.insteadOf / .pushInsteadOf are refused at preflight,
+  and ls-remote/fetch spawn with protocol.file.allow=never so file:
+  URLs and bare-path remotes fail honestly; the pin is transport-only
+  so verifierScratchGit's judged `clone <path>` still works. Test
+  origins moved from local path/file remotes to a loopback git daemon
+  so fixtures keep exercising real fetch/ls-remote behavior.
+
+The port commit that follows carries the ported cx11 probe file plus
+the round-11 acceptance report.</item>
+  <history>RFC-1486, RFC-1490, RFC-1491, RFC-1502, RFC-1580</history>
 </CHANGE_SUMMARY>
 */
 
+import { spawn, type ChildProcess } from "node:child_process";
 import { chmod, copyFile, mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import net from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { afterEach } from "vitest";
 
 import type { ExecResult } from "../../../src/types.ts";
 import { ambientIo } from "../../../src/utils/io.ts";
@@ -53,6 +91,94 @@ export function gitExec(
   env?: Record<string, string>,
 ): Promise<ExecResult> {
   return ambientIo.exec("git", ["-C", repo, ...args], { env });
+}
+
+// ---------------------------------------------------------------------------
+// Loopback `git daemon` for fixture remotes — the trusted evidence channel
+// pins `protocol.file.allow=never` on `ls-remote`/`fetch` (CX-131: a session
+// authors everything a file:/path transport returns), so any fixture that
+// needs REAL remote evidence serves its bare origin over loopback git://.
+// `origin` stays the on-disk path for direct bare-repo manipulation.
+// ---------------------------------------------------------------------------
+
+const daemons: ChildProcess[] = [];
+afterEach(() => {
+  for (const d of daemons.splice(0)) d.kill();
+});
+
+async function freePort(): Promise<number> {
+  const srv = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    srv.once("error", reject);
+    srv.listen(0, "127.0.0.1", () => resolve());
+  });
+  const port = (srv.address() as net.AddressInfo).port;
+  await new Promise<void>((resolve) => srv.close(() => resolve()));
+  return port;
+}
+
+async function waitForPort(port: number): Promise<boolean> {
+  for (let i = 0; i < 60; i++) {
+    const up = await new Promise<boolean>((resolve) => {
+      const s = net.connect({ port, host: "127.0.0.1" });
+      s.once("connect", () => {
+        s.end();
+        resolve(true);
+      });
+      s.once("error", () => resolve(false));
+    });
+    if (up) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return false;
+}
+
+/**
+ * Spawn `git daemon` serving `basePath` on a free loopback port (push
+ * enabled — fixture remotes must accept `git push`). Returns the port;
+ * the process is killed by the suite's afterEach.
+ */
+export async function serveGitDaemon(basePath: string): Promise<number> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const port = await freePort();
+    const d = spawn(
+      "git",
+      [
+        "daemon",
+        "--export-all",
+        "--reuseaddr",
+        "--enable=receive-pack",
+        `--base-path=${basePath}`,
+        "--listen=127.0.0.1",
+        `--port=${port}`,
+      ],
+      { stdio: "ignore" },
+    );
+    if (await waitForPort(port)) {
+      daemons.push(d);
+      return port;
+    }
+    d.kill();
+  }
+  throw new Error(`git daemon failed to start under ${basePath}`);
+}
+
+/**
+ * Register `name` in `repo` as a remote serving `bareDir` over loopback
+ * git:// — the trusted channel denies file:/path remotes (CX-131), so
+ * fixtures needing real remote evidence use this instead of a path remote.
+ * Returns the git:// URL (for forge.yaml expectedRemote declarations).
+ */
+export async function remoteAddGitDaemon(
+  repo: string,
+  bareDir: string,
+  name = "origin",
+): Promise<string> {
+  const base = join(bareDir, "..");
+  const port = await serveGitDaemon(base);
+  const url = `git://127.0.0.1:${port}/${bareDir.split("/").pop()}`;
+  await gitExec(repo, ["remote", "add", name, url]);
+  return url;
 }
 
 /**
@@ -185,7 +311,13 @@ export function runGuardDirect(repo: string, env?: Record<string, string>): Prom
 export async function initRepoWithOrigin(
   dirs: string[],
   opts?: { prefix?: string; fakeExtract?: boolean },
-): Promise<{ repo: string; origin: string; extractLog: string; parent: string }> {
+): Promise<{
+  repo: string;
+  origin: string;
+  originUrl: string;
+  extractLog: string;
+  parent: string;
+}> {
   const parent = await mkdtemp(join(tmpdir(), opts?.prefix ?? "flow-origin-"));
   dirs.push(parent);
   const repo = join(parent, "repo");
@@ -198,9 +330,16 @@ export async function initRepoWithOrigin(
   await gitExec(repo, ["config", "user.email", "flow-test@example.invalid"]);
   await gitExec(repo, ["config", "user.name", "flow-test"]);
   await gitExec(repo, ["config", "commit.gpgsign", "false"]);
+  const bare = await gitExec(parent, ["init", "--bare", "-b", "develop", "origin.git"]);
+  if (bare.exitCode !== 0) throw new Error(`bare init failed: ${bare.stderr}`);
+  // A path remote is session-servable — the trusted channel's
+  // protocol.file.allow=never pin denies it honestly (CX-131). Serve the
+  // fixture origin over loopback git:// so digest fetch/ls-remote keep
+  // real remote evidence; `origin` stays the bare path for direct ops.
+  const originUrl = `git://127.0.0.1:${await serveGitDaemon(parent)}/origin.git`;
   await writeFile(
     join(repo, "forge.yaml"),
-    `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(origin)}\n`,
+    `schema: "forge/workspace@1"\npush:\n  expectedRemote: ${JSON.stringify(originUrl)}\n`,
   );
   await writeFile(join(repo, "pnpm-workspace.yaml"), "packages:\n  - packages/*\n");
   await writeFile(join(repo, "seed.txt"), "seed\n");
@@ -209,16 +348,14 @@ export async function initRepoWithOrigin(
   if (seed.exitCode !== 0) throw new Error(`seed commit failed: ${seed.stderr}`);
   await gitExec(repo, ["branch", "develop", "HEAD"]);
 
-  const bare = await gitExec(parent, ["init", "--bare", "-b", "develop", "origin.git"]);
-  if (bare.exitCode !== 0) throw new Error(`bare init failed: ${bare.stderr}`);
-  await gitExec(repo, ["remote", "add", "origin", origin]);
+  await gitExec(repo, ["remote", "add", "origin", originUrl]);
   await gitExec(repo, ["switch", "develop"]);
   const push = await gitExec(repo, ["push", "-u", "origin", "develop", "main"]);
   if (push.exitCode !== 0) throw new Error(`initial push failed: ${push.stderr}`);
 
   await installFakePrimaryForge(repo);
   if (opts?.fakeExtract) await installFakeRepoExtract(repo, extractLog);
-  return { repo, origin, extractLog, parent };
+  return { repo, origin, originUrl, extractLog, parent };
 }
 
 /**
