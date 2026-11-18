@@ -18,51 +18,6 @@ substituted object, a redirected repository, or a shim binary's output
   <item>resolveGitBin prefers well-known install dirs before PATH order — a session shim only wins when it lives inside a dir PATH lists first; checking the standard dirs first makes PATH order irrelevant for the common layouts (CX-52).</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r7 trust-boundary counterexamples
-
-Independent clean-context verification (round 7, candidate d2f270ad6)
-returned REFUTED with eleven live counterexamples against the
-r6-hardened evidence channel — this commit closes all nine root causes.
-
-- remote.<name>.fetch is value-judged: only the clone-default
-  +?refs/heads/*:refs/remotes/<name>/* shape stays KEEP, because git
-  UNIONs configured refspecs with the pinned fetch argv and a session
-  spec writes arbitrary local refs inside the trusted fetch (CX-94).
-  remote.<name>.tagopt|promirror|followremotehead|prunetags|
-  skipfetchall|mirror move to REFUSE for the same reason.
-- Alternates/shape comment lexing is col-0 `#` only — git's parser does
-  not treat whitespace-led `#` as a comment, so `   # forged` is a real
-  alternates path the shape check must count (CX-95).
-- config reads forbid the alternate-source selectors --file/-f, --blob,
-  --worktree (reaches config.worktree even under the disabled-extension
-  pin), --system/--global, --default and --includes, plus the
-  write-action spellings, on both the evidence and shared read-only
-  tables (CX-96).
-- verifierGit judges fabrication argv on the runner/policy channel:
-  @{...}, -g, --reflog, --walk-reflogs and --fork-point return
-  EVIDENCE-REFUSED before the spawn — policy.digest --base 'HEAD@{0}'
-  can no longer verify an unattested advance (CX-97).
-- --use-bitmap-index/--test-bitmap are forbidden on rev-list/log in
-  both tables — the flag opts the trusted walk into the session-
-  writable pack bitmap cache the commitGraph/MIDX pins closed (CX-98).
-- for-each-ref/show-ref/ls-remote forbid --stdin and --exclude-existing
-  on both tables — they block on input the no-stdin spawn never
-  supplies (CX-101).
-- The workflow-adoption heredoc lexer is bash-faithful: openers are
-  scanned on the raw line before the # comment strip (quoted-#
-  delimiters, CX-99a), bare delimiters accept digits/./- (CX-99b), and
-  the terminator match is strict — << wants the delimiter alone, <<-/
-  <<~ skip leading tabs only (CX-100).
-- Trailer scans read %e beside %(trailers): a commit declaring a
-  non-UTF-8 encoding header recodes every trusted message read, so the
-  digest trail and the push-time scan flag it as unverifiable and the
-  policy attestation scan skips it (CX-102).
-
-Probe premise updates for the tightened contract: CX-61's decoy
-remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
-EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
-decoy-namespace guard it replaces. The independent r7 probe file and
-acceptance report land in the follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
 
 Independent clean-context verification (round 8, candidate 9da0bf515)
@@ -196,6 +151,7 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -408,16 +364,9 @@ export function evidenceConfigArgs(args?: readonly string[]): string[] {
   // dir under the session-owned OS temp root was plantable post-creation
   // (CX-123), and `TMPDIR` survives the env allowlists.
   const onConfigRead = args?.[0] === "config";
-  // `protocol.file.allow=never` rides only the transport ops: a trusted
-  // `ls-remote`/`fetch` must never contact a `file:`/path transport —
-  // the session authors everything it returns (CX-131). Emitted per-op
-  // rather than statically because the scratch channel's `clone <path>`
-  // IS the file transport on purpose.
-  const onTransport = args?.[0] === "ls-remote" || args?.[0] === "fetch";
   return [
     ...EVIDENCE_CONFIG_PINS.flatMap((kv) => ["-c", kv]),
     ...(onConfigRead ? [] : ["-c", `core.hooksPath=${DEVNULL}`]),
-    ...(onTransport ? ["-c", "protocol.file.allow=never"] : []),
     "-c",
     `core.attributesFile=${DEVNULL}`,
     "-c",
@@ -576,6 +525,49 @@ export interface EvidencePreflight {
    * degradation the gate contract records.
    */
   indexUnproven?: string;
+  /**
+   * The session-writable state this judgment was derived from, captured
+   * BEFORE the judged reads ran so it never records a surface newer than
+   * the one judged (CX-134/CX-135). A cached preflight (OriginGit)
+   * re-proves the fingerprint synchronously before every spawn — any
+   * drift (config rewrite, new shape file, planted/rewritten object,
+   * index rewrite, .git indirection change) discards the cache and
+   * re-runs the full preflight, so a post-preflight session write can
+   * never ride a stale judgment. Per-call channels re-prove right
+   * before the spawn to shrink the judgment→spawn window.
+   */
+  fingerprint?: EvidenceFingerprint;
+}
+
+/**
+ * The `.git` surface state a captured preflight judgment depends on.
+ * Every member is observable with sync fs calls — no git spawn — so a
+ * cached preflight can be re-proven in microseconds (CX-134).
+ */
+export interface EvidenceFingerprint {
+  /**
+   * `<repoRoot>/.git` identity: `{dir}` carries the inode+ctime of the
+   * directory (a same-uid rename swap keeps the path but changes the
+   * inode), `{file}` pins a gitfile's bytes (linked worktrees), and
+   * `null` records its absence (non-repo — the op fails on its own).
+   */
+  dotGit:
+    | { kind: "dir"; ino: number; ctimeMs: number }
+    | { kind: "file"; bytes: Buffer }
+    | { kind: "absent" };
+  /** Indirection files a redirect rewrite touches first — gitfile target, commondir. */
+  indirection: readonly { path: string; bytes: Buffer | null }[];
+  /** The `.git/config` file the judged dump derived from — resolved path + bytes. */
+  configPath: string | null;
+  configBytes: Buffer | null;
+  /** Every `--git-path`-resolved shape path + presence at judgment time. */
+  shapeFiles: readonly { path: string; present: boolean }[];
+  /** Resolved object store + every file inside it, keyed by relative path. */
+  objectsDir: string | null;
+  objectFiles: ReadonlyMap<string, { ino: number; ctimeMs: number; size: number }>;
+  /** The ambient `.git/index` the claims rebuild enumerated — resolved path + bytes. */
+  indexPath: string | null;
+  indexBytes: Buffer | null;
 }
 
 /**
@@ -690,10 +682,17 @@ export function closeEvidenceIndex(preflight: EvidencePreflight | null | undefin
  *   (the worktree-vs-HEAD freshness check is diff-index machinery,
  *   CX-127).
  * - `grep` consults the index unless ≥1 rev-position token forces a
- *   tree walk — tokens between the pattern and `--` must resolve as
- *   revs or git fails honestly, so their mere presence is provable.
- *   `grep <pattern> -- <path>` has no rev token: a worktree grep whose
- *   file enumeration the ambient index drives (CX-128).
+ *   tree walk. Tokens between the pattern and `--` must resolve as
+ *   revs or git fails honestly (`fatal: unable to resolve revision`),
+ *   so their mere presence is provable — `grep <pattern> -- <path>`
+ *   has no rev token and is a worktree grep whose file enumeration
+ *   the ambient index drives (CX-128). WITHOUT `--` a post-pattern
+ *   bare token cannot be proven a rev textually: a non-rev token
+ *   naming an existing file silently becomes a pathspec (CX-133 —
+ *   `grep <pat> a.txt` is a worktree grep, not a `grep <pat> a.txt`
+ *   tree read), and even a rev-shaped token is ambiguous when a
+ *   same-named file exists, so every no-separator grep form is
+ *   index-consulting.
  * - any `:<path>`/`:<n>:<path>` spec in ANY op resolves a staged blob
  *   through the index; `:/…`/`:(…)`/`:!…` rev-and-pathspec magics do
  *   not.
@@ -731,7 +730,12 @@ export function isIndexConsultingRead(args: readonly string[]): boolean {
   }
   if (op !== "grep") return false;
   const dd = args.indexOf("--");
-  const head = dd === -1 ? args.slice(1) : args.slice(1, dd);
+  // No `--` separator: every post-pattern bare token is ambiguous —
+  // a non-rev token naming an existing file is a PATHSPEC, not a rev,
+  // so the read is a worktree grep the ambient index enumerates
+  // (CX-133). `--` is the only shape that cannot hide a pathspec.
+  if (dd === -1) return true;
+  const head = args.slice(1, dd);
   if (head.some((a) => GREP_INDEX_FLAGS.has(a))) return true;
   // Option-aware rev scan: `-e`/`-f` carry the pattern as an option
   // value so every later non-option token is a rev; otherwise the
@@ -803,6 +807,11 @@ const EVIDENCE_CONFIG_DEADPATH =
 const EVIDENCE_CONFIG_SAFE: Readonly<Record<string, string>> = {
   "format.pretty": "oneline",
   "log.date": "iso",
+  // The unclassified `=` pin resolved filemode false, which silently hid
+  // exec-bit dirt from `status`/`diff` — the channel's own normalization
+  // masked a real worktree change. Forcing `true` restores the honest
+  // check on filesystems that carry mode bits (r12 hunt note).
+  "core.filemode": "true",
 };
 
 /** keys the static pins already hold — the dynamic layer adds nothing. */
@@ -1027,57 +1036,13 @@ const CAT_FILE_LEVER_FLAGS = [
   "--unordered",
 ] as const;
 
-/** Flags the pinned fetch form may carry — every other flag is a transport or ref lever. */
-const EVIDENCE_FETCH_FLAGS = new Set([
-  "--prune",
-  "-p",
-  "--verbose",
-  "-v",
-  "--quiet",
-  "-q",
-  "--progress",
-  "--no-tags",
-  "--atomic",
-]);
-
-/**
- * The one refspec shape evidence fetches may carry: heads into
- * `refs/remotes/origin/*` — never a local integration branch (CX-81: an
- * admitted `+refs/heads/develop:refs/heads/main` force-rewrote `main`
- * on the read-only-plus-pinned-fetch channel).
- */
-const EVIDENCE_FETCH_REFSPEC = /^\+?refs\/heads\/[\w.*\/-]+:refs\/remotes\/origin\/[\w.*\/-]+$/;
-
-/**
- * The pinned fetch form: flags from the allowlist, exactly one remote
- * (name or URL) as the first positional, and only heads→origin-tracking
- * refspecs after it. `--upload-pack`, `--depth`, `--refmap`,
- * `--recurse-submodules`, `--stdin`, `-o`, `--filter`, `--update-head-ok`,
- * `--tags` and friends stay out — each reaches a transport lever or
- * writes refs outside the tracking namespace. The remote positional is
- * free-form (a dot-named remote or a path is legal) — the guardrail is
- * the preflight's `remote.<name>.*` judgment, which refuses every
- * configured lever and non-default refspec that would union in (CX-110).
- */
-function isEvidenceFetchTail(tail: readonly string[]): boolean {
-  let remoteSeen = false;
-  for (const a of tail) {
-    if (a.startsWith("-")) {
-      if (!EVIDENCE_FETCH_FLAGS.has(a)) return false;
-      continue;
-    }
-    if (!remoteSeen) {
-      remoteSeen = true;
-      continue;
-    }
-    if (!EVIDENCE_FETCH_REFSPEC.test(a)) return false;
-  }
-  return remoteSeen;
-}
-
 /**
  * The argv space `gitEvidence` may spawn — a mirror of the shared
- * READ_ONLY_GIT_QUERIES table plus `fetch`, the one mutating op the
+ * READ_ONLY_GIT_QUERIES table — pure reads only: the one mutating op
+ * (`fetch`) was removed because every remote it can name is
+ * session-authored, so its answer can never be trusted evidence
+ * (CX-132) — and it also wrote session-shaped refs into the tracking
+ * namespace inside the trusted channel.
  * channel legitimately runs (it refreshes remote-tracking refs through
  * the single pinned refspec shape `isEvidenceFetchTail` admits —
  * `+refs/heads/*:refs/remotes/origin/*`, never a local branch; the
@@ -1144,7 +1109,12 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   // keys surface as refusable levers instead of silently expanding.
   { prefix: ["config", "--local", "--no-includes", "--list"], forbid: CONFIG_SOURCE_FLAGS },
   { prefix: ["remote", "get-url"] },
-  { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u", "--stdin"] },
+  // No transport ops: `ls-remote`/`fetch` contact whatever the session
+  // named as the remote — `remote.<name>.url`, `branch.<b>.remote`, or a
+  // literal positional are all session-authored under the same-uid
+  // threat model, so a transport answer can never be trusted evidence
+  // (CX-132). Scheme pins cannot help — `git://`/`http(s)://`/`ssh://`
+  // all reach session-owned listeners.
   { prefix: ["branch", "--show-current"], maxPositionals: 0 },
   { prefix: ["branch", "--list"], forbid: BRANCH_WRITE_FLAGS },
   // `git grep` is a read — but `-O`/`--open-files-in-pager` execs the pager
@@ -1203,10 +1173,6 @@ export function isEvidenceGitQuery(args: readonly string[]): boolean {
   // and `@{u}`/`@{push}`/`@{upstream}` silently follow the session's own
   // branch.*.merge config instead of the ref the caller named.
   if (args.some((a) => a.includes("@{"))) return false;
-  // The one mutating op — fetch — is held to the single pinned refspec
-  // shape rather than the prefix/forbid form (CX-81: an arbitrary admitted
-  // refspec force-rewrote a local integration branch).
-  if (args[0] === "fetch") return isEvidenceFetchTail(args.slice(1));
   return EVIDENCE_GIT_QUERIES.some((query) => {
     if (!query.prefix.every((part, i) => args[i] === part)) return false;
     const tail = args.slice(query.prefix.length);
@@ -1232,8 +1198,7 @@ export function isEvidenceGitQuery(args: readonly string[]): boolean {
  * the allowlist, not a denylist.
  */
 export function isVerifierGitQuery(args: readonly string[]): boolean {
-  if (args.length === 0 || args[0] === "fetch") return false;
-  return isEvidenceGitQuery(args);
+  return args.length > 0 && isEvidenceGitQuery(args);
 }
 
 /**
@@ -1817,6 +1782,250 @@ export function judgeEvidenceRepoSurface(
   return { configArgs, hookArgs, refusedKeys, shapeViolations, warnedShape };
 }
 
+function safeReadBytes(abs: string): Buffer | null {
+  try {
+    return readFileSync(abs);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Every file inside the object store, keyed by path relative to the
+ * objects dir — loose objects, packs, `info/*`, and any session-dropped
+ * extra file. The stat triple (ino, ctimeMs, size) is unforgeable: ctime
+ * is kernel-managed (CX-114), so a rewrite, a replant, or a new file is
+ * always drift — never a stale-but-consistent fingerprint.
+ */
+function enumerateObjectFiles(
+  objectsDir: string,
+): Map<string, { ino: number; ctimeMs: number; size: number }> {
+  const files = new Map<string, { ino: number; ctimeMs: number; size: number }>();
+  for (let i = 0, stack = [""]; i < stack.length; i++) {
+    const rel = stack[i]!;
+    let entries;
+    try {
+      entries = readdirSync(path.join(objectsDir, rel), { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const e of entries) {
+      const er = rel === "" ? e.name : `${rel}/${e.name}`;
+      if (e.isDirectory()) {
+        stack.push(er);
+      } else if (e.isFile()) {
+        try {
+          const st = statSync(path.join(objectsDir, er));
+          files.set(er, { ino: st.ino, ctimeMs: st.ctimeMs, size: st.size });
+        } catch {
+          /* vanished mid-scan — the judge's own sweep sees the same state */
+        }
+      }
+    }
+  }
+  return files;
+}
+
+/**
+ * The `rev-parse --git-path` resolves + `.git` indirection + fingerprint —
+ * one fused surface-capture (CX-134/CX-135) so callers cannot misorder
+ * the three steps. Ordering contract: indirection bytes are read BEFORE
+ * the resolves they govern (a redirect rewrite is always
+ * later-than-fingerprint, so reprove reads it as drift, never a
+ * consistent stale world), and the fingerprint freezes same-or-older
+ * state BEFORE any judged read the caller runs next (config dump, shape
+ * bodies, object scans, index claims). `config`/`index`/`objects` join
+ * the shape query list so the fingerprint pins the very files the judged
+ * dump/claims derive from. A failed resolve yields `null` for that path
+ * (the judge counts it a violation); `anyFailed` distinguishes "git
+ * itself is dead" from "this path is absent" for the caller's own error
+ * contract. Each query is its own spawn — a resolved path may itself
+ * contain a newline (CX-89). The returned `*Path` fields are the raw
+ * resolves for the judge; the fingerprint pins their absolute forms.
+ */
+export async function captureEvidenceSurface(
+  repoRoot: string,
+  runGit: EvidenceGitRunner,
+): Promise<{
+  configPath: string | null;
+  indexPath: string | null;
+  objectsDir: string | null;
+  shapePaths: (string | null)[];
+  anyFailed: boolean;
+  fingerprint: EvidenceFingerprint;
+}> {
+  const dotGitAbs = path.join(repoRoot, ".git");
+  const indirection: { path: string; bytes: Buffer | null }[] = [];
+  let dotGit: EvidenceFingerprint["dotGit"] = { kind: "absent" };
+  try {
+    const st = statSync(dotGitAbs);
+    if (st.isDirectory()) {
+      dotGit = { kind: "dir", ino: st.ino, ctimeMs: st.ctimeMs };
+      indirection.push({
+        path: path.join(dotGitAbs, "commondir"),
+        bytes: safeReadBytes(path.join(dotGitAbs, "commondir")),
+      });
+    } else if (st.isFile()) {
+      const bytes = readFileSync(dotGitAbs);
+      dotGit = { kind: "file", bytes };
+      // gitfile → worktree metadir → commondir/gitdir pin the redirect chain.
+      const m = /^gitdir:\s*(.+)$/m.exec(bytes.toString("utf8").trim());
+      if (m !== null) {
+        const meta = path.isAbsolute(m[1]!.trim())
+          ? m[1]!.trim()
+          : path.resolve(repoRoot, m[1]!.trim());
+        indirection.push({
+          path: path.join(meta, "gitdir"),
+          bytes: safeReadBytes(path.join(meta, "gitdir")),
+        });
+        indirection.push({
+          path: path.join(meta, "commondir"),
+          bytes: safeReadBytes(path.join(meta, "commondir")),
+        });
+      }
+    }
+  } catch {
+    /* .git absent — the op fails on its own */
+  }
+  const queries = ["config", "index", "objects", ...EVIDENCE_SHAPE_QUERY_PATHS];
+  const pending: Promise<{ exitCode: number | null; stdout: string; stderr: string }>[] = [];
+  for (const p of queries) {
+    pending.push(runGit(repoRoot, ["rev-parse", "--git-path", p], { preflight: false }));
+  }
+  const results = await Promise.all(pending);
+  let anyFailed = false;
+  const resolved: (string | null)[] = [];
+  for (const r of results) {
+    if (r.exitCode !== 0) {
+      anyFailed = true;
+      resolved.push(null);
+    } else {
+      // strip exactly the terminating newline — a newline inside the path
+      // itself is real and must reach the resolver (CX-89)
+      resolved.push(r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout);
+    }
+  }
+  const [configPath, indexPath, objectsDir, ...shapePaths] = resolved;
+  const configAbs =
+    configPath === null
+      ? null
+      : path.isAbsolute(configPath)
+        ? configPath
+        : path.resolve(repoRoot, configPath);
+  const indexAbs =
+    indexPath === null
+      ? null
+      : path.isAbsolute(indexPath)
+        ? indexPath
+        : path.resolve(repoRoot, indexPath);
+  const objectsAbs =
+    objectsDir === null
+      ? null
+      : path.isAbsolute(objectsDir)
+        ? objectsDir
+        : path.resolve(repoRoot, objectsDir);
+  const shapeFiles: { path: string; present: boolean }[] = [];
+  for (const p of shapePaths) {
+    const ap = p === null ? null : path.isAbsolute(p) ? p : path.resolve(repoRoot, p);
+    shapeFiles.push({ path: ap ?? "", present: ap !== null && existsSync(ap) });
+  }
+  const fingerprint: EvidenceFingerprint = {
+    dotGit,
+    indirection,
+    configPath: configAbs,
+    configBytes: configAbs === null ? null : safeReadBytes(configAbs),
+    shapeFiles,
+    objectsDir: objectsAbs,
+    objectFiles: objectsAbs === null ? new Map() : enumerateObjectFiles(objectsAbs),
+    indexPath: indexAbs,
+    indexBytes: indexAbs === null ? null : safeReadBytes(indexAbs),
+  };
+  return { configPath, indexPath, objectsDir, shapePaths, anyFailed, fingerprint };
+}
+
+/**
+ * Re-prove a captured preflight against the live `.git` surface — sync
+ * fs checks only, so a cached preflight (OriginGit) can afford it before
+ * EVERY spawn (CX-134/CX-135). Any drift — config rewrite, shape file
+ * added/removed, object store change, index rewrite, `.git` or
+ * indirection tampering — means the stored judgment no longer describes
+ * the repo the spawn would read, and the caller must re-run the full
+ * preflight. Returns false when the fingerprint is absent or the
+ * preflight itself is null (an unproven surface can never be cached).
+ */
+export function reproveEvidenceSurface(
+  repoRoot: string,
+  preflight: EvidencePreflight | null | undefined,
+): boolean {
+  const fp = preflight?.fingerprint;
+  if (preflight === null || preflight === undefined || fp === undefined) return false;
+  const dotGitAbs = path.join(repoRoot, ".git");
+  switch (fp.dotGit.kind) {
+    case "absent": {
+      if (existsSync(dotGitAbs)) return false;
+      break;
+    }
+    case "dir": {
+      try {
+        const st = statSync(dotGitAbs);
+        if (!st.isDirectory() || st.ino !== fp.dotGit.ino || st.ctimeMs !== fp.dotGit.ctimeMs) {
+          return false;
+        }
+      } catch {
+        return false;
+      }
+      break;
+    }
+    case "file": {
+      const b = safeReadBytes(dotGitAbs);
+      if (b === null || !b.equals(fp.dotGit.bytes)) return false;
+      break;
+    }
+  }
+  for (const f of fp.indirection) {
+    const b = safeReadBytes(f.path);
+    if (b === null ? f.bytes !== null : f.bytes === null || !b.equals(f.bytes)) return false;
+  }
+  if (fp.configPath !== null) {
+    const b = safeReadBytes(fp.configPath);
+    if (b === null ? fp.configBytes !== null : fp.configBytes === null || !b.equals(fp.configBytes))
+      return false;
+  }
+  for (const s of fp.shapeFiles) {
+    if (s.path === "" || existsSync(s.path) !== s.present) return false;
+  }
+  if (fp.objectsDir !== null) {
+    const cur = enumerateObjectFiles(fp.objectsDir);
+    if (cur.size !== fp.objectFiles.size) return false;
+    for (const [rel, st] of fp.objectFiles) {
+      const c = cur.get(rel);
+      if (c === undefined || c.ino !== st.ino || c.ctimeMs !== st.ctimeMs || c.size !== st.size) {
+        return false;
+      }
+    }
+  }
+  if (fp.indexPath !== null) {
+    const b = safeReadBytes(fp.indexPath);
+    if (b === null ? fp.indexBytes !== null : fp.indexBytes === null || !b.equals(fp.indexBytes))
+      return false;
+  }
+  return true;
+}
+
+/** The runner signature both evidence channels hand the shared resolve —
+ * the optional opts union keeps `execEvidenceGit`/`gitEvidence` directly
+ * assignable, so callers pass existing definitions, never fresh closures. */
+export type EvidenceGitRunner = (
+  repoRoot: string,
+  args: string[],
+  opts?: {
+    timeoutMs?: number;
+    extraEnv?: Record<string, string>;
+    input?: string | Buffer;
+    preflight?: boolean;
+  },
+) => Promise<{ exitCode: number | null; stdout: string; stderr: string }>;
+
 /**
  * Spawning half of the preflight for the runner channel — `verifierGit`
  * shells out itself, so it captures the two enumerations and hands them
@@ -1826,6 +2035,19 @@ export function judgeEvidenceRepoSurface(
  * so every subprocess stays in the argv-judged body.
  */
 export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidencePreflight | null> {
+  // Indirection → resolves → fingerprint, fused so the ordering contract
+  // (CX-134/135) cannot be misordered: `.git` gitfile/commondir bytes are
+  // captured BEFORE the resolves they govern and the fingerprint freezes
+  // same-or-older state BEFORE the judged reads below — the config dump
+  // is the first. `--git-path objects` resolves the real object store —
+  // shared for linked worktrees — so the loose-object re-hash judges the
+  // same files the reads below would serve (CX-104). A failed resolve
+  // feeds the judge `null`, which it counts as a violation — an unproven
+  // object store must refuse, not silently skip the check.
+  const { objectsDir, shapePaths, fingerprint } = await captureEvidenceSurface(
+    repoRoot,
+    execEvidenceGit,
+  );
   const listed = await execEvidenceGit(repoRoot, [
     "config",
     "--local",
@@ -1834,27 +2056,6 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
     "--null",
   ]);
   if (listed.exitCode !== 0) return null;
-  const shapePaths = await Promise.all(
-    EVIDENCE_SHAPE_QUERY_PATHS.map(async (p) => {
-      const r = await execEvidenceGit(repoRoot, ["rev-parse", "--git-path", p]);
-      if (r.exitCode !== 0) return null;
-      // strip exactly the terminating newline — a newline inside the path
-      // itself is real and must reach the resolver (CX-89)
-      return r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout;
-    }),
-  );
-  // `--git-path objects` resolves the real object store — shared for
-  // linked worktrees — so the loose-object re-hash judges the same files
-  // the reads below would serve (CX-104). A failed resolve feeds the
-  // judge `null`, which it counts as a violation — an unproven object
-  // store must refuse, not silently skip the check.
-  const objects = await execEvidenceGit(repoRoot, ["rev-parse", "--git-path", "objects"]);
-  const objectsDir =
-    objects.exitCode === 0
-      ? objects.stdout.endsWith("\n")
-        ? objects.stdout.slice(0, -1)
-        : objects.stdout
-      : null;
   const preflight = judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths, objectsDir);
   // Pack-carried objects get the same integrity anchor loose objects
   // have: `verify-pack -s` rebuilds every object name from inflated
@@ -1877,6 +2078,7 @@ export async function evidenceRepoPreflight(repoRoot: string): Promise<EvidenceP
   const prepared = await prepareEvidenceIndex(repoRoot);
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
+  preflight.fingerprint = fingerprint;
   return preflight;
 }
 
@@ -2100,7 +2302,15 @@ async function verifierGitSpawn(
   // refuses rather than trusting it (CX-72..79, CX-104). A non-repo cwd
   // (clone/init destinations) has no config to enumerate — the op itself
   // decides whether the path must be a repo.
-  const preflight = await evidenceRepoPreflight(cwd);
+  let preflight = await evidenceRepoPreflight(cwd);
+  // Re-prove the fingerprint right before the spawn — a session write
+  // racing the judgment→spawn window reads as drift and re-runs the
+  // whole preflight once, shrinking the stale-judgment surface to the
+  // reprove itself (CX-134's cached-channel sibling on the per-call path).
+  if (preflight !== null && !reproveEvidenceSurface(cwd, preflight)) {
+    closeEvidenceIndex(preflight);
+    preflight = await evidenceRepoPreflight(cwd);
+  }
   try {
     if (
       preflight !== null &&

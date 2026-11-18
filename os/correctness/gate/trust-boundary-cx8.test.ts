@@ -46,14 +46,7 @@ Round-8 attack surfaces (levers the r7 hardening did not judge):
 */
 
 import { execFileSync } from "node:child_process";
-import {
-  chmodSync,
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { deflateSync } from "node:zlib";
 import os from "node:os";
 import path from "node:path";
@@ -180,7 +173,10 @@ function looseShadow(repo: string, sha: string, type: string, forged: Buffer): s
   } catch {
     /* absent already — loose shadow over packed sha still wins */
   }
-  writeFileSync(dest, deflateSync(Buffer.concat([Buffer.from(`${type} ${forged.length}\0`), forged])));
+  writeFileSync(
+    dest,
+    deflateSync(Buffer.concat([Buffer.from(`${type} ${forged.length}\0`), forged])),
+  );
   chmodSync(dest, 0o444);
   return dest;
 }
@@ -291,9 +287,7 @@ describe("RFC-1616 r8 — --base revspecs resolve through session-controlled con
         "control: the real base must still catch the unattested advance",
       ).toBe(true);
       // Fixture premise: HEAD^{/.} resolves to the tip itself.
-      expect(gitIn(root, ["rev-parse", "HEAD^{/.}"])).toBe(
-        gitIn(root, ["rev-parse", "HEAD"]),
-      );
+      expect(gitIn(root, ["rev-parse", "HEAD^{/.}"])).toBe(gitIn(root, ["rev-parse", "HEAD"]));
       // Every tip-resolving revspec waives the attestation — content-search
       // ^{/}, any-ref search :/, a session-pointed branch, and bare HEAD
       // alike. (An index revspec like `:0` is NOT in the list — `ls-tree`
@@ -361,13 +355,7 @@ describe("RFC-1616 r8 — verifierGit admits non-judged argv", () => {
       // A callsite that interpolates session text at argv[0] hands the
       // whole global-option surface to the spawn — the judge scans for
       // @{/-g/--reflog only, so each of these runs unrefused.
-      const r1 = await verifierGit(repo, [
-        "-c",
-        "core.commentChar=x",
-        "log",
-        "-1",
-        "--format=%s",
-      ]);
+      const r1 = await verifierGit(repo, ["-c", "core.commentChar=x", "log", "-1", "--format=%s"]);
       expect
         .soft(
           r1.exitCode !== 0,
@@ -378,7 +366,12 @@ describe("RFC-1616 r8 — verifierGit admits non-judged argv", () => {
       const other = mkdtempSync(path.join(os.tmpdir(), "cx8-other-"));
       dirs.push(other);
       gitIn(other, ["init", "-q"]);
-      const r2 = await verifierGit(repo, ["--git-dir", path.join(other, ".git"), "rev-parse", "HEAD"]);
+      const r2 = await verifierGit(repo, [
+        "--git-dir",
+        path.join(other, ".git"),
+        "rev-parse",
+        "HEAD",
+      ]);
       expect
         .soft(
           r2.exitCode !== 0,
@@ -387,10 +380,7 @@ describe("RFC-1616 r8 — verifierGit admits non-judged argv", () => {
         .toBe(true);
       const r3 = await verifierGit(repo, ["-C", other, "rev-parse", "--is-inside-work-tree"]);
       expect
-        .soft(
-          r3.exitCode !== 0,
-          `verifierGit redirected cwd via -C (exit=${r3.exitCode})`,
-        )
+        .soft(r3.exitCode !== 0, `verifierGit redirected cwd via -C (exit=${r3.exitCode})`)
         .toBe(true);
       const r4 = await verifierGit(repo, ["config", "user.email", "injected@example"]);
       expect
@@ -401,10 +391,7 @@ describe("RFC-1616 r8 — verifierGit admits non-judged argv", () => {
         .toBe(true);
       const r5 = await verifierGit(repo, ["update-ref", "refs/heads/injected", "HEAD"]);
       expect
-        .soft(
-          r5.exitCode !== 0,
-          `verifierGit ran update-ref — a ref write on the trusted channel`,
-        )
+        .soft(r5.exitCode !== 0, `verifierGit ran update-ref — a ref write on the trusted channel`)
         .toBe(true);
     },
   );
@@ -441,15 +428,16 @@ describe("RFC-1616 r8 — remote.<name>.fetch judgment keyed on [^.]+", () => {
             `(refused=${JSON.stringify(pre?.refusedKeys)}, configArgs=${JSON.stringify(pre?.configArgs)})`,
         )
         .toBe(true);
-      // Live fetch proof — the channel's own predicate admits ANY remote
-      // name positionally; a non-default configured refspec unions in.
+      // CX-132: fetch is refused at the argv layer — the predicate itself
+      // now refuses, so a non-default configured refspec can never union
+      // in through a transport op.
       const admitted = isEvidenceGitQuery([
         "fetch",
         "--no-tags",
         "o.r",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect.soft(admitted, "predicate refused `fetch o.r`").toBe(true);
+      expect.soft(admitted, "predicate admitted `fetch o.r`").toBe(false);
       const fetch = await gitEvidence(repo, [
         "fetch",
         "--no-tags",
@@ -500,17 +488,16 @@ describe("RFC-1616 r8 — remote.<name>.fetch judgment keyed on [^.]+", () => {
             `(marker=${marker}, exit=${fetch2.exitCode}, err=${fetch2.stderr.slice(0, 80)})`,
         )
         .toBe(true);
-      // Sibling admission: a PATH/URL positional is also taken as the
-      // remote — `fetch <session-path>` pulls session refs into the
-      // tracking namespace, `ls-remote <session-path>` answers them.
+      // CX-132: a PATH/URL positional can never be taken as the remote —
+      // fetch/ls-remote are refused at the argv layer for every operand.
       for (const argv of [
         ["fetch", decoy, "+refs/heads/*:refs/remotes/origin/*"],
         ["ls-remote", decoy],
       ]) {
         expect
           .soft(
-            isEvidenceGitQuery(argv),
-            `predicate refused ${argv.join(" ")} — a session-path remote`,
+            !isEvidenceGitQuery(argv),
+            `predicate admitted ${argv.join(" ")} — a session-path remote`,
           )
           .toBe(true);
       }
@@ -682,7 +669,12 @@ describe("RFC-1616 r8 — extraEnv allowlist and pin coverage", () => {
         HOMEDRIVE: "Z:",
         HOMEPATH: "\\evil",
       } as const;
-      const filtered = filterEvidenceExtraEnv({ ...levers, LC_ALL: "C", TZ: "UTC", TMPDIR: "/tmp/ok" });
+      const filtered = filterEvidenceExtraEnv({
+        ...levers,
+        LC_ALL: "C",
+        TZ: "UTC",
+        TMPDIR: "/tmp/ok",
+      });
       const kept = Object.keys(filtered).sort();
       expect(kept, `extraEnv kept session levers: ${kept.join(",")}`).toEqual([
         "LC_ALL",
@@ -751,15 +743,15 @@ describe("RFC-1616 r8 — extraEnv allowlist and pin coverage", () => {
           "a program-valued core.fsmonitor did not refuse the channel",
         )
         .toBe(true);
-      // Live: a fetch still works with all three set (no recursion, no
-      // fsmonitor exec) — core.hooksPath is pinned for non-config reads.
+      // CX-132: fetch is refused at the argv layer — the recursion/
+      // fsmonitor levers are doubly dead (pins + no transport op).
       const fetch = await gitEvidence(repo, [
         "fetch",
         "--no-tags",
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect.soft(fetch.exitCode, `fetch failed: ${fetch.stderr.slice(0, 100)}`).toBe(0);
+      expect.soft(fetch.exitCode !== 0, "the evidence channel ran a transport op").toBe(true);
       // `config --get core.hooksPath` deliberately answers the REAL repo
       // value (the install/check surface judges drift through it) — but a
       // hook-invoking read must get the pinned empty dir instead.
@@ -795,7 +787,12 @@ describe("RFC-1616 r8 — closed-surface re-verification", () => {
     { timeout: 120_000 },
     async () => {
       const { repo } = await initRepoWithOrigin(dirs, { prefix: "cx8-hold-fetchcfg-" });
-      await gitExec(repo, ["config", "--add", "remote.origin.fetch", "+refs/heads/*:refs/heads/x-*"]);
+      await gitExec(repo, [
+        "config",
+        "--add",
+        "remote.origin.fetch",
+        "+refs/heads/*:refs/heads/x-*",
+      ]);
       const fetch = await gitEvidence(repo, [
         "fetch",
         "--prune",
@@ -803,7 +800,9 @@ describe("RFC-1616 r8 — closed-surface re-verification", () => {
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect(fetch.stderr.startsWith("EVIDENCE-REFUSED")).toBe(true);
+      // CX-132: fetch is refused at the argv layer — the configured
+      // refspec union can never run because no transport op exists.
+      expect(fetch.exitCode !== 0).toBe(true);
       const heads = gitIn(repo, ["for-each-ref", "--format=%(refname)", "refs/heads/"]).trim();
       expect(heads).not.toContain("x-");
     },
@@ -905,10 +904,13 @@ describe("RFC-1616 r8 — closed-surface re-verification", () => {
         "origin",
         "+refs/heads/*:refs/remotes/origin/*",
       ]);
-      expect.soft(fetch.exitCode, "fixture: pinned fetch failed").toBe(0);
-      expect(existsSync(marker), "a stale forge-evidence-hooks-<pid> hooked the trusted fetch").toBe(
-        false,
-      );
+      // CX-132: fetch is refused at the argv layer — the planted hooks
+      // dir is unreachable through any transport op.
+      expect(fetch.exitCode).not.toBe(0);
+      expect(
+        existsSync(marker),
+        "a stale forge-evidence-hooks-<pid> hooked the trusted channel",
+      ).toBe(false);
       rmSync(stale, { recursive: true, force: true });
     },
   );

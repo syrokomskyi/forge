@@ -17,7 +17,6 @@ a manual push path.</purpose>
   <item>Publication failures are FLOW-PUSH-05 per tag; the command continues with the next tag and exits non-zero at the end.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
@@ -66,6 +65,7 @@ remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
 EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
   <history>RFC-1491, RFC-1501, RFC-1503, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -245,13 +245,14 @@ export async function pushFlow(
     const first = blocking[0]!;
     return refuse("FLOW-PUSH-10", first.message, first.fixHint);
   }
-  if (!opts.dryRun && digest.fetched === false) {
-    return refuse(
-      "FLOW-PUSH-11",
-      "the remote state could not be verified — fetch/ls-remote failed, so the judged tips may be stale or planted. A push must not ship on unverifiable remote state (CX-63)",
-      "restore connectivity to origin, re-run flow.digest, then push with the fresh digestId",
-    );
-  }
+  // No remote-verification gate exists anymore: `fetched` is
+  // structurally false because the evidence channel refuses every
+  // transport — a session-authored remote can never supply trusted
+  // evidence (CX-132), and FLOW-PUSH-11's stale-tip premise died with
+  // it. The gate property it guarded is preserved by construction: the
+  // trailer scan below always covers the whole local branch
+  // (`remoteVerified` is never true), so nothing narrows the check on
+  // remote-derived state.
   if (digest.digestId !== opts.digest) {
     return refuse(
       "FLOW-PUSH-02",

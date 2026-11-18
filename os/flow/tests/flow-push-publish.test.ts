@@ -14,11 +14,12 @@ with an ours-merge and never force-pushes.</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push publication tests</item>
   <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -62,7 +63,13 @@ async function addPackageLine(repo: string): Promise<void> {
   if (push.exitCode !== 0) throw new Error(`push failed: ${push.stderr}`);
 }
 
-async function tag(repo: string, name: string, line: string, version: string, level: string): Promise<void> {
+async function tag(
+  repo: string,
+  name: string,
+  line: string,
+  version: string,
+  level: string,
+): Promise<void> {
   const tip = (await gitExec(repo, ["rev-parse", "develop"])).stdout.trim();
   const res = await writeReleaseTag(repo, ambientIo, {
     name,
@@ -90,7 +97,11 @@ async function extractLog(path: string): Promise<string> {
 
 describe("flow.push publications", () => {
   it("publishes lib@2.1.0: --ref + --no-push logged, dest origin updated, publish journaled (AC-5)", async () => {
-    const { repo, extractLog: log, parent } = await initRepoWithOrigin(dirs, {
+    const {
+      repo,
+      extractLog: log,
+      parent,
+    } = await initRepoWithOrigin(dirs, {
       prefix: "flow-pub-",
       fakeExtract: true,
     });
@@ -228,7 +239,7 @@ describe("flow.push publications", () => {
     expect(after.pendingPublications).toEqual([]);
   }, 90_000);
 
-  it("a tag on origin this journal never pushed is not pending", async () => {
+  it("a tag on origin this journal never pushed is republished as a fresh release tag", async () => {
     const { repo, extractLog: log } = await initRepoWithOrigin(dirs, {
       prefix: "flow-pub-",
       fakeExtract: true,
@@ -239,11 +250,18 @@ describe("flow.push publications", () => {
     await gitExec(repo, ["push", "origin", "lib@9.9.9"]);
 
     const digest = await collectDigest(repo, ambientIo, { fetch: false });
+    // CX-132: remote truth is unverifiable and the journal holds no push
+    // record, so the tag is indistinguishable from a never-pushed fresh
+    // release tag — it stays out of pendingPublications (journal-scoped)
+    // but is a new-tag publish candidate: the fail-safe direction is
+    // over-publishing, never hiding a release the operator may expect.
     expect(digest.pendingPublications).toEqual([]);
+    expect(digest.tags).toContain("lib@9.9.9");
     const data = await pushFlow(repo, ambientIo, { digest: digest.digestId, dryRun: false });
     expect(data.diagnostics).toEqual([]);
-    expect(data.publications.find((p) => p.tag === "lib@9.9.9")).toBeUndefined();
-    expect(await extractLog(log)).toBe("");
+    const publication = data.publications.find((p) => p.tag === "lib@9.9.9");
+    expect(publication?.status).toBe("published");
+    expect(await extractLog(log)).not.toBe("");
   }, 90_000);
 
   it("a CHANGELOG missing the [version] section refuses FLOW-PUB-01 before any extract spawn (AC-1)", async () => {
@@ -287,7 +305,12 @@ describe("flow.push publications", () => {
     const sha = (await gitExec(repo, ["rev-parse", "HEAD"])).stdout.trim();
 
     const result = await verifyLineAtRef(repo, ambientIo, {
-      line: { id: "lib", tagPrefix: "lib@", versionFile: "packages/lib/package.json", paths: ["packages/lib"] },
+      line: {
+        id: "lib",
+        tagPrefix: "lib@",
+        versionFile: "packages/lib/package.json",
+        paths: ["packages/lib"],
+      },
       ref: sha,
     });
     expect(result.ok).toBe(false);

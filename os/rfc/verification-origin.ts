@@ -21,7 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
 
 Independent clean-context verification (round 8, candidate 9da0bf515)
@@ -155,7 +154,8 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
-  <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615</history>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -167,9 +167,11 @@ import {
   evidenceIndexForSpawn,
   evidencePinEnv,
   evidenceRepoPreflight,
+  closeEvidenceIndex,
   closeSpawnIndexFd,
   isIndexConsultingRead,
   isVerifierGitQuery,
+  reproveEvidenceSurface,
   resolveGitBin,
   spawnCaptured,
   verifierGitEnv,
@@ -281,15 +283,33 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
   // a loose object whose bytes do not hash to its sha-shaped name would
   // answer the show/--batch reads below with fabricated bytes. A refused
   // surface degrades every read to `null` — unreadable → `unresolved`,
-  // which the tier rules treat as self — never a forged answer. Cached
-  // per OriginGit instance: one enumeration per derivation — and the
-  // preflight's `GIT_CONFIG_*` pins and verifier-index env ride EVERY spawn,
-  // not just the gate, so a non-refused lever (fsmonitor program,
+  // which the tier rules treat as self — never a forged answer. The
+  // preflight's `GIT_CONFIG_*` pins and verifier-index env ride EVERY
+  // spawn, not just the gate, so a non-refused lever (fsmonitor program,
   // pager/filter driver, forged `.git/index`) cannot fire inside a
   // trusted read either (CX-115/CX-121).
+  //
+  // The judgment must NEVER go stale (CX-134/CX-135): caching the
+  // preflight for the instance's lifetime let a session re-arm every
+  // refuse/pin class post-preflight — a rewritten loose object served
+  // forged bytes, a new include.path/core.worktree/filter.clean ran a
+  // session program inside the trusted read, and a planted shape file
+  // rewrote the worktree hash. The cache survives only while the
+  // fingerprint re-proves: every call re-checks the `.git` surface
+  // synchronously (config bytes, shape presence, object-store file
+  // stats, index bytes, indirection state) and discards the cache on
+  // any drift — the spawn then carries a judgment of the repo as it is
+  // NOW, not as it was at first use.
   let surface: Promise<{ ok: boolean; pf: EvidencePreflight | null }> | undefined;
-  const surfaceState = () => {
-    surface ??= evidenceRepoPreflight(workspaceRoot).then((pf) => ({
+  const surfaceState = async () => {
+    const cached = surface === undefined ? null : await surface;
+    if (cached !== null && cached.pf !== null && reproveEvidenceSurface(workspaceRoot, cached.pf)) {
+      return cached;
+    }
+    // Stale (or unproven — a null preflight can never be cached): the
+    // stale held index fd releases before the re-enumeration.
+    if (cached !== null) closeEvidenceIndex(cached.pf);
+    surface = evidenceRepoPreflight(workspaceRoot).then((pf) => ({
       ok: pf === null || (pf.refusedKeys.length === 0 && pf.shapeViolations.length === 0),
       pf,
     }));
@@ -306,9 +326,15 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
     // index it must degrade to `null`, not consult the ambient index.
     // Both map to a per-entry null: unreadable, never a forged answer.
     const idx = evidenceIndexForSpawn(pf);
+    // `@{` rev syntax is a fabrication channel in batch specs too — the
+    // argv judges block it for run/runExit, and a `HEAD@{0}` spec here
+    // would resolve through the session-fabricable reflog (r12 hunt
+    // note): wrong-attribution only after the per-record rehash, still
+    // never a forged answer — degrade to per-entry null like the rest.
     const sent = specs.map((s) =>
       s.length === 0 ||
       /[\n\r\0]/.test(s) ||
+      s.includes("@{") ||
       (idx.unproven && (s === ":" || /^:(?![/(!+^-])/.test(s)))
         ? null
         : s,

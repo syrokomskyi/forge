@@ -11,7 +11,6 @@ commit, new-tag detection versus origin, and FLOW-PUSH-01 without origin.</purpo
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 3 — flow.digest tests</item>
   <item>RFC-1491: step 3 — flow.digest risk digest with journal-attributed items, categories, digestId</item>
   <item>RFC-1498: step 4 — CI tag triggers and FLOW-11 in flow.digest
 
@@ -54,6 +53,8 @@ r10-remediated channel — this commit closes all of them.
 
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
+  <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
 
@@ -306,9 +307,12 @@ describe("flow.digest", () => {
     expect(data.tags).toEqual(["v0.1.0"]);
 
     await gitExec(repo, ["push", "origin", "v0.1.0"]);
+    // CX-132: a tag pushed outside flow.push leaves no journal record and
+    // remote truth is unverifiable — the tag stays listed (the fail-safe
+    // direction: over-offer a re-push that no-ops on an identical remote
+    // tag, never hide a pending one).
     const after = await collectDigest(repo, ambientIo, { fetch: false });
-    expect(after.tags).toEqual([]);
-    expect(after.digestId).not.toBe(data.digestId);
+    expect(after.tags).toEqual(["v0.1.0"]);
   }, 40_000);
 
   it("RFC-1498 AC-7: a pushed tag maps to the workflows its on.push.tags filter matches", async () => {
