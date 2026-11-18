@@ -1,9 +1,11 @@
 /*
 <MODULE_CONTRACT>
 <purpose>flow.publication.retire — operator-only command (RFC-1503): append a
-`publish-retired` journal event for a pending publication tag so flow.push
-never attempts it again. Refuses FLOW-RETIRE-01 when the tag is not pending
-and FLOW-RETIRE-02 on an empty --reason.</purpose>
+`publish-retired` journal event for a pushed-but-unpublished tag so
+flow.push never attempts it again. Refuses FLOW-RETIRE-01 when the tag
+fails the pending gate (no journal `push` record, already
+published/superseded/retired, or no such local tag) and FLOW-RETIRE-02
+on an empty --reason.</purpose>
 <non-goals>
   <item>No tag or remote mutation — the journal record is the whole effect.</item>
   <item>No digest/push — flow.digest and flow.push consume the record.</item>
@@ -13,6 +15,7 @@ and FLOW-RETIRE-02 on an empty --reason.</purpose>
   <item>RFC-1503: step 3 — flow.publication.retire handler</item>
   <item>RFC-1503: steps 1-5 — highest-per-line pending selection, publish-superseded/publish-retired journal events, flow.publication.retire</item>
   <item>RFC-1503: review r1 — FLOW-07 on retire journal failure, journal re-read before publish, publication-order unit tests, stale catalog/inventory regen</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -24,9 +27,8 @@ import type {
   WorkspaceIO,
 } from "../../../src/types.ts";
 import { resolveIo } from "../../../src/utils/io.ts";
-import { collectDigest } from "../digest.ts";
-import { requireGit, topLevel } from "../git.ts";
-import { appendJournal, commonGitDir, FlowRegistrySchemaError } from "../registry.ts";
+import { gitEvidence, requireGit, topLevel } from "../git.ts";
+import { appendJournal, commonGitDir, FlowRegistrySchemaError, readJournal } from "../registry.ts";
 
 export interface RetirePublicationData {
   tag: string;
@@ -36,8 +38,8 @@ export interface RetirePublicationData {
 
 /**
  * Core of flow.publication.retire — callable in tests. Appends one
- * `publish-retired` journal event; the digest then drops the tag from
- * pendingPublications forever.
+ * `publish-retired` journal event; the tag then never re-enters the
+ * pending set this gate derives.
  */
 export async function retirePublication(
   repoRoot: string,
@@ -60,12 +62,32 @@ export async function retirePublication(
     };
   }
 
-  const digest = await collectDigest(repoRoot, io, { fetch: false });
-  const pending = new Set([
-    ...digest.pendingPublications.map((p) => p.tag),
-    ...digest.supersededPublications.map((p) => p.tag),
-  ]);
-  if (!pending.has(opts.tag)) {
+  const common = await commonGitDir(io, repoRoot);
+  // Journal-derived pending is sufficient for this gate (R13-C): retire's
+  // only effect is a `publish-retired` suppressor record the session could
+  // write directly, so fabricated provenance can never escalate through
+  // it — the tag itself must still resolve locally.
+  const journal = await readJournal(io, common);
+  const pushed = new Set<string>();
+  const excluded = new Set<string>();
+  for (const event of journal) {
+    if (event.event === "push") {
+      for (const token of event.detail.split(/[^A-Za-z0-9._/@-]+/)) {
+        if (token.length > 0) pushed.add(token);
+      }
+    } else if (
+      event.event === "publish" ||
+      event.event === "publish-superseded" ||
+      event.event === "publish-retired"
+    ) {
+      excluded.add(event.branch);
+    }
+  }
+  const tagExists =
+    pushed.has(opts.tag) &&
+    (await gitEvidence(repoRoot, ["rev-parse", "--verify", "--quiet", `refs/tags/${opts.tag}`]))
+      .exitCode === 0;
+  if (!tagExists || excluded.has(opts.tag)) {
     return {
       tag: opts.tag,
       retired: null,
@@ -74,13 +96,12 @@ export async function retirePublication(
           ruleId: "FLOW-RETIRE-01",
           severity: "error",
           message: `${opts.tag} is not a pending publication — only pushed-but-unpublished tags can be retired`,
-          fixHint: "check flow.digest pendingPublications for the tag to retire",
+          fixHint:
+            "the tag needs a journal `push` record, no publish/supersede/retire record, and a local refs/tags entry",
         },
       ],
     };
   }
-
-  const common = await commonGitDir(io, repoRoot);
   try {
     await appendJournal(io, common, {
       event: "publish-retired",

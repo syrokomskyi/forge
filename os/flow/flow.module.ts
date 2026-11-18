@@ -9,9 +9,6 @@ the idempotent two-phase repository adoption (FLOW-ADOPT-01..06, -08).</purpose>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1600: refuse duplicate governance ids at flow.integrate preflight (RFC-1600)
-
-FLOW-INT-19 scans the branch-vs-develop diff for governance id collisions — RFC/ADR/friction file ids and V-*∕RFC-IMP-*∕FLOW-* rule literals — before the rebase and heavyweight gates, refusing with both locations when the same id is claimed at different sites; same-site relands pass. AGENTS.md collision playbook now points at forge/rfc-reservations.yaml; manifest regenerated for the updated rule surface.</item>
   <item>RFC-1599: sweep primary dirt into opened worktrees + bind session writes to the owning checkout (RFC-1599)</item>
   <item>RFC-1597: atomic cut preflight + covers-resume + worktree-bound owner regen (RFC-1597)</item>
   <item>RFC-1592: retire 3 unprobeable rules (F-0288 recurrence) unblocking this worktree's RFC-1592 ratchet</item>
@@ -22,8 +19,9 @@ with a 12-scenario catalog replayed through the real gate in a scratch
 clone, flow.push verifier-trailer hard stop (fail-closed on unreadable
 forge.yaml), project.owner + push.requireVerifierReview config, trust-boundary
 scaffold (CODEOWNERS + forge-policy workflow) and reference docs.</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>RFC-1626: make gate-isolation sweeps durable and refuse foreign uncommitted work</item>
-  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589</history>
+  <history>RFC-1486, RFC-1487, RFC-1488, RFC-1490, RFC-1491, RFC-1498, RFC-1502, RFC-1503, RFC-1517, RFC-1528, RFC-1531, RFC-1533, RFC-1537, RFC-1538, RFC-1543, RFC-1568, RFC-1573, RFC-1580, RFC-1589, RFC-1600</history>
 </CHANGE_SUMMARY>
 */
 
@@ -592,8 +590,9 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "(integration, backmerge, release, unattributed) classified by " +
           "risk category — contract, migration, invariant, " +
           "capability-removal, major-dependency, other — plus new release " +
-          "tags versus origin, held branches and journal-scoped pending " +
-          "publications. Prints the digestId flow.push must quote. " +
+          "tags versus origin and held branches (journal records are " +
+          "suppressor-only — they hide pushed tags but never mint " +
+          "pending publications). Prints the digestId flow.push must " +
           "--no-fetch skips git fetch for offline review; a fetch failure " +
           "downgrades to stale remote-tracking refs with a warning. " +
           "FLOW-PUSH-01 (error) when no origin remote exists.",
@@ -787,8 +786,10 @@ export async function createForgeFlowModule(): Promise<ForgeModule> {
           "atomic push under FORGE_FLOW_OP=push (FLOW-PUSH-04 on failure) " +
           "and publishes each package-line tag through repo-extract " +
           "(FLOW-PUSH-05 per failure, ours-merge reconcile on " +
-          "non-fast-forward only, never force). A rerun with an empty " +
-          "digest retries journal-scoped pending publications. Per-tag " +
+          "non-fast-forward only, never force). Publication candidates " +
+          "are this run's pushed tags only — a pushed-but-unpublished " +
+          "tag leaves the candidate set (journal records are " +
+          "suppressor-only). Per-tag " +
           "preflight refuses before repo-extract spawns: FLOW-PUB-01 " +
           "(missing [version] CHANGELOG section at ref) and PKG-HEALTH-10 " +
           "(shipped ../ literal escaping the package root — same-line " +

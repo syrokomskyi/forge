@@ -21,36 +21,6 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
-
-Independent clean-context verification (round 8, candidate 9da0bf515)
-returned REFUTED with nine live counterexamples against the r7-hardened
-evidence channel — this commit closes all root causes.
-
-- Committed-object reads carry an integrity anchor: loose objects under
-  .git/objects whose inflated bytes do not hash to their object name
-  refuse the channel — forged loose bytes and loose-over-packed
-  shadowing can no longer serve the anchored base (CX-104a/b).
-- policy.digest --verify --base accepts only concrete immutable commit
-  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
-  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
-- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
-  ~EOF (CX-105), quote removal applies across the whole word so
-  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
-  words arm a never-matching sentinel so body lines stay stdin (CX-107).
-- verifierGit is a subcommand + option allowlist: reflog/stash and
-  write commands (config writes, update-ref) are refused, caller
-  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
-  landing after the pins, and -g inside short-option clusters (-ng) is
-  judged (CX-108/109).
-- Every remote.<name>.* class keys the name as greedy .+ so dotted
-  remotes no longer escape the REFUSE table or fetch value-judge —
-  remote.o.r.uploadpack refuses the channel instead of executing inside
-  fetch o.r (CX-110); fetch/ls-remote positional remotes are
-  form-judged.
-
-The independent r8 probe file and acceptance report land in the
-follow-up port commit.</item>
   <item>RFC-1616: close RFC-1616 r9 trust-boundary counterexamples
 
 Independent clean-context verification (round 9, candidate 4436339db)
@@ -155,6 +125,7 @@ r10-remediated channel — this commit closes all of them.
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -164,17 +135,18 @@ import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { readFileSync } from "../../src/utils/sync-fs.ts";
 import {
-  evidenceIndexForSpawn,
   evidencePinEnv,
   evidenceRepoPreflight,
+  evidenceSpawnState,
   closeEvidenceIndex,
-  closeSpawnIndexFd,
+  closeSpawnFds,
   isIndexConsultingRead,
   isVerifierGitQuery,
   reproveEvidenceSurface,
   resolveGitBin,
   spawnCaptured,
   verifierGitEnv,
+  withNoExtDiff,
   type EvidencePreflight,
 } from "../../src/utils/verifier-git.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
@@ -307,12 +279,24 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       return cached;
     }
     // Stale (or unproven — a null preflight can never be cached): the
-    // stale held index fd releases before the re-enumeration.
+    // stale held fds release before the re-enumeration.
     if (cached !== null) closeEvidenceIndex(cached.pf);
-    surface = evidenceRepoPreflight(workspaceRoot).then((pf) => ({
-      ok: pf === null || (pf.refusedKeys.length === 0 && pf.shapeViolations.length === 0),
-      pf,
-    }));
+    surface = evidenceRepoPreflight(workspaceRoot).then(async (pf) => {
+      // A fresh judgment is re-proven against the live surface before it
+      // is trusted — a failed re-prove means the surface drifted during
+      // preflight, so re-enumerate (bounded) instead of spawning off a
+      // stale world (R13-D1). A null preflight is UNPROVEN, never ok:
+      // it carries no config judgment, so every read degrades to null
+      // rather than spawning unpinned (R13 secondary asymmetry).
+      for (let attempt = 0; pf !== null && !reproveEvidenceSurface(workspaceRoot, pf); attempt++) {
+        closeEvidenceIndex(pf);
+        pf = attempt >= 2 ? null : await evidenceRepoPreflight(workspaceRoot);
+      }
+      return {
+        ok: pf !== null && pf.refusedKeys.length === 0 && pf.shapeViolations.length === 0,
+        pf,
+      };
+    });
     return surface;
   };
   const runBatchBytes = async (specs: string[]): Promise<(Buffer | null)[] | null> => {
@@ -325,7 +309,11 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
     // spec resolves a staged blob through the index — under an unproven
     // index it must degrade to `null`, not consult the ambient index.
     // Both map to a per-entry null: unreadable, never a forged answer.
-    const idx = evidenceIndexForSpawn(pf);
+    // An unproven config basis degrades the whole read — a config that
+    // exists but could not be byte-captured cannot be drift-checked, so
+    // no query class runs against it (R13-D).
+    if (pf?.configUnproven !== undefined) return null;
+    const spawnState = evidenceSpawnState(pf);
     // `@{` rev syntax is a fabrication channel in batch specs too — the
     // argv judges block it for run/runExit, and a `HEAD@{0}` spec here
     // would resolve through the session-fabricable reflog (r12 hunt
@@ -335,7 +323,7 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       s.length === 0 ||
       /[\n\r\0]/.test(s) ||
       s.includes("@{") ||
-      (idx.unproven && (s === ":" || /^:(?![/(!+^-])/.test(s)))
+      (spawnState.unproven && (s === ":" || /^:(?![/(!+^-])/.test(s)))
         ? null
         : s,
     );
@@ -344,8 +332,8 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       cwd: workspaceRoot,
       timeoutMs: 60000,
       maxBuffer: 128 * 1024 * 1024,
-      env: { ...gitEnvForCwd(), ...evidencePinEnv(argv, pf), ...idx.env },
-      indexFd: idx.indexFd,
+      env: { ...gitEnvForCwd(), ...evidencePinEnv(argv, pf), ...spawnState.env },
+      indexFd: spawnState.indexFd,
       input: `${sent.filter((s): s is string => s !== null).join("\n")}\n`,
     });
     if (r.exitCode !== 0) return null;
@@ -367,37 +355,37 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
       // otherwise ride the pinned spawn verbatim).
       if (!isVerifierGitQuery(args)) return null;
       const { ok, pf } = await surfaceState();
-      if (!ok) return null;
+      if (!ok || pf?.configUnproven !== undefined) return null;
       // An unproven index refuses index-consulting ops (CX-124/CX-129).
-      const idx = evidenceIndexForSpawn(pf);
-      if (idx.unproven && isIndexConsultingRead(args)) {
-        closeSpawnIndexFd(idx);
+      const spawnState = evidenceSpawnState(pf);
+      if (spawnState.unproven && isIndexConsultingRead(args)) {
+        closeSpawnFds(spawnState);
         return null;
       }
-      const r = await spawnCaptured(bin, args, {
+      const r = await spawnCaptured(bin, withNoExtDiff(args), {
         cwd: workspaceRoot,
         timeoutMs: 15000,
         maxBuffer: 32 * 1024 * 1024,
-        env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...idx.env },
-        indexFd: idx.indexFd,
+        env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...spawnState.env },
+        indexFd: spawnState.indexFd,
       });
       return r.exitCode === 0 ? r.stdout.toString() : null;
     },
     runExit: async (args) => {
       if (!isVerifierGitQuery(args)) return null;
       const { ok, pf } = await surfaceState();
-      if (!ok) return null;
-      const idx = evidenceIndexForSpawn(pf);
-      if (idx.unproven && isIndexConsultingRead(args)) {
-        closeSpawnIndexFd(idx);
+      if (!ok || pf?.configUnproven !== undefined) return null;
+      const spawnState = evidenceSpawnState(pf);
+      if (spawnState.unproven && isIndexConsultingRead(args)) {
+        closeSpawnFds(spawnState);
         return null;
       }
-      const r = await spawnCaptured(bin, args, {
+      const r = await spawnCaptured(bin, withNoExtDiff(args), {
         cwd: workspaceRoot,
         timeoutMs: 15000,
         maxBuffer: 32 * 1024 * 1024,
-        env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...idx.env },
-        indexFd: idx.indexFd,
+        env: { ...gitEnvForCwd(), ...evidencePinEnv(args, pf), ...spawnState.env },
+        indexFd: spawnState.indexFd,
       });
       // Exit code -1 marks spawn/timeout/kill — unreadable, not an answer.
       if (r.exitCode === -1) return null;

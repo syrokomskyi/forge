@@ -4,21 +4,22 @@
 package-line tag runs the fake repo-extract with --ref and --no-push,
 pushes the destination origin and journals publish; a baseline-annotated
 tag reports skipped-baseline and never reaches the extract; a failing
-extract is FLOW-PUSH-05 and the rerun with an empty digest retries the
-journal-scoped pending publication; a tag on origin this journal never
-pushed is not pending; a non-fast-forward destination reconciles once
-with an ours-merge and never force-pushes.</purpose>
+extract is FLOW-PUSH-05 and the pushed-but-unpublished tag leaves the
+candidate set (journal records are suppressor-only, R13-C); a tag on
+origin this journal never pushed is not a candidate either; a
+non-fast-forward destination reconciles once with an ours-merge and
+never force-pushes.</purpose>
 <non-goals>
   <item>No real repo-extract — the fixture installs node_modules/.bin/repo-extract.</item>
   <item>Never touches the enclosing repository — all fixtures are mkdtemp repos.</item>
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1491: step 5 — flow.push atomic outbound path + extract publication</item>
   <item>RFC-1491: independent-review pass — shared lock constants, publishable pending filter, declared rules, hold ordering, sha-pinned refspecs</item>
   <item>RFC-1517: add preflight-extract-gates — FLOW-PUB-01 changelog check at ref plus shared PKG-HEALTH-10 fixture-path scan for RFC-1517</item>
   <item>RFC-1517: make pkg-health-10 shipped-set faithful and scan the publish ref</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <history>RFC-1491</history>
 </CHANGE_SUMMARY>
 */
@@ -150,7 +151,7 @@ describe("flow.push publications", () => {
     expect(await extractLog(log)).toBe("");
   }, 90_000);
 
-  it("a failing extract is FLOW-PUSH-05; a rerun with an empty digest publishes the pending tag", async () => {
+  it("a failing extract is FLOW-PUSH-05; a pushed-but-unpublished tag leaves the candidate set", async () => {
     const { repo } = await initRepoWithOrigin(dirs, {
       prefix: "flow-pub-",
       fakeExtract: true,
@@ -166,20 +167,22 @@ describe("flow.push publications", () => {
     expect(pub?.status).toBe("failed");
     delete process.env["FAKE_EXTRACT_FAIL"];
 
-    // The tag is on origin now, so the digest is empty — but the journal's
-    // push record without a publish keeps it pending.
+    // R13-C: the tag is on origin and the journal `push` record now only
+    // SUPPRESSES it — "pushed but unpublished" has no honest local
+    // witness (transports are untrusted), so pendingPublications stays
+    // empty and a rerun can never re-attempt the extract. The fail-safe
+    // direction is withheld publication, never a fabricated retry.
     const emptyDigest = await collectDigest(repo, ambientIo, { fetch: false });
     expect(emptyDigest.tags).toEqual([]);
-    expect(emptyDigest.pendingPublications).toEqual([{ tag: "lib@2.1.0", line: "lib" }]);
+    expect(emptyDigest.pendingPublications).toEqual([]);
 
     const retry = await pushFlow(repo, ambientIo, {
       digest: emptyDigest.digestId,
       dryRun: false,
     });
     expect(retry.diagnostics).toEqual([]);
-    expect(retry.pushed).toBe(false); // nothing to push — publications only
-    const republished = retry.publications.find((p) => p.tag === "lib@2.1.0");
-    expect(republished?.status).toBe("published");
+    expect(retry.pushed).toBe(false); // nothing to push — no candidates either
+    expect(retry.publications).toEqual([]);
 
     const after = await collectDigest(repo, ambientIo, { fetch: false });
     expect(after.pendingPublications).toEqual([]);

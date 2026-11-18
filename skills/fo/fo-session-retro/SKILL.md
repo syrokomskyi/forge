@@ -20,6 +20,7 @@ triggerPhrases: ["завершаем", "протокол завершения", 
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
+  <item>RFC-1590: store append-only shared ledgers as one file per record</item>
   <item>RFC-1592: probe-or-retire ratchet for blocking check rules
 
 Every error-severity check rule now needs liveness evidence — a bound
@@ -71,6 +72,7 @@ shell strings (F-0037/F-0054/F-0083/F-0116/F-0239 signature).
   werkstatt-site boilerplate — monorepo-only); fo-session-retro restores
   the 'recurrences' wording the addressed-match routing test pins</item>
   <item>RFC-1615: declare and freeze the policy surface at integration</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <item>ADR-0133: forbid --detach on session-end flow.integrate (F-0301)</item>
   <item>RFC-1617: outcomeBuildTimeoutMs binding for sites exceeding the 15-minute probe build cap; regenerate command manifest; heal SKILL-17 id + twin drift</item>
   <item>RFC-1617: drop platform ADR id from fo-session-retro instruction text (SKILL-17)</item>
@@ -261,8 +263,8 @@ for d in missions/*/workpiece; do [ -d "$d/.git" ] && echo "=== $d ===" && rtk g
 **3f. List pending outbound items (dormant when not on the fixed branch model):**
 
 - This step applies only when the repository is on the fixed branch model — `flow.digest` answers a digest instead of a not-adopted refusal. Repositories without the flow module skip silently.
-- Run `pnpm exec forge flow.digest --no-fetch --json` and read the item counts by risk category, the held entries and the pending publications.
-- Report them on the `### <Pending outbound>` line of the Step 7 report — e.g. `3 items (contract: 1, other: 2), 1 held, 1 pending publication`, or `none`.
+- Run `pnpm exec forge flow.digest --no-fetch --json` and read the item counts by risk category and the held entries.
+- Report them on the `### <Pending outbound>` line of the Step 7 report — e.g. `3 items (contract: 1, other: 2), 1 held`, or `none`.
 - This step never runs `flow.push`, `flow.hold` or `flow.unhold` — outbound publication stays the operator's command.
 
 ### Step 4: RFC implementation verification (NON-NEGOTIABLE)
@@ -641,7 +643,7 @@ Present a concise summary in `aiLanguage`. **ALL labels, headings, column names,
 ### <Direct edits>: <count>
 ### <Commit>: <hash | none — no direct edits>
 ### <Left untouched>: <N unattributed dirty files — list each as "<tree>: <path>", or "none">
-### <Pending outbound>: <N unpushed items (<counts by category>), K held, M pending publications — or "none" when not on the fixed branch model>
+### <Pending outbound>: <N unpushed items (<counts by category>), K held — or "none" when not on the fixed branch model>
 
 ### <Frictions in aiLanguage>
 <appended>: <N new registry entries, one line each with id + category>

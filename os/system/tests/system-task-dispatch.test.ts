@@ -11,6 +11,7 @@ git-exclusion of .forge/task/ and the launcher argv.</purpose>
   <item>RFC-1509: step 5 — dispatch acceptance tests</item>
   <item>RFC-1509: implement RFC-1509 — system task queue, dispatch briefs and task reports</item>
   <item>RFC-1509: close RFC-1509 review r1 findings — mark-failed escape, open-error refusal, dry-run coverage</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
 </CHANGE_SUMMARY>
 */
 
@@ -81,11 +82,12 @@ describe("system.task.dispatch", () => {
     expect(registry).toContain(`id: T-0001`);
 
     // AC-6: the brief file exists and the worktree is porcelain-clean
-    // (.forge/task/ is git-excluded through the common dir's info/exclude).
+    // (.forge/task/ self-hides through its own .gitignore — info/exclude
+    // would refuse the evidence channel, CX-141).
     const briefInTree = await io.readFile(`${result.data!.worktree}/.forge/task/brief.md`);
     expect(briefInTree).toContain("forge/dispatch-brief@1");
-    const exclude = await io.readFile(`${productRoot}/.git/info/exclude`);
-    expect(exclude).toContain("/.forge/task/");
+    const gitignore = await io.readFile(`${result.data!.worktree}/.forge/task/.gitignore`);
+    expect(gitignore.trim()).toBe("*");
     const status = await gitExec(result.data!.worktree!, ["status", "--porcelain"]);
     expect(status.stdout.trim()).toBe("");
   });

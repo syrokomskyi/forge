@@ -201,6 +201,7 @@ r10-remediated channel — this commit closes all of them.
 The port commit that follows carries the ported cx11 probe file plus
 the round-11 acceptance report.</item>
   <item>RFC-1616: close RFC-1616 r12 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r13 trust-boundary counterexamples</item>
   <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -214,9 +215,9 @@ import {
   verifierGitEnv,
   filterEvidenceExtraEnv,
   evidencePinEnv,
-  evidenceIndexForSpawn,
+  evidenceSpawnState,
   closeEvidenceIndex,
-  closeSpawnIndexFd,
+  closeSpawnFds,
   judgeEvidenceRepoSurface,
   scanPackObjects,
   prepareEvidenceIndex,
@@ -227,6 +228,7 @@ import {
   EVIDENCE_REFUSED_PREFIX,
   isEvidenceGitQuery,
   isIndexConsultingRead,
+  withNoExtDiff,
 } from "../../src/utils/verifier-git.ts";
 
 /**
@@ -278,7 +280,11 @@ export async function git(
 export async function gitEvidence(
   repoRoot: string,
   args: string[],
-  opts?: { timeoutMs?: number; extraEnv?: Record<string, string>; preflight?: boolean },
+  opts?: {
+    timeoutMs?: number;
+    extraEnv?: Record<string, string>;
+    preflight?: boolean;
+  },
 ): Promise<ExecResult> {
   // Runtime argv judgment — the evidence channel spawns a trusted git, so
   // nothing beyond the read-only + pinned-fetch table may reach it, even
@@ -299,13 +305,17 @@ export async function gitEvidence(
   // breaks the recursion), so every subprocess on the evidence path stays
   // inside this argv-judged body.
   let preflight = opts?.preflight === false ? null : await evidencePreflight(repoRoot);
-  // Re-prove the fingerprint right before the spawn — a session write
-  // racing the judgment→spawn window reads as drift and re-runs the
-  // whole preflight once (CX-134's cached-channel sibling on the
-  // per-call path).
-  if (preflight !== null && !reproveEvidenceSurface(repoRoot, preflight)) {
+  // Re-prove the fingerprint right before the spawn, and keep re-
+  // preflighting while the surface drifts — the LAST check is always
+  // immediate before the spawn (R13-D1: a one-shot reprove+reflight
+  // left a whole second-preflight window for a config flipper).
+  for (
+    let attempt = 0;
+    preflight !== null && !reproveEvidenceSurface(repoRoot, preflight);
+    attempt++
+  ) {
     closeEvidenceIndex(preflight);
-    preflight = await evidencePreflight(repoRoot);
+    preflight = attempt >= 2 ? null : await evidencePreflight(repoRoot);
   }
   try {
     if (preflight === null && opts?.preflight !== false) {
@@ -325,21 +335,34 @@ export async function gitEvidence(
         stderr: `${EVIDENCE_REFUSED_PREFIX}: ${[...preflight.refusedKeys, ...preflight.shapeViolations].join(", ")}`,
       };
     }
-    // The verifier index is resolved per spawn — the fd form carries no
+    // A config that exists but could not be captured refuses EVERYTHING
+    // — its bytes are live-unjudgeable for drift and the spawn would
+    // read them (R13-D). The levers themselves are dead either way:
+    // env pins cover the literal keyspace and `GIT_ATTR_SOURCE` starves
+    // the pattern class, so this guard is about provability, not
+    // exposure.
+    if (preflight?.configUnproven !== undefined) {
+      return {
+        exitCode: -1,
+        stdout: "",
+        stderr: `${EVIDENCE_REFUSED_PREFIX}: ${preflight.configUnproven}: git ${args.join(" ")}`,
+      };
+    }
+    // The verifier index is resolved per spawn — fd form carries no
     // path at all (CX-129); the path form re-proves its on-disk bytes
-    // before the redirect is trusted. An unproven index (rebuild failed,
-    // CX-124, or a rewrite caught just now) refuses index-consulting
-    // ops; non-index ops never consult it and proceed.
-    const idx = evidenceIndexForSpawn(preflight);
-    if (idx.unproven && isIndexConsultingRead(args)) {
-      closeSpawnIndexFd(idx);
+    // before the redirect is trusted. An unproven index (rebuild
+    // failed, CX-124, or a rewrite caught just now) refuses
+    // index-consulting ops; non-index ops never consult it and proceed.
+    const spawnState = evidenceSpawnState(preflight);
+    if (spawnState.unproven && isIndexConsultingRead(args)) {
+      closeSpawnFds(spawnState);
       return {
         exitCode: -1,
         stdout: "",
         stderr: `${EVIDENCE_REFUSED_PREFIX}: index unproven (${preflight?.indexUnproven ?? "index bytes rewritten"}): git ${args.join(" ")}`,
       };
     }
-    const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...args], {
+    const r = await spawnCaptured(resolveGitBin(), ["-C", repoRoot, ...withNoExtDiff(args)], {
       cwd: repoRoot,
       env: {
         ...verifierGitEnv(),
@@ -348,9 +371,10 @@ export async function gitEvidence(
         // argv pins shifted $1/$2 positional matching in
         // failure-injection seams).
         ...evidencePinEnv(args, preflight),
-        // The verifier-owned claims index — the session's `.git/index`
-        // is never consulted for a trusted verdict (CX-121/CX-129).
-        ...idx.env,
+        // The verifier-owned claims index + `GIT_ATTR_SOURCE` — the
+        // session's `.git/index` is never consulted, and no attribute
+        // ever engages a config-named program (CX-121/CX-129, R13-D).
+        ...spawnState.env,
         ...filterEvidenceExtraEnv(opts?.extraEnv),
       },
       // Boundary reads are local and bounded like the runner channel —
@@ -359,12 +383,12 @@ export async function gitEvidence(
       // a hanging child (r12 hunt note).
       timeoutMs: opts?.timeoutMs ?? 60_000,
       maxBuffer: 64 * 1024 * 1024,
-      indexFd: idx.indexFd,
+      indexFd: spawnState.indexFd,
     });
     return { exitCode: r.exitCode, stdout: r.stdout.toString(), stderr: r.stderr.toString() };
   } finally {
-    // The per-call preflight owns its index fd — cached preflights
-    // (OriginGit) keep it for the instance's lifetime instead.
+    // The per-call preflight owns its held fds — cached preflights
+    // (OriginGit) keep them for the instance's lifetime instead.
     closeEvidenceIndex(preflight);
   }
 }
@@ -390,10 +414,8 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
   // (CX-134/135) cannot be misordered; `config` and `index` join the
   // shape resolves so the fingerprint pins the files the judged
   // dump/claims derive from.
-  const { objectsDir, shapePaths, anyFailed, fingerprint } = await captureEvidenceSurface(
-    repoRoot,
-    gitEvidence,
-  );
+  const { objectsDir, shapePaths, headBranch, anyFailed, fingerprint } =
+    await captureEvidenceSurface(repoRoot, gitEvidence);
   if (anyFailed) {
     if (!existsSync(repoRoot)) return null;
     const probe = await gitEvidence(repoRoot, ["--version"], { preflight: false });
@@ -415,7 +437,13 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
     { preflight: false },
   );
   if (listed.exitCode !== 0) return null;
-  const preflight = judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths, objectsDir);
+  const preflight = judgeEvidenceRepoSurface(
+    repoRoot,
+    listed.stdout,
+    shapePaths,
+    objectsDir,
+    headBranch,
+  );
   // Pack-carried objects get the same integrity anchor loose objects
   // have (CX-113) — skipped when the objects dir could not be resolved,
   // which is already a shapeViolation.
@@ -432,6 +460,15 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
   const prepared = await prepareEvidenceIndex(repoRoot);
   preflight.index = prepared.index;
   preflight.indexUnproven = prepared.failure;
+  // A `.git/config` that exists but could not be byte-captured cannot be
+  // drift-checked by the reprove — refuse every spawn rather than let a
+  // live unjudged file reach it (R13-D).
+  preflight.configUnproven =
+    fingerprint.configPath !== null &&
+    fingerprint.configBytes === null &&
+    existsSync(fingerprint.configPath)
+      ? ".git/config exists but could not be captured — spawn would read unjudged config"
+      : undefined;
   preflight.fingerprint = fingerprint;
   return preflight;
 }
@@ -484,10 +521,13 @@ function throwOnFailure(result: ExecResult, what: string): ExecResult {
 }
 
 /** Require git >= 2.30 — the resolved real binary answers, not whatever a
- * session PATH shim reports for `git` (CX-52). */
+ * session PATH shim reports for `git` (CX-52). `preflight:false`: a
+ * `--version` probe consults no repo state, so a refused repo surface
+ * (e.g. `.git/info/exclude` content, CX-141) must not fail the binary
+ * health check — the reads that follow carry their own judgment. */
 export async function requireGit(io: WorkspaceIO): Promise<void> {
   void io;
-  const result = await gitEvidence(process.cwd(), ["--version"]);
+  const result = await gitEvidence(process.cwd(), ["--version"], { preflight: false });
   if (result.exitCode !== 0) {
     throw new Error("git is required for flow commands but `git --version` failed");
   }
