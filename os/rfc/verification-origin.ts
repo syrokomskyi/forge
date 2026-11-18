@@ -21,19 +21,53 @@ the expectation instead of trusting the declared expectationSource.
   <item>Declarations compare acceptance-time vs current bytes; a loosen-then-restore within range stays unchanged.</item>
 </KEY_DECISIONS>
 <CHANGE_SUMMARY>
-  <item>RFC-1615: close RFC-1615 round-12 counterexamples (CX-68..72)</item>
   <item>RFC-1615: wire range derivation into unreadable-reads, blob-only path reads, suppress unsupported anchor-removed</item>
   <item>RFC-1615: close round-18 counterexamples — traversal-order rfc parity, literal history pathspecs, normalized binding compare, plain-object prune</item>
   <item>RFC-1615: close round-20 counterexamples — PATH-only oracle runner, unforgeable cycle sentinel, execFile NUL guards</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
+
+Independent clean-context verification (round 8, candidate 9da0bf515)
+returned REFUTED with nine live counterexamples against the r7-hardened
+evidence channel — this commit closes all root causes.
+
+- Committed-object reads carry an integrity anchor: loose objects under
+  .git/objects whose inflated bytes do not hash to their object name
+  refuse the channel — forged loose bytes and loose-over-packed
+  shadowing can no longer serve the anchored base (CX-104a/b).
+- policy.digest --verify --base accepts only concrete immutable commit
+  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
+  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
+- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
+  ~EOF (CX-105), quote removal applies across the whole word so
+  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
+  words arm a never-matching sentinel so body lines stay stdin (CX-107).
+- verifierGit is a subcommand + option allowlist: reflog/stash and
+  write commands (config writes, update-ref) are refused, caller
+  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
+  landing after the pins, and -g inside short-option clusters (-ng) is
+  judged (CX-108/109).
+- Every remote.<name>.* class keys the name as greedy .+ so dotted
+  remotes no longer escape the REFUSE table or fetch value-judge —
+  remote.o.r.uploadpack refuses the channel instead of executing inside
+  fetch o.r (CX-110); fetch/ls-remote positional remotes are
+  form-judged.
+
+The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
   <history>RFC-1330, RFC-1391, RFC-1513, RFC-1615</history>
 </CHANGE_SUMMARY>
 */
 
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { parse as yamlParse } from "yaml";
 import { execFile, readFileSync } from "../../src/utils/sync-fs.ts";
-import { resolveGitBin, verifierGitEnv } from "../../src/utils/verifier-git.ts";
+import {
+  evidenceRepoPreflight,
+  resolveGitBin,
+  verifierGitEnv,
+} from "../../src/utils/verifier-git.ts";
 import { parseRfcFile } from "./frontmatter-io.ts";
 import { RFC_ORIGIN_CUTOFF } from "./types.ts";
 import type {
@@ -100,11 +134,21 @@ function parseCatFileBatch(specs: string[], out: Buffer): (string | null)[] | nu
       results.push(null);
       continue;
     }
-    const meta = /^[0-9a-f]+ \S+ (\d+)$/.exec(header);
+    const meta = /^([0-9a-f]+) (\S+) (\d+)$/.exec(header);
     if (!meta) return null;
-    const size = Number(meta[1]);
+    const size = Number(meta[3]);
     if (off + size + 1 > out.length || out[off + size] !== 0x0a) return null;
-    results.push(out.subarray(off, off + size).toString("utf8"));
+    const payload = out.subarray(off, off + size);
+    // Re-hash the served bytes against the object name git resolved — a
+    // loose file written at a real sha's path is served verbatim without
+    // re-hashing (loose shadows packed), so the name alone proves
+    // nothing (CX-104). A mismatch maps to `null` — unreadable, never a
+    // forged answer — for that entry only.
+    const hashed = createHash(meta[1]!.length === 64 ? "sha256" : "sha1")
+      .update(`${meta[2]} ${meta[3]}\0`)
+      .update(payload)
+      .digest("hex");
+    results.push(hashed === meta[1] ? payload.toString("utf8") : null);
     off += size + 1;
   }
   return results;
@@ -118,9 +162,24 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
   // `env.PATH` is already the rebuilt verifier path, but the absolute path
   // removes resolution from the channel entirely (CX-52).
   const bin = resolveGitBin();
+  // The session-writable repo surface the evidence channel judges gates
+  // this read path too (CX-104): a transport/exec lever, a shape file, or
+  // a loose object whose bytes do not hash to its sha-shaped name would
+  // answer the show/--batch reads below with fabricated bytes. A refused
+  // surface degrades every read to `null` — unreadable → `unresolved`,
+  // which the tier rules treat as self — never a forged answer. Cached
+  // per OriginGit instance: one enumeration per derivation.
+  let surface: Promise<boolean> | undefined;
+  const surfaceOk = (): Promise<boolean> => {
+    surface ??= evidenceRepoPreflight(workspaceRoot).then(
+      (p) => p === null || (p.refusedKeys.length === 0 && p.shapeViolations.length === 0),
+    );
+    return surface;
+  };
   return {
-    run: (args) =>
-      new Promise((resolve) => {
+    run: async (args) => {
+      if (!(await surfaceOk())) return null;
+      return new Promise<string | null>((resolve) => {
         try {
           execFile(
             bin,
@@ -136,9 +195,11 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         } catch {
           resolve(null);
         }
-      }),
-    runExit: (args) =>
-      new Promise((resolve) => {
+      });
+    },
+    runExit: async (args) => {
+      if (!(await surfaceOk())) return null;
+      return new Promise<{ code: number; stdout: string; bytes?: Buffer } | null>((resolve) => {
         try {
           execFile(
             bin,
@@ -167,9 +228,11 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         } catch {
           resolve(null);
         }
-      }),
-    showMany: (specs) =>
-      new Promise((resolve) => {
+      });
+    },
+    showMany: async (specs) => {
+      if (!(await surfaceOk())) return null;
+      return new Promise<(string | null)[] | null>((resolve) => {
         try {
           const child = execFile(
             bin,
@@ -187,7 +250,8 @@ export function createOriginGit(workspaceRoot: string): OriginGit {
         } catch {
           resolve(null);
         }
-      }),
+      });
+    },
   };
 }
 

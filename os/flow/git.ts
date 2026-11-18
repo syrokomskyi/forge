@@ -67,7 +67,37 @@ remote.origin.fetch (cx4 and cx5 R5-R1) now asserts the wholesale
 EVIDENCE-REFUSED plus FLOW-PUSH-13 refuse — strictly stronger than the
 decoy-namespace guard it replaces. The independent r7 probe file and
 acceptance report land in the follow-up port commit.</item>
-  <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531</history>
+  <item>RFC-1616: close RFC-1616 r8 trust-boundary counterexamples
+
+Independent clean-context verification (round 8, candidate 9da0bf515)
+returned REFUTED with nine live counterexamples against the r7-hardened
+evidence channel — this commit closes all root causes.
+
+- Committed-object reads carry an integrity anchor: loose objects under
+  .git/objects whose inflated bytes do not hash to their object name
+  refuse the channel — forged loose bytes and loose-over-packed
+  shadowing can no longer serve the anchored base (CX-104a/b).
+- policy.digest --verify --base accepts only concrete immutable commit
+  identifiers — symbolic/message/index/path revspecs (HEAD^{/...},
+  :/..., bare HEAD, branch names) are rejected before verify (CX-103).
+- The heredoc lexer is a bash word-grammar scan: <<~EOF arms literal
+  ~EOF (CX-105), quote removal applies across the whole word so
+  <<'E'OF and <<E"OF" arm EOF (CX-106), and $/command-substitution
+  words arm a never-matching sentinel so body lines stay stdin (CX-107).
+- verifierGit is a subcommand + option allowlist: reflog/stash and
+  write commands (config writes, update-ref) are refused, caller
+  -c/-C/--git-dir/--work-tree/--exec-path are rejected instead of
+  landing after the pins, and -g inside short-option clusters (-ng) is
+  judged (CX-108/109).
+- Every remote.<name>.* class keys the name as greedy .+ so dotted
+  remotes no longer escape the REFUSE table or fetch value-judge —
+  remote.o.r.uploadpack refuses the channel instead of executing inside
+  fetch o.r (CX-110); fetch/ls-remote positional remotes are
+  form-judged.
+
+The independent r8 probe file and acceptance report land in the
+follow-up port commit.</item>
+  <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515, RFC-1531, RFC-1616</history>
 </CHANGE_SUMMARY>
 */
 
@@ -84,249 +114,19 @@ import {
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
   EVIDENCE_SHAPE_QUERY_PATHS,
+  isEvidenceGitQuery,
 } from "../../src/utils/verifier-git.ts";
 
+/**
+ * The argv judgment the evidence channel applies — owned by
+ * `src/utils/verifier-git.ts` since r8 so the runner/policy channel
+ * (`verifierGit`) and the scratch channel (`verifierScratchGit`) judge
+ * against the same table (CX-108/109); re-exported here so existing
+ * flow-side callers keep their import site.
+ */
+export { isEvidenceGitQuery };
+
 export const MIN_GIT_VERSION = "2.33";
-
-/**
- * One argv-shaped allowlist entry — mirrors the ReadOnlyGitQuery shape in
- * @warpgogol/werkstatt-shared kernel/workspace-io.ts. Forge's `src/` is
- * autonomous (no runtime imports from werkstatt-shared), so the evidence
- * channel keeps its own mirror; the parity test asserts this table never
- * admits an argv the shared read-only table (plus the one pinned fetch
- * form) would not.
- */
-interface EvidenceGitQuery {
-  prefix: readonly string[];
-  forbid?: readonly string[];
-  maxPositionals?: number;
-}
-
-const BRANCH_WRITE_FLAGS = [
-  "-d",
-  "-D",
-  "--delete",
-  "-m",
-  "-M",
-  "--move",
-  "-c",
-  "-C",
-  "--copy",
-  "-f",
-  "--force",
-  "-u",
-  "--set-upstream-to",
-  "--unset-upstream",
-  "--edit-description",
-] as const;
-
-/**
- * Flags on `config` reads that name a config source other than
- * `.git/config` or fabricate an answer (CX-96) — plus the write-action
- * spellings a read channel has no use for. `-f` covers `--file`'s
- * short form inside clusters.
- */
-const CONFIG_SOURCE_FLAGS = [
-  "--file",
-  "-f",
-  "--blob",
-  "--worktree",
-  "--system",
-  "--global",
-  "--default",
-  "--includes",
-  "--add",
-  "--unset",
-  "--unset-all",
-  "--rename-section",
-  "--remove-section",
-] as const;
-
-/** Flags on `cat-file` that reach a repo-config program or bytes outside the object store. */
-const CAT_FILE_LEVER_FLAGS = [
-  "--filters",
-  "--filter",
-  "--textconv",
-  "--path",
-  "--follow-symlinks",
-  "--batch",
-  "--batch-check",
-  "--batch-command",
-  "--batch-all-objects",
-  "--buffer",
-  "--unordered",
-] as const;
-
-/** Flags the pinned fetch form may carry — every other flag is a transport or ref lever. */
-const EVIDENCE_FETCH_FLAGS = new Set([
-  "--prune",
-  "-p",
-  "--verbose",
-  "-v",
-  "--quiet",
-  "-q",
-  "--progress",
-  "--no-tags",
-  "--atomic",
-]);
-
-/**
- * The one refspec shape evidence fetches may carry: heads into
- * `refs/remotes/origin/*` — never a local integration branch (CX-81: an
- * admitted `+refs/heads/develop:refs/heads/main` force-rewrote `main`
- * on the read-only-plus-pinned-fetch channel).
- */
-const EVIDENCE_FETCH_REFSPEC = /^\+?refs\/heads\/[\w.*\/-]+:refs\/remotes\/origin\/[\w.*\/-]+$/;
-
-/**
- * The pinned fetch form: flags from the allowlist, exactly one remote
- * (name or URL) as the first positional, and only heads→origin-tracking
- * refspecs after it. `--upload-pack`, `--depth`, `--refmap`,
- * `--recurse-submodules`, `--stdin`, `-o`, `--filter`, `--update-head-ok`,
- * `--tags` and friends stay out — each reaches a transport lever or
- * writes refs outside the tracking namespace.
- */
-function isEvidenceFetchTail(tail: readonly string[]): boolean {
-  let remoteSeen = false;
-  for (const a of tail) {
-    if (a.startsWith("-")) {
-      if (!EVIDENCE_FETCH_FLAGS.has(a)) return false;
-      continue;
-    }
-    if (!remoteSeen) {
-      remoteSeen = true;
-      continue;
-    }
-    if (!EVIDENCE_FETCH_REFSPEC.test(a)) return false;
-  }
-  return remoteSeen;
-}
-
-/**
- * The argv space `gitEvidence` may spawn — a mirror of the shared
- * READ_ONLY_GIT_QUERIES table plus `fetch`, the one mutating op the
- * channel legitimately runs (it refreshes remote-tracking refs through
- * the single pinned refspec shape `isEvidenceFetchTail` admits —
- * `+refs/heads/*:refs/remotes/origin/*`, never a local branch; the
- * `--upload-pack`/`--exec` levers that exec a repo-config program on the
- * remote side stay forbidden). `config` is admitted only in its
- * `config --get*` forms — a bare `config` argv could write repo state on
- * the trusted channel. `diff --no-index` is out (CX-75: an admitted
- * arbitrary-file diff leaked `/etc/passwd` bytes into evidence stdout),
- * and `cat-file`'s `--filters`/`--textconv`/`--path` flags are out —
- * each reaches a repo-config program (CX-74).
- */
-const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
-  { prefix: ["--version"], maxPositionals: 0 },
-  { prefix: ["rev-parse"] },
-  { prefix: ["worktree", "list"] },
-  { prefix: ["ls-files"], forbid: ["--recurse-submodules"] },
-  { prefix: ["ls-tree"] },
-  { prefix: ["cat-file"], forbid: CAT_FILE_LEVER_FLAGS },
-  // `-g`/`--reflog` serve REFLOG data — fabricated by ordinary session
-  // update-ref churn and anchored to nothing verifiable (CX-92). Long
-  // and short spellings both stay out.
-  // `--use-bitmap-index`/`--test-bitmap` opt into the session-writable
-  // pack bitmap cache — the same fabricated-topology class the
-  // commitGraph/MIDX pins closed (CX-98).
-  {
-    prefix: ["rev-list"],
-    forbid: ["--output", "--walk-reflogs", "-g", "--reflog", "--use-bitmap-index", "--test-bitmap"],
-  },
-  { prefix: ["merge-base"], forbid: ["--fork-point"] },
-  // `--stdin`/`--exclude-existing` block on input the no-stdin evidence
-  // spawn never supplies — the channel hangs to timeout (CX-101).
-  { prefix: ["for-each-ref"], forbid: ["--stdin"] },
-  { prefix: ["show-ref"], forbid: ["--stdin", "--exclude-existing"] },
-  { prefix: ["describe"] },
-  { prefix: ["status"] },
-  {
-    prefix: ["log"],
-    forbid: [
-      "--output",
-      "--ext-diff",
-      "--textconv",
-      "--walk-reflogs",
-      "-g",
-      "--reflog",
-      "--use-bitmap-index",
-      "--test-bitmap",
-    ],
-  },
-  { prefix: ["diff"], forbid: ["--output", "--ext-diff", "--textconv", "--no-index"] },
-  { prefix: ["show"], forbid: ["--output", "--ext-diff", "--textconv", "-g", "--reflog"] },
-  { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
-  // Config reads answer from .git/config only — the `--file`/`--blob`/
-  // `--worktree` source flags name an alternate config store (a
-  // session-named file, a committed blob, config.worktree read even
-  // under the disabled-extension pin) and return fabricated values into
-  // evidence (CX-96). `--default` fabricates the answer when the key is
-  // absent, and write-action flags stay out even though git rejects
-  // them combined with reads.
-  { prefix: ["config", "--get"], forbid: CONFIG_SOURCE_FLAGS },
-  { prefix: ["config", "--get-all"], forbid: CONFIG_SOURCE_FLAGS },
-  { prefix: ["config", "--get-regexp"], forbid: CONFIG_SOURCE_FLAGS },
-  // The preflight's own enumeration of the local config — a list is a
-  // read; --no-includes keeps the dump to .git/config so include.path
-  // keys surface as refusable levers instead of silently expanding.
-  { prefix: ["config", "--local", "--no-includes", "--list"], forbid: CONFIG_SOURCE_FLAGS },
-  { prefix: ["remote", "get-url"] },
-  { prefix: ["ls-remote"], forbid: ["--upload-pack", "--exec", "-u", "--stdin"] },
-  { prefix: ["branch", "--show-current"], maxPositionals: 0 },
-  { prefix: ["branch", "--list"], forbid: BRANCH_WRITE_FLAGS },
-];
-
-/**
- * Same forbidden-argument judgment as the shared table: a long flag
- * exactly, with `=value`, or abbreviated; a short flag alone or inside a
- * cluster. Over-matching a harmless arg only refuses a read — safe.
- */
-function isForbiddenEvidenceArg(arg: string, forbid: readonly string[]): boolean {
-  if (arg.startsWith("--")) {
-    const name = arg.slice(2).split("=")[0];
-    if (name.length === 0) return false;
-    return forbid.some((f) => f.startsWith("--") && f.slice(2).startsWith(name));
-  }
-  if (arg.startsWith("-") && arg.length > 1) {
-    const cluster = arg.slice(1);
-    return forbid.some((f) => /^-[^-]$/.test(f) && cluster.includes(f[1]));
-  }
-  return false;
-}
-
-/**
- * Runtime argv judgment for the evidence channel — the predicate the
- * static scan assumes exists behind `gitEvidence` the way
- * isReadOnlyGitQuery sits behind `git()` on io.exec (CX-70: a dynamic
- * argv tail like `["log", ...flags]` was static-exempt and ran unjudged,
- * so `--ext-diff`/`--output` could reach the trusted subprocess). The
- * body-owned `-C`/`-c` pins are added after this check and are not part
- * of the judged argv.
- */
-export function isEvidenceGitQuery(args: readonly string[]): boolean {
-  if (args.length === 0) return false;
-  // `@{...}` ref syntax is a fabrication channel everywhere it appears —
-  // `@{N}` reads the session-fabricable reflog (CX-92's positional twin)
-  // and `@{u}`/`@{push}`/`@{upstream}` silently follow the session's own
-  // branch.*.merge config instead of the ref the caller named.
-  if (args.some((a) => a.includes("@{"))) return false;
-  // The one mutating op — fetch — is held to the single pinned refspec
-  // shape rather than the prefix/forbid form (CX-81: an arbitrary admitted
-  // refspec force-rewrote a local integration branch).
-  if (args[0] === "fetch") return isEvidenceFetchTail(args.slice(1));
-  return EVIDENCE_GIT_QUERIES.some((query) => {
-    if (!query.prefix.every((part, i) => args[i] === part)) return false;
-    const tail = args.slice(query.prefix.length);
-    if (query.forbid !== undefined && tail.some((a) => isForbiddenEvidenceArg(a, query.forbid!))) {
-      return false;
-    }
-    if (query.maxPositionals !== undefined) {
-      const positionals = tail.filter((arg) => !arg.startsWith("-")).length;
-      if (positionals > query.maxPositionals) return false;
-    }
-    return true;
-  });
-}
 
 export interface FlowWorktree {
   path: string;
@@ -476,7 +276,21 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
     }
     return null;
   }
-  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths);
+  // `--git-path objects` resolves the real object store — shared for
+  // linked worktrees — so the loose-object re-hash judges the same files
+  // the reads below would serve (CX-104). A failed resolve feeds the
+  // judge `null`, which it counts as a violation — an unproven object
+  // store must refuse, not silently skip the check.
+  const objects = await gitEvidence(repoRoot, ["rev-parse", "--git-path", "objects"], {
+    preflight: false,
+  });
+  const objectsDir =
+    objects.exitCode === 0
+      ? objects.stdout.endsWith("\n")
+        ? objects.stdout.slice(0, -1)
+        : objects.stdout
+      : null;
+  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths, objectsDir);
 }
 
 /** `topLevel` over the scrubbed boundary channel — same canonicalization. */
