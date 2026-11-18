@@ -21,7 +21,8 @@ are checked (DNA-106), and each helper expresses exactly one git fact.</purpose>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
-  <history>RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515</history>
+  <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
+  <history>ADR-0124, RFC-1486, RFC-1487, RFC-1490, RFC-1491, RFC-1515</history>
 </CHANGE_SUMMARY>
 */
 
@@ -37,6 +38,7 @@ import {
   judgeEvidenceRepoSurface,
   type EvidencePreflight,
   EVIDENCE_REFUSED_PREFIX,
+  EVIDENCE_SHAPE_QUERY_PATHS,
 } from "../../src/utils/verifier-git.ts";
 
 export const MIN_GIT_VERSION = "2.33";
@@ -154,15 +156,21 @@ const EVIDENCE_GIT_QUERIES: readonly EvidenceGitQuery[] = [
   { prefix: ["ls-files"], forbid: ["--recurse-submodules"] },
   { prefix: ["ls-tree"] },
   { prefix: ["cat-file"], forbid: CAT_FILE_LEVER_FLAGS },
-  { prefix: ["rev-list"], forbid: ["--output", "--walk-reflogs"] },
-  { prefix: ["merge-base"] },
+  // `-g`/`--reflog` serve REFLOG data — fabricated by ordinary session
+  // update-ref churn and anchored to nothing verifiable (CX-92). Long
+  // and short spellings both stay out.
+  { prefix: ["rev-list"], forbid: ["--output", "--walk-reflogs", "-g", "--reflog"] },
+  { prefix: ["merge-base"], forbid: ["--fork-point"] },
   { prefix: ["for-each-ref"] },
   { prefix: ["show-ref"] },
   { prefix: ["describe"] },
   { prefix: ["status"] },
-  { prefix: ["log"], forbid: ["--output", "--ext-diff", "--textconv", "--walk-reflogs"] },
+  {
+    prefix: ["log"],
+    forbid: ["--output", "--ext-diff", "--textconv", "--walk-reflogs", "-g", "--reflog"],
+  },
   { prefix: ["diff"], forbid: ["--output", "--ext-diff", "--textconv", "--no-index"] },
-  { prefix: ["show"], forbid: ["--output", "--ext-diff", "--textconv"] },
+  { prefix: ["show"], forbid: ["--output", "--ext-diff", "--textconv", "-g", "--reflog"] },
   { prefix: ["symbolic-ref"], forbid: ["-d", "--delete", "-m"], maxPositionals: 1 },
   { prefix: ["config", "--get"] },
   { prefix: ["config", "--get-all"] },
@@ -206,6 +214,11 @@ function isForbiddenEvidenceArg(arg: string, forbid: readonly string[]): boolean
  */
 export function isEvidenceGitQuery(args: readonly string[]): boolean {
   if (args.length === 0) return false;
+  // `@{...}` ref syntax is a fabrication channel everywhere it appears —
+  // `@{N}` reads the session-fabricable reflog (CX-92's positional twin)
+  // and `@{u}`/`@{push}`/`@{upstream}` silently follow the session's own
+  // branch.*.merge config instead of the ref the caller named.
+  if (args.some((a) => a.includes("@{"))) return false;
   // The one mutating op — fetch — is held to the single pinned refspec
   // shape rather than the prefix/forbid form (CX-81: an arbitrary admitted
   // refspec force-rewrote a local integration branch).
@@ -328,12 +341,13 @@ export async function gitEvidence(
  * Enumerate the session-writable repo surface for the evidence channel —
  * the two capture reads ride `gitEvidence` itself (`preflight:false`
  * skips the recursion) so their subprocesses stay inside the argv-judged
- * body and their argv stays allowlist-literal. The `--git-path` order is
- * the judge's positional contract: EVIDENCE_SHAPE_QUERY_PATHS
- * (grafts → alternates → shallow, then warn-only exclude). `null` when
- * the surface cannot be enumerated — the caller fails closed. A dead
- * resolved binary throws instead: the channel itself is broken and no
- * verdict may be derived (R4-R2's fail-loud contract) — distinguished
+ * body and their argv stays allowlist-literal. Each `--git-path` query is
+ * its own call — a resolved path may itself CONTAIN a newline
+ * (linked-worktree common dir under a hostile dirname, CX-89), so a
+ * multi-query line split cannot keep the judge's positional map honest.
+ * `null` when the surface cannot be enumerated — the caller fails closed.
+ * A dead resolved binary throws instead: the channel itself is broken and
+ * no verdict may be derived (R4-R2's fail-loud contract) — distinguished
  * from an unenumerable repo by whether a bare `--version` spawns.
  */
 export async function evidencePreflight(repoRoot: string): Promise<EvidencePreflight | null> {
@@ -342,22 +356,26 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
     ["config", "--local", "--no-includes", "--list", "--null"],
     { preflight: false },
   );
-  const gitPaths = await gitEvidence(
-    repoRoot,
-    [
-      "rev-parse",
-      "--git-path",
-      "info/grafts",
-      "--git-path",
-      "objects/info/alternates",
-      "--git-path",
-      "shallow",
-      "--git-path",
-      "info/exclude",
-    ],
-    { preflight: false },
-  );
-  if (listed.exitCode !== 0 || gitPaths.exitCode !== 0) {
+  let gitPathsFailed = listed.exitCode !== 0;
+  const shapePaths: (string | null)[] = [];
+  for (const p of EVIDENCE_SHAPE_QUERY_PATHS) {
+    if (gitPathsFailed) {
+      shapePaths.push(null);
+      continue;
+    }
+    const r = await gitEvidence(repoRoot, ["rev-parse", "--git-path", p], {
+      preflight: false,
+    });
+    if (r.exitCode !== 0) {
+      gitPathsFailed = true;
+      shapePaths.push(null);
+      continue;
+    }
+    // strip exactly the terminating newline — a newline inside the path
+    // itself is real and must reach the resolver (CX-89)
+    shapePaths.push(r.stdout.endsWith("\n") ? r.stdout.slice(0, -1) : r.stdout);
+  }
+  if (gitPathsFailed) {
     if (!existsSync(repoRoot)) return null;
     const probe = await gitEvidence(repoRoot, ["--version"], { preflight: false });
     if (probe.exitCode !== 0) {
@@ -367,7 +385,7 @@ export async function evidencePreflight(repoRoot: string): Promise<EvidencePrefl
     }
     return null;
   }
-  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, gitPaths.stdout);
+  return judgeEvidenceRepoSurface(repoRoot, listed.stdout, shapePaths);
 }
 
 /** `topLevel` over the scrubbed boundary channel — same canonicalization. */

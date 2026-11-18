@@ -12,11 +12,11 @@ overwritten — the scaffold lands once and hands the keys to the repo.</purpose
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1616: close RFC-1616 r2 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r3 trust-boundary counterexamples</item>
   <item>RFC-1616: keep an unconfigured scaffold owner from rewriting real CODEOWNERS ownership</item>
   <item>RFC-1616: close RFC-1616 r4 trust-boundary counterexamples</item>
   <item>RFC-1616: close RFC-1616 r5 trust-boundary counterexamples</item>
+  <item>RFC-1616: close RFC-1616 r6 trust-boundary counterexamples</item>
   <history>RFC-1616</history>
 </CHANGE_SUMMARY>
 */
@@ -319,20 +319,39 @@ function workflowAdopted(body: string): boolean {
   // command's / the backgrounded job's).
   const MASK_RE = /\|\||(?<!&)&(?!&)|\$\(|`|;|(?:^|[\s;|&({])!(?!=)/;
   const PIPE_RE = /(?<![|&])\|(?![|&])/;
+  // Heredoc bodies are STDIN to the redirecting command — lines inside
+  // `<<EOF … EOF` never execute, but a line-wise scan counts them as
+  // invocations and adopts dead CI (CX-90: `cat <<'EOF'\nforge gate…\nEOF`
+  // matched every check while feeding cat). Delimiters queue in order:
+  // `cmd <<A; cmd <<B` feeds the A body then the B body.
+  const HEREDOC_OPEN = /<<[-~]?\s*(?:'([^']+)'|"([^"]+)"|\\?([A-Za-z_][\w-]*))/g;
   const runInvokes = (run: string, cmd: RegExp, extra?: RegExp): boolean => {
     let dead = false;
     let depth = 0;
     let pipefail = false;
+    const heredocs: string[] = [];
     for (const raw of run.split("\n")) {
       if (dead) continue;
       const line = raw
         .replace(/\$\{\{[^}]*\}\}/g, "") // ${{ }} exprs run runner-side (CX-66)
         .replace(/#.*$/, "")
         .trim();
+      if (heredocs.length > 0) {
+        // Inside a heredoc body — nothing runs. The delimiter line itself
+        // (trimmed, so <<- tab-indentation is covered) ends the body.
+        if (line === heredocs[0]) heredocs.shift();
+        continue;
+      }
       if (line.length === 0) continue;
       if (BLOCK_DEAD_RE.test(line)) {
         dead = true;
         continue;
+      }
+      // Heredoc openers on THIS line arm the body skip below — including
+      // on masked/compound lines, since the consumer still reads stdin.
+      for (const m of line.matchAll(HEREDOC_OPEN)) {
+        const delim = m[1] ?? m[2] ?? m[3];
+        if (delim !== undefined) heredocs.push(delim);
       }
       if (/^set\s+-o\s+pipefail\b/.test(line)) {
         pipefail = true;
@@ -402,9 +421,24 @@ function destContained(workspaceRoot: string, dest: string): boolean {
   const rootReal = fs.realpathSync(workspaceRoot);
   let cur = path.dirname(dest);
   for (;;) {
-    if (fs.existsSync(cur)) {
-      const real = fs.realpathSync(cur);
-      return real === rootReal || real.startsWith(rootReal + path.sep);
+    // lstat, not existsSync — a DANGLING symlink still exists at the fs
+    // level. existsSync follows it to "absent", the walk approves the
+    // root, and mkdirSync then crashes ENOENT through the dead link
+    // (CX-93). lstat sees it, realpathSync throws, and the conflict is
+    // reported instead of the write crashing.
+    let lst: fs.Stats | null = null;
+    try {
+      lst = fs.lstatSync(cur);
+    } catch {
+      lst = null;
+    }
+    if (lst !== null) {
+      try {
+        const real = fs.realpathSync(cur);
+        return real === rootReal || real.startsWith(rootReal + path.sep);
+      } catch {
+        return false;
+      }
     }
     const parent = path.dirname(cur);
     if (parent === cur) return false;
@@ -444,6 +478,13 @@ export function scaffoldTrustBoundary(
       conflicts.push(`${rel} (removed a symlinked artifact — re-run scaffold to install)`);
       continue;
     }
+    // A fifo/socket/device/dir at the boundary path: readFileSync on a
+    // fifo BLOCKS forever and writeFileSync on a dir throws — a
+    // non-regular file is a structured conflict, not a read/write target.
+    if (lst !== null && !lst.isFile()) {
+      conflicts.push(`${rel} (path exists but is not a regular file)`);
+      continue;
+    }
     if (!destContained(workspaceRoot, dest)) {
       conflicts.push(`${rel} (path escapes the workspace through a symlinked ancestor)`);
       continue;
@@ -481,8 +522,18 @@ export function scaffoldTrustBoundary(
       replaced.push(rel);
       continue;
     }
-    fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, content, "utf8");
+    // Any fs error on the write path (ENOTDIR through a file-shaped
+    // ancestor, EACCES, EPERM) is a structured conflict — never an
+    // unhandled crash out of a scaffold pass (CX-93).
+    try {
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, content, "utf8");
+    } catch (e) {
+      conflicts.push(
+        `${rel} (write failed: ${e instanceof Error ? e.message : String(e)})`,
+      );
+      continue;
+    }
     created.push(rel);
   }
   return { created, skipped, replaced, conflicts };
