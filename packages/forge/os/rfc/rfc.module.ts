@@ -7,14 +7,30 @@
 </non-goals>
 </MODULE_CONTRACT>
 <CHANGE_SUMMARY>
-  <item>RFC-1534: lint probe patterns, sync amends counterparts, name next free ledger id</item>
   <item>RFC-1568: durable gate-run records, --detach mechanics, and forge CLI wiring</item>
   <item>RFC-1580: digest trail, manifest review export, operating model and skills
 
 flow.digest lists X-Correctness-Weakening trailers and verifier-trailer commits (correctnessTrail, part of digestId); rfc.verify.workspace --manifest exports the oracle-review surface with MANIFEST-REVIEW-BUNDLE.md hashes; operating model §7 product tiers and §8 'a self oracle never covers an anchor of a product correctness manifest'; fo-review oracle review mode producing forge/oracle-review@1; fo-idea-implement step 4.4c; correctness-gate reference page; forge AGENTS.md gate rules.</item>
   <item>RFC-1582: scope integrate-gate steps to verified path domains — skipped rows, manifest-derived domains, --full-gate escape</item>
   <item>RFC-1596: close REVIEW-CODE-2026-11-14-01 — packaged template moves block, typed frontmatter, forge.yaml in rfc.validate reads</item>
-  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482, RFC-1483, RFC-1489, RFC-1516, RFC-1528</history>
+  <item>RFC-1616: port RFC-1616 round-8 independent verifier probes
+
+Ports the independent round-8 probe (17 tests) covering the nine root
+causes (CX-103..CX-110) found against candidate 9da0bf515 plus the
+re-verified r7 controls (R8-R1..R8-R6) and env/pin holds (CX-111/112).
+One fixture premise was corrected on port (same pattern as CX-89/cx7):
+the CX-110 escalation premise asserted remote.o.r.uploadpack stayed
+KEEP (hole-live); the remediation widened the remote-name segment to
+.+, so the premise now asserts the REFUSE verdict and the marker check
+proves the configured binary can never spawn.
+
+rfc.module.ts declares rfc.validate execOnReadOnly: the r8 remediation
+made the expectation-source git reads through the verifier channel
+statically reachable from a read-only command.
+
+The remediation landed in the preceding commit; full package
+regression 410 files / 4827 tests green, forge typecheck clean.</item>
+  <history>RFC-0260, RFC-0795, RFC-1097, RFC-1173, RFC-1231, RFC-1237, RFC-1249, RFC-1271, RFC-1306, RFC-1322, RFC-1333, RFC-1351, RFC-1354, RFC-1364, RFC-1453, RFC-1458, RFC-1461, RFC-1463, RFC-1467, RFC-1474, RFC-1482, RFC-1483, RFC-1489, RFC-1516, RFC-1528, RFC-1534</history>
 </CHANGE_SUMMARY>
 */
 
@@ -147,6 +163,10 @@ export async function createForgeRfcModule(): Promise<ForgeModule> {
       {
         name: "rfc.validate",
         mutatesState: false,
+        // expectationSource/origin derivation reads git objects through the
+        // verifier channel — read-only subprocesses the surface judgment
+        // gates (RFC-1616 r8 made the spawn statically reachable).
+        execOnReadOnly: true,
         contract: "rfc",
         rules: [],
         description:
